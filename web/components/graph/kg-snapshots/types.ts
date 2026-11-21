@@ -24,7 +24,6 @@ export type SnapshotExactDiffSummary = {
 }
 
 export type SnapshotView = 'diff' | 'a' | 'b'
-export type WorkspaceTab = 'studio' | 'audit'
 export type StudioCanvasView = 'graph' | 'table' | 'stats'
 export type DiffCellStatus = 'same' | 'added' | 'removed' | 'empty'
 export type JsonTokenKind = 'plain' | 'key' | 'string' | 'number' | 'boolean' | 'null' | 'punctuation'

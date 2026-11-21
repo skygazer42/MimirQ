@@ -26,8 +26,12 @@ import sys
 from pathlib import Path
 from typing import Any, TypedDict
 
-from app.parsing.factory import ParserFactory
-from app.parsing.quality.benchmark import compute_parsing_proxy_metrics
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+from app.rag.ingestion.parsing.factory import ParserFactory  # noqa: E402
+from app.rag.ingestion.parsing.quality.benchmark import compute_parsing_proxy_metrics  # noqa: E402
 
 
 class _ParsingCase(TypedDict):

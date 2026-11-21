@@ -1,8 +1,8 @@
 import pytest
 from pydantic import ValidationError
 
-from app.core import jwt_verify
-from app.core.config import Settings
+from app.infrastructure.config import Settings
+from app.infrastructure.security import jwt_verify
 
 
 def _set_minimal_prod_jwt_env(monkeypatch: pytest.MonkeyPatch) -> None:

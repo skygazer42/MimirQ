@@ -11,6 +11,8 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.orm import Session
 
+from app.api.schemas.documents import DocumentDuplicateQuery
+
 if not hasattr(dt, "UTC"):
     vars(dt)["UTC"] = timezone.utc
 if not hasattr(starlette_status, "HTTP_413_CONTENT_TOO_LARGE"):
@@ -19,18 +21,20 @@ if not hasattr(starlette_status, "HTTP_422_UNPROCESSABLE_CONTENT"):
     vars(starlette_status)["HTTP_422_UNPROCESSABLE_CONTENT"] = 422
 
 import app.rag.agents.multi_agent as multi_agent
-import app.services.document_access as document_access_module
-from app.api.v1.document_duplicates import list_document_duplicates
-from app.api.v1.document_listing import ListDocumentsQueryFields, list_documents
-from app.core.database import Base
-from app.models.chat import Conversation, Message
-from app.models.dataset import Dataset, DatasetPermissionEnum
-from app.models.document import Document
-from app.rag.chunking.strategies.diff_patch import DiffPatchChunker
-from app.rag.chunking.strategies.makefile import MakefileChunker
-from app.rag.chunking.strategies.transcript import TranscriptChunker
-from app.rag.core.sentence_citations import render_sentence_citations_markdown
-from app.rag.evaluation.test_generator import generate_questions_from_conversations
+import app.services.documents.read_scope as document_access_module
+from app.api.schemas.datasets.dataset import DatasetPermissionEnum
+from app.api.schemas.documents.document import DocumentListQuery as ListDocumentsQueryFields
+from app.api.v1.documents.duplicates import list_document_duplicates
+from app.api.v1.documents.listing import list_documents
+from app.infrastructure.database.connection import Base
+from app.models.conversations.chat import Conversation, Message
+from app.models.datasets.records import Dataset
+from app.models.documents.records import Document
+from app.rag.evaluation.generation.test_generator import generate_questions_from_conversations
+from app.rag.ingestion.chunking.strategies.code.diff_patch import DiffPatchChunker
+from app.rag.ingestion.chunking.strategies.config.makefile import MakefileChunker
+from app.rag.ingestion.chunking.strategies.records.transcript import TranscriptChunker
+from app.rag.llm.citation_rendering import render_sentence_citations_markdown
 
 
 @compiles(JSONB, "sqlite")
@@ -253,11 +257,11 @@ def _message(
     )
 
 
-def test_list_document_duplicates_python_fallback_preserves_group_order_and_limits(
+def test_list_document_duplicates_sqlite_scan_preserves_group_order_and_limits(
     document_scope_db,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.document_duplicates as duplicates_module
+    import app.api.v1.documents.duplicates as duplicates_module
 
     db, tenant_id, dataset_id = document_scope_db
     created = _utc_datetime(1)
@@ -295,19 +299,11 @@ def test_list_document_duplicates_python_fallback_preserves_group_order_and_limi
     )
     monkeypatch.setattr(duplicates_module, "build_document_read_filter", lambda **_k: True, raising=True)
 
-    def _raise_lower(*_args, **_kwargs):
-        raise RuntimeError("force fallback")
-
-    monkeypatch.setattr(duplicates_module, "func", SimpleNamespace(lower=_raise_lower), raising=True)
-
     result = list_document_duplicates(
-        dataset_id=dataset_id,
-        min_count=2,
-        max_groups=2,
-        max_docs_per_group=2,
         tenant_id=tenant_id,
         account_id="acct-1",
         db=db,
+        params=DocumentDuplicateQuery(dataset_id=dataset_id, min_count=2, max_groups=2, max_docs_per_group=2),
     )
 
     assert result["total"] == 3
@@ -321,7 +317,7 @@ def test_list_documents_applies_processing_lifecycle_prefix_and_ordering(
     document_scope_db,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.document_listing as listing_module
+    import app.api.v1.documents.listing as listing_module
 
     db, tenant_id, dataset_id = document_scope_db
     base = _utc_datetime(2)
@@ -488,7 +484,7 @@ def test_render_sentence_citations_markdown_limits_rows_and_evidence() -> None:
 def test_generate_questions_from_conversations_preserves_request_order_and_filters_low_quality(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.rag.evaluation.test_generator as testgen_module
+    import app.rag.evaluation.generation.test_generator as testgen_module
 
     tenant_id = uuid4()
     conv_a = _conversation(tenant_id=tenant_id, owner_account_id="acct-1")
@@ -647,12 +643,12 @@ async def test_multi_agent_stream_builds_fallback_citations_from_preferred_docs(
         captured_citation_docs.extend(docs)
         return [{"document_id": "shared-doc"}]
 
+    monkeypatch.setattr(multi_agent, "num_tokens_from_string", len)
     monkeypatch.setattr(runner, "_decompose", _decompose)
     monkeypatch.setattr(runner, "_run_sub_agent", _run_sub_agent)
     monkeypatch.setattr(
-        multi_agent, "build_rag_state", lambda **kwargs: {**kwargs, "format_instructions": ""}, raising=True
+        multi_agent, "format_history_text", lambda history, **_kwargs: f"history:{len(history)}", raising=True
     )
-    monkeypatch.setattr(multi_agent, "_build_history_text", lambda history: f"history:{len(history)}", raising=True)
     monkeypatch.setattr(multi_agent, "_build_context", lambda docs, **_k: f"context:{len(docs)}", raising=True)
     monkeypatch.setattr(multi_agent, "build_citations_from_docs", _build_citations_from_docs, raising=True)
 

@@ -1,14 +1,8 @@
-/**
- * Sidebar - 左侧配置栏
- */
 'use client'
 
 import dynamic from 'next/dynamic'
 
-type SidebarVariant = 'panel' | 'dialog' | 'pane'
-type SidebarProps = Readonly<{ variant?: SidebarVariant; section?: 'all' | 'documents' | 'settings' }>
-
-const ChunkPreviewSidebarClient = dynamic(() => import('./sidebar-client').then((mod) => mod.Sidebar), {
+export const Sidebar = dynamic(() => import('./sidebar-client').then((mod) => mod.Sidebar), {
   ssr: false,
   loading: () => (
     <div
@@ -19,7 +13,3 @@ const ChunkPreviewSidebarClient = dynamic(() => import('./sidebar-client').then(
     </div>
   ),
 })
-
-export function Sidebar(props: SidebarProps = {}) {
-  return <ChunkPreviewSidebarClient {...props} />
-}

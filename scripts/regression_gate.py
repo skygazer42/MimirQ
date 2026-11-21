@@ -171,8 +171,6 @@ _RUN_OVERRIDE_KEYS: tuple[str, ...] = (
     "query_rewrite_strategy",
     "query_rewrite_temperature",
     "query_rewrite_max_chars",
-    "sparse_retrieval_enabled",
-    "sparse_retrieval_provider",
     "top_k",
     "score_threshold",
     "retrieval_mode",
@@ -328,24 +326,20 @@ def normalize_thresholds(raw: Any) -> dict[str, dict[str, float]]:
     for k, v in raw.items():
         metric = str(k)
         if isinstance(v, (int, float)) and not isinstance(v, bool):
-            out[metric] = {"min": float(v)}
+            v = {"min": v}
+        if not isinstance(v, dict):
             continue
 
-        if isinstance(v, dict):
-            entry: dict[str, float] = {}
-            if "min" in v:
-                try:
-                    entry["min"] = float(v.get("min"))  # type: ignore[arg-type]
-                except Exception:
-                    pass
-            if "max" in v:
-                try:
-                    entry["max"] = float(v.get("max"))  # type: ignore[arg-type]
-                except Exception:
-                    pass
-            if entry:
-                out[metric] = entry
-            continue
+        entry: dict[str, float] = {}
+        for bound in ("min", "max"):
+            if bound not in v:
+                continue
+            limit = _coerce_float(v[bound])
+            if limit is None:
+                raise ValueError(f"threshold '{metric}.{bound}' must be a finite number")
+            entry[bound] = limit
+        if entry:
+            out[metric] = entry
 
     return out
 
@@ -525,23 +519,13 @@ def _qs_metric_delta(
     )
 
 
-def diff_queryset_health_snapshots(
-    *,
-    baseline: dict[str, Any],
-    current: dict[str, Any],
-    max_hard_case_ids: int = 20,
-) -> dict[str, Any]:
-    """
-    Minimal diff for `mimirq.queryset_health_snapshot.v1` snapshots.
-
-    Kept local to the gate script to avoid importing backend modules in CI runners.
-    """
+def _qs_metric_deltas(*, baseline: dict[str, Any], current: dict[str, Any]) -> dict[str, float]:
     base_metrics = baseline.get("metrics") if isinstance(baseline.get("metrics"), dict) else {}
     curr_metrics = current.get("metrics") if isinstance(current.get("metrics"), dict) else {}
     base_risk = baseline.get("risk") if isinstance(baseline.get("risk"), dict) else {}
     curr_risk = current.get("risk") if isinstance(current.get("risk"), dict) else {}
 
-    metric_deltas = {
+    return {
         "hit_at_k_delta": _qs_metric_delta(
             curr_metrics,
             base_metrics,
@@ -555,9 +539,10 @@ def diff_queryset_health_snapshots(
             key="ndcg_at_k",
             digits=6,
         ),
-        "p95_latency_ms_delta": _qs_delta(
-            _qs_as_float(curr_metrics.get("p95_latency_ms")),
-            _qs_as_float(base_metrics.get("p95_latency_ms")),
+        "p95_latency_ms_delta": _qs_metric_delta(
+            curr_metrics,
+            base_metrics,
+            key="p95_latency_ms",
             digits=3,
         ),
         "miss_rate_delta": _qs_metric_delta(
@@ -574,6 +559,19 @@ def diff_queryset_health_snapshots(
         ),
     }
 
+
+def diff_queryset_health_snapshots(
+    *,
+    baseline: dict[str, Any],
+    current: dict[str, Any],
+    max_hard_case_ids: int = 20,
+) -> dict[str, Any]:
+    """
+    Minimal diff for `mimirq.queryset_health_snapshot.v1` snapshots.
+
+    Kept local to the gate script to avoid importing backend modules in CI runners.
+    """
+    metric_deltas = _qs_metric_deltas(baseline=baseline, current=current)
     base_hash = str(baseline.get("policy_hash") or "").strip()
     curr_hash = str(current.get("policy_hash") or "").strip()
     policy_changed = bool((base_hash or curr_hash) and base_hash != curr_hash)
@@ -635,42 +633,31 @@ def compute_queryset_health_degradation_flags(
     current: dict[str, Any],
     policy: dict[str, float | int],
 ) -> list[str]:
-    base_metrics = baseline.get("metrics") if isinstance(baseline.get("metrics"), dict) else {}
-    curr_metrics = current.get("metrics") if isinstance(current.get("metrics"), dict) else {}
-    base_risk = baseline.get("risk") if isinstance(baseline.get("risk"), dict) else {}
-    curr_risk = current.get("risk") if isinstance(current.get("risk"), dict) else {}
-
-    hit_at_k_delta = _qs_metric_delta(curr_metrics, base_metrics, key="hit_at_k", digits=6)
-    mrr_delta = _qs_metric_delta(curr_metrics, base_metrics, key="mrr", digits=6)
-    ndcg_delta = _qs_metric_delta(curr_metrics, base_metrics, key="ndcg_at_k", digits=6)
-    p95_delta = _qs_metric_delta(
-        curr_metrics,
-        base_metrics,
-        key="p95_latency_ms",
-        digits=3,
-    )
-    miss_rate_delta = _qs_metric_delta(curr_risk, base_risk, key="miss_rate", digits=6)
-    weak_hit_rate_delta = _qs_metric_delta(
-        curr_risk,
-        base_risk,
-        key="weak_hit_rate",
-        digits=6,
+    return _qs_degradation_flags(
+        _qs_metric_deltas(baseline=baseline, current=current),
+        policy,
     )
 
+
+def _qs_degradation_flags(
+    metric_deltas: dict[str, float],
+    policy: dict[str, float | int],
+) -> list[str]:
+    checks = (
+        ("hit_at_k_drop", -metric_deltas["hit_at_k_delta"], "hit_at_k_drop_threshold"),
+        ("mrr_drop", -metric_deltas["mrr_delta"], "mrr_drop_threshold"),
+        ("ndcg_drop", -metric_deltas["ndcg_at_k_delta"], "ndcg_drop_threshold"),
+        ("p95_latency_regression", metric_deltas["p95_latency_ms_delta"], "p95_latency_regression_ms"),
+        ("miss_rate_regression", metric_deltas["miss_rate_delta"], "miss_rate_regression_threshold"),
+        ("weak_hit_rate_regression", metric_deltas["weak_hit_rate_delta"], "weak_hit_rate_regression_threshold"),
+    )
     flags: list[str] = []
-    if hit_at_k_delta <= -float(policy.get("hit_at_k_drop_threshold") or 0.03):
-        flags.append("hit_at_k_drop")
-    if mrr_delta <= -float(policy.get("mrr_drop_threshold") or 0.03):
-        flags.append("mrr_drop")
-    if ndcg_delta <= -float(policy.get("ndcg_drop_threshold") or 0.03):
-        flags.append("ndcg_drop")
-    if p95_delta >= float(policy.get("p95_latency_regression_ms") or 20.0):
-        flags.append("p95_latency_regression")
-    if miss_rate_delta >= float(policy.get("miss_rate_regression_threshold") or 0.05):
-        flags.append("miss_rate_regression")
-    if weak_hit_rate_delta >= float(policy.get("weak_hit_rate_regression_threshold") or 0.08):
-        flags.append("weak_hit_rate_regression")
-
+    for flag, delta, key in checks:
+        limit = policy.get(key)
+        if limit is None:
+            limit = _QUERYSET_HEALTH_DEFAULT_POLICY[key]
+        if delta > 0.0 and delta >= float(limit):
+            flags.append(flag)
     return flags
 
 
@@ -679,7 +666,6 @@ def _citation_channel_hits(citation: dict[str, Any]) -> dict[str, bool]:
         "vector": _coerce_float(citation.get("vector_score")) not in (None, 0.0),
         "bm25": _coerce_float(citation.get("bm25_score")) not in (None, 0.0),
         "lexical": _coerce_float(citation.get("lexical_score")) not in (None, 0.0),
-        "sparse": _coerce_float(citation.get("sparse_score")) not in (None, 0.0),
     }
 
 
@@ -701,7 +687,6 @@ def summarize_channel_attribution(items: list[dict[str, Any]] | None) -> dict[st
         "vector": 0,
         "bm25": 0,
         "lexical": 0,
-        "sparse": 0,
         "multi": 0,
         "citations_with_scores": 0,
         "total_citations": 0,
@@ -868,7 +853,6 @@ def _append_channel_attribution_section(lines: list[str], totals: dict[str, Any]
             f"| vector | {int(totals.get('vector') or 0)} |",
             f"| bm25 | {int(totals.get('bm25') or 0)} |",
             f"| lexical | {int(totals.get('lexical') or 0)} |",
-            f"| sparse | {int(totals.get('sparse') or 0)} |",
             f"| multi-channel | {int(totals.get('multi') or 0)} |",
             "",
         ]
@@ -958,18 +942,21 @@ def _threshold_failures_for_value(
     raw_val: Any,
     bounds: dict[str, float],
 ) -> list[str]:
-    try:
-        value = float(raw_val)
-    except Exception:
+    value = _coerce_float(raw_val)
+    if value is None:
         return [f"missing metric '{name}'"]
 
     failures: list[str] = []
-    min_value = bounds.get("min")
-    if min_value is not None and value < float(min_value):
-        failures.append(f"{name}={value:.4f} < min {float(min_value):.4f}")
-    max_value = bounds.get("max")
-    if max_value is not None and value > float(max_value):
-        failures.append(f"{name}={value:.4f} > max {float(max_value):.4f}")
+    for bound in ("min", "max"):
+        if bound not in bounds:
+            continue
+        limit = _coerce_float(bounds[bound])
+        if limit is None:
+            failures.append(f"threshold '{name}.{bound}' must be a finite number")
+        elif bound == "min" and value < limit:
+            failures.append(f"{name}={value:.4f} < min {limit:.4f}")
+        elif bound == "max" and value > limit:
+            failures.append(f"{name}={value:.4f} > max {limit:.4f}")
     return failures
 
 
@@ -1069,7 +1056,7 @@ def _coerce_float(raw: Any) -> float | None:
         v = float(raw)
     except Exception:
         return None
-    if math.isnan(v):
+    if not math.isfinite(v):
         return None
     return v
 
@@ -1446,16 +1433,6 @@ def build_arg_parser() -> argparse.ArgumentParser:
     )
     _add_tristate_flag(
         p,
-        enable_flag="--enable-sparse-retrieval",
-        disable_flag="--disable-sparse-retrieval",
-        dest="sparse_retrieval_enabled",
-        help="sparse retrieval channel",
-    )
-    p.add_argument(
-        "--sparse-retrieval-provider", type=str, default="", help="Override sparse_retrieval_provider (optional)"
-    )
-    _add_tristate_flag(
-        p,
         enable_flag="--enable-query-rewrite",
         disable_flag="--disable-query-rewrite",
         dest="enable_query_rewrite",
@@ -1567,11 +1544,9 @@ _STRING_OVERRIDE_ARGS: dict[str, str] = {
     "retrieval_mode": "retrieval_mode",
     "retrieval_profile": "retrieval_profile",
     "fusion_strategy": "fusion_strategy",
-    "sparse_retrieval_provider": "sparse_retrieval_provider",
     "reranker_provider": "reranker_provider",
 }
 _BOOL_OVERRIDE_ARGS: tuple[str, ...] = (
-    "sparse_retrieval_enabled",
     "enable_query_rewrite",
     "enable_multi_query",
     "enable_reranker",
@@ -1709,7 +1684,10 @@ def _load_threshold_config(
         raw_th = _load_json(th_path)
         if not isinstance(raw_th, dict):
             _require(False, "thresholds must be a JSON object")
-        thresholds, slice_thresholds = parse_thresholds_config(raw_th)
+        try:
+            thresholds, slice_thresholds = parse_thresholds_config(raw_th)
+        except ValueError as exc:
+            _require(False, str(exc))
         threshold_case_source = normalize_threshold_case_source(raw_th.get("case_source"))
 
         # Optional dataset_id guardrail (helps avoid applying thresholds from another dataset by accident).
@@ -2047,11 +2025,7 @@ def _build_queryset_health_section(
         print(f"[regression_gate] wrote queryset health diff: {out_diff}")
 
     policy = _qs_resolve_policy(current_snapshot)
-    degradation_flags = compute_queryset_health_degradation_flags(
-        baseline=baseline_snapshot,
-        current=current_snapshot,
-        policy=policy,
-    )
+    degradation_flags = _qs_degradation_flags(diff["metric_deltas"], policy)
     notes: list[str] = []
     failures: list[str] = []
     policy_info = diff.get("policy") if isinstance(diff.get("policy"), dict) else {}

@@ -6,8 +6,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from uuid import UUID
 
-from app.core.database import SessionLocal
-from app.services.embedding_drift_monitor import run_embedding_drift_monitor
+from app.infrastructure.database.connection import SessionLocal
+from app.services.embeddings.drift_monitor import run_embedding_drift_monitor
 
 
 def _utc_compact_timestamp() -> str:
@@ -35,6 +35,8 @@ def main(argv: list[str] | None = None) -> int:
     default_out = str(Path("runs") / "diagnostics" / f"embedding-drift-{_utc_compact_timestamp()}.json")
     p.add_argument("--out", default=default_out, help="Output JSON path (default: runs/diagnostics/...).")
     args = p.parse_args(argv)
+
+    import app.models.registry  # noqa: F401
 
     db = SessionLocal()
     try:

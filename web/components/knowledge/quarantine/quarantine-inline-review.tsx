@@ -3,7 +3,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import {
-  AlertCircle,
   ArrowUpRight,
   CheckCircle2,
   Layers,
@@ -44,7 +43,7 @@ export type QuarantineReviewActions = {
   onRetry: (doc: Document) => void
   onTune: (doc: Document) => void
   onMarkReviewed: (doc: Document) => void
-  onDelete: (doc: Document) => void
+  onDelete: (doc: Document) => Promise<void>
   onOpenDocument: (docId: string) => void
   onShowDetails: (docId: string) => void
 }
@@ -81,16 +80,24 @@ export function QuarantineInlineReview({
   const busy = Boolean(acting)
   const reasons = getDropReasons(doc)
   const { data, isPending, error, refetch, isFetching } = useQuery({
-    queryKey: ['quarantine-parsed-content', doc.id],
-    queryFn: () => documentApi.getParsedContent(doc.id, { max_chars: 1400 }),
+    queryKey: ['quarantine-parsed-content', demoMode ? null : doc.id],
+    queryFn: ({ signal }) => documentApi.getParsedContent(doc.id, { max_chars: 1400 }, { signal }),
     enabled: !demoMode,
     staleTime: 60_000,
     retry: false,
   })
-  const excerpt = data?.original_markdown_content?.trim() || data?.markdown_content?.trim()
-  const excerptTruncated = data?.original_markdown_content?.trim()
-    ? data.original_markdown_truncated
-    : data?.markdown_truncated
+  const sourceContent = !demoMode && data?.available === true ? data : null
+  const hasOriginal = sourceContent !== null && sourceContent.original_markdown_content.trim() !== ''
+  const excerpt =
+    sourceContent === null
+      ? null
+      : hasOriginal
+        ? sourceContent.original_markdown_content
+        : sourceContent.markdown_content
+  const hasExcerpt = excerpt !== null && excerpt.trim() !== ''
+  const excerptTruncated =
+    sourceContent !== null &&
+    (hasOriginal ? sourceContent.original_markdown_truncated : sourceContent.markdown_truncated)
   const excerptRef = useRef<HTMLPreElement>(null)
   const [excerptOverflow, setExcerptOverflow] = useState(false)
   useEffect(() => {
@@ -105,7 +112,7 @@ export function QuarantineInlineReview({
   }, [excerpt, error])
   const loading = !demoMode && isPending
   const currentError = actionError?.id === doc.id ? actionError.message : null
-  const sourceError = error ? toApiErrorInfo(error, '原文暂时无法读取') : null
+  const sourceError = !demoMode && error !== null ? toApiErrorInfo(error, '原文暂时无法读取') : null
 
   return (
     <section className={styles.inlineReview} aria-label={`${doc.filename}复核`}>
@@ -129,33 +136,35 @@ export function QuarantineInlineReview({
         <div className={styles.excerpt}>
           <div className={styles.excerptHeading}>
             <h3>原文摘录</h3>
-            {excerptOverflow && <span>可滚动查看</span>}
+            {hasExcerpt && excerptOverflow && <span>可滚动查看</span>}
           </div>
           {loading ? (
             <p className={styles.excerptStatus} role="status">
               <Loader2 className="animate-spin motion-reduce:animate-none" aria-hidden="true" />
               正在读取原文…
             </p>
-          ) : sourceError ? (
+          ) : null}
+          {sourceError !== null ? (
             <div className={styles.excerptStatus}>
               <div>
-                <p role="status">{sourceError.message}</p>
+                <p role="alert">{sourceError.message}</p>
                 <RequestDiagnostics requestId={sourceError.requestId} />
               </div>
               <Button size="sm" variant="ghost" disabled={isFetching} onClick={() => void refetch()}>
                 重新读取
               </Button>
             </div>
-          ) : excerpt ? (
+          ) : null}
+          {hasExcerpt ? (
             <>
               <pre ref={excerptRef} tabIndex={0} aria-label={`${doc.filename}的原文摘录`}>
                 {excerpt}
               </pre>
               {excerptTruncated && <p className={styles.excerptLimit}>仅显示部分原文，可查看完整文档。</p>}
             </>
-          ) : (
+          ) : !loading && sourceError === null ? (
             <p>暂无可用的解析文本，可查看原文或入库详情。</p>
-          )}
+          ) : null}
         </div>
         <p className={styles.advice}>{buildReviewAdvice(doc).join(' ')}</p>
         {currentError && <RequestDiagnostics requestId={actionError?.requestId} />}

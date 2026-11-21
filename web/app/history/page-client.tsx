@@ -3,14 +3,23 @@
  */
 'use client'
 
-import { useState, useEffect, useLayoutEffect, useRef, Suspense, useCallback, useDeferredValue, useMemo } from 'react'
-import { ConversationHistory } from '@/components/icons'
+import {
+  useState,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  Suspense,
+  useCallback,
+  useDeferredValue,
+  useMemo,
+  useTransition,
+} from 'react'
 import { useLocale, useTranslations } from 'next-intl'
 import { useSearchParams } from 'next/navigation'
-import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query'
-import type { QueryClient } from '@tanstack/react-query'
+import { skipToken, useInfiniteQuery, useQueryClient } from '@tanstack/react-query'
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion'
 import {
+  ConversationHistory,
   Trash2,
   ArrowUpRight,
   Download,
@@ -24,8 +33,6 @@ import {
   Route,
   Search,
   ArrowLeft,
-  PanelLeftClose,
-  PanelLeftOpen,
 } from '@/components/icons'
 import { AppFrame } from '@/components/app-frame'
 import { ChatMessageItem } from '@/components/chat/message-item'
@@ -49,36 +56,14 @@ import {
 import { Link, useRouter } from '@/i18n/navigation'
 import { chatApi } from '@/lib/api'
 import { queryKeys } from '@/lib/query-keys'
+import { normalizeResourceId } from '@/lib/resource-id'
 import { cn } from '@/lib/utils'
 import { formatApiError } from '@/lib/api-errors'
 import { reportClientError } from '@/lib/client-logging'
+import { AUTH_SCOPE_CHANGED_EVENT, getAuthCacheScope, getAuthSessionRevision } from '@/lib/auth-storage'
 import { toast } from 'sonner'
-import type { Conversation, Message } from '@/types'
+import type { Conversation, Message } from '@/types/chat'
 import styles from './history.module.css'
-
-type HistoryPageClientProps = {
-  initialConversationId?: string | null
-  initialConversations?: Conversation[]
-  initialSelectedConversation?: Conversation | null
-  initialMessages?: Message[]
-  initialHasMoreMessages?: boolean
-  initialHasMoreConversations?: boolean
-  initialConversationNextSkip?: number | null
-  initialConversationTotal?: number
-  initialConversationsLoaded?: boolean
-}
-
-type HistoryPageContentProps = {
-  initialConversationId: string | null
-  initialConversations: Conversation[]
-  initialSelectedConversation: Conversation | null
-  initialMessages: Message[]
-  initialHasMoreMessages: boolean
-  initialHasMoreConversations: boolean
-  initialConversationNextSkip: number | null
-  initialConversationTotal: number
-  initialConversationsLoaded: boolean
-}
 
 type ConversationGroupLabels = {
   earlier: string
@@ -93,72 +78,24 @@ const EMPTY_MESSAGES: Message[] = []
 const CONVERSATION_PAGE_SIZE = 100
 const RECENT_CONVERSATION_WINDOW_MS = 7 * 24 * 60 * 60 * 1000
 
-type ConversationPagesCache = {
-  pages?: Array<{
-    items?: Conversation[]
-    total?: number
-    returned?: number
-  }>
-  pageParams?: unknown[]
-}
-
-export async function deleteConversationFromHistory(conversationId: string, queryClient: QueryClient) {
-  await chatApi.deleteConversation(conversationId)
-  queryClient.setQueriesData<ConversationPagesCache>(
-    { queryKey: queryKeys.chat.conversationPagesAll },
-    (current: ConversationPagesCache | undefined) =>
-      current
-        ? {
-            ...current,
-            pages: (current.pages || []).map((page) => {
-              const items = (page.items || []).filter((conversation) => conversation.id !== conversationId)
-              const removed = (page.items || []).length - items.length
-              return {
-                ...page,
-                items,
-                returned: Math.max(0, Number(page.returned ?? page.items?.length ?? 0) - removed),
-                total: Math.max(0, Number(page.total || 0) - removed),
-              }
-            }),
-          }
-        : current,
-  )
-  await Promise.all([
-    queryClient.invalidateQueries({ queryKey: queryKeys.chat.conversationPagesAll }),
-    queryClient.invalidateQueries({ queryKey: queryKeys.chat.conversationsAll }),
-  ])
-}
-
-export default function HistoryPageClient({
-  initialConversationId = null,
-  initialConversations = [],
-  initialSelectedConversation = null,
-  initialMessages = [],
-  initialHasMoreMessages = false,
-  initialHasMoreConversations = false,
-  initialConversationNextSkip = null,
-  initialConversationTotal = initialConversations.length,
-  initialConversationsLoaded = false,
-}: Readonly<HistoryPageClientProps>) {
+export default function HistoryPageClient() {
   return (
     <Suspense fallback={<HistoryPageLoading />}>
-      <HistoryPageContent
-        initialConversationId={initialConversationId}
-        initialConversations={initialConversations}
-        initialSelectedConversation={initialSelectedConversation}
-        initialMessages={initialMessages}
-        initialHasMoreMessages={initialHasMoreMessages}
-        initialHasMoreConversations={initialHasMoreConversations}
-        initialConversationNextSkip={initialConversationNextSkip}
-        initialConversationTotal={initialConversationTotal}
-        initialConversationsLoaded={initialConversationsLoaded}
-      />
+      <HistoryPageContent />
     </Suspense>
   )
 }
 
 const DEFAULT_VISIBLE_MESSAGES = 80
 const LOAD_MORE_STEP = 40
+
+type MessagePageParams = { limit: number; before?: string }
+const FIRST_MESSAGE_PAGE: MessagePageParams = { limit: DEFAULT_VISIBLE_MESSAGES }
+type ConversationDeletion = {
+  owner: { active: boolean }
+  authRevision: number
+  authScope: string
+}
 
 function HistoryPageLoading() {
   const t = useTranslations('History')
@@ -170,34 +107,33 @@ function HistoryPageLoading() {
   )
 }
 
-function HistoryPageContent({
-  initialConversationId,
-  initialConversations,
-  initialSelectedConversation,
-  initialMessages,
-  initialHasMoreMessages,
-  initialHasMoreConversations,
-  initialConversationNextSkip,
-  initialConversationTotal,
-  initialConversationsLoaded,
-}: Readonly<HistoryPageContentProps>) {
+function HistoryPageContent() {
   const router = useRouter()
+  const [isNavigating, startNavigation] = useTransition()
   const searchParams = useSearchParams()
   const queryClient = useQueryClient()
   const locale = useLocale()
   const t = useTranslations('History')
-  const conversationId = searchParams.get('id') || initialConversationId || null
+  const conversationId = searchParams.get('id')
+  const requestedConversationId =
+    conversationId === null || conversationId === '' ? null : normalizeResourceId(conversationId)
   const reduceMotion = useReducedMotion()
 
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
-  const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(initialSelectedConversation)
+  const [showConversationDetail, setShowConversationDetail] = useState(requestedConversationId !== null)
+  const [selectedConversationSnapshot, setSelectedConversationSnapshot] = useState<Conversation | null>(null)
+  const selectedConversationId = requestedConversationId ?? selectedConversationSnapshot?.id ?? null
   const [searchQuery, setSearchQuery] = useState('')
-  const [historyView, setHistoryView] = useState<'all' | 'recent'>('all')
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null)
   const [isTraceOpen, setIsTraceOpen] = useState(false)
   const [isOpsOpen, setIsOpsOpen] = useState(false)
   const [recentConversationCutoff, setRecentConversationCutoff] = useState<number | null>(null)
+  const historyView = recentConversationCutoff === null ? 'all' : 'recent'
+  const [deletingConversationIds, setDeletingConversationIds] = useState<ReadonlySet<string>>(new Set())
+  const [removedConversationIds, setRemovedConversationIds] = useState<ReadonlySet<string>>(new Set())
 
+  const historyOwnerRef = useRef({ active: true })
+  const deletionsRef = useRef(new Map<string, ConversationDeletion>())
+  const selectedConversationIdRef = useRef(selectedConversationId)
   const messagesContainerRef = useRef<HTMLDivElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const conversationLoadMoreRef = useRef<HTMLDivElement>(null)
@@ -205,6 +141,8 @@ function HistoryPageContent({
   const shouldScrollToEndRef = useRef(false)
   const deferredSearchQuery = useDeferredValue(searchQuery)
   const conversationSearchTerm = deferredSearchQuery.trim()
+  const searchTerm = searchQuery.trim()
+  const isSearchPending = searchTerm !== conversationSearchTerm
   const conversationListParams = useMemo(
     () => ({
       limit: CONVERSATION_PAGE_SIZE,
@@ -215,145 +153,164 @@ function HistoryPageContent({
   const conversationsQuery = useInfiniteQuery({
     queryKey: queryKeys.chat.conversationPages(conversationListParams),
     initialPageParam: 0,
-    queryFn: async ({ pageParam }) => {
-      const result = await chatApi.listConversations({
-        skip: Number(pageParam) || 0,
-        ...conversationListParams,
-      })
-      return {
-        items: result.items || [],
-        total: Number(result.total || 0),
-        returned: Number(result.returned ?? result.items?.length ?? 0),
-        has_more: Boolean(result.has_more),
-        next_skip: typeof result.next_skip === 'number' ? result.next_skip : null,
-      }
-    },
-    getNextPageParam: (lastPage, allPages) => {
-      if (!lastPage.has_more) return undefined
-      if (typeof lastPage.next_skip === 'number') return lastPage.next_skip
-      return allPages.reduce((sum, page) => sum + page.returned, 0)
-    },
-    initialData:
-      initialConversationsLoaded && !conversationSearchTerm
-        ? {
-            pages: [
-              {
-                items: initialConversations,
-                total: initialConversationTotal,
-                returned: initialConversations.length,
-                has_more: initialHasMoreConversations,
-                next_skip: initialConversationNextSkip,
-              },
-            ],
-            pageParams: [0],
-          }
-        : undefined,
+    staleTime: 0,
+    queryFn: ({ pageParam, signal }) =>
+      chatApi.listConversations({ skip: pageParam, ...conversationListParams }, { signal }),
+    getNextPageParam: (lastPage) => lastPage.next_skip,
   })
+  const [conversationListSnapshot, setConversationListSnapshot] = useState<{
+    response: NonNullable<typeof conversationsQuery.data>
+    searchTerm: string
+  } | null>(null)
+  useEffect(() => {
+    if (conversationsQuery.isSuccess) {
+      setConversationListSnapshot({ response: conversationsQuery.data, searchTerm: conversationSearchTerm })
+    }
+  }, [conversationsQuery.data, conversationsQuery.isSuccess, conversationSearchTerm])
+  const displayedConversationData = conversationsQuery.data ?? conversationListSnapshot?.response
+  const displayedSearchTerm =
+    conversationsQuery.data === undefined && conversationListSnapshot !== null
+      ? conversationListSnapshot.searchTerm
+      : conversationSearchTerm
+  const isSearchingHistory = searchTerm !== '' || displayedSearchTerm !== ''
+  const showingPreviousSearch =
+    displayedConversationData !== undefined && displayedSearchTerm !== conversationSearchTerm
   const conversations = useMemo(() => {
+    if (displayedConversationData === undefined) return EMPTY_CONVERSATIONS
+
     const seen = new Set<string>()
     const merged: Conversation[] = []
-    for (const page of conversationsQuery.data?.pages || []) {
+    for (const page of displayedConversationData.pages) {
       for (const conversation of page.items) {
-        if (seen.has(conversation.id)) continue
+        if (seen.has(conversation.id) || removedConversationIds.has(conversation.id)) continue
         seen.add(conversation.id)
         merged.push(conversation)
       }
     }
-    return merged.length ? merged : EMPTY_CONVERSATIONS
-  }, [conversationsQuery.data])
-  const isLoadingList = conversationsQuery.isLoading
-  const hasMoreConversations = conversationsQuery.hasNextPage
+    return merged
+  }, [displayedConversationData, removedConversationIds])
+  const isReadingConversations = conversationsQuery.fetchStatus !== 'idle'
+  const isLoadingList = conversationsQuery.isLoading && displayedConversationData === undefined
+  const hasMoreConversations = !showingPreviousSearch && conversationsQuery.hasNextPage
   const isLoadingMoreConversations = conversationsQuery.isFetchingNextPage
-  const selectedConversationId = selectedConversation?.id || conversationId || null
+  const showEmptyHistory =
+    !isSearchPending &&
+    conversationSearchTerm.length === 0 &&
+    conversationsQuery.isSuccess &&
+    !isReadingConversations &&
+    conversationsQuery.data.pages[0].total === 0
+  const matchingConversation = conversations.find((conversation) => conversation.id === selectedConversationId)
+  const selectedConversation =
+    matchingConversation ??
+    (selectedConversationSnapshot?.id === selectedConversationId ? selectedConversationSnapshot : null)
   const messagesQuery = useInfiniteQuery({
-    queryKey: queryKeys.chat.messages(selectedConversationId || ''),
-    enabled: Boolean(selectedConversationId),
-    initialPageParam: undefined as string | undefined,
-    queryFn: async ({ pageParam }) => {
-      const result = await chatApi.getMessages(selectedConversationId || '', {
-        limit: pageParam ? LOAD_MORE_STEP : DEFAULT_VISIBLE_MESSAGES,
-        before: pageParam,
-      })
-      return {
-        conversation_id: result.conversation_id,
-        messages: result.messages || [],
-        returned: Number(result.returned ?? result.messages?.length ?? 0),
-        has_more: Boolean(result.has_more),
-      }
-    },
-    getPreviousPageParam: (firstPage) => (firstPage.has_more ? firstPage.messages?.[0]?.id || undefined : undefined),
-    getNextPageParam: () => undefined,
-    initialData:
-      initialSelectedConversation?.id && initialSelectedConversation.id === selectedConversationId
-        ? {
-            pages: [
-              {
-                conversation_id: initialSelectedConversation.id,
-                messages: initialMessages,
-                returned: initialMessages.length,
-                has_more: initialHasMoreMessages,
-              },
-            ],
-            pageParams: [undefined],
-          }
-        : undefined,
+    queryKey: queryKeys.chat.messagePages(selectedConversationId),
+    initialPageParam: FIRST_MESSAGE_PAGE,
+    staleTime: 0,
+    queryFn:
+      selectedConversationId === null
+        ? skipToken
+        : ({ pageParam, signal }) => chatApi.getMessages(selectedConversationId, pageParam, { signal }),
+    getNextPageParam: (lastPage): MessagePageParams | undefined =>
+      lastPage.has_more ? { limit: LOAD_MORE_STEP, before: lastPage.messages[0].id } : undefined,
   })
   const messages = useMemo(
-    () => messagesQuery.data?.pages.flatMap((page) => page.messages) ?? EMPTY_MESSAGES,
+    () =>
+      messagesQuery.data?.pages
+        .slice()
+        .reverse()
+        .flatMap((page) => page.messages) ?? EMPTY_MESSAGES,
     [messagesQuery.data],
   )
-  const displayConversation = useMemo<Conversation | null>(() => {
-    if (selectedConversation) return selectedConversation
-    if (!selectedConversationId || messagesQuery.isError) return null
-    const firstMessage = messages[0]
-    const lastMessage = messages[messages.length - 1]
-    const createdAt = firstMessage?.created_at || lastMessage?.created_at || new Date().toISOString()
-    const updatedAt = lastMessage?.created_at || createdAt
-    return {
-      id: selectedConversationId,
-      title: '',
-      last_message: lastMessage?.content,
-      last_message_at: lastMessage?.created_at,
-      message_count: messages.length,
-      created_at: createdAt,
-      updated_at: updatedAt,
-    }
-  }, [messages, messagesQuery.isError, selectedConversation, selectedConversationId])
-  const hasMoreMessages = messagesQuery.hasPreviousPage
-  const isLoadingOlder = messagesQuery.isFetchingPreviousPage
-  const isLoadingMessages = Boolean(selectedConversationId) && messagesQuery.isLoading
+  const selectedConversationTitle =
+    selectedConversation === null ? selectedConversationId : (selectedConversation.title ?? t('untitledConversation'))
+  const isDeletingSelected = selectedConversationId !== null && deletingConversationIds.has(selectedConversationId)
+  const hasMoreMessages = messagesQuery.hasNextPage
+  const isLoadingOlder = messagesQuery.isFetchingNextPage
+  const isReadingMessages = messagesQuery.fetchStatus !== 'idle'
 
   const handleSelectConversation = useCallback(
-    async (conversation: Conversation) => {
-      if (globalThis.window.matchMedia('(max-width: 767px)').matches) {
-        setIsSidebarCollapsed(true)
-      }
-      if (selectedConversation?.id === conversation.id) return
+    (conversation: Conversation) => {
+      setShowConversationDetail(true)
+      if (selectedConversationIdRef.current === conversation.id && requestedConversationId === conversation.id) return
 
+      selectedConversationIdRef.current = conversation.id
       shouldScrollToEndRef.current = true
-      setSelectedConversation(conversation)
+      setSelectedConversationSnapshot(conversation)
 
       // 更新 URL
-      router.push(`/history?id=${conversation.id}`, { scroll: false })
+      startNavigation(() => router.push(`/history?id=${encodeURIComponent(conversation.id)}`, { scroll: false }))
     },
-    [router, selectedConversation?.id],
+    [requestedConversationId, router, startNavigation],
   )
 
-  useEffect(() => {
-    const media = globalThis.window.matchMedia('(max-width: 767px)')
-    const showSelectedConversation = () => {
-      if (conversationId && media.matches) setIsSidebarCollapsed(true)
+  const handleConversationCreated = (conversation: Conversation) => {
+    setIsOpsOpen(false)
+    handleSelectConversation(conversation)
+  }
+
+  useLayoutEffect(() => {
+    selectedConversationIdRef.current = selectedConversationId
+    if (selectedConversationId !== null) setShowConversationDetail(true)
+    shouldScrollToEndRef.current = selectedConversationId !== null
+    pendingPrependScrollRef.current = null
+    setIsTraceOpen(false)
+    setIsOpsOpen(false)
+  }, [selectedConversationId])
+
+  useLayoutEffect(() => {
+    historyOwnerRef.current = { active: true }
+    const resetHistoryOperations = () => {
+      historyOwnerRef.current.active = false
+      historyOwnerRef.current = { active: true }
+      deletionsRef.current.clear()
+      setDeletingConversationIds(new Set())
+      setRemovedConversationIds(new Set())
+      setConversationListSnapshot(null)
+      setSelectedConversationSnapshot(null)
+      setShowDeleteConfirm(null)
+      setIsTraceOpen(false)
+      setIsOpsOpen(false)
+      pendingPrependScrollRef.current = null
     }
-    showSelectedConversation()
-    media.addEventListener?.('change', showSelectedConversation)
-    return () => media.removeEventListener?.('change', showSelectedConversation)
-  }, [conversationId])
+    globalThis.window.addEventListener(AUTH_SCOPE_CHANGED_EVENT, resetHistoryOperations)
+    return () => {
+      historyOwnerRef.current.active = false
+      globalThis.window.removeEventListener(AUTH_SCOPE_CHANGED_EVENT, resetHistoryOperations)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (
+      selectedConversationId !== null ||
+      selectedConversationIdRef.current !== null ||
+      !conversationsQuery.isSuccess ||
+      isReadingConversations ||
+      isSearchPending ||
+      conversationSearchTerm !== '' ||
+      historyView !== 'all' ||
+      deletingConversationIds.size > 0
+    )
+      return
+    const latestConversation = conversations[0]
+    if (latestConversation === undefined) return
+    setSelectedConversationSnapshot(latestConversation)
+    setShowConversationDetail(true)
+  }, [
+    selectedConversationId,
+    conversations,
+    conversationsQuery.isSuccess,
+    isReadingConversations,
+    isSearchPending,
+    conversationSearchTerm,
+    historyView,
+    deletingConversationIds,
+  ])
 
   useEffect(() => {
     if (!conversationsQuery.error) return
     reportClientError('Failed to load conversations', conversationsQuery.error)
-    toast.error(formatApiError(conversationsQuery.error, t('loadConversationListFailed')))
-  }, [conversationsQuery.error, t])
+  }, [conversationsQuery.error])
 
   useEffect(() => {
     if (historyView !== 'recent') return
@@ -363,19 +320,21 @@ function HistoryPageContent({
     return () => globalThis.window.clearInterval(timer)
   }, [historyView])
 
-  const loadMoreConversations = useCallback(async () => {
-    if (!hasMoreConversations || isLoadingMoreConversations) return
-    try {
-      await conversationsQuery.fetchNextPage()
-    } catch (error) {
-      reportClientError('Failed to load older conversations', error)
-      toast.error(formatApiError(error, t('loadConversationListFailed')))
-    }
-  }, [conversationsQuery, hasMoreConversations, isLoadingMoreConversations, t])
+  const { fetchNextPage } = conversationsQuery
+  const isConversationPageError = conversationsQuery.isError
+  const loadMoreConversations = useCallback(() => {
+    if (!hasMoreConversations || isReadingConversations || isSearchPending) return
+    void fetchNextPage({ cancelRefetch: false })
+  }, [fetchNextPage, hasMoreConversations, isReadingConversations, isSearchPending])
+
+  function retryConversations() {
+    if (conversationsQuery.isFetchNextPageError) loadMoreConversations()
+    else void conversationsQuery.refetch()
+  }
 
   useEffect(() => {
     const node = conversationLoadMoreRef.current
-    if (!node || !hasMoreConversations) return
+    if (!node || !hasMoreConversations || isConversationPageError) return
 
     const root = node.closest('[data-history-sidebar-scroll]')
     const observer = new IntersectionObserver(
@@ -390,40 +349,27 @@ function HistoryPageContent({
     )
     observer.observe(node)
     return () => observer.disconnect()
-  }, [hasMoreConversations, loadMoreConversations])
+  }, [hasMoreConversations, isConversationPageError, loadMoreConversations])
 
-  // 当 URL 中有 id 参数时，自动选中对话
   useEffect(() => {
-    if (!conversationId) return
-    const conv = conversations.find((c) => c.id === conversationId)
-    if (conv) {
-      if (selectedConversation?.id !== conv.id) {
-        shouldScrollToEndRef.current = true
-        setSelectedConversation(conv)
-      }
-      return
-    }
-    if (conversationSearchTerm) return
-    if (selectedConversation) {
-      shouldScrollToEndRef.current = true
-      setSelectedConversation(null)
-    }
-  }, [conversationId, conversations, conversationSearchTerm, selectedConversation, selectedConversation?.id])
+    if (matchingConversation !== undefined) setSelectedConversationSnapshot(matchingConversation)
+  }, [matchingConversation])
 
   useEffect(() => {
     if (!selectedConversationId) return
     if (messagesQuery.error) {
+      pendingPrependScrollRef.current = null
       reportClientError('Failed to load conversation messages', messagesQuery.error)
-      toast.error(formatApiError(messagesQuery.error, t('loadConversationMessagesFailed')))
       return
     }
     if (!messagesQuery.isSuccess) return
     if (!shouldScrollToEndRef.current) return
     shouldScrollToEndRef.current = false
-    globalThis.window.requestAnimationFrame(() => {
+    const frame = globalThis.window.requestAnimationFrame(() => {
       messagesEndRef.current?.scrollIntoView({ behavior: 'auto' })
     })
-  }, [messagesQuery.error, messagesQuery.isSuccess, selectedConversationId, t])
+    return () => globalThis.window.cancelAnimationFrame(frame)
+  }, [messagesQuery.error, messagesQuery.isSuccess, selectedConversationId])
 
   // Preserve scroll position when prepending older messages.
   useLayoutEffect(() => {
@@ -439,44 +385,82 @@ function HistoryPageContent({
     pendingPrependScrollRef.current = null
   }, [messages])
 
-  const handleDeleteConversation = async (conversationId: string) => {
+  const handleDeleteConversation = async (conversation: Conversation) => {
+    const conversationId = conversation.id
+    if (deletionsRef.current.has(conversationId)) return
+    const operation: ConversationDeletion = {
+      owner: historyOwnerRef.current,
+      authRevision: getAuthSessionRevision(),
+      authScope: getAuthCacheScope(),
+    }
+    const isCurrentSession = () =>
+      operation.authRevision === getAuthSessionRevision() && operation.authScope === getAuthCacheScope()
+    deletionsRef.current.set(conversationId, operation)
+    setDeletingConversationIds(new Set(deletionsRef.current.keys()))
+    const listKeys = [queryKeys.chat.conversationPagesAll, queryKeys.chat.conversationsAll]
+    const detailKeys = [
+      queryKeys.chat.messagePages(conversationId),
+      queryKeys.chat.messages(conversationId).slice(0, -1),
+      queryKeys.chat.summary(conversationId),
+      queryKeys.chat.ragTraces(conversationId).slice(0, -1),
+    ]
+    let deleted = false
     try {
-      await deleteConversationFromHistory(conversationId, queryClient)
-      if (displayConversation?.id === conversationId) {
-        setSelectedConversation(null)
-        router.push('/history', { scroll: false })
+      await chatApi.deleteConversation(conversationId)
+      deleted = true
+      if (!isCurrentSession()) return
+      if (operation.owner.active) {
+        setRemovedConversationIds((current) => new Set(current).add(conversationId))
+        setShowDeleteConfirm((current) => (current === conversationId ? null : current))
+        if (selectedConversationIdRef.current === conversationId) {
+          selectedConversationIdRef.current = null
+          setSelectedConversationSnapshot(null)
+          startNavigation(() => router.replace('/history', { scroll: false }))
+        }
       }
+      await Promise.all([...listKeys, ...detailKeys].map((queryKey) => queryClient.cancelQueries({ queryKey })))
+      if (!isCurrentSession()) return
+      for (const queryKey of detailKeys) queryClient.removeQueries({ queryKey })
+      await Promise.all(listKeys.map((queryKey) => queryClient.invalidateQueries({ queryKey })))
     } catch (error) {
-      reportClientError('Failed to delete conversation', error)
+      if (operation.owner.active && isCurrentSession()) {
+        const title = conversation.title ?? conversation.id
+        const message = deleted ? `对话“${title}”已删除，历史列表刷新失败` : `删除对话“${title}”失败`
+        reportClientError(message, error)
+        toast.error(`${message}：${formatApiError(error, '操作失败')}`)
+      }
     } finally {
-      setShowDeleteConfirm(null)
+      if (deletionsRef.current.get(conversationId) === operation) {
+        deletionsRef.current.delete(conversationId)
+        if (operation.owner.active) setDeletingConversationIds(new Set(deletionsRef.current.keys()))
+      }
     }
   }
 
-  const handleContinueChat = () => {
-    if (displayConversation) {
-      router.push(`/?conversation=${displayConversation.id}`)
-    }
-  }
+  const handleContinueChat = useCallback(
+    (prompt?: string) => {
+      if (selectedConversationId === null || deletionsRef.current.has(selectedConversationId)) return
+      const params = new URLSearchParams({ conversation: selectedConversationId })
+      if (prompt !== undefined) params.set('prompt', prompt)
+      router.push(`/?${params.toString()}`)
+    },
+    [router, selectedConversationId],
+  )
 
   const handleEvaluateConversation = () => {
-    if (displayConversation) {
-      router.push(`/evaluations?conversation_id=${displayConversation.id}`, { scroll: false })
+    if (selectedConversationId !== null) {
+      router.push(`/evaluations?conversation_id=${encodeURIComponent(selectedConversationId)}`, { scroll: false })
     }
   }
 
-  // 最近视图仍是本地时间筛选；文本搜索由服务端覆盖完整历史。
   const filteredConversations = useMemo(() => {
-    let base = conversations
-    if (!conversationSearchTerm && historyView === 'recent' && recentConversationCutoff !== null) {
-      base = base.filter((c) => {
-        const activityDate = c.last_message_at || c.updated_at || c.created_at
-        const ts = new Date(activityDate).getTime()
-        return Number.isFinite(ts) && ts >= recentConversationCutoff
-      })
-    }
-    return base
-  }, [conversationSearchTerm, conversations, historyView, recentConversationCutoff])
+    if (displayedSearchTerm !== '' || recentConversationCutoff === null) return conversations
+
+    return conversations.filter((conversation) => {
+      const activityDate = conversation.last_message_at ?? conversation.updated_at
+      return new Date(activityDate).getTime() >= recentConversationCutoff
+    })
+  }, [displayedSearchTerm, conversations, recentConversationCutoff])
 
   const groupLabels = useMemo(
     () => ({
@@ -501,7 +485,6 @@ function HistoryPageContent({
     groupLabels.last30Days,
     groupLabels.earlier,
   ]
-  const oldestMessageId = messages[0]?.id
   const groupedMessages = useMemo(
     () =>
       groupMessagesByDay(messages, locale, {
@@ -511,24 +494,22 @@ function HistoryPageContent({
     [groupLabels.today, groupLabels.yesterday, locale, messages],
   )
 
-  const loadOlderMessages = useCallback(async () => {
-    if (!selectedConversation) return
-    if (!hasMoreMessages) return
-    if (isLoadingMessages || isLoadingOlder) return
-    if (!oldestMessageId) return
+  function loadOlderMessages() {
+    if (!hasMoreMessages || isReadingMessages) return
 
     const el = messagesContainerRef.current
     if (el) {
       pendingPrependScrollRef.current = { top: el.scrollTop, height: el.scrollHeight }
     }
 
-    try {
-      await messagesQuery.fetchPreviousPage()
-    } catch (error) {
-      reportClientError('Failed to load older messages', error)
-      toast.error(formatApiError(error, t('loadOlderMessagesFailed')))
-    }
-  }, [selectedConversation, hasMoreMessages, isLoadingMessages, isLoadingOlder, oldestMessageId, messagesQuery, t])
+    void messagesQuery.fetchNextPage({ cancelRefetch: false })
+  }
+
+  function retryMessages() {
+    if (messagesQuery.isFetchNextPageError) loadOlderMessages()
+    else void messagesQuery.refetch()
+  }
+
   return (
     <AppFrame rightPanel={<DocumentViewerPanel />} withDocumentViewerPadding mainClassName="overflow-hidden">
       <PageScaffold
@@ -541,7 +522,7 @@ function HistoryPageContent({
         bodyContainerClassName="h-full max-w-none"
       >
         <div className="h-full overflow-hidden">
-          <section data-history-shell="ruled" data-history-design="fog-ink" className={styles.shell}>
+          <section data-history-shell="ruled" data-history-design="fog-ink" className={cn(styles.shell, '@container')}>
             <header className={styles.pageHeader}>
               <div className={styles.pageHeading}>
                 <span>
@@ -549,35 +530,37 @@ function HistoryPageContent({
                 </span>
                 <h1>{t('pageTitle')}</h1>
               </div>
-              {isSidebarCollapsed && (
-                <IconButton
-                  label={t('expandHistory')}
-                  variant="ghost"
-                  className="size-11 text-muted-foreground md:size-9"
-                  onClick={() => setIsSidebarCollapsed(false)}
-                  aria-controls="history-conversations"
-                  aria-expanded={false}
-                >
-                  <ArrowLeft className="size-5 md:hidden" />
-                  <PanelLeftOpen className="hidden size-[18px] md:block" />
-                </IconButton>
-              )}
+              <div className="flex items-center gap-2">
+                {showConversationDetail && (
+                  <IconButton
+                    label={t('expandHistory')}
+                    variant="ghost"
+                    className="size-11 text-muted-foreground @min-[44rem]:hidden"
+                    onClick={() => setShowConversationDetail(false)}
+                    aria-controls="history-conversations"
+                    aria-expanded={false}
+                  >
+                    <ArrowLeft className="size-5" />
+                  </IconButton>
+                )}
+                <Button asChild className="h-11 gap-2 bg-accent px-3 text-accent-foreground hover:bg-accent/90 sm:h-9">
+                  <Link href="/">
+                    <Plus className="size-4" />
+                    <span className="hidden sm:inline">{t('newConversation')}</span>
+                    <span className="sr-only sm:hidden">{t('newConversation')}</span>
+                  </Link>
+                </Button>
+              </div>
             </header>
             <div className={styles.workspace}>
               {/* 侧边栏 - 对话列表 */}
-              <motion.aside
+              <aside
                 data-history-sidebar="true"
                 id="history-conversations"
-                inert={isSidebarCollapsed}
-                initial={false}
-                animate={{
-                  opacity: isSidebarCollapsed ? 0 : 1,
-                }}
-                transition={reduceMotion ? { duration: 0 } : { type: 'spring', stiffness: 300, damping: 30, mass: 0.8 }}
                 className={cn(
                   styles.queue,
-                  'relative z-10 flex shrink-0 flex-col overflow-hidden border-border transition-[width] duration-200 motion-reduce:transition-none',
-                  isSidebarCollapsed ? 'w-0' : 'w-full md:w-[284px] md:border-r',
+                  'relative z-10 min-w-0 w-full shrink-0 flex-col overflow-hidden border-border @min-[44rem]:w-80 @min-[44rem]:border-r',
+                  showEmptyHistory ? 'hidden' : showConversationDetail ? 'hidden @min-[44rem]:flex' : 'flex',
                 )}
               >
                 <div className={styles.queueTools}>
@@ -615,33 +598,49 @@ function HistoryPageContent({
                         type="button"
                         variant="ghost"
                         size="sm"
-                        aria-pressed={historyView === value}
-                        onClick={() => {
-                          setHistoryView(value)
+                        aria-pressed={(isSearchingHistory ? 'all' : historyView) === value}
+                        disabled={isSearchingHistory}
+                        onClick={() =>
                           setRecentConversationCutoff(
                             value === 'recent' ? Date.now() - RECENT_CONVERSATION_WINDOW_MS : null,
                           )
-                        }}
+                        }
                         className={styles.filter}
                       >
                         {label}
                       </Button>
                     ))}
-                    <IconButton
-                      label={t('collapseHistory')}
-                      variant="ghost"
-                      className={cn(styles.queueToggle, 'hidden size-8 text-muted-foreground md:inline-flex')}
-                      onClick={() => setIsSidebarCollapsed(true)}
-                      aria-controls="history-conversations"
-                      aria-expanded={!isSidebarCollapsed}
-                    >
-                      <PanelLeftClose className="size-[15px]" />
-                    </IconButton>
                   </div>
                 </div>
 
                 {/* 对话列表 */}
-                <div data-history-sidebar-scroll className={cn(styles.queueScroll, 'no-scrollbar')}>
+                <div
+                  data-history-sidebar-scroll
+                  aria-busy={conversationsQuery.isFetching || isSearchPending}
+                  className={cn(styles.queueScroll, 'no-scrollbar')}
+                >
+                  {conversationsQuery.isPaused ||
+                  isSearchPending ||
+                  (conversationsQuery.isFetching && !isLoadingList) ? (
+                    <p role="status" className={styles.status}>
+                      {conversationsQuery.isPaused ? '历史记录读取已暂停' : '正在读取历史记录…'}
+                    </p>
+                  ) : null}
+                  {showingPreviousSearch && (
+                    <p role="status" className={styles.status}>
+                      {t('retainedSearchResults', {
+                        query: displayedSearchTerm === '' ? t('allConversations') : displayedSearchTerm,
+                      })}
+                    </p>
+                  )}
+                  {isConversationPageError && !isReadingConversations && (
+                    <div role="alert" className={styles.status}>
+                      <p>{formatApiError(conversationsQuery.error, t('loadConversationListFailed'))}</p>
+                      <Button variant="ghost" size="sm" onClick={retryConversations}>
+                        重试
+                      </Button>
+                    </div>
+                  )}
                   {(() => {
                     if (isLoadingList) {
                       return (
@@ -649,32 +648,28 @@ function HistoryPageContent({
                           <Loader2 className="h-6 w-6 animate-spin motion-reduce:animate-none text-muted-foreground" />
                         </div>
                       )
-                    } else if (conversationsQuery.isError) {
-                      return (
-                        <div role="alert" className={styles.status}>
-                          <p>{t('loadConversationListFailed')}</p>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="mt-3"
-                            onClick={() => void conversationsQuery.refetch()}
-                          >
-                            重试
-                          </Button>
-                        </div>
+                    }
+                    if (filteredConversations.length === 0) {
+                      if (
+                        displayedConversationData === undefined ||
+                        isSearchPending ||
+                        isReadingConversations ||
+                        showingPreviousSearch ||
+                        isConversationPageError
                       )
-                    } else if (filteredConversations.length === 0) {
+                        return null
                       return (
                         <HistorySidebarEmptyState
                           isSearching={Boolean(searchQuery.trim())}
-                          isRecent={historyView === 'recent'}
+                          isRecent={!isSearchingHistory && historyView === 'recent'}
+                          hasMoreConversations={hasMoreConversations}
                         />
                       )
                     } else {
                       return (
                         <>
                           {groupOrder.map((group) => {
-                            const convs = groupedConversations[group]
+                            const convs = groupedConversations.get(group)
                             if (!convs || convs.length === 0) return null
                             return (
                               <div key={group} className={styles.dateGroup}>
@@ -687,10 +682,11 @@ function HistoryPageContent({
                                       key={conversation.id}
                                       conversation={conversation}
                                       isSelected={selectedConversationId === conversation.id}
+                                      isDeleting={deletingConversationIds.has(conversation.id)}
                                       onSelect={() => handleSelectConversation(conversation)}
                                       onDelete={() => setShowDeleteConfirm(conversation.id)}
                                       showDeleteConfirm={showDeleteConfirm === conversation.id}
-                                      onConfirmDelete={() => handleDeleteConversation(conversation.id)}
+                                      onConfirmDelete={() => handleDeleteConversation(conversation)}
                                       onCancelDelete={() => setShowDeleteConfirm(null)}
                                     />
                                   ))}
@@ -698,57 +694,68 @@ function HistoryPageContent({
                               </div>
                             )
                           })}
-                          <div ref={conversationLoadMoreRef} className="px-3 py-3 text-center">
-                            {hasMoreConversations ? (
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={loadMoreConversations}
-                                disabled={isLoadingMoreConversations}
-                                className="text-xs text-muted-foreground"
-                              >
-                                {isLoadingMoreConversations ? (
-                                  <>
-                                    <Loader2 className="size-3.5 animate-spin motion-reduce:animate-none" />
-                                    加载中
-                                  </>
-                                ) : (
-                                  '加载更早记录'
-                                )}
-                              </Button>
-                            ) : (
-                              <span className="text-[11px] text-muted-foreground">已显示全部历史</span>
-                            )}
-                          </div>
                         </>
                       )
                     }
                   })()}
+                  {conversationsQuery.data !== undefined &&
+                    !showingPreviousSearch &&
+                    !isSearchPending &&
+                    (hasMoreConversations || conversations.length > 0) && (
+                      <div ref={conversationLoadMoreRef} className="px-3 py-3 text-center">
+                        {hasMoreConversations ? (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={loadMoreConversations}
+                            disabled={isReadingConversations}
+                            className="text-xs text-muted-foreground"
+                          >
+                            {isLoadingMoreConversations ? (
+                              <>
+                                <Loader2 className="size-3.5 animate-spin motion-reduce:animate-none" />
+                                加载中
+                              </>
+                            ) : (
+                              '加载更早记录'
+                            )}
+                          </Button>
+                        ) : isReadingConversations || isConversationPageError ? null : (
+                          <span className="text-[11px] text-muted-foreground">
+                            {conversationSearchTerm.length > 0 ? '已加载全部匹配记录' : '已加载全部历史'}
+                          </span>
+                        )}
+                      </div>
+                    )}
                 </div>
-              </motion.aside>
+              </aside>
               {/* 主区域 - 对话详情 */}
               <motion.div
                 layout={!reduceMotion}
-                className={cn(styles.reading, isSidebarCollapsed ? 'flex' : 'hidden md:flex')}
+                className={cn(
+                  styles.reading,
+                  showEmptyHistory || showConversationDetail ? 'flex' : 'hidden @min-[44rem]:flex',
+                )}
               >
-                {displayConversation ? (
+                {selectedConversationId !== null ? (
                   <>
                     <div data-history-detail-header="true" className={styles.detailHeader}>
                       <motion.div layout={!reduceMotion} className={styles.detailHeaderInner}>
                         <div className="contents">
                           <div className={styles.detailHeading}>
                             <div className="min-w-0">
-                              <h2
-                                title={displayConversation.title || t('untitledConversation')}
-                                className={styles.detailTitle}
-                              >
-                                {displayConversation.title || t('untitledConversation')}
+                              <h2 title={selectedConversationTitle ?? undefined} className={styles.detailTitle}>
+                                {selectedConversationTitle}
                               </h2>
                               <div className={cn(styles.detailMeta, 'tabular-nums')}>
-                                <span>{t('messageCount', { count: displayConversation.message_count })}</span>
-                                <span suppressHydrationWarning>
-                                  {formatDate(displayConversation.created_at, locale)}
-                                </span>
+                                {selectedConversation && (
+                                  <>
+                                    <span>{t('messageCount', { count: selectedConversation.message_count })}</span>
+                                    <span suppressHydrationWarning>
+                                      {formatDate(selectedConversation.created_at, locale)}
+                                    </span>
+                                  </>
+                                )}
                               </div>
                             </div>
                           </div>
@@ -756,7 +763,8 @@ function HistoryPageContent({
                             <Button
                               variant="default"
                               size="sm"
-                              onClick={handleContinueChat}
+                              onClick={() => handleContinueChat()}
+                              disabled={isDeletingSelected || isNavigating}
                               aria-label="继续当前对话"
                               className={styles.continueButton}
                             >
@@ -767,6 +775,7 @@ function HistoryPageContent({
                               <DropdownMenuTrigger asChild>
                                 <IconButton
                                   label="更多对话操作"
+                                  disabled={isDeletingSelected || isNavigating}
                                   variant="ghost"
                                   className="size-11 text-muted-foreground md:size-9"
                                 >
@@ -794,14 +803,33 @@ function HistoryPageContent({
                       </motion.div>
                     </div>
 
+                    {messagesQuery.isError && !isReadingMessages && (
+                      <div
+                        role="alert"
+                        className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3 text-sm text-destructive"
+                      >
+                        <p>{formatApiError(messagesQuery.error, t('loadConversationMessagesFailed'))}</p>
+                        <Button variant="outline" onClick={retryMessages}>
+                          重试
+                        </Button>
+                      </div>
+                    )}
+                    {messagesQuery.isPaused ||
+                    isNavigating ||
+                    (messagesQuery.isFetching && !messagesQuery.isLoading) ? (
+                      <p role="status" className="shrink-0 px-4 py-2 text-sm text-muted-foreground">
+                        {messagesQuery.isPaused ? '对话记录读取已暂停' : '正在读取对话记录…'}
+                      </p>
+                    ) : null}
                     {/* 消息列表 */}
                     <div
                       ref={messagesContainerRef}
                       data-history-messages-scroll
+                      aria-busy={messagesQuery.isFetching || isDeletingSelected || isNavigating}
                       className={cn(styles.messagesViewport, 'no-scrollbar')}
                     >
                       {(() => {
-                        if (isLoadingMessages) {
+                        if (messagesQuery.isLoading) {
                           return (
                             <div
                               role="status"
@@ -811,16 +839,10 @@ function HistoryPageContent({
                               <Loader2 className="h-8 w-8 animate-spin motion-reduce:animate-none text-muted-foreground" />
                             </div>
                           )
-                        } else if (messagesQuery.isError) {
-                          return (
-                            <div role="alert" className={styles.readingStatus}>
-                              <p>{t('loadConversationMessagesFailed')}</p>
-                              <Button variant="outline" onClick={() => void messagesQuery.refetch()}>
-                                重试
-                              </Button>
-                            </div>
-                          )
-                        } else if (messages.length === 0) {
+                        }
+                        if (messagesQuery.data === undefined) return null
+                        if (messages.length === 0) {
+                          if (isReadingMessages || messagesQuery.isError) return null
                           return (
                             <div className="flex h-full items-center justify-center">
                               <div className="px-6 py-10 text-center text-sm text-muted-foreground">
@@ -834,7 +856,7 @@ function HistoryPageContent({
                             <AnimatePresence mode="wait">
                               <motion.div
                                 layout={!reduceMotion}
-                                key={displayConversation.id}
+                                key={selectedConversationId}
                                 initial={reduceMotion ? false : { opacity: 0 }}
                                 animate={{ opacity: 1 }}
                                 transition={{ duration: reduceMotion ? 0 : 0.16 }}
@@ -846,7 +868,7 @@ function HistoryPageContent({
                                       variant="ghost"
                                       size="sm"
                                       onClick={loadOlderMessages}
-                                      disabled={isLoadingOlder}
+                                      disabled={isReadingMessages}
                                       className="text-xs text-muted-foreground"
                                     >
                                       {isLoadingOlder ? t('loading') : t('loadOlderMessages')}
@@ -862,7 +884,11 @@ function HistoryPageContent({
                                     )}
                                     <div>
                                       {group.messages.map((message) => (
-                                        <HistoryMessageEntry key={message.id} message={message} locale={locale} />
+                                        <HistoryMessageEntry
+                                          key={message.id}
+                                          message={message}
+                                          onFollowupSelect={handleContinueChat}
+                                        />
                                       ))}
                                     </div>
                                   </div>
@@ -875,8 +901,31 @@ function HistoryPageContent({
                       })()}
                     </div>
                   </>
+                ) : isConversationPageError &&
+                  !isReadingConversations &&
+                  (displayedConversationData === undefined || conversations.length === 0) ? (
+                  <div role="alert" className={styles.readingStatus}>
+                    <p>{formatApiError(conversationsQuery.error, t('loadConversationListFailed'))}</p>
+                    <Button variant="outline" onClick={retryConversations}>
+                      重试
+                    </Button>
+                  </div>
+                ) : conversationsQuery.isPaused ? (
+                  <div role="status" className={styles.readingStatus}>
+                    <p>历史记录读取已暂停</p>
+                  </div>
+                ) : isReadingConversations ||
+                  isNavigating ||
+                  (conversationsQuery.isSuccess &&
+                    conversations.length > 0 &&
+                    conversationSearchTerm === '' &&
+                    historyView === 'all') ? (
+                  <div role="status" className={styles.readingStatus}>
+                    <Loader2 className="size-5 animate-spin motion-reduce:animate-none" aria-hidden="true" />
+                    <p>{t('loading')}</p>
+                  </div>
                 ) : (
-                  <HistoryMainEmptyState hasConversations={conversations.length > 0} />
+                  <HistoryMainEmptyState showEmptyHistory={showEmptyHistory} />
                 )}
               </motion.div>
             </div>
@@ -886,16 +935,23 @@ function HistoryPageContent({
           <DialogContent className="max-h-[85dvh] overflow-y-auto sm:max-w-xl">
             <DialogHeader>
               <DialogTitle>对话操作</DialogTitle>
-              <DialogDescription>{displayConversation?.title || t('untitledConversation')}</DialogDescription>
+              <DialogDescription>{selectedConversationTitle}</DialogDescription>
             </DialogHeader>
-            <ConversationOpsPanel conversationId={displayConversation?.id} initiallyExpanded />
+            {selectedConversationId !== null && (
+              <ConversationOpsPanel
+                key={selectedConversationId}
+                conversationId={selectedConversationId}
+                onConversationCreated={handleConversationCreated}
+                initiallyExpanded
+              />
+            )}
           </DialogContent>
         </Dialog>
         <RagTraceDialog
           open={isTraceOpen}
           onOpenChange={setIsTraceOpen}
-          conversationId={displayConversation?.id || null}
-          title={displayConversation?.title || null}
+          conversationId={selectedConversationId}
+          title={selectedConversation?.title}
         />
       </PageScaffold>
     </AppFrame>
@@ -903,15 +959,15 @@ function HistoryPageContent({
 }
 
 function HistoryMainEmptyState({
-  hasConversations,
+  showEmptyHistory,
 }: Readonly<{
-  hasConversations: boolean
+  showEmptyHistory: boolean
 }>) {
   const t = useTranslations('History')
-  const title = hasConversations ? t('noConversationSelected') : t('startFirstConversation')
-  const description = hasConversations
-    ? t('noConversationSelectedDescription').replace('\n', ' ')
-    : t('startFirstConversationDescription')
+  const title = showEmptyHistory ? t('startFirstConversation') : t('noConversationSelected')
+  const description = showEmptyHistory
+    ? t('startFirstConversationDescription')
+    : t('noConversationSelectedDescription').replace('\n', ' ')
 
   return (
     <section
@@ -924,7 +980,7 @@ function HistoryMainEmptyState({
         <p className="mt-2 text-sm leading-6 text-muted-foreground">{description}</p>
 
         <div className="mt-6">
-          <Button asChild>
+          <Button asChild className="bg-accent text-accent-foreground hover:bg-accent/90">
             <Link href="/">
               <Plus className="size-4" />
               {t('startNewConversation')}
@@ -939,11 +995,21 @@ function HistoryMainEmptyState({
 function HistorySidebarEmptyState({
   isSearching,
   isRecent,
+  hasMoreConversations,
 }: Readonly<{
   isSearching: boolean
   isRecent: boolean
+  hasMoreConversations: boolean
 }>) {
   const t = useTranslations('History')
+
+  if (!isSearching && isRecent && hasMoreConversations) {
+    return (
+      <p role="status" className="px-3 py-6 text-sm leading-6 text-muted-foreground">
+        已加载的记录中没有近期对话，可继续加载。
+      </p>
+    )
+  }
 
   if (isSearching) {
     return (
@@ -977,9 +1043,10 @@ function HistorySidebarEmptyState({
 }
 
 // 对话列表项
-export function ConversationItem({
+function ConversationItem({
   conversation,
   isSelected,
+  isDeleting,
   onSelect,
   onDelete,
   showDeleteConfirm,
@@ -988,6 +1055,7 @@ export function ConversationItem({
 }: Readonly<{
   conversation: Conversation
   isSelected: boolean
+  isDeleting: boolean
   onSelect: () => void
   onDelete: () => void
   showDeleteConfirm: boolean
@@ -998,7 +1066,7 @@ export function ConversationItem({
   const t = useTranslations('History')
 
   return (
-    <div className="group relative">
+    <div aria-busy={isDeleting} className="group relative">
       <motion.button
         type="button"
         onClick={onSelect}
@@ -1009,17 +1077,17 @@ export function ConversationItem({
           showDeleteConfirm && 'pr-24',
         )}
       >
-        <span title={conversation.title || t('untitledConversation')} className={styles.conversationTitle}>
-          {conversation.title || t('untitledConversation')}
+        <span title={conversation.title ?? t('untitledConversation')} className={styles.conversationTitle}>
+          {conversation.title ?? t('untitledConversation')}
         </span>
-        {isSelected && <p className={styles.conversationPreview}>{conversation.last_message || t('noMessage')}</p>}
+        <p className={styles.conversationPreview}>{conversation.last_message ?? t('noMessage')}</p>
         <div className={styles.conversationMeta}>
           <time
             suppressHydrationWarning
-            dateTime={conversation.last_message_at || conversation.updated_at || conversation.created_at}
+            dateTime={conversation.last_message_at ?? conversation.updated_at}
             className="shrink-0"
           >
-            {formatRelativeTime(conversation.last_message_at || conversation.updated_at, locale, t('justNow'))}
+            {formatRelativeTime(conversation.last_message_at ?? conversation.updated_at, locale, t('justNow'))}
           </time>
           <span className={styles.conversationCount}>
             <MessageSquare className="size-3" />
@@ -1041,6 +1109,7 @@ export function ConversationItem({
           <div className="flex items-center gap-1">
             <IconButton
               label={t('confirmDeleteConversation')}
+              disabled={isDeleting}
               variant="ghost"
               className="size-11 text-destructive hover:bg-destructive/10 hover:text-destructive md:size-8"
               onClick={(e) => {
@@ -1048,10 +1117,15 @@ export function ConversationItem({
                 onConfirmDelete()
               }}
             >
-              <Trash2 className="size-4" />
+              {isDeleting ? (
+                <Loader2 className="size-4 animate-spin motion-reduce:animate-none" />
+              ) : (
+                <Trash2 className="size-4" />
+              )}
             </IconButton>
             <IconButton
               label={t('cancelDelete')}
+              disabled={isDeleting}
               variant="ghost"
               className="size-11 text-muted-foreground md:size-8"
               onClick={(e) => {
@@ -1066,6 +1140,7 @@ export function ConversationItem({
           <div className="flex items-center gap-1">
             <IconButton
               label={t('deleteConversation')}
+              disabled={isDeleting}
               variant="ghost"
               className="size-11 text-muted-foreground hover:bg-destructive/10 hover:text-destructive md:size-8"
               onClick={(e) => {
@@ -1084,15 +1159,11 @@ export function ConversationItem({
 
 function HistoryMessageEntry({
   message,
-  locale,
-}: Readonly<{
-  message: Message
-  locale: string
-}>) {
+  onFollowupSelect,
+}: Readonly<{ message: Message; onFollowupSelect: (prompt: string) => void }>) {
   const isUser = message.role === 'user'
   const reduceMotion = useReducedMotion()
-  const requestId = isUser ? '' : extractMessageRequestId(message)
-  const showAnswerLineage = Boolean(requestId && hasAnswerLineageEvidence(message))
+  const requestId = isUser ? undefined : message.message_metadata?.request_id?.trim()
 
   return (
     <motion.div
@@ -1102,8 +1173,8 @@ function HistoryMessageEntry({
       data-history-message-role={message.role}
       className={cn(styles.messageEntry, 'mx-auto w-full min-w-0')}
     >
-      <ChatMessageItem message={message} variant="history" />
-      {showAnswerLineage ? (
+      <ChatMessageItem message={message} variant="history" onFollowupSelect={onFollowupSelect} />
+      {requestId && hasAnswerLineageEvidence(message) ? (
         <div className="mt-1">
           <AnswerLineageAction requestId={requestId} />
         </div>
@@ -1112,144 +1183,80 @@ function HistoryMessageEntry({
   )
 }
 
-function extractMessageRequestId(message: Message): string {
-  const metadata = message.message_metadata
-  if (!metadata || typeof metadata !== 'object') return ''
-
-  const direct = metadata.request_id
-  if (typeof direct === 'string' && direct.trim()) return direct.trim()
-
-  const metrics = metadata.metrics
-  if (metrics && typeof metrics === 'object' && !Array.isArray(metrics)) {
-    const metricRequestId = (metrics as Record<string, unknown>).request_id
-    if (typeof metricRequestId === 'string' && metricRequestId.trim()) return metricRequestId.trim()
-  }
-
-  return ''
-}
-
-function hasEvidenceArray(value: unknown): boolean {
-  return Array.isArray(value) && value.length > 0
-}
-
-function hasClaimEvidence(value: unknown): boolean {
-  if (!Array.isArray(value)) return false
-  return value.some((item) => {
-    if (!item || typeof item !== 'object' || Array.isArray(item)) return false
-    return hasEvidenceArray((item as Record<string, unknown>).evidence)
-  })
-}
-
 function hasAnswerLineageEvidence(message: Message): boolean {
-  if (hasEvidenceArray(message.citations)) return true
-
   const metadata = message.message_metadata
-  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return false
-
-  if (hasEvidenceArray(metadata.retrieved_docs)) return true
-  if (hasClaimEvidence(metadata.claim_evidence)) return true
-  if (hasClaimEvidence(metadata.sentence_citations)) return true
-
-  const docsReturned = metadata.docs_returned
-  return typeof docsReturned === 'number' && Number.isFinite(docsReturned) && docsReturned > 0
-}
-
-function HistoryMessageRoleBadge({
-  role,
-}: Readonly<{
-  role: Message['role']
-}>) {
-  const t = useTranslations('History')
-  const isUser = role === 'user'
-
-  return (
-    <div
-      className={cn(
-        'inline-flex items-center gap-2 rounded-md border px-2.5 py-1 text-[11px] font-semibold',
-        isUser
-          ? 'border-primary/15 bg-primary/10 text-primary'
-          : 'border-foreground/10 bg-background text-foreground/80',
-      )}
-    >
-      <span className={cn('h-1.5 w-1.5 rounded-sm', isUser ? 'bg-primary' : 'bg-info')} />
-      <span>{isUser ? t('speakerQuestion') : t('speakerAnswer')}</span>
-    </div>
+  return Boolean(
+    message.citations?.length ||
+    metadata?.retrieved_docs?.length ||
+    metadata?.claim_evidence?.some((item) => item.evidence.length > 0) ||
+    metadata?.sentence_citations?.some((item) => item.evidence.length > 0) ||
+    (metadata?.docs_returned != null && metadata.docs_returned > 0),
   )
 }
 
-function utcDayKey(dateLike: Date | string) {
-  const date = typeof dateLike === 'string' ? new Date(dateLike) : dateLike
-  return [
-    date.getUTCFullYear(),
-    String(date.getUTCMonth() + 1).padStart(2, '0'),
-    String(date.getUTCDate()).padStart(2, '0'),
-  ].join('-')
-}
-
-function utcDayStartMs(dateLike: Date | string) {
-  const date = typeof dateLike === 'string' ? new Date(dateLike) : dateLike
-  return Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate())
+function localDayStart(date: Date, daysAgo = 0): number {
+  const day = new Date(date)
+  day.setDate(day.getDate() - daysAgo)
+  return day.setHours(0, 0, 0, 0)
 }
 
 // 辅助函数：按日期分组
-function groupConversationsByDate(conversations: Conversation[], labels: Readonly<ConversationGroupLabels>) {
-  const groups: Record<string, Conversation[]> = {}
+function groupConversationsByDate(conversations: readonly Conversation[], labels: Readonly<ConversationGroupLabels>) {
+  const groups = new Map<string, Conversation[]>()
   const now = new Date()
-  const today = utcDayStartMs(now)
-  const lastWeek = new Date(today)
-  lastWeek.setUTCDate(lastWeek.getUTCDate() - 7)
-  const lastMonth = new Date(today)
-  lastMonth.setUTCDate(lastMonth.getUTCDate() - 30)
+  const today = localDayStart(now)
+  const yesterday = localDayStart(now, 1)
+  const last7DaysStart = localDayStart(now, 7)
+  const last30DaysStart = localDayStart(now, 30)
 
-  conversations.forEach((conv) => {
-    const activityDate = conv.last_message_at || conv.created_at || conv.updated_at
-    const convDate = utcDayStartMs(activityDate)
+  for (const conversation of conversations) {
+    const activityDate = conversation.last_message_at ?? conversation.updated_at
+    const conversationDayStart = localDayStart(new Date(activityDate))
 
     let group: string
-    if (convDate === today) {
+    if (conversationDayStart === today) {
       group = labels.today
-    } else if (convDate === today - 24 * 60 * 60 * 1000) {
+    } else if (conversationDayStart === yesterday) {
       group = labels.yesterday
-    } else if (convDate >= lastWeek.getTime()) {
+    } else if (conversationDayStart >= last7DaysStart) {
       group = labels.last7Days
-    } else if (convDate >= lastMonth.getTime()) {
+    } else if (conversationDayStart >= last30DaysStart) {
       group = labels.last30Days
     } else {
       group = labels.earlier
     }
 
-    if (!groups[group]) {
-      groups[group] = []
-    }
-    groups[group].push(conv)
-  })
+    const conversationsInGroup = groups.get(group)
+    if (conversationsInGroup === undefined) groups.set(group, [conversation])
+    else conversationsInGroup.push(conversation)
+  }
 
   return groups
 }
 
 function groupMessagesByDay(
-  messages: Message[],
+  messages: readonly Message[],
   locale: string,
   labels: Readonly<{
     today: string
     yesterday: string
   }>,
 ) {
-  const groups = new Map<string, { key: string; label: string; messages: Message[] }>()
+  const groups = new Map<number, { key: number; label: string; messages: Message[] }>()
 
-  messages.forEach((message) => {
+  for (const message of messages) {
     const date = new Date(message.created_at)
-    const key = utcDayKey(date)
+    const key = localDayStart(date)
 
-    if (!groups.has(key)) {
+    const group = groups.get(key)
+    if (group === undefined) {
       groups.set(key, {
         key,
         label: formatMessageGroupLabel(date, locale, labels),
-        messages: [],
+        messages: [message],
       })
-    }
-    groups.get(key)?.messages.push(message)
-  })
+    } else group.messages.push(message)
+  }
 
   return Array.from(groups.values())
 }
@@ -1258,16 +1265,16 @@ function groupMessagesByDay(
 function formatRelativeTime(dateString: string, locale: string, justNowLabel: string) {
   const date = new Date(dateString)
   const now = new Date()
-  const diffMs = now.getTime() - date.getTime()
-  const diffMins = Math.floor(diffMs / (1000 * 60))
-  const diffHours = Math.floor(diffMs / (1000 * 60 * 60))
-  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24))
+  const diffMs = date.getTime() - now.getTime()
+  const diffMins = Math.trunc(diffMs / (1000 * 60))
+  const diffHours = Math.trunc(diffMs / (1000 * 60 * 60))
+  const diffDays = Math.trunc(diffMs / (1000 * 60 * 60 * 24))
   const relative = new Intl.RelativeTimeFormat(locale, { numeric: 'auto' })
 
-  if (diffMins < 1) return justNowLabel
-  if (diffMins < 60) return relative.format(-diffMins, 'minute')
-  if (diffHours < 24) return relative.format(-diffHours, 'hour')
-  if (diffDays < 7) return relative.format(-diffDays, 'day')
+  if (Math.abs(diffMins) < 1) return justNowLabel
+  if (Math.abs(diffMins) < 60) return relative.format(diffMins, 'minute')
+  if (Math.abs(diffHours) < 24) return relative.format(diffHours, 'hour')
+  if (Math.abs(diffDays) < 7) return relative.format(diffDays, 'day')
 
   return new Intl.DateTimeFormat(locale, {
     month: 'short',
@@ -1284,17 +1291,13 @@ function formatMessageGroupLabel(
   }>,
 ) {
   const now = new Date()
-  const today = utcDayKey(now)
-  const yesterdayDate = new Date(utcDayStartMs(now))
-  yesterdayDate.setUTCDate(yesterdayDate.getUTCDate() - 1)
-  const yesterday = utcDayKey(yesterdayDate)
-  const target = utcDayKey(date)
+  const target = localDayStart(date)
 
-  if (target === today) return labels.today
-  if (target === yesterday) return labels.yesterday
+  if (target === localDayStart(now)) return labels.today
+  if (target === localDayStart(now, 1)) return labels.yesterday
 
   return new Intl.DateTimeFormat(locale, {
-    year: date.getUTCFullYear() === now.getUTCFullYear() ? undefined : 'numeric',
+    year: date.getFullYear() === now.getFullYear() ? undefined : 'numeric',
     month: 'long',
     day: 'numeric',
     weekday: 'short',

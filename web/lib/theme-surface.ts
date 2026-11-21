@@ -1,7 +1,6 @@
-import chroma, { type Color } from 'chroma-js'
 import { getClientStorage } from './client-storage'
 
-export type SurfaceThemeKey = 'ocean' | 'deepsea' | 'neutral' | 'classic' | 'earth'
+export type SurfaceThemeKey = keyof typeof SURFACE_THEME_PRESETS
 
 export const SURFACE_THEME_STORAGE_KEY = 'mimirq.surfaceTheme'
 export const THEME_COLOR_STORAGE_KEY = 'mimirq.themeColor'
@@ -38,100 +37,63 @@ type ApplyThemeAppearanceOptions = {
   notify?: boolean
 }
 
-export const SURFACE_THEMES: Array<{
-  key: SurfaceThemeKey
-  label: string
-  description: string
-  previewSurface: string
-  defaultPrimary: string
-}> = [
-  {
+const SURFACE_THEME_PRESETS = {
+  ocean: {
     key: 'ocean',
-    label: 'Ragvia',
-    description: '雾灰底色，墨色主色。',
+    previewSurface: '#faf9f7',
+    defaultPrimary: '#20262e',
+  },
+  neutral: {
+    key: 'neutral',
+    previewSurface: '#ffffff',
+    defaultPrimary: '#20262e',
+  },
+  classic: {
+    key: 'classic',
     previewSurface: '#f6f7f8',
     defaultPrimary: '#20262e',
   },
-  {
-    key: 'deepsea',
-    label: 'Deep Sea',
-    description: '雾白蓝灰表面与克制的深海蓝强调。',
-    previewSurface: '#f7f9ff',
-    defaultPrimary: '#405BD8',
-  },
-  {
-    key: 'neutral',
-    label: 'Neutral',
-    description: '瓷白表面与石墨层级，仅让必要的业务状态着色。',
-    previewSurface: '#ffffff',
-    defaultPrimary: '#18181b',
-  },
-  {
-    key: 'classic',
-    label: 'Classic',
-    description: '经典白灰，浅灰白背景配深灰正文与蓝色强调。',
-    previewSurface: '#f8f9fa',
-    defaultPrimary: '#0062cc',
-  },
-  {
+  earth: {
     key: 'earth',
-    label: 'Earth',
-    description: '暖米白背景，阅读更柔和，适合长时间停留。',
     previewSurface: '#f5f0e8',
-    defaultPrimary: '#8C6A43',
+    defaultPrimary: '#20262e',
   },
-]
+} as const
+
+export const SURFACE_THEMES = Object.values(SURFACE_THEME_PRESETS)
+
+export const THEME_ACCENT_COLORS = [
+  { name: 'terracotta', value: '#c85a32' },
+  { name: 'sky', value: '#0284c7' },
+  { name: 'indigo', value: '#4f46e5' },
+  { name: 'violet', value: '#7c3aed' },
+  { name: 'graphite', value: '#18181b' },
+] as const
 
 export function normalizeSurfaceTheme(value?: string | null): SurfaceThemeKey {
-  const raw = String(value || '')
-    .trim()
-    .toLowerCase()
-  if (raw === 'deepsea' || raw === 'neutral' || raw === 'classic' || raw === 'earth') return raw
-  return 'ocean'
+  const candidate = value?.trim().toLowerCase()
+  return SURFACE_THEMES.find((preset) => preset.key === candidate)?.key ?? 'ocean'
 }
 
 export function getSurfaceThemeMeta(theme: SurfaceThemeKey) {
-  return SURFACE_THEMES.find((item) => item.key === theme) || SURFACE_THEMES[0]
-}
-
-export function readSurfaceTheme(storage?: StorageReader | null): SurfaceThemeKey {
-  return normalizeSurfaceTheme(storage?.getItem(SURFACE_THEME_STORAGE_KEY))
+  return SURFACE_THEME_PRESETS[theme]
 }
 
 export function applySurfaceTheme(theme: SurfaceThemeKey, root?: HTMLElement | null) {
   const target = root ?? (typeof document === 'undefined' ? null : document.documentElement)
   if (!target) return
-  target.dataset.surfaceTheme = normalizeSurfaceTheme(theme)
-}
-
-function toHsl(color: Color): string {
-  const [hue, saturation, lightness] = color.hsl()
-  const safeHue = Number.isFinite(hue) ? hue : 0
-
-  return `${safeHue.toFixed(1)} ${(saturation * 100).toFixed(1)}% ${(lightness * 100).toFixed(1)}%`
-}
-
-function getReadableForeground(color: Color): Color {
-  return chroma.contrast(color, 'white') >= 4.5 ? chroma('white') : chroma('black')
-}
-
-export function readThemeColor(storage?: StorageReader | null, surfaceTheme: SurfaceThemeKey = 'ocean'): string {
-  const storedColor = storage?.getItem(THEME_COLOR_STORAGE_KEY)
-  if (storedColor && chroma.valid(storedColor)) {
-    return chroma(storedColor).hex()
-  }
-  return getSurfaceThemeMeta(surfaceTheme).defaultPrimary
+  target.dataset.surfaceTheme = theme
 }
 
 export function normalizeThemeColor(value?: string | null): string | null {
-  const candidate = String(value || '').trim()
-  if (!candidate || !chroma.valid(candidate)) return null
-  return chroma(candidate).hex()
+  const color = value?.trim().toLowerCase()
+  const preset = THEME_ACCENT_COLORS.find((item) => item.value === color)
+  return preset === undefined ? null : preset.value
 }
 
 export function normalizeThemeColorCookie(value?: string | null): string | null {
-  const candidate = String(value || '').trim()
-  if (!/^[0-9a-f]{6}$/iu.test(candidate)) return null
+  const candidate = value?.trim()
+  if (candidate === undefined) return null
   return normalizeThemeColor(`#${candidate}`)
 }
 
@@ -139,61 +101,21 @@ export function readThemeColorOverride(storage?: StorageReader | null): string |
   return normalizeThemeColor(storage?.getItem(THEME_COLOR_STORAGE_KEY))
 }
 
-export function getThemeColorTokens(color: string): Record<string, string> | null {
-  const normalized = normalizeThemeColor(color)
-  if (!normalized) return null
-
-  const primary = chroma(normalized)
-  const foreground = getReadableForeground(primary)
-  const primaryHue = primary.get('hsl.h')
-  const primarySaturation = primary.get('hsl.s')
-  const accent =
-    Number.isFinite(primarySaturation) && primarySaturation < 0.12
-      ? primary.mix('white', 0.16, 'rgb')
-      : primary.set('hsl.h', Number.isFinite(primaryHue) ? (primaryHue + 26) % 360 : 211).saturate(0.35)
-  const ramp: Array<[string, Color]> = [
-    ['--primary-50', primary.mix('white', 0.92, 'rgb')],
-    ['--primary-100', primary.mix('white', 0.82, 'rgb')],
-    ['--primary-200', primary.mix('white', 0.68, 'rgb')],
-    ['--primary-300', primary.mix('white', 0.48, 'rgb')],
-    ['--primary-400', primary.mix('white', 0.24, 'rgb')],
-    ['--primary-500', primary],
-    ['--primary-600', primary.darken(0.35)],
-    ['--primary-700', primary.darken(0.75)],
-    ['--primary-800', primary.darken(1.15)],
-    ['--primary-900', primary.darken(1.55)],
-  ]
-  const tokens: Record<string, string> = {
-    '--primary': toHsl(primary),
-    '--ring': toHsl(primary),
-    '--primary-foreground': toHsl(foreground),
-    '--info': toHsl(primary),
-    '--info-foreground': toHsl(foreground),
-    '--accent': toHsl(accent),
-    '--accent-foreground': toHsl(getReadableForeground(accent)),
-  }
-
-  for (const [token, tokenColor] of ramp) {
-    tokens[token] = toHsl(tokenColor)
-  }
-
-  return tokens
-}
-
 export function applyThemeColor(color: string, root?: HTMLElement | null) {
   const target = root ?? (typeof document === 'undefined' ? null : document.documentElement)
-  const tokens = getThemeColorTokens(color)
-  if (!target || !tokens) return
+  const normalized = normalizeThemeColor(color)
+  if (target === null || normalized === null) return
 
-  for (const [token, value] of Object.entries(tokens)) {
-    target.style.setProperty(token, value)
-  }
+  clearThemeColor(target)
+
+  target.dataset.themeColor = normalized.slice(1)
 }
 
 export function clearThemeColor(root?: HTMLElement | null) {
   const target = root ?? (typeof document === 'undefined' ? null : document.documentElement)
   if (!target) return
 
+  delete target.dataset.themeColor
   for (const token of THEME_COLOR_TOKEN_NAMES) {
     target.style.removeProperty(token)
   }
@@ -205,12 +127,11 @@ export function persistThemeAppearance(
   storage: StorageWriter | null = getClientStorage(),
   cookieTarget: ThemeCookieTarget | null = globalThis.document ?? null,
 ) {
-  const surfaceTheme = normalizeSurfaceTheme(theme)
   const normalizedColor = normalizeThemeColor(colorOverride)
 
   try {
-    storage?.setItem(SURFACE_THEME_STORAGE_KEY, surfaceTheme)
-    if (normalizedColor) storage?.setItem(THEME_COLOR_STORAGE_KEY, normalizedColor)
+    storage?.setItem(SURFACE_THEME_STORAGE_KEY, theme)
+    if (normalizedColor !== null) storage?.setItem(THEME_COLOR_STORAGE_KEY, normalizedColor)
     else storage?.removeItem(THEME_COLOR_STORAGE_KEY)
   } catch {
     // Storage can be unavailable in private or policy-restricted browser contexts.
@@ -218,24 +139,19 @@ export function persistThemeAppearance(
 
   if (cookieTarget) {
     const commonAttributes = 'Path=/; Max-Age=31536000; SameSite=Lax'
-    cookieTarget.cookie = `${SURFACE_THEME_COOKIE_KEY}=${surfaceTheme}; ${commonAttributes}`
-    cookieTarget.cookie = normalizedColor
-      ? `${THEME_COLOR_COOKIE_KEY}=${normalizedColor.slice(1)}; ${commonAttributes}`
-      : `${THEME_COLOR_COOKIE_KEY}=; Path=/; Max-Age=0; SameSite=Lax`
+    cookieTarget.cookie = `${SURFACE_THEME_COOKIE_KEY}=${theme}; ${commonAttributes}`
+    cookieTarget.cookie =
+      normalizedColor === null
+        ? `${THEME_COLOR_COOKIE_KEY}=; Path=/; Max-Age=0; SameSite=Lax`
+        : `${THEME_COLOR_COOKIE_KEY}=${normalizedColor.slice(1)}; ${commonAttributes}`
   }
 
-  return { surfaceTheme, colorOverride: normalizedColor }
+  return { surfaceTheme: theme, colorOverride: normalizedColor }
 }
 
 export function notifyThemeAppearanceChanged(eventTarget: ThemeEventTarget | null = globalThis.window ?? null) {
-  const target = eventTarget
-  if (!target) return
-
-  const event =
-    typeof CustomEvent === 'function'
-      ? new CustomEvent(THEME_APPEARANCE_CHANGED_EVENT)
-      : new Event(THEME_APPEARANCE_CHANGED_EVENT)
-  target.dispatchEvent(event)
+  if (eventTarget === null) return
+  eventTarget.dispatchEvent(new Event(THEME_APPEARANCE_CHANGED_EVENT))
 }
 
 export function applyStoredThemeAppearance(
@@ -244,13 +160,12 @@ export function applyStoredThemeAppearance(
   eventTarget?: ThemeEventTarget | null,
   options: ApplyThemeAppearanceOptions = {},
 ) {
-  const effectiveStorage = storage
-  const surfaceTheme = readSurfaceTheme(effectiveStorage)
-  const colorOverride = readThemeColorOverride(effectiveStorage)
+  const surfaceTheme = normalizeSurfaceTheme(storage?.getItem(SURFACE_THEME_STORAGE_KEY))
+  const colorOverride = readThemeColorOverride(storage)
   const color = colorOverride ?? getSurfaceThemeMeta(surfaceTheme).defaultPrimary
 
   applySurfaceTheme(surfaceTheme, root)
-  if (colorOverride) applyThemeColor(colorOverride, root)
+  if (colorOverride !== null) applyThemeColor(colorOverride, root)
   else clearThemeColor(root)
 
   if (options.notify !== false) {

@@ -3,18 +3,19 @@ import uuid
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from app.api.dependencies.auth import get_current_account_id
-from app.api.dependencies.tenant import get_tenant_id
-from app.api.schemas.document import DocumentBatchRetryResponse
-from app.core.database import get_db
+from app.api.dependencies import get_current_account_id, get_tenant_id
+from app.api.schemas.documents.document import DocumentBatchRetryResponse
+from app.infrastructure.database.connection import get_db
 from tests.helpers.async_utils import yield_control
 
 
 def test_documents_batch_reingest_calls_patch_and_retry(monkeypatch):  # noqa: ANN001
     from types import SimpleNamespace
 
-    from app.api.v1.document_batches import batch_reingest_documents
-    from app.services import document_batch_operations, document_metadata_operations, document_processing_operations
+    from app.api.v1.documents.batches import batch_reingest_documents
+    from app.services.documents import batch_operations as document_batch_operations
+    from app.services.documents import metadata_operations as document_metadata_operations
+    from app.services.documents import processing as document_processing_operations
 
     tenant_id = uuid.uuid4()
     doc1 = uuid.uuid4()

@@ -35,7 +35,9 @@ def _canonical_params(value: object) -> dict[str, Any]:
     if not isinstance(value, Mapping):
         raise ValueError("kg_python_params must be an object")
     try:
-        normalized = json.loads(json.dumps(dict(value), ensure_ascii=True, sort_keys=True, separators=(",", ":")))
+        normalized = json.loads(
+            json.dumps(dict(value), ensure_ascii=True, sort_keys=True, separators=(",", ":"), allow_nan=False)
+        )
     except (TypeError, ValueError) as exc:
         raise ValueError("kg_python_params must be JSON serializable") from exc
     return normalized
@@ -55,12 +57,11 @@ def build_kg_extraction_job_options(
     extract_relations: bool | None,
     extract_skills: bool | None,
 ) -> dict[str, Any]:
-    normalized_pipeline_hash = _optional_text(pipeline_hash)
     normalized_prompt_template_id = str(UUID(str(prompt_template_id))) if prompt_template_id is not None else None
 
     return {
         "schema": KG_EXTRACTION_JOB_OPTIONS_SCHEMA,
-        "pipeline_hash": normalized_pipeline_hash,
+        "pipeline_hash": _optional_text(pipeline_hash),
         "prompt_template_id": normalized_prompt_template_id,
         "prompt_template_key": _optional_text(prompt_template_key),
         "prompt_ab_experiment_key": _optional_text(prompt_ab_experiment_key),
@@ -85,10 +86,10 @@ def normalize_kg_extraction_job_options(value: object) -> dict[str, Any]:
         extraction_backend=value.get("extraction_backend"),
         kg_python_plugin=value.get("kg_python_plugin"),
         kg_python_params=value.get("kg_python_params"),
-        replace_existing=_required_bool(value.get("replace_existing"), field="replace_existing"),
-        prune_orphan_entities=_required_bool(value.get("prune_orphan_entities"), field="prune_orphan_entities"),
-        extract_relations=_optional_bool(value.get("extract_relations"), field="extract_relations"),
-        extract_skills=_optional_bool(value.get("extract_skills"), field="extract_skills"),
+        replace_existing=value.get("replace_existing"),
+        prune_orphan_entities=value.get("prune_orphan_entities"),
+        extract_relations=value.get("extract_relations"),
+        extract_skills=value.get("extract_skills"),
     )
 
 

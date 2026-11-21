@@ -9,8 +9,8 @@ from starlette.requests import Request
 from starlette.responses import Response
 from starlette.types import ASGIApp
 
-from app.core.logging_config import bind_request_context, reset_request_context
-from app.core.request_state import bind_request_state, reset_request_state
+from app.infrastructure.observability.logging import bind_request_context, reset_request_context
+from app.infrastructure.runtime.request_state import bind_request_state, reset_request_state
 
 _SAFE_REQUEST_ID_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_\-:.]{0,127}")
 

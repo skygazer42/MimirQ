@@ -10,9 +10,8 @@ import type { Options as RehypeSanitizeOptions } from 'rehype-sanitize'
 
 import { AuthImage } from '@/components/auth-image'
 import { cn } from '@/lib/utils'
-import { extractMarkdownHeadings, flashElementId, scrollToElementId } from '@/lib/markdown'
+import { extractMarkdownHeadings, flashElementId, scrollToElementId, type MarkdownHeading } from '@/lib/markdown'
 import { reportClientError } from '@/lib/client-logging'
-import type { MarkdownHeading } from '@/lib/markdown'
 import { resolveMarkdownImageSrc, sanitizeMarkdownHref } from './markdown-safety'
 import { rehypeSourceRange, type MarkdownSourceRange } from './markdown-source-range'
 
@@ -20,32 +19,7 @@ const FLASH_CLASS = 'bg-primary/10 ring-1 ring-primary/25 rounded-md transition-
 
 const MARKDOWN_SANITIZE_SCHEMA: RehypeSanitizeOptions = {
   ...defaultSchema,
-  tagNames: [
-    ...(defaultSchema.tagNames || []),
-    'table',
-    'thead',
-    'tbody',
-    'tfoot',
-    'tr',
-    'th',
-    'td',
-    'caption',
-    'colgroup',
-    'col',
-  ],
-  attributes: {
-    ...defaultSchema.attributes,
-    table: [...((defaultSchema.attributes?.table as string[] | undefined) || [])],
-    thead: [...((defaultSchema.attributes?.thead as string[] | undefined) || [])],
-    tbody: [...((defaultSchema.attributes?.tbody as string[] | undefined) || [])],
-    tfoot: [...((defaultSchema.attributes?.tfoot as string[] | undefined) || [])],
-    tr: [...((defaultSchema.attributes?.tr as string[] | undefined) || [])],
-    th: [...((defaultSchema.attributes?.th as string[] | undefined) || []), 'colspan', 'rowspan'],
-    td: [...((defaultSchema.attributes?.td as string[] | undefined) || []), 'colspan', 'rowspan'],
-    caption: [...((defaultSchema.attributes?.caption as string[] | undefined) || [])],
-    colgroup: [...((defaultSchema.attributes?.colgroup as string[] | undefined) || [])],
-    col: [...((defaultSchema.attributes?.col as string[] | undefined) || []), 'span'],
-  },
+  tagNames: [...(defaultSchema.tagNames ?? []), 'caption', 'colgroup', 'col'],
   protocols: {
     ...defaultSchema.protocols,
     href: ['http', 'https', 'mailto', 'tel'],
@@ -73,8 +47,7 @@ type MarkdownRenderBoundaryState = Readonly<{
 }>
 
 type MarkdownRendererRuntime = Readonly<{
-  enableTocAnchors: boolean
-  headings: MarkdownHeading[]
+  headingsByLine: ReadonlyMap<number, MarkdownHeading>
   scrollContainerSelector?: string
 }>
 type MarkdownAstNode = {
@@ -96,12 +69,21 @@ type MarkdownTableProps = React.TableHTMLAttributes<HTMLTableElement> & {
 }
 
 const MarkdownRendererRuntimeContext = createContext<MarkdownRendererRuntime>({
-  enableTocAnchors: true,
-  headings: [],
+  headingsByLine: new Map(),
 })
 
 function useMarkdownRendererRuntime() {
   return useContext(MarkdownRendererRuntimeContext)
+}
+
+function decodeHeadingId(hash: string): string | null {
+  const encodedId = hash.slice(1)
+  if (encodedId === '') return null
+  try {
+    return decodeURIComponent(encodedId)
+  } catch {
+    return null
+  }
 }
 
 function renderHeadingByLevel(
@@ -125,25 +107,23 @@ function renderHeadingByLevel(
 }
 
 function MarkdownHeadingComponent({ children, className, level, node, ...props }: MarkdownHeadingProps) {
-  const { enableTocAnchors, headings, scrollContainerSelector } = useMarkdownRendererRuntime()
-  const line = Number(node?.position?.start?.line || 0)
-  const heading = line ? headings.find((item) => item.line === line && item.level === level) : undefined
-  const id = heading?.id
+  const { headingsByLine, scrollContainerSelector } = useMarkdownRendererRuntime()
+  const line = node?.position?.start?.line
+  const heading = line === undefined ? undefined : headingsByLine.get(line)
+  const id = heading?.level === level ? heading.id : undefined
   const headingChildren = (
     <>
       {children}
-      {enableTocAnchors && id && (
+      {id !== undefined && (
         <a
           href={`#${encodeURIComponent(id)}`}
           onClick={(event) => {
             event.preventDefault()
-            if (globalThis.window !== undefined) {
-              globalThis.window.history.replaceState(null, '', `#${encodeURIComponent(id)}`)
-            }
+            window.history.replaceState(null, '', `#${encodeURIComponent(id)}`)
             scrollToElementId(id, { scrollContainerSelector })
             flashElementId(id, FLASH_CLASS)
           }}
-          className="ml-2 no-underline text-muted-foreground/60 hover:text-primary opacity-0 group-hover:opacity-100"
+          className="ml-2 no-underline text-muted-foreground/60 hover:text-primary opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
           aria-label="Jump to section"
         >
           #
@@ -186,26 +166,22 @@ function MarkdownH6(props: Omit<MarkdownHeadingProps, 'level'>) {
 
 function MarkdownAnchor({ href, children }: MarkdownAnchorProps) {
   const { scrollContainerSelector } = useMarkdownRendererRuntime()
-  const rawHref = typeof href === 'string' ? href : ''
-  const safeHref = sanitizeMarkdownHref(rawHref)
-  if (!safeHref) {
+  const safeHref = sanitizeMarkdownHref(href)
+  const isHeadingLink = safeHref !== null && safeHref.startsWith('#')
+  const headingId = isHeadingLink ? decodeHeadingId(safeHref) : null
+  if (safeHref === null || (isHeadingLink && headingId === null)) {
     return <span className="text-muted-foreground">{children}</span>
   }
 
-  if (safeHref.startsWith('#')) {
-    const id = safeHref.slice(1)
+  if (headingId !== null) {
     return (
       <a
         href={safeHref}
         onClick={(event) => {
           event.preventDefault()
-          const decoded = id ? decodeURIComponent(id) : ''
-          if (!decoded) return
-          if (globalThis.window !== undefined) {
-            globalThis.window.history.replaceState(null, '', `#${encodeURIComponent(decoded)}`)
-          }
-          scrollToElementId(decoded, { scrollContainerSelector })
-          flashElementId(decoded, FLASH_CLASS)
+          window.history.replaceState(null, '', `#${encodeURIComponent(headingId)}`)
+          scrollToElementId(headingId, { scrollContainerSelector })
+          flashElementId(headingId, FLASH_CLASS)
         }}
         className="underline decoration-border/70 underline-offset-2 hover:decoration-border"
       >
@@ -227,13 +203,12 @@ function MarkdownAnchor({ href, children }: MarkdownAnchorProps) {
 }
 
 function MarkdownImage({ src, alt }: MarkdownImageProps) {
-  const raw = typeof src === 'string' ? src : ''
-  const resolved = resolveMarkdownImageSrc(raw)
-  if (!resolved) return null
+  const resolved = resolveMarkdownImageSrc(src)
+  if (resolved === null) return null
   return (
     <AuthImage
       src={resolved}
-      alt={alt || 'image'}
+      alt={alt ?? ''}
       width={1200}
       height={800}
       unoptimized
@@ -245,7 +220,7 @@ function MarkdownImage({ src, alt }: MarkdownImageProps) {
 function MarkdownTable({ className, children, node: _node, ...props }: MarkdownTableProps) {
   return (
     <div className="my-4 overflow-x-auto">
-      <table aria-label="Markdown 表格" className={cn('w-full', className)} {...props}>
+      <table className={cn('w-full', className)} {...props}>
         {children}
       </table>
     </div>
@@ -308,43 +283,55 @@ function MarkdownRendererContent({
   scrollContainerSelector,
   sourceRange,
 }: MarkdownRendererProps) {
-  const text = markdown || ''
   const rehypePlugins = useMemo<React.ComponentProps<typeof ReactMarkdown>['rehypePlugins']>(
     () => [rehypeRaw, [rehypeSanitize, MARKDOWN_SANITIZE_SCHEMA], [rehypeSourceRange, { range: sourceRange }]],
     [sourceRange],
   )
 
-  const headings = useMemo(() => (enableTocAnchors ? extractMarkdownHeadings(text) : []), [text, enableTocAnchors])
+  const headingsByLine = useMemo(() => {
+    const byLine = new Map<number, MarkdownHeading>()
+    if (enableTocAnchors) {
+      for (const heading of extractMarkdownHeadings(markdown)) {
+        byLine.set(heading.line, heading)
+      }
+    }
+    return byLine
+  }, [markdown, enableTocAnchors])
 
   useEffect(() => {
     if (!autoScrollToHash) return
-    if (globalThis.window === undefined) return
+    let scrollFrame: number | null = null
 
-    const scrollNow = (behavior: ScrollBehavior) => {
-      const raw = globalThis.window.location.hash || ''
-      const id = raw.startsWith('#') ? raw.slice(1) : raw
-      const decoded = id ? decodeURIComponent(id) : ''
-      if (!decoded) return
-      globalThis.window.requestAnimationFrame(() => {
-        const ok = scrollToElementId(decoded, { behavior, scrollContainerSelector })
-        if (ok) flashElementId(decoded, FLASH_CLASS)
+    function cancelHashScroll() {
+      if (scrollFrame === null) return
+      window.cancelAnimationFrame(scrollFrame)
+      scrollFrame = null
+    }
+
+    function scheduleHashScroll(behavior: ScrollBehavior) {
+      cancelHashScroll()
+      const headingId = decodeHeadingId(window.location.hash)
+      if (headingId === null) return
+      scrollFrame = window.requestAnimationFrame(() => {
+        scrollFrame = null
+        if (scrollToElementId(headingId, { behavior, scrollContainerSelector })) {
+          flashElementId(headingId, FLASH_CLASS)
+        }
       })
     }
 
-    const onHashChange = () => scrollNow('smooth')
-
-    scrollNow('auto')
-    globalThis.window.addEventListener('hashchange', onHashChange)
-    return () => globalThis.window.removeEventListener('hashchange', onHashChange)
-  }, [autoScrollToHash, scrollContainerSelector, text])
+    const onHashChange = () => scheduleHashScroll('smooth')
+    scheduleHashScroll('auto')
+    window.addEventListener('hashchange', onHashChange)
+    return () => {
+      window.removeEventListener('hashchange', onHashChange)
+      cancelHashScroll()
+    }
+  }, [autoScrollToHash, scrollContainerSelector, markdown])
 
   const runtime = useMemo<MarkdownRendererRuntime>(
-    () => ({
-      enableTocAnchors,
-      headings,
-      scrollContainerSelector,
-    }),
-    [enableTocAnchors, headings, scrollContainerSelector],
+    () => ({ headingsByLine, scrollContainerSelector }),
+    [headingsByLine, scrollContainerSelector],
   )
 
   return (
@@ -355,7 +342,7 @@ function MarkdownRendererContent({
           rehypePlugins={rehypePlugins}
           components={MARKDOWN_RENDERER_COMPONENTS}
         >
-          {text}
+          {markdown}
         </ReactMarkdown>
       </MarkdownRendererRuntimeContext.Provider>
     </div>
@@ -363,11 +350,9 @@ function MarkdownRendererContent({
 }
 
 export const MarkdownRenderer = memo(function MarkdownRenderer(props: MarkdownRendererProps) {
-  const text = props.markdown || ''
-
   return (
-    <MarkdownRenderBoundary className={props.className} resetKey={text}>
-      <MarkdownRendererContent {...props} markdown={text} />
+    <MarkdownRenderBoundary className={props.className} resetKey={props.markdown}>
+      <MarkdownRendererContent {...props} />
     </MarkdownRenderBoundary>
   )
 })

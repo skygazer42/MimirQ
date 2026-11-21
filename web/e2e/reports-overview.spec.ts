@@ -207,8 +207,12 @@ test('version and run scope reach the original API, and report failure preserves
   state.failReport = true
   await page.getByRole('combobox', { name: '附带运行记录', exact: true }).click()
   await page.getByRole('option', { name: '50 条记录', exact: true }).click()
-  await expect(page.getByText('报告加载失败', { exact: true })).toBeVisible({ timeout: 20000 })
+  await expect(page.getByRole('alert').filter({ hasText: '报告服务暂不可用' })).toBeVisible({ timeout: 20000 })
   await expect(page.getByRole('combobox', { name: '处理版本', exact: true })).toContainText('9fd1bc3e6a2b')
+  await expect(page.getByText('最多 20 条连接器运行记录')).toBeVisible()
+  await page.getByRole('combobox', { name: '处理版本', exact: true }).click()
+  await expect(page.getByRole('option', { name: /9fd1bc3e6a2b/ })).toBeVisible()
+  await page.keyboard.press('Escape')
   state.failReport = false
   await page.getByRole('button', { name: '重试报告', exact: true }).click()
   await expect(page.getByRole('region', { name: '报告摘要' })).toBeVisible()
@@ -217,7 +221,7 @@ test('version and run scope reach the original API, and report failure preserves
     .toBe(true)
   await page.getByRole('combobox', { name: '数据集', exact: true }).click()
   await page.getByRole('option', { name: '空数据集', exact: true }).click()
-  await expect(page.getByRole('heading', { name: '该数据集还没有文档', exact: true })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '当前报告范围没有文档', exact: true })).toBeVisible()
   await expect(page.getByRole('combobox', { name: '处理版本', exact: true })).toContainText('全部处理版本')
   expect(state.writes).toEqual([])
 })

@@ -1,9 +1,9 @@
 from types import SimpleNamespace
 from uuid import uuid4
 
-from app.api.schemas.rag_config_template import RagConfigTemplateUpdate
-from app.api.v1 import rag_config_templates
-from app.core.token_utils import total_token_count_from_response
+from app.api.schemas.conversations.rag_config_templates import RagConfigTemplateUpdate
+from app.api.v1.retrieval import config_templates as rag_config_templates
+from app.infrastructure.tokens import total_token_count_from_response
 
 
 class _TemplateQuery:

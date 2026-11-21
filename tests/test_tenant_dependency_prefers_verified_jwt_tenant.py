@@ -6,8 +6,8 @@ import jwt
 from fastapi import Depends, FastAPI
 from fastapi.testclient import TestClient
 
-from app.api.dependencies.tenant import get_tenant_id
-from app.core.config import settings
+from app.api.dependencies import get_tenant_id
+from app.infrastructure.config import settings
 
 
 def _build_app() -> FastAPI:
@@ -104,7 +104,7 @@ def test_tenant_dependency_prefers_verified_jwt_tenant_when_enabled(monkeypatch)
 
 
 def test_scim_opaque_bearer_uses_tenant_header_without_jwt_decoding(monkeypatch):
-    import app.api.v1.scim as scim_module
+    import app.api.v1.identity.scim as scim_module
 
     monkeypatch.setenv("ENV", "production")
     monkeypatch.setattr(settings, "AUTH_MODE", "jwt", raising=False)

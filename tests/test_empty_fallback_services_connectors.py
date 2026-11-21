@@ -1,14 +1,17 @@
-import pytest
-from fastapi import HTTPException
 from types import SimpleNamespace
 from uuid import uuid4
 
-from app.services import db_catalog_observability
-from app.services.connector_execution import confluence, db_catalog, jira, minio_bucket, url_batch
-from app.services.connector_execution.plans.github_repo import _github_repo_listed_files_and_observed_paths
-from app.services.connector_execution.shared.artifacts import _build_db_row_source_manifest, _normalize_connector_string_list
-from app.services.connector_execution.shared.external import _build_auth_headers
-from app.services.connector_execution.shared.common import _classify_connector_error
+import pytest
+from fastapi import HTTPException
+
+from app.services.connectors import catalog_events as db_catalog_observability
+from app.services.connectors.execution import confluence, db_catalog, jira, minio_bucket, url_batch
+from app.services.connectors.execution.shared.artifacts import (
+    _build_db_row_source_manifest,
+    _normalize_connector_string_list,
+)
+from app.services.connectors.execution.shared.common import _classify_connector_error
+from app.services.connectors.execution.shared.external import _build_auth_headers
 
 
 def test_confluence_attachment_consumer_requires_the_parsed_download_url():
@@ -21,8 +24,12 @@ def test_confluence_attachment_consumer_requires_the_parsed_download_url():
 def test_minio_execution_plan_does_not_silently_drop_a_missing_object_name():
     with pytest.raises(KeyError, match="name"):
         minio_bucket._build_minio_bucket_execution_plan(
-            run_stats={}, state={}, listed_objects=[{"token": "etag"}], include_set={""},
-            max_objects=10, scope_hash="scope",
+            run_stats={},
+            state={},
+            listed_objects=[{"token": "etag"}],
+            include_set={""},
+            max_objects=10,
+            scope_hash="scope",
         )
 
 
@@ -56,13 +63,8 @@ def test_failed_catalog_telemetry_exposes_an_invalid_loaded_run():
 
 def test_confluence_listing_requires_the_page_identifier():
     with pytest.raises(KeyError, match="id"):
-        confluence._parse_confluence_listing_page(page={"title": "Page"}, link_base="https://wiki.test", base_url="https://wiki.test")
-
-
-def test_github_blob_listing_requires_its_sync_fingerprint():
-    with pytest.raises(KeyError, match="sha"):
-        _github_repo_listed_files_and_observed_paths(
-            tree_items=[{"type": "blob", "path": "readme.md"}], tracked_paths=set(), include_set={".md"}, max_files=10
+        confluence._parse_confluence_listing_page(
+            page={"title": "Page"}, link_base="https://wiki.test", base_url="https://wiki.test"
         )
 
 
@@ -87,20 +89,26 @@ def test_row_snapshot_manifest_requires_the_produced_sync_token():
         _build_db_row_source_manifest([{"source_table": "public.items"}])
 
 
-@pytest.mark.parametrize("auth,missing", [
-    ({"type": "cookie"}, "cookie"),
-    ({"type": "bearer"}, "token"),
-    ({"type": "basic", "username": "reader"}, "password"),
-])
+@pytest.mark.parametrize(
+    "auth,missing",
+    [
+        ({"type": "cookie"}, "cookie"),
+        ({"type": "bearer"}, "token"),
+        ({"type": "basic", "username": "reader"}, "password"),
+    ],
+)
 def test_active_connector_auth_requires_its_validated_credential(auth, missing):
     with pytest.raises(KeyError, match=missing):
         _build_auth_headers({"auth": auth})
 
 
-@pytest.mark.parametrize("fields,principal", [
-    ({"security": {"id": 0}}, "jira:policy:security-level/0"),
-    ({"comment": {"comments": [{"visibility": {"type": "role", "value": 0}}]}}, "jira:role:0"),
-])
+@pytest.mark.parametrize(
+    "fields,principal",
+    [
+        ({"security": {"id": 0}}, "jira:policy:security-level/0"),
+        ({"comment": {"comments": [{"visibility": {"type": "role", "value": 0}}]}}, "jira:role:0"),
+    ],
+)
 def test_jira_scalar_restriction_identifier_is_not_discarded_as_missing(fields, principal):
     restricted, principals = jira._jira_issue_acl_principal_keys(
         {"fields": fields}, include_comments=True, max_comments=10

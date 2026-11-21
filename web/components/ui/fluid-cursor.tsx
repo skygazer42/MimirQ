@@ -2,13 +2,10 @@
 
 import { useEffect, useState } from 'react'
 import { motion, useMotionValue, useReducedMotion, useSpring } from 'framer-motion'
-import { usePathname } from '@/i18n/navigation'
 
 import { cn } from '@/lib/utils'
 
 export function FluidCursor() {
-  const enabled = process.env.NEXT_PUBLIC_ENABLE_FLUID_CURSOR === '1'
-
   const [variant, setVariant] = useState<'default' | 'pointer' | 'text' | 'hidden'>('default')
   const cursorX = useMotionValue(-100)
   const cursorY = useMotionValue(-100)
@@ -19,13 +16,9 @@ export function FluidCursor() {
   const cursorXSpring = useSpring(cursorX, springConfig)
   const cursorYSpring = useSpring(cursorY, springConfig)
 
-  const pathname = usePathname()
-
   // Only render/attach listeners on desktop pointers.
   const [isDesktop, setIsDesktop] = useState(false)
   useEffect(() => {
-    if (!enabled) return
-    if (globalThis.window === undefined) return
     const mq = globalThis.window.matchMedia('(pointer: fine)')
     const update = () => setIsDesktop(mq.matches)
     update()
@@ -33,18 +26,11 @@ export function FluidCursor() {
     // Keep in sync on hybrid devices / pointer changes.
     mq.addEventListener('change', update)
     return () => mq.removeEventListener('change', update)
-  }, [enabled])
+  }, [])
 
   useEffect(() => {
-    if (!enabled) return
     if (shouldReduceMotion) return
     if (!isDesktop) return
-    // IMPORTANT: Do NOT hide default cursor. User feedback indicated visibility issues.
-    // document.body.style.cursor = 'none'
-
-    // Add class to body to indicate custom cursor active (optional, for other CSS hooks if needed)
-    document.body.classList.add('custom-cursor-enabled')
-
     const moveCursor = (e: MouseEvent) => {
       // Keep the cursor centered; ring size is stable and we only animate transform/opacity.
       cursorX.set(e.clientX - 16)
@@ -52,13 +38,13 @@ export function FluidCursor() {
     }
 
     const checkHover = (e: MouseEvent) => {
-      const target = e.target as HTMLElement
+      const target = e.target
+      if (!(target instanceof Element)) return
 
       // Check for buttons/links
-      const isClickable = target.closest('button') || target.closest('a') || target.closest('[role="button"]')
+      const isClickable = target.closest('button, a, [role="button"]') !== null
       // Check for inputs/textareas
-      const isInput =
-        target.closest('input') || target.closest('textarea') || target.closest('[contenteditable="true"]')
+      const isInput = target.closest('input, textarea, [contenteditable="true"]') !== null
 
       if (isInput) {
         setVariant('text')
@@ -82,11 +68,8 @@ export function FluidCursor() {
       globalThis.window.removeEventListener('mouseover', checkHover)
       document.removeEventListener('mouseleave', handleMouseLeave)
       document.removeEventListener('mouseenter', handleMouseEnter)
-      // Ensure specific style cleanups
-      document.body.style.cursor = ''
-      document.body.classList.remove('custom-cursor-enabled')
     }
-  }, [enabled, pathname, cursorX, cursorY, isDesktop, shouldReduceMotion])
+  }, [cursorX, cursorY, isDesktop, shouldReduceMotion])
 
   // Variants for Framer Motion
   const variants = {
@@ -108,7 +91,7 @@ export function FluidCursor() {
     },
   }
 
-  if (!enabled || shouldReduceMotion || !isDesktop) return null
+  if (shouldReduceMotion || !isDesktop) return null
 
   const appearance = variant === 'hidden' ? 'default' : variant
 

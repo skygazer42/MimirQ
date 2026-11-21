@@ -11,15 +11,17 @@ import {
   useCallback,
   useRef,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useSyncExternalStore,
-  ReactNode,
+  type ReactNode,
 } from 'react'
 import { useQueryClient, type Query } from '@tanstack/react-query'
 import { useSearchParams } from 'next/navigation'
 import { toast } from 'sonner'
 import { useRouter } from '@/i18n/navigation'
 import { documentApi, parsingApi } from '@/lib/api'
+import type { ChunkPreviewRequestParams } from '@/lib/api/document-helpers'
 import { formatApiError } from '@/lib/api-errors'
 import { readClientStorage, removeClientStorage, writeClientStorage } from '@/lib/client-storage'
 import { generateRequestId } from '@/lib/request-id'
@@ -31,9 +33,13 @@ import { useChunkStrategyPreference } from '@/contexts/chunk-strategy-context'
 import { usePipelineOptions } from '@/contexts/pipeline-options-context'
 import { useParsedFiles } from '@/store/use-parsed-files-store'
 import type { ParsedFileData } from '@/store/use-parsed-files-store'
-import { getChunkStrategyLabel } from '@/lib/chunk-strategies'
+import { getChunkStrategyLabel, isRetiredChunkStrategy } from '@/lib/chunk-strategies'
+import { isRetiredParserBackend } from '@/lib/parser-compat'
 import { getParserLabel } from '@/lib/parser-options'
+import { assertCompleteDocumentContent, hasParsedFileMemoryContent } from '@/lib/document-library'
+import { readMetadataString } from '@/components/chunk-preview/utils/metadata'
 import type { ChunkPreviewResponse, ManualChunk } from '@/types'
+import { applyChunkEdits } from '@/components/chunk-preview/utils/chunk-edits'
 import type {
   ChunkOverride,
   ChunkOverrides,
@@ -42,8 +48,16 @@ import type {
   ChunkPreviewFileItem,
   ChunkPreviewContextType,
   ChunkPreviewRunSettings,
+  ChunkPreviewProps,
 } from './types'
 import { EXAMPLE_TEXT } from './constants'
+import {
+  createFileWorkspace,
+  selectWorkspaceFile,
+  isChunkPreviewFileInScope,
+  mergeScopedFiles,
+  type FileWorkspaceState,
+} from './file-workspace'
 import { scanFiles } from './utils/file-scanner'
 import { decodeSeparatorInput } from './utils/separators'
 import {
@@ -62,7 +76,86 @@ const CHUNK_PREVIEW_SCOPE_DOCUMENT_LIMIT = 8
 const MANUAL_INGEST_STATUS_POLL_INTERVAL_MS = 1500
 const MANUAL_INGEST_STATUS_MAX_WAIT_MS = 30 * 60 * 1000
 const MANUAL_INGEST_STILL_PROCESSING_MESSAGE = '入库已提交，后端仍在处理。请稍后刷新列表确认结果。'
-const scopedChunkFilesInFlight = new Map<string, Promise<ChunkPreviewFileItem[]>>()
+const PREVIEW_UPDATE_REQUIRED_MESSAGE = '当前预览需要更新，请重新生成后再入库。'
+const COMPLETE_PREVIEW_REQUIRED_MESSAGE = '当前预览只包含部分切块，请将“最多返回切块”设为 0，重新生成完整预览后再入库。'
+type MarkdownChunkFileSource = {
+  id: string
+  markdown: string
+  filename: string
+  fileType?: string | null
+  fileSize?: number | null
+  sourceTimeMs?: number
+  source: 'parsing_workspace' | 'knowledge_base'
+  datasetId?: string | null
+  datasetName?: string | null
+  documentId: string | null
+}
+
+type MarkdownFileSnapshot = { markdown: string; file: File; revision: string }
+type ScopeSyncControl = { datasetId: string; cancelled: boolean; removedIds: Set<string> }
+type ChunkParamNavigation = Readonly<{ from: string | null; to: string | null }>
+
+type ScopedChunkFiles = Readonly<{ sources: MarkdownChunkFileSource[]; error: string | null }>
+
+const scopedChunkFilesInFlight = new Map<string, Promise<ScopedChunkFiles>>()
+
+type PreviewSnapshot = Readonly<{
+  data: ChunkPreviewResponse
+  file: File
+  sessionRevision: number
+  requestId: number
+}>
+
+type PreviewSubmissionView = Readonly<{
+  data: ChunkPreviewResponse | null
+  overrides: ChunkOverrides
+  cacheKey: string | null
+}>
+
+type PreviewIngestResult = Readonly<{
+  view: PreviewSubmissionView
+  documentId: string
+  completed: boolean
+}>
+
+type IngestReceipt = Pick<Awaited<ReturnType<typeof documentApi.createFromChunks>>, 'id' | 'status'> & {
+  previewRequestId: number | null
+}
+
+function ingestReceiptKey(cacheKey: string, datasetId: string, overrides: ChunkOverrides): string {
+  return JSON.stringify([cacheKey, datasetId, overrides])
+}
+
+function isLocallyWrittenChunkParam(chunkParam: string, navigation: ChunkParamNavigation | null): boolean {
+  return navigation !== null && (chunkParam === navigation.from || chunkParam === navigation.to)
+}
+
+function buildChunkPreviewHref(params: URLSearchParams): string {
+  const query = params.toString()
+  return query.length === 0 ? '/chunk-preview' : `/chunk-preview?${query}`
+}
+
+function buildPreviewCacheKey(fileItem: ChunkPreviewFileItem, params: ChunkPreviewRequestParams): string {
+  const { id, fileRevision, file } = fileItem
+  return JSON.stringify({
+    authScope: getAuthCacheScope(),
+    sessionRevision: getAuthSessionRevision(),
+    fileId: id,
+    fileRevision,
+    filename: file.name,
+    fileSize: file.size,
+    lastModified: file.lastModified,
+    params,
+  })
+}
+
+function isSamePreviewSubmissionView(current: PreviewSubmissionView, submitted: PreviewSubmissionView): boolean {
+  return (
+    current.data === submitted.data &&
+    current.overrides === submitted.overrides &&
+    current.cacheKey === submitted.cacheKey
+  )
+}
 
 class ManualIngestStillProcessingError extends Error {
   constructor() {
@@ -71,115 +164,114 @@ class ManualIngestStillProcessingError extends Error {
   }
 }
 
+class ManualIngestFailedError extends Error {}
+
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => {
     globalThis.setTimeout(resolve, ms)
   })
 }
 
-function normalizeIngestStatus(value: unknown): string {
-  return String(value || '')
-    .trim()
-    .toLowerCase()
-}
-
 async function waitForDocumentIngestCompletion(
-  documentId: string | null | undefined,
-  initialStatus: unknown,
+  documentId: string,
+  initialStatus: string,
   isSessionCurrent: () => boolean,
 ): Promise<void> {
-  const id = String(documentId || '').trim()
-  if (!id) return
-
-  let status = normalizeIngestStatus(initialStatus)
+  let status = initialStatus.trim().toLowerCase()
   const startedAt = Date.now()
   while (Date.now() - startedAt <= MANUAL_INGEST_STATUS_MAX_WAIT_MS) {
     if (!isSessionCurrent()) return
     if (status === 'completed') return
     if (status === 'failed' || status === 'cancelled' || status === 'quarantined') {
-      throw new Error(`入库失败：后端状态为 ${status}`)
+      throw new ManualIngestFailedError(`入库失败：后端状态为 ${status}`)
     }
 
     await sleep(MANUAL_INGEST_STATUS_POLL_INTERVAL_MS)
     if (!isSessionCurrent()) return
-    const latest = await documentApi.getStatus(id)
-    status = normalizeIngestStatus(latest.status)
+    const latest = await documentApi.getStatus(documentId)
+    status = latest.status.trim().toLowerCase()
     if (status === 'completed') return
     if (status === 'failed' || status === 'cancelled' || status === 'quarantined') {
-      throw new Error(latest.error_message || `入库失败：后端状态为 ${status}`)
+      throw new ManualIngestFailedError(latest.error_message ?? `入库失败：后端状态为 ${status}`)
     }
   }
 
   throw new ManualIngestStillProcessingError()
 }
 
-function normalizeBackendString(value: unknown): string {
-  return typeof value === 'string' && value.trim() ? value.trim() : ''
-}
-
-function makeMarkdownChunkFileItem(params: {
-  id: string
-  markdown: string
-  filename: string
-  fileType?: string | null
-  fileSize?: number | null
-  addedAt?: number
-  source: ChunkPreviewFileItem['source']
-  datasetId?: string | null
-  datasetName?: string | null
-  documentId?: string | null
-}): ChunkPreviewFileItem {
-  const originalFilename = params.filename || 'document'
+function makeMarkdownChunkFileItem(
+  params: MarkdownChunkFileSource,
+  snapshots: Map<string, MarkdownFileSnapshot>,
+): ChunkPreviewFileItem {
+  const originalFilename = params.filename
   const base = originalFilename.toLowerCase().endsWith('.md')
     ? originalFilename
     : originalFilename.replace(/\.[^/.]+$/, '')
   const internalFilename = originalFilename.toLowerCase().endsWith('.md') ? originalFilename : `${base}.md`
-  const markdown = params.markdown || ''
+  const markdown = params.markdown
+  let snapshot = snapshots.get(params.id)
+  if (snapshot === undefined || snapshot.markdown !== markdown || snapshot.file.name !== internalFilename) {
+    snapshot = {
+      markdown,
+      file: new File([markdown], internalFilename, { type: 'text/markdown' }),
+      revision: generateRequestId(),
+    }
+    snapshots.set(params.id, snapshot)
+  }
 
   return {
     id: params.id,
-    file: new File([markdown], internalFilename, { type: 'text/markdown' }),
+    file: snapshot.file,
+    fileRevision: snapshot.revision,
     displayName: originalFilename,
-    originalFileType: params.fileType || originalFilename.split('.').pop()?.toLowerCase(),
-    originalFileSize: typeof params.fileSize === 'number' ? params.fileSize : markdown.length,
-    addedAt: params.addedAt || Date.now(),
+    originalFileType: params.fileType ?? undefined,
+    originalFileSize: params.fileSize ?? undefined,
+    sourceTimeMs: params.sourceTimeMs,
     source: params.source,
-    datasetId: params.datasetId || null,
-    datasetName: params.datasetName || null,
-    documentId: params.documentId || params.id,
+    datasetId: params.datasetId ?? null,
+    datasetName: params.datasetName ?? null,
+    documentId: params.documentId,
   }
 }
 
-function parsedFileToChunkFileItem(pf: ParsedFileData): ChunkPreviewFileItem | null {
-  const markdown = (pf.markdownContent || pf.originalMarkdownContent || '').trim()
-  if (!markdown) return null
+function makeMarkdownChunkFileItems(
+  sources: readonly MarkdownChunkFileSource[],
+  snapshots: Map<string, MarkdownFileSnapshot>,
+): ChunkPreviewFileItem[] {
+  const seen = new Set<string>()
+  const items: ChunkPreviewFileItem[] = []
+  for (const source of sources) {
+    if (seen.has(source.id)) continue
+    seen.add(source.id)
+    items.push(makeMarkdownChunkFileItem(source, snapshots))
+  }
+  return items
+}
 
-  return makeMarkdownChunkFileItem({
-    id: String(pf.id),
-    markdown,
-    filename: pf.filename || 'document',
+function parsedFileToChunkFileSource(pf: ParsedFileData): MarkdownChunkFileSource | null {
+  if (!hasParsedFileMemoryContent(pf)) return null
+
+  return {
+    id: pf.id,
+    markdown: pf.markdownContent,
+    filename: pf.filename,
     fileType: pf.fileType,
     fileSize: pf.fileSize,
-    addedAt: pf.parsedAt ? Date.parse(pf.parsedAt) : Date.now(),
+    sourceTimeMs: Date.parse(pf.parsedAt),
     source: pf.source === 'knowledge_base' ? 'knowledge_base' : 'parsing_workspace',
     datasetId: pf.datasetId,
     datasetName: pf.datasetName,
-    documentId: pf.id,
-  })
-}
-
-function isManualChunkFile(item: ChunkPreviewFileItem): boolean {
-  return item.source === 'local_upload' || item.source === 'example'
-}
-
-function isChunkPreviewFileInScope(item: ChunkPreviewFileItem, datasetId: string): boolean {
-  const scopedDatasetId = (datasetId || '').trim()
-  if (isManualChunkFile(item)) {
-    const itemDatasetId = (item.datasetId || '').trim()
-    return scopedDatasetId ? itemDatasetId === scopedDatasetId : !itemDatasetId
+    documentId: pf.source === undefined ? null : pf.id,
   }
-  if (!scopedDatasetId) return item.source === 'parsing_workspace'
-  return item.source === 'knowledge_base' && item.datasetId === scopedDatasetId
+}
+
+function getParsedChunkFileSources(files: readonly ParsedFileData[], datasetId: string): MarkdownChunkFileSource[] {
+  const sources: MarkdownChunkFileSource[] = []
+  for (const file of files) {
+    const source = parsedFileToChunkFileSource(file)
+    if (source !== null && isChunkPreviewFileInScope(source, datasetId)) sources.push(source)
+  }
+  return sources
 }
 
 function isParsingWorkspaceDocument(doc: Awaited<ReturnType<typeof documentApi.list>>['items'][number]): boolean {
@@ -187,80 +279,65 @@ function isParsingWorkspaceDocument(doc: Awaited<ReturnType<typeof documentApi.l
   return meta?.workspace === 'parsing'
 }
 
-async function loadKnowledgeChunkFiles(
-  datasetId: string,
-  isSessionCurrent: () => boolean,
-): Promise<ChunkPreviewFileItem[]> {
+async function loadKnowledgeChunkFiles(datasetId: string, isSessionCurrent: () => boolean): Promise<ScopedChunkFiles> {
   const response = await documentApi.list({ skip: 0, limit: CHUNK_PREVIEW_SCOPE_DOCUMENT_LIMIT, dataset_id: datasetId })
-  const docs = (response.items || []).filter((doc) => !isParsingWorkspaceDocument(doc))
-  const items: ChunkPreviewFileItem[] = []
+  const docs = response.items.filter((doc) => !isParsingWorkspaceDocument(doc))
+  const sources: MarkdownChunkFileSource[] = []
+  const errors: string[] = []
   for (const doc of docs) {
-    if (!isSessionCurrent()) return []
-    const id = String(doc.id || '').trim()
-    if (!id) continue
+    if (!isSessionCurrent()) break
+    const id = doc.id
     try {
       const content = await documentApi.getParsedContent(id, { max_chars: 2_000_000 })
-      const markdown = (content.markdown_content || content.original_markdown_content || '').trim()
-      if (!markdown) continue
-      items.push(
-        makeMarkdownChunkFileItem({
-          id,
-          markdown,
-          filename: doc.filename || 'document',
-          fileType: doc.file_type,
-          fileSize: Number(doc.file_size || markdown.length),
-          addedAt: doc.updated_at ? Date.parse(String(doc.updated_at)) : Date.now(),
-          source: 'knowledge_base',
-          datasetId: doc.dataset_id || datasetId,
-          documentId: id,
-        }),
-      )
-    } catch {
-      continue
+      assertCompleteDocumentContent(content)
+      sources.push({
+        id,
+        markdown: content.markdown_content,
+        filename: doc.filename,
+        fileType: doc.file_type,
+        fileSize: doc.file_size,
+        sourceTimeMs: doc.updated_at === null || doc.updated_at === undefined ? undefined : Date.parse(doc.updated_at),
+        source: 'knowledge_base',
+        datasetId: doc.dataset_id ?? datasetId,
+        documentId: id,
+      })
+    } catch (error) {
+      errors.push(`${doc.filename}：${formatApiError(error, '正文读取失败')}`)
     }
   }
 
-  return items
+  return { sources, error: errors.length === 0 ? null : errors.join('；') }
 }
 
-async function loadParsingWorkspaceChunkFiles(isSessionCurrent: () => boolean): Promise<ChunkPreviewFileItem[]> {
+async function loadParsingWorkspaceChunkFiles(isSessionCurrent: () => boolean): Promise<MarkdownChunkFileSource[]> {
   const response = await parsingApi.listDocuments({ skip: 0, limit: CHUNK_PREVIEW_SCOPE_DOCUMENT_LIMIT })
-  const docs = response.items || []
+  const docs = response.items
 
-  const items: ChunkPreviewFileItem[] = []
+  const items: MarkdownChunkFileSource[] = []
   for (const doc of docs) {
     if (!isSessionCurrent()) return []
-    const id = String(doc.id || '').trim()
-    if (!id) continue
-    try {
-      const content = await parsingApi.getContent(id)
-      const markdown = (content.markdown_content || content.original_markdown_content || '').trim()
-      if (!markdown) continue
-      const meta = doc.metadata
-      items.push(
-        makeMarkdownChunkFileItem({
-          id,
-          markdown,
-          filename: doc.filename || 'document',
-          fileType: doc.file_type,
-          fileSize: Number(doc.file_size || markdown.length),
-          addedAt: doc.updated_at ? Date.parse(String(doc.updated_at)) : Date.now(),
-          source: 'parsing_workspace',
-          datasetId: doc.dataset_id || null,
-          datasetName: normalizeBackendString(meta?.dataset_name) || null,
-          documentId: id,
-        }),
-      )
-    } catch {
-      continue
-    }
+    const id = doc.id
+    const content = await parsingApi.getContent(id)
+    const meta = doc.metadata
+    items.push({
+      id,
+      markdown: content.markdown_content,
+      filename: doc.filename,
+      fileType: doc.file_type,
+      fileSize: doc.file_size,
+      sourceTimeMs: doc.updated_at === null || doc.updated_at === undefined ? undefined : Date.parse(doc.updated_at),
+      source: 'parsing_workspace',
+      datasetId: doc.dataset_id ?? null,
+      datasetName: readMetadataString(meta?.dataset_name) ?? null,
+      documentId: id,
+    })
   }
 
   return items
 }
 
-async function loadScopedChunkFiles(datasetId: string): Promise<ChunkPreviewFileItem[]> {
-  const scopedDatasetId = (datasetId || '').trim()
+async function loadScopedChunkFiles(datasetId: string): Promise<ScopedChunkFiles> {
+  const scopedDatasetId = datasetId.trim()
   const authScope = getAuthCacheScope()
   const sessionRevision = getAuthSessionRevision()
   const isSessionCurrent = () => getAuthCacheScope() === authScope && getAuthSessionRevision() === sessionRevision
@@ -270,7 +347,7 @@ async function loadScopedChunkFiles(datasetId: string): Promise<ChunkPreviewFile
 
   const promise = scopedDatasetId
     ? loadKnowledgeChunkFiles(scopedDatasetId, isSessionCurrent)
-    : loadParsingWorkspaceChunkFiles(isSessionCurrent)
+    : loadParsingWorkspaceChunkFiles(isSessionCurrent).then((sources) => ({ sources, error: null }))
   scopedChunkFilesInFlight.set(scopeKey, promise)
 
   try {
@@ -280,29 +357,6 @@ async function loadScopedChunkFiles(datasetId: string): Promise<ChunkPreviewFile
       scopedChunkFilesInFlight.delete(scopeKey)
     }
   }
-}
-
-function mergeScopedFiles(
-  prev: ChunkPreviewFileItem[],
-  scoped: ChunkPreviewFileItem[],
-  datasetId: string,
-): ChunkPreviewFileItem[] {
-  const manual = prev.filter((item) => isManualChunkFile(item) && isChunkPreviewFileInScope(item, datasetId))
-  const seen = new Set<string>()
-  const merged: ChunkPreviewFileItem[] = []
-
-  for (const item of [...manual, ...scoped]) {
-    const key = `${item.source || 'unknown'}:${item.documentId || item.id}`
-    if (seen.has(key)) continue
-    seen.add(key)
-    merged.push(item)
-  }
-
-  return merged
-}
-
-function retainScopeCompatibleFiles(prev: ChunkPreviewFileItem[], datasetId: string): ChunkPreviewFileItem[] {
-  return prev.filter((item) => isChunkPreviewFileInScope(item, datasetId))
 }
 
 function getApiErrorStatus(error: unknown): number | undefined {
@@ -319,10 +373,8 @@ export function useChunkPreview() {
   return context
 }
 
-type ChunkPreviewProviderProps = {
+type ChunkPreviewProviderProps = ChunkPreviewProps & {
   children: ReactNode
-  onConfirm?: (params: { chunk_size: number; chunk_overlap: number }) => void
-  onClose?: () => void
 }
 
 export function ChunkPreviewProvider({ children, onConfirm, onClose }: Readonly<ChunkPreviewProviderProps>) {
@@ -351,8 +403,11 @@ function ChunkPreviewWorkspace({ children, onConfirm, onClose }: Readonly<ChunkP
   const { capabilities, parserBackendAvailable, chunkStrategyAvailable } = usePipelineCapabilities()
 
   // 核心状态
-  const [fileList, setFileList] = useState<ChunkPreviewFileItem[]>([])
-  const [currentFileIndex, setCurrentFileIndex] = useState<number>(0)
+  const [fileWorkspace, setFileWorkspace] = useState<FileWorkspaceState>(() => createFileWorkspace([], null, new Set()))
+  const fileList = fileWorkspace.files
+  const selectedIngestFileIds = fileWorkspace.selectedIngestFileIds
+  const currentFileIndex =
+    fileWorkspace.currentFileId === null ? 0 : fileList.findIndex((item) => item.id === fileWorkspace.currentFileId)
   const [isDragging, setIsDragging] = useState(false)
 
   const [isLoading, setIsLoading] = useState(false)
@@ -361,13 +416,16 @@ function ChunkPreviewWorkspace({ children, onConfirm, onClose }: Readonly<ChunkP
   const [showSettingsPanel, setShowSettingsPanel] = useState(false)
   const [gapReviewRequest, setGapReviewRequest] = useState(0)
   const [error, setError] = useState<string | null>(null)
-  const [createdDocumentId, setCreatedDocumentId] = useState<string | null>(null)
+  const [ingestResult, setIngestResult] = useState<PreviewIngestResult | null>(null)
 
   const [datasetId, setDatasetId] = useState<string>('')
   const [scopeSyncLoading, setScopeSyncLoading] = useState(false)
   const [scopeSyncError, setScopeSyncError] = useState<string | null>(null)
+  const [scopeReloadRequest, setScopeReloadRequest] = useState(0)
 
-  const [previewData, setPreviewData] = useState<ChunkPreviewResponse | null>(null)
+  const [previewSnapshot, setPreviewSnapshot] = useState<PreviewSnapshot | null>(null)
+  const previewData = previewSnapshot?.data ?? null
+  const previewSourceFile = previewSnapshot?.file ?? null
   const [chunkOverrides, setChunkOverrides] = useState<ChunkOverrides>({})
   const [hoveredChunkIndex, setHoveredChunkIndex] = useState<number | null>(null)
   const [selectedChunkIndex, setSelectedChunkIndex] = useState<number | null>(null)
@@ -381,7 +439,7 @@ function ChunkPreviewWorkspace({ children, onConfirm, onClose }: Readonly<ChunkP
   const [chunkSize, setChunkSize] = useState(pipelineOptions.chunk_size ?? 1000)
   const [chunkOverlap, setChunkOverlap] = useState(pipelineOptions.chunk_overlap ?? 200)
 
-  // Preview-only performance settings (payload guardrails; do not affect ingestion).
+  // 控制预览载荷；手动入库要求完整预览，后台批量分块不使用预览数量上限。
   const [includeOriginalText, setIncludeOriginalText] = useState(true)
   const [originalTextMaxChars, setOriginalTextMaxChars] = useState(100000)
   const [maxChunks, setMaxChunks] = useState(2000)
@@ -397,36 +455,51 @@ function ChunkPreviewWorkspace({ children, onConfirm, onClose }: Readonly<ChunkP
   const [parentChildMinChildSize, setParentChildMinChildSize] = useState(200)
 
   // 其他状态
-  const [processedStatus, setProcessedStatus] = useState<Record<string, ChunkPreviewProcessedStatus>>({})
-  const [selectedIngestFileIds, setSelectedIngestFileIds] = useState<Set<string>>(() => new Set())
-  const [submitSuccess, setSubmitSuccess] = useState(false)
+  const [ingestStatusByRevision, setIngestStatusByRevision] = useState<Record<string, ChunkPreviewProcessedStatus>>({})
 
   // Refs
   const previewRequestIdRef = useRef(0)
   const previewAbortRef = useRef<AbortController | null>(null)
-  const previewCacheRef = useRef<Map<string, { data: ChunkPreviewResponse; createdAt: number; durationMs: number }>>(
-    new Map(),
+  const previewCacheRef = useRef(
+    new Map<string, Pick<PreviewSnapshot, 'data' | 'requestId'> & { createdAt: number; durationMs: number }>(),
   )
   const [separatorSettingsLoaded, setSeparatorSettingsLoaded] = useState(false)
   const [parentChildSettingsLoaded, setParentChildSettingsLoaded] = useState(false)
   const [perfSettingsLoaded, setPerfSettingsLoaded] = useState(false)
-  const [focusFileLoaded, setFocusFileLoaded] = useState(false)
+  const [fileSelectionReady, setFileSelectionReady] = useState(false)
   const [datasetScopeLoaded, setDatasetScopeLoaded] = useState(false)
   const datasetScopeLoadedRef = useRef(false)
   const mountedRef = useRef(false)
   const fileViewRevisionRef = useRef(0)
   const submissionRef = useRef<{ sessionRevision: number } | null>(null)
+  const ingestReceiptsRef = useRef(new Map<string, IngestReceipt>())
   const autoPreviewAttemptRef = useRef<string | null>(null)
-  const previewOwnerRef = useRef<{ file: File; sessionRevision: number } | null>(null)
   const workspaceAuthScope = useRef(getAuthCacheScope()).current
   const fileListRef = useRef(fileList)
-  const deepLinkAppliedKeyRef = useRef<string>('')
-  const lastSyncedChunkParamRef = useRef<string>('')
-  const currentFileItem = fileList[currentFileIndex] || null
-  const file = currentFileItem?.file || null
+  const parsedFilesRef = useRef(parsedFiles)
+  const markdownFileSnapshotsRef = useRef(new Map<string, MarkdownFileSnapshot>())
+  const scopeSyncControlRef = useRef<ScopeSyncControl>({ datasetId, cancelled: false, removedIds: new Set() })
+  const chunkParamNavigationRef = useRef<ChunkParamNavigation | null>(null)
+  const chunkParam = searchParams.get('chunk')?.trim() ?? null
+  const currentFileItem = fileList[currentFileIndex] ?? null
+  const file = currentFileItem?.file ?? null
+  const processedStatus = useMemo(() => {
+    const entries: Array<[string, ChunkPreviewProcessedStatus]> = []
+    for (const item of fileList) {
+      const status = ingestStatusByRevision[item.fileRevision]
+      if (status !== undefined) entries.push([item.id, status])
+    }
+    return Object.fromEntries(entries)
+  }, [fileList, ingestStatusByRevision])
 
   useEffect(() => {
+    const previous = fileListRef.current
     fileListRef.current = fileList
+    if (previous === fileList) return
+    const retained = new Set(fileList.map((item) => item.id))
+    for (const key of markdownFileSnapshotsRef.current.keys()) {
+      if (!retained.has(key)) markdownFileSnapshotsRef.current.delete(key)
+    }
   }, [fileList])
 
   const retirePreview = useCallback(() => {
@@ -434,6 +507,15 @@ function ChunkPreviewWorkspace({ children, onConfirm, onClose }: Readonly<ChunkP
     previewAbortRef.current?.abort()
     previewAbortRef.current = null
     setIsLoading(false)
+  }, [])
+
+  const retireScopeSync = useCallback(() => {
+    scopeSyncControlRef.current.cancelled = true
+    setScopeSyncLoading(false)
+  }, [])
+
+  const reloadScopeDocuments = useCallback(() => {
+    setScopeReloadRequest((request) => request + 1)
   }, [])
 
   useEffect(() => {
@@ -445,92 +527,73 @@ function ChunkPreviewWorkspace({ children, onConfirm, onClose }: Readonly<ChunkP
     }
   }, [])
 
-  // Deep-link support: /chunk-preview?chunk=123 will auto-select chunk #123 (1-based)
-  // once preview data is available.
   useEffect(() => {
-    if (!previewData?.chunks?.length) return
-    if (selectedChunkIndex != null) return
+    if (previewData === null) return
+    if (chunkParam === null || !/^[0-9]+$/.test(chunkParam)) return
+    if (isLocallyWrittenChunkParam(chunkParam, chunkParamNavigationRef.current)) return
 
-    const raw = (searchParams.get('chunk') || '').trim()
-    if (!raw) return
-
-    const n = Number.parseInt(raw, 10)
-    if (!Number.isFinite(n)) return
-    const idx = n - 1
-    if (idx < 0 || idx >= previewData.chunks.length) return
-
-    const key = `${previewData.filename}::${raw}`
-    if (deepLinkAppliedKeyRef.current === key) return
-    deepLinkAppliedKeyRef.current = key
-
-    setSelectedChunkIndex(idx)
-  }, [previewData?.chunks?.length, previewData?.filename, searchParams, selectedChunkIndex])
+    const position = Number(chunkParam) - 1
+    if (!Number.isSafeInteger(position) || position < 0 || position >= previewData.chunks.length) return
+    setSelectedChunkIndex((current) => (current === null ? position : current))
+  }, [chunkParam, previewData])
 
   useEffect(() => {
-    if (
-      !shouldRevealPdfPreviewOnChunkSelect({
-        nextIndex: selectedChunkIndex,
-        showOriginalPanel,
-        isPdf: isPdfOriginalFile(previewData, file),
-        preferredPreviewMode: getStoredOriginalPreviewMode(),
-      })
-    ) {
-      return
-    }
-    setShowOriginalPanel(true)
-  }, [file, previewData, selectedChunkIndex, showOriginalPanel])
+    const isPdf = isPdfOriginalFile(previewData, previewSourceFile ?? file)
+    const preferredPreviewMode = getStoredOriginalPreviewMode()
+    setShowOriginalPanel(
+      (visible) =>
+        visible ||
+        shouldRevealPdfPreviewOnChunkSelect({
+          nextIndex: selectedChunkIndex,
+          showOriginalPanel: visible,
+          isPdf,
+          preferredPreviewMode,
+        }),
+    )
+  }, [file, previewData, previewSourceFile, selectedChunkIndex])
 
-  // Sync selectedChunkIndex -> URL param (best-effort).
-  // Important: avoid clobbering inbound deep links before we have applied them.
   useEffect(() => {
-    if (globalThis.window === undefined) return
-
-    const current = (searchParams.get('chunk') || '').trim()
-    const next = selectedChunkIndex == null ? '' : String(selectedChunkIndex + 1)
-
-    // Keep ref in sync when URL already matches state.
-    if (current === next) {
-      lastSyncedChunkParamRef.current = next
+    const nextChunkParam = selectedChunkIndex === null ? null : String(selectedChunkIndex + 1)
+    const navigation = chunkParamNavigationRef.current
+    if (chunkParam === nextChunkParam && (navigation === null || navigation.to === nextChunkParam)) {
+      chunkParamNavigationRef.current = nextChunkParam === null ? null : { from: nextChunkParam, to: nextChunkParam }
       return
     }
 
-    // On initial load, `current` may come from a deep-link. Do not delete it just because
-    // selection is still null (preview might not be ready yet).
-    if (!next && current && current !== lastSyncedChunkParamRef.current) return
+    // An incoming selection may need to wait for the preview response.
+    if (nextChunkParam === null && chunkParam !== null && !isLocallyWrittenChunkParam(chunkParam, navigation)) return
+    if (navigation !== null && navigation.from === chunkParam && navigation.to === nextChunkParam) return
 
     const params = new URLSearchParams(searchParams.toString())
-    if (next) params.set('chunk', next)
-    else params.delete('chunk')
+    if (nextChunkParam === null) {
+      params.delete('chunk')
+    } else {
+      params.set('chunk', nextChunkParam)
+    }
 
-    lastSyncedChunkParamRef.current = next
-
-    const qs = params.toString()
-    const path = '/chunk-preview'
-    const query = qs ? `?${qs}` : ''
-    router.replace(`${path}${query}`)
-  }, [router, searchParams, selectedChunkIndex])
+    chunkParamNavigationRef.current = { from: chunkParam ?? navigation?.to ?? null, to: nextChunkParam }
+    router.replace(buildChunkPreviewHref(params))
+  }, [chunkParam, router, searchParams, selectedChunkIndex])
 
   useEffect(() => {
-    if (globalThis.window === undefined) return
     if (datasetScopeLoadedRef.current) return
-    const inbound = (searchParams.get('dataset_id') || '').trim()
-    const saved = (readClientStorage(STORAGE_DATASET_ID_KEY) || '').trim()
-    const next = inbound || saved
-    if (next) setDatasetId(next)
+    const nextDatasetId =
+      readMetadataString(searchParams.get('dataset_id')) ??
+      readMetadataString(readClientStorage(STORAGE_DATASET_ID_KEY))
+    if (nextDatasetId !== undefined) setDatasetId(nextDatasetId)
     datasetScopeLoadedRef.current = true
     setDatasetScopeLoaded(true)
   }, [searchParams])
 
   useEffect(() => {
-    if (globalThis.window === undefined) return
     if (!datasetScopeLoaded) return
-    if (datasetId) writeClientStorage(STORAGE_DATASET_ID_KEY, datasetId)
+    if (datasetId.length > 0) writeClientStorage(STORAGE_DATASET_ID_KEY, datasetId)
     else removeClientStorage(STORAGE_DATASET_ID_KEY)
   }, [datasetId, datasetScopeLoaded])
 
   useEffect(() => {
     if (globalThis.window === undefined) return
-    const raw = (readClientStorage(STORAGE_SEPARATOR_SETTINGS_KEY) || '').trim()
+    const raw = readClientStorage(STORAGE_SEPARATOR_SETTINGS_KEY)?.trim()
     if (!raw) {
       setSeparatorSettingsLoaded(true)
       return
@@ -551,7 +614,7 @@ function ChunkPreviewWorkspace({ children, onConfirm, onClose }: Readonly<ChunkP
   // Load parent-child strategy settings (best-effort).
   useEffect(() => {
     if (globalThis.window === undefined) return
-    const raw = (readClientStorage(STORAGE_PARENT_CHILD_SETTINGS_KEY) || '').trim()
+    const raw = readClientStorage(STORAGE_PARENT_CHILD_SETTINGS_KEY)?.trim()
     if (!raw) {
       setParentChildSettingsLoaded(true)
       return
@@ -559,10 +622,10 @@ function ChunkPreviewWorkspace({ children, onConfirm, onClose }: Readonly<ChunkP
     try {
       const data = JSON.parse(raw)
       if (typeof data?.parentChildRatio === 'number' && Number.isFinite(data.parentChildRatio)) {
-        setParentChildRatio(Math.max(0.05, Math.min(1, Number(data.parentChildRatio))))
+        setParentChildRatio(Math.max(0.05, Math.min(1, data.parentChildRatio)))
       }
       if (typeof data?.parentChildMinChildSize === 'number' && Number.isFinite(data.parentChildMinChildSize)) {
-        setParentChildMinChildSize(Math.max(50, Math.min(4000, Math.trunc(Number(data.parentChildMinChildSize)))))
+        setParentChildMinChildSize(Math.max(50, Math.min(4000, Math.trunc(data.parentChildMinChildSize))))
       }
     } catch {
       // ignore corrupted storage
@@ -597,7 +660,7 @@ function ChunkPreviewWorkspace({ children, onConfirm, onClose }: Readonly<ChunkP
   // Load preview perf settings (best-effort).
   useEffect(() => {
     if (globalThis.window === undefined) return
-    const raw = (readClientStorage(STORAGE_PERF_SETTINGS_KEY) || '').trim()
+    const raw = readClientStorage(STORAGE_PERF_SETTINGS_KEY)?.trim()
     if (!raw) {
       setPerfSettingsLoaded(true)
       return
@@ -611,7 +674,7 @@ function ChunkPreviewWorkspace({ children, onConfirm, onClose }: Readonly<ChunkP
       if (typeof data?.maxChunks === 'number' && Number.isFinite(data.maxChunks)) {
         setMaxChunks(Math.max(0, Math.min(20000, Math.trunc(data.maxChunks))))
       }
-      if (typeof data?.useParseCache === 'boolean') setUseParseCache(Boolean(data.useParseCache))
+      if (typeof data?.useParseCache === 'boolean') setUseParseCache(data.useParseCache)
     } catch {
       // ignore corrupted storage
     } finally {
@@ -632,92 +695,95 @@ function ChunkPreviewWorkspace({ children, onConfirm, onClose }: Readonly<ChunkP
     writeClientStorage(STORAGE_PERF_SETTINGS_KEY, payload)
   }, [includeOriginalText, originalTextMaxChars, maxChunks, useParseCache, perfSettingsLoaded])
 
-  // Keep currentFileIndex valid when fileList changes.
-  useEffect(() => {
-    if (fileList.length === 0) {
-      setCurrentFileIndex(0)
-      return
-    }
-    if (currentFileIndex >= fileList.length) {
-      setCurrentFileIndex(fileList.length - 1)
-    }
-  }, [currentFileIndex, fileList.length])
-
-  useEffect(() => {
-    const availableIds = new Set(fileList.map((item) => item.id))
-    setSelectedIngestFileIds((prev) => {
-      const next = new Set(Array.from(prev).filter((id) => availableIds.has(id)))
-      return next.size === prev.size ? prev : next
-    })
-  }, [fileList])
-
   // Persist the currently focused file (best-effort UX when coming back to the page).
   useEffect(() => {
     if (globalThis.window === undefined) return
-    if (!focusFileLoaded) return
+    if (!fileSelectionReady) return
     if (!currentFileItem?.id) return
     writeClientStorage(STORAGE_FOCUS_FILE_ID_KEY, currentFileItem.id)
-  }, [currentFileItem?.id, focusFileLoaded])
+  }, [currentFileItem?.id, fileSelectionReady])
 
   // Restore focused file after fileList is initialized.
   useEffect(() => {
     if (globalThis.window === undefined) return
-    if (focusFileLoaded) return
+    if (fileSelectionReady) return
     if (fileList.length === 0) return
-    const saved = (readClientStorage(STORAGE_FOCUS_FILE_ID_KEY) || '').trim()
+    const saved = readClientStorage(STORAGE_FOCUS_FILE_ID_KEY)?.trim()
     if (saved) {
-      const idx = fileList.findIndex((f) => f.id === saved)
-      if (idx >= 0) setCurrentFileIndex(idx)
-      else if (scopeSyncLoading) return
+      if (fileList.some((file) => file.id === saved)) setFileWorkspace((prev) => selectWorkspaceFile(prev, saved))
+      else if (scopeSyncLoading || scopeSyncError !== null) return
     }
-    setFocusFileLoaded(true)
-  }, [fileList, focusFileLoaded, scopeSyncLoading])
+    setFileSelectionReady(true)
+  }, [fileList, fileSelectionReady, scopeSyncLoading, scopeSyncError])
 
   // 初始化/切换范围：从解析工作台缓存加载。后端同步会在稍后补齐持久化内容。
   useEffect(() => {
-    if (parsedFiles.length === 0) return
-    const scoped = parsedFiles
-      .filter((pf) => {
-        if (datasetId) return pf.source === 'knowledge_base' && pf.datasetId === datasetId
-        return pf.source !== 'knowledge_base'
-      })
-      .map(parsedFileToChunkFileItem)
-      .filter((item): item is ChunkPreviewFileItem => Boolean(item))
+    parsedFilesRef.current = parsedFiles
+    if (!datasetScopeLoaded) return
+    const control = scopeSyncControlRef.current
+    if (control.datasetId === datasetId && control.cancelled) return
+    const scoped = makeMarkdownChunkFileItems(
+      getParsedChunkFileSources(parsedFiles, datasetId).filter(
+        (source) => control.datasetId !== datasetId || !control.removedIds.has(source.id),
+      ),
+      markdownFileSnapshotsRef.current,
+    )
 
     if (scoped.length === 0) return
-    setFileList((prev) => mergeScopedFiles(prev, scoped, datasetId))
-  }, [datasetId, parsedFiles])
+    setFileWorkspace((prev) =>
+      mergeScopedFiles(
+        prev,
+        [...scoped, ...prev.files.filter((item) => isChunkPreviewFileInScope(item, datasetId))],
+        datasetId,
+      ),
+    )
+  }, [datasetId, datasetScopeLoaded, parsedFiles])
 
   useEffect(() => {
-    let cancelled = false
+    if (!datasetScopeLoaded) return
+    const control: ScopeSyncControl = { datasetId, cancelled: false, removedIds: new Set() }
+    scopeSyncControlRef.current = control
     const authScope = getAuthCacheScope()
     const sessionRevision = getAuthSessionRevision()
     const isCurrent = () =>
-      !cancelled && getAuthCacheScope() === authScope && getAuthSessionRevision() === sessionRevision
+      !control.cancelled && getAuthCacheScope() === authScope && getAuthSessionRevision() === sessionRevision
 
     const loadScopedDocuments = async () => {
       setScopeSyncLoading(true)
       setScopeSyncError(null)
-      setFileList((prev) => retainScopeCompatibleFiles(prev, datasetId))
+      setFileWorkspace((prev) =>
+        createFileWorkspace(
+          prev.files.filter((item) => isChunkPreviewFileInScope(item, datasetId)),
+          prev.currentFileId,
+          prev.selectedIngestFileIds,
+        ),
+      )
 
       try {
-        const scopedFiles = await loadScopedChunkFiles(datasetId)
+        const { sources, error } = await loadScopedChunkFiles(datasetId)
 
         if (!isCurrent()) return
-        setFileList((prev) => mergeScopedFiles(prev, scopedFiles, datasetId))
+        const scopedFiles = makeMarkdownChunkFileItems(
+          [...getParsedChunkFileSources(parsedFilesRef.current, datasetId), ...sources].filter(
+            (source) => !control.removedIds.has(source.id),
+          ),
+          markdownFileSnapshotsRef.current,
+        )
+        setFileWorkspace((prev) => mergeScopedFiles(prev, scopedFiles, datasetId))
+        setScopeSyncError(error)
       } catch (err: unknown) {
         if (!isCurrent()) return
         setScopeSyncError(formatApiError(err, '加载范围文档失败'))
       } finally {
-        if (!cancelled) setScopeSyncLoading(false)
+        if (!control.cancelled) setScopeSyncLoading(false)
       }
     }
 
     void loadScopedDocuments()
     return () => {
-      cancelled = true
+      control.cancelled = true
     }
-  }, [datasetId])
+  }, [datasetId, datasetScopeLoaded, scopeReloadRequest])
 
   // 同步 pipeline options
   useEffect(() => {
@@ -741,104 +807,111 @@ function ChunkPreviewWorkspace({ children, onConfirm, onClose }: Readonly<ChunkP
   }, [chunkOverlap, chunkStrategy, updateOption])
 
   useEffect(() => {
-    if (!capabilities) return
-    const available = parserBackendAvailable(parserBackend)
-    if (available === false) {
-      const fallback = capabilities.default_parser_backend || 'auto'
-      if (fallback && fallback !== parserBackend) {
-        setParserBackend(fallback)
-        setError(`解析器不可用，已切换为 ${getParserLabel(fallback)}`)
-      }
+    if (isRetiredParserBackend(parserBackend)) {
+      setError(`解析器已移除：${getParserLabel(parserBackend)}。请选择其他解析器。`)
+      return
     }
+    if (!capabilities || parserBackendAvailable(parserBackend) !== false) return
+    const fallback = capabilities.default_parser_backend
+    if (fallback === parserBackend) return
+
+    setParserBackend(fallback)
+    setError(`解析器不可用，已切换为 ${getParserLabel(fallback)}`)
   }, [capabilities, parserBackend, parserBackendAvailable, setParserBackend])
 
   useEffect(() => {
-    if (!capabilities) return
-    const available = chunkStrategyAvailable(chunkStrategy)
-    if (available === false) {
-      const fallback = capabilities.default_chunk_strategy || 'langchain_recursive'
-      if (fallback && fallback !== chunkStrategy) {
-        setChunkStrategy(fallback)
-        setError(`切块策略不可用，已切换为 ${getChunkStrategyLabel(fallback)}`)
-      }
+    if (isRetiredChunkStrategy(chunkStrategy)) {
+      setError(`切块策略已移除：${getChunkStrategyLabel(chunkStrategy)}。请选择其他策略。`)
+      return
     }
+    if (!capabilities || chunkStrategyAvailable(chunkStrategy) !== false) return
+    const fallback = capabilities.default_chunk_strategy
+    if (fallback === chunkStrategy) return
+
+    setChunkStrategy(fallback)
+    setError(`切块策略不可用，已切换为 ${getChunkStrategyLabel(fallback)}`)
   }, [capabilities, chunkStrategy, chunkStrategyAvailable, setChunkStrategy])
 
   // Actions: 文件操作
   const addFiles = useCallback(
     (files: File[]) => {
-      retirePreview()
-      autoPreviewAttemptRef.current = null
-      fileViewRevisionRef.current += 1
-      setFileList((prev) => [
-        ...prev,
-        ...files.map((f) => ({
-          id: generateRequestId(),
+      setFileSelectionReady(true)
+      const sourceTimeMs = Date.now()
+      const added = files.map<ChunkPreviewFileItem>((f) => {
+        const id = generateRequestId()
+        return {
+          id,
+          fileRevision: id,
           file: f,
           displayName: f.name,
           originalFileType: f.name.split('.').pop()?.toLowerCase(),
           originalFileSize: f.size,
-          addedAt: Date.now(),
-          source: 'local_upload' as const,
-          datasetId: datasetId || null,
-        })),
-      ])
-      setPreviewData(null)
+          sourceTimeMs,
+          source: 'local_upload',
+          datasetId: datasetId === '' ? null : datasetId,
+        }
+      })
+      setFileWorkspace((prev) =>
+        createFileWorkspace([...prev.files, ...added], prev.currentFileId, prev.selectedIngestFileIds),
+      )
+      if (currentFileItem !== null) return
+
+      retirePreview()
+      autoPreviewAttemptRef.current = null
+      fileViewRevisionRef.current += 1
+      setPreviewSnapshot(null)
       setError(null)
-      setSubmitSuccess(false)
       setHoveredChunkIndex(null)
       setSelectedChunkIndex(null)
-      setCreatedDocumentId(null)
+      setIngestResult(null)
     },
-    [datasetId, retirePreview],
+    [currentFileItem, datasetId, retirePreview],
   )
 
   const removeFile = useCallback(
     (index: number) => {
-      const removedId = fileList[index]?.id
-      if (index === currentFileIndex) {
+      const removed = fileList[index]
+      scopeSyncControlRef.current.removedIds.add(removed.id)
+      if (removed.id === currentFileItem?.id) {
         retirePreview()
         fileViewRevisionRef.current += 1
       }
-      setFileList((prev) => {
-        const newList = [...prev]
-        newList.splice(index, 1)
-        return newList
+      setFileWorkspace((prev) => {
+        const previousIndex = prev.files.findIndex((item) => item.id === removed.id)
+        const neighbor = prev.files[previousIndex - 1] ?? prev.files[previousIndex + 1]
+        const currentFileId = prev.currentFileId === removed.id ? (neighbor?.id ?? null) : prev.currentFileId
+        return createFileWorkspace(
+          prev.files.filter((item) => item.id !== removed.id),
+          currentFileId,
+          prev.selectedIngestFileIds,
+        )
       })
-      if (removedId) {
-        setSelectedIngestFileIds((prev) => {
-          if (!prev.has(removedId)) return prev
-          const next = new Set(prev)
-          next.delete(removedId)
-          return next
-        })
-      }
-      if (currentFileIndex >= index && currentFileIndex > 0) {
-        setCurrentFileIndex((prev) => prev - 1)
-      }
-      if (index === currentFileIndex) {
-        setPreviewData(null)
+      if (removed.id === currentFileItem?.id) {
+        setPreviewSnapshot(null)
         setChunkOverrides({})
+        setError(null)
         setHoveredChunkIndex(null)
         setSelectedChunkIndex(null)
-        setCreatedDocumentId(null)
+        setIngestResult(null)
+        setLastPreviewAt(null)
+        setLastPreviewDurationMs(null)
+        setCacheHit(false)
       }
     },
-    [currentFileIndex, fileList, retirePreview],
+    [currentFileItem?.id, fileList, retirePreview],
   )
 
   const clearFiles = useCallback(() => {
+    setFileSelectionReady(true)
+    retireScopeSync()
     retirePreview()
     fileViewRevisionRef.current += 1
     removeClientStorage(STORAGE_FOCUS_FILE_ID_KEY)
-    setFileList([])
-    setSelectedIngestFileIds(new Set())
-    setCurrentFileIndex(0)
-    setPreviewData(null)
+    setFileWorkspace(createFileWorkspace([], null, new Set()))
+    setPreviewSnapshot(null)
     setChunkOverrides({})
     setError(null)
-    setProcessedStatus({})
-    setSubmitSuccess(false)
+    setIngestStatusByRevision({})
     setHoveredChunkIndex(null)
     setSelectedChunkIndex(null)
     setLastPreviewAt(null)
@@ -846,35 +919,38 @@ function ChunkPreviewWorkspace({ children, onConfirm, onClose }: Readonly<ChunkP
     setCacheHit(false)
     setRunHistory([])
     previewCacheRef.current.clear()
-    setCreatedDocumentId(null)
-  }, [retirePreview])
+    setIngestResult(null)
+  }, [retirePreview, retireScopeSync])
 
   const selectFile = useCallback(
     (index: number) => {
+      setFileSelectionReady(true)
+      const selected = fileList[index]
+      if (selected.id === currentFileItem?.id) return
       retirePreview()
       autoPreviewAttemptRef.current = null
       fileViewRevisionRef.current += 1
-      setCurrentFileIndex(index)
-      setPreviewData(null)
+      setFileWorkspace((prev) => selectWorkspaceFile(prev, selected.id))
+      setPreviewSnapshot(null)
       setChunkOverrides({})
       setError(null)
-      setSubmitSuccess(false)
       setHoveredChunkIndex(null)
       setSelectedChunkIndex(null)
-      setCreatedDocumentId(null)
+      setIngestResult(null)
       setLastPreviewAt(null)
       setLastPreviewDurationMs(null)
       setCacheHit(false)
     },
-    [retirePreview],
+    [retirePreview, currentFileItem?.id, fileList],
   )
 
   const toggleIngestFileSelection = useCallback((fileId: string) => {
-    setSelectedIngestFileIds((prev) => {
-      const next = new Set(prev)
+    setFileWorkspace((prev) => {
+      if (!prev.files.some((item) => item.id === fileId)) return prev
+      const next = new Set(prev.selectedIngestFileIds)
       if (next.has(fileId)) next.delete(fileId)
       else next.add(fileId)
-      return next
+      return { ...prev, selectedIngestFileIds: next }
     })
   }, [])
 
@@ -895,147 +971,82 @@ function ChunkPreviewWorkspace({ children, onConfirm, onClose }: Readonly<ChunkP
       setIsDragging(false)
       const viewRevision = fileViewRevisionRef.current
       const sessionRevision = getAuthSessionRevision()
+      const isCurrentDrop = () =>
+        mountedRef.current &&
+        fileViewRevisionRef.current === viewRevision &&
+        getAuthCacheScope() === workspaceAuthScope &&
+        getAuthSessionRevision() === sessionRevision
 
-      if (e.dataTransfer.items) {
-        const files = await scanFiles(e.dataTransfer.items)
-        if (
-          !mountedRef.current ||
-          fileViewRevisionRef.current !== viewRevision ||
-          getAuthCacheScope() !== workspaceAuthScope ||
-          getAuthSessionRevision() !== sessionRevision
-        )
-          return
-        if (files.length > 0) {
-          addFiles(files)
-        }
-      } else if (e.dataTransfer.files.length > 0) {
-        const files = Array.from(e.dataTransfer.files)
-        addFiles(files)
+      const { items, files: droppedFiles } = e.dataTransfer
+      let files: File[]
+      try {
+        files = items.length > 0 ? await scanFiles(items) : Array.from(droppedFiles)
+      } catch (error) {
+        if (isCurrentDrop()) throw error
+        return
       }
+      if (isCurrentDrop() && files.length > 0) addFiles(files)
     },
     [addFiles, workspaceAuthScope],
   )
 
   // Actions: 使用示例
   const loadExample = useCallback(() => {
+    retireScopeSync()
+    setFileSelectionReady(true)
     retirePreview()
     fileViewRevisionRef.current += 1
     const blob = new Blob([EXAMPLE_TEXT], { type: 'text/plain' })
     const exampleFile = new File([blob], 'rag-introduction.md', { type: 'text/markdown' })
-    setFileList([
+    const id = generateRequestId()
+    const files: ChunkPreviewFileItem[] = [
       {
-        id: generateRequestId(),
+        id,
+        fileRevision: id,
         file: exampleFile,
         displayName: exampleFile.name,
         originalFileType: 'md',
         originalFileSize: exampleFile.size,
-        addedAt: Date.now(),
+        sourceTimeMs: Date.now(),
         source: 'example',
         datasetId: datasetId || null,
       },
-    ])
-    setCurrentFileIndex(0)
-    setSelectedIngestFileIds(new Set())
-    setPreviewData(null)
+    ]
+    setFileWorkspace(createFileWorkspace(files, id, new Set()))
+    setPreviewSnapshot(null)
     setChunkOverrides({})
     setError(null)
-    setSubmitSuccess(false)
     setHoveredChunkIndex(null)
     setSelectedChunkIndex(null)
-    setCreatedDocumentId(null)
-  }, [datasetId, retirePreview])
-
-  const buildPreviewCacheKey = useCallback(
-    (settings: ChunkPreviewRunSettings = {}) => {
-      if (!file) return ''
-      const strategy = settings.strategy ?? chunkStrategy
-      const pipelineKey = pipelineOverridesEnabled ? JSON.stringify(pipelineOptions || {}) : 'none'
-      const separatorKey =
-        strategy === 'separator'
-          ? `sep:${separatorPreset}:${separatorCustom}:${keepSeparator ? 'keep' : 'drop'}:${separatorMaxChunkSize}`
-          : 'sep:none'
-      const parentChildKey =
-        strategy === 'parent_child' ? `pc:${parentChildRatio}:${parentChildMinChildSize}` : 'pc:none'
-      const perfKey = `perf:${includeOriginalText ? 'orig' : 'noorig'}:${originalTextMaxChars}:${maxChunks}:${useParseCache ? 'pcache' : 'nopcache'}`
-      return [
-        getAuthCacheScope(),
-        getAuthSessionRevision(),
-        currentFileItem?.id,
-        file.name,
-        file.size,
-        file.lastModified,
-        datasetId || 'default-dataset',
-        settings.parserBackend ?? parserBackend,
-        strategy,
-        settings.chunkSize ?? chunkSize,
-        strategy === 'separator' ? 0 : (settings.chunkOverlap ?? chunkOverlap),
-        pipelineKey,
-        separatorKey,
-        parentChildKey,
-        perfKey,
-      ].join('::')
-    },
-    [
-      file,
-      currentFileItem?.id,
-      datasetId,
-      parserBackend,
-      chunkStrategy,
-      chunkSize,
-      chunkOverlap,
-      pipelineOverridesEnabled,
-      pipelineOptions,
-      separatorPreset,
-      separatorCustom,
-      keepSeparator,
-      separatorMaxChunkSize,
-      parentChildRatio,
-      parentChildMinChildSize,
-      includeOriginalText,
-      originalTextMaxChars,
-      maxChunks,
-      useParseCache,
-    ],
-  )
-
-  const currentPreviewCacheKey = buildPreviewCacheKey()
-  const isPreviewDirty = Boolean(
-    previewData && lastPreviewCacheKey && currentPreviewCacheKey && currentPreviewCacheKey !== lastPreviewCacheKey,
-  )
+    setIngestResult(null)
+  }, [datasetId, retirePreview, retireScopeSync])
 
   const buildChunkPreviewRequestParams = useCallback(
     (settings: ChunkPreviewRunSettings = {}) => {
       const strategy = settings.strategy ?? chunkStrategy
-      const effectiveOverlap = strategy === 'separator' ? 0 : (settings.chunkOverlap ?? chunkOverlap)
-      const separator =
-        strategy === 'separator'
-          ? separatorPreset === 'custom'
-            ? decodeSeparatorInput(separatorCustom) || '\n\n'
-            : undefined
-          : undefined
+      const isSeparator = strategy === 'separator'
+      const isParentChild = strategy === 'parent_child'
+      const separator = isSeparator && separatorPreset === 'custom' ? decodeSeparatorInput(separatorCustom) : undefined
 
       return {
-        effectiveOverlap,
-        params: {
-          chunk_size: settings.chunkSize ?? chunkSize,
-          chunk_overlap: effectiveOverlap,
-          include_original_text: includeOriginalText,
-          include_review_signals: true,
-          original_text_max_chars: originalTextMaxChars,
-          max_chunks: maxChunks,
-          use_parse_cache: useParseCache,
-          parser_backend: settings.parserBackend ?? parserBackend,
-          chunk_strategy: strategy,
-          child_ratio: strategy === 'parent_child' ? parentChildRatio : undefined,
-          min_child_size: strategy === 'parent_child' ? parentChildMinChildSize : undefined,
-          dataset_id: datasetId || undefined,
-          pipeline: pipelineOverridesEnabled ? pipelineOptions : undefined,
-          separator_preset: strategy === 'separator' ? separatorPreset : undefined,
-          separator,
-          keep_separator: strategy === 'separator' ? keepSeparator : undefined,
-          separator_max_chunk_size: strategy === 'separator' ? separatorMaxChunkSize : undefined,
-        },
-      }
+        chunk_size: settings.chunkSize ?? chunkSize,
+        chunk_overlap: isSeparator ? 0 : (settings.chunkOverlap ?? chunkOverlap),
+        include_original_text: includeOriginalText,
+        include_review_signals: true,
+        original_text_max_chars: originalTextMaxChars,
+        max_chunks: maxChunks,
+        use_parse_cache: useParseCache,
+        parser_backend: settings.parserBackend ?? parserBackend,
+        chunk_strategy: strategy,
+        child_ratio: isParentChild ? parentChildRatio : undefined,
+        min_child_size: isParentChild ? parentChildMinChildSize : undefined,
+        dataset_id: datasetId === '' ? undefined : datasetId,
+        pipeline: pipelineOverridesEnabled ? pipelineOptions : undefined,
+        separator_preset: isSeparator ? separatorPreset : undefined,
+        separator: separator === '' ? '\n\n' : separator,
+        keep_separator: isSeparator ? keepSeparator : undefined,
+        separator_max_chunk_size: isSeparator ? separatorMaxChunkSize : undefined,
+      } satisfies ChunkPreviewRequestParams
     },
     [
       chunkOverlap,
@@ -1057,18 +1068,39 @@ function ChunkPreviewWorkspace({ children, onConfirm, onClose }: Readonly<ChunkP
       useParseCache,
     ],
   )
+
+  const currentPreviewCacheKey =
+    currentFileItem === null ? null : buildPreviewCacheKey(currentFileItem, buildChunkPreviewRequestParams())
+  const previewSubmissionView = useMemo<PreviewSubmissionView>(
+    () => ({ data: previewData, overrides: chunkOverrides, cacheKey: currentPreviewCacheKey }),
+    [previewData, chunkOverrides, currentPreviewCacheKey],
+  )
+  const previewSubmissionViewRef = useRef(previewSubmissionView)
+  useLayoutEffect(() => {
+    previewSubmissionViewRef.current = previewSubmissionView
+  }, [previewSubmissionView])
+  const isCurrentIngestResult =
+    ingestResult !== null && isSamePreviewSubmissionView(previewSubmissionView, ingestResult.view)
+  const createdDocumentId = isCurrentIngestResult ? ingestResult.documentId : null
+  const submitSuccess = isCurrentIngestResult && ingestResult.completed
+  const isPreviewDirty =
+    previewData !== null &&
+    lastPreviewCacheKey !== null &&
+    currentPreviewCacheKey !== null &&
+    currentPreviewCacheKey !== lastPreviewCacheKey
 
   // Actions: 执行预览
   const runPreview = useCallback<ChunkPreviewContextType['runPreview']>(
     async (options) => {
       if (!file) return
+      setFileSelectionReady(true)
       if (!mountedRef.current || getAuthCacheScope() !== workspaceAuthScope) return
       if (!currentFileItem || !isChunkPreviewFileInScope(currentFileItem, datasetId)) {
         setError(datasetId ? '当前数据集暂无可预览文档，请先在该数据集完成入库。' : '当前范围暂无可预览文档。')
         return
       }
-      const { effectiveOverlap, params: baseParams } = buildChunkPreviewRequestParams(options?.settings)
-      if (effectiveOverlap >= baseParams.chunk_size) {
+      const baseParams = buildChunkPreviewRequestParams(options?.settings)
+      if (baseParams.chunk_overlap >= baseParams.chunk_size) {
         setError('重叠长度必须小于切块长度')
         return
       }
@@ -1078,54 +1110,47 @@ function ChunkPreviewWorkspace({ children, onConfirm, onClose }: Readonly<ChunkP
         return
       }
 
-      const cacheKey = buildPreviewCacheKey(options?.settings)
+      const cacheKey = buildPreviewCacheKey(currentFileItem, baseParams)
       autoPreviewAttemptRef.current = cacheKey
       retirePreview()
       const sessionRevision = getAuthSessionRevision()
-      const cached = cacheKey ? previewCacheRef.current.get(cacheKey) : undefined
+      const cached = previewCacheRef.current.get(cacheKey)
       if (cached && !options?.force) {
-        setChunkOverrides({})
-        setHoveredChunkIndex(null)
-        setSelectedChunkIndex(null)
-        setCreatedDocumentId(null)
-        setPreviewData(cached.data)
-        previewOwnerRef.current = { file, sessionRevision }
+        if (previewSnapshot?.data !== cached.data) {
+          setChunkOverrides({})
+          setHoveredChunkIndex(null)
+          setSelectedChunkIndex(null)
+        }
+        setPreviewSnapshot({ data: cached.data, file, sessionRevision, requestId: cached.requestId })
         setLastPreviewAt(cached.createdAt)
         setLastPreviewDurationMs(cached.durationMs)
         setCacheHit(true)
-        setLastPreviewCacheKey(cacheKey || null)
+        setLastPreviewCacheKey(cacheKey)
         setError(null)
-        setRunHistory((prev) =>
-          [
-            {
-              id: generateRequestId(),
-              fileName: file.name,
-              parserBackend: baseParams.parser_backend,
-              strategy: baseParams.chunk_strategy,
-              chunkSize: baseParams.chunk_size,
-              chunkOverlap: effectiveOverlap,
-              totalChunks: cached.data.total_chunks,
-              durationMs: cached.durationMs,
-              createdAt: Date.now(),
-              cacheHit: true,
-              cacheKey: cacheKey || undefined,
-            },
-            ...prev,
-          ].slice(0, 20),
-        )
+        const run = {
+          id: generateRequestId(),
+          fileName: file.name,
+          fileId: currentFileItem.id,
+          parserBackend: baseParams.parser_backend,
+          strategy: baseParams.chunk_strategy,
+          chunkSize: baseParams.chunk_size,
+          chunkOverlap: baseParams.chunk_overlap,
+          totalChunks: cached.data.total_chunks,
+          durationMs: cached.durationMs,
+          createdAt: Date.now(),
+          cacheHit: true,
+          cacheKey,
+        }
+        setRunHistory((prev) => [run, ...prev].slice(0, 20))
         return
       }
 
-      const requestId = ++previewRequestIdRef.current
-      previewAbortRef.current?.abort()
+      const requestId = previewRequestIdRef.current
       const controller = new AbortController()
       previewAbortRef.current = controller
       setIsLoading(true)
       setError(null)
       setCacheHit(false)
-      setHoveredChunkIndex(null)
-      setSelectedChunkIndex(null)
-      setCreatedDocumentId(null)
       const startTime = performance.now()
       const isCurrent = () =>
         mountedRef.current &&
@@ -1138,20 +1163,18 @@ function ChunkPreviewWorkspace({ children, onConfirm, onClose }: Readonly<ChunkP
         // Enterprise UX: when parse cache is enabled and we have a prior file_sha256, avoid re-uploading the file.
         // If server cache miss/disabled, fall back to uploading.
         let data: ChunkPreviewResponse
-        const sha = previewData?.file_sha256
-        const fileType = previewData?.file_type
+        const sha = previewSnapshot?.data.file_sha256
         if (
           useParseCache &&
           sha &&
-          (fileType || file.name) &&
-          previewOwnerRef.current?.file === file &&
-          previewOwnerRef.current.sessionRevision === sessionRevision
+          previewSnapshot?.file === file &&
+          previewSnapshot.sessionRevision === sessionRevision
         ) {
           try {
             data = await documentApi.chunkPreviewBySha(
               {
                 file_sha256: sha,
-                file_type: fileType || undefined,
+                file_type: previewSnapshot.data.file_type,
                 filename: file.name,
                 file_size: file.size,
                 ...baseParams,
@@ -1172,34 +1195,30 @@ function ChunkPreviewWorkspace({ children, onConfirm, onClose }: Readonly<ChunkP
         }
         if (!isCurrent()) return
         setChunkOverrides({})
-        setPreviewData(data)
-        previewOwnerRef.current = { file, sessionRevision }
+        setHoveredChunkIndex(null)
+        setSelectedChunkIndex(null)
+        setPreviewSnapshot({ data, file, sessionRevision, requestId })
         const durationMs = Math.max(0, Math.round(performance.now() - startTime))
         const createdAt = Date.now()
         setLastPreviewAt(createdAt)
         setLastPreviewDurationMs(durationMs)
-        if (cacheKey) {
-          previewCacheRef.current.set(cacheKey, { data, createdAt, durationMs })
+        previewCacheRef.current.set(cacheKey, { data, createdAt, durationMs, requestId })
+        setLastPreviewCacheKey(cacheKey)
+        const run = {
+          id: generateRequestId(),
+          fileName: file.name,
+          fileId: currentFileItem.id,
+          parserBackend: baseParams.parser_backend,
+          strategy: baseParams.chunk_strategy,
+          chunkSize: baseParams.chunk_size,
+          chunkOverlap: baseParams.chunk_overlap,
+          totalChunks: data.total_chunks,
+          durationMs,
+          createdAt,
+          cacheHit: false,
+          cacheKey,
         }
-        setLastPreviewCacheKey(cacheKey || null)
-        setRunHistory((prev) =>
-          [
-            {
-              id: generateRequestId(),
-              fileName: file.name,
-              parserBackend: baseParams.parser_backend,
-              strategy: baseParams.chunk_strategy,
-              chunkSize: baseParams.chunk_size,
-              chunkOverlap: effectiveOverlap,
-              totalChunks: data.total_chunks,
-              durationMs,
-              createdAt,
-              cacheHit: false,
-              cacheKey: cacheKey || undefined,
-            },
-            ...prev,
-          ].slice(0, 20),
-        )
+        setRunHistory((prev) => [run, ...prev].slice(0, 20))
       } catch (err: unknown) {
         if (!isCurrent()) return
         setError(formatApiError(err, '预览失败'))
@@ -1216,47 +1235,44 @@ function ChunkPreviewWorkspace({ children, onConfirm, onClose }: Readonly<ChunkP
       file,
       currentFileItem,
       chunkStrategyAvailable,
-      buildPreviewCacheKey,
       buildChunkPreviewRequestParams,
       retirePreview,
       workspaceAuthScope,
       datasetId,
       useParseCache,
-      previewData,
+      previewSnapshot,
     ],
   )
 
   const cancelPreview = useCallback(() => {
-    autoPreviewAttemptRef.current = buildPreviewCacheKey()
+    autoPreviewAttemptRef.current =
+      currentFileItem === null ? null : buildPreviewCacheKey(currentFileItem, buildChunkPreviewRequestParams())
     retirePreview()
-  }, [buildPreviewCacheKey, retirePreview])
+  }, [buildChunkPreviewRequestParams, currentFileItem, retirePreview])
 
   const getCachedPreview = useCallback((cacheKey: string) => {
-    const key = (cacheKey || '').trim()
-    if (!key) return null
-    return previewCacheRef.current.get(key)?.data ?? null
+    return previewCacheRef.current.get(cacheKey)?.data ?? null
   }, [])
 
-  const createDocumentFromPreview = useCallback(
-    async (data: ChunkPreviewResponse, item: ChunkPreviewFileItem, overrides: ChunkOverrides = {}) => {
-      const chunks = data.chunks.reduce<ManualChunk[]>((acc, chunk) => {
-        const idx = typeof chunk.index === 'number' ? chunk.index : data.chunks.indexOf(chunk)
-        const override = overrides[idx] || null
-        if (override?.disabled) return acc
-        const content = String(override?.content ?? chunk.content ?? '')
-        const metadata = override?.metadata ?? chunk.metadata ?? {}
-        acc.push({
-          content,
+  const buildIngestPayload = useCallback<ChunkPreviewContextType['buildIngestPayload']>(
+    (data, item, overrides) => {
+      if (data.chunks_truncated === true) throw new Error(COMPLETE_PREVIEW_REQUIRED_MESSAGE)
+      const chunks: ManualChunk[] = []
+      for (const chunk of data.chunks) {
+        const override = overrides[chunk.index]
+        if (override?.disabled === true) continue
+        const edited = applyChunkEdits(chunk, override)
+        chunks.push({
+          content: edited.content,
           page_number: chunk.page_number,
           start_char: chunk.start_index,
           end_char: chunk.end_index,
-          metadata,
+          metadata: edited.metadata,
         })
-        return acc
-      }, [])
+      }
 
       if (!chunks.length) {
-        throw new Error('No chunks to submit (all skipped)')
+        throw new Error('没有可入库的切块')
       }
 
       const pipeline = pipelineOverridesEnabled
@@ -1277,25 +1293,26 @@ function ChunkPreviewWorkspace({ children, onConfirm, onClose }: Readonly<ChunkP
             }
           : {}
 
-      return documentApi.createFromChunks({
-        filename: data.filename || item.displayName || item.file.name,
-        file_type: data.file_type || item.originalFileType || item.file.type,
-        file_size: data.file_size || item.originalFileSize || item.file.size,
+      const targetDatasetId = datasetId === '' ? undefined : datasetId
+      return {
+        filename: data.filename,
+        file_type: data.file_type,
+        file_size: data.file_size,
         chunks,
-        dataset_id: datasetId || undefined,
+        dataset_id: targetDatasetId,
         metadata: {
           chunk_size: chunkSize,
           chunk_overlap: chunkOverlap,
           chunk_strategy: data.chunk_strategy,
           chunk_strategy_label: getChunkStrategyLabel(data.chunk_strategy),
           parser_backend: data.parser_backend,
-          dataset_id: datasetId || undefined,
-          source_document_id: item.documentId || undefined,
-          source: item.source || undefined,
+          dataset_id: targetDatasetId,
+          source_document_id: item.documentId,
+          source: item.source,
           ...separatorMeta,
         },
         pipeline,
-      })
+      }
     },
     [
       chunkOverlap,
@@ -1335,52 +1352,75 @@ function ChunkPreviewWorkspace({ children, onConfirm, onClose }: Readonly<ChunkP
 
   // Actions: 提交入库
   const submitChunks = useCallback(async () => {
-    if (!previewData || !file || !currentFileItem) return
+    if (previewSnapshot === null || !currentFileItem) return
+    if (submitSuccess) return
     if (isLoading || isPreviewDirty) {
-      setError(isLoading ? '请等待预览完成后再入库。' : '参数已变更，请先生成预览后再入库。')
+      setError(isLoading ? '请等待预览完成后再入库。' : PREVIEW_UPDATE_REQUIRED_MESSAGE)
       return
     }
     const sessionRevision = getAuthSessionRevision()
     if (getAuthCacheScope() !== workspaceAuthScope || submissionRef.current?.sessionRevision === sessionRevision) return
     const submission = { sessionRevision }
     submissionRef.current = submission
+    const { data, requestId } = previewSnapshot
     const viewRevision = fileViewRevisionRef.current
+    const cacheKey = buildPreviewCacheKey(currentFileItem, buildChunkPreviewRequestParams())
+    const submittedView: PreviewSubmissionView = {
+      data,
+      overrides: chunkOverrides,
+      cacheKey,
+    }
     const isSessionCurrent = () =>
       getAuthCacheScope() === workspaceAuthScope && getAuthSessionRevision() === sessionRevision
-    const canUpdateFile = () =>
-      mountedRef.current &&
-      isSessionCurrent() &&
-      fileListRef.current.some((item) => item.id === currentFileItem.id && item.file === file)
-    const canPublish = () => canUpdateFile() && fileViewRevisionRef.current === viewRevision
+    const canRecordFile = () =>
+      mountedRef.current && isSessionCurrent() && fileListRef.current.some((item) => item.id === currentFileItem.id)
+    const canPublish = () =>
+      canRecordFile() &&
+      fileViewRevisionRef.current === viewRevision &&
+      isSamePreviewSubmissionView(previewSubmissionViewRef.current, submittedView)
     const originalLists = captureIngestDocumentLists()
-    const fileKey = currentFileItem.id
+    const fileRevision = currentFileItem.fileRevision
+    const receiptKey = ingestReceiptKey(cacheKey, datasetId, chunkOverrides)
+    let receipt = ingestReceiptsRef.current.get(receiptKey)
+    if (receipt?.previewRequestId !== requestId) receipt = undefined
 
     setIsSubmitting(true)
     setError(null)
 
     try {
-      setProcessedStatus((prev) => ({ ...prev, [fileKey]: 'pending' }))
-      const created = await createDocumentFromPreview(previewData, currentFileItem, chunkOverrides)
+      setIngestStatusByRevision((prev) => ({ ...prev, [fileRevision]: 'pending' }))
+      if (receipt === undefined) {
+        const payload = buildIngestPayload(data, currentFileItem, chunkOverrides)
+        const created = await documentApi.createFromChunks(payload)
+        if (!isSessionCurrent()) return
+        receipt = { id: created.id, status: created.status, previewRequestId: requestId }
+        ingestReceiptsRef.current.set(receiptKey, receipt)
+        invalidateOriginalDocumentLists(originalLists)
+      }
+      if (canPublish()) setIngestResult({ view: submittedView, documentId: receipt.id, completed: false })
+      if (canRecordFile()) setIngestStatusByRevision((prev) => ({ ...prev, [fileRevision]: 'processing' }))
+      await waitForDocumentIngestCompletion(receipt.id, receipt.status, isSessionCurrent)
       if (!isSessionCurrent()) return
+      receipt.status = 'completed'
       invalidateOriginalDocumentLists(originalLists)
-      if (canPublish()) setCreatedDocumentId(created?.id || null)
-      if (canUpdateFile()) setProcessedStatus((prev) => ({ ...prev, [fileKey]: 'processing' }))
-      await waitForDocumentIngestCompletion(created?.id, created?.status, isSessionCurrent)
-      if (!isSessionCurrent()) return
-      invalidateOriginalDocumentLists(originalLists)
-      if (canUpdateFile()) setProcessedStatus((prev) => ({ ...prev, [fileKey]: 'success' }))
+      if (canRecordFile()) setIngestStatusByRevision((prev) => ({ ...prev, [fileRevision]: 'success' }))
       if (canPublish()) {
-        setSubmitSuccess(true)
+        setIngestResult({ view: submittedView, documentId: receipt.id, completed: true })
         onConfirm?.({ chunk_size: chunkSize, chunk_overlap: chunkOverlap })
         toast.success('已成功入库')
       }
     } catch (err: unknown) {
-      if (err instanceof ManualIngestStillProcessingError) {
-        if (canUpdateFile()) setProcessedStatus((prev) => ({ ...prev, [fileKey]: 'processing' }))
+      if (receipt?.status === 'completed') {
+        if (canPublish()) setError(`入库已完成，后续更新失败。${formatApiError(err, '请刷新文档列表')}`)
+      } else if (err instanceof ManualIngestStillProcessingError) {
+        if (canRecordFile()) setIngestStatusByRevision((prev) => ({ ...prev, [fileRevision]: 'processing' }))
         if (canPublish()) toast.info(err.message)
+      } else if (receipt !== undefined && !(err instanceof ManualIngestFailedError)) {
+        if (canRecordFile()) setIngestStatusByRevision((prev) => ({ ...prev, [fileRevision]: 'processing' }))
+        if (canPublish()) setError(`文档已创建，入库状态未确认。${formatApiError(err, '请重新查询状态')}`)
       } else {
         if (canPublish()) setError(formatApiError(err, '入库失败'))
-        if (canUpdateFile()) setProcessedStatus((prev) => ({ ...prev, [fileKey]: 'error' }))
+        if (canRecordFile()) setIngestStatusByRevision((prev) => ({ ...prev, [fileRevision]: 'error' }))
       }
     } finally {
       if (submissionRef.current === submission) {
@@ -1389,13 +1429,15 @@ function ChunkPreviewWorkspace({ children, onConfirm, onClose }: Readonly<ChunkP
       }
     }
   }, [
-    previewData,
+    previewSnapshot,
     chunkOverrides,
-    file,
     currentFileItem,
+    datasetId,
     isLoading,
     isPreviewDirty,
-    createDocumentFromPreview,
+    submitSuccess,
+    buildChunkPreviewRequestParams,
+    buildIngestPayload,
     chunkSize,
     chunkOverlap,
     onConfirm,
@@ -1415,28 +1457,41 @@ function ChunkPreviewWorkspace({ children, onConfirm, onClose }: Readonly<ChunkP
       toast.error('请先选择要入库的文件')
       return
     }
+    if (targets.some((target) => target.id === currentFileItem?.id) && (isLoading || isPreviewDirty)) {
+      const message = isLoading ? '请等待预览完成后再入库。' : PREVIEW_UPDATE_REQUIRED_MESSAGE
+      setError(message)
+      toast.error(message)
+      return
+    }
 
-    const { effectiveOverlap, params } = buildChunkPreviewRequestParams()
-    if (effectiveOverlap >= chunkSize) {
+    const params = buildChunkPreviewRequestParams()
+    if (params.chunk_overlap >= params.chunk_size) {
       setError('重叠长度必须小于切块长度')
       return
     }
-    const strategyAvailable = chunkStrategyAvailable(chunkStrategy)
+    const strategyAvailable = chunkStrategyAvailable(params.chunk_strategy)
     if (strategyAvailable === false) {
-      setError(`当前切块策略不可用：${getChunkStrategyLabel(chunkStrategy)}`)
+      setError(`当前切块策略不可用：${getChunkStrategyLabel(params.chunk_strategy)}`)
       return
     }
 
     const submission = { sessionRevision }
     submissionRef.current = submission
     const viewRevision = fileViewRevisionRef.current
+    const submittedView: PreviewSubmissionView = {
+      data: previewData,
+      overrides: chunkOverrides,
+      cacheKey: currentFileItem === null ? null : buildPreviewCacheKey(currentFileItem, params),
+    }
     const isSessionCurrent = () =>
       getAuthCacheScope() === workspaceAuthScope && getAuthSessionRevision() === sessionRevision
-    const canPublish = () => mountedRef.current && isSessionCurrent() && fileViewRevisionRef.current === viewRevision
-    const canUpdateFile = (target: ChunkPreviewFileItem) =>
+    const canPublish = () =>
       mountedRef.current &&
       isSessionCurrent() &&
-      fileListRef.current.some((item) => item.id === target.id && item.file === target.file)
+      fileViewRevisionRef.current === viewRevision &&
+      isSamePreviewSubmissionView(previewSubmissionViewRef.current, submittedView)
+    const canRecordFile = (target: ChunkPreviewFileItem) =>
+      mountedRef.current && isSessionCurrent() && fileListRef.current.some((item) => item.id === target.id)
 
     setIsSubmitting(true)
     setError(null)
@@ -1445,60 +1500,84 @@ function ChunkPreviewWorkspace({ children, onConfirm, onClose }: Readonly<ChunkP
     let failureCount = 0
     let processingCount = 0
     let lastFailure: string | null = null
-    const failedIds = new Set<string>()
+    const retryIds = new Set<string>()
 
     for (const target of targets) {
       if (!isSessionCurrent()) break
-      if (canUpdateFile(target)) setProcessedStatus((prev) => ({ ...prev, [target.id]: 'pending' }))
+      if (canRecordFile(target)) setIngestStatusByRevision((prev) => ({ ...prev, [target.fileRevision]: 'pending' }))
+      const isActive = target.id === currentFileItem?.id
+      const activePreview = isActive ? previewSnapshot : null
+      const overrides = isActive ? chunkOverrides : {}
+      const receiptKey = ingestReceiptKey(buildPreviewCacheKey(target, params), datasetId, overrides)
+      let receipt = ingestReceiptsRef.current.get(receiptKey)
+      if (activePreview !== null && receipt?.previewRequestId !== activePreview.requestId) receipt = undefined
       try {
-        const isActive = target.id === currentFileItem?.id
-        const data = isActive && previewData ? previewData : await documentApi.chunkPreview(target.file, params)
-        if (!isSessionCurrent()) break
         const originalLists = captureIngestDocumentLists()
-        const created = await createDocumentFromPreview(data, target, isActive ? chunkOverrides : {})
-        if (!isSessionCurrent()) break
-        invalidateOriginalDocumentLists(originalLists)
-        if (isActive && canPublish() && canUpdateFile(target)) {
-          setCreatedDocumentId(created?.id || null)
+        if (receipt === undefined) {
+          const data =
+            activePreview !== null
+              ? activePreview.data
+              : await documentApi.chunkPreview(target.file, {
+                  ...params,
+                  max_chunks: 0,
+                  include_original_text: false,
+                  include_review_signals: false,
+                })
+          if (!isSessionCurrent()) break
+          const payload = buildIngestPayload(data, target, overrides)
+          const created = await documentApi.createFromChunks(payload)
+          if (!isSessionCurrent()) break
+          receipt = { id: created.id, status: created.status, previewRequestId: activePreview?.requestId ?? null }
+          ingestReceiptsRef.current.set(receiptKey, receipt)
+          invalidateOriginalDocumentLists(originalLists)
         }
-        if (canUpdateFile(target)) setProcessedStatus((prev) => ({ ...prev, [target.id]: 'processing' }))
-        await waitForDocumentIngestCompletion(created?.id, created?.status, isSessionCurrent)
+        if (isActive && canPublish() && canRecordFile(target)) {
+          setIngestResult({ view: submittedView, documentId: receipt.id, completed: false })
+        }
+        if (canRecordFile(target))
+          setIngestStatusByRevision((prev) => ({ ...prev, [target.fileRevision]: 'processing' }))
+        await waitForDocumentIngestCompletion(receipt.id, receipt.status, isSessionCurrent)
         if (!isSessionCurrent()) break
+        receipt.status = 'completed'
         invalidateOriginalDocumentLists(originalLists)
         successCount += 1
-        if (isActive && canPublish() && canUpdateFile(target)) {
-          setSubmitSuccess(true)
+        if (isActive && canPublish() && canRecordFile(target)) {
+          setIngestResult({ view: submittedView, documentId: receipt.id, completed: true })
         }
-        if (canUpdateFile(target)) setProcessedStatus((prev) => ({ ...prev, [target.id]: 'success' }))
+        if (canRecordFile(target)) setIngestStatusByRevision((prev) => ({ ...prev, [target.fileRevision]: 'success' }))
       } catch (err: unknown) {
-        if (err instanceof ManualIngestStillProcessingError) {
+        retryIds.add(target.id)
+        if (
+          err instanceof ManualIngestStillProcessingError ||
+          (receipt !== undefined && !(err instanceof ManualIngestFailedError))
+        ) {
           processingCount += 1
-          if (canUpdateFile(target)) setProcessedStatus((prev) => ({ ...prev, [target.id]: 'processing' }))
+          if (!(err instanceof ManualIngestStillProcessingError)) {
+            lastFailure = `文档已创建，入库状态未确认。${formatApiError(err, '请重新查询状态')}`
+          }
+          if (canRecordFile(target))
+            setIngestStatusByRevision((prev) => ({ ...prev, [target.fileRevision]: 'processing' }))
           continue
         }
         failureCount += 1
-        failedIds.add(target.id)
         lastFailure = formatApiError(err, '入库失败')
-        if (canUpdateFile(target)) setProcessedStatus((prev) => ({ ...prev, [target.id]: 'error' }))
+        if (canRecordFile(target)) setIngestStatusByRevision((prev) => ({ ...prev, [target.fileRevision]: 'error' }))
       }
     }
 
     if (mountedRef.current && isSessionCurrent())
-      setSelectedIngestFileIds((prev) => {
-        const next = new Set(prev)
-        if (failureCount === 0) {
-          for (const target of targets) next.delete(target.id)
-        } else {
-          for (const target of targets) {
-            if (!failedIds.has(target.id)) next.delete(target.id)
-          }
+      setFileWorkspace((prev) => {
+        const next = new Set(prev.selectedIngestFileIds)
+        for (const target of targets) {
+          const currentTarget = prev.files.find((item) => item.id === target.id)
+          if (!retryIds.has(target.id) && currentTarget?.fileRevision === target.fileRevision) next.delete(target.id)
         }
-        return next
+        return { ...prev, selectedIngestFileIds: next }
       })
 
     if (canPublish()) {
-      if (failureCount > 0) {
-        setError(lastFailure || '部分文件入库失败')
+      if (lastFailure !== null) {
+        setError(lastFailure)
         toast.error(`已入库 ${successCount} 个，处理中 ${processingCount} 个，失败 ${failureCount} 个`)
       } else if (processingCount > 0) {
         toast.info(`已提交 ${processingCount} 个文件，后端仍在处理`)
@@ -1513,14 +1592,15 @@ function ChunkPreviewWorkspace({ children, onConfirm, onClose }: Readonly<ChunkP
   }, [
     buildChunkPreviewRequestParams,
     chunkOverrides,
-    chunkSize,
-    chunkStrategy,
     chunkStrategyAvailable,
-    createDocumentFromPreview,
-    currentFileItem?.id,
+    buildIngestPayload,
+    currentFileItem,
     datasetId,
     fileList,
     previewData,
+    previewSnapshot,
+    isLoading,
+    isPreviewDirty,
     selectedIngestFileIds,
     captureIngestDocumentLists,
     invalidateOriginalDocumentLists,
@@ -1529,56 +1609,48 @@ function ChunkPreviewWorkspace({ children, onConfirm, onClose }: Readonly<ChunkP
 
   // Actions: 更新配置
   const updateChunkOverride = useCallback((index: number, override: ChunkOverride) => {
-    const idx = Math.trunc(Number(index))
-    if (!Number.isFinite(idx) || idx < 0) return
+    const updatedAt = Date.now()
     setChunkOverrides((prev) => {
       const next = { ...prev }
-      const cur = next[idx] || {}
-      next[idx] = { ...cur, ...override, updatedAt: Date.now() }
+      next[index] = { ...prev[index], ...override, updatedAt }
       return next
     })
   }, [])
 
   const toggleChunkDisabled = useCallback((index: number) => {
-    const idx = Math.trunc(Number(index))
-    if (!Number.isFinite(idx) || idx < 0) return
-
+    const updatedAt = Date.now()
     setChunkOverrides((prev) => {
       const next = { ...prev }
-      const cur = next[idx] || {}
-      const nextDisabled = !cur.disabled
-
-      if (nextDisabled) {
-        next[idx] = { ...cur, disabled: true, updatedAt: Date.now() }
+      const cur = prev[index]
+      if (cur?.disabled !== true) {
+        next[index] = { ...cur, disabled: true, updatedAt }
         return next
       }
 
       const { disabled: _omit, ...rest } = cur
       const hasOther = rest.content !== undefined || rest.metadata !== undefined
       if (!hasOther) {
-        delete next[idx]
+        delete next[index]
         return next
       }
 
-      next[idx] = { ...rest, updatedAt: Date.now() }
+      next[index] = { ...rest, updatedAt }
       return next
     })
   }, [])
 
   const setChunksDisabled = useCallback((indices: number[], disabled: boolean) => {
-    const list = Array.from(
-      new Set((indices || []).map((n) => Math.trunc(Number(n))).filter((n) => Number.isFinite(n) && n >= 0)),
-    )
+    const list = Array.from(new Set(indices))
     if (list.length === 0) return
+    const now = Date.now()
 
     setChunkOverrides((prev) => {
-      const now = Date.now()
       const next = { ...prev }
       let changed = false
 
       for (const idx of list) {
-        const cur = next[idx] || {}
-        const curDisabled = Boolean(cur.disabled)
+        const cur = prev[idx]
+        const curDisabled = cur?.disabled === true
 
         if (disabled) {
           if (curDisabled) continue
@@ -1603,12 +1675,10 @@ function ChunkPreviewWorkspace({ children, onConfirm, onClose }: Readonly<ChunkP
   }, [])
 
   const clearChunkOverride = useCallback((index: number) => {
-    const idx = Math.trunc(Number(index))
-    if (!Number.isFinite(idx) || idx < 0) return
     setChunkOverrides((prev) => {
-      if (!(idx in prev)) return prev
+      if (!Object.hasOwn(prev, index)) return prev
       const next = { ...prev }
-      delete next[idx]
+      delete next[index]
       return next
     })
   }, [])
@@ -1648,16 +1718,17 @@ function ChunkPreviewWorkspace({ children, onConfirm, onClose }: Readonly<ChunkP
         Pick<ChunkPreviewState, 'includeOriginalText' | 'originalTextMaxChars' | 'maxChunks' | 'useParseCache'>
       >,
     ) => {
-      if (settings.includeOriginalText !== undefined) setIncludeOriginalText(Boolean(settings.includeOriginalText))
+      if (settings.includeOriginalText !== undefined) setIncludeOriginalText(settings.includeOriginalText)
       if (settings.originalTextMaxChars !== undefined) {
-        const n = Number(settings.originalTextMaxChars)
-        if (Number.isFinite(n)) setOriginalTextMaxChars(Math.max(0, Math.min(2_000_000, Math.trunc(n))))
+        const maxCharacters = settings.originalTextMaxChars
+        if (Number.isFinite(maxCharacters))
+          setOriginalTextMaxChars(Math.max(0, Math.min(2_000_000, Math.trunc(maxCharacters))))
       }
       if (settings.maxChunks !== undefined) {
-        const n = Number(settings.maxChunks)
-        if (Number.isFinite(n)) setMaxChunks(Math.max(0, Math.min(20000, Math.trunc(n))))
+        const maxChunks = settings.maxChunks
+        if (Number.isFinite(maxChunks)) setMaxChunks(Math.max(0, Math.min(20000, Math.trunc(maxChunks))))
       }
-      if (settings.useParseCache !== undefined) setUseParseCache(Boolean(settings.useParseCache))
+      if (settings.useParseCache !== undefined) setUseParseCache(settings.useParseCache)
     },
     [],
   )
@@ -1680,12 +1751,13 @@ function ChunkPreviewWorkspace({ children, onConfirm, onClose }: Readonly<ChunkP
   const updateParentChildSettings = useCallback(
     (settings: Partial<Pick<ChunkPreviewState, 'parentChildRatio' | 'parentChildMinChildSize'>>) => {
       if (settings.parentChildRatio !== undefined) {
-        const n = Number(settings.parentChildRatio)
-        if (Number.isFinite(n)) setParentChildRatio(Math.max(0.05, Math.min(1, n)))
+        const ratio = settings.parentChildRatio
+        if (Number.isFinite(ratio)) setParentChildRatio(Math.max(0.05, Math.min(1, ratio)))
       }
       if (settings.parentChildMinChildSize !== undefined) {
-        const n = Number(settings.parentChildMinChildSize)
-        if (Number.isFinite(n)) setParentChildMinChildSize(Math.max(50, Math.min(4000, Math.trunc(n))))
+        const minimumSize = settings.parentChildMinChildSize
+        if (Number.isFinite(minimumSize))
+          setParentChildMinChildSize(Math.max(50, Math.min(4000, Math.trunc(minimumSize))))
       }
     },
     [],
@@ -1701,7 +1773,7 @@ function ChunkPreviewWorkspace({ children, onConfirm, onClose }: Readonly<ChunkP
     setUseParseCache(true)
     updateOption('chunk_size', 1000)
     updateOption('chunk_overlap', 200)
-    setCreatedDocumentId(null)
+    setIngestResult(null)
     setShowOriginalPanel(true)
     setShowSettingsPanel(false)
     setSeparatorPreset('paragraph')
@@ -1719,7 +1791,7 @@ function ChunkPreviewWorkspace({ children, onConfirm, onClose }: Readonly<ChunkP
       autoPreviewEnabled &&
       file &&
       fileInScope &&
-      !scopeSyncLoading &&
+      fileSelectionReady &&
       !previewData &&
       !isLoading &&
       !isSubmitting &&
@@ -1733,7 +1805,7 @@ function ChunkPreviewWorkspace({ children, onConfirm, onClose }: Readonly<ChunkP
     currentFileItem,
     datasetId,
     file,
-    scopeSyncLoading,
+    fileSelectionReady,
     previewData,
     isLoading,
     isSubmitting,
@@ -1744,14 +1816,16 @@ function ChunkPreviewWorkspace({ children, onConfirm, onClose }: Readonly<ChunkP
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.defaultPrevented) return
       const isCmdOrCtrl = event.metaKey || event.ctrlKey
-      if (isCmdOrCtrl && event.key.toLowerCase() === 'enter') {
-        event.preventDefault()
+      if (!isCmdOrCtrl) return
+      const key = event.key.toLowerCase()
+      if (key !== 'enter' && key !== 's') return
+      event.preventDefault()
+      if (event.target instanceof Element && event.target.closest('[role="dialog"]') !== null) return
+      if (key === 'enter') {
         runPreview({ force: true })
-        return
-      }
-      if (isCmdOrCtrl && event.key.toLowerCase() === 's') {
-        event.preventDefault()
+      } else {
         submitChunks()
       }
     }
@@ -1788,26 +1862,27 @@ function ChunkPreviewWorkspace({ children, onConfirm, onClose }: Readonly<ChunkP
 
   const selectDatasetId = useCallback(
     (value: string) => {
-      const nextDatasetId = (value || '').trim()
+      const nextDatasetId = value.trim()
+      if (nextDatasetId === datasetId) return
+      setFileSelectionReady(true)
       retirePreview()
       fileViewRevisionRef.current += 1
       setDatasetId(nextDatasetId)
-      setPreviewData(null)
+      setPreviewSnapshot(null)
       setChunkOverrides({})
-      setSelectedIngestFileIds(new Set())
+      setFileWorkspace((prev) => ({ ...prev, selectedIngestFileIds: new Set() }))
       setError(null)
-      setSubmitSuccess(false)
       setHoveredChunkIndex(null)
       setSelectedChunkIndex(null)
-      setCreatedDocumentId(null)
+      setIngestResult(null)
       const params = new URLSearchParams(searchParams.toString())
-      if (nextDatasetId) params.set('dataset_id', nextDatasetId)
+      if (nextDatasetId.length > 0) params.set('dataset_id', nextDatasetId)
       else params.delete('dataset_id')
-      const qs = params.toString()
-      const query = qs ? `?${qs}` : ''
-      router.replace(`/chunk-preview${query}`)
+      params.delete('chunk')
+      chunkParamNavigationRef.current = { from: chunkParam ?? chunkParamNavigationRef.current?.to ?? null, to: null }
+      router.replace(buildChunkPreviewHref(params))
     },
-    [router, searchParams, retirePreview],
+    [chunkParam, router, searchParams, retirePreview, datasetId],
   )
 
   // 组装 Context Value
@@ -1828,6 +1903,7 @@ function ChunkPreviewWorkspace({ children, onConfirm, onClose }: Readonly<ChunkP
       error,
       createdDocumentId,
       previewData,
+      previewSourceFile,
       chunkOverrides,
       hoveredChunkIndex,
       selectedChunkIndex,
@@ -1864,6 +1940,7 @@ function ChunkPreviewWorkspace({ children, onConfirm, onClose }: Readonly<ChunkP
       clearFiles,
       setCurrentFileIndex: selectFile,
       setDatasetId: selectDatasetId,
+      reloadScopeDocuments,
       setIsDragging,
       setHoveredChunkIndex,
       setSelectedChunkIndex,
@@ -1877,6 +1954,8 @@ function ChunkPreviewWorkspace({ children, onConfirm, onClose }: Readonly<ChunkP
       setOriginalPanelVisible,
       toggleSettingsPanel,
       focusGapReview,
+      buildChunkPreviewRequestParams,
+      buildIngestPayload,
       runPreview,
       cancelPreview,
       submitChunks,
@@ -1944,10 +2023,14 @@ function ChunkPreviewWorkspace({ children, onConfirm, onClose }: Readonly<ChunkP
       parentChildRatio,
       parserBackend,
       previewData,
+      previewSourceFile,
       processedStatus,
       removeFile,
+      reloadScopeDocuments,
       reset,
       runHistory,
+      buildChunkPreviewRequestParams,
+      buildIngestPayload,
       runPreview,
       scopeSyncError,
       scopeSyncLoading,

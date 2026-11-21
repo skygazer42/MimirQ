@@ -1,7 +1,7 @@
 import pytest
 
-from app.rag.reranker import factory
-from app.rag.reranker.long_context_rerank import LongContextReranker
+from app.rag.retrieval.reranking import factory
+from app.rag.retrieval.reranking.long_context import LongContextReranker
 from app.storage.vector import factory as vector_factory
 
 
@@ -32,18 +32,17 @@ def test_long_context_constructor_owns_the_label_and_cache_identity(monkeypatch:
     assert factory.get_reranker("long_context", model_name="").model_name == ""
 
 
-def test_legacy_reranker_factory_forwards_a_selected_provider(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_retrieval_reranker_factory_forwards_the_selected_provider_and_options(monkeypatch: pytest.MonkeyPatch) -> None:
     seen = []
     selected = object()
 
-    def resolve(provider):
-        seen.append(provider)
+    def resolve(provider, **kwargs):
+        seen.append((provider, kwargs))
         return selected
 
     monkeypatch.setattr(factory, "get_reranker", resolve)
-    with pytest.warns(DeprecationWarning):
-        assert factory.get_rag_reranker("weighted") is selected
-    assert seen == ["weighted"]
+    assert factory.get_reranker_for_retrieval("weighted", weights={"vector": 0.6}) is selected
+    assert seen == [("weighted", {"weights": {"vector": 0.6}})]
 
 
 @pytest.mark.parametrize("value", [0, False, [], {}])
@@ -52,4 +51,4 @@ def test_vector_factory_exposes_bad_selector_types(value, monkeypatch) -> None:
     with pytest.raises(AttributeError):
         vector_factory._normalize_region(value)
     with pytest.raises(AttributeError):
-        vector_factory._resolve_vector_backend(backend=value)
+        vector_factory.resolve_vector_backend(backend=value)

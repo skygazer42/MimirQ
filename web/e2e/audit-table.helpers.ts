@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { gzipSync } from 'node:zlib'
 import { expect, type Page, type Route } from '@playwright/test'
-import type { AuditLogItem } from '../types'
+import type { AuditLogItem } from '../types/audit'
 import { TENANT_PERMISSIONS } from '../lib/tenant-permissions'
 import { installCommonApiMocks } from './enterprise-quality-telemetry.helpers'
 

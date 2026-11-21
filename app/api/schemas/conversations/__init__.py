@@ -38,7 +38,7 @@ from app.api.schemas.conversations.prompts import (
     PromptTemplateOut,
     PromptTemplateUpdate,
 )
-from app.api.schemas.conversations.rag_templates import (
+from app.api.schemas.conversations.rag_config_templates import (
     RagConfigTemplateCreate,
     RagConfigTemplateList,
     RagConfigTemplateListQuery,
@@ -52,6 +52,8 @@ from app.api.schemas.conversations.retrieval import (
     EvidenceRetrieveResponse,
     PromptPreviewRequest,
     PromptPreviewResponse,
+    RetrievalExplainRequest,
+    RetrievalExplainResponse,
     RetrievePreviewRequest,
     RetrievePreviewResponse,
     TreeSearchPreviewRequest,
@@ -102,6 +104,8 @@ __all__ = [
     "RagConfigTemplateNewVersion",
     "RagConfigTemplateOut",
     "RagConfigTemplateUpdate",
+    "RetrievalExplainRequest",
+    "RetrievalExplainResponse",
     "RetrievePreviewRequest",
     "RetrievePreviewResponse",
     "TreeSearchPreviewRequest",

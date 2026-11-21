@@ -1,0 +1,594 @@
+"""
+Conversation read/delete routes for the chat API.
+"""
+
+import json
+import logging
+import re
+from datetime import UTC, datetime
+from typing import Annotated
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from sqlalchemy import and_, func, or_, select
+from sqlalchemy.orm import Query as ORMQuery
+from sqlalchemy.orm import Session
+
+import app.services.datasets.management as dataset_service
+from app.api.dependencies import get_current_account_id, get_tenant_id
+from app.api.schemas.conversations import (
+    ConversationCreate,
+    ConversationDetail,
+    ConversationList,
+    ConversationSchema,
+    ConversationUpdate,
+)
+from app.api.utils import DEFAULT_HTTP_EXCEPTION_RESPONSES, file_response_headers
+from app.infrastructure.config import settings
+from app.infrastructure.database.connection import get_db
+from app.models.conversations.chat import Conversation, Message
+from app.services.chat.conversation_access import ensure_conversation_access, ensure_conversation_dataset_access
+from app.services.chat.conversation_titles import (
+    CONVERSATION_TITLE_SOURCE_AUTO,
+    CONVERSATION_TITLE_SOURCE_MANUAL,
+    derive_auto_conversation_title,
+    get_latest_user_message_content,
+)
+from app.services.chat.scope import enforce_non_empty_chat_scope
+from app.services.documents.read_scope import filter_allowed_document_ids, get_allowed_document_id_sets
+from app.services.observability.audit_log import audit_log_event
+
+CONVERSATION_NOT_FOUND_DETAIL = "Conversation not found"
+
+logger = logging.getLogger("app.api.v1.chat_conversations")
+
+router = APIRouter(responses=DEFAULT_HTTP_EXCEPTION_RESPONSES)
+
+
+def _get_accessible_conversation(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    account_id: str,
+    conversation_id: UUID,
+) -> Conversation:
+    dataset_service.ensure_member(db, tenant_id, account_id)
+    conversation = (
+        db.query(Conversation).filter(Conversation.id == conversation_id, Conversation.tenant_id == tenant_id).first()
+    )
+    if conversation is None:
+        raise HTTPException(status_code=404, detail=CONVERSATION_NOT_FOUND_DETAIL)
+    ensure_conversation_access(db, tenant_id, account_id, conversation)
+    return conversation
+
+
+def _get_latest_messages_by_conversation_id(
+    db: Session,
+    tenant_id: UUID,
+    conversation_ids: list[UUID],
+) -> dict[UUID, Message]:
+    if not conversation_ids:
+        return {}
+
+    latest_message_subq = (
+        db.query(
+            Message.id.label("id"),
+            Message.conversation_id.label("conversation_id"),
+            func.row_number()
+            .over(
+                partition_by=Message.conversation_id,
+                order_by=(Message.created_at.desc(), Message.id.desc()),
+            )
+            .label("rn"),
+        )
+        .filter(
+            Message.tenant_id == tenant_id,
+            Message.conversation_id.in_(conversation_ids),
+        )
+        .subquery()
+    )
+    latest_messages = (
+        db.query(Message)
+        .join(latest_message_subq, Message.id == latest_message_subq.c.id)
+        .filter(latest_message_subq.c.rn == 1)
+        .all()
+    )
+    return {message.conversation_id: message for message in latest_messages}
+
+
+def _apply_conversation_search(
+    query: ORMQuery[Conversation],
+    *,
+    tenant_id: UUID,
+    search_term: str,
+) -> ORMQuery[Conversation]:
+    latest_message_content = (
+        select(Message.content)
+        .where(
+            Message.tenant_id == tenant_id,
+            Message.conversation_id == Conversation.id,
+        )
+        .order_by(Message.created_at.desc(), Message.id.desc())
+        .limit(1)
+        .correlate(Conversation)
+        .scalar_subquery()
+    )
+    return query.filter(
+        or_(
+            Conversation.title.icontains(search_term, autoescape=True),
+            latest_message_content.icontains(search_term, autoescape=True),
+        )
+    )
+
+
+def _dataset_scope_accessible(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    account_id: str,
+    conv: Conversation,
+    dataset_access: dict[UUID, bool],
+) -> bool:
+    dataset_id = conv.dataset_id
+    if dataset_id is None:
+        return True
+    if dataset_id not in dataset_access:
+        try:
+            ensure_conversation_dataset_access(
+                db,
+                tenant_id=tenant_id,
+                account_id=account_id,
+                conv=conv,
+            )
+            dataset_access[dataset_id] = True
+        except HTTPException as exc:
+            if exc.status_code not in {403, 404}:
+                raise
+            dataset_access[dataset_id] = False
+    return dataset_access[dataset_id]
+
+
+def _build_conversation_list_item(
+    conv: Conversation,
+    *,
+    last_message_by_conversation_id: dict[UUID, Message],
+) -> dict[str, object]:
+    conv_dict: dict[str, object] = {
+        "id": conv.id,
+        "title": conv.title,
+        "message_count": conv.message_count,
+        "created_at": conv.created_at,
+        "updated_at": conv.updated_at,
+        "last_message": None,
+        "last_message_at": None,
+    }
+    last_msg = last_message_by_conversation_id.get(conv.id)
+    if last_msg is not None:
+        conv_dict["last_message"] = last_msg.content[:100] + "..." if len(last_msg.content) > 100 else last_msg.content
+        conv_dict["last_message_at"] = last_msg.created_at
+    return conv_dict
+
+
+def _collect_accessible_conversations(
+    ordered_query: ORMQuery[Conversation],
+    *,
+    db: Session,
+    tenant_id: UUID,
+    account_id: str,
+    skip: int,
+    limit: int,
+) -> tuple[int, list[Conversation]]:
+    batch_size = max(50, limit)
+    query_offset = 0
+    accessible_total = 0
+    conversations: list[Conversation] = []
+    dataset_access: dict[UUID, bool] = {}
+
+    while True:
+        batch = ordered_query.offset(query_offset).limit(batch_size).all()
+        if not batch:
+            break
+        query_offset += len(batch)
+
+        doc_ids_by_conversation_id = {conv.id: list(conv.document_ids or []) for conv in batch}
+        all_doc_ids: set[UUID] = set()
+        for doc_ids in doc_ids_by_conversation_id.values():
+            all_doc_ids.update(doc_ids)
+        allowed_doc_ids, missing_doc_ids = get_allowed_document_id_sets(
+            db,
+            tenant_id,
+            account_id,
+            list(all_doc_ids),
+            check_member=False,
+        )
+
+        for conv in batch:
+            if not _dataset_scope_accessible(
+                db,
+                tenant_id=tenant_id,
+                account_id=account_id,
+                conv=conv,
+                dataset_access=dataset_access,
+            ):
+                continue
+            remaining_doc_ids = set(doc_ids_by_conversation_id[conv.id]) - missing_doc_ids
+            if remaining_doc_ids and not remaining_doc_ids.intersection(allowed_doc_ids):
+                continue
+            accessible_total += 1
+            if accessible_total <= skip:
+                continue
+            if len(conversations) < limit:
+                conversations.append(conv)
+
+        if len(batch) < batch_size:
+            break
+
+    return accessible_total, conversations
+
+
+@router.post(
+    "/conversations",
+    response_model=ConversationSchema,
+    status_code=201,
+    responses=DEFAULT_HTTP_EXCEPTION_RESPONSES,
+)
+def create_conversation(
+    request: ConversationCreate,
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
+):
+    """Create a new conversation."""
+    allow_empty_docs = settings.CHAT_ALLOW_EMPTY_DOCUMENTS
+    requested_title = request.title.strip() if request.title is not None else None
+    if requested_title == "":
+        requested_title = None
+
+    scope_dataset_id: UUID | None = None
+    allowed_doc_ids: list[UUID] = []
+    if request.document_ids:
+        allowed_doc_ids = filter_allowed_document_ids(db, tenant_id, account_id, request.document_ids)
+    elif request.dataset_id is not None:
+        dataset_service.ensure_member(db, tenant_id, account_id)
+        ds = dataset_service.get_dataset(db, tenant_id, request.dataset_id)
+        dataset_service.assert_dataset_readable(db, ds, account_id)
+        scope_dataset_id = request.dataset_id
+
+    if not allow_empty_docs:
+        enforce_non_empty_chat_scope(
+            db,
+            tenant_id=tenant_id,
+            account_id=account_id,
+            allowed_doc_ids=allowed_doc_ids,
+            scope_dataset_id=scope_dataset_id,
+            error_detail="No accessible documents for conversation",
+        )
+
+    conversation = Conversation(
+        tenant_id=tenant_id,
+        owner_account_id=account_id,
+        title=requested_title,
+        title_source=CONVERSATION_TITLE_SOURCE_MANUAL if requested_title else CONVERSATION_TITLE_SOURCE_AUTO,
+        dataset_id=scope_dataset_id,
+        document_ids=allowed_doc_ids,
+    )
+
+    db.add(conversation)
+    db.commit()
+    db.refresh(conversation)
+
+    return conversation
+
+
+@router.patch(
+    "/conversations/{conversation_id}",
+    response_model=ConversationSchema,
+    responses=DEFAULT_HTTP_EXCEPTION_RESPONSES,
+)
+def update_conversation(
+    conversation_id: UUID,
+    payload: ConversationUpdate,
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
+):
+    """Update conversation metadata (currently: title)."""
+    conversation = _get_accessible_conversation(
+        db, tenant_id=tenant_id, account_id=account_id, conversation_id=conversation_id
+    )
+    if "title" in payload.model_fields_set:
+        title = payload.title.strip() if payload.title is not None else None
+        if title:
+            conversation.title = title
+            conversation.title_source = CONVERSATION_TITLE_SOURCE_MANUAL
+        else:
+            conversation.title_source = CONVERSATION_TITLE_SOURCE_AUTO
+            conversation.title = derive_auto_conversation_title(
+                get_latest_user_message_content(
+                    db=db,
+                    tenant_id=tenant_id,
+                    conversation_id=conversation_id,
+                )
+            )
+        audit_log_event(
+            db,
+            tenant_id=tenant_id,
+            actor_id=account_id,
+            action="chat.conversation.update",
+            resource_type="conversation",
+            resource_id=str(conversation_id),
+            details={"title_chars": len(conversation.title.strip()) if conversation.title is not None else 0},
+        )
+        db.commit()
+        db.refresh(conversation)
+
+    return conversation
+
+
+@router.get("/conversations", response_model=ConversationList, responses=DEFAULT_HTTP_EXCEPTION_RESPONSES)
+def list_conversations(
+    skip: Annotated[int, Query(ge=0)] = 0,
+    limit: Annotated[int, Query(ge=1, le=200)] = 20,
+    q: Annotated[str | None, Query(max_length=500)] = None,
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
+):
+    """List conversations."""
+    dataset_service.ensure_member(db, tenant_id, account_id)
+    search_term = q.strip() if q is not None else None
+    query = db.query(Conversation).filter(
+        Conversation.tenant_id == tenant_id,
+        Conversation.owner_account_id == account_id,
+    )
+    if search_term:
+        query = _apply_conversation_search(
+            query,
+            tenant_id=tenant_id,
+            search_term=search_term,
+        )
+
+    # Fill the page with accessible conversations (avoid returning <limit when some are filtered).
+    accessible_total, conversations = _collect_accessible_conversations(
+        query.order_by(Conversation.updated_at.desc()),
+        db=db,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        skip=skip,
+        limit=limit,
+    )
+
+    last_message_by_conversation_id = _get_latest_messages_by_conversation_id(
+        db,
+        tenant_id,
+        [conv.id for conv in conversations],
+    )
+
+    result_items = [
+        _build_conversation_list_item(conv, last_message_by_conversation_id=last_message_by_conversation_id)
+        for conv in conversations
+    ]
+    result_items.sort(
+        key=lambda item: item["last_message_at"] or item["created_at"] or item["updated_at"],
+        reverse=True,
+    )
+
+    returned = len(result_items)
+    next_skip = skip + returned
+    has_more = next_skip < accessible_total
+
+    return {
+        "total": accessible_total,
+        "returned": returned,
+        "has_more": has_more,
+        "next_skip": next_skip if has_more else None,
+        "items": result_items,
+    }
+
+
+@router.get("/conversations/{conversation_id}/export", responses=DEFAULT_HTTP_EXCEPTION_RESPONSES)
+def export_conversation(
+    conversation_id: UUID,
+    fmt: Annotated[str, Query(pattern="^(markdown|json)$")] = "markdown",
+    include_citations: Annotated[bool, Query()] = True,
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
+):
+    """
+    Export a conversation as a downloadable file.
+
+    - fmt=markdown (default): text/markdown
+    - fmt=json: application/json
+    """
+    conversation = _get_accessible_conversation(
+        db, tenant_id=tenant_id, account_id=account_id, conversation_id=conversation_id
+    )
+
+    messages = (
+        db.query(Message)
+        .filter(Message.tenant_id == tenant_id, Message.conversation_id == conversation_id)
+        .order_by(Message.created_at.asc(), Message.id.asc())
+        .all()
+    )
+
+    title = conversation.title.strip() if conversation.title is not None else None
+    if not title:
+        title = f"Conversation {conversation_id}"
+
+    exported_at = datetime.now(UTC).replace(tzinfo=None).isoformat() + "Z"
+    if fmt == "json":
+        payload = {
+            "conversation_id": str(conversation_id),
+            "title": title,
+            "exported_at": exported_at,
+            "messages": [
+                {
+                    "id": str(m.id),
+                    "role": m.role,
+                    "content": m.content,
+                    "citations": (m.citations if include_citations else None),
+                    "created_at": m.created_at.isoformat() if m.created_at else None,
+                }
+                for m in messages
+            ],
+        }
+        body = json.dumps(payload, ensure_ascii=False, indent=2)
+        media_type = "application/json"
+        suffix = "json"
+    else:
+        parts = [
+            f"# {title}",
+            "",
+            f"- conversation_id: `{conversation_id}`",
+            f"- exported_at_utc: `{exported_at}`",
+            "",
+        ]
+
+        for m in messages:
+            role = m.role.strip() or "unknown"
+            parts.append(f"## {role}")
+            parts.append("")
+            parts.append(m.content)
+            parts.append("")
+
+            if include_citations and role == "assistant" and isinstance(m.citations, list) and m.citations:
+                parts.append("### citations")
+                for c in m.citations[:20]:
+                    if not isinstance(c, dict):
+                        continue
+                    doc_name = (str(c.get("document_name") or "")).strip()
+                    doc_id = c.get("document_id")
+                    chunk_index = c.get("chunk_index")
+                    page = c.get("page_number")
+                    snippet = (str(c.get("chunk_content") or "")).strip()
+                    if len(snippet) > 260:
+                        snippet = snippet[:260] + "..."
+                    parts.append(
+                        f"- {doc_name or 'Document'} (doc_id={doc_id}, "
+                        f"chunk_index={chunk_index}, page={page}): {snippet}"
+                    )
+                parts.append("")
+
+        body = "\n".join(parts).strip() + "\n"
+        media_type = "text/markdown; charset=utf-8"
+        suffix = "md"
+
+    safe_title = re.sub(r"[^A-Za-z0-9._-]+", "_", title)[:80]
+    filename = f"{safe_title}.{suffix}"
+    headers = file_response_headers(filename)
+
+    audit_log_event(
+        db,
+        tenant_id=tenant_id,
+        actor_id=account_id,
+        action="chat.conversation.export",
+        resource_type="conversation",
+        resource_id=str(conversation_id),
+        details={"format": fmt, "include_citations": include_citations, "messages": len(messages)},
+    )
+    try:
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        logger.warning(
+            "Conversation export audit commit failed: tenant_id=%s conversation_id=%s error_type=%s",
+            tenant_id,
+            conversation_id,
+            type(exc).__name__,
+        )
+
+    return Response(content=body, media_type=media_type, headers=headers)
+
+
+@router.get(
+    "/conversations/{conversation_id}/messages",
+    response_model=ConversationDetail,
+    responses=DEFAULT_HTTP_EXCEPTION_RESPONSES,
+)
+def get_conversation_messages(
+    conversation_id: UUID,
+    limit: Annotated[int | None, Query(ge=1, le=500)] = None,
+    before: Annotated[UUID | None, Query()] = None,
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
+):
+    """Fetch conversation history (paged)."""
+    _get_accessible_conversation(db, tenant_id=tenant_id, account_id=account_id, conversation_id=conversation_id)
+
+    if before is not None and limit is None:
+        raise HTTPException(status_code=400, detail="limit is required when before is set")
+
+    query = db.query(Message).filter(
+        Message.conversation_id == conversation_id,
+        Message.tenant_id == tenant_id,
+    )
+
+    # Backwards compatible behavior: no limit => return all messages.
+    if limit is None:
+        messages = query.order_by(Message.created_at.asc()).all()
+        return {
+            "conversation_id": conversation_id,
+            "returned": len(messages),
+            "has_more": False,
+            "messages": messages,
+        }
+
+    # Cursor pagination: request messages strictly older than the "before" message.
+    if before is not None:
+        before_msg = (
+            db.query(Message)
+            .filter(
+                Message.id == before,
+                Message.conversation_id == conversation_id,
+                Message.tenant_id == tenant_id,
+            )
+            .first()
+        )
+        if before_msg is None:
+            raise HTTPException(status_code=404, detail="Message cursor not found")
+        query = query.filter(
+            or_(
+                Message.created_at < before_msg.created_at,
+                and_(Message.created_at == before_msg.created_at, Message.id < before_msg.id),
+            )
+        )
+
+    # Fetch latest-first for cheap paging, then reverse for display order.
+    rows = query.order_by(Message.created_at.desc(), Message.id.desc()).limit(limit + 1).all()
+    has_more = len(rows) > limit
+    messages = list(reversed(rows[:limit]))
+
+    return {
+        "conversation_id": conversation_id,
+        "returned": len(messages),
+        "has_more": has_more,
+        "messages": messages,
+    }
+
+
+@router.delete(
+    "/conversations/{conversation_id}",
+    status_code=204,
+    responses=DEFAULT_HTTP_EXCEPTION_RESPONSES,
+)
+def delete_conversation(
+    conversation_id: UUID,
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
+):
+    """Delete a conversation."""
+    conversation = _get_accessible_conversation(
+        db, tenant_id=tenant_id, account_id=account_id, conversation_id=conversation_id
+    )
+
+    db.delete(conversation)
+    db.commit()

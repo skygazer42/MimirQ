@@ -189,8 +189,7 @@ def _pick_markdown_path(workspace: Path) -> Path | None:
     default = workspace / "markdown" / "input.md"
     if default.exists():
         return default
-    candidates = sorted((workspace / "markdown").rglob("*.md")) if (workspace / "markdown").exists() else []
-    return candidates[0] if candidates else None
+    return min((workspace / "markdown").rglob("*.md"), default=None)
 
 
 def _append_optional_arg(cmd: list[str], env_name: str, flag: str) -> None:
@@ -223,10 +222,7 @@ def _build_pipeline_command(*, workspace: Path, input_name: str) -> list[str]:
         cmd.extend(["--server", server_url])
         if api_key:
             cmd.extend(["--api_key", api_key])
-        if model:
-            cmd.extend(["--model", model])
-    elif model:
-        # Internal vLLM mode ignores this value later, but passing it is harmless.
+    if model:
         cmd.extend(["--model", model])
 
     _append_optional_arg(cmd, "OLMOCR_GPU_MEMORY_UTILIZATION", "--gpu-memory-utilization")
@@ -299,7 +295,7 @@ async def _run_pipeline(
 
         await _wait_for_process_exit(process, timeout=2.0)
         await _drain_process_output(process, log_tail)
-        return int(process.returncode or 0), _decode_log_tail(log_tail)
+        return process.returncode, _decode_log_tail(log_tail)
     finally:
         try:
             if process.returncode is None:

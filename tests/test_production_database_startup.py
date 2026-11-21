@@ -1,6 +1,6 @@
 import pytest
 
-from app.core.config import Settings
+from app.infrastructure.config import Settings
 
 
 def _set_valid_production_env(monkeypatch: pytest.MonkeyPatch) -> None:

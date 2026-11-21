@@ -6,23 +6,19 @@ import { datasetApi } from '@/lib/api/datasets'
 import { queryKeys } from '@/lib/query-keys'
 import type { Dataset } from '@/types/datasets'
 
+const EMPTY_DATASETS: Dataset[] = []
+
 export function useDatasets() {
-  const listParams = { exhaustive: true }
-  const datasetsQuery = useQuery<Dataset[]>({
-    queryKey: queryKeys.datasets.exhaustive(listParams),
-    queryFn: async () => {
-      return datasetApi.listAll()
-    },
+  const {
+    data: datasets = EMPTY_DATASETS,
+    isLoading,
+    isFetching,
+    error,
+    refetch: refreshDatasets,
+  } = useQuery({
+    queryKey: queryKeys.datasets.exhaustive(),
+    queryFn: ({ signal }) => datasetApi.listAll(undefined, { signal }),
   })
 
-  const refreshDatasets = async () => {
-    await datasetsQuery.refetch()
-  }
-
-  return {
-    datasets: datasetsQuery.data || [],
-    isLoading: datasetsQuery.isLoading,
-    error: datasetsQuery.error,
-    refreshDatasets,
-  }
+  return { datasets, isLoading, isFetching, error, refreshDatasets }
 }

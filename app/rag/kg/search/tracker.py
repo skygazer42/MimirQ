@@ -5,7 +5,7 @@ Clue tracker with normalized node formats for query/entity/event.
 import uuid
 from typing import Any
 
-from app.core.config import settings
+from app.infrastructure.config import settings
 from app.rag.kg.search.config import SearchConfig
 
 
@@ -74,25 +74,15 @@ class Tracker:
         self._max_clues: int = max(0, int(settings.KG_SEARCH_MAX_CLUES))
 
     def extend_clues(self, clues: list[dict[str, Any]]) -> None:
-        if not self._clues_enabled:
-            return
-        if not clues:
+        if not self._clues_enabled or not clues:
             return
         if self._max_clues <= 0:
             self.clues.extend(clues)
             return
 
-        remaining = self._max_clues - len(self.clues)
-        if remaining <= 0:
-            self.clues_dropped += len(clues)
-            return
-
-        if len(clues) <= remaining:
-            self.clues.extend(clues)
-            return
-
+        remaining = max(0, self._max_clues - len(self.clues))
         self.clues.extend(clues[:remaining])
-        self.clues_dropped += len(clues) - remaining
+        self.clues_dropped += max(0, len(clues) - remaining)
 
     def add_clue(
         self,

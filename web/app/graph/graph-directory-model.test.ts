@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { GraphData } from '@/lib/graph-parser'
+import type { GraphData } from '@/lib/graph-types'
 import { buildDirectoryIndex, getNeighborhood, searchDirectory } from './graph-directory-model'
 
 const graph: GraphData = {

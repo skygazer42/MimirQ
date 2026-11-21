@@ -152,7 +152,7 @@ function graphNodeRecord(node: unknown): GraphNodeColorLike {
   return node && typeof node === 'object' ? (node as GraphNodeColorLike) : {}
 }
 
-export function resolveGraphTypeColor(type: unknown): string {
+function resolveGraphTypeColor(type: unknown): string {
   const normalizedType = normalizeGraphType(type)
   if (!normalizedType) {
     return NODE_COLOR_PALETTE[hashTypeToIndex('unknown')]

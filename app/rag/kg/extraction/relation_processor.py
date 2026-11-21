@@ -7,17 +7,17 @@ Key goals:
 - Return a compact, provenance-friendly payload to be persisted in `kg_relations`.
 """
 
+import logging
 import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any
 
 from app.rag.kg.extraction.evidence import clamp_confidence
-from app.rag.kg.utils import get_logger
 from app.rag.llm.base import BaseLLMClient
 from app.rag.llm.models import LLMMessage, LLMRole
 
-logger = get_logger("kg.extract.relations")
+logger = logging.getLogger("kg.extract.relations")
 
 
 _PRED_SAFE_RE = re.compile(r"[^a-z0-9_]+")
@@ -120,6 +120,7 @@ def _candidate_prompt_lines(candidates: Sequence[CandidateEntity]) -> list[str]:
 def _response_schema() -> dict[str, Any]:
     return {
         "type": "object",
+        "required": ["relations"],
         "properties": {
             "relations": {
                 "type": "array",
@@ -250,16 +251,18 @@ class RelationProcessor:
             temperature=0.2,
         )
 
-        rels_raw = result.get("relations") if isinstance(result, dict) else None
+        rels_raw = result.get("relations")
         if not isinstance(rels_raw, list):
-            return []
+            raise ValueError("Relation extraction response requires a relations array")
 
         valid_ids = {c.cid for c in cand_list if c.cid.strip()}
 
         out: list[dict[str, Any]] = []
         for raw in rels_raw:
             if not isinstance(raw, dict):
-                continue
+                raise ValueError("Relation extraction response contains a non-object relation")
+            if not all(isinstance(raw.get(field), str) for field in ("subject_id", "object_id", "predicate")):
+                raise ValueError("Extracted relation endpoints and predicate must be strings")
             normalized = _normalize_relation(
                 raw,
                 valid_ids=valid_ids,

@@ -21,15 +21,15 @@ export function FeedbackToast({
   const previous = useRef<string | null>(null)
 
   useEffect(() => {
-    const current = message?.trim() || null
-    if (!current) {
+    const current = message?.trim()
+    if (current === undefined || current === '') {
       previous.current = null
       return
     }
     const identity = `${type}:${current}`
     if (previous.current === identity) return
     previous.current = identity
-    toast[type](current, { id: id || instanceId, duration: FEEDBACK_DURATION })
+    toast[type](current, { id: id === undefined || id === '' ? instanceId : id, duration: FEEDBACK_DURATION })
   }, [id, instanceId, message, type])
 
   return null

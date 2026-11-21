@@ -93,78 +93,42 @@ def _magicpdf_status(
 
 
 def main() -> int:
-    from app.core.config import settings
-    from app.core.jwt_inspect import format_unix_ts_utc, try_get_jwt_exp
-    from app.parsing.parsers.magic_pdf_parser import magicpdf_service_configured, resolve_magicpdf_models_dir
-    from app.parsing.utils.cli import resolve_cli_command
+    from app.infrastructure.config import settings
+    from app.infrastructure.security.jwt_inspect import format_unix_ts_utc, try_get_jwt_exp
+    from app.rag.ingestion.parsing.parsers.magic_pdf_parser import (
+        magicpdf_service_configured,
+        resolve_magicpdf_models_dir,
+    )
+    from app.rag.ingestion.parsing.utils.cli import resolve_cli_command
 
     rows: list[tuple[str, str, str]] = []
 
     rows.append(("basic", "on", "built-in"))
 
-    ok, msg = _check_import("app.deepdoc.parser")
+    ok, msg = _check_import("app.rag.ingestion.parsing.parsers.deepdoc_parser")
     rows.append(("deepdoc", "on" if settings.DEEPDOC_ENABLED else "off", "available" if ok else msg))
 
-    deepseek_enabled = bool(getattr(settings, "DEEPSEEK_OCR_ENABLED", False))
-    deepseek_configured = bool((getattr(settings, "SILICONFLOW_API_KEY", "") or "").strip())
-    rows.append(
-        (
-            "deepseek_ocr",
-            "on" if deepseek_enabled else "off",
-            _configured_status(deepseek_enabled, deepseek_configured, "missing SILICONFLOW_API_KEY"),
-        )
+    service_checks = (
+        ("deepseek_ocr", settings.DEEPSEEK_OCR_ENABLED, settings.SILICONFLOW_API_KEY, "missing SILICONFLOW_API_KEY"),
+        ("etl4llm", settings.ETL4LLM_ENABLED, settings.ETL4LLM_API_URL, "missing ETL4LLM_API_URL"),
+        ("marker", settings.MARKER_ENABLED, settings.MARKER_API_URL, "missing MARKER_API_URL"),
+        ("paddle_vl", settings.PADDLE_VL_ENABLED, settings.PADDLE_VL_API_URL, "missing PADDLE_VL_API_URL"),
+        ("olmocr", settings.OLMOCR_ENABLED, settings.OLMOCR_API_URL, "missing OLMOCR_API_URL"),
     )
+    for name, enabled, required, missing in service_checks:
+        status = _configured_status(enabled, bool(required.strip()), missing)
+        rows.append((name, "on" if enabled else "off", status))
 
-    etl4llm_enabled = bool(getattr(settings, "ETL4LLM_ENABLED", False))
-    etl4llm_configured = bool((getattr(settings, "ETL4LLM_API_URL", "") or "").strip())
-    rows.append(
-        (
-            "etl4llm",
-            "on" if etl4llm_enabled else "off",
-            _configured_status(etl4llm_enabled, etl4llm_configured, "missing ETL4LLM_API_URL"),
-        )
-    )
-
-    marker_enabled = bool(getattr(settings, "MARKER_ENABLED", False))
-    marker_configured = bool((getattr(settings, "MARKER_API_URL", "") or "").strip())
-    rows.append(
-        (
-            "marker",
-            "on" if marker_enabled else "off",
-            _configured_status(marker_enabled, marker_configured, "missing MARKER_API_URL"),
-        )
-    )
-
-    paddlevl_enabled = bool(getattr(settings, "PADDLE_VL_ENABLED", False))
-    paddlevl_configured = bool((getattr(settings, "PADDLE_VL_API_URL", "") or "").strip())
-    rows.append(
-        (
-            "paddle_vl",
-            "on" if paddlevl_enabled else "off",
-            _configured_status(paddlevl_enabled, paddlevl_configured, "missing PADDLE_VL_API_URL"),
-        )
-    )
-
-    olmocr_enabled = bool(getattr(settings, "OLMOCR_ENABLED", False))
-    olmocr_configured = bool((getattr(settings, "OLMOCR_API_URL", "") or "").strip())
-    rows.append(
-        (
-            "olmocr",
-            "on" if olmocr_enabled else "off",
-            _configured_status(olmocr_enabled, olmocr_configured, "missing OLMOCR_API_URL"),
-        )
-    )
-
-    textin_enabled = bool(getattr(settings, "TEXTIN_ENABLED", False))
+    textin_enabled = settings.TEXTIN_ENABLED
     rows.append(
         (
             "textin",
             "on" if textin_enabled else "off",
             _textin_status(
                 enabled=textin_enabled,
-                api_url=getattr(settings, "TEXTIN_API_URL", ""),
-                app_id=getattr(settings, "TEXTIN_APP_ID", ""),
-                secret_code=getattr(settings, "TEXTIN_SECRET_CODE", ""),
+                api_url=settings.TEXTIN_API_URL,
+                app_id=settings.TEXTIN_APP_ID,
+                secret_code=settings.TEXTIN_SECRET_CODE,
             ),
         )
     )
@@ -172,8 +136,8 @@ def main() -> int:
     ok, msg = _check_import("markitdown")
     rows.append(("markitdown", "on" if settings.MARKITDOWN_ENABLED else "off", "installed" if ok else msg))
 
-    pandoc_enabled = bool(getattr(settings, "PANDOC_ENABLED", False))
-    pandoc_cli = (getattr(settings, "PANDOC_CLI", "") or "pandoc").strip() or "pandoc"
+    pandoc_enabled = settings.PANDOC_ENABLED
+    pandoc_cli = settings.PANDOC_CLI.strip() or "pandoc"
     pandoc_path = resolve_cli_command(pandoc_cli)
     rows.append(
         (
@@ -183,8 +147,8 @@ def main() -> int:
         )
     )
 
-    lo_enabled = bool(getattr(settings, "LIBREOFFICE_ENABLED", False))
-    lo_cli = (getattr(settings, "LIBREOFFICE_CLI", "") or "soffice").strip() or "soffice"
+    lo_enabled = settings.LIBREOFFICE_ENABLED
+    lo_cli = settings.LIBREOFFICE_CLI.strip() or "soffice"
     lo_path = resolve_cli_command(lo_cli)
     rows.append(
         (
@@ -194,8 +158,8 @@ def main() -> int:
         )
     )
 
-    docling_enabled = bool(getattr(settings, "DOCLING_ENABLED", False))
-    docling_api_url = (getattr(settings, "DOCLING_API_URL", "") or "").strip()
+    docling_enabled = settings.DOCLING_ENABLED
+    docling_api_url = settings.DOCLING_API_URL.strip()
     if not docling_enabled:
         docling_status = "disabled"
     elif docling_api_url:
@@ -204,42 +168,40 @@ def main() -> int:
         docling_status = "missing api_url"
     rows.append(("docling", "on" if docling_enabled else "off", docling_status))
 
-    mineru_enabled = bool(getattr(settings, "MINERU_ENABLED", False))
-    mineru_token = (getattr(settings, "MINERU_API_TOKEN", "") or "").strip()
+    mineru_enabled = settings.MINERU_ENABLED
+    mineru_token = settings.MINERU_API_TOKEN.strip()
     mineru_exp = try_get_jwt_exp(mineru_token) if mineru_token else None
-    mineru_token_expired = bool(mineru_exp is not None and int(mineru_exp) <= int(time.time()))
-    mineru_import_ok, mineru_import_msg = _check_import("app.parsing.parsers.mineru_parser")
+    mineru_token_expired = mineru_exp is not None and mineru_exp <= time.time()
+    mineru_import_ok, mineru_import_msg = _check_import("app.rag.ingestion.parsing.parsers.mineru_parser")
     mineru_status = _mineru_status(
         enabled=mineru_enabled,
-        local_server_url=(getattr(settings, "MINERU_LOCAL_SERVER_URL", "") or "").strip(),
+        local_server_url=settings.MINERU_LOCAL_SERVER_URL.strip(),
         api_token=mineru_token,
         token_expired=mineru_token_expired,
-        token_expiry_text=format_unix_ts_utc(int(mineru_exp)) if mineru_exp is not None else None,
+        token_expiry_text=format_unix_ts_utc(mineru_exp) if mineru_exp is not None else None,
         import_ok=mineru_import_ok,
         import_message=mineru_import_msg,
     )
     rows.append(("mineru", "on" if mineru_enabled else "off", mineru_status))
 
-    if bool(getattr(settings, "RAPIDOCR_ENABLED", False)):
+    if settings.RAPIDOCR_ENABLED:
         ok, msg = _check_import("rapidocr_onnxruntime")
         rows.append(("rapidocr", "on", "installed" if ok else msg))
     else:
         rows.append(("rapidocr", "off", "disabled"))
 
-    cli = (getattr(settings, "MAGIC_PDF_CLI", "") or "magic-pdf").strip() or "magic-pdf"
+    cli = settings.MAGIC_PDF_CLI.strip() or "magic-pdf"
     cli_path = resolve_cli_command(cli)
-    magicpdf_models_dir = resolve_magicpdf_models_dir(getattr(settings, "MAGIC_PDF_MODELS_DIR", ""))
+    magicpdf_models_dir = resolve_magicpdf_models_dir(settings.MAGIC_PDF_MODELS_DIR)
     rows.append(
         (
             "magicpdf",
-            "on" if getattr(settings, "MAGIC_PDF_ENABLED", False) else "off",
+            "on" if settings.MAGIC_PDF_ENABLED else "off",
             _magicpdf_status(
-                enabled=bool(getattr(settings, "MAGIC_PDF_ENABLED", False)),
+                enabled=settings.MAGIC_PDF_ENABLED,
                 cli_path=str(cli_path) if cli_path else None,
                 models_dir=magicpdf_models_dir,
-                api_url=getattr(settings, "MAGIC_PDF_API_URL", "")
-                if magicpdf_service_configured(getattr(settings, "MAGIC_PDF_API_URL", ""))
-                else "",
+                api_url=settings.MAGIC_PDF_API_URL if magicpdf_service_configured(settings.MAGIC_PDF_API_URL) else "",
             ),
         )
     )

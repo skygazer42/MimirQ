@@ -30,7 +30,7 @@
 
 ### 2. RAG 检索返回图片信息
 
-`app/rag/pipelines/langgraph.py` 与 `app/rag/engine.py` 的执行路径共用 `app/rag/core/citations.py` 中的 citations 构建器，读取 chunk metadata 的 `img_id` 并组装图片字段：
+`app/rag/pipelines/langgraph.py` 与 `app/rag/engine.py` 的执行路径共用 `app/rag/retrieval/citations.py` 中的 citations 构建器，读取 chunk metadata 的 `img_id` 并组装图片字段：
 
 ```python
 # 提取图片信息（如果有）

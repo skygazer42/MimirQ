@@ -35,12 +35,12 @@ from uuid import UUID
 from sqlalchemy import and_
 from sqlalchemy.orm import Session
 
-from app.core.config import settings
-from app.core.database import SessionLocal
-from app.models.dataset import Dataset
-from app.models.document import Document as DBDocument
-from app.rag.kg.models import KgSourceEvent
-from app.services.indexer import Indexer
+from app.infrastructure.config import settings
+from app.infrastructure.database.connection import SessionLocal
+from app.models.datasets.records import Dataset
+from app.models.documents.records import Document as DBDocument
+from app.models.knowledge_graph.entities import KgSourceEvent
+from app.rag.ingestion.indexing.indexer import Indexer
 
 
 def _parse_uuid(value: str) -> UUID:
@@ -144,6 +144,8 @@ def main(argv: list[str] | None = None) -> int:
     max_events = max(0, args.max_events)
     dataset_id = args.dataset_id
     document_ids = args.document_id
+
+    import app.models.registry  # noqa: F401
 
     db = SessionLocal()
     try:

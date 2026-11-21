@@ -4,6 +4,7 @@ from app.api.schemas.sources.acl import (
     ConnectorSourceAclConfig,
     SourceAcl,
     SourcePrincipal,
+    SourceSystem,
 )
 from app.api.schemas.sources.connectors import (
     CONNECTOR_CONFIG_MODELS,
@@ -81,6 +82,7 @@ __all__ = [
     "SQLServerCatalogConnectorConfig",
     "SourceAcl",
     "SourcePrincipal",
+    "SourceSystem",
     "TableRoutingSettingAudit",
     "UrlBatchConnectorConfig",
     "WebCrawlConnectorConfig",

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass, field
@@ -16,9 +17,7 @@ from sqlalchemy.engine import URL, Connection
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.pool import NullPool
 
-from app.rag.core.logging import get_logger
-
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 MYSQL_TABLES_SQL = (
     "SELECT "
@@ -247,8 +246,9 @@ def _sqlserver_table_filters(config: Mapping[str, Any]) -> tuple[set[str], set[s
             include_names.add(table.lower())
             continue
         schema, name = table.split(".", 1)
-        if schema.strip() and name.strip():
-            include_fqn.add(f"{schema.strip().lower()}.{name.strip().lower()}")
+        schema, name = schema.strip().lower(), name.strip().lower()
+        if schema and name:
+            include_fqn.add(f"{schema}.{name}")
     return include_schemas, include_fqn, include_names
 
 
@@ -260,12 +260,14 @@ def _sqlserver_table_included(
     include_fqn: set[str],
     include_names: set[str],
 ) -> bool:
-    if include_schemas and schema_name.lower() not in include_schemas:
+    schema = schema_name.lower()
+    if include_schemas and schema not in include_schemas:
         return False
     if not include_fqn and not include_names:
         return True
-    fqn = f"{schema_name.lower()}.{table_name.lower()}" if schema_name else table_name.lower()
-    return fqn in include_fqn or table_name.lower() in include_names
+    table = table_name.lower()
+    full_name = f"{schema}.{table}" if schema else table
+    return full_name in include_fqn or table in include_names
 
 
 def _read_sqlserver_catalog(config: Mapping[str, Any], *, max_tables: int) -> list[CatalogTableInput]:
@@ -325,6 +327,7 @@ def run_catalog_sync(
     entitlement_hash = _entitlement_hash(engine=engine, config=config)
     columns_upserted = 0
     profiles_written = 0
+    profile_enabled = config.get("profile_enabled", False)
     for table in tables:
         table_id = store.upsert_table(
             tenant_id=tenant_id,
@@ -334,7 +337,7 @@ def run_catalog_sync(
             seen_at=seen_at,
         )
         columns_upserted += store.replace_columns(table_id=table_id, columns=table.columns)
-        if config.get("profile_enabled", False):
+        if profile_enabled:
             profile = {} if table.row_count_estimate is None else {"row_count_estimate": table.row_count_estimate}
             store.insert_profile_snapshot(
                 table_id=table_id,
@@ -360,7 +363,7 @@ def _jsonify_row_value(value: Any) -> Any:
 
 
 def _row_hash(row: dict[str, Any]) -> str:
-    payload = {key: _jsonify_row_value(row[key]) for key in sorted(row) if key != "__row_pk_hash"}
+    payload = {key: _jsonify_row_value(value) for key, value in row.items() if key != "__row_pk_hash"}
     raw = json.dumps(payload, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
     return hashlib.sha256(raw.encode("utf-8", "ignore")).hexdigest()
 

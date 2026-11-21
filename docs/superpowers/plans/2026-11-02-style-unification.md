@@ -95,7 +95,7 @@ Skill 安装目录为 `C:/Users/jiahuanl/.codex/skills/`。项目已选规则和
 
 ### Task 2：认证与数据集页面样板（已完成）
 
-入口：`app/services/user_service.py`、`app/api/v1/auth.py` 及 SAML 调用方；`web/components/datasets/datasets-page.tsx`、`web/hooks/use-datasets.ts`、`web/types/datasets.ts`。
+入口：`app/services/identity/users.py`、`app/api/v1/auth.py` 及 SAML 调用方；`web/components/datasets/datasets-page.tsx`、`web/hooks/use-datasets.ts`、`web/types/datasets.ts`。
 
 - [x] 用户服务改模块函数，调用方和配置依赖同步。
 - [x] 数据集列表落实具名组件、共享类型、加载／空／失败及缓存刷新状态。
@@ -105,7 +105,7 @@ Skill 安装目录为 `C:/Users/jiahuanl/.codex/skills/`。项目已选规则和
 
 **3A：数据集服务已完成，类别提交 `2c16dedf8`。**
 
-文件：`app/services/dataset_service.py`、`app/api/v1/datasets.py`、已迁移的文档／连接器／RAG 调用文件，以及本轮明确的 52 个既有测试引用文件。接口保留 `ensure_member(db, tenant_id, account_id)`、`get_dataset(db, tenant_id, dataset_id)` 等现有模块函数，供实际调用方直接使用。
+文件：`app/services/datasets/management.py`、`app/api/v1/datasets.py`、已迁移的文档／连接器／RAG 调用文件，以及本轮明确的 52 个既有测试引用文件。接口保留 `ensure_member(db, tenant_id, account_id)`、`get_dataset(db, tenant_id, dataset_id)` 等现有模块函数，供实际调用方直接使用。
 
 - [x] 对照已有修改前和结构迁移快照复查 125 个文件；区分服务内部简化、精确调用替换和两个特殊 fixture 调整，不能沿用内部简化之前的 AST 通过结果作为最终证据。
 - [x] 逐项核对 UUID／成员类型、本地 owner 引导条件、组数量限制、ACL 审计和事务顺序；当前 `HTTPException` 先保留，错误边界迁移另行处理。
@@ -115,7 +115,7 @@ Skill 安装目录为 `C:/Users/jiahuanl/.codex/skills/`。项目已选规则和
 
 **3B：按权限、成员、配额、通用入口依次处理，每片单独闭合。**
 
-入口：`app/services/rbac_service.py`、`tenant_group_service.py`、`tenant_member_provisioning_service.py`、`tenant_quota.py`、`tenant_quota_service.py`、`app/core/config.py`、`app/core/request_state.py`、`app/core/exceptions.py`，以及 `app/api/v1/rbac.py`、`scim.py` 的实际调用链。
+入口：`app/services/identity/rbac.py`、`tenant_group_service.py`、`tenant_member_provisioning_service.py`、`tenant_quota.py`、`tenant_quota_service.py`、`app/infrastructure/config.py`、`app/infrastructure/runtime/request_state.py`、`app/infrastructure/exceptions.py`，以及 `app/api/v1/rbac.py`、`scim.py` 的实际调用链。
 
 - [x] 先核对 RBAC 的角色归一化、权限集合和租户成员契约；已完成的租户组服务仅检查相邻接口，不重复重写。
 - [x] 再核对成员供应与配额的所有者、重复映射和失败政策；保留配额 fail-closed、限流资源及同步／异步边界。6 个调整文件通过 Ruff、AST 与调用签名核对；请求状态载体按框架契约保留并登记已符合。
@@ -150,7 +150,7 @@ Dataset precheck slice 已合并：typed scan-run/dataset fields 替代了 ORM �
 
 ### Task 4：文档处理链（本轮源码改造完成）
 
-入口：`app/api/v1/documents.py`、`document_batch_upload.py`、`document_batches.py`；权限涉及 `app/services/document_access.py`、`document_access_service.py`、`document_permission_service.py`；处理涉及 `app/services/ingestion_run_service.py`、`connector_run_executor.py`、`app/parsing/processors/support/process_document_flow.py`、`app/tasks/jobs.py`、`app/tasks/worker.py`、`app/storage/object/`。
+入口：`app/api/v1/documents.py`、`document_batch_upload.py`、`document_batches.py`；权限涉及 `app/services/documents/read_scope.py`、`document_access_service.py`、`document_permission_service.py`；处理涉及 `app/services/documents/ingestion_runs.py`、`connector_run_executor.py`、`app/parsing/processors/support/process_document_flow.py`、`app/tasks/jobs.py`、`app/tasks/worker.py`、`app/storage/object/`。
 
 - [x] 先从上传、权限与入库追踪请求模型、ID、元数据及参数映射；确认三个访问模块的职责，只有同一业务规则确有重复才合并。
 - [x] 再追踪入库、连接器运行、解析、存储和后台任务；去掉路由装配器反向依赖及整个 `Any` 模块传递，共享请求类型归入所属 schema。
@@ -227,7 +227,7 @@ Parser table structure/rendering slice retains cell/row order, span/coordinate v
 
 ### Task 5：RAG 与模型调用（本轮静态改造完成）
 
-入口：`app/api/v1/rag.py`、`app/rag/engine.py`、`app/rag/engine_support/`、`app/rag/retrieval/orchestration/`、`app/rag/embedding/`、`app/rag/reranker/`、`app/rag/llm/`，以及实际索引所有者 `app/services/indexer.py`、`app/services/indexing/`、`app/services/dataset_embedding_config.py` 和 `app/storage/vector/`；同批覆盖其实际检索、索引、KG、评估与工具调用模块。
+入口：`app/api/v1/rag.py`、`app/rag/engine.py`、`app/rag/engine_support/`、`app/rag/retrieval/orchestration/`、`app/rag/embedding/`、`app/rag/reranker/`、`app/rag/llm/`，以及实际索引所有者 `app/services/indexing/indexer.py`、`app/services/indexing/`、`app/services/datasets/embedding_config.py` 和 `app/storage/vector/`；同批覆盖其实际检索、索引、KG、评估与工具调用模块。
 
 已开始核对索引写入切片：`vector_writer.py` 统一持有 Milvus 模式判断、shadow writer 配置／缓存、运行时异常和可选双写；`indexer.py` 与 `chunks.py` 直接调用该所有者。当前仅完成此切片的静态核对，三份文件的整体语义审核仍在清单中待办。
 

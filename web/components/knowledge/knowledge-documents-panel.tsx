@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 import { FeedbackToast } from '@/components/feedback-toast'
@@ -54,12 +54,14 @@ import { Link } from '@/i18n/navigation'
 import { formatApiError } from '@/lib/api-errors'
 import { reportClientError } from '@/lib/client-logging'
 import { cn, detachPromise, formatDate, formatFileSize } from '@/lib/utils'
-import type { Dataset, Document } from '@/types'
+import type { Dataset } from '@/types/datasets'
+import type { Document } from '@/types/documents'
 
 import styles from './knowledge-page.module.css'
 
 type KnowledgeDocumentsPanelProps = {
   isLoading: boolean
+  isPlaceholderData: boolean
   error?: string | null
   documents: Document[]
   totalDocumentsCount: number
@@ -116,15 +118,17 @@ const STATUS_ICONS = {
   deleting: Loader2,
 }
 
-function getSourceFolder(doc: Document): string {
-  const sourcePath = typeof doc.metadata?.source_path === 'string' ? doc.metadata.source_path : ''
+function getSourceFolder(doc: Document): string | undefined {
+  const sourcePath = doc.metadata?.source_path
+  if (typeof sourcePath !== 'string') return undefined
   const normalized = sourcePath.replaceAll('\\', '/')
   const separator = normalized.lastIndexOf('/')
-  return separator > 0 ? normalized.slice(0, separator) : ''
+  return separator > 0 ? normalized.slice(0, separator) : undefined
 }
 
 export function KnowledgeDocumentsPanel({
   isLoading,
+  isPlaceholderData,
   error,
   documents,
   totalDocumentsCount,
@@ -176,6 +180,7 @@ export function KnowledgeDocumentsPanel({
   const [singleDeleteDoc, setSingleDeleteDoc] = useState<Document | null>(null)
   const [singleDeleteWorking, setSingleDeleteWorking] = useState(false)
   const [singleDeleteError, setSingleDeleteError] = useState<string | null>(null)
+  const singleDeletePending = useRef(false)
   const returnFocusRef = useRef<HTMLButtonElement | null>(null)
   const moreButtonsRef = useRef(new Map<string, HTMLButtonElement>())
   const tableRef = useRef<HTMLDivElement | null>(null)
@@ -195,22 +200,31 @@ export function KnowledgeDocumentsPanel({
     setSingleDeleteError(null)
     setSingleDeleteDoc(doc)
   }
-  const confirmSingleDelete = useCallback(async () => {
-    if (!singleDeleteDoc || singleDeleteWorking) return
+  async function confirmSingleDelete() {
+    if (singleDeleteDoc === null || singleDeletePending.current) return
+    singleDeletePending.current = true
     setSingleDeleteWorking(true)
     setSingleDeleteError(null)
     try {
       await deleteDocument(singleDeleteDoc.id)
-      toast.success(t('toasts.deleteSuccess'))
-      setSingleDeleteDoc(null)
-      await onRefresh()
-    } catch (err) {
-      reportClientError('Failed to delete knowledge document', err)
-      setSingleDeleteError(formatApiError(err, t('singleDelete.errorFallback')))
+    } catch (error) {
+      reportClientError('Failed to delete knowledge document', error)
+      setSingleDeleteError(formatApiError(error, t('singleDelete.errorFallback')))
+      return
     } finally {
+      singleDeletePending.current = false
       setSingleDeleteWorking(false)
     }
-  }, [deleteDocument, onRefresh, singleDeleteDoc, singleDeleteWorking, t])
+
+    setSingleDeleteDoc(null)
+    toast.success(t('toasts.deleteSuccess'))
+    try {
+      await onRefresh()
+    } catch (error) {
+      reportClientError('Failed to refresh knowledge documents after deletion', error)
+      toast.error(formatApiError(error, t('toasts.refreshFailed')))
+    }
+  }
 
   const copyText = async (text: string, success: string) => {
     try {
@@ -222,33 +236,37 @@ export function KnowledgeDocumentsPanel({
   }
 
   const renderRow = (doc: Document) => {
+    const isSelected = selectedSet.has(doc.id)
     const fileType = getFileTypeMeta(doc)
     const TypeIcon = fileType.icon
-    const StatusIcon = STATUS_ICONS[doc.status] || Clock
+    const StatusIcon = STATUS_ICONS[doc.status]
     const statusLabel =
       doc.status === 'cancelled' ? '已取消' : doc.status === 'deleting' ? '删除中' : t('status.' + doc.status)
-    const datasetLabel = datasetLabelById[doc.dataset_id || ''] || '未分类'
+    const datasetId = doc.dataset_id
+    const datasetLabel =
+      datasetId === null || datasetId === undefined ? '未分类' : (datasetLabelById[datasetId] ?? datasetId)
     const folder = getSourceFolder(doc)
-    const documentMeta = [fileType.label, folder, doc.archived_at ? '已归档' : doc.disabled_at ? '已禁用' : '']
-      .filter(Boolean)
+    const lifecycleLabel = doc.archived_at ? '已归档' : doc.disabled_at ? '已禁用' : null
+    const documentMeta = [fileType.label, folder, lifecycleLabel]
+      .filter((value) => value !== null && value !== undefined)
       .join(' · ')
     const needsAttention = doc.status === 'failed' || doc.status === 'quarantined'
-    const progress = Math.round(Math.min(100, Math.max(0, doc.processing_progress || 0)))
+    const progress = Math.round(Math.min(100, Math.max(0, doc.processing_progress)))
     const stage = doc.current_stage === 'vector_write' ? 'indexing' : doc.current_stage
     const stageLabel = stage && stageT.has(stage) ? stageT(stage) : stage
     const stateDetail = needsAttention
       ? doc.error_message
       : doc.status === 'processing'
-        ? [stageLabel, progress ? progress + '%' : null].filter(Boolean).join(' · ')
+        ? [stageLabel, `${progress}%`].filter(Boolean).join(' · ')
         : null
     const openDocument = () => (needsAttention ? setActiveDrawerDoc(doc) : onOpenDocument(doc.id))
 
     return (
-      <tr key={doc.id} data-document-row={doc.id} data-selected={selectedSet.has(doc.id)}>
+      <tr key={doc.id} data-document-row={doc.id} data-selected={isSelected}>
         <td>
           <Checkbox
             className={styles.checkbox}
-            checked={selectedSet.has(doc.id)}
+            checked={isSelected}
             disabled={isLoading || batchWorking}
             onCheckedChange={() => toggleDocSelection(doc.id)}
             aria-label={t('table.selectDocument', { filename: doc.filename })}
@@ -262,6 +280,7 @@ export function KnowledgeDocumentsPanel({
                 type="button"
                 className={styles.documentName}
                 title={doc.filename}
+                disabled={isPlaceholderData}
                 onFocus={(event) => {
                   returnFocusRef.current = event.currentTarget
                 }}
@@ -273,7 +292,7 @@ export function KnowledgeDocumentsPanel({
                 {documentMeta}
               </div>
               <div className={styles.mobileMeta}>
-                {formatFileSize(doc.file_size)} · {doc.chunk_count ?? 0} 分块
+                {formatFileSize(doc.file_size)} · {doc.chunk_count} 分块
               </div>
             </div>
           </div>
@@ -301,7 +320,7 @@ export function KnowledgeDocumentsPanel({
             </span>
           ) : null}
         </td>
-        <td className={cn(styles.numeric, styles.desktopColumn)}>{doc.chunk_count ?? '—'}</td>
+        <td className={cn(styles.numeric, styles.desktopColumn)}>{doc.chunk_count}</td>
         <td className={cn(styles.size, styles.desktopColumn)}>{formatFileSize(doc.file_size)}</td>
         <td className={cn(styles.date, styles.desktopColumn)} title={doc.created_at}>
           {formatDate(doc.created_at)}
@@ -311,6 +330,7 @@ export function KnowledgeDocumentsPanel({
             <Button
               variant="ghost"
               className={styles.viewButton}
+              disabled={isPlaceholderData}
               onFocus={(event) => {
                 returnFocusRef.current = event.currentTarget
               }}
@@ -461,8 +481,8 @@ export function KnowledgeDocumentsPanel({
               </h2>
               <p>
                 {selectedDatasetId
-                  ? '向「' + (selectedDatasetLabel || selectedDatasetId) + '」添加文件或网页内容。解析完成后即可检索。'
-                  : '添加文件或网页，解析后即可检索与引用。'}
+                  ? '向「' + (selectedDatasetLabel || selectedDatasetId) + '」导入文件或网页，完成索引后可检索。'
+                  : '导入文件或网页，完成索引后可检索。'}
               </p>
               {selectedDatasetId ? (
                 <Button variant="link" onClick={onSwitchToAllDatasets}>
@@ -587,7 +607,7 @@ export function KnowledgeDocumentsPanel({
                         {hasActiveFilters
                           ? t('empty.filtered.refinedDescription')
                           : selectedDatasetId
-                            ? '当前数据集「' + (selectedDatasetLabel || selectedDatasetId) + '」中还没有文档。'
+                            ? '可向「' + (selectedDatasetLabel || selectedDatasetId) + '」导入文件或网页。'
                             : t('empty.blank.description')}
                       </p>
                       <div className={styles.stateActions}>
@@ -613,17 +633,23 @@ export function KnowledgeDocumentsPanel({
 
           <footer className={styles.tableFooter} data-task-center-dock="true">
             <div className={styles.totals} aria-live="polite">
-              <span>
-                共 <strong>{totalDocumentsCount}</strong> 份文档
-              </span>
-              {typeof totalChunks === 'number' ? (
+              {isPlaceholderData ? (
+                <span>正在更新文档列表…</span>
+              ) : (
                 <>
-                  <span aria-hidden="true">·</span>
                   <span>
-                    <strong>{totalChunks}</strong> 个分块
+                    共 <strong>{totalDocumentsCount}</strong> 份文档
                   </span>
+                  {typeof totalChunks === 'number' ? (
+                    <>
+                      <span aria-hidden="true">·</span>
+                      <span>
+                        <strong>{totalChunks}</strong> 个分块
+                      </span>
+                    </>
+                  ) : null}
                 </>
-              ) : null}
+              )}
             </div>
             <div className={styles.pagination}>
               <Select
@@ -655,7 +681,7 @@ export function KnowledgeDocumentsPanel({
                 <span className={styles.pageNumber} aria-current="page">
                   {page}
                 </span>
-                <span className={styles.pageOf}>/ {pageCount}</span>
+                {isPlaceholderData ? null : <span className={styles.pageOf}>/ {pageCount}</span>}
                 <IconButton
                   label="下一页"
                   variant="ghost"
@@ -744,8 +770,7 @@ export function KnowledgeDocumentsPanel({
           </SheetHeader>
           <div className={styles.sheetBody}>
             <KnowledgeInspector
-              embedded
-              selectedDocs={activeDocument ? [activeDocument] : []}
+              document={activeDocument}
               datasetLabel={activeDocument?.dataset_id ? datasetLabelById[activeDocument.dataset_id] : undefined}
             />
           </div>
@@ -763,6 +788,7 @@ export function KnowledgeDocumentsPanel({
               selectedDocumentIds={selectedDocIds}
               datasetId={selectedDatasetId}
               datasets={datasets}
+              onRefresh={onRefresh}
             />
           </div>
         </SheetContent>

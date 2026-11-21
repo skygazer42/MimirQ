@@ -1,3 +1,4 @@
+import logging
 from collections import Counter
 from typing import Any, TypedDict
 
@@ -6,6 +7,7 @@ from sklearn.decomposition import TruncatedSVD
 from sklearn.feature_extraction.text import TfidfVectorizer
 
 _SCHEMA = "mimirq.dataset_analysis.umap_scatter.v1"
+logger = logging.getLogger(__name__)
 
 
 class _ScatterRecord(TypedDict):
@@ -77,33 +79,33 @@ def _query_records(rows: list[dict[str, Any]], *, limit: int) -> list[_ScatterRe
     return out
 
 
-def _project_points(texts: list[str]) -> np.ndarray:
+def _project_points(texts: list[str]) -> tuple[np.ndarray, str]:
     if len(texts) <= 1:
-        return np.array([[0.0, 0.0]], dtype=float)
+        return np.array([[0.0, 0.0]], dtype=float), "fixed_layout"
     if len(texts) == 2:
-        return np.array([[0.0, 0.0], [1.0, 0.0]], dtype=float)
+        return np.array([[0.0, 0.0], [1.0, 0.0]], dtype=float), "fixed_layout"
     matrix = TfidfVectorizer(min_df=1).fit_transform(texts)
     try:
         from umap.umap_ import UMAP
-
-        projector = UMAP(
-            n_components=2,
-            n_neighbors=max(2, min(10, len(texts) - 1)),
-            min_dist=0.15,
-            metric="cosine",
-            random_state=42,
-            transform_seed=42,
-        )
-        return np.asarray(projector.fit_transform(matrix), dtype=float)
-    except Exception:
+    except ImportError:
+        logger.debug("UMAP is unavailable; using the declared SVD projection")
         dense = np.asarray(matrix.toarray(), dtype=float)
         if dense.shape[1] <= 1:
             zeros = np.zeros((dense.shape[0], 2), dtype=float)
             if dense.shape[1] == 1:
                 zeros[:, 0] = dense[:, 0]
-            return zeros
+            return zeros, "single_feature"
         projector = TruncatedSVD(n_components=2, random_state=42)
-        return np.asarray(projector.fit_transform(matrix), dtype=float)
+        return np.asarray(projector.fit_transform(matrix), dtype=float), "svd"
+    projector = UMAP(
+        n_components=2,
+        n_neighbors=max(2, min(10, len(texts) - 1)),
+        min_dist=0.15,
+        metric="cosine",
+        random_state=42,
+        transform_seed=42,
+    )
+    return np.asarray(projector.fit_transform(matrix), dtype=float), "umap"
 
 
 def build_umap_scatter(
@@ -116,10 +118,10 @@ def build_umap_scatter(
     query_records = _query_records(rows, limit=max_query_points)
     records = doc_records + query_records
     if not records:
-        return {"schema": _SCHEMA, "point_count": 0, "points": []}
+        return {"schema": _SCHEMA, "point_count": 0, "points": [], "projection_method": None}
 
     texts = [item["text"].strip() for item in records]
-    coords = _project_points(texts)
+    coords, projection_method = _project_points(texts)
     points: list[_ScatterPoint] = []
     for idx, item in enumerate(records):
         points.append(
@@ -136,5 +138,6 @@ def build_umap_scatter(
     return {
         "schema": _SCHEMA,
         "point_count": len(points),
+        "projection_method": projection_method,
         "points": points,
     }

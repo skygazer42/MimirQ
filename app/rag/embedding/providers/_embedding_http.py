@@ -2,18 +2,22 @@
 
 import asyncio
 import contextlib
+import math
 import threading
 import time
 import weakref
 from collections.abc import Callable, Iterator, Mapping
+from datetime import UTC
+from email.utils import parsedate_to_datetime
 from typing import Any, Protocol, TypeVar
 
 import httpx
 
-from app.core.config import settings
-from app.core.secure_random import secure_jitter
+from app.infrastructure.config import settings
+from app.infrastructure.security.random import secure_jitter
 
 _RETRYABLE_HTTP_CODES = frozenset({408, 429, 500, 502, 503, 504})
+_REQUEST_ERRORS = (httpx.HTTPStatusError, httpx.TimeoutException, httpx.NetworkError, httpx.RemoteProtocolError)
 
 T = TypeVar("T")
 
@@ -29,8 +33,7 @@ class _AsyncHTTPClient(Protocol):
 class EmbeddingHTTPConcurrency:
     """Own provider-local sync and event-loop-local async concurrency limits."""
 
-    def __init__(self, error_label: str) -> None:
-        self._error_label = error_label
+    def __init__(self) -> None:
         self._sync_sem: threading.BoundedSemaphore | None = None
         self._sync_sem_cap: int | None = None
         self._sync_sem_lock = threading.Lock()
@@ -43,18 +46,15 @@ class EmbeddingHTTPConcurrency:
 
     @staticmethod
     def _capacity() -> int:
-        return max(1, settings.EMBEDDING_API_MAX_CONCURRENCY)
+        return settings.EMBEDDING_API_MAX_CONCURRENCY
 
     def _get_sync_semaphore(self) -> threading.BoundedSemaphore:
         cap = self._capacity()
-        if self._sync_sem is None or self._sync_sem_cap != cap:
-            with self._sync_sem_lock:
-                if self._sync_sem is None or self._sync_sem_cap != cap:
-                    self._sync_sem = threading.BoundedSemaphore(cap)
-                    self._sync_sem_cap = cap
-        if self._sync_sem is None:
-            raise RuntimeError(f"{self._error_label} semaphore is not initialized")
-        return self._sync_sem
+        with self._sync_sem_lock:
+            if self._sync_sem is None or self._sync_sem_cap != cap:
+                self._sync_sem = threading.BoundedSemaphore(cap)
+                self._sync_sem_cap = cap
+            return self._sync_sem
 
     @contextlib.contextmanager
     def sync_slot(self) -> Iterator[None]:
@@ -86,76 +86,55 @@ class EmbeddingHTTPConcurrency:
             return len(self._async_sem_by_loop)
 
 
+def iter_embedding_batches(message: str | list[str], batch_size: int) -> Iterator[list[str]]:
+    texts = [message] if isinstance(message, str) else message
+    if not texts:
+        return
+    for start in range(0, len(texts), batch_size):
+        yield texts[start : start + batch_size]
+
+
 def _parse_retry_after_seconds(value: str | None) -> float | None:
     if not value:
         return None
     try:
         seconds = float(value)
-    except (TypeError, ValueError):
-        return None
-    return seconds if seconds >= 0 else None
+    except ValueError:
+        try:
+            deadline = parsedate_to_datetime(value)
+        except (TypeError, ValueError, OverflowError):
+            return None
+        if deadline.tzinfo is None:
+            deadline = deadline.replace(tzinfo=UTC)
+        seconds = max(0.0, deadline.timestamp() - time.time())
+    return seconds if math.isfinite(seconds) and seconds >= 0 else None
 
 
 def _sleep_seconds_for_attempt(*, attempt: int, retry_after_sec: float | None) -> float:
-    backoff = max(0.0, settings.EMBEDDING_API_RETRY_BACKOFF_SEC)
-    jitter = max(0.0, settings.EMBEDDING_API_RETRY_JITTER_SEC)
+    backoff = settings.EMBEDDING_API_RETRY_BACKOFF_SEC
+    jitter = settings.EMBEDDING_API_RETRY_JITTER_SEC
     delay = backoff * (2**attempt)
     if retry_after_sec is not None:
         delay = max(delay, retry_after_sec)
     return delay + secure_jitter(jitter)
 
 
-def _max_retries() -> int:
-    return max(0, settings.EMBEDDING_API_MAX_RETRIES)
-
-
-def _next_retry_delay(*, attempt: int, max_retries: int) -> float | None:
-    if attempt >= max_retries:
-        return None
-    return _sleep_seconds_for_attempt(attempt=attempt, retry_after_sec=None)
-
-
-def _retry_delay_for_status_error(
-    exc: httpx.HTTPStatusError,
+def _retry_delay(
+    exc: httpx.HTTPError,
     *,
     attempt: int,
     max_retries: int,
 ) -> float | None:
-    status = exc.response.status_code
-    if status not in _RETRYABLE_HTTP_CODES or attempt >= max_retries:
+    if attempt >= max_retries:
         return None
     retry_after = None
-    if status == 429:
-        retry_after = _parse_retry_after_seconds(exc.response.headers.get("Retry-After"))
+    if isinstance(exc, httpx.HTTPStatusError):
+        status = exc.response.status_code
+        if status not in _RETRYABLE_HTTP_CODES:
+            return None
+        if status == 429:
+            retry_after = _parse_retry_after_seconds(exc.response.headers.get("Retry-After"))
     return _sleep_seconds_for_attempt(attempt=attempt, retry_after_sec=retry_after)
-
-
-def _sleep_sync(delay: float | None) -> bool:
-    if delay is None:
-        return False
-    if delay > 0:
-        time.sleep(delay)
-    return True
-
-
-async def _sleep_async(delay: float | None) -> bool:
-    if delay is None:
-        return False
-    if delay > 0:
-        await asyncio.sleep(delay)
-    return True
-
-
-def _close_response_sync(response: httpx.Response | None) -> None:
-    if response is not None:
-        with contextlib.suppress(Exception):
-            response.close()
-
-
-async def _close_response_async(response: httpx.Response | None) -> None:
-    if response is not None:
-        with contextlib.suppress(Exception):
-            await response.aclose()
 
 
 def post_with_retries_sync(
@@ -165,39 +144,25 @@ def post_with_retries_sync(
     request_kwargs: Mapping[str, Any],
     parse_response: Callable[[httpx.Response], T],
     concurrency: EmbeddingHTTPConcurrency,
-    schema_errors: tuple[type[Exception], ...],
 ) -> T:
-    """POST and parse one batch, retrying the same failure classes as before."""
-    last_exc: Exception | None = None
-    max_retries = _max_retries()
+    """Retry transient HTTP failures; malformed data fails after its first response."""
+    max_retries = settings.EMBEDDING_API_MAX_RETRIES
 
     for attempt in range(max_retries + 1):
-        response: httpx.Response | None = None
         try:
             with concurrency.sync_slot():
                 response = client.post(url, **request_kwargs)
-            response.raise_for_status()
-            return parse_response(response)
-        except httpx.HTTPStatusError as exc:
-            last_exc = exc
-            _close_response_sync(exc.response)
-            if _sleep_sync(_retry_delay_for_status_error(exc, attempt=attempt, max_retries=max_retries)):
-                continue
-            break
-        except httpx.RequestError as exc:
-            last_exc = exc
-            if _sleep_sync(_next_retry_delay(attempt=attempt, max_retries=max_retries)):
-                continue
-            break
-        except schema_errors as exc:
-            last_exc = exc
-            if _sleep_sync(_next_retry_delay(attempt=attempt, max_retries=max_retries)):
-                continue
-            break
-        finally:
-            _close_response_sync(response)
-
-    raise last_exc
+            try:
+                response.raise_for_status()
+                return parse_response(response)
+            finally:
+                response.close()
+        except _REQUEST_ERRORS as exc:
+            delay = _retry_delay(exc, attempt=attempt, max_retries=max_retries)
+            if delay is None:
+                raise
+        if delay > 0:
+            time.sleep(delay)
 
 
 async def post_with_retries_async(
@@ -207,37 +172,23 @@ async def post_with_retries_async(
     request_kwargs: Mapping[str, Any],
     parse_response: Callable[[httpx.Response], T],
     concurrency: EmbeddingHTTPConcurrency,
-    schema_errors: tuple[type[Exception], ...],
 ) -> T:
     """Async counterpart to :func:`post_with_retries_sync`."""
-    last_exc: Exception | None = None
-    max_retries = _max_retries()
+    max_retries = settings.EMBEDDING_API_MAX_RETRIES
     sem = concurrency.async_semaphore()
 
     for attempt in range(max_retries + 1):
-        response: httpx.Response | None = None
         try:
             async with sem:
                 response = await client.post(url, **request_kwargs)
-            response.raise_for_status()
-            return parse_response(response)
-        except httpx.HTTPStatusError as exc:
-            last_exc = exc
-            await _close_response_async(exc.response)
-            if await _sleep_async(_retry_delay_for_status_error(exc, attempt=attempt, max_retries=max_retries)):
-                continue
-            break
-        except httpx.RequestError as exc:
-            last_exc = exc
-            if await _sleep_async(_next_retry_delay(attempt=attempt, max_retries=max_retries)):
-                continue
-            break
-        except schema_errors as exc:
-            last_exc = exc
-            if await _sleep_async(_next_retry_delay(attempt=attempt, max_retries=max_retries)):
-                continue
-            break
-        finally:
-            await _close_response_async(response)
-
-    raise last_exc
+            try:
+                response.raise_for_status()
+                return parse_response(response)
+            finally:
+                await response.aclose()
+        except _REQUEST_ERRORS as exc:
+            delay = _retry_delay(exc, attempt=attempt, max_retries=max_retries)
+            if delay is None:
+                raise
+        if delay > 0:
+            await asyncio.sleep(delay)

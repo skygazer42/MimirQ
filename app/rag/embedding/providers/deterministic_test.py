@@ -14,11 +14,15 @@ _MODEL_NAME = "mimirq-deterministic-test-v1"
 class DeterministicTestEmbedding(BaseEmbeddingModel):
     """Stable lexical hashing vectors; not intended for production retrieval quality."""
 
+    dimension: int
+
     def __init__(self, **kwargs: Unpack[EmbeddingModelOptions]) -> None:
-        kwargs["model"] = str(kwargs.get("model") or _MODEL_NAME)
-        kwargs["dimension"] = int(kwargs.get("dimension") or 256)
+        if kwargs.get("model") is None:
+            kwargs["model"] = _MODEL_NAME
+        if kwargs.get("dimension") is None:
+            kwargs["dimension"] = 256
         super().__init__(**kwargs)
-        if not 16 <= int(self.dimension or 0) <= 4096:
+        if not 16 <= self.dimension <= 4096:
             raise ValueError("deterministic_test embedding dimension must be between 16 and 4096")
 
     def _add_feature(self, vector: list[float], feature: str, weight: float) -> None:
@@ -32,7 +36,7 @@ class DeterministicTestEmbedding(BaseEmbeddingModel):
 
     def _encode_one(self, text: str) -> list[float]:
         normalized = unicodedata.normalize("NFKC", text).casefold()[:4096]
-        vector = [0.0] * int(self.dimension or 256)
+        vector = [0.0] * self.dimension
         features = 0
 
         for token in _WORD_RE.findall(normalized):
@@ -50,7 +54,7 @@ class DeterministicTestEmbedding(BaseEmbeddingModel):
         return vector
 
     def encode(self, message: str | list[str]) -> list[list[float]]:
-        texts = [message] if isinstance(message, str) else list(message or [])
+        texts = [message] if isinstance(message, str) else message
         return [self._encode_one(text) for text in texts]
 
     async def aencode(self, message: str | list[str]) -> list[list[float]]:

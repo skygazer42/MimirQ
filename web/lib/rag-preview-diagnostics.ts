@@ -2,7 +2,7 @@ import type { PromptPreviewResponse } from '@/types'
 
 type JsonRecord = Record<string, unknown>
 
-export type RetrievalExplainResponseLike = {
+type RetrievalExplainResponseLike = {
   channels?: Record<string, unknown>
   candidate_counts?: Record<string, unknown>
   rerank?: Record<string, unknown>
@@ -12,23 +12,20 @@ export type RetrievalExplainResponseLike = {
   retrieval_trace?: Record<string, unknown>
 }
 
-export type RetrievalConfigHashResponseLike = {
+type RetrievalConfigHashResponseLike = {
   hash?: unknown
   effective_config?: unknown
 }
 
-export type PreviewKV = {
+type PreviewKV = {
   label: string
   value: string
 }
 
-export type RagPreviewDiagnosticsSummary = {
+type RagPreviewDiagnosticsSummary = {
   profile: string | null
   configHash: string | null
   queryForRetrieval: string | null
-  explainEnabled: boolean
-  contractReason: string | null
-  channelCandidates: PreviewKV[]
   filtering: PreviewKV[]
   fusion: PreviewKV[]
   reranker: PreviewKV[]
@@ -53,12 +50,7 @@ function toText(value: unknown): string | null {
 }
 
 function toNumber(value: unknown): number | null {
-  if (typeof value === 'number' && Number.isFinite(value)) return value
-  if (typeof value === 'string') {
-    const parsed = Number(value)
-    return Number.isFinite(parsed) ? parsed : null
-  }
-  return null
+  return typeof value === 'number' && Number.isFinite(value) ? value : null
 }
 
 function formatObject(value: unknown): string | null {
@@ -72,40 +64,6 @@ function pushKV(target: PreviewKV[], label: string, value: unknown, formatter?: 
   const text = formatter ? formatter(value) : toText(value)
   if (!text) return
   target.push({ label, value: text })
-}
-
-function channelCandidateItems(explain: RetrievalExplainResponseLike | null): PreviewKV[] {
-  if (!explain) return []
-
-  const channels = asRecord(explain.channels)
-  const items: PreviewKV[] = []
-  for (const [channelName, rawValue] of Object.entries(channels)) {
-    if (!channelName) continue
-    if (isRecord(rawValue)) {
-      const details = [
-        ['candidate_count', rawValue.candidate_count],
-        ['candidates', rawValue.candidates],
-        ['returned_count', rawValue.returned_count],
-        ['hits', rawValue.hits],
-      ]
-        .map(([label, value]) => {
-          const count = toNumber(value)
-          return count === null ? null : `${label}=${count}`
-        })
-        .filter(Boolean)
-      if (details.length > 0) {
-        items.push({ label: channelName, value: details.join(' · ') })
-        continue
-      }
-    }
-    const text = formatObject(rawValue) || toText(rawValue)
-    if (text) items.push({ label: channelName, value: text })
-  }
-
-  const candidateCounts = asRecord(explain.candidate_counts)
-  pushKV(items, 'query_count', candidateCounts.query_count)
-  pushKV(items, 'citations', candidateCounts.citations)
-  return items
 }
 
 function filteringItems(config: JsonRecord): PreviewKV[] {
@@ -202,10 +160,8 @@ export function buildRagPreviewDiagnosticsSummary(args: {
   promptPreview: PromptPreviewResponse | null
   explain: RetrievalExplainResponseLike | null
   configHash: RetrievalConfigHashResponseLike | null
-  explainEnabled: boolean
-  contractReason?: string | null
 }): RagPreviewDiagnosticsSummary {
-  const { configHash, contractReason, explain, explainEnabled, promptPreview } = args
+  const { configHash, explain, promptPreview } = args
   const effectiveConfig = asRecord(configHash?.effective_config)
   const metrics = asRecord(explain?.metrics)
   const retrievalTrace = asRecord(explain?.retrieval_trace)
@@ -244,9 +200,6 @@ export function buildRagPreviewDiagnosticsSummary(args: {
     profile,
     configHash: configHashText,
     queryForRetrieval: toText(promptPreview?.query_for_retrieval),
-    explainEnabled,
-    contractReason: contractReason || null,
-    channelCandidates: channelCandidateItems(explain),
     filtering: filteringItems(effectiveConfig),
     fusion: fusionItems(effectiveConfig),
     reranker: rerankerItems(effectiveConfig, explain),

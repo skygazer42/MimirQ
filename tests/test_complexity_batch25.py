@@ -15,7 +15,7 @@ def test_semantic_sentence_chunker_preserves_numeric_runs_and_list_item_boundari
 
     from langchain_core.documents import Document
 
-    from app.rag.chunking.strategies.semantic import SemanticSentenceChunker
+    from app.rag.ingestion.chunking.strategies.model_based.semantic import SemanticSentenceChunker
 
     text = "Preface.\n- first item\n  continued detail\n- second item\nVersion 1.2.3 stays together.\n"
     chunker = SemanticSentenceChunker(chunk_size=25, chunk_overlap=0, min_chunk_size=0)
@@ -39,7 +39,7 @@ def test_markdown_table_chunker_splits_only_on_row_boundaries_and_preserves_head
 
     from langchain_core.documents import Document
 
-    from app.rag.chunking.strategies.markdown_table import MarkdownTableChunker
+    from app.rag.ingestion.chunking.strategies.markup.markdown_table import MarkdownTableChunker
 
     text = (
         "Lead in\n\n| Col A | Col B |\n| --- | --- |\n| alpha | one |\n| beta | two |\n| gamma | three |\nTail text\n"
@@ -67,11 +67,11 @@ def test_parse_en_section_heading_accepts_dotted_numbers_without_decimal_false_p
 ) -> None:
     _ensure_datetime_utc(monkeypatch)
 
-    from app.rag.chunking.strategies.laws_structured import _parse_en_section_heading
+    from app.rag.ingestion.chunking.strategies.documents.laws_structured import _parse_en_prefixed_heading
 
-    assert _parse_en_section_heading("Section 12.3 Scope") == "12.3"
-    assert _parse_en_section_heading("Section12.3 Scope") is None
-    assert _parse_en_section_heading("Section 12.3.4a") is None
+    assert _parse_en_prefixed_heading("Section 12.3 Scope", prefix="section", max_segments=4) == "12.3"
+    assert _parse_en_prefixed_heading("Section12.3 Scope", prefix="section", max_segments=4) is None
+    assert _parse_en_prefixed_heading("Section 12.3.4a", prefix="section", max_segments=4) is None
 
 
 def test_laws_structured_chunker_preserves_heading_numbers_and_paths(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -79,7 +79,7 @@ def test_laws_structured_chunker_preserves_heading_numbers_and_paths(monkeypatch
 
     from langchain_core.documents import Document
 
-    from app.rag.chunking.strategies.laws_structured import LawsStructuredChunker
+    from app.rag.ingestion.chunking.strategies.documents.laws_structured import LawsStructuredChunker
 
     text = (
         "第1章 总则\n"

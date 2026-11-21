@@ -1,7 +1,7 @@
 from typing import Any
 
-from app.rag.core.retrieval_profiles import PRODUCTION_RETRIEVAL_PROFILE
 from app.rag.policy.complexity_classifier import classify_query_complexity
+from app.rag.retrieval.configuration.profiles import PRODUCTION_RETRIEVAL_PROFILE
 
 
 def route_system_query(query: str) -> dict[str, Any]:

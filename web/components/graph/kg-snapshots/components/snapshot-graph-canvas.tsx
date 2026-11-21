@@ -1,8 +1,9 @@
 'use client'
 
 import { Network, RefreshCcw } from '@/components/icons'
-import { useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useMemo, useRef } from 'react'
 
+import { useResizeObserver } from '@/hooks/use-resize-observer'
 import { cn } from '@/lib/utils'
 
 import {
@@ -48,15 +49,9 @@ export function SnapshotGraphCanvas({
   const normalizedSearch = searchValue.trim().toLowerCase()
   const canvasLayout = useMemo(() => layoutSnapshotCanvas(nodes, layout), [layout, nodes])
   const canvasRef = useRef<HTMLDivElement>(null)
-  const [viewport, setViewport] = useState({ width: canvasLayout.width, height: canvasLayout.height })
-  useLayoutEffect(() => {
-    const element = canvasRef.current!
-    const update = () => setViewport({ width: element.clientWidth, height: element.clientHeight })
-    const observer = new ResizeObserver(update)
-    observer.observe(element)
-    update()
-    return () => observer.disconnect()
-  }, [])
+  const measurements = useResizeObserver(canvasRef)
+  const viewportWidth = measurements.width === 0 ? canvasLayout.width : measurements.width
+  const viewportHeight = measurements.height === 0 ? canvasLayout.height : measurements.height
   const displayNodes = canvasLayout.nodes
   const nodeById = useMemo(() => new Map(displayNodes.map((node) => [node.id, node])), [displayNodes])
   const filteredNodeIds = useMemo(() => {
@@ -85,30 +80,30 @@ export function SnapshotGraphCanvas({
   const mediumGraph = nodes.length > 36 || filteredLinks.length > 56
   const linkViews = useMemo(
     () =>
-      filteredLinks.flatMap((link) => {
-        const source = nodeById.get(link.source),
-          target = nodeById.get(link.target)
+      filteredLinks.flatMap((link, index) => {
+        const source = nodeById.get(link.source)
+        const target = nodeById.get(link.target)
         if (!source || !target) return []
-        const sourceVisible = filteredNodeIds.has(source.id),
-          targetVisible = filteredNodeIds.has(target.id)
+        const sourceVisible = filteredNodeIds.has(source.id)
+        const targetVisible = filteredNodeIds.has(target.id)
         const opacity = getLinkDensityOpacity(
           getLinkBaseOpacity(hasFilter, sourceVisible, targetVisible, link.strength),
           isDenseGraph,
           mediumGraph,
         )
-        const dx = ((target.x - source.x) * viewport.width) / 100
-        const dy = ((target.y - source.y) * viewport.height) / 100
+        const dx = ((target.x - source.x) * viewportWidth) / 100
+        const dy = ((target.y - source.y) * viewportHeight) / 100
         const distance = Math.hypot(dx, dy)
         const radius = (isDenseGraph ? 28 : mediumGraph ? 40 : 56) / 2 + 6
         const endX = distance
-          ? target.x - (((dx / distance) * radius) / viewport.width) * 100
-          : target.x + (radius / viewport.width) * 100
-        const endY = distance ? target.y - (((dy / distance) * radius) / viewport.height) * 100 : target.y
+          ? target.x - (((dx / distance) * radius) / viewportWidth) * 100
+          : target.x + (radius / viewportWidth) * 100
+        const endY = distance ? target.y - (((dy / distance) * radius) / viewportHeight) * 100 : target.y
         return [
           {
+            key: JSON.stringify([link.source, link.target, link.label, index]),
             link,
             source,
-            target,
             endX,
             endY,
             opacity,
@@ -119,7 +114,7 @@ export function SnapshotGraphCanvas({
           },
         ]
       }),
-    [filteredLinks, nodeById, filteredNodeIds, hasFilter, isDenseGraph, mediumGraph, viewport],
+    [filteredLinks, nodeById, filteredNodeIds, hasFilter, isDenseGraph, mediumGraph, viewportWidth, viewportHeight],
   )
   const prominentNodeIds = useMemo(() => {
     const sorted = [...displayNodes].sort((a, b) => {
@@ -170,12 +165,15 @@ export function SnapshotGraphCanvas({
       ) : null}
 
       {isLoading || isEmpty ? (
-        <div className="absolute inset-0 z-10 flex items-center justify-center px-8">
+        <div
+          className="absolute inset-0 z-10 flex items-center justify-center px-8"
+          role={isLoading ? 'status' : undefined}
+        >
           <div className="flex max-w-[460px] flex-col items-center text-center">
             <div className="relative">
               <div className="relative flex size-8 items-center justify-center text-primary">
                 {isLoading ? (
-                  <RefreshCcw className="h-7 w-7 animate-spin" aria-hidden="true" />
+                  <RefreshCcw className="h-7 w-7 animate-spin motion-reduce:animate-none" aria-hidden="true" />
                 ) : (
                   <Network appearance="color" className="size-7" aria-hidden="true" />
                 )}
@@ -208,9 +206,9 @@ export function SnapshotGraphCanvas({
             <path d="M 0 0 L 10 5 L 0 10 z" fill="hsl(var(--muted-foreground))" opacity="0.72" />
           </marker>
         </defs>
-        {linkViews.map(({ link, source, endX, endY, opacity, midX, midY }) => (
+        {linkViews.map(({ key, link, source, endX, endY, opacity, midX, midY }) => (
           <path
-            key={`${link.source}:${link.target}:${link.label}`}
+            key={key}
             d={`M ${source.x} ${source.y} C ${midX} ${midY + (source.x < endX ? -6 : 6)}, ${midX} ${midY - (source.x < endX ? -6 : 6)}, ${endX} ${endY}`}
             fill="none"
             stroke="hsl(var(--muted-foreground))"
@@ -224,9 +222,9 @@ export function SnapshotGraphCanvas({
 
       {linkViews
         .filter((view) => view.showLabel)
-        .map(({ link, midX, midY, labelOpacity }) => (
+        .map(({ key, link, midX, midY, labelOpacity }) => (
           <span
-            key={`label:${link.source}:${link.target}:${link.label}`}
+            key={key}
             className="pointer-events-none absolute z-[1] max-w-44 -translate-x-1/2 -translate-y-1/2 truncate bg-background/95 px-1.5 py-0.5 text-[13px] text-foreground"
             style={{ left: `${midX}%`, top: `${midY}%`, opacity: labelOpacity }}
             title={link.label}

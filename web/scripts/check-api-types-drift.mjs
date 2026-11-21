@@ -36,13 +36,11 @@ function argumentValue(name) {
 
 function loadBaseline() {
   const baselineArg = argumentValue('--baseline')
-  if (!baselineArg) {
+  if (baselineArg === undefined || baselineArg === '') {
     throw new Error('--baseline <file> is required with --strict')
   }
   const baselinePath = path.resolve(process.cwd(), baselineArg)
-  const parsed = JSON.parse(fs.readFileSync(baselinePath, 'utf8'))
-  const handwrittenModules = Number(parsed.handwrittenModules)
-  const handwrittenTypes = Number(parsed.handwrittenTypes)
+  const { handwrittenModules, handwrittenTypes } = JSON.parse(fs.readFileSync(baselinePath, 'utf8'))
   if (!Number.isInteger(handwrittenModules) || handwrittenModules < 0) {
     throw new Error('baseline handwrittenModules must be a non-negative integer')
   }
@@ -59,8 +57,8 @@ function analyze(file) {
   const handwrittenObject = [...src.matchAll(/export\s+type\s+(\w+)\s*=\s*\{/g)].map((m) => m[1])
   const handwrittenIface = [...src.matchAll(/export\s+interface\s+(\w+)\s*\{/g)].map((m) => m[1])
   const handwritten = [...handwrittenObject, ...handwrittenIface]
-  const apiClientCalls = (src.match(/apiClient\.(get|post|put|patch|delete)\b/g) || []).length
-  const openapiRequestCalls = (src.match(/openapiRequest\s*\(/g) || []).length
+  const apiClientCalls = src.match(/apiClient\.(get|post|put|patch|delete)\b/g)?.length ?? 0
+  const openapiRequestCalls = src.match(/openapiRequest\s*\(/g)?.length ?? 0
   return { file, handwritten, apiClientCalls, openapiRequestCalls }
 }
 

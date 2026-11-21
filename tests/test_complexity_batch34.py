@@ -5,16 +5,15 @@ from typing import Any
 
 from PIL import Image
 
-from app.deepdoc.parser.mineru_parser import (
+from app.rag.ingestion.parsing.models.recognizer import Recognizer
+from app.rag.ingestion.parsing.models.table_structure import TableStructureRecognizer
+from app.rag.ingestion.parsing.parsers.mineru_parser import (
     MinerUContentType,
     MinerULanguage,
     MinerUParseMethod,
     MinerUParser,
 )
-from app.deepdoc.parser.pdf_parser import IntegratedPipelinePdfParser
-from app.deepdoc.src.model.rag_tokenizer import RagTokenizer
-from app.deepdoc.vision.recognizer import Recognizer
-from app.deepdoc.vision.table_structure_recognizer import TableStructureRecognizer
+from app.rag.ingestion.parsing.utils.tokenizer import RagTokenizer
 
 
 def test_table_structure_call_aligns_row_and_column_geometry(monkeypatch) -> None:
@@ -242,8 +241,9 @@ def test_mineru_transfer_to_sections_preserves_fallbacks_and_tuple_shapes() -> N
 
 
 def test_mineru_parse_pdf_removes_spaces_and_preserves_option_mapping(tmp_path, monkeypatch) -> None:
-    monkeypatch.setattr(IntegratedPipelinePdfParser, "__init__", lambda self: None)
-    parser = MinerUParser(mineru_api="http://mineru.api", mineru_server_url="http://mineru.server")
+    from app.rag.ingestion.parsing.parsers.mineru_parser import MinerUResultParser
+
+    parser = MinerUResultParser(mineru_api="http://mineru.api", mineru_server_url="http://mineru.server")
     input_path = tmp_path / "report name.pdf"
     input_path.write_bytes(b"%PDF-1.4\n")
     captured: dict[str, object] = {}
@@ -257,11 +257,12 @@ def test_mineru_parse_pdf_removes_spaces_and_preserves_option_mapping(tmp_path, 
         callback: object | None = None,
     ) -> Path:
         captured["pdf_name"] = Path(pdf).name
+        captured["pdf_path"] = Path(pdf)
         captured["out_dir"] = Path(out_dir)
         captured["options"] = options
         return Path(out_dir)
 
-    parser._run_mineru = _run
+    parser._run_mineru_api = _run
 
     def _read_output(
         final_out_dir: object,
@@ -297,7 +298,8 @@ def test_mineru_parse_pdf_removes_spaces_and_preserves_option_mapping(tmp_path, 
     )
 
     options = captured["options"]
-    assert not input_path.exists()
+    assert input_path.read_bytes() == b"%PDF-1.4\n"
+    assert not captured["pdf_path"].exists()
     assert captured["pdf_name"] == "reportname.pdf"
     assert captured["images_pdf"] == "reportname.pdf"
     assert sections == [("section", "manual", MinerUContentType.TEXT)]
@@ -386,10 +388,7 @@ def test_rag_tokenizer_tokenize_preserves_order_across_ambiguous_alignment(monke
 
     tokenizer.dfs_ = _dfs
     tokenizer.sort_tks_ = lambda tkslist: [(["甲乙", "丙丁"], 9)]
-    monkeypatch.setattr(
-        "app.deepdoc.src.model.rag_tokenizer.word_tokenize",
-        lambda text: ["Running", "tests"],
-    )
+    tokenizer._word_tokenize = lambda text: ["Running", "tests"]
 
     assert tokenizer.tokenize("ignored") == "RUNNING TESTS 甲乙 丙丁 42"
 

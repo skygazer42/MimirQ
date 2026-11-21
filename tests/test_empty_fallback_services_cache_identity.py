@@ -1,6 +1,6 @@
 from uuid import uuid4
 
-from app.services.semantic_cache import _semantic_cache_result_matches
+from app.services.retrieval.semantic_cache import _semantic_cache_result_matches
 
 
 def test_missing_cache_account_identity_does_not_match_an_empty_account():
@@ -16,7 +16,14 @@ def test_missing_cache_account_identity_does_not_match_an_empty_account():
             "embedding_space_hash": "embedding",
         },
     }
-    assert _semantic_cache_result_matches(
-        result, tenant_id=tenant_id, account_id="", scope_hash="scope",
-        corpus_cache_token="corpus", embedding_space_hash="embedding",
-    ) is None
+    assert (
+        _semantic_cache_result_matches(
+            result,
+            tenant_id=tenant_id,
+            account_id="",
+            scope_hash="scope",
+            corpus_cache_token="corpus",
+            embedding_space_hash="embedding",
+        )
+        is None
+    )

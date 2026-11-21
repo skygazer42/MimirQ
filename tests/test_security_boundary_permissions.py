@@ -1,5 +1,6 @@
 import asyncio
 import json
+from ipaddress import IPv4Address, IPv6Address, ip_address
 from types import SimpleNamespace
 from uuid import uuid4
 
@@ -7,29 +8,51 @@ import httpx
 import langchain_openai
 import pytest
 from fastapi import HTTPException
+from langchain_core.messages import AIMessage
 from sqlalchemy.exc import IntegrityError
 from starlette.requests import Request
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
-from app.api.middleware.rate_limit import _client_ip_from_request
+from app.api.middleware.rate_limit import RateLimitMiddleware
 from app.api.utils import url_ingest
-from app.api.v1 import scim
-from app.api.v1 import settings as settings_api
-from app.core.config import settings
+from app.api.v1.identity import scim
+from app.api.v1.system import settings as settings_api
+from app.infrastructure.config import settings
 
 
-def test_client_ip_helpers_ignore_untrusted_forwarding_headers() -> None:
+def test_client_ip_helpers_ignore_untrusted_forwarding_headers(monkeypatch) -> None:
+    import asyncio
+    from types import SimpleNamespace
+
+    from starlette.responses import Response
+
+    from app.api.middleware import rate_limit
+
     request = Request(
         {
             "type": "http",
             "method": "GET",
-            "path": "/",
+            "path": "/data",
             "headers": [(b"x-forwarded-for", b"127.0.0.1"), (b"x-real-ip", b"127.0.0.1")],
             "client": ("203.0.113.10", 1234),
         }
     )
 
-    assert _client_ip_from_request(request) == "203.0.113.10"
+    client_keys = []
+
+    async def check(key):
+        client_keys.append(key)
+        return True, 0.0
+
+    async def next_response(_request):
+        return Response()
+
+    middleware = RateLimitMiddleware.__new__(RateLimitMiddleware)
+    middleware.limiter = SimpleNamespace(acheck=check)
+    middleware.chat_route_prefixes = ()
+    monkeypatch.setattr(rate_limit.settings, "RATE_LIMIT_ENABLED", True)
+    asyncio.run(middleware.dispatch(request, next_response))
+    assert client_keys == ["ip:203.0.113.10"]
     assert str(scim._extract_client_ip(request)) == "203.0.113.10"
 
 
@@ -84,10 +107,10 @@ def test_global_settings_write_requires_default_tenant_owner(monkeypatch) -> Non
 
 
 def test_llm_api_base_rejects_hostname_resolving_to_private_ip(monkeypatch: pytest.MonkeyPatch) -> None:
-    async def resolve(_host: str, _port: int) -> list[str]:
-        return ["172.18.0.7"]
+    async def resolve(_host: str, _port: int) -> list[IPv4Address | IPv6Address]:
+        return [ip_address("172.18.0.7")]
 
-    monkeypatch.setattr(url_ingest, "_resolve_host_ips", resolve)
+    monkeypatch.setattr(url_ingest, "_resolve_host_addresses", resolve)
     monkeypatch.setattr(settings, "URL_INGEST_ALLOW_PRIVATE_IPS", False, raising=False)
 
     with pytest.raises(HTTPException, match="api_base host not allowed"):
@@ -95,10 +118,10 @@ def test_llm_api_base_rejects_hostname_resolving_to_private_ip(monkeypatch: pyte
 
 
 def test_llm_api_base_allows_public_hostname(monkeypatch: pytest.MonkeyPatch) -> None:
-    async def resolve(_host: str, _port: int) -> list[str]:
-        return ["93.184.216.34"]
+    async def resolve(_host: str, _port: int) -> list[IPv4Address | IPv6Address]:
+        return [ip_address("93.184.216.34")]
 
-    monkeypatch.setattr(url_ingest, "_resolve_host_ips", resolve)
+    monkeypatch.setattr(url_ingest, "_resolve_host_addresses", resolve)
     monkeypatch.setattr(settings, "URL_INGEST_ALLOW_PRIVATE_IPS", False, raising=False)
 
     target = asyncio.run(settings_api._validate_public_base_url("https://example.com/v1"))
@@ -106,21 +129,21 @@ def test_llm_api_base_allows_public_hostname(monkeypatch: pytest.MonkeyPatch) ->
 
 
 def test_llm_api_base_rejects_resolution_failures(monkeypatch: pytest.MonkeyPatch) -> None:
-    async def resolve(_host: str, _port: int) -> list[str]:
+    async def resolve(_host: str, _port: int) -> list[IPv4Address | IPv6Address]:
         raise HTTPException(status_code=400, detail="failed to resolve url host")
 
-    monkeypatch.setattr(url_ingest, "_resolve_host_ips", resolve)
+    monkeypatch.setattr(url_ingest, "_resolve_host_addresses", resolve)
     monkeypatch.setattr(settings, "URL_INGEST_ALLOW_PRIVATE_IPS", False, raising=False)
 
-    with pytest.raises(HTTPException, match="failed to resolve api_base host"):
+    with pytest.raises(HTTPException, match="api_base host not allowed"):
         asyncio.run(settings_api._validate_public_base_url("https://missing.example/v1"))
 
 
 def test_llm_api_base_rejects_mixed_public_and_private_dns_answers(monkeypatch: pytest.MonkeyPatch) -> None:
-    async def resolve(_host: str, _port: int) -> list[str]:
-        return ["93.184.216.34", "127.0.0.1"]
+    async def resolve(_host: str, _port: int) -> list[IPv4Address | IPv6Address]:
+        return [ip_address("93.184.216.34"), ip_address("127.0.0.1")]
 
-    monkeypatch.setattr(url_ingest, "_resolve_host_ips", resolve)
+    monkeypatch.setattr(url_ingest, "_resolve_host_addresses", resolve)
     monkeypatch.setattr(settings, "URL_INGEST_ALLOW_PRIVATE_IPS", False, raising=False)
 
     with pytest.raises(HTTPException, match="api_base host not allowed"):
@@ -148,10 +171,10 @@ def test_llm_api_base_checks_literal_ips(
 
 
 def test_llm_api_base_respects_explicit_private_ip_override(monkeypatch: pytest.MonkeyPatch) -> None:
-    async def resolve(_host: str, _port: int) -> list[str]:
-        return ["172.18.0.7"]
+    async def resolve(_host: str, _port: int) -> list[IPv4Address | IPv6Address]:
+        return [ip_address("172.18.0.7")]
 
-    monkeypatch.setattr(url_ingest, "_resolve_host_ips", resolve)
+    monkeypatch.setattr(url_ingest, "_resolve_host_addresses", resolve)
     monkeypatch.setattr(settings, "URL_INGEST_ALLOW_PRIVATE_IPS", True, raising=False)
 
     target = asyncio.run(settings_api._validate_public_base_url("http://minio:9000/v1"))
@@ -160,7 +183,7 @@ def test_llm_api_base_respects_explicit_private_ip_override(monkeypatch: pytest.
 
 def test_llm_test_passes_pinned_base_url_and_host_sni_to_chatopenai(monkeypatch: pytest.MonkeyPatch) -> None:
     captured: dict[str, object] = {}
-    validated_target = settings_api._ValidatedFetchTarget(
+    validated_target = settings_api.ValidatedFetchTarget(
         raw="https://api.example.com/v1",
         connect_url="https://93.184.216.34:443/v1",
         host="api.example.com",
@@ -176,9 +199,9 @@ def test_llm_test_passes_pinned_base_url_and_host_sni_to_chatopenai(monkeypatch:
             captured["llm_kwargs"] = kwargs
 
         async def ainvoke(self, _messages: object) -> object:
-            return SimpleNamespace(content="1")
+            return AIMessage(content="1")
 
-    monkeypatch.setattr(settings_api, "_validated_fetch_target", validate)
+    monkeypatch.setattr(settings_api, "validate_fetch_target", validate)
     monkeypatch.setattr(settings_api, "_ensure_settings_writable", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(langchain_openai, "ChatOpenAI", FakeChatOpenAI)
 
@@ -195,7 +218,7 @@ def test_llm_test_passes_pinned_base_url_and_host_sni_to_chatopenai(monkeypatch:
         )
     )
 
-    assert response == {"success": True, "message": "1"}
+    assert response.model_dump() == {"success": True, "message": "1"}
     assert captured["validated_args"] == ("https://api.example.com/v1", False)
     llm_kwargs = captured["llm_kwargs"]
     assert llm_kwargs["base_url"] == "https://93.184.216.34:443/v1"
@@ -231,7 +254,7 @@ def test_scim_create_user_maps_membership_unique_race_to_conflict(monkeypatch) -
     database = Database()
     monkeypatch.setattr(settings, "SCIM_USERS_CREATE_ENABLED", True, raising=False)
     monkeypatch.setattr(scim, "_get_user", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(scim, "_audit_scim", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(scim, "_commit_scim_audit", lambda *_args, **_kwargs: None)
 
     response = scim.create_user(
         {"userName": "same-user"},

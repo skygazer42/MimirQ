@@ -3,27 +3,27 @@
 import { AlertCircle, ChevronDown } from '@/components/icons'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import type { ChunkPreviewStats } from '@/types'
-import { cn } from '@/lib/utils'
+import type { ChunkPreviewResponse } from '@/types'
 import styles from '../compare.module.css'
 
-function percentage(value: unknown): number | null {
-  return typeof value === 'number' && Number.isFinite(value)
-    ? Math.max(0, Math.min(100, Math.round(value * 100)))
-    : null
+function ratioToPercent(ratio: number | undefined): number | null {
+  if (typeof ratio === 'number' && ratio >= 0 && ratio <= 1) return Math.round(ratio * 100)
+  return null
 }
 
-function integer(value: unknown): number | null {
-  return typeof value === 'number' && Number.isFinite(value) ? Math.max(0, Math.trunc(value)) : null
+function readGapMetric(value: number | undefined): number | null {
+  if (typeof value === 'number' && Number.isInteger(value) && value >= 0) return value
+  return null
 }
 
-/** Display API coverage statistics without inventing a spatial distribution. */
-export function CoverageStats({ stats, className }: Readonly<{ stats?: ChunkPreviewStats; className?: string }>) {
-  const coverage = percentage(stats?.coverage_ratio)
-  const overlap = percentage(stats?.overlap_waste_ratio)
-  const gaps = integer(stats?.gap_count)
-  const largestGap = integer(stats?.largest_gap)
+export function CoverageStats({ stats }: Readonly<{ stats: ChunkPreviewResponse['stats'] }>) {
+  const coverage = ratioToPercent(stats?.coverage_ratio)
+  const overlap = ratioToPercent(stats?.overlap_waste_ratio)
+  const gaps = readGapMetric(stats?.gap_count)
+  const largestGap = readGapMetric(stats?.largest_gap)
   if (coverage === null && overlap === null && gaps === null && largestGap === null) return null
+
+  const hasGaps = gaps !== null && gaps > 0
 
   return (
     <Popover>
@@ -33,12 +33,7 @@ export function CoverageStats({ stats, className }: Readonly<{ stats?: ChunkPrev
           <ChevronDown />
         </Button>
       </PopoverTrigger>
-      <PopoverContent
-        align="end"
-        sideOffset={8}
-        className={cn(styles.coveragePanel, className)}
-        aria-label="原文覆盖统计"
-      >
+      <PopoverContent align="end" sideOffset={8} className={styles.coveragePanel} aria-label="原文覆盖统计">
         <h3>原文覆盖统计</h3>
         <dl className={styles.coverageMetrics}>
           <div>
@@ -53,8 +48,8 @@ export function CoverageStats({ stats, className }: Readonly<{ stats?: ChunkPrev
           </div>
           <div>
             <dt>缺口</dt>
-            <dd className={gaps !== null && gaps > 0 ? styles.coverageWarning : undefined}>
-              {gaps !== null && gaps > 0 ? <AlertCircle aria-hidden="true" /> : null}
+            <dd className={hasGaps ? styles.coverageWarning : undefined}>
+              {hasGaps && <AlertCircle aria-hidden="true" />}
               {gaps ?? '—'}
             </dd>
           </div>

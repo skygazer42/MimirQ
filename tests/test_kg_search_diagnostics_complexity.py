@@ -9,7 +9,7 @@ from uuid import uuid4
 
 import pytest
 
-MODULE_PATH = Path("/data/temp34/MimirQ/app/rag/evaluation/kg_search_diagnostics.py")
+MODULE_PATH = Path(__file__).resolve().parents[1] / "app/rag/evaluation/benchmarks/kg_search_diagnostics.py"
 
 
 class _SimpleModel:
@@ -66,7 +66,7 @@ def _install_module(monkeypatch: pytest.MonkeyPatch) -> ModuleType:
         "app",
         "app.api",
         "app.api.schemas",
-        "app.core",
+        "app.infrastructure",
         "app.models",
         "app.rag",
         "app.rag.evaluation",
@@ -78,7 +78,7 @@ def _install_module(monkeypatch: pytest.MonkeyPatch) -> ModuleType:
         pkg.__path__ = []  # type: ignore[attr-defined]
 
     add_module(
-        "app.api.schemas.kg_diagnostics",
+        "app.api.schemas.evaluation.diagnostics",
         KGEvalAttribution=_SimpleModel,
         KGHardcaseOut=_SimpleModel,
         KGSearchDiagnosticsItem=_SimpleModel,
@@ -90,23 +90,25 @@ def _install_module(monkeypatch: pytest.MonkeyPatch) -> ModuleType:
         KGSearchRunMetrics=_SimpleModel,
         KGSearchRunResult=_SimpleModel,
     )
-    add_module("app.core.config", settings=SimpleNamespace(KG_EXTRACT_MAX_CONCURRENCY=3))
-    add_module("app.models.document", Document=type("Document", (), {}), DocumentChunk=type("DocumentChunk", (), {}))
-    add_module("app.models.evaluation", RagasRegressionCase=type("RagasRegressionCase", (), {}))
+    add_module("app.infrastructure.config", settings=SimpleNamespace(KG_EXTRACT_MAX_CONCURRENCY=3))
     add_module(
-        "app.rag.evaluation.kg_hardcase_deterministic",
+        "app.models.documents.records", Document=type("Document", (), {}), DocumentChunk=type("DocumentChunk", (), {})
+    )
+    add_module("app.models.evaluation.results", RagasRegressionCase=type("RagasRegressionCase", (), {}))
+    add_module(
+        "app.rag.evaluation.generation.kg_hardcase_deterministic",
         generate_hardcases_deterministic=lambda **_kwargs: [],
     )
     add_module(
-        "app.rag.evaluation.kg_hardcase_generator",
+        "app.rag.evaluation.generation.kg_hardcase_generator",
         generate_hardcases_llm=lambda **_kwargs: [],
     )
     add_module(
-        "app.rag.evaluation.kg_search_diagnostics_metrics",
+        "app.rag.evaluation.benchmarks.kg_search_diagnostics_metrics",
         compute_kg_hit_metrics=_compute_kg_hit_metrics,
     )
     add_module(
-        "app.rag.kg.models",
+        "app.models.knowledge_graph.entities",
         KgEntity=type("KgEntity", (), {}),
         KgEventEntity=type("KgEventEntity", (), {}),
         KgRelation=type("KgRelation", (), {}),
@@ -119,11 +121,7 @@ def _install_module(monkeypatch: pytest.MonkeyPatch) -> ModuleType:
     )
     add_module("app.rag.kg.search.searcher", search=None)
     add_module(
-        "app.rag.kg.utils",
-        get_logger=lambda _name: SimpleNamespace(debug=lambda *_a, **_k: None, warning=lambda *_a, **_k: None),
-    )
-    add_module(
-        "app.services.regression_run_scope",
+        "app.services.evaluation.run_scope",
         validate_case_ids_belong_to_dataset=lambda **_kwargs: None,
     )
 

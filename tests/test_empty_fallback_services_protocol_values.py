@@ -2,7 +2,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.services import saml_service, web_crawler
+from app.services.connectors import crawler as web_crawler
+from app.services.identity import saml as saml_service
 
 
 @pytest.mark.parametrize(
@@ -31,6 +32,6 @@ def test_a_real_absent_saml_redirect_path_uses_the_documented_root_path():
 
 
 def test_a_real_absent_crawl_body_keeps_the_url_fingerprint():
-    assert web_crawler._build_page_sync_token(
-        url="https://example.com", text=None, content_type=None
-    ).startswith("url_sha256:")
+    assert web_crawler._build_page_sync_token(url="https://example.com", text=None, content_type=None).startswith(
+        "url_sha256:"
+    )

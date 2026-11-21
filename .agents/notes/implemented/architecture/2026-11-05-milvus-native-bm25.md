@@ -14,7 +14,7 @@ Milvus 2.6.11 的内置 BM25 function、中文 analyzer 和 sparse inverted inde
 
 全文使用独立的 `MILVUS_BM25_COLLECTION_NAME` 集合，存储同一规范分块 ID、正文及元数据，主键加租户前缀。这个实现选择保留 BM25 独立开启、不同维度/模型的语义集合和 BM25-only 流水线；不修改现有语义集合或重新调用 Embedding。租户约束始终进入服务端表达式，数据集、文档及可表达的元数据约束同步下推；其余复杂元数据沿现有 matcher 严格后置裁剪，在有上限的候选窗口内扩展，不能因过滤失败改用无约束查询。删除只允许显式租户和非空过滤，不扫描本地语料。
 
-`CorpusIndex` 是写入、查询、回填与派生测试索引的唯一所有者。退出 BM25 的本地语料缓存、构造、锁、懒加载和启动重建，旧公共调用转到该所有者。保留的确定性 sparse/ColBERT 仅在明确使用时从数据库读取有界的发布语料，不借 BM25 缓存作为数据源。索引服务不导入查询 retriever。Chroma/FAISS 不创建或使用本地 BM25，能力和状态必须说明 Milvus 要求。
+`CorpusIndex` 是写入、查询、回填与版本缓存的唯一所有者。退出 BM25 的本地语料缓存、构造、锁、懒加载和启动重建，实际调用直接转到该所有者。原先为确定性 sparse/ColBERT 保留的有界快照与派生索引由后续[退出实验召回](../simplification/2026-11-16-retire-retrieval-scaffolds.md)决定退出，原生全文、租户范围和事务约定继续成立。索引服务不导入查询 retriever。Chroma/FAISS 不创建或使用本地 BM25，能力和状态必须说明 Milvus 要求。
 
 读操作不创建集合；集合缺失或 schema/analyzer 不匹配时给出显式回填/迁移错误。正常写入可创建符合版本约定的新集合，既有 schema 不自动覆盖。已有文档通过显式的有界、分批回填命令写入全文集合；命令提供默认 dry-run 和明确 apply，不删除已有向量或自动执行线上迁移。回填按分块 ID 幂等 upsert，保留既有索引审计和失败重放入口，不假称 PostgreSQL 与 Milvus 具备跨库事务。
 
@@ -43,7 +43,7 @@ Milvus 2.6.11 的内置 BM25 function、中文 analyzer 和 sparse inverted inde
 
 ## Consequences
 
-本篇对非 Milvus 后端的兼容边界现按[退出 FAISS](../simplification/2026-11-06-retire-faiss.md)收窄，Milvus 全文、缓存与回填规则保持。
+本篇对非 Milvus 后端的兼容边界现按[退出 FAISS](../../../../docs/development/faiss-retirement-verification.md)收窄，Milvus 全文、缓存与回填规则保持。
 
 Milvus 的统计范围和中文 analyzer 与原 rank-bm25/jieba 不同，排序需要按现有检索评测回归。已有数据在回填之前不能假称全文索引完整。独立全文集合增加一份持久正文，但退出各个 API worker 的常驻语料和 BM25 对象。
 

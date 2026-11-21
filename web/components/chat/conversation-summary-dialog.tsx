@@ -1,19 +1,17 @@
-/**
- * ConversationSummaryDialog
- *
- * View / update / clear persistent summary memory for a conversation.
- *
- * Notes:
- * - Backend must enable PERSISTENT_SUMMARY_MEMORY_ENABLED=true.
- * - "Update" may trigger an LLM call and take a few seconds.
- */
 'use client'
 
-import { CancelledError, useMutation, useMutationState, useQuery, useQueryClient } from '@tanstack/react-query'
+import {
+  CancelledError,
+  skipToken,
+  useMutation,
+  useMutationState,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query'
 import * as React from 'react'
-import { Copy, RefreshCw, Trash2 } from '@/components/icons'
 import { toast } from 'sonner'
 
+import { Copy, RefreshCw, Trash2 } from '@/components/icons'
 import { Button } from '@/components/ui/button'
 import {
   AlertDialog,
@@ -35,7 +33,9 @@ import {
 } from '@/components/ui/dialog'
 import { chatApi } from '@/lib/api/chat'
 import { formatApiError } from '@/lib/api-errors'
+import { getAuthSessionKey } from '@/lib/auth-storage'
 import { queryKeys } from '@/lib/query-keys'
+import type { ConversationSummaryResponse } from '@/types/chat'
 
 const UPDATE_SUMMARY_MUTATION_KEY = ['chat', 'summary', 'update'] as const
 const CLEAR_SUMMARY_MUTATION_KEY = ['chat', 'summary', 'clear'] as const
@@ -49,28 +49,24 @@ export function ConversationSummaryDialog(
 ) {
   const { open, onOpenChange, conversationId } = props
   const queryClient = useQueryClient()
-  const conversationIdForQuery = (conversationId || '').trim()
-  const hasConversation = Boolean(conversationIdForQuery)
-  const summaryQueryKey = queryKeys.chat.summary(conversationIdForQuery)
-  const [confirmOpen, setConfirmOpen] = React.useState(false)
+  const conversationIdForQuery = conversationId?.trim()
+  const hasConversation = conversationIdForQuery !== undefined && conversationIdForQuery !== ''
+  const summaryQueryKey = hasConversation
+    ? queryKeys.chat.summary(conversationIdForQuery)
+    : (['chat', 'summary'] as const)
   const view = React.useMemo(() => ({ open, conversationIdForQuery }), [open, conversationIdForQuery])
   const activeViewRef = React.useRef<typeof view | null>(view)
 
-  React.useEffect(() => {
-    activeViewRef.current = view
-    setConfirmOpen(false)
-    return () => {
-      activeViewRef.current = null
-    }
-  }, [view])
-
-  const captureOperation = () => {
-    const key = queryKeys.chat.summary(conversationIdForQuery)
+  const captureOperation = (targetConversationId: string) => {
+    const sessionKey = getAuthSessionKey()
+    const key = queryKeys.chat.summary(targetConversationId)
     const query = queryClient.getQueryCache().find({ queryKey: key, exact: true })
     const isActive = () =>
-      query !== undefined && queryClient.getQueryCache().find({ queryKey: key, exact: true }) === query
+      sessionKey === getAuthSessionKey() &&
+      query !== undefined &&
+      queryClient.getQueryCache().find({ queryKey: key, exact: true }) === query
     return {
-      conversationId: conversationIdForQuery,
+      conversationId: targetConversationId,
       view,
       key,
       isActive,
@@ -78,18 +74,24 @@ export function ConversationSummaryDialog(
     }
   }
 
+  const [clearTarget, setClearTarget] = React.useState<ReturnType<typeof captureOperation>>()
+  const confirmation = clearTarget?.view === view && clearTarget.isActive() ? clearTarget : undefined
+
+  React.useLayoutEffect(() => {
+    activeViewRef.current = view
+    setClearTarget(undefined)
+    return () => {
+      activeViewRef.current = null
+    }
+  }, [view])
+
   const summaryQuery = useQuery({
     queryKey: summaryQueryKey,
     enabled: open && hasConversation,
     retry: false,
-    queryFn: async ({ signal }) => {
-      try {
-        return await chatApi.getConversationSummary(conversationIdForQuery)
-      } catch (err: unknown) {
-        if (!signal.aborted && activeViewRef.current === view) toast.error(formatApiError(err, '加载摘要失败'))
-        throw err
-      }
-    },
+    queryFn: hasConversation
+      ? ({ signal }) => chatApi.getConversationSummary(conversationIdForQuery, { signal })
+      : skipToken,
   })
 
   const updateMutation = useMutation({
@@ -102,9 +104,9 @@ export function ConversationSummaryDialog(
       if (!operation.isActive()) return
       await queryClient.cancelQueries({ queryKey: operation.key, exact: true })
       if (!operation.isActive()) return
-      queryClient.setQueryData(operation.key, {
-        available: true,
-        summary: String(res?.summary || ''),
+      queryClient.setQueryData<ConversationSummaryResponse>(operation.key, {
+        available: res.summary.length > 0,
+        summary: res.summary,
       })
       if (operation.isCurrent()) toast.success('摘要已更新')
     },
@@ -123,14 +125,11 @@ export function ConversationSummaryDialog(
       if (!operation.isActive()) return
       await queryClient.cancelQueries({ queryKey: operation.key, exact: true })
       if (!operation.isActive()) return
-      queryClient.setQueryData(operation.key, { available: false, summary: '' })
+      queryClient.setQueryData<ConversationSummaryResponse>(operation.key, { available: false, summary: null })
       if (operation.isCurrent()) {
-        setConfirmOpen(false)
+        setClearTarget(undefined)
         toast.success('摘要已清空')
       }
-    },
-    onError: (err, operation) => {
-      if (operation.isCurrent()) toast.error(formatApiError(err, '清空摘要失败'))
     },
   })
 
@@ -142,9 +141,10 @@ export function ConversationSummaryDialog(
     filters: { mutationKey: CLEAR_SUMMARY_MUTATION_KEY, exact: true, status: 'pending' },
     select: (mutation) => mutation.state.variables as ReturnType<typeof captureOperation>,
   })
-  const available = Boolean(summaryQuery.data?.available)
-  const summary = String(summaryQuery.data?.summary || '')
-  const loading = summaryQuery.isFetching
+  const summary = summaryQuery.data?.summary
+  const copyText = summary?.trim()
+  const hasSummary = copyText !== undefined && copyText !== ''
+  const reading = summaryQuery.fetchStatus !== 'idle'
   const updating = pendingUpdates.some(
     (operation) => operation.conversationId === conversationIdForQuery && operation.isActive(),
   )
@@ -152,20 +152,25 @@ export function ConversationSummaryDialog(
     (operation) => operation.conversationId === conversationIdForQuery && operation.isActive(),
   )
   const busy = updating || clearing
-  const clearError =
-    clearMutation.variables?.view === view && clearMutation.variables.isActive() ? clearMutation.error : null
-  const statusText = loading ? '加载中…' : summaryQuery.isError ? '加载失败' : available ? '可用' : '暂无'
+  const clearError = confirmation !== undefined && clearMutation.variables === confirmation ? clearMutation.error : null
+  let statusText = '尚未读取'
+  if (clearing) statusText = '清空中…'
+  else if (updating) statusText = '更新中…'
+  else if (summaryQuery.isPaused) statusText = '读取已暂停'
+  else if (summaryQuery.isFetching) statusText = summaryQuery.data === undefined ? '加载中…' : '刷新中…'
+  else if (summaryQuery.isError) statusText = summaryQuery.data === undefined ? '加载失败' : '刷新失败'
+  else if (summaryQuery.isSuccess) statusText = hasSummary ? '可用' : '暂无摘要'
 
-  const copy = React.useCallback(async () => {
-    const text = (summary || '').trim()
-    if (!text) return
+  async function copySummary() {
+    if (!hasConversation || !hasSummary) return
+    const operation = captureOperation(conversationIdForQuery)
     try {
-      await navigator.clipboard.writeText(text)
-      toast.success('已复制摘要')
+      await navigator.clipboard.writeText(copyText)
+      if (operation.isCurrent()) toast.success('已复制摘要')
     } catch {
-      toast.error('复制失败')
+      if (operation.isCurrent()) toast.error('复制失败')
     }
-  }, [summary])
+  }
 
   return (
     <Dialog
@@ -182,27 +187,29 @@ export function ConversationSummaryDialog(
 
         {hasConversation ? (
           <div className="space-y-3">
-            <div className="flex items-center justify-between gap-3">
-              <div className="text-xs text-muted-foreground">状态：{statusText}</div>
-              <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div role="status" className="text-xs text-muted-foreground">
+                状态：{statusText}
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
                 <Button
                   variant="outline"
                   size="sm"
                   className="h-8 gap-2"
-                  onClick={() => {
-                    summaryQuery.refetch()
-                  }}
-                  disabled={loading || busy || !hasConversation}
+                  onClick={() => void summaryQuery.refetch()}
+                  disabled={reading || busy}
                 >
-                  <RefreshCw className={loading ? 'size-4 animate-spin motion-reduce:animate-none' : 'size-4'} />
+                  <RefreshCw
+                    className={summaryQuery.isFetching ? 'size-4 animate-spin motion-reduce:animate-none' : 'size-4'}
+                  />
                   刷新
                 </Button>
                 <Button
                   variant="outline"
                   size="sm"
                   className="h-8 gap-2"
-                  onClick={() => updateMutation.mutate(captureOperation())}
-                  disabled={loading || busy || !hasConversation}
+                  onClick={() => updateMutation.mutate(captureOperation(conversationIdForQuery))}
+                  disabled={reading || busy}
                 >
                   <RefreshCw className={updating ? 'size-4 animate-spin motion-reduce:animate-none' : 'size-4'} />
                   更新
@@ -211,20 +218,22 @@ export function ConversationSummaryDialog(
                   variant="outline"
                   size="sm"
                   className="h-8 gap-2"
-                  onClick={() => {
-                    copy()
-                  }}
-                  disabled={!summary.trim()}
+                  onClick={() => void copySummary()}
+                  disabled={!hasSummary}
                 >
                   <Copy className="size-4" />
                   复制
                 </Button>
                 <AlertDialog
-                  open={confirmOpen}
+                  open={confirmation !== undefined}
                   onOpenChange={(nextOpen) => {
                     if (clearing) return
-                    if (nextOpen) clearMutation.reset()
-                    setConfirmOpen(nextOpen)
+                    if (nextOpen) {
+                      clearMutation.reset()
+                      setClearTarget(captureOperation(conversationIdForQuery))
+                    } else {
+                      setClearTarget(undefined)
+                    }
                   }}
                 >
                   <AlertDialogTrigger asChild>
@@ -232,9 +241,9 @@ export function ConversationSummaryDialog(
                       variant="outline"
                       size="sm"
                       className="h-8 gap-2 text-destructive hover:text-destructive"
-                      disabled={loading || busy || !hasConversation}
+                      disabled={reading || busy}
                     >
-                      <Trash2 className={clearing ? 'size-4 animate-pulse' : 'size-4'} />
+                      <Trash2 className={clearing ? 'size-4 animate-pulse motion-reduce:animate-none' : 'size-4'} />
                       清空
                     </Button>
                   </AlertDialogTrigger>
@@ -253,9 +262,11 @@ export function ConversationSummaryDialog(
                       <Button
                         variant="destructive"
                         size="sm"
-                        disabled={clearing || !hasConversation}
+                        disabled={confirmation === undefined || reading || busy}
                         aria-busy={clearing}
-                        onClick={() => clearMutation.mutate(captureOperation())}
+                        onClick={() => {
+                          if (confirmation?.isCurrent()) clearMutation.mutate(confirmation)
+                        }}
                       >
                         {clearing ? '清空中…' : '清空'}
                       </Button>
@@ -265,17 +276,19 @@ export function ConversationSummaryDialog(
               </div>
             </div>
 
-            {summaryQuery.isError ? (
+            {summaryQuery.isError && !reading ? (
               <p role="alert" className="text-sm text-destructive">
                 {formatApiError(summaryQuery.error, '加载摘要失败')}
               </p>
             ) : null}
 
-            <div className="rounded-lg border border-border bg-background p-3">
-              <pre className="text-xs whitespace-pre-wrap break-words leading-relaxed max-h-[420px] overflow-auto">
-                {summary.trim() ? summary : '(empty)'}
-              </pre>
-            </div>
+            {hasSummary && (
+              <div className="rounded-lg border border-border bg-background p-3">
+                <pre className="text-xs whitespace-pre-wrap break-words leading-relaxed max-h-[420px] overflow-auto">
+                  {summary}
+                </pre>
+              </div>
+            )}
           </div>
         ) : (
           <div className="rounded-lg border border-border bg-muted/20 p-4 text-sm text-muted-foreground">

@@ -1,5 +1,6 @@
 from app import main
-from app.rag.preprocessing import tokenization
+from app.rag.ingestion.governance.text import tokenization
+from app.services.runtime import model_warmup
 
 
 def test_tokenizer_warmup_initializes_jieba_and_exercises_mixed_text(monkeypatch) -> None:
@@ -43,7 +44,7 @@ def test_startup_schedules_runtime_warmup_when_enabled(monkeypatch) -> None:
     scheduled: list[bool] = []
     monkeypatch.setattr(main.settings, "RAG_RUNTIME_WARMUP_ENABLED", True, raising=False)
     monkeypatch.setattr(
-        main,
+        model_warmup,
         "start_rag_runtime_warmup",
         lambda: scheduled.append(True),
         raising=False,
@@ -58,7 +59,7 @@ def test_startup_skips_runtime_warmup_when_disabled(monkeypatch) -> None:
     scheduled: list[bool] = []
     monkeypatch.setattr(main.settings, "RAG_RUNTIME_WARMUP_ENABLED", False, raising=False)
     monkeypatch.setattr(
-        main,
+        model_warmup,
         "start_rag_runtime_warmup",
         lambda: scheduled.append(True),
         raising=False,

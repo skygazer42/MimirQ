@@ -4,32 +4,42 @@ type ParserResolveResult = {
   reason?: string
 }
 
+const PARSER_BACKEND_ALIASES = new Map([
+  ['pymupdf', 'basic'],
+  ['fitz', 'basic'],
+  ['magic-pdf', 'magicpdf'],
+  ['deepseek-ocr', 'deepseek_ocr'],
+  ['deepseekocr', 'deepseek_ocr'],
+  ['qianfan-ocr', 'qianfan_ocr'],
+  ['qianfanocr', 'qianfan_ocr'],
+  ['textin-xparse', 'textin'],
+  ['textinxparse', 'textin'],
+  ['etl-4llm', 'etl4llm'],
+  ['pan-doc', 'pandoc'],
+  ['marker-pdf', 'marker'],
+  ['paddle-vl', 'paddle_vl'],
+  ['paddleocr-vl', 'paddle_vl'],
+  ['paddleocrvl', 'paddle_vl'],
+  ['olm-ocr', 'olmocr'],
+  ['olmocr-pdf', 'olmocr'],
+  ['bisheng-unstructured', 'etl4llm'],
+  ['bishengunstructured', 'etl4llm'],
+  ['bisheng', 'etl4llm'],
+])
+
 export function normalizeParserBackendName(value?: string): string {
-  const raw = (value || '').trim().toLowerCase()
-  if (!raw) return 'auto'
+  const raw = value?.trim().toLowerCase()
+  if (raw === undefined || raw.length === 0) return 'auto'
   const normalized = raw.replaceAll('_', '-')
 
-  if (normalized === 'pymupdf' || normalized === 'fitz') return 'basic'
-  if (normalized === 'magic-pdf') return 'magicpdf'
-  if (normalized === 'deepseek-ocr' || normalized === 'deepseekocr') return 'deepseek_ocr'
-  if (normalized === 'qianfan-ocr' || normalized === 'qianfanocr') return 'qianfan_ocr'
-  if (normalized === 'textin-xparse' || normalized === 'textinxparse') return 'textin'
-  if (normalized === 'etl-4llm') return 'etl4llm'
-  if (normalized === 'pan-doc') return 'pandoc'
-  if (normalized === 'marker-pdf') return 'marker'
-  if (normalized === 'paddle-vl' || normalized === 'paddleocr-vl' || normalized === 'paddleocrvl') return 'paddle_vl'
-  if (normalized === 'olm-ocr' || normalized === 'olmocr-pdf') return 'olmocr'
-  if (normalized === 'bisheng-unstructured' || normalized === 'bishengunstructured' || normalized === 'bisheng')
-    return 'etl4llm'
-
-  return normalized
+  return PARSER_BACKEND_ALIASES.get(normalized) ?? normalized
 }
 
 function fileExt(filename: string): string {
-  const name = (filename || '').trim()
-  const idx = name.lastIndexOf('.')
-  if (idx <= 0 || idx === name.length - 1) return ''
-  return name.slice(idx).toLowerCase()
+  const name = filename.trim()
+  const extensionStart = name.lastIndexOf('.')
+  if (extensionStart <= 0 || extensionStart === name.length - 1) return ''
+  return name.slice(extensionStart).toLowerCase()
 }
 
 const PDF_BACKENDS = new Set([
@@ -51,6 +61,12 @@ const PDF_BACKENDS = new Set([
 
 const CONVERTER_BACKENDS = new Set(['auto', 'markitdown', 'pandoc', 'textin'])
 const TEXT_BACKENDS = new Set(['auto'])
+const RETIRED_PARSER_BACKENDS = new Set(['colpali', 'col-pali', 'colqwen', 'col-qwen'])
+
+export function isRetiredParserBackend(normalizedBackend: string) {
+  return RETIRED_PARSER_BACKENDS.has(normalizedBackend)
+}
+
 const FORMAT_RULES: Record<string, { format: string; backends: ReadonlySet<string> }> = {
   '.pdf': { format: 'pdf', backends: PDF_BACKENDS },
   '.docx': {
@@ -72,6 +88,8 @@ const FORMAT_RULES: Record<string, { format: string; backends: ReadonlySet<strin
 
 export function resolveParserBackendForFilename(filename: string, requestedBackend?: string): ParserResolveResult {
   const backend = normalizeParserBackendName(requestedBackend)
+  // Preserve retired selections so the API can report their retirement explicitly.
+  if (isRetiredParserBackend(backend)) return { backend, changed: false }
   const rule = FORMAT_RULES[fileExt(filename)]
   // Unknown formats remain permissive because the backend owns their parser selection.
   if (!rule || rule.backends.has(backend)) return { backend, changed: false }
@@ -82,20 +100,14 @@ export function resolveParserBackendForFilename(filename: string, requestedBacke
   }
 }
 
-export function resolveParserBackendForFiles(files: File[], requestedBackend?: string): ParserResolveResult {
+export function resolveParserBackendForFiles(files: readonly File[], requestedBackend?: string): ParserResolveResult {
   const normalized = normalizeParserBackendName(requestedBackend)
-  let changed = false
   for (const file of files) {
-    const resolved = resolveParserBackendForFilename(file?.name || '', normalized)
-    if (resolved.backend !== normalized) {
-      changed = true
-      break
+    const resolved = resolveParserBackendForFilename(file.name, normalized)
+    if (resolved.changed) {
+      return { backend: 'auto', changed: true, reason: 'batch upload contains mixed/unsupported file types' }
     }
   }
-  if (!changed) return { backend: normalized, changed: false }
-  return {
-    backend: 'auto',
-    changed: normalized !== 'auto',
-    reason: 'batch upload contains mixed/unsupported file types',
-  }
+
+  return { backend: normalized, changed: false }
 }

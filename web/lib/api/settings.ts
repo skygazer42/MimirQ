@@ -1,4 +1,8 @@
-import { apiClient } from '@/lib/api/core'
+import { z } from 'zod'
+
+import { apiClient, openapiRequest, type ApiRequestOptions } from '@/lib/api/core'
+import { parseApiResponse } from '@/lib/openapi-request'
+import { recordSchema } from '@/lib/response-schema'
 import type {
   SettingsUpdateResponse,
   SystemSettings,
@@ -7,6 +11,43 @@ import type {
   TestLLMResponse,
   UpdateSettingsRequest,
 } from '@/types/settings'
+
+const connectionStatusSchema = z.object({
+  connected: z.boolean(),
+  message: z.string(),
+})
+
+const modelStatusSchema = z.object({
+  configured: z.boolean(),
+  model: z.string(),
+})
+
+const systemStatusSchema = z.object({
+  database: connectionStatusSchema,
+  milvus: connectionStatusSchema,
+  llm: modelStatusSchema,
+  embedding: modelStatusSchema,
+  parsers: z.record(
+    z.string(),
+    z.object({
+      enabled: z.boolean(),
+      available: z.boolean(),
+      message: z.string(),
+      health: recordSchema.nullish(),
+    }),
+  ),
+}) satisfies z.ZodType<SystemStatus>
+
+const settingsUpdateSchema = z.object({
+  success: z.boolean(),
+  message: z.string(),
+  updated_keys: z.array(z.string()),
+}) satisfies z.ZodType<SettingsUpdateResponse>
+
+const llmTestSchema = z.object({
+  success: z.boolean(),
+  message: z.string(),
+}) satisfies z.ZodType<TestLLMResponse>
 
 export type {
   CacheConfig,
@@ -41,29 +82,33 @@ export type {
   UrlIngestStatus,
 } from '@/types/settings'
 
-export async function getSettings(): Promise<SystemSettings> {
-  const { data } = await apiClient.get('/settings')
-  return data
-}
-
-export async function updateSettings(settings: UpdateSettingsRequest): Promise<SettingsUpdateResponse> {
-  const { data } = await apiClient.put('/settings', settings)
-  return data
-}
-
-export async function getSystemStatus(): Promise<SystemStatus> {
-  const { data } = await apiClient.get('/settings/status')
-  return data
-}
-
-export async function testLLMConnection(params: TestLLMRequest): Promise<TestLLMResponse> {
-  const { data } = await apiClient.post('/settings/llm/test', params)
-  return data
-}
-
 export const settingsApi = {
-  get: getSettings,
-  update: updateSettings,
-  getStatus: getSystemStatus,
-  testLLM: testLLMConnection,
+  get(options?: ApiRequestOptions): Promise<SystemSettings> {
+    return openapiRequest({ path: '/api/v1/settings', method: 'get', signal: options?.signal })
+  },
+
+  update(settings: UpdateSettingsRequest): Promise<SettingsUpdateResponse> {
+    return openapiRequest({
+      path: '/api/v1/settings',
+      method: 'put',
+      body: settings,
+      responseSchema: settingsUpdateSchema,
+      responseSchemaName: 'UpdateSettingsResponse',
+    })
+  },
+
+  getStatus(options?: ApiRequestOptions): Promise<SystemStatus> {
+    return openapiRequest({
+      path: '/api/v1/settings/status',
+      method: 'get',
+      signal: options?.signal,
+      responseSchema: systemStatusSchema,
+      responseSchemaName: 'SystemStatusResponse',
+    })
+  },
+
+  async testLLM(params: TestLLMRequest, options?: ApiRequestOptions): Promise<TestLLMResponse> {
+    const response = await apiClient.post<unknown>('/settings/llm/test', params, { signal: options?.signal })
+    return parseApiResponse(response, llmTestSchema, 'TestLLMResponse')
+  },
 }

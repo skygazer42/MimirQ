@@ -149,7 +149,7 @@ describe('ingestion policy save ownership', () => {
     expect(hook.result.current.saving).toBe(false)
     expect(hook.result.current.rules[0].name).toBe('A draft')
   })
-  it('submits once for two synchronous clicks and verifies the server snapshot after token refresh', async () => {
+  it('submits once for two synchronous clicks and uses the canonical receipt after token refresh', async () => {
     const response = pending()
     ports.datasets.updateIngestionPolicy.mockReturnValueOnce(response.promise)
     const hook = mount()
@@ -163,10 +163,10 @@ describe('ingestion policy save ownership', () => {
     setAccessToken({ access_token: 'refreshed', token_type: 'bearer', expires_in: 3600 })
     saved['dataset-a'] = policy('server canonical')
     await act(async () => {
-      response.resolve(policy('PUT response'))
+      response.resolve(saved['dataset-a'])
       await write
     })
-    expect(ports.datasets.getIngestionPolicy).toHaveBeenCalledWith('dataset-a')
+    expect(ports.datasets.getIngestionPolicy).not.toHaveBeenCalled()
     expect(hook.result.current.rules[0].name).toBe('server canonical')
     expect(hook.result.current.dirty).toBe(false)
     expect(ports.toast.success).toHaveBeenCalledOnce()

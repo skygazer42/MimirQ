@@ -660,8 +660,8 @@ def _query_mimirq_history_records_once(
 ) -> list[dict[str, Any]]:
     from sqlalchemy import or_
 
-    from app.core.database import SessionLocal
-    from app.models.chat import Message
+    from app.infrastructure.database.connection import SessionLocal
+    from app.models.conversations.chat import Message
 
     source_conversation_id = _history_source_conversation_id(app, item)
     if not source_conversation_id:

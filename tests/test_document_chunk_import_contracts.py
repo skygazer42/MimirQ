@@ -38,7 +38,7 @@ def _run_without_document_router(script: str) -> None:
 
 @pytest.mark.parametrize(
     "module_name",
-    ["app.services.document_chunk_operations", "app.api.v1.document_chunks_write"],
+    ["app.services.documents.chunks", "app.api.v1.documents.chunks_write"],
 )
 def test_chunk_operations_import_without_document_router(module_name: str) -> None:
     _run_without_document_router(
@@ -135,11 +135,10 @@ def test_chunk_http_adapter_preserves_operation_inputs_and_response(
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
 
-    from app.api.dependencies.auth import get_current_account_id
-    from app.api.dependencies.tenant import get_tenant_id
-    from app.api.v1 import document_chunks_write
-    from app.core.database import get_db
-    from app.services import document_chunk_operations
+    from app.api.dependencies import get_current_account_id, get_tenant_id
+    from app.api.v1.documents import chunks_write as document_chunks_write
+    from app.infrastructure.database.connection import get_db
+    from app.services.documents import chunks as document_chunk_operations
 
     assert callable(getattr(document_chunk_operations, operation_name, None))
     tenant_id = uuid.uuid4()

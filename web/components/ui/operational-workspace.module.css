@@ -174,6 +174,10 @@
   color: hsl(var(--muted-foreground));
   font-size: 14px;
 }
+.tabList > button:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 2px;
+}
 .tabList > button[data-state='active'] {
   border-color: hsl(var(--primary));
   background: transparent;
@@ -198,26 +202,6 @@
 .charts :global(.recharts-cartesian-axis-line),
 .charts :global(.recharts-cartesian-axis-tick-line) {
   stroke: hsl(var(--border));
-}
-.legend {
-  display: flex;
-  justify-content: center;
-  flex-wrap: wrap;
-  gap: 8px 16px;
-  padding-top: 12px;
-  font-size: 12px;
-  line-height: 20px;
-  color: hsl(var(--muted-foreground));
-}
-.legend span {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-.legend i {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
 }
 .tableScroll {
   min-width: 0;
@@ -408,12 +392,6 @@
 .mobileNavigation {
   display: none;
 }
-.canvasSplit {
-  display: grid;
-  flex: 1;
-  min-height: 0;
-  grid-template-columns: minmax(0, 1fr) 320px;
-}
 .canvasPanel {
   display: flex;
   min-height: 0;
@@ -424,12 +402,6 @@
   border-radius: 0;
   background: transparent;
   box-shadow: none;
-}
-.inspector {
-  border-left: 1px solid hsl(var(--border));
-}
-.inspectorTrigger {
-  display: none;
 }
 .reader {
   min-height: 0;
@@ -512,15 +484,6 @@
   }
   .reader {
     padding: 16px;
-  }
-  .canvasSplit {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  .canvasSplit > .inspector {
-    display: none;
-  }
-  .inspectorTrigger {
-    display: inline-flex;
   }
 }
 @media (max-width: 640px) {

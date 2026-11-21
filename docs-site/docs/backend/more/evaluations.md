@@ -96,7 +96,7 @@ flowchart TB
 | 文件 | 职责 |
 |------|------|
 | `app/rag/evaluation/ragas.py` | RAGAS 评测服务主逻辑 |
-| `app/models/evaluation.py` | 评测数据模型 |
+| `app/models/evaluation/results.py` | 评测数据模型 |
 | `app/api/v1/evaluations.py` | 评测 API 路由 |
 | `app/api/schemas/evaluation.py` | 请求/响应 Schema |
 

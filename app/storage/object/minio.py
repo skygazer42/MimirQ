@@ -10,6 +10,7 @@ import asyncio
 import contextlib
 import io
 import json
+import logging
 import threading
 import time
 from collections.abc import Iterable, Iterator
@@ -21,11 +22,11 @@ from urllib.parse import urlparse
 
 from minio import Minio
 from minio.deleteobjects import DeleteObject
+from urllib3.response import BaseHTTPResponse
 
-from app.core.config import settings
-from app.rag.core.logging import get_logger
+from app.infrastructure.config import settings
 
-logger = get_logger("storage.minio")
+logger = logging.getLogger("storage.minio")
 
 
 @dataclass(frozen=True)
@@ -481,7 +482,7 @@ class MinIOService:
         object_name: str,
         offset: int = 0,
         length: int | None = None,
-    ) -> Any:
+    ) -> BaseHTTPResponse:
         client = self._get_client()
         kwargs: dict[str, Any] = {}
         if int(offset or 0) > 0:
@@ -540,7 +541,12 @@ class MinIOService:
 
         resp = self.open_object(object_name=obj)
         try:
-            return resp.read()  # type: ignore[no-any-return]
+            if max_bytes_i == 0:
+                return resp.read()
+            data = resp.read(max_bytes_i + 1)
+            if len(data) > max_bytes_i:
+                raise ValueError("object_too_large")
+            return data
         finally:
             with contextlib.suppress(Exception):
                 resp.close()

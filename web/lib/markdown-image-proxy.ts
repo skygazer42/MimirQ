@@ -1,13 +1,4 @@
-import { API_BASE_URL } from '@/lib/env'
-
 const BLOCKED_HOSTNAME_SUFFIXES = ['.internal', '.local', '.localhost']
-
-let BACKEND_ORIGIN = ''
-try {
-  BACKEND_ORIGIN = new URL(API_BASE_URL).origin
-} catch {
-  BACKEND_ORIGIN = ''
-}
 
 const ALLOWED_MARKDOWN_IMAGE_CONTENT_TYPES = new Set([
   'image/avif',
@@ -21,17 +12,12 @@ const ALLOWED_MARKDOWN_IMAGE_CONTENT_TYPES = new Set([
 ])
 
 export function isAllowedMarkdownImageContentType(raw: string | null | undefined): boolean {
-  const contentType = String(raw || '')
-    .split(';', 1)[0]
-    ?.trim()
-    .toLowerCase()
-  return ALLOWED_MARKDOWN_IMAGE_CONTENT_TYPES.has(contentType)
+  const contentType = raw?.split(';', 1)[0]?.trim().toLowerCase()
+  return contentType !== undefined && ALLOWED_MARKDOWN_IMAGE_CONTENT_TYPES.has(contentType)
 }
 
 function normalizeHost(rawHostname: string): string {
-  const hostname = String(rawHostname || '')
-    .trim()
-    .toLowerCase()
+  const hostname = rawHostname.trim().toLowerCase()
   const withoutBrackets = hostname.startsWith('[') && hostname.endsWith(']') ? hostname.slice(1, -1) : hostname
   return withoutBrackets.split('%')[0] || withoutBrackets
 }
@@ -72,7 +58,8 @@ function isPrivateIpv6(hostname: string): boolean {
 }
 
 export function parseMarkdownImageUrl(rawUrl: string | null | undefined): URL | null {
-  const raw = typeof rawUrl === 'string' ? rawUrl.trim() : ''
+  if (typeof rawUrl !== 'string') return null
+  const raw = rawUrl.trim()
   if (!raw) return null
 
   try {
@@ -84,7 +71,7 @@ export function parseMarkdownImageUrl(rawUrl: string | null | undefined): URL | 
   }
 }
 
-export function isBlockedMarkdownImageHost(hostname: string): boolean {
+function isBlockedMarkdownImageHost(hostname: string): boolean {
   const normalized = normalizeHost(hostname)
   if (!normalized) return true
   if (normalized === 'localhost') return true
@@ -97,13 +84,14 @@ export function isBlockedMarkdownImageTarget(rawUrl: string | null | undefined):
   return parsed ? isBlockedMarkdownImageHost(parsed.hostname) : false
 }
 
-export type MarkdownImageAddress = { address: string; family: number }
+type MarkdownImageAddress = { address: string; family: number }
 
 export function selectMarkdownImageAddress(addresses: readonly MarkdownImageAddress[]): MarkdownImageAddress | null {
-  if (addresses.length === 0 || addresses.some(({ address }) => isBlockedMarkdownImageHost(address))) {
+  const [firstAddress] = addresses
+  if (firstAddress === undefined || addresses.some(({ address }) => isBlockedMarkdownImageHost(address))) {
     return null
   }
-  return addresses[0] || null
+  return firstAddress
 }
 
 export async function readMarkdownImageBody(
@@ -125,13 +113,4 @@ export async function readMarkdownImageBody(
     offset += chunk.byteLength
   }
   return body
-}
-
-export function isSameBackendMarkdownImageUrl(rawUrl: string | null | undefined): boolean {
-  const parsed = parseMarkdownImageUrl(rawUrl)
-  return Boolean(parsed && BACKEND_ORIGIN && parsed.origin === BACKEND_ORIGIN)
-}
-
-export function buildMarkdownImageProxyUrl(rawUrl: string): string {
-  return `/api/markdown-image?src=${encodeURIComponent(rawUrl)}`
 }

@@ -1,4 +1,4 @@
-from app.rag.evaluation.llm_judge import coerce_llm_judge_payload, llm_judge_version_hash, run_llm_judge
+from app.rag.evaluation.judging.llm_judge import coerce_llm_judge_payload, llm_judge_version_hash, run_llm_judge
 
 
 class _Judge:

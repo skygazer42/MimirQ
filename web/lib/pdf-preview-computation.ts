@@ -1,4 +1,4 @@
-import { buildBlockIdToBestChunkIndex, type BlockRangeLike } from '@/components/chunk-preview/utils/pdf-box-mapping'
+import { buildBlockIdToBestChunkIndex, type BlockTextRange } from './pdf-box-mapping'
 import {
   createPositionTagIndexMapper,
   extractBlocksFromMarkdownWithRanges,
@@ -6,72 +6,67 @@ import {
   type ParsingBlockWithRange,
 } from '@/lib/parsing-positions'
 import type { ChunkPreviewItem } from '@/types'
+import { createCodePointToUtf16Converter } from './text-offsets'
 
-export type PdfPreviewChunkLike = Pick<ChunkPreviewItem, 'start_index' | 'end_index'>
+type PdfPreviewChunkLike = Pick<ChunkPreviewItem, 'start_index' | 'end_index'>
 
-export type PdfPreviewChunkRange = {
+type PdfPreviewChunkRange = {
+  /** Position in the source chunks array; independent of backend chunk.index. */
   index: number
   start: number
   end: number
 }
 
-export type PdfPreviewBox = {
+type PdfPreviewBox = {
   id: string
   position: ParsingPosition
 }
 
 export type PdfPreviewComputationResult = {
-  blocksWithPositions: ParsingBlockWithRange[]
-  blockRanges: BlockRangeLike[]
-  chunkRanges: PdfPreviewChunkRange[]
+  positionedBlockCount: number
   blockIdToChunkIndexEntries: Array<[string, number]>
   blockIdToPageIndexEntries: Array<[string, number]>
   chunkBlockIdsByIndexEntries: Array<[number, string[]]>
   boxesByPageEntries: Array<[number, PdfPreviewBox[]]>
 }
 
-function asInt(value: unknown): number {
-  const n = Number(value)
-  return Number.isFinite(n) ? Math.trunc(n) : 0
-}
-
 function overlap(aStart: number, aEnd: number, bStart: number, bEnd: number): boolean {
-  const a0 = Math.min(aStart, aEnd)
-  const a1 = Math.max(aStart, aEnd)
-  const b0 = Math.min(bStart, bEnd)
-  const b1 = Math.max(bStart, bEnd)
-  return a1 > b0 && b1 > a0
+  return aEnd > bStart && bEnd > aStart
 }
 
-function computeBlockRanges(blocks: ParsingBlockWithRange[], mapIndex: (rawIndex: number) => number): BlockRangeLike[] {
+function computeBlockRanges(blocks: ParsingBlockWithRange[], mapIndex: (rawIndex: number) => number): BlockTextRange[] {
   return blocks.map((block) => ({
     id: block.id,
-    start: mapIndex(asInt(block.rawStart)),
-    end: mapIndex(asInt(block.rawEnd)),
+    start: mapIndex(block.rawStart),
+    end: mapIndex(block.rawEnd),
   }))
 }
 
 function computeChunkRanges(
-  previewChunks: PdfPreviewChunkLike[],
+  previewChunks: readonly PdfPreviewChunkLike[],
+  toUtf16: (offset: number) => number | undefined,
   mapIndex: (rawIndex: number) => number,
 ): PdfPreviewChunkRange[] {
-  return previewChunks.map((chunk, index) => ({
-    index,
-    start: mapIndex(asInt(chunk.start_index)),
-    end: mapIndex(asInt(chunk.end_index)),
-  }))
+  return previewChunks.flatMap((chunk, index) => {
+    const rawStart = toUtf16(chunk.start_index)
+    const rawEnd = toUtf16(chunk.end_index)
+    if (rawStart === undefined || rawEnd === undefined || rawEnd <= rawStart) return []
+    const start = mapIndex(rawStart)
+    const end = mapIndex(rawEnd)
+    return end > start ? [{ index, start, end }] : []
+  })
 }
 
 function computeBoxesByPageEntries(blocks: ParsingBlockWithRange[]): Array<[number, PdfPreviewBox[]]> {
   const boxesByPage = new Map<number, PdfPreviewBox[]>()
 
   for (const block of blocks) {
-    for (const position of block.positions || []) {
-      const pages = position.pages?.length ? position.pages : [0]
-      for (const pageIndex of pages) {
-        const pageBoxes = boxesByPage.get(pageIndex) || []
-        pageBoxes.push({ id: block.id, position })
-        boxesByPage.set(pageIndex, pageBoxes)
+    for (const position of block.positions) {
+      for (const pageIndex of position.pages) {
+        const box = { id: block.id, position }
+        const pageBoxes = boxesByPage.get(pageIndex)
+        if (pageBoxes === undefined) boxesByPage.set(pageIndex, [box])
+        else pageBoxes.push(box)
       }
     }
   }
@@ -83,30 +78,21 @@ function computeBlockIdToPageIndexEntries(blocks: ParsingBlockWithRange[]): Arra
   const entries: Array<[string, number]> = []
 
   for (const block of blocks) {
-    const pageIndex = block.positions.find((position) => position.pages?.length)?.pages?.[0]
-    if (typeof pageIndex !== 'number' || !Number.isFinite(pageIndex)) continue
-    entries.push([block.id, pageIndex])
+    for (const position of block.positions) {
+      if (position.pages.length === 0) continue
+      entries.push([block.id, position.pages[0]])
+      break
+    }
   }
 
   return entries
 }
 
-export function findBlockIdsForChunkIndex(params: {
-  chunkIndex: number | null
-  chunkRanges: PdfPreviewChunkRange[]
-  blockRanges: BlockRangeLike[]
-}): string[] {
-  const { chunkIndex, chunkRanges, blockRanges } = params
-  if (chunkIndex == null) return []
-
-  const chunk = chunkRanges.find((candidate) => candidate.index === chunkIndex)
-  if (!chunk || chunk.start === chunk.end) return []
-
+function findBlockIdsForChunkRange(chunk: PdfPreviewChunkRange, blockRanges: readonly BlockTextRange[]): string[] {
   const ids: string[] = []
   for (const block of blockRanges) {
     if (!overlap(chunk.start, chunk.end, block.start, block.end)) continue
     ids.push(block.id)
-    if (ids.length >= 600) break
   }
 
   return ids
@@ -114,30 +100,26 @@ export function findBlockIdsForChunkIndex(params: {
 
 function computeChunkBlockIdsByIndexEntries(params: {
   chunkRanges: PdfPreviewChunkRange[]
-  blockRanges: BlockRangeLike[]
+  blockRanges: BlockTextRange[]
 }): Array<[number, string[]]> {
   const { chunkRanges, blockRanges } = params
 
-  return chunkRanges.map((chunk) => [
-    chunk.index,
-    findBlockIdsForChunkIndex({
-      chunkIndex: chunk.index,
-      chunkRanges,
-      blockRanges,
-    }),
-  ])
+  return chunkRanges.map((chunk) => [chunk.index, findBlockIdsForChunkRange(chunk, blockRanges)])
 }
 
 export function computePdfPreviewData(params: {
   rawOriginal: string
-  previewChunks: PdfPreviewChunkLike[]
+  previewChunks: readonly PdfPreviewChunkLike[]
 }): PdfPreviewComputationResult {
   const { rawOriginal, previewChunks } = params
   const parsed = extractBlocksFromMarkdownWithRanges(rawOriginal)
-  const blocksWithPositions = parsed.blocks.filter((block) => (block.positions || []).length > 0)
+  const blocksWithPositions = parsed.blocks.filter((block) =>
+    block.positions.some((position) => position.pages.length > 0),
+  )
+  const converter = createCodePointToUtf16Converter(rawOriginal)
   const mapIndex = createPositionTagIndexMapper(rawOriginal, parsed.tagRanges)
   const blockRanges = computeBlockRanges(blocksWithPositions, mapIndex)
-  const chunkRanges = computeChunkRanges(previewChunks, mapIndex)
+  const chunkRanges = computeChunkRanges(previewChunks, converter.toUtf16, mapIndex)
   const blockIdToChunkIndexEntries = Array.from(
     buildBlockIdToBestChunkIndex(
       blockRanges,
@@ -156,9 +138,7 @@ export function computePdfPreviewData(params: {
   const boxesByPageEntries = computeBoxesByPageEntries(blocksWithPositions)
 
   return {
-    blocksWithPositions,
-    blockRanges,
-    chunkRanges,
+    positionedBlockCount: blocksWithPositions.length,
     blockIdToChunkIndexEntries,
     blockIdToPageIndexEntries,
     chunkBlockIdsByIndexEntries,

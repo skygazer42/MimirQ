@@ -9,12 +9,14 @@ import { AppFrame } from '@/components/app-frame'
 import { QuarantineTableWorkspace } from '@/components/knowledge/quarantine/quarantine-table-workspace'
 import { QuarantineTuneDialog } from '@/components/knowledge/quarantine/quarantine-tune-dialog'
 import { Button } from '@/components/ui/button'
+import { WorkspaceNotice } from '@/components/ui/operational-workspace'
 import { Switch } from '@/components/ui/switch'
 import { cn, detachPromise } from '@/lib/utils'
 import { documentApi } from '@/lib/api/documents'
 import { formatApiError, toApiErrorInfo } from '@/lib/api-errors'
 import { getAuthSessionRevision } from '@/lib/auth-storage'
 import { captureApiError } from '@/lib/api-error-reporting'
+import { downloadBlob } from '@/lib/download'
 import { useDatasets } from '@/hooks/use-datasets'
 import type { Document, DocumentPipelineOptions } from '@/types'
 import { useDocumentView } from '@/store/document-view'
@@ -31,10 +33,13 @@ import {
   getQuarantineSource,
   isReviewed,
   reasonLabel,
-  downloadTextFile,
 } from './quarantine-signals'
 import type { ActingState, JsonRecord, QuarantineSeverity } from './types'
 import styles from './quarantine.module.css'
+
+function quarantineQueueKey(status: 'quarantined' | 'failed', datasetId: string | null) {
+  return ['quarantine-documents', status, datasetId] as const
+}
 
 export default function QuarantineQueuePage() {
   const searchParams = useSearchParams()
@@ -42,11 +47,13 @@ export default function QuarantineQueuePage() {
   const router = useRouter()
   const queryClient = useQueryClient()
   const demoMode = /(^|\/)demo(\/|$)/.test(pathname) && searchParams.get('demo') === '1'
+  const datasetParam = searchParams.get('datasetId')
+  const datasetFromQuery = datasetParam === null || datasetParam === '' ? 'all' : datasetParam
   const { openDocument } = useDocumentView()
   const [autoRefresh, setAutoRefresh] = useState(true)
   const [search, setSearch] = useState('')
   const [selectedReason, setSelectedReason] = useState('all')
-  const [selectedDataset, setSelectedDataset] = useState(searchParams.get('datasetId') || 'all')
+  const [selectedDataset, setSelectedDataset] = useState(datasetFromQuery)
   const [selectedSource, setSelectedSource] = useState('all')
   const [selectedSeverity, setSelectedSeverity] = useState('all')
   const [dateFrom, setDateFrom] = useState('')
@@ -67,7 +74,13 @@ export default function QuarantineQueuePage() {
   const [tuneOpen, setTuneOpen] = useState(false)
   const [tuneTarget, setTuneTarget] = useState<Document | null>(null)
   const [tunePatch, setTunePatch] = useState<DocumentPipelineOptions>({})
-  const { datasets, isLoading: datasetsLoading } = useDatasets()
+  const {
+    datasets,
+    isLoading: datasetsLoading,
+    isFetching: datasetsFetching,
+    error: datasetsError,
+    refreshDatasets,
+  } = useDatasets()
   const selectedDatasetId = selectedDataset === 'all' ? null : selectedDataset
 
   useEffect(() => {
@@ -100,7 +113,7 @@ export default function QuarantineQueuePage() {
     error: queueError,
     isFetching,
   } = useQuery({
-    queryKey: ['quarantine-documents', 'quarantined', selectedDatasetId],
+    queryKey: quarantineQueueKey('quarantined', selectedDatasetId),
     queryFn: ({ signal }) =>
       documentApi.list(
         {
@@ -120,7 +133,7 @@ export default function QuarantineQueuePage() {
     error: failedQueueError,
     isFetching: isFetchingFailed,
   } = useQuery({
-    queryKey: ['quarantine-documents', 'failed', selectedDatasetId],
+    queryKey: quarantineQueueKey('failed', selectedDatasetId),
     queryFn: ({ signal }) =>
       documentApi.list(
         {
@@ -135,20 +148,28 @@ export default function QuarantineQueuePage() {
     refetchInterval: autoRefresh ? 5_000 : false,
   })
 
-  const documents = useMemo(
-    () => (demoMode ? buildDemoQuarantineDocuments() : [...(data?.items || []), ...(failedData?.items || [])]),
-    [data, demoMode, failedData],
-  )
+  const documents = useMemo(() => {
+    if (demoMode) return buildDemoQuarantineDocuments()
+    const byId = new Map<string, Document>()
+    for (const doc of [...(data?.items ?? []), ...(failedData?.items ?? [])]) {
+      const previous = byId.get(doc.id)
+      if (previous === undefined || Date.parse(doc.updated_at) >= Date.parse(previous.updated_at)) byId.set(doc.id, doc)
+    }
+    return Array.from(byId.values())
+  }, [data, demoMode, failedData])
   const queueFetching = isFetching || isFetchingFailed
   const queueErrorMessage = useMemo(() => {
-    const err = queueError || failedQueueError
+    const err = queueError ?? failedQueueError
     return err ? formatApiError(err, '隔离队列同步失败') : null
   }, [failedQueueError, queueError])
   const refreshQueue = useCallback(
     async ({ notify = false }: { notify?: boolean } = {}) => {
       const authRevision = getAuthSessionRevision()
       const visit = queueVisitRef.current
-      const queryKeys = ['quarantined', 'failed'].map((status) => ['quarantine-documents', status, selectedDatasetId])
+      const queryKeys = [
+        quarantineQueueKey('quarantined', selectedDatasetId),
+        quarantineQueueKey('failed', selectedDatasetId),
+      ]
       const ownsView = () =>
         mountedRef.current && queueVisitRef.current === visit && authRevision === getAuthSessionRevision()
       try {
@@ -157,34 +178,39 @@ export default function QuarantineQueuePage() {
             queryClient.refetchQueries({ queryKey, exact: true, type: 'all' }, { throwOnError: true }),
           ),
         )
-        if (!ownsView()) return authRevision === getAuthSessionRevision()
+        if (!ownsView()) return
+        if (queryKeys.some((queryKey) => queryClient.getQueryState(queryKey)?.fetchStatus === 'paused')) {
+          if (notify) toast.info('隔离队列同步已暂停，恢复连接后会继续。')
+          return
+        }
         const [quarantineResult, failedResult] = queryKeys.map((queryKey) =>
           queryClient.getQueryData<Awaited<ReturnType<typeof documentApi.list>>>(queryKey),
         )
-        const quarantinedTotal = quarantineResult?.total ?? 0
-        const failedTotal = failedResult?.total ?? 0
+        if (quarantineResult === undefined || failedResult === undefined) {
+          throw new Error('未取得完整的隔离队列数据')
+        }
+        const quarantinedTotal = quarantineResult.total
+        const failedTotal = failedResult.total
         const message =
           quarantinedTotal + failedTotal > 0
             ? `同步完成：待审核 ${quarantinedTotal} 条，失败 ${failedTotal} 条`
             : '同步完成：当前没有隔离或失败记录'
         if (notify) toast.success(message)
-        return true
       } catch (err) {
-        if (!ownsView()) return false
+        if (!ownsView()) return
         const info = captureApiError(err, '隔离队列同步失败', {
           level: 'warning',
           tags: { page: 'knowledge-quarantine', action: 'manual-sync' },
         })
         if (notify) toast.error(info.message)
-        return false
       }
     },
     [queryClient, selectedDatasetId],
   )
 
   useEffect(() => {
-    setSelectedDataset(searchParams.get('datasetId') || 'all')
-  }, [searchParams])
+    setSelectedDataset(datasetFromQuery)
+  }, [datasetFromQuery])
 
   const handleDatasetScopeChange = useCallback(
     (value: string) => {
@@ -202,14 +228,13 @@ export default function QuarantineQueuePage() {
   )
 
   const reasonCounts = useMemo(() => {
-    const counts: Record<string, number> = {}
+    const counts = new Map<string, number>()
     for (const doc of documents) {
-      const keys = getDropReasons(doc)
-      for (const key of keys) {
-        counts[key] = (counts[key] || 0) + 1
+      for (const reason of getDropReasons(doc)) {
+        counts.set(reason, (counts.get(reason) ?? 0) + 1)
       }
     }
-    return counts
+    return Object.fromEntries(counts)
   }, [documents])
 
   const sortedReasons = useMemo(() => {
@@ -218,27 +243,20 @@ export default function QuarantineQueuePage() {
       .map(([reason]) => reason)
   }, [reasonCounts])
 
-  const datasetLabelById = useMemo(() => {
-    const map: Record<string, string> = {}
-    for (const dataset of datasets) {
-      map[dataset.id] = dataset.name
-    }
-    return map
-  }, [datasets])
-
   const datasetOptions = useMemo(() => {
-    const seen = new Set<string>()
-    const options = datasets.map((dataset) => {
-      seen.add(dataset.id)
-      return { id: dataset.id, label: dataset.name }
-    })
+    const byId = new Map(datasets.map(({ id, name }) => [id, name === '' ? id : name]))
     for (const doc of documents) {
-      if (!doc.dataset_id || seen.has(doc.dataset_id)) continue
-      seen.add(doc.dataset_id)
-      options.push({ id: doc.dataset_id, label: doc.dataset_id })
+      const datasetId = doc.dataset_id
+      if (datasetId && !byId.has(datasetId)) byId.set(datasetId, datasetId)
     }
-    return options.sort((a, b) => a.label.localeCompare(b.label))
+    return Array.from(byId, ([id, label]) => ({ id, label })).sort((left, right) =>
+      left.label.localeCompare(right.label),
+    )
   }, [datasets, documents])
+  const datasetLabelById = useMemo(
+    () => Object.fromEntries(datasetOptions.map(({ id, label }) => [id, label])),
+    [datasetOptions],
+  )
 
   const sourceOptions = useMemo(
     () => Array.from(new Set(documents.map((doc) => getQuarantineSource(doc)))).sort((a, b) => a.localeCompare(b)),
@@ -259,12 +277,10 @@ export default function QuarantineQueuePage() {
   const stats = useMemo(() => {
     const total = documents.length
     const reviewed = documents.filter(isReviewed).length
-    const highRisk = documents.filter((doc) => getQuarantineSeverity(doc) === '高').length
     return {
       total,
       reviewed,
-      unreviewed: Math.max(0, total - reviewed),
-      highRisk,
+      unreviewed: total - reviewed,
     }
   }, [documents])
 
@@ -276,23 +292,21 @@ export default function QuarantineQueuePage() {
     if (selectedDataset !== 'all') out = out.filter((d) => d.dataset_id === selectedDataset)
     if (selectedSource !== 'all') out = out.filter((d) => getQuarantineSource(d) === selectedSource)
     if (selectedSeverity !== 'all') out = out.filter((d) => getQuarantineSeverity(d) === selectedSeverity)
-    if (dateFrom)
-      out = out.filter(
-        (d) =>
-          new Date(String(d.updated_at || d.created_at || '')).getTime() >= new Date(`${dateFrom}T00:00:00`).getTime(),
-      )
-    if (dateTo)
-      out = out.filter(
-        (d) =>
-          new Date(String(d.updated_at || d.created_at || '')).getTime() <= new Date(`${dateTo}T23:59:59`).getTime(),
-      )
+    const rangeStart = dateFrom === '' ? undefined : Date.parse(`${dateFrom}T00:00:00`)
+    const rangeEnd = dateTo === '' ? undefined : Date.parse(`${dateTo}T23:59:59.999`)
+    if (rangeStart !== undefined || rangeEnd !== undefined) {
+      out = out.filter((doc) => {
+        const time = Date.parse(doc.updated_at)
+        return (rangeStart === undefined || time >= rangeStart) && (rangeEnd === undefined || time <= rangeEnd)
+      })
+    }
 
     const q = search.trim().toLowerCase()
     if (q) {
       out = out.filter((d) => {
-        const filename = (d.filename || '').toLowerCase()
+        const filename = d.filename.toLowerCase()
         const id = d.id.toLowerCase()
-        const dataset = (d.dataset_id || '').toLowerCase()
+        const dataset = d.dataset_id?.toLowerCase()
         const source = getQuarantineSource(d).toLowerCase()
         const severity = getQuarantineSeverity(d).toLowerCase()
         const reasons = getDropReasons(d)
@@ -303,7 +317,7 @@ export default function QuarantineQueuePage() {
         return (
           filename.includes(q) ||
           id.includes(q) ||
-          dataset.includes(q) ||
+          dataset?.includes(q) ||
           reasons.includes(q) ||
           source.includes(q) ||
           severity.includes(q)
@@ -366,6 +380,23 @@ export default function QuarantineQueuePage() {
     await documentApi.patchUserMetadata(docId, { patch, replace: false })
   }, [])
 
+  const recordRetryReview = useCallback(
+    async (docId: string, metadata: JsonRecord, authRevision: number) => {
+      try {
+        await markReviewed(docId, metadata)
+        return true
+      } catch (error) {
+        if (!mountedRef.current || authRevision !== getAuthSessionRevision()) return false
+        const info = toApiErrorInfo(error, '复核状态写入失败')
+        const message = `重试已触发，复核状态写入失败：${info.message}`
+        setActionError({ id: docId, message, requestId: info.requestId })
+        toast.error(message)
+        return false
+      }
+    },
+    [markReviewed],
+  )
+
   const buildRecommendedPatch = useCallback((doc: Document): DocumentPipelineOptions => {
     const reasons = new Set(getDropReasons(doc))
     const patch: DocumentPipelineOptions = {}
@@ -389,9 +420,9 @@ export default function QuarantineQueuePage() {
       try {
         await documentApi.retry(doc.id)
         if (authRevision !== getAuthSessionRevision()) return
-        await markReviewed(doc.id, { quarantine_action: 'retry' })
+        const reviewed = await recordRetryReview(doc.id, { quarantine_action: 'retry' }, authRevision)
         if (authRevision !== getAuthSessionRevision()) return
-        if (mountedRef.current) toast.success('已触发重新入库')
+        if (mountedRef.current && reviewed) toast.success('已触发重新入库')
         await refreshQueue()
       } catch (err: unknown) {
         if (!mountedRef.current || authRevision !== getAuthSessionRevision()) return
@@ -405,7 +436,7 @@ export default function QuarantineQueuePage() {
         }
       }
     },
-    [demoMode, markReviewed, refreshQueue],
+    [demoMode, recordRetryReview, refreshQueue],
   )
 
   const handleRelease = useCallback(
@@ -428,12 +459,13 @@ export default function QuarantineQueuePage() {
         }
         await documentApi.retry(doc.id)
         if (authRevision !== getAuthSessionRevision()) return
-        await markReviewed(doc.id, {
-          quarantine_action: 'release_retry',
-          quarantine_reason: getDropReasons(doc).join(','),
-        })
+        const reviewed = await recordRetryReview(
+          doc.id,
+          { quarantine_action: 'release_retry', quarantine_reason: getDropReasons(doc).join(',') },
+          authRevision,
+        )
         if (authRevision !== getAuthSessionRevision()) return
-        if (mountedRef.current) toast.success('已放行并重试')
+        if (mountedRef.current && reviewed) toast.success('已放行并重试')
         await refreshQueue()
       } catch (err: unknown) {
         if (!mountedRef.current || authRevision !== getAuthSessionRevision()) return
@@ -447,7 +479,7 @@ export default function QuarantineQueuePage() {
         }
       }
     },
-    [buildRecommendedPatch, demoMode, markReviewed, refreshQueue],
+    [buildRecommendedPatch, demoMode, recordRetryReview, refreshQueue],
   )
 
   const handleDelete = useCallback(
@@ -475,7 +507,7 @@ export default function QuarantineQueuePage() {
         if (!mountedRef.current || authRevision !== getAuthSessionRevision()) return
         const { message, requestId } = toApiErrorInfo(err, '删除失败')
         setActionError({ id: doc.id, message, requestId })
-        toast.error(message)
+        throw err
       } finally {
         if (actingRef.current.get(doc.id) === action) {
           actingRef.current.delete(doc.id)
@@ -551,14 +583,15 @@ export default function QuarantineQueuePage() {
           replace: false,
         })
         if (authRevision !== getAuthSessionRevision()) return
+        let reviewed = true
         if (opts.retryAfterSave) {
           await documentApi.retry(doc.id)
           if (authRevision !== getAuthSessionRevision()) return
-          await markReviewed(doc.id, { quarantine_action: 'tune_retry' })
+          reviewed = await recordRetryReview(doc.id, { quarantine_action: 'tune_retry' }, authRevision)
           if (authRevision !== getAuthSessionRevision()) return
         }
         if (mountedRef.current && tuneVisitRef.current === tuneVisit) {
-          toast.success(opts.retryAfterSave ? '已保存配置并重试' : '已保存配置')
+          if (reviewed) toast.success(opts.retryAfterSave ? '已保存配置并重试' : '已保存配置')
           setTuneOpen(false)
         }
         await refreshQueue()
@@ -575,7 +608,7 @@ export default function QuarantineQueuePage() {
         }
       }
     },
-    [demoMode, markReviewed, refreshQueue, tunePatch, tuneTarget],
+    [demoMode, recordRetryReview, refreshQueue, tunePatch, tuneTarget],
   )
 
   const handleExportFiltered = useCallback(() => {
@@ -589,7 +622,10 @@ export default function QuarantineQueuePage() {
       reasons: getDropReasons(doc),
       updated_at: doc.updated_at,
     }))
-    downloadTextFile('quarantine-documents.json', JSON.stringify(payload, null, 2), 'application/json;charset=utf-8')
+    downloadBlob(
+      'quarantine-documents.json',
+      new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8' }),
+    )
     toast.success('已导出当前筛选记录')
   }, [filtered])
 
@@ -647,6 +683,20 @@ export default function QuarantineQueuePage() {
             </Button>
           </div>
         </header>
+        {!demoMode && datasetsError !== null ? (
+          <WorkspaceNotice
+            retry={() => void refreshDatasets()}
+            retryLabel="重新读取数据集目录"
+            pending={datasetsFetching}
+          >
+            {formatApiError(datasetsError, '数据集目录读取失败，隔离队列范围已保留')}
+          </WorkspaceNotice>
+        ) : null}
+        {!demoMode && datasetsFetching && !datasetsLoading ? (
+          <p role="status" className="text-sm text-muted-foreground">
+            正在更新数据集目录，保留当前范围。
+          </p>
+        ) : null}
         <QuarantineTableWorkspace
           demoMode={demoMode}
           dateFrom={dateFrom}

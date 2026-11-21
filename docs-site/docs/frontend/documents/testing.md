@@ -15,7 +15,7 @@ sidebar_position: 7
 | `knowledge-documents-panel.batch-delete.source.test.ts` | 批量删除 |
 | `knowledge-documents-panel.row-actions.source.test.ts` | 行操作菜单 |
 | `knowledge-page.embedded-workbench.source.test.ts` | 嵌入式工作台 |
-| `manual-upload-dialog.source.test.ts` | 手动上传弹窗 |
+| `operation-page-client.behavior.test.tsx` | 入库操作与上传回执 |
 | `document-detail-dialog.source.test.ts` | 文档详情弹窗 |
 | `document-viewer-panel.source.test.ts` | 文档查看器 |
 | `document-viewer-panel.safe-area.test.ts` | 查看器安全区域 |

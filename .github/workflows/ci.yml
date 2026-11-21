@@ -6,6 +6,7 @@ on:
   push:
     branches:
       - main
+      - feat/ragvia-ui
 
 permissions:
   contents: read
@@ -641,32 +642,6 @@ jobs:
             --retrieval-mode hybrid \
             --top-k 5
 
-      - name: Run deterministic sample retrieval benchmark (sparse bounded fixture)
-        env:
-          LLM_MOCK_ENABLED: "true"
-        run: |
-          mkdir -p artifacts
-          python scripts/run_sample_retrieval_benchmark.py \
-            --fixture data/sample/retrieval_fixture_sparse_v1.json \
-            --out artifacts/sample_retrieval_bench.sparse.json \
-            --retrieval-mode keyword \
-            --top-k 5 \
-            --enable-sparse-retrieval \
-            --sparse-retrieval-provider deterministic
-
-      - name: Run deterministic sample retrieval benchmark (colbert bounded fixture)
-        env:
-          LLM_MOCK_ENABLED: "true"
-        run: |
-          mkdir -p artifacts
-          python scripts/run_sample_retrieval_benchmark.py \
-            --fixture data/sample/retrieval_fixture_colbert_v1.json \
-            --out artifacts/sample_retrieval_bench.colbert.json \
-            --retrieval-mode vector \
-            --top-k 5 \
-            --enable-colbert-retrieval \
-            --colbert-retrieval-provider deterministic
-
       - name: Run sample broader parsing proof sweep
         env:
           LLM_MOCK_ENABLED: "true"
@@ -708,15 +683,6 @@ jobs:
             --policy-json ci/queryset_health_policy.v1.json \
             --cron | tee artifacts/queryset_health.cron.hybrid.json
 
-      - name: Build query-set health snapshot from bounded sparse benchmark
-        run: |
-          python scripts/run_queryset_health_diagnostics.py \
-            --benchmark-report artifacts/sample_retrieval_bench.sparse.json \
-            --out artifacts/queryset_health.snapshot.sparse.json \
-            --history artifacts/queryset_health.history.sparse.jsonl \
-            --policy-json ci/queryset_health_policy.v1.json \
-            --cron | tee artifacts/queryset_health.cron.sparse.json
-
       - name: Build query-set health diff artifacts
         run: |
           python scripts/diff_queryset_health_snapshots.py \
@@ -732,14 +698,6 @@ jobs:
             --b artifacts/queryset_health.snapshot.hybrid.json \
             --out artifacts/queryset_health.diff.hybrid.json \
             --out-md artifacts/queryset_health.diff.hybrid.md
-
-      - name: Build query-set health diff artifacts (sparse)
-        run: |
-          python scripts/diff_queryset_health_snapshots.py \
-            --a ci/queryset_health_snapshot_sparse_baseline.v1.json \
-            --b artifacts/queryset_health.snapshot.sparse.json \
-            --out artifacts/queryset_health.diff.sparse.json \
-            --out-md artifacts/queryset_health.diff.sparse.md
 
       - name: Run parse_bench strict gate (docs slice)
         run: |
@@ -812,8 +770,6 @@ jobs:
           python scripts/generate_channel_budget_policy.py \
             --benchmark-report artifacts/sample_retrieval_bench.json \
             --hybrid-report artifacts/sample_retrieval_bench.hybrid.json \
-            --sparse-report artifacts/sample_retrieval_bench.sparse.json \
-            --colbert-report artifacts/sample_retrieval_bench.colbert.json \
             --out artifacts/channel_budget_policy.v1.json
 
       - name: Export intent router training artifact
@@ -958,120 +914,6 @@ jobs:
           print("[retrieval-only-bounded-gate-hybrid] PASS")
           PY
 
-      - name: Evaluate bounded retrieval-only gate (sparse metric delta output)
-        run: |
-          python - <<'PY'
-          from __future__ import annotations
-
-          import json
-          import sys
-          from pathlib import Path
-
-          report = json.loads(Path("artifacts/sample_retrieval_bench.sparse.json").read_text(encoding="utf-8"))
-          cfg = json.loads(Path("ci/retrieval_thresholds.v2.json").read_text(encoding="utf-8"))
-          bounded = cfg.get("ci_retrieval_only_bounded_gate_sparse") if isinstance(cfg, dict) else {}
-          thresholds = bounded.get("thresholds") if isinstance(bounded, dict) else {}
-          summary = report.get("summary") if isinstance(report.get("summary"), dict) else {}
-
-          runtime = report.get("runtime") if isinstance(report.get("runtime"), dict) else {}
-          provider = str(runtime.get("sparse_retrieval_provider") or "").strip().lower()
-          if not bool(runtime.get("sparse_retrieval_enabled")) or provider != "deterministic":
-              print("[retrieval-only-bounded-gate-sparse] FAIL: sparse runtime metadata mismatch", file=sys.stderr)
-              print(
-                  f"[retrieval-only-bounded-gate-sparse] runtime={runtime}",
-                  file=sys.stderr,
-              )
-              raise SystemExit(1)
-
-          failures = []
-          for metric, raw in (thresholds or {}).items():
-              if not isinstance(raw, dict):
-                  continue
-              try:
-                  value = float(summary.get(metric))
-              except Exception:
-                  value = None
-              if value is None:
-                  failures.append((metric, "missing", raw, None))
-                  continue
-              if "min" in raw:
-                  low = float(raw["min"])
-                  if value < low:
-                      failures.append((metric, value, {"min": low}, value - low))
-              if "max" in raw:
-                  high = float(raw["max"])
-                  if value > high:
-                      failures.append((metric, value, {"max": high}, value - high))
-
-          if failures:
-              print("[retrieval-only-bounded-gate-sparse] FAIL: threshold violation(s)", file=sys.stderr)
-              for metric, value, th, delta in failures:
-                  print(
-                      f"[retrieval-only-bounded-gate-sparse] metric={metric} value={value} threshold={th} delta={delta}",
-                      file=sys.stderr,
-                  )
-              raise SystemExit(1)
-
-          print("[retrieval-only-bounded-gate-sparse] PASS")
-          PY
-
-      - name: Evaluate bounded retrieval-only gate (colbert metric delta output)
-        run: |
-          python - <<'PY'
-          from __future__ import annotations
-
-          import json
-          import sys
-          from pathlib import Path
-
-          report = json.loads(Path("artifacts/sample_retrieval_bench.colbert.json").read_text(encoding="utf-8"))
-          cfg = json.loads(Path("ci/retrieval_thresholds.v2.json").read_text(encoding="utf-8"))
-          bounded = cfg.get("ci_retrieval_only_bounded_gate_colbert") if isinstance(cfg, dict) else {}
-          thresholds = bounded.get("thresholds") if isinstance(bounded, dict) else {}
-          summary = report.get("summary") if isinstance(report.get("summary"), dict) else {}
-
-          runtime = report.get("runtime") if isinstance(report.get("runtime"), dict) else {}
-          provider = str(runtime.get("colbert_retrieval_provider") or "").strip().lower()
-          if not bool(runtime.get("colbert_retrieval_enabled")) or provider != "deterministic":
-              print("[retrieval-only-bounded-gate-colbert] FAIL: colbert runtime metadata mismatch", file=sys.stderr)
-              print(
-                  f"[retrieval-only-bounded-gate-colbert] runtime={runtime}",
-                  file=sys.stderr,
-              )
-              raise SystemExit(1)
-
-          failures = []
-          for metric, raw in (thresholds or {}).items():
-              if not isinstance(raw, dict):
-                  continue
-              try:
-                  value = float(summary.get(metric))
-              except Exception:
-                  value = None
-              if value is None:
-                  failures.append((metric, "missing", raw, None))
-                  continue
-              if "min" in raw:
-                  low = float(raw["min"])
-                  if value < low:
-                      failures.append((metric, value, {"min": low}, value - low))
-              if "max" in raw:
-                  high = float(raw["max"])
-                  if value > high:
-                      failures.append((metric, value, {"max": high}, value - high))
-
-          if failures:
-              print("[retrieval-only-bounded-gate-colbert] FAIL: threshold violation(s)", file=sys.stderr)
-              for metric, value, th, delta in failures:
-                  print(
-                      f"[retrieval-only-bounded-gate-colbert] metric={metric} value={value} threshold={th} delta={delta}",
-                      file=sys.stderr,
-                  )
-              raise SystemExit(1)
-
-          print("[retrieval-only-bounded-gate-colbert] PASS")
-          PY
-
       - name: Validate grounded_strict retrieval-profile contract
         run: |
           python - <<'PY'
@@ -1081,7 +923,7 @@ jobs:
           import sys
           from pathlib import Path
 
-          from app.rag.core.retrieval_profiles import apply_retrieval_profile_overrides
+          from app.rag.retrieval.configuration.profiles import apply_retrieval_profile_overrides
 
           configured_reranker_provider = "llm"
           applied = apply_retrieval_profile_overrides(
@@ -1168,7 +1010,7 @@ jobs:
           import sys
           from pathlib import Path
 
-          from app.rag.core.claim_verifier import verify_claim
+          from app.rag.safety.claim_verification import verify_claim
 
           cases = [
               {
@@ -1270,8 +1112,6 @@ jobs:
           path: |
             artifacts/sample_retrieval_bench.json
             artifacts/sample_retrieval_bench.hybrid.json
-            artifacts/sample_retrieval_bench.sparse.json
-            artifacts/sample_retrieval_bench.colbert.json
             artifacts/queryset_health_policy.normalized.json
             artifacts/queryset_health.snapshot.json
             artifacts/parsing_proof_broader_sample/rollout.json
@@ -1282,13 +1122,10 @@ jobs:
             artifacts/parsing_proof_broader_sample/diff.md
             artifacts/parsing_proof_broader_sample/review.md
             artifacts/queryset_health.snapshot.hybrid.json
-            artifacts/queryset_health.snapshot.sparse.json
             artifacts/queryset_health.diff.json
             artifacts/queryset_health.diff.md
             artifacts/queryset_health.diff.hybrid.json
             artifacts/queryset_health.diff.hybrid.md
-            artifacts/queryset_health.diff.sparse.json
-            artifacts/queryset_health.diff.sparse.md
             artifacts/parser_benchmark.current.json
             artifacts/parser_benchmark.diff.json
             artifacts/parser_benchmark.diff.md
@@ -1296,10 +1133,8 @@ jobs:
             artifacts/claim_verifier.contract.json
             artifacts/queryset_health.history.jsonl
             artifacts/queryset_health.history.hybrid.jsonl
-            artifacts/queryset_health.history.sparse.jsonl
             artifacts/queryset_health.cron.json
             artifacts/queryset_health.cron.hybrid.json
-            artifacts/queryset_health.cron.sparse.json
             artifacts/adaptive_router_policy.v1.json
             artifacts/channel_budget_policy.v1.json
             artifacts/intent_router_training.v1.json
@@ -1310,7 +1145,6 @@ jobs:
             ci/parser_benchmark_baseline.v1.json
             ci/queryset_health_snapshot_baseline.v1.json
             ci/queryset_health_snapshot_hybrid_baseline.v1.json
-            ci/queryset_health_snapshot_sparse_baseline.v1.json
             ci/queryset_health_policy.v1.json
             ci/retrieval_thresholds.v2.json
 

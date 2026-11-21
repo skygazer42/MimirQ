@@ -6,21 +6,21 @@ import pytest
 
 
 def _documents_module() -> ModuleType:
-    from app.api.v1 import documents
+    from app.api.v1.documents import routes as documents
 
     return documents
 
 
 def _document_upload_module() -> ModuleType:
     _documents_module()
-    from app.api.v1 import document_upload
+    from app.api.v1.documents import upload as document_upload
 
     return document_upload
 
 
 def _chat_module() -> ModuleType:
     _documents_module()
-    from app.api.v1 import chat
+    from app.api.v1.conversations import routes as chat
 
     return chat
 
@@ -78,7 +78,7 @@ def _fail_import(
 
 
 def test_chat_module_keeps_auto_title_monkeypatch_seam() -> None:
-    from app.services import chat_conversation_titles as titles
+    from app.services.chat import conversation_titles as titles
 
     chat, _, _ = _api_modules()
 
@@ -104,24 +104,10 @@ def test_documents_module_keeps_object_reference_resolver_seam() -> None:
 def test_http_client_keeps_h2_probe_binding() -> None:
     import h2
 
-    from app.core import http_client
+    from app.infrastructure.http import client as http_client
 
     assert http_client.h2 is h2
     assert http_client._HTTP2_AVAILABLE is True
-
-
-def test_rag_text_keeps_estimate_tokens_reexport() -> None:
-    from app.core import token_utils
-    from app.rag.core import text as rag_text
-
-    assert rag_text.estimate_tokens is token_utils.estimate_tokens
-
-
-def test_reranker_factory_keeps_describe_provider_reexport() -> None:
-    from app.rag.reranker import capabilities
-    from app.rag.reranker import factory as reranker_factory
-
-    assert reranker_factory.describe_reranker_provider is capabilities.describe_reranker_provider
 
 
 @pytest.mark.parametrize("strategy", ["llama_index", "llama_index_hierarchical"])
@@ -129,7 +115,7 @@ def test_llama_strategy_does_not_hide_unrelated_runtime_errors(
     monkeypatch: pytest.MonkeyPatch,
     strategy: str,
 ) -> None:
-    from app.rag.chunking import strategy_matrix
+    from app.rag.ingestion.chunking import strategy_matrix
 
     _install_llama_index_stub(monkeypatch)
 
@@ -141,7 +127,7 @@ def test_llama_strategy_preserves_expected_unavailable_messages(
     monkeypatch: pytest.MonkeyPatch,
     message: str,
 ) -> None:
-    from app.rag.chunking import strategy_matrix
+    from app.rag.ingestion.chunking import strategy_matrix
 
     _install_llama_index_stub(monkeypatch)
 
@@ -153,7 +139,7 @@ def test_llama_strategy_treats_missing_or_broken_import_as_unavailable(
     monkeypatch: pytest.MonkeyPatch,
     error_type: type[Exception],
 ) -> None:
-    from app.rag.chunking import strategy_matrix
+    from app.rag.ingestion.chunking import strategy_matrix
 
     _fail_import(monkeypatch, "llama_index.core", error_type("optional dependency failed"))
 

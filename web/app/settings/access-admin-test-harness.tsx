@@ -23,7 +23,18 @@ export function group(id: string, name: string): TenantGroupOut {
 }
 
 export function member(id: string, role = 'viewer'): TenantMember {
-  return { id, user_id: id, tenant_id: 'tenant', role, is_active: true, is_current: false, username: id, email: id }
+  return {
+    id,
+    user_id: id,
+    tenant_id: 'tenant',
+    role,
+    is_active: true,
+    is_current: false,
+    username: id,
+    email: id,
+    created_at: '2026-11-05T00:00:00Z',
+    updated_at: '2026-11-05T00:00:00Z',
+  }
 }
 
 export function login(id = 'current') {

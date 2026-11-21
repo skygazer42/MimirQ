@@ -37,41 +37,49 @@ const DialogContent = React.forwardRef<
   RadixRef<typeof DialogPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & {
     overlayClassName?: string
+    showCloseButton?: boolean
   }
->(({ className, children, overlayClassName, onOpenAutoFocus, onCloseAutoFocus, ...props }, ref) => {
-  const openerRef = React.useRef<HTMLElement | null>(null)
-  return (
-    <DialogPortal>
-      <DialogOverlay className={overlayClassName} />
-      <DialogPrimitive.Content
-        ref={ref}
-        className={cn(
-          'fixed left-[50%] top-[50%] z-50 grid w-full max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 border border-border/60 bg-popover text-popover-foreground px-6 py-5 shadow-strong will-change-[opacity,transform] data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-[0.97] data-[state=open]:zoom-in-[0.97] data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-top-[48%] duration-220 ease-spring motion-reduce:animate-none motion-reduce:transition-none sm:rounded-xl',
-          className,
-        )}
-        onOpenAutoFocus={(event) => {
-          openerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
-          onOpenAutoFocus?.(event)
-        }}
-        onCloseAutoFocus={(event) => {
-          if (onCloseAutoFocus) {
-            onCloseAutoFocus(event)
-          } else if (openerRef.current?.isConnected) {
-            event.preventDefault()
-            openerRef.current.focus()
-          }
-        }}
-        {...props}
-      >
-        {children}
-        <DialogPrimitive.Close className="absolute right-4 top-4 rounded-md opacity-60 ring-offset-background transition-opacity hover:opacity-100 hover:bg-muted/80 p-1 motion-reduce:transition-none focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-accent data-[state=open]:text-muted-foreground">
-          <X className="h-4 w-4" />
-          <span className="sr-only">Close</span>
-        </DialogPrimitive.Close>
-      </DialogPrimitive.Content>
-    </DialogPortal>
-  )
-})
+>(
+  (
+    { className, children, overlayClassName, showCloseButton = true, onOpenAutoFocus, onCloseAutoFocus, ...props },
+    ref,
+  ) => {
+    const openerRef = React.useRef<HTMLElement | null>(null)
+    return (
+      <DialogPortal>
+        <DialogOverlay className={overlayClassName} />
+        <DialogPrimitive.Content
+          ref={ref}
+          className={cn(
+            'fixed left-[50%] top-[50%] z-50 grid w-full max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 border border-border/60 bg-popover text-popover-foreground px-6 py-5 shadow-strong will-change-[opacity,transform] data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-[0.97] data-[state=open]:zoom-in-[0.97] data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-top-[48%] duration-220 ease-spring motion-reduce:animate-none motion-reduce:transition-none sm:rounded-xl',
+            className,
+          )}
+          onOpenAutoFocus={(event) => {
+            openerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
+            onOpenAutoFocus?.(event)
+          }}
+          onCloseAutoFocus={(event) => {
+            if (onCloseAutoFocus) {
+              onCloseAutoFocus(event)
+            } else if (openerRef.current?.isConnected) {
+              event.preventDefault()
+              openerRef.current.focus()
+            }
+          }}
+          {...props}
+        >
+          {children}
+          {showCloseButton && (
+            <DialogPrimitive.Close className="absolute right-4 top-4 rounded-md opacity-60 ring-offset-background transition-opacity hover:opacity-100 hover:bg-muted/80 p-1 motion-reduce:transition-none focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-accent data-[state=open]:text-muted-foreground">
+              <X className="h-4 w-4" />
+              <span className="sr-only">Close</span>
+            </DialogPrimitive.Close>
+          )}
+        </DialogPrimitive.Content>
+      </DialogPortal>
+    )
+  },
+)
 DialogContent.displayName = DialogPrimitive.Content.displayName
 
 export function DialogHeader({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
@@ -108,13 +116,4 @@ const DialogDescription = React.forwardRef<
 ))
 DialogDescription.displayName = DialogPrimitive.Description.displayName
 
-export {
-  Dialog,
-  DialogPortal,
-  DialogOverlay,
-  DialogClose,
-  DialogTrigger,
-  DialogContent,
-  DialogTitle,
-  DialogDescription,
-}
+export { Dialog, DialogClose, DialogTrigger, DialogContent, DialogTitle, DialogDescription }

@@ -1,0 +1,58 @@
+"""
+Issue signed access tokens for local accounts and SAML sessions.
+"""
+
+from datetime import UTC, datetime, timedelta
+from typing import Any
+
+import jwt
+
+from app.infrastructure.config import settings
+
+
+def _merge_extra_claims(payload: dict[str, Any], extra_claims: dict[str, Any] | None) -> None:
+    if not extra_claims:
+        return
+    for key, claim_value in extra_claims.items():
+        claim_key = key.strip()
+        if not claim_key or claim_key in payload:
+            continue
+        payload[claim_key] = claim_value
+
+
+def _set_string_claim(payload: dict[str, Any], key: str, value: str | None) -> None:
+    claim_key = key.strip()
+    if not claim_key:
+        return
+    claim_value = value.strip() if value is not None else None
+    if claim_value:
+        payload[claim_key] = claim_value
+
+
+def create_access_token(
+    subject: str,
+    *,
+    expires_minutes: int | None = None,
+    tenant_id: str | None = None,
+    extra_claims: dict[str, Any] | None = None,
+) -> tuple[str, int]:
+    """
+    Create a signed JWT access token.
+
+    Returns (token, expires_in_seconds).
+    """
+    minutes = settings.ACCESS_TOKEN_EXPIRE_MINUTES if expires_minutes is None else expires_minutes
+    expires_delta = timedelta(minutes=max(1, minutes))
+    now = datetime.now(UTC)
+    expire_at = now + expires_delta
+    payload = {
+        "sub": subject,
+        "exp": expire_at,
+        "iat": now,
+    }
+    _merge_extra_claims(payload, extra_claims)
+    _set_string_claim(payload, "iss", settings.JWT_ISSUER)
+    _set_string_claim(payload, "aud", settings.JWT_AUDIENCE)
+    _set_string_claim(payload, settings.JWT_TENANT_CLAIM, tenant_id)
+    token = jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
+    return token, int(expires_delta.total_seconds())

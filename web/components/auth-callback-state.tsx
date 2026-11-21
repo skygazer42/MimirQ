@@ -19,14 +19,10 @@ export function AuthCallbackState({
   const failed = status === 'error'
   const Icon = failed ? ShieldAlert : status === 'success' ? ShieldCheck : Loader2
   return (
-    <FullScreenFrame showBackground={false} mainClassName="px-6 py-12">
+    <FullScreenFrame mainClassName="px-6 py-12">
       <section className="w-full max-w-[420px]" aria-labelledby="auth-callback-title">
         <BrandLogo className="mb-10 w-32" priority />
-        <div
-          role={failed ? 'alert' : 'status'}
-          aria-live={failed ? 'assertive' : 'polite'}
-          className="border-t border-border pt-7"
-        >
+        <div role={failed ? 'alert' : 'status'} className="border-t border-border pt-7">
           <Icon
             aria-hidden="true"
             className={`mb-5 size-7 ${failed ? 'text-destructive' : 'text-foreground'} ${status === 'working' ? 'animate-spin motion-reduce:animate-none' : ''}`}

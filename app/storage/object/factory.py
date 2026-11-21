@@ -1,10 +1,10 @@
 import threading
 from typing import TypedDict
 
-from app.core.config import (
+from app.infrastructure.config import settings
+from app.infrastructure.config_validation import (
     normalize_object_storage_provider_name,
     parse_object_storage_region_profiles,
-    settings,
 )
 from app.storage.object.minio import MinIOService, minio_service
 from app.storage.object.s3_compatible import S3CompatibleObjectStore
@@ -28,7 +28,7 @@ class _ObjectStoreConfig(TypedDict):
 
 
 def normalize_object_store_provider(provider: str | None = None) -> str:
-    return normalize_object_storage_provider_name(provider or settings.OBJECT_STORAGE_PROVIDER or "minio")
+    return normalize_object_storage_provider_name(provider or settings.OBJECT_STORAGE_PROVIDER)
 
 
 def _resolve_object_store_config(provider: str | None = None, *, region: str | None = None) -> _ObjectStoreConfig:
@@ -41,8 +41,8 @@ def _resolve_object_store_config(provider: str | None = None, *, region: str | N
 
     return {
         "region": region_key or None,
-        "provider": normalize_object_store_provider(
-            str(region_profile.get("provider") or provider or settings.OBJECT_STORAGE_PROVIDER or "minio")
+        "provider": normalize_object_storage_provider_name(
+            region_profile.get("provider") or provider or settings.OBJECT_STORAGE_PROVIDER
         ),
         "enabled": bool(region_profile.get("enabled", settings.OBJECT_STORAGE_ENABLED)),
         "endpoint": str(region_profile.get("endpoint") or settings.OBJECT_STORAGE_ENDPOINT).strip(),

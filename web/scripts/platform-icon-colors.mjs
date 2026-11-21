@@ -71,11 +71,11 @@ export function iconFillNodes(nodes) {
     if (['rect', 'circle', 'ellipse', 'polygon'].includes(tag) && attrs.stroke !== 'none') {
       return [[tag, { ...attrs, fill: 'currentColor', stroke: 'none' }]]
     }
-    if (tag === 'path' && /z/i.test(attrs.d || '')) {
-      const closedBody = String(attrs.d).slice(0, String(attrs.d).search(/z/i) + 1)
-      return [['path', { d: closedBody, fill: 'currentColor', stroke: 'none' }]]
-    }
-    return []
+    if (tag !== 'path' || typeof attrs.d !== 'string') return []
+    const closeIndex = attrs.d.search(/z/i)
+    if (closeIndex === -1) return []
+    const closedBody = attrs.d.slice(0, closeIndex + 1)
+    return [['path', { d: closedBody, fill: 'currentColor', stroke: 'none' }]]
   })
 }
 

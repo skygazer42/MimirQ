@@ -1,4 +1,4 @@
-"""Request and response contracts for retrieval preview and evidence APIs."""
+"""Request and response contracts for retrieval preview, explain and evidence APIs."""
 
 from typing import Annotated, Any
 from uuid import UUID
@@ -6,7 +6,7 @@ from uuid import UUID
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field
 
 from app.api.schemas.conversations.chat import ChatRAGConfig, HistoryMessage
-from app.core.config import settings
+from app.infrastructure.config import settings
 
 RETRIEVAL_SCOPE_MAX_DATASET_IDS = 80
 RETRIEVAL_SCOPE_MAX_DOCUMENT_IDS = 200
@@ -51,6 +51,40 @@ class RetrievePreviewResponse(BaseModel):
     query_for_retrieval: str
     citations: list[dict[str, Any]]
     metrics: dict[str, Any] = Field(default_factory=dict)
+
+
+class RetrievalExplainRequest(BaseModel):
+    query: str = Field(min_length=1, max_length=settings.RETRIEVAL_QUERY_MAX_CHARS)
+    history: list[HistoryMessage] = Field(default_factory=list)
+    dataset_id: UUID | None = None
+    document_ids: list[UUID] = Field(default_factory=list)
+    rag_config: ChatRAGConfig = Field(default_factory=ChatRAGConfig)
+    retrieval_only: bool = True
+    top_citations_limit: int = Field(default=5, ge=1, le=20)
+
+
+class RetrievalExplainResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    schema_: str = Field(default="mimirq.retrieval_explain.v1", alias="schema", serialization_alias="schema")
+    retrieval_only: bool = True
+    query_for_retrieval: str
+    retrieval_degraded: bool = False
+    fallback_reason: str | None = None
+    channel_health: dict[str, Any] = Field(default_factory=dict)
+    channels: dict[str, Any] = Field(default_factory=dict)
+    hierarchy_recall: dict[str, Any] = Field(default_factory=dict)
+    candidate_counts: dict[str, int] = Field(default_factory=dict)
+    top_citations: list[dict[str, Any]] = Field(default_factory=list)
+    rerank: dict[str, Any] = Field(default_factory=dict)
+    stage_timings: dict[str, float] = Field(default_factory=dict)
+    metrics: dict[str, Any] = Field(default_factory=dict)
+    query_debug: dict[str, Any] = Field(default_factory=dict)
+    retrieval_trace: dict[str, Any] = Field(default_factory=dict)
+
+    @property
+    def schema(self) -> str:
+        return self.schema_
 
 
 class DocumentStructureRequest(BaseModel):

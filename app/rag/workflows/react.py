@@ -8,22 +8,26 @@ Pattern: Think -> Act -> Observe -> Think -> ... -> Answer
 """
 
 import asyncio
+import inspect
 import json
+import logging
 from collections.abc import Awaitable, Callable
 from typing import Any, Literal, TypedDict
+from uuid import UUID
 
-from app.rag.core.logging import get_logger
-from app.rag.middleware import ToolMiddlewareChain
-from app.rag.tools.hierarchical_retrieval_tools import chunk_read, keyword_search, semantic_search
-from app.rag.tools.retrieval_config_tool import configure_retrieval
-from app.rag.tools.web_search import web_search
+from app.rag.agents.middleware import ToolMiddlewareChain
+from app.rag.agents.tools.hierarchical_retrieval_tools import chunk_read, keyword_search, semantic_search
+from app.rag.agents.tools.mcp_client import DocumentToolScope
+from app.rag.agents.tools.retrieval_config_tool import configure_retrieval
+from app.rag.agents.tools.web_search import web_search
 from app.rag.workflows.base import (
     BaseWorkflow,
     WorkflowMode,
     WorkflowResult,
+    model_response_text,
 )
 
-logger = get_logger("rag.workflows.react")
+logger = logging.getLogger("rag.workflows.react")
 
 
 class _ReasoningResult(TypedDict):
@@ -117,18 +121,21 @@ class ReActWorkflow(BaseWorkflow):
         self,
         *,
         dataset_id: str,
-        account_id: str | None = None,
+        tenant_id: UUID,
+        account_id: str,
     ) -> "ReActWorkflow":
+        scope = DocumentToolScope(tenant_id=tenant_id, account_id=account_id, dataset_ids=frozenset({UUID(dataset_id)}))
+
         async def _keyword(input_text: str) -> str:
-            result = await keyword_search(input_text, dataset_id=dataset_id)
+            result = await keyword_search(input_text, dataset_id=dataset_id, scope=scope)
             return str(result)
 
         async def _semantic(input_text: str) -> str:
-            result = await semantic_search(input_text, dataset_id=dataset_id)
+            result = await semantic_search(input_text, dataset_id=dataset_id, scope=scope)
             return str(result)
 
         async def _chunk(input_text: str) -> str:
-            result = await chunk_read(document_id=input_text, dataset_id=dataset_id, account_id=account_id)
+            result = await chunk_read(document_id=input_text, dataset_id=dataset_id, scope=scope)
             return str(result)
 
         self.add_tool("keyword_search", _keyword, "Keyword-first retrieval for exact terms, IDs, and entity names.")
@@ -146,15 +153,18 @@ class ReActWorkflow(BaseWorkflow):
             if raw:
                 try:
                     parsed = json.loads(raw)
-                    if isinstance(parsed, dict):
-                        payload = parsed
-                except Exception:
+                    if not isinstance(parsed, dict):
+                        raise ValueError("Retrieval configuration JSON must be an object")
+                    payload = parsed
+                except json.JSONDecodeError as error:
                     payload = {}
                     for part in raw.replace(",", " ").split():
                         if "=" not in part:
                             continue
                         key, value = part.split("=", 1)
                         payload[key.strip()] = value.strip()
+                    if not payload:
+                        raise ValueError("Retrieval configuration must be a JSON object or key=value pairs") from error
 
             result = configure_retrieval(
                 top_k=payload.get("top_k", 20),
@@ -251,7 +261,7 @@ Answer: [your final answer to the question]
 Your response:"""
 
         response = await self._llm.ainvoke(prompt)
-        content = response.content if hasattr(response, "content") else str(response)
+        content = model_response_text(response)
 
         # Parse response
         result: _ReasoningResult = {"thought": "", "action": "", "action_input": "", "answer": ""}
@@ -316,21 +326,22 @@ Your response:"""
 
         wrapped = chain.wrap_call(_execute)
         result = wrapped(tool_state)
-        tool_state = await result if asyncio.iscoroutine(result) else result
+        tool_state = await result if inspect.isawaitable(result) else result
         tool_state = chain.run_after(tool_state)
+        error = tool_state.get("error")
 
         workflow_state.setdefault("tool_calls", []).append(
             {
                 "tool_name": tool_state.get("tool_name"),
                 "arguments": {"input_text_preview": tool_state["arguments"]["input_text"][:500]},
                 "success": tool_state.get("success"),
-                "error": tool_state.get("error"),
+                "error": error,
                 "metadata": tool_state.get("metadata"),
             }
         )
 
         if not bool(tool_state.get("success")):
-            return f"Error: {tool_state.get('error') or 'Tool call failed'}"
+            return f"Error: {error or 'Tool call failed'}"
 
         result_value = tool_state["result"]
         return "" if result_value is None else str(result_value)

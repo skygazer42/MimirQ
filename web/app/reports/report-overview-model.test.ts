@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { recordedRiskValue, reportAuditRows, reportCoverage, reportStatusRows } from './report-overview-model'
+import { formatRecordShare, recordedRiskValue, reportAuditRows, reportStatusRows } from './report-overview-model'
 import { filterReportFindings } from './report-format'
 
 describe('report overview values', () => {
@@ -11,15 +11,15 @@ describe('report overview values', () => {
         0,
       ),
     ).toBe(128)
-    expect(reportStatusRows({ archived: 3, failed: 0, invalid: NaN })).toEqual([
+    expect(reportStatusRows({ archived: 3, failed: 0 })).toEqual([
       { key: 'archived', value: 3, label: 'archived', tone: 'info' },
     ])
   })
   it('distinguishes unavailable coverage from a true zero', () => {
-    expect(reportCoverage(0, 0)).toBe('—')
-    expect(reportCoverage(0, 128)).toBe('0.0%')
-    expect(reportCoverage(122, 128)).toBe('95.3%')
-    expect(reportCoverage(140, 128)).toBe('100.0%')
+    expect(formatRecordShare(0, 0)).toBe('—')
+    expect(formatRecordShare(0, 128)).toBe('0%')
+    expect(formatRecordShare(122, 128)).toBe('95.3%')
+    expect(formatRecordShare(140, 128)).toBe('109.4%')
   })
   it('reads observed gate metrics without introducing an assumed threshold', () => {
     const rows = reportAuditRows({
@@ -27,18 +27,22 @@ describe('report overview values', () => {
       plugin_refs: [],
       plugin_package_hashes: [],
       failure_categories: {},
+      kg_recommendation: null,
+      recommended_next_action: null,
       gates: [
         {
           name: '实际门禁',
           status: 'failed',
           metrics: { hit_at_1: 0.88, retrieval_noise_rate: 0 },
           failed_conditions: ['hit_at_1 < 0.90'],
+          generated_at: null,
+          source: null,
         },
       ],
     })
     expect(rows).toEqual([
-      { key: '实际门禁:hit_at_1', label: '召回命中 Hit@1', value: '88.0%', gate: '实际门禁', status: 'failed' },
-      { key: '实际门禁:retrieval_noise_rate', label: '噪声占比', value: '0.0%', gate: '实际门禁', status: 'failed' },
+      { key: '[0,"hit_at_1"]', label: '召回命中 Hit@1', value: '88%', gate: '实际门禁', status: 'failed' },
+      { key: '[0,"retrieval_noise_rate"]', label: '噪声占比', value: '0%', gate: '实际门禁', status: 'failed' },
     ])
     expect(reportAuditRows(null)).toEqual([])
   })
@@ -49,24 +53,28 @@ describe('report overview values', () => {
         plugin_refs: [],
         plugin_package_hashes: [],
         failure_categories: {},
+        kg_recommendation: null,
+        recommended_next_action: null,
         gates: [
           {
             name: '排序门禁',
             status: 'passed',
             metrics: { retrieval_mrr: 0.62, retrieval_ndcg: 0.71 },
             failed_conditions: [],
+            generated_at: null,
+            source: null,
           },
         ],
       }).map((row) => row.value),
-    ).toEqual(['0.620', '0.710'])
+    ).toEqual(['0.62', '0.71'])
   })
   it('filters only positive warning/error hits and keeps unrecorded risks distinct from zero', () => {
     expect(
       filterReportFindings(
         [
-          { key: 'zero', label: '未命中', severity: 'warning', count: 0 },
-          { key: 'info', label: '正常统计', severity: 'info', count: 7 },
-          { key: 'risk', label: '风险', severity: 'error', count: 2 },
+          { key: 'zero', label: '未命中', severity: 'warning', count: 0, description: null },
+          { key: 'info', label: '正常统计', severity: 'info', count: 7, description: null },
+          { key: 'risk', label: '风险', severity: 'error', count: 2, description: null },
         ],
         true,
       ).map((row) => row.key),

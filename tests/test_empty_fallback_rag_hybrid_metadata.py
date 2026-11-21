@@ -1,7 +1,7 @@
 import pytest
 
-from app.rag.retrieval.hybrid.dedup import DedupDiversityMixin
-from app.rag.retrieval.hybrid.post_process import PostProcessMixin
+from app.rag.retrieval.ranking.diversity import DedupDiversityMixin
+from app.rag.retrieval.recall.enrichment import CandidateEnrichmentMixin
 
 
 def test_family_collapse_preserves_a_supplied_zero_family_identifier():
@@ -20,6 +20,6 @@ def test_zero_simhash_is_a_real_hash_instead_of_missing_metadata():
 
 def test_enrichment_does_not_hide_a_missing_persisted_document_status():
     with pytest.raises((AttributeError, TypeError)):
-        PostProcessMixin._document_ready(
+        CandidateEnrichmentMixin._document_ready(
             status=None, doc_meta={}, archived_at=None, disabled_at=None, publication_status="published"
         )

@@ -6,6 +6,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { queryKeys } from '@/lib/query-keys'
+import { makeProfileScan, makeProfileSummary } from '@/test/dataset-profile-fixtures'
 import type { DatasetPrecheckScanRunOut, DatasetPrecheckSummary, DatasetTableAsset } from '@/types/datasets'
 
 const api = vi.hoisted(() => ({
@@ -18,7 +19,7 @@ const api = vi.hoisted(() => ({
   listPrecheckScanRuns: vi.fn(),
   getPrecheckSummary: vi.fn(),
   getProfileSummary: vi.fn(),
-  listProfileScanRuns: vi.fn(),
+  listAllProfileScanRuns: vi.fn(),
   getProfileScanRun: vi.fn(),
 }))
 
@@ -291,22 +292,29 @@ describe('dataset workspace request ownership', () => {
 
   it('continues the active profile polling request', async () => {
     vi.useFakeTimers()
-    const inFlight = deferred<unknown>()
+    const profile = makeProfileSummary({ total_documents: 1 })
+    const activeRun = makeProfileScan(profile, {
+      id: 'profile-a',
+      kind: 'deep',
+      status: 'running',
+      progress: 10,
+      summary: {},
+      created_at: '2026-11-18T00:00:00Z',
+      started_at: '2026-11-18T00:00:00Z',
+      updated_at: '2026-11-18T00:00:00Z',
+      finished_at: null,
+    })
+    const inFlight = deferred<typeof activeRun>()
     api.getProfileScanRun.mockReturnValueOnce(inFlight.promise).mockReturnValue(new Promise(() => {}))
     const view = mount(<DatasetProfilePage />, (client) => {
-      client.setQueryData(queryKeys.datasets.profileSummary('dataset-a'), {
-        total_documents: 0,
-        length_percentiles: { p25: 0, p50: 0, p75: 0, p90: 0, p99: 0 },
-        pdf_scan: { scanned: 0, not_scanned: 0, unknown: 0 },
-        latest_scan_run: { id: 'profile-a', status: 'running', progress: 10 },
-      })
-      client.setQueryData(queryKeys.datasets.profileScanRuns('dataset-a', { skip: 0, limit: 20 }), {
-        items: [],
-        total: 0,
-      })
+      client.setQueryData(queryKeys.datasets.profileSummary('dataset-a'), { ...profile, latest_scan_run: activeRun })
+      client.setQueryData(queryKeys.datasets.profileScanRunOptions('dataset-a'), [
+        activeRun,
+        makeProfileScan(profile, { kind: 'deep' }),
+      ])
     })
     await act(async () => vi.advanceTimersByTimeAsync(500))
-    await act(async () => inFlight.resolve({ id: 'profile-a', status: 'running', progress: 30 }))
+    await act(async () => inFlight.resolve({ ...activeRun, progress: 30 }))
     expect(view.container.textContent).toContain('30%')
     await act(async () => vi.advanceTimersByTimeAsync(2000))
 
@@ -315,24 +323,31 @@ describe('dataset workspace request ownership', () => {
 
   it('does not restart profile polling after its page is unmounted', async () => {
     vi.useFakeTimers()
-    const inFlight = deferred<unknown>()
+    const profile = makeProfileSummary({ total_documents: 1 })
+    const activeRun = makeProfileScan(profile, {
+      id: 'profile-a',
+      kind: 'deep',
+      status: 'running',
+      progress: 10,
+      summary: {},
+      created_at: '2026-11-18T00:00:00Z',
+      started_at: '2026-11-18T00:00:00Z',
+      updated_at: '2026-11-18T00:00:00Z',
+      finished_at: null,
+    })
+    const inFlight = deferred<typeof activeRun>()
     api.getProfileScanRun.mockReturnValue(inFlight.promise)
     const view = mount(<DatasetProfilePage />, (client) => {
-      client.setQueryData(queryKeys.datasets.profileSummary('dataset-a'), {
-        total_documents: 0,
-        length_percentiles: { p25: 0, p50: 0, p75: 0, p90: 0, p99: 0 },
-        pdf_scan: { scanned: 0, not_scanned: 0, unknown: 0 },
-        latest_scan_run: { id: 'profile-a', status: 'running', progress: 10 },
-      })
-      client.setQueryData(queryKeys.datasets.profileScanRuns('dataset-a', { skip: 0, limit: 20 }), {
-        items: [],
-        total: 0,
-      })
+      client.setQueryData(queryKeys.datasets.profileSummary('dataset-a'), { ...profile, latest_scan_run: activeRun })
+      client.setQueryData(queryKeys.datasets.profileScanRunOptions('dataset-a'), [
+        activeRun,
+        makeProfileScan(profile, { kind: 'deep' }),
+      ])
     })
     await act(async () => vi.advanceTimersByTimeAsync(500))
     expect(api.getProfileScanRun).toHaveBeenCalledOnce()
     view.unmount()
-    await act(async () => inFlight.resolve({ id: 'profile-a', status: 'running', progress: 30 }))
+    await act(async () => inFlight.resolve({ ...activeRun, progress: 30 }))
     await act(async () => vi.advanceTimersByTimeAsync(2000))
 
     expect(api.getProfileScanRun).toHaveBeenCalledOnce()

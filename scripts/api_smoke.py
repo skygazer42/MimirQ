@@ -11,6 +11,10 @@ from pathlib import Path
 from typing import Any
 
 import httpx
+from ag_ui.core import Event, EventType, RunAgentInput
+from pydantic import TypeAdapter
+
+_AG_UI_EVENT_ADAPTER = TypeAdapter(Event)
 
 API_SETTINGS = "/api/v1/settings"
 API_SETTINGS_LLM_TEST = "/api/v1/settings/llm/test"
@@ -208,10 +212,12 @@ class SmokeRunner:
         headers.update(kwargs.pop("headers", {}) or {})
         for attempt in range(3):
             try:
+                agent_input = RunAgentInput.model_validate(kwargs["json"])
                 with self.client.stream(method, url, headers=headers, **kwargs) as resp:
                     if resp.status_code == 429 and attempt < 2:
                         retry_after = None
                         try:
+                            resp.read()
                             retry_after = float((resp.json() or {}).get("retry_after"))
                         except Exception:
                             retry_after = None
@@ -219,16 +225,44 @@ class SmokeRunner:
                         continue
                     ok = is_expected(resp.status_code, expected)
                     if not ok:
+                        resp.read()
                         note = f"unexpected status {resp.status_code}: {resp.text[:400]}"
                         self.results.append(CallResult(method.upper(), path_template, resp.status_code, False, note))
                         return False, note
-                    first_line = None
+                    started = False
+                    finished = False
                     for line in resp.iter_lines():
-                        if line:
-                            first_line = line
-                            break
-                    if not first_line:
-                        note = "stream returned no data"
+                        if not line.startswith("data:"):
+                            continue
+                        event = _AG_UI_EVENT_ADAPTER.validate_json(line[5:].strip())
+                        if finished:
+                            raise ValueError("AG-UI event followed the terminal event")
+                        if not started:
+                            if event.type != EventType.RUN_STARTED:
+                                raise ValueError("AG-UI stream did not begin with RUN_STARTED")
+                            if event.thread_id != agent_input.thread_id or event.run_id != agent_input.run_id:
+                                raise ValueError("AG-UI run identifiers do not match the request")
+                            started = True
+                        elif event.type == EventType.RUN_STARTED:
+                            raise ValueError("AG-UI stream started the same run more than once")
+                        elif event.type == EventType.RUN_ERROR:
+                            note = f"AG-UI run failed: {event.message}"
+                            self.results.append(
+                                CallResult(method.upper(), path_template, resp.status_code, False, note)
+                            )
+                            return False, note
+                        elif event.type == EventType.RUN_FINISHED:
+                            if event.thread_id != agent_input.thread_id or event.run_id != agent_input.run_id:
+                                raise ValueError("AG-UI completion identifiers do not match the request")
+                            if event.outcome is not None and event.outcome.type != "success":
+                                note = f"AG-UI run ended with {event.outcome.type}"
+                                self.results.append(
+                                    CallResult(method.upper(), path_template, resp.status_code, False, note)
+                                )
+                                return False, note
+                            finished = True
+                    if not finished:
+                        note = "AG-UI stream ended without RUN_FINISHED"
                         self.results.append(CallResult(method.upper(), path_template, resp.status_code, False, note))
                         return False, note
                     self.results.append(CallResult(method.upper(), path_template, resp.status_code, True, ""))
@@ -1261,6 +1295,7 @@ def run_stream_chat_smoke(ctx: SmokeContext) -> None:
     if ctx.args.skip_llm_test:
         return
 
+    thread_id = ctx.conversation_id or str(uuid.uuid4())
     ok, _ = ctx.runner.stream(
         "POST",
         API_CHAT_STREAM,
@@ -1268,23 +1303,14 @@ def run_stream_chat_smoke(ctx: SmokeContext) -> None:
         expected=[200],
         timeout=90.0,
         json={
-            "message": "smoke test",
-            "document_ids": [ctx.doc_id],
-            "rag_config": dict(ctx.smoke_rag_config),
+            "threadId": thread_id,
+            "runId": str(uuid.uuid4()),
+            "messages": [{"id": str(uuid.uuid4()), "role": "user", "content": "smoke test"}],
+            "forwardedProps": {"document_ids": [ctx.doc_id], "rag_config": dict(ctx.smoke_rag_config)},
         },
     )
-    if not ok or ctx.conversation_id:
-        return
-
-    conv_list = ctx.runner.call(
-        "GET",
-        API_CHAT_CONVERSATIONS,
-        "/api/v1/chat/conversations?limit=5",
-        expected=[200],
-    )
-    items = parse_json(conv_list).get("items") or []
-    if items:
-        ctx.conversation_id = items[0].get("id")
+    if ok:
+        ctx.conversation_id = thread_id
 
 
 def run_conversation_endpoint_smokes(ctx: SmokeContext) -> None:

@@ -1,9 +1,10 @@
 'use client'
 
 import { Trash2 } from '@/components/icons'
-import { useDeferredValue, useEffect, useMemo, useState, useCallback, useLayoutEffect, useRef } from 'react'
+import { useEffect, useMemo, useState, useCallback, useLayoutEffect, useRef } from 'react'
 
 import { useSearchParams } from 'next/navigation'
+import { useQuery } from '@tanstack/react-query'
 import { toast } from 'sonner'
 
 import { AppFrame } from '@/components/app-frame'
@@ -19,18 +20,18 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog'
 import { useMediaQuery } from '@/hooks/use-media-query'
-import { reportClientWarning } from '@/lib/client-logging'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { formatApiError } from '@/lib/api-errors'
+import { getAuthSessionKey } from '@/lib/auth-storage'
 import { datasetApi } from '@/lib/api/datasets'
 import { documentApi } from '@/lib/api/documents'
 import { kgApi } from '@/lib/api/graph'
-import { metaApi } from '@/lib/api/meta'
 import { reportApi } from '@/lib/api/reports'
+import { queryKeys } from '@/lib/query-keys'
 import { sanitizeFilename } from '@/lib/sanitize'
 import { cn, detachPromise } from '@/lib/utils'
-import type { Dataset, KGGraphResponse } from '@/types'
+import type { KGGraphResponse } from '@/types'
 
 import { JsonCodePane } from './components/json-code-pane'
 import { SnapshotAuditPanel } from './components/snapshot-audit-panel'
@@ -70,16 +71,17 @@ function snapshotTotal(snapshot: SnapshotPayload | null, key: string): number | 
 
 export function KGSnapshotsPage() {
   const searchParams = useSearchParams()
-  const scopeParamKey = searchParams.toString()
-  const datasetIdFromUrl = useMemo(() => {
-    return (new URLSearchParams(scopeParamKey).get('dataset_id') || '').trim()
-  }, [scopeParamKey])
+  const datasetIdFromUrl = searchParams.get('dataset_id')?.trim() ?? ''
 
   const [pipelineHashA, setPipelineHashA] = useState('')
   const [pipelineHashB, setPipelineHashB] = useState('')
   const [documentIdsRaw, setDocumentIdsRaw] = useState('')
-  const [datasets, setDatasets] = useState<Dataset[]>([])
-  const [datasetsLoading, setDatasetsLoading] = useState(false)
+  const datasetsQuery = useQuery({
+    queryKey: queryKeys.datasets.exhaustive(),
+    queryFn: ({ signal }) => datasetApi.listAll(undefined, { signal }),
+    retry: false,
+  })
+  const { data: datasets, isFetching: datasetsLoading } = datasetsQuery
   const [selectedDatasetId, setSelectedDatasetId] = useState(datasetIdFromUrl)
   const [pipelineCandidates, setPipelineCandidates] = useState<PipelineCandidate[]>([])
   const [pipelineCandidatesLoading, setPipelineCandidatesLoading] = useState(false)
@@ -97,7 +99,6 @@ export function KGSnapshotsPage() {
   const nodeTriggerRef = useRef<HTMLButtonElement | null>(null)
   const [scopeSettingsOpen, setScopeSettingsOpen] = useState(false)
   const [reloadVersion, setReloadVersion] = useState(0)
-  const [datasetsError, setDatasetsError] = useState<string | null>(null)
   const [operationError, setOperationError] = useState<string | null>(null)
   const inlineScope = useMediaQuery('(min-width: 900px)')
   const inlineNode = useMediaQuery('(min-width: 1280px)')
@@ -112,18 +113,14 @@ export function KGSnapshotsPage() {
 
   const documentIds = useMemo(() => parseDocumentIds(documentIdsRaw), [documentIdsRaw])
   const selectedDataset = useMemo(
-    () => datasets.find((dataset) => dataset.id === selectedDatasetId) ?? null,
+    () => datasets?.find((dataset) => dataset.id === selectedDatasetId) ?? null,
     [datasets, selectedDatasetId],
   )
   const scopeDatasetId = selectedDatasetId || undefined
   const scopeDocumentIds = documentIds.length > 0 ? documentIds : undefined
   const scopeDocumentIdsKey = scopeDocumentIds?.join(',') ?? ''
   const selectedDatasetLabel = getSelectedDatasetLabel(selectedDataset, selectedDatasetId)
-  const requestContext = useMemo(
-    () => ({ datasetId: selectedDatasetId, documents: scopeDocumentIdsKey, a: pipelineHashA, b: pipelineHashB }),
-    [selectedDatasetId, scopeDocumentIdsKey, pipelineHashA, pipelineHashB],
-  )
-  const requestContextRef = useRef(requestContext)
+  const snapshotRequestRef = useRef<AbortController | null>(null)
   const clearComparison = useCallback(() => {
     setSnapA(null)
     setSnapB(null)
@@ -133,10 +130,13 @@ export function KGSnapshotsPage() {
     setSelectedStudioNodeId('')
   }, [])
   useLayoutEffect(() => {
-    requestContextRef.current = requestContext
     clearComparison()
     setIsRunning(false)
-  }, [requestContext, clearComparison])
+    return () => {
+      snapshotRequestRef.current?.abort()
+      snapshotRequestRef.current = null
+    }
+  }, [clearComparison, selectedDatasetId, scopeDocumentIdsKey, pipelineHashA, pipelineHashB])
 
   useEffect(() => {
     setSelectedDatasetId(datasetIdFromUrl)
@@ -150,29 +150,8 @@ export function KGSnapshotsPage() {
   }, [datasetIdFromUrl])
 
   useEffect(() => {
-    let cancelled = false
-    setDatasetsLoading(true)
-    setDatasetsError(null)
-    ;(async () => {
-      try {
-        const result = await datasetApi.listAll()
-        if (!cancelled) {
-          setDatasets(result)
-        }
-      } catch (error) {
-        if (!cancelled) setDatasetsError(formatApiError(error, '数据集目录读取失败'))
-      } finally {
-        if (!cancelled) setDatasetsLoading(false)
-      }
-    })()
-
-    return () => {
-      cancelled = true
-    }
-  }, [reloadVersion])
-
-  useEffect(() => {
-    let cancelled = false
+    const controller = new AbortController()
+    const { signal } = controller
     const selectedDataset = selectedDatasetId.trim()
     setPipelineCandidatesLoading(true)
     setPipelineCandidatesError(null)
@@ -180,39 +159,29 @@ export function KGSnapshotsPage() {
       const candidateMap = new Map<string, PipelineCandidate>()
       try {
         if (selectedDataset) {
-          const report = await reportApi.getDatasetReport(selectedDataset).catch((error) => {
-            reportClientWarning('Snapshot version report unavailable', error)
-            return null
-          })
-          for (const version of report?.pipeline_versions ?? []) {
+          const report = await reportApi.getDatasetReport(selectedDataset, undefined, { signal })
+          for (const version of report.pipeline_versions) {
             mergePipelineCandidate(candidateMap, {
-              hash: String(version.pipeline_hash || '').trim(),
-              documents: Number(version.documents ?? 0) || 0,
+              hash: version.pipeline_hash,
+              documents: version.documents,
               source: 'report',
-              active: String(version.pipeline_hash || '').trim() === String(report?.pipeline_hash || '').trim(),
-            })
-          }
-          const reportHash = String(report?.pipeline_hash || '').trim()
-          if (reportHash) {
-            const profile = report?.profile && typeof report.profile === 'object' ? report.profile : {}
-            mergePipelineCandidate(candidateMap, {
-              hash: reportHash,
-              documents: Number((profile as Record<string, unknown>).document_count ?? 0) || 0,
-              source: 'report',
-              active: true,
+              active: false,
             })
           }
         }
 
-        const documents = await documentApi.list({
-          skip: 0,
-          limit: 200,
-          dataset_id: selectedDataset || null,
-          order_by: 'created_at',
-          order_dir: 'desc',
-        })
+        const documents = await documentApi.list(
+          {
+            skip: 0,
+            limit: 200,
+            dataset_id: selectedDataset.length === 0 ? undefined : selectedDataset,
+            order_by: 'created_at',
+            order_dir: 'desc',
+          },
+          { signal },
+        )
 
-        for (const document of documents?.items ?? []) {
+        for (const document of documents.items ?? []) {
           const activeHash = firstDisplayString(getDocumentMetaValue(document, 'active_pipeline_hash'))
           const currentHash = firstDisplayString(getDocumentMetaValue(document, 'pipeline_hash'))
           if (activeHash) {
@@ -223,35 +192,33 @@ export function KGSnapshotsPage() {
               active: true,
             })
           }
-          if (currentHash) {
+          if (currentHash !== '' && currentHash !== activeHash) {
             mergePipelineCandidate(candidateMap, {
               hash: currentHash,
               documents: 1,
               source: 'documents',
-              active: currentHash === activeHash,
+              active: false,
             })
           }
         }
 
-        if (!cancelled) {
+        if (!signal.aborted) {
           const next = sortPipelineCandidates(Array.from(candidateMap.values()))
           setPipelineCandidates(next)
           setPipelineHashB((current) => (current.trim() ? current : (next[0]?.hash ?? '')))
           setPipelineHashA((current) => (current.trim() ? current : (next[1]?.hash ?? '')))
         }
       } catch (err) {
-        if (!cancelled) {
+        if (!signal.aborted) {
           setPipelineCandidates([])
           setPipelineCandidatesError(formatApiError(err, '快照候选加载失败'))
         }
       } finally {
-        if (!cancelled) setPipelineCandidatesLoading(false)
+        if (!signal.aborted) setPipelineCandidatesLoading(false)
       }
     })()
 
-    return () => {
-      cancelled = true
-    }
+    return () => controller.abort()
   }, [selectedDatasetId, reloadVersion])
 
   const snapAJson = useMemo(() => (snapA ? prettyJson(snapA) : ''), [snapA])
@@ -263,26 +230,49 @@ export function KGSnapshotsPage() {
     const entityTypesDelta = Array.isArray(diff?.entity_types_delta) ? diff.entity_types_delta : []
     return { delta, entityTypesDelta }
   }, [diff])
-  const deferredEntityTypesDelta = useDeferredValue(diffDelta.entityTypesDelta)
+
+  async function readSnapshotOperation(
+    read: (signal: AbortSignal, canPublish: () => boolean) => Promise<void>,
+    errorMessage: string,
+  ) {
+    if (snapshotRequestRef.current !== null) return
+    const controller = new AbortController()
+    snapshotRequestRef.current = controller
+    const sessionKey = getAuthSessionKey()
+    const canPublish = () => !controller.signal.aborted && getAuthSessionKey() === sessionKey
+    setOperationError(null)
+    setIsRunning(true)
+    try {
+      await read(controller.signal, canPublish)
+    } catch (error) {
+      if (canPublish()) setOperationError(formatApiError(error, errorMessage))
+    } finally {
+      if (snapshotRequestRef.current === controller) {
+        controller.abort()
+        snapshotRequestRef.current = null
+        setIsRunning(false)
+      }
+    }
+  }
 
   async function runExport(which: 'a' | 'b'): Promise<void> {
     const pipelineHash = (which === 'a' ? pipelineHashA : pipelineHashB).trim()
-    if (!pipelineHash) {
+    if (pipelineHash === '') {
       toast.error(which === 'a' ? '请选择快照 A' : '请选择快照 B')
       return
     }
 
-    const currentContext = requestContext
-    setOperationError(null)
-    setIsRunning(true)
-    try {
-      const snapshot = await kgApi.exportSnapshot({
-        pipeline_hash: pipelineHash,
-        dataset_id: scopeDatasetId,
-        document_ids: scopeDocumentIds,
-        include_details: true,
-      })
-      if (requestContextRef.current !== currentContext) return
+    await readSnapshotOperation(async (signal, canPublish) => {
+      const snapshot = await kgApi.exportSnapshot(
+        {
+          pipeline_hash: pipelineHash,
+          dataset_id: scopeDatasetId,
+          document_ids: scopeDocumentIds,
+          include_details: true,
+        },
+        { signal },
+      )
+      if (!canPublish()) return
       setStudioCanvasView('table')
       if (which === 'a') {
         setSnapA(snapshot)
@@ -292,15 +282,10 @@ export function KGSnapshotsPage() {
         setActiveView('b')
       }
       toast.success(`已读取版本 ${which.toUpperCase()}`)
-    } catch (err) {
-      if (requestContextRef.current !== currentContext) return
-      setOperationError(formatApiError(err, '快照读取失败'))
-    } finally {
-      if (requestContextRef.current === currentContext) setIsRunning(false)
-    }
+    }, '快照读取失败')
   }
 
-  async function runCompare(): Promise<void> {
+  async function runCompare(nextView: 'table' | 'stats' = 'table'): Promise<void> {
     const a = pipelineHashA.trim()
     const b = pipelineHashB.trim()
     if (!a || !b) {
@@ -312,44 +297,25 @@ export function KGSnapshotsPage() {
       return
     }
 
-    const currentContext = requestContext
-    setOperationError(null)
-    setIsRunning(true)
-    setLatencyMs(null)
-    try {
+    await readSnapshotOperation(async (signal, canPublish) => {
+      setLatencyMs(null)
       const start = Date.now()
+      const params = { dataset_id: scopeDatasetId, document_ids: scopeDocumentIds, include_details: true }
       const [snapshotA, snapshotB] = await Promise.all([
-        kgApi.exportSnapshot({
-          pipeline_hash: a,
-          dataset_id: scopeDatasetId,
-          document_ids: scopeDocumentIds,
-          include_details: true,
-        }),
-        kgApi.exportSnapshot({
-          pipeline_hash: b,
-          dataset_id: scopeDatasetId,
-          document_ids: scopeDocumentIds,
-          include_details: true,
-        }),
+        kgApi.exportSnapshot({ ...params, pipeline_hash: a }, { signal }),
+        kgApi.exportSnapshot({ ...params, pipeline_hash: b }, { signal }),
       ])
-      const result = await kgApi.diffSnapshots({
-        snapshot_a: snapshotA,
-        snapshot_b: snapshotB,
-      })
-      if (requestContextRef.current !== currentContext) return
-      setStudioCanvasView('table')
+      if (!canPublish()) return
+      const result = await kgApi.diffSnapshots({ snapshot_a: snapshotA, snapshot_b: snapshotB }, { signal })
+      if (!canPublish()) return
+      setStudioCanvasView(nextView)
       setLatencyMs(Math.max(0, Date.now() - start))
       setSnapA(snapshotA)
       setSnapB(snapshotB)
       setDiff(result)
       setActiveView('diff')
       toast.success('已生成对比结果')
-    } catch (err) {
-      if (requestContextRef.current !== currentContext) return
-      setOperationError(formatApiError(err, '快照对比失败'))
-    } finally {
-      if (requestContextRef.current === currentContext) setIsRunning(false)
-    }
+    }, '快照对比失败')
   }
 
   async function runBackendCompare(): Promise<void> {
@@ -364,30 +330,25 @@ export function KGSnapshotsPage() {
       return
     }
 
-    const currentContext = requestContext
-    setOperationError(null)
-    setIsRunning(true)
-    setLatencyMs(null)
-    try {
+    await readSnapshotOperation(async (signal, canPublish) => {
+      setLatencyMs(null)
       const start = Date.now()
-      const result = await kgApi.compareSnapshots({
-        pipeline_hash_a: a,
-        pipeline_hash_b: b,
-        dataset_id: scopeDatasetId,
-        document_ids: scopeDocumentIds,
-      })
-      if (requestContextRef.current !== currentContext) return
+      const result = await kgApi.compareSnapshots(
+        {
+          pipeline_hash_a: a,
+          pipeline_hash_b: b,
+          dataset_id: scopeDatasetId,
+          document_ids: scopeDocumentIds,
+        },
+        { signal },
+      )
+      if (!canPublish()) return
       setStudioCanvasView('table')
       setLatencyMs(Math.max(0, Date.now() - start))
       setDiff(result)
       setActiveView('diff')
       toast.success('已生成数量摘要')
-    } catch (err) {
-      if (requestContextRef.current !== currentContext) return
-      setOperationError(formatApiError(err, '快照摘要读取失败'))
-    } finally {
-      if (requestContextRef.current === currentContext) setIsRunning(false)
-    }
+    }, '快照摘要读取失败')
   }
 
   const hashAValue = pipelineHashA.trim()
@@ -397,60 +358,47 @@ export function KGSnapshotsPage() {
   const hasHashB = Boolean(hashBValue)
   const hashATitle = hashAValue || '未设置'
   const hashBTitle = hashBValue || '未设置'
-  const diffBaseName = sanitizeFilename(`kg_snapshot_${hashAValue || 'A'}_vs_${hashBValue || 'B'}`) || 'kg_snapshot'
+  const diffBaseName = sanitizeFilename(`kg_snapshot_${hashAValue || 'A'}_vs_${hashBValue || 'B'}`)
   const snapshotScopeSubtitle = getSnapshotScopeSubtitle(
     scopeDocumentIds?.length ?? 0,
     scopeDatasetId,
     selectedDatasetLabel,
   )
-  const snapshotAFileName = sanitizeFilename(`kg_snapshot_${hashAValue || 'A'}`) || 'kg_snapshot_A'
-  const snapshotBFileName = sanitizeFilename(`kg_snapshot_${hashBValue || 'B'}`) || 'kg_snapshot_B'
+  const snapshotAFileName = sanitizeFilename(`kg_snapshot_${hashAValue || 'A'}`)
+  const snapshotBFileName = sanitizeFilename(`kg_snapshot_${hashBValue || 'B'}`)
   useLayoutEffect(() => {
     if (studioCanvasView !== 'graph' || scopeSettingsOpen) return
-    let cancelled = false
+    const controller = new AbortController()
+    const { signal } = controller
     setLiveGraph(null)
     setLiveGraphLoading(true)
     setLiveGraphError(null)
-    ;(async () => {
+    async function loadLiveGraph() {
       try {
-        const meta = await metaApi.details().catch((error) => {
-          reportClientWarning('Snapshot graph metadata unavailable', error)
-          return null
-        })
-        if (meta?.features?.kg_enabled === false) {
-          if (!cancelled) {
-            setLiveGraph({ nodes: [], links: [] })
-            setLiveGraphError('KG 功能未启用，已按后端能力状态跳过实时图谱读取。请在设置中开启 KG 抽取后刷新。')
-          }
-          return
-        }
-
-        const graph = await kgApi.getGraph({
-          dataset_id: scopeDatasetId,
-          document_ids: scopeDocumentIds,
-          pipeline_hash: liveGraphPipelineHash,
-          max_events: 80,
-          max_entities: 80,
-          max_links: 160,
-          include_entity_links: true,
-          include_relation_links: true,
-          min_shared_events: 1,
-          max_entity_links: 160,
-        })
-        if (!cancelled) setLiveGraph(graph)
+        const graph = await kgApi.getGraph(
+          {
+            dataset_id: scopeDatasetId,
+            document_ids: scopeDocumentIds,
+            pipeline_hash: liveGraphPipelineHash,
+            max_events: 80,
+            max_entities: 80,
+            max_links: 160,
+            include_entity_links: true,
+            include_relation_links: true,
+            min_shared_events: 1,
+            max_entity_links: 160,
+          },
+          { signal },
+        )
+        if (!signal.aborted) setLiveGraph(graph)
       } catch (err) {
-        if (!cancelled) {
-          setLiveGraph({ nodes: [], links: [] })
-          setLiveGraphError(formatApiError(err, 'KG 图谱读取失败'))
-        }
+        if (!signal.aborted) setLiveGraphError(formatApiError(err, 'KG 图谱读取失败'))
       } finally {
-        if (!cancelled) setLiveGraphLoading(false)
+        if (!signal.aborted) setLiveGraphLoading(false)
       }
-    })()
-
-    return () => {
-      cancelled = true
     }
+    void loadLiveGraph()
+    return () => controller.abort()
   }, [
     liveGraphPipelineHash,
     studioCanvasView,
@@ -468,6 +416,8 @@ export function KGSnapshotsPage() {
     () => Array.from(new Set(studioGraph.links.map((link) => link.label))),
     [studioGraph.links],
   )
+  const nodeType = nodeTypes.includes(studioNodeType) ? studioNodeType : 'all'
+  const relationType = relationTypes.includes(studioRelationType) ? studioRelationType : 'all'
   const selectedStudioNode = useMemo(() => {
     return studioGraph.nodes.find((node) => node.id === selectedStudioNodeId) ?? null
   }, [selectedStudioNodeId, studioGraph.nodes])
@@ -477,21 +427,14 @@ export function KGSnapshotsPage() {
     }
   }, [selectedStudioNodeId, studioGraph.nodes])
 
-  const totalsReady = DIFF_KEYS.every((key) => snapshotTotal(snapA, key) !== null && snapshotTotal(snapB, key) !== null)
   const deltaRows = useMemo<SnapshotDeltaRow[]>(() => {
-    if (!totalsReady) return []
-    return DIFF_KEYS.map((key) => {
-      const a = snapshotTotal(snapA, key)!
-      const b = snapshotTotal(snapB, key)!
-      const d = Number(diffDelta.delta?.[key] ?? b - a)
-      return {
-        key,
-        a: Number.isFinite(a) ? a : 0,
-        b: Number.isFinite(b) ? b : 0,
-        delta: Number.isFinite(d) ? d : 0,
-      }
+    return DIFF_KEYS.flatMap((key) => {
+      const a = snapshotTotal(snapA, key)
+      const b = snapshotTotal(snapB, key)
+      return a === null || b === null ? [] : [{ key, a, b, delta: b - a }]
     })
-  }, [diffDelta.delta, snapA, snapB, totalsReady])
+  }, [snapA, snapB])
+  const totalsReady = deltaRows.length === DIFF_KEYS.length
   const driftScore = useMemo(() => {
     const denominator = deltaRows.reduce((acc, row) => acc + Math.max(Math.max(row.a, row.b), 1), 0)
     if (denominator <= 0) return 0
@@ -500,8 +443,12 @@ export function KGSnapshotsPage() {
   }, [deltaRows])
   const auditSeverity = auditSeverityForDriftScore(driftScore)
   const auditDriftRows = useMemo(() => {
-    return [...deferredEntityTypesDelta].sort((a, b) => Math.abs(Number(b.delta ?? 0)) - Math.abs(Number(a.delta ?? 0)))
-  }, [deferredEntityTypesDelta])
+    return [...diffDelta.entityTypesDelta].sort((left, right) => {
+      if (typeof left.delta !== 'number') return typeof right.delta === 'number' ? 1 : 0
+      if (typeof right.delta !== 'number') return -1
+      return Math.abs(right.delta) - Math.abs(left.delta)
+    })
+  }, [diffDelta.entityTypesDelta])
   const view = studioCanvasView === 'table' ? activeView : studioCanvasView
   const changeDataset = (value: string) => {
     setSelectedDatasetId(value)
@@ -524,10 +471,10 @@ export function KGSnapshotsPage() {
           className="h-10 w-full rounded-md border border-border bg-background px-3 text-sm"
         >
           <option value="">全部数据集</option>
-          {selectedDatasetId && !datasets.some((item) => item.id === selectedDatasetId) ? (
+          {selectedDatasetId !== '' && !datasets?.some((item) => item.id === selectedDatasetId) ? (
             <option value={selectedDatasetId}>{selectedDatasetLabel}</option>
           ) : null}
-          {datasets.map((item) => (
+          {datasets?.map((item) => (
             <option key={item.id} value={item.id}>
               {item.name || item.id}
             </option>
@@ -615,9 +562,11 @@ export function KGSnapshotsPage() {
           )
         }
       >
-        {datasetsError ? (
+        {datasetsQuery.isError ? (
           <div className="px-5">
-            <WorkspaceNotice retry={() => setReloadVersion((value) => value + 1)}>{datasetsError}</WorkspaceNotice>
+            <WorkspaceNotice retry={() => void datasetsQuery.refetch()} pending={datasetsLoading}>
+              {formatApiError(datasetsQuery.error, '数据集目录读取失败')}
+            </WorkspaceNotice>
           </div>
         ) : null}
         {pipelineCandidatesError ? (
@@ -640,9 +589,9 @@ export function KGSnapshotsPage() {
           onValueChange={(value) => {
             setSelectedStudioNodeId('')
             if (value === 'graph' || value === 'stats') setStudioCanvasView(value)
-            else {
+            else if (value === 'diff' || value === 'a' || value === 'b') {
               setStudioCanvasView('table')
-              setActiveView(value as SnapshotView)
+              setActiveView(value)
             }
           }}
           className="flex min-h-0 flex-1 flex-col"
@@ -679,8 +628,9 @@ export function KGSnapshotsPage() {
               }
               onCopy={() => detachPromise(copyToClipboard(diffJson, 'diff JSON'))}
               onDownload={() => {
-                downloadJson(diff ?? {}, `${diffBaseName}.diff.json`)
-                toast.success('已导出 diff.json')
+                if (diff === null) return
+                downloadJson(diff, `${diffBaseName}.diff.json`)
+                toast.success('已开始下载对比结果')
               }}
             />
           </TabsContent>
@@ -700,8 +650,9 @@ export function KGSnapshotsPage() {
               }
               onCopy={() => detachPromise(copyToClipboard(snapAJson, 'snapshot A JSON'))}
               onDownload={() => {
-                downloadJson(snapA ?? {}, `${snapshotAFileName}.json`)
-                toast.success('已导出 snapshot A')
+                if (snapA === null) return
+                downloadJson(snapA, `${snapshotAFileName}.json`)
+                toast.success('已开始下载快照 A')
               }}
             />
           </TabsContent>
@@ -721,8 +672,9 @@ export function KGSnapshotsPage() {
               }
               onCopy={() => detachPromise(copyToClipboard(snapBJson, 'snapshot B JSON'))}
               onDownload={() => {
-                downloadJson(snapB ?? {}, `${snapshotBFileName}.json`)
-                toast.success('已导出 snapshot B')
+                if (snapB === null) return
+                downloadJson(snapB, `${snapshotBFileName}.json`)
+                toast.success('已开始下载快照 B')
               }}
             />
           </TabsContent>
@@ -737,7 +689,7 @@ export function KGSnapshotsPage() {
               />
               <select
                 aria-label="节点类型"
-                value={studioNodeType}
+                value={nodeType}
                 onChange={(event) => setStudioNodeType(event.target.value)}
                 className="h-10 rounded-md border border-border bg-background px-3 text-sm"
               >
@@ -748,7 +700,7 @@ export function KGSnapshotsPage() {
               </select>
               <select
                 aria-label="关系类型"
-                value={studioRelationType}
+                value={relationType}
                 onChange={(event) => setStudioRelationType(event.target.value)}
                 className="h-10 rounded-md border border-border bg-background px-3 text-sm"
               >
@@ -791,18 +743,17 @@ export function KGSnapshotsPage() {
                       layout={studioLayout}
                       selectedNodeId={selectedStudioNodeId}
                       searchValue={studioSearch}
-                      nodeType={studioNodeType}
-                      relationType={studioRelationType}
+                      nodeType={nodeType}
+                      relationType={relationType}
                       nodeCount={studioGraph.nodes.length}
                       relationCount={studioGraph.links.length}
                       isLoading={liveGraphLoading}
                       emptyMessage={
-                        liveGraphError ||
-                        (studioSearch.trim() || studioNodeType !== 'all' || studioRelationType !== 'all'
+                        studioSearch.trim() || nodeType !== 'all' || relationType !== 'all'
                           ? '当前筛选下没有匹配节点，可调整搜索或类型。'
                           : selectedDatasetId
                             ? '当前数据集没有返回 KG 节点，请确认文档已完成入库且已开启 KG 抽取。'
-                            : '当前后端 KG 图谱接口没有返回节点。')
+                            : '当前后端 KG 图谱接口没有返回节点。'
                       }
                       onSelectNode={(id, trigger) => {
                         nodeTriggerRef.current = trigger
@@ -845,18 +796,7 @@ export function KGSnapshotsPage() {
                           变化数量已取得；读取两份快照后可计算两侧总量和变化比例。
                         </p>
                       </div>
-                      <Button
-                        variant="outline"
-                        disabled={isRunning}
-                        onClick={() => {
-                          const context = requestContextRef.current
-                          void runCompare().then(() => {
-                            if (requestContextRef.current === context) {
-                              setStudioCanvasView('stats')
-                            }
-                          })
-                        }}
-                      >
+                      <Button variant="outline" disabled={isRunning} onClick={() => void runCompare('stats')}>
                         读取完整快照
                       </Button>
                     </div>
@@ -910,7 +850,7 @@ export function KGSnapshotsPage() {
                           </thead>
                           <tbody>
                             {auditDriftRows.map((row, index) => (
-                              <tr key={`${row.type || ''}:${index}`}>
+                              <tr key={row.type ? `${row.type}:${index}` : index}>
                                 <td>{row.type || '未返回类型名'}</td>
                                 <td>{typeof row.delta === 'number' ? row.delta : '未取得'}</td>
                               </tr>

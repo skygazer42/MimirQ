@@ -4,12 +4,56 @@ from uuid import UUID
 import pytest
 from langchain_core.documents import Document
 
-from app.core.config import settings
-from app.rag.core.evidence_capsule_builder import validate_evidence_capsule
-from app.rag.core.hashing import stable_json_hash
-from app.rag.evaluation.evidence_retrieve_gate import build_retrieval_gate_summary, compute_retrieval_item_meta
-from app.rag.retriever import HybridRetriever
-from app.services.dataset_embedding_config import resolve_dataset_embedding_runtime
+from app.infrastructure.config import settings
+from app.infrastructure.hashing import stable_json_hash
+from app.rag.evaluation.regression.evidence_retrieve_gate import (
+    build_retrieval_gate_summary,
+    compute_retrieval_item_meta,
+)
+from app.rag.retrieval.corpus import CorpusIndex
+from app.rag.retrieval.evidence.capsule import validate_evidence_capsule
+from app.rag.retrieval.recall.retriever import HybridRetriever
+from app.rag.retrieval.recall.runtime_scope import ResolvedRetrievalScope, RetrievalScope, RuntimeShard
+from app.services.datasets.embedding_config import resolve_dataset_embedding_runtime
+
+
+@pytest.fixture(autouse=True)
+def _offline_stream_models(monkeypatch):
+    from app.infrastructure import tokens
+
+    monkeypatch.setattr(tokens, "_get_encoder", lambda: False)
+
+
+class _CorpusStore:
+    def __init__(self):
+        self.documents = []
+
+    def upsert(self, documents, *, tenant_id):
+        assert all(document.metadata["tenant_id"] == str(tenant_id) for document in documents)
+        self.documents = list(documents)
+
+    def search(self, query, *, tenant_id, dataset_ids, document_ids, metadata_filter, top_k):
+        assert metadata_filter is None
+        records = []
+        for document in self.documents:
+            metadata = document.metadata
+            if metadata["tenant_id"] != str(tenant_id):
+                continue
+            if dataset_ids and metadata["dataset_id"] not in {str(value) for value in dataset_ids}:
+                continue
+            if document_ids and metadata["document_id"] not in {str(value) for value in document_ids}:
+                continue
+            score = sum(term in document.page_content.casefold() for term in query.casefold().split())
+            if score:
+                records.append(
+                    {
+                        "chunk_id": str(document.id),
+                        "content": document.page_content,
+                        "score": float(score),
+                        "metadata": dict(metadata),
+                    }
+                )
+        return sorted(records, key=lambda record: record["score"], reverse=True)[:top_k]
 
 
 def _mk_uuid(name: str) -> UUID:
@@ -47,7 +91,7 @@ def test_evidence_api_offline_regression_gate_hit_at_20_and_recall(monkeypatch: 
     This test is deterministic + offline:
     - No vector store
     - No lexical DB (Postgres)
-    - Uses in-memory BM25 via HybridRetriever
+    - Uses the current CorpusIndex channel with an explicit local store fixture
     - Calls the Evidence API retrieval orchestrator (`run_retrieval`) and evaluates
       retrieval-only metrics vs human-verified reference_sources.
     """
@@ -59,19 +103,24 @@ def test_evidence_api_offline_regression_gate_hit_at_20_and_recall(monkeypatch: 
     monkeypatch.setattr(settings, "ENABLE_QUERY_DECOMPOSITION", False, raising=False)
     monkeypatch.setattr(settings, "LEXICAL_DB_ENABLED", False, raising=False)
     monkeypatch.setattr(settings, "BM25_INDEX_ENABLED", True, raising=False)
+    monkeypatch.setattr(settings, "VECTOR_BACKEND", "milvus")
+    monkeypatch.setattr(settings, "ENABLE_STEP_BACK_QUERY", False)
+    monkeypatch.setattr(settings, "RAG_CONTEXT_STITCHING_ENABLED", False)
     monkeypatch.setattr(settings, "RETRIEVAL_QUERY_PARALLELISM", 1, raising=False)
     monkeypatch.setattr(settings, "RAG_ABSTAIN_ENABLED", False, raising=False)
     monkeypatch.setattr(settings, "RAG_VISIBLE_EVIDENCE_ONLY_ENABLED", False, raising=False)
     monkeypatch.setattr(settings, "RETRIEVAL_CANDIDATE_SINGLEFLIGHT_ENABLED", False, raising=False)
+    monkeypatch.setattr(settings, "RETRIEVAL_CANDIDATE_CACHE_ENABLED", False)
+    monkeypatch.setattr(settings, "SEMANTIC_CACHE_ENABLED", False)
 
     # Keep the gate fully offline even if a future change triggers vector fallbacks.
-    import app.rag.retriever as retriever_mod
+    import app.rag.retrieval.recall.retriever as retriever_mod
 
     class _StubVectorStore:
         def search(self, **_kwargs):  # noqa: ANN003
             return []
 
-    monkeypatch.setattr(retriever_mod, "get_vector_store", lambda: _StubVectorStore(), raising=True)
+    monkeypatch.setattr("app.rag.retrieval.recall.channel_collection.get_vector_store", lambda: _StubVectorStore())
 
     tenant_id = _mk_uuid("tenant:evidence_gate")
     dataset_id = _mk_uuid("dataset:evidence_gate")
@@ -125,19 +174,24 @@ def test_evidence_api_offline_regression_gate_hit_at_20_and_recall(monkeypatch: 
     import app.rag.retrieval.orchestrator as orch_mod
 
     retriever = HybridRetriever(tenant_id=tenant_id, dataset_id=dataset_id, account_id=account_id)
-    retriever.upsert_bm25_documents(chunks, tenant_id=tenant_id)
+    corpus = CorpusIndex(bm25_store=_CorpusStore())
+    corpus.upsert(None, tenant_id=tenant_id, documents=chunks)
+    monkeypatch.setattr(retriever_mod, "get_corpus_index", lambda: corpus)
+    monkeypatch.setattr(corpus, "resolve_version", lambda _scope, **_kwargs: "fixture-corpus")
     fixture_runtime = resolve_dataset_embedding_runtime(None)
     monkeypatch.setattr(
         retriever,
-        "_resolve_dataset_runtime_shards",
-        lambda *, tenant_id, dataset_ids=None: [(fixture_runtime, tuple(dataset_ids or (dataset_id,)))],
-        raising=False,
-    )
-    monkeypatch.setattr(
-        retriever,
-        "_resolve_embedding_runtime",
-        lambda *, tenant_id: fixture_runtime,
-        raising=False,
+        "_resolve_hybrid_runtime_scope",
+        lambda **_kwargs: ResolvedRetrievalScope(
+            RetrievalScope(tenant_id, account_id, dataset_ids=(dataset_id,)),
+            (dataset_id,),
+            (RuntimeShard(fixture_runtime, (dataset_id,)),),
+            fixture_runtime,
+            None,
+            None,
+            None,
+            False,
+        ),
     )
     monkeypatch.setattr(
         retriever,
@@ -145,13 +199,9 @@ def test_evidence_api_offline_regression_gate_hit_at_20_and_recall(monkeypatch: 
         lambda results, **_kwargs: results,
         raising=False,
     )
-    monkeypatch.setattr(
-        retriever,
-        "_refresh_bm25_dataset_cache_version",
-        lambda **_kwargs: None,
-        raising=False,
-    )
-    monkeypatch.setattr(orch_mod, "hybrid_retriever", retriever, raising=True)
+    monkeypatch.setattr("app.rag.retrieval.stages.preparation.hybrid_retriever", retriever, raising=True)
+    monkeypatch.setattr("app.rag.retrieval.stages.followup.hybrid_retriever", retriever, raising=True)
+    monkeypatch.setattr("app.rag.retrieval.stages.requirements.hybrid_retriever", retriever, raising=True)
 
     def _ref(chunk: Document) -> dict:
         m = chunk.metadata or {}
@@ -182,6 +232,8 @@ def test_evidence_api_offline_regression_gate_hit_at_20_and_recall(monkeypatch: 
                 "top_k": 20,
                 "score_threshold": 0.0,
                 "retrieval_mode": "keyword",
+                "intent_router": False,
+                "adaptive_router": False,
                 "metrics": {},
             }
         )
@@ -316,7 +368,7 @@ def test_compute_retrieval_item_meta_preserves_explicit_base_must_recall_result(
 
 
 def test_ragas_regression_gate_summary_includes_must_recall_and_provenance() -> None:
-    from app.rag.evaluation.ragas import _build_regression_gate_summary
+    from app.rag.evaluation.regression.ragas import _build_regression_gate_summary
 
     case = {
         "question": "retry header",

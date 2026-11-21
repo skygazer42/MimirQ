@@ -9,19 +9,22 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.orm import Session
 
-from app.api.v1.datasets import get_dataset_ingestion_stats, list_datasets
-from app.api.v1.document_duplicates import list_document_duplicates
-from app.api.v1.document_folders import list_document_folders
-from app.api.v1.document_listing import ListDocumentsQueryFields, list_documents
-from app.api.v1.document_stats import get_document_stats
-from app.core.database import Base
-from app.models.dataset import Dataset, DatasetPermission, DatasetPermissionEnum
-from app.models.document import Document, DocumentPermission
-from app.models.group_permissions import DatasetGroupPermission, DocumentGroupPermission
-from app.models.tenant import Tenant, TenantMember
-from app.models.tenant_group import TenantGroup, TenantGroupMember
-from app.services.document_access import get_allowed_document_id_sets, list_accessible_document_ids
-from app.services.document_access_service import assert_document_acl_readable
+from app.api.schemas.datasets.dataset import DatasetPermissionEnum
+from app.api.schemas.documents import DocumentDuplicateQuery, DocumentFolderQuery, DocumentStatsQuery
+from app.api.schemas.documents.document import DocumentListQuery as ListDocumentsQueryFields
+from app.api.v1.datasets.routes import get_dataset_ingestion_stats, list_datasets
+from app.api.v1.documents.duplicates import list_document_duplicates
+from app.api.v1.documents.folders import list_document_folders
+from app.api.v1.documents.listing import list_documents
+from app.api.v1.documents.stats import get_document_stats
+from app.infrastructure.database.connection import Base
+from app.models.datasets.access import DatasetGroupPermission, DatasetPermission
+from app.models.datasets.records import Dataset
+from app.models.documents.access import DocumentGroupPermission, DocumentPermission
+from app.models.documents.records import Document
+from app.models.identity.workspaces import Tenant, TenantGroup, TenantGroupMember, TenantMember
+from app.services.documents.access import assert_document_acl_readable
+from app.services.documents.read_scope import get_allowed_document_id_sets, list_accessible_document_ids
 
 
 @compiles(JSONB, "sqlite")
@@ -135,31 +138,22 @@ def test_group_only_reader_sees_same_documents_across_library_views(group_acl_db
         db=db,
     )
     stats = get_document_stats(
-        dataset_id=None,
-        lifecycle="active",
-        file_type=None,
-        owner_id=None,
-        q=None,
         tenant_id=ctx.tenant_id,
         account_id=ctx.account_id,
         db=db,
+        params=DocumentStatsQuery(dataset_id=None, lifecycle="active", file_type=None, owner_id=None, q=None),
     )
     folders = list_document_folders(
-        dataset_id=ctx.dataset_id,
-        lifecycle="active",
-        max_depth=20,
         tenant_id=ctx.tenant_id,
         account_id=ctx.account_id,
         db=db,
+        params=DocumentFolderQuery(dataset_id=ctx.dataset_id, lifecycle="active", max_depth=20),
     )
     duplicates = list_document_duplicates(
-        dataset_id=ctx.dataset_id,
-        min_count=2,
-        max_groups=50,
-        max_docs_per_group=20,
         tenant_id=ctx.tenant_id,
         account_id=ctx.account_id,
         db=db,
+        params=DocumentDuplicateQuery(dataset_id=ctx.dataset_id, min_count=2, max_groups=50, max_docs_per_group=20),
     )
     ingestion = get_dataset_ingestion_stats(
         ctx.dataset_id,
@@ -234,14 +228,10 @@ def test_legacy_documents_without_dataset_fail_closed_for_inherited_access(group
         db=db,
     )
     stats = get_document_stats(
-        dataset_id=None,
-        lifecycle="active",
-        file_type=None,
-        owner_id=None,
-        q=None,
         tenant_id=ctx.tenant_id,
         account_id=ctx.account_id,
         db=db,
+        params=DocumentStatsQuery(dataset_id=None, lifecycle="active", file_type=None, owner_id=None, q=None),
     )
     allowed_ids, missing_ids = get_allowed_document_id_sets(
         db,

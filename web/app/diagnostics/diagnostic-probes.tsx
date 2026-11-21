@@ -4,7 +4,15 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Loader2, Play } from '@/components/icons'
-import { driftVerdict, numeric, performanceRows, perfVerdict, record, timestamp } from './diagnostics-model'
+import {
+  currentProbeVerdict,
+  driftVerdict,
+  numeric,
+  performanceRows,
+  perfVerdict,
+  record,
+  timestamp,
+} from './diagnostics-model'
 import { Status } from './diagnostics-controls'
 import type { DiagnosticsController } from './use-diagnostics'
 import styles from './diagnostics.module.css'
@@ -18,13 +26,7 @@ export function DriftProbe({ controller: c }: { controller: DiagnosticsControlle
         <h2>向量漂移</h2>
         <span className={styles.sectionSubtitle}>比较所选数据集的活动分块样本</span>
         <span className={styles.spacer} />
-        <Status
-          {...(c.drift.status === 'running'
-            ? { label: '检查中', tone: 'info' }
-            : c.drift.status === 'error'
-              ? { label: '请求失败', tone: 'danger' }
-              : verdict)}
-        />
+        <Status {...currentProbeVerdict(c.drift.status, '检查中', verdict)} />
       </div>
       <form
         className={styles.probeForm}
@@ -77,7 +79,7 @@ export function DriftProbe({ controller: c }: { controller: DiagnosticsControlle
         <Button
           type="submit"
           className={styles.primary}
-          disabled={c.drift.status === 'running' || !c.canDrift || c.datasetsQuery.isPending || c.missingDataset}
+          disabled={c.drift.status === 'running' || !c.canDrift || !c.scopeSelected || c.missingDataset}
         >
           {c.drift.status === 'running' ? <Loader2 className="animate-spin" /> : <Play />}
           {c.drift.status === 'running' ? '检查中' : '运行漂移检查'}
@@ -88,7 +90,7 @@ export function DriftProbe({ controller: c }: { controller: DiagnosticsControlle
       ) : (
         <p className={styles.probeExplanation}>余弦距离达到阈值的样本计入超阈值数量。</p>
       )}
-      {c.drift.error ? (
+      {c.drift.error !== null ? (
         <p role="alert" className={styles.domainError}>
           {c.drift.error}
         </p>
@@ -139,12 +141,12 @@ export function DriftProbe({ controller: c }: { controller: DiagnosticsControlle
             </div>
           </dl>
         </>
-      ) : (
+      ) : c.drift.status !== 'error' ? (
         <div className={styles.probeEmpty}>
           <h3>{c.drift.status === 'running' ? '正在比较样本' : '尚未运行漂移检查'}</h3>
           <p>运行后查看样本数量、距离分布和超阈值比例。</p>
         </div>
-      )}
+      ) : null}
     </section>
   )
 }
@@ -159,13 +161,7 @@ export function PerformanceProbe({ controller: c }: { controller: DiagnosticsCon
         <h2>性能门禁</h2>
         <span className={styles.sectionSubtitle}>与后端基线及策略比较</span>
         <span className={styles.spacer} />
-        <Status
-          {...(c.perf.status === 'running'
-            ? { label: '运行中', tone: 'info' }
-            : c.perf.status === 'error'
-              ? { label: '请求失败', tone: 'danger' }
-              : verdict)}
-        />
+        <Status {...currentProbeVerdict(c.perf.status, '运行中', verdict)} />
       </div>
       <form
         className={styles.probeForm}
@@ -220,7 +216,7 @@ export function PerformanceProbe({ controller: c }: { controller: DiagnosticsCon
           {c.perf.status === 'running' ? '运行中' : '运行性能门禁'}
         </Button>
       </form>
-      {c.perf.error ? (
+      {c.perf.error !== null ? (
         <p role="alert" className={styles.domainError}>
           {c.perf.error}
         </p>
@@ -280,12 +276,12 @@ export function PerformanceProbe({ controller: c }: { controller: DiagnosticsCon
             <pre className={styles.rawContent}>{JSON.stringify(diff, null, 2)}</pre>
           </details>
         </>
-      ) : (
+      ) : c.perf.status !== 'error' ? (
         <div className={styles.probeEmpty}>
           <h3>{c.perf.status === 'running' ? '正在检查接口性能' : '尚未运行性能门禁'}</h3>
           <p>运行后按接口查看耗时与基线比较结果。</p>
         </div>
-      )}
+      ) : null}
     </section>
   )
 }

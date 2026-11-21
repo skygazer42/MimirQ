@@ -137,7 +137,7 @@ def test_prepare_chat_request_runtime_requires_dataset_defaults_and_orders_memor
     monkeypatch: pytest.MonkeyPatch,
     dataset_read_fails: bool,
 ) -> None:
-    import app.services.chat_bootstrap_runtime as runtime
+    import app.services.chat.bootstrap as runtime
 
     scope_dataset_id = uuid4()
     history_item = _Message("user", "history message")
@@ -210,7 +210,7 @@ def test_prepare_chat_request_runtime_requires_dataset_defaults_and_orders_memor
 def test_prepare_chat_request_runtime_keeps_template_metadata_when_usage_commit_fails(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.services.chat_bootstrap_runtime as runtime
+    import app.services.chat.bootstrap as runtime
 
     chosen = SimpleNamespace(
         id=uuid4(),
@@ -299,8 +299,8 @@ def test_prepare_chat_request_runtime_keeps_template_metadata_when_usage_commit_
 
 @pytest.mark.asyncio
 async def test_stream_langchain_chat_session_events_persists_done_payload(monkeypatch: pytest.MonkeyPatch) -> None:
-    import app.services.chat_stream_langchain as stream_module
-    from app.services.chat_runtime import ChatStreamPersistInput
+    import app.services.chat.stream_langchain as stream_module
+    from app.services.chat.stream_persistence import ChatStreamPersistInput
 
     cached_payloads: list[dict[str, object]] = []
     persisted_payloads: list[ChatStreamPersistInput] = []
@@ -392,9 +392,9 @@ async def test_stream_langchain_chat_session_events_persists_done_payload(monkey
     ]
 
     assert len(events) == 3
-    assert '"request_id": "req-stream"' in events[0]
-    assert '"type": "citations"' in events[1]
-    assert f'"assistant_message_id": "{assistant_message_id}"' in events[2]
+    assert events[0]["request_id"] == "req-stream"
+    assert events[1]["type"] == "citations"
+    assert events[2]["data"]["assistant_message_id"] == str(assistant_message_id)
     assert cached_payloads == [
         {
             "cache_eligible": True,
@@ -425,8 +425,8 @@ async def test_stream_langchain_chat_session_events_persists_done_payload(monkey
 async def test_stream_langchain_chat_session_events_skips_finalize_after_disconnect(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.services.chat_stream_langchain as stream_module
-    from app.services.chat_runtime import ChatStreamPersistInput
+    import app.services.chat.stream_langchain as stream_module
+    from app.services.chat.stream_persistence import ChatStreamPersistInput
 
     persisted: list[str] = []
 
@@ -502,7 +502,7 @@ async def test_stream_langchain_chat_session_events_skips_finalize_after_disconn
 
 
 def test_pptx_parser_extracts_tables_and_text_frames(monkeypatch: pytest.MonkeyPatch) -> None:
-    import app.parsing.parsers.pptx_parser as parser_module
+    import app.rag.ingestion.parsing.parsers.pptx_parser as parser_module
 
     class _Cell:
         def __init__(self, text: str) -> None:
@@ -555,7 +555,7 @@ def test_pptx_parser_extracts_tables_and_text_frames(monkeypatch: pytest.MonkeyP
 
 
 def test_pptx_parser_returns_empty_document_when_no_slide_content(monkeypatch: pytest.MonkeyPatch) -> None:
-    import app.parsing.parsers.pptx_parser as parser_module
+    import app.rag.ingestion.parsing.parsers.pptx_parser as parser_module
 
     monkeypatch.setattr(
         parser_module,
@@ -575,7 +575,7 @@ def test_pptx_parser_returns_empty_document_when_no_slide_content(monkeypatch: p
 
 
 def test_jsonl_records_chunker_preserves_fallback_and_record_overlap_metadata() -> None:
-    from app.rag.chunking.strategies.jsonl_records import JsonlRecordsChunker
+    from app.rag.ingestion.chunking.strategies.records.jsonl_records import JsonlRecordsChunker
 
     chunker = JsonlRecordsChunker(chunk_size=17, chunk_overlap=10)
 
@@ -615,7 +615,7 @@ def test_jsonl_records_chunker_preserves_fallback_and_record_overlap_metadata() 
 
 
 def test_verify_claim_keeps_default_overlap_mode_supportive_but_blocks_strict_contradictions() -> None:
-    from app.rag.core.claim_verifier import verify_claim
+    from app.rag.safety.claim_verification import verify_claim
 
     default_mode = verify_claim("Revenue was 10 in 2024", "Revenue was 11 in 2024")
     strict_mode = verify_claim("Revenue was 10 in 2024", "Revenue was 11 in 2024", mode="strict")
@@ -628,9 +628,9 @@ def test_verify_claim_keeps_default_overlap_mode_supportive_but_blocks_strict_co
 
 
 def test_fetch_document_updated_ts_ignores_invalid_ids_and_invalid_dataset(monkeypatch: pytest.MonkeyPatch) -> None:
-    import app.core.database as database_module
-    import app.models.document as document_module
-    from app.rag.core.temporal import fetch_document_updated_ts
+    import app.infrastructure.database.connection as database_module
+    import app.models.documents.records as document_module
+    from app.services.documents.freshness import fetch_document_updated_ts
 
     valid_id = uuid4()
     other_id = uuid4()
@@ -805,7 +805,7 @@ def test_compute_dimensions_prefers_explicit_fusion_evals_and_tracks_abstain_tra
 
 
 def test_query_variant_stage_applies_latency_budget_to_slow_variants(monkeypatch: pytest.MonkeyPatch) -> None:
-    from app.rag.retrieval.orchestration import query_variants
+    from app.rag.retrieval.planning import variants as query_variants
 
     monkeypatch.setattr(query_variants, "num_tokens_from_string", lambda text: len(text.split()))
 

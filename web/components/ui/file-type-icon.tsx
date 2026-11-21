@@ -8,6 +8,6 @@ type FileTypeIconProps = {
 }
 
 export function FileTypeIcon({ type, filename, className }: Readonly<FileTypeIconProps>) {
-  const { icon: Icon } = getFileTypeMeta({ filename: filename || '', file_type: type || '' })
+  const { icon: Icon } = getFileTypeMeta({ filename, file_type: type })
   return <Icon appearance="color" className={cn('h-4 w-4', className)} aria-hidden="true" />
 }

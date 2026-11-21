@@ -6,7 +6,6 @@ import { NextIntlClientProvider } from 'next-intl'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import commandMessages from '@/i18n/messages/zh-CN/command'
 import commonMessages from '@/i18n/messages/zh-CN/common'
-import { globalEventBus } from '@/lib/event-bus'
 
 const mocks = vi.hoisted(() => ({
   push: vi.fn(),
@@ -32,6 +31,9 @@ vi.mock('@tanstack/react-query', () => ({
 vi.mock('@/hooks/use-tenant-access', () => ({ useTenantAccess: () => ({ data: undefined }) }))
 vi.mock('@/lib/navigation-visibility', () => ({ canShowAdminControlledNavigationModule: () => true }))
 vi.mock('@/lib/api', () => ({ documentApi: {}, datasetApi: {}, chatApi: {} }))
+vi.mock('@/lib/api/documents', () => ({ documentApi: {} }))
+vi.mock('@/lib/api/datasets', () => ({ datasetApi: {} }))
+vi.mock('@/lib/api/chat', () => ({ chatApi: {} }))
 vi.mock('@/store/command-menu', () => ({
   useCommandMenuState: (select: (state: unknown) => unknown) =>
     select({
@@ -80,8 +82,11 @@ afterEach(async () => {
 })
 
 async function query(value: string) {
+  const input = document.querySelector<HTMLInputElement>('[cmdk-input]')!
+  const setValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!
   await act(async () => {
-    globalEventBus.emit('command-menu:set-open', { open: true, query: value })
+    setValue.call(input, value)
+    input.dispatchEvent(new Event('input', { bubbles: true }))
   })
 }
 
@@ -167,6 +172,24 @@ describe('command menu explicit execution', () => {
     expect(document.querySelector<HTMLInputElement>('[cmdk-input]')?.value).toBe('/no-such-command')
     await pressKey(document.querySelector('[cmdk-input]')!, 'Enter')
     expect(mocks.push).not.toHaveBeenCalled()
+  })
+
+  it('opens dataset selection for precheck scans and reports', async () => {
+    await query('/precheck')
+    await expectExecution('打开：预检数据集')
+    await act(async () => executionButton()?.click())
+    expect(mocks.push).toHaveBeenLastCalledWith('/datasets')
+
+    await query('/report')
+    await expectExecution('打开：查看数据集预检报告')
+    await act(async () => executionButton()?.click())
+    expect(mocks.push).toHaveBeenLastCalledWith('/datasets')
+  })
+
+  it.each(['/retry-failed', '/pause-active'])('does not offer an unsupported bulk action for %s', async (command) => {
+    await query(command)
+    expect(document.querySelector('[cmdk-item]')).toBeNull()
+    expect(executionButton()?.disabled).toBe(true)
   })
 
   it('keeps text search working and distinguishes results that share a filename', async () => {

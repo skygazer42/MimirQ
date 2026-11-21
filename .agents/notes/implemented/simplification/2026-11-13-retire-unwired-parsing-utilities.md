@@ -10,7 +10,7 @@ Status: implemented
 
 退出 app/parsing/preprocess/llm_noise_miner.py 及 industry_noise_patterns 下四个文件，不保留旧路径或开关。file_preprocessor 的十二个步骤白名单不变；实际在线清洗仍通过 clean_preview 中的 LLM 客户端与结构化请求运行，不消费退休 miner／profile。现用 document_noise_rules、watermark 链和实际小模型 Runtime 继续由原模块持有，不能根据相似名字扩大退出范围。
 
-output 包只公开实际消费者使用的 markdown_to_blocks 和 render_clean_docx_bytes。块转换与 DOCX 渲染合在 docx_writer.py；退出只剩一个实际函数的 markdown_writer.py，以及没有生产调用的 write_clean_markdown／write_clean_docx。文档 API 仍从 output 导入原两个名字，下载路由、响应、块转换顺序、原始文本零值和渲染高亮参数保持。
+清理文档下载由 app/services/documents/docx_export.py 的 render_clean_docx 持有。其直接消费调用方已经确定的 Markdown/title 字符串，集中处理空行、首个H1与文件名标题去重及DOCX渲染。中间块字典、两阶段API调用、无生产消费的高亮参数和旧output包转发退出；原write_clean_markdown／write_clean_docx等无接入能力继续保持退休。下载路由、权限、404、文件名、响应头、原H1/段落语义保持。
 
 这是无接入工具的实际退出；原文和 SHA 留在本批快照及历史 coverage，当前 app 清单移除退休路径，删除不计完成。冻结 Python 测试中的旧导入留待后续维护，不为它们保留生产包装。
 
@@ -22,6 +22,8 @@ output 包只公开实际消费者使用的 markdown_to_blocks 和 render_clean_
 
 ## Consequences
 
-未接入工具和在用步骤清楚分开，文档下载的两个生产导入保持。实际 Tiny ONNX、OCR、文件预处理和在线清洗没有退出。相邻[辅助生产者边界](2026-11-05-parsing-auxiliary-producer-boundaries.md)、[图片共享规则](2026-11-08-image-enrichment-reference-helpers.md)与[质量结果所有者](2026-11-13-parse-quality-decision-owner.md)保留各自决定，本篇只收窄无调用工具；检索未发现同题活动提案需要归档。
+未接入工具和在用步骤清楚分开，文档下载只依赖实际导出服务。实际 Tiny ONNX、OCR、文件预处理和在线清洗没有退出。相邻[辅助生产者边界](2026-11-05-parsing-auxiliary-producer-boundaries.md)、[图片共享规则](2026-11-08-image-enrichment-reference-helpers.md)与[质量结果所有者](2026-11-13-parse-quality-decision-owner.md)保留各自决定，本篇只收窄无调用工具和无独立职责的导出包装；检索未发现同题活动提案需要归档。
 
 验证结合完整引用图、原步骤白名单、实际 API 消费端、有限 AST／假文档渲染／模型端口及完整应用冷导入。没有运行 Python 应用测试、真实文件写入、DOCX 处理、模型、LLM 或服务；不能据此声称实际文档保真和环境验证通过。
+
+后续DOCX服务归属增量使用起点原字节作对照：18个真实内存下载渲染场景中，17份DOCX的全部ZIP成员字节相同，一个非法XML输入拒绝相同，三个缺内容场景保持原404。标题去重仍匹配原始filename stem，展示标题单独strip；带空格标题、仅H1、首非空行、响应头和读取权限调用参数保持。独立有界复核无发现，610测试和原17项暂存指纹保持，未运行pytest、数据库或真实HTTP。该增量不改写上段原阶段验证范围。

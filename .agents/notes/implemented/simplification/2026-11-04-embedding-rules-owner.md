@@ -24,3 +24,5 @@ provider 构造选项、batch progress、连接状态以及 BGE-M3／Matryoshka 
 ## Consequences
 
 归一化和指纹只有一个维护点，类型声明让已有内部字段可直接读取。共同函数后续修改时需要同时核对 adapter 与 DashScope；若供应商明确要求不同的归一化算法，再将差异放回该 provider。调用时机、缓存命名与 TTL、批次及结果顺序、请求格式、重试与响应关闭顺序不变。Python 测试、模型下载、HTTP／Redis／向量库运行时验证按用户要求未执行；本批以 Ruff、源码 AST、调用引用与逐文件审阅为依据。
+
+[删除无用 Embedding 与收拢参数](2026-11-17-unused-embedding-and-retrieval-options.md)进一步退出没有业务调用的 Matryoshka 辅助实现；本篇向量归一化、空间指纹与实际 provider 的归属决定继续成立。

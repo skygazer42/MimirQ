@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 from langchain_core.documents import Document
 
-from app.parsing.factory import ParserFactory
+from app.rag.ingestion.parsing.factory import ParserFactory
 
 EXPECTED_PARSER_EXPORTS = [
     "BaseAdvancedParser",
@@ -72,7 +72,6 @@ EXPECTED_PDF_BACKENDS = [
 ]
 
 EXPECTED_NON_PDF_BACKENDS = [
-    "audio",
     "auto",
     "colpali",
     "csv",
@@ -88,7 +87,6 @@ EXPECTED_NON_PDF_BACKENDS = [
     "pandoc",
     "pptx",
     "textin",
-    "video",
 ]
 
 EXPECTED_PDF_FALLBACK_BACKENDS = [
@@ -111,19 +109,19 @@ EXPECTED_DOCX_FALLBACK_BACKENDS = ["deepdoc", "docling", "textin"]
 EXPECTED_EXPORT_CAPABILITIES = [
     {
         "export_name": "MinerUParser",
-        "module_name": "app.parsing.parsers.mineru_parser",
+        "module_name": "app.rag.ingestion.parsing.parsers.mineru_parser",
         "class_name": "MinerUParser",
         "backend_name": "mineru",
     },
     {
         "export_name": "DoclingParser",
-        "module_name": "app.parsing.parsers.docling_parser",
+        "module_name": "app.rag.ingestion.parsing.parsers.docling_parser",
         "class_name": "DoclingParser",
         "backend_name": "docling",
     },
     {
         "export_name": "Etl4LlmParser",
-        "module_name": "app.parsing.parsers.etl4llm_parser",
+        "module_name": "app.rag.ingestion.parsing.parsers.etl4llm_parser",
         "class_name": "Etl4LlmParser",
         "backend_name": "etl4llm",
     },
@@ -131,7 +129,6 @@ EXPECTED_EXPORT_CAPABILITIES = [
 
 EXPECTED_DEFAULT_BACKENDS = {
     "auto",
-    "audio",
     "basic",
     "csv",
     "docx",
@@ -144,7 +141,6 @@ EXPECTED_DEFAULT_BACKENDS = {
     "markitdown",
     "pptx",
     "text",
-    "video",
 }
 
 EXPECTED_OPTIONAL_BACKENDS = {
@@ -179,13 +175,13 @@ def _run_python_snippet(snippet: str) -> dict[str, object]:
 
 
 def test_parsers_package_export_names_are_stable() -> None:
-    import app.parsing.parsers as parsers
+    import app.rag.ingestion.parsing.parsers as parsers
 
     assert parsers.__all__ == EXPECTED_PARSER_EXPORTS
 
 
 def test_parser_backend_aliases_are_stable() -> None:
-    from app.parsing.backends import _BACKEND_ALIASES
+    from app.rag.ingestion.parsing.backends import _BACKEND_ALIASES
 
     assert _BACKEND_ALIASES == EXPECTED_BACKEND_ALIASES
 
@@ -198,7 +194,7 @@ def test_parser_factory_supported_backend_sets_are_stable() -> None:
 
 
 def test_parser_capability_discovery_is_stable() -> None:
-    import app.parsing.parsers as parsers
+    import app.rag.ingestion.parsing.parsers as parsers
 
     capabilities = parsers.get_parser_capabilities()
     assert [
@@ -213,7 +209,7 @@ def test_parser_capability_discovery_is_stable() -> None:
 
 
 def test_parser_capability_lookup_returns_expected_item() -> None:
-    import app.parsing.parsers as parsers
+    import app.rag.ingestion.parsing.parsers as parsers
 
     capability = parsers.get_parser_capability("DoclingParser")
     assert capability is not None
@@ -223,7 +219,7 @@ def test_parser_capability_lookup_returns_expected_item() -> None:
 
 
 def test_parser_backend_capability_discovery_covers_factory_supported_backends() -> None:
-    import app.parsing.parsers as parsers
+    import app.rag.ingestion.parsing.parsers as parsers
 
     families = {item["resolved_backend"]: item for item in parsers.list_parser_backend_capabilities()}
 
@@ -249,7 +245,7 @@ def test_parser_backend_capability_discovery_covers_factory_supported_backends()
 
 
 def test_parser_backend_capability_discovery_reports_tiers_and_aliases() -> None:
-    import app.parsing.parsers as parsers
+    import app.rag.ingestion.parsing.parsers as parsers
 
     etl4llm = parsers.get_parser_backend_capabilities("bisheng-unstructured")
     colpali = parsers.get_parser_backend_capabilities("col-qwen")
@@ -271,7 +267,7 @@ def test_parser_backend_capability_discovery_reports_tiers_and_aliases() -> None
         "default": False,
         "optional": True,
         "experimental": False,
-        "lazy_modules": ["app.parsing.parsers.etl4llm_parser"],
+        "lazy_modules": ["app.rag.ingestion.parsing.parsers.etl4llm_parser"],
     }
     assert colpali == {
         "requested_backend": "col-qwen",
@@ -286,7 +282,7 @@ def test_parser_backend_capability_discovery_reports_tiers_and_aliases() -> None
         "default": False,
         "optional": False,
         "experimental": True,
-        "lazy_modules": ["app.parsing.parsers.colpali_parser"],
+        "lazy_modules": ["app.rag.ingestion.parsing.parsers.colpali_parser"],
     }
     assert basic == {
         "requested_backend": "pymupdf",
@@ -301,7 +297,7 @@ def test_parser_backend_capability_discovery_reports_tiers_and_aliases() -> None
         "default": True,
         "optional": False,
         "experimental": False,
-        "lazy_modules": ["app.parsing.parsers.pdf_parser"],
+        "lazy_modules": ["app.rag.ingestion.parsing.parsers.pdf_parser"],
     }
     assert text == {
         "requested_backend": "text",
@@ -316,7 +312,7 @@ def test_parser_backend_capability_discovery_reports_tiers_and_aliases() -> None
         "default": True,
         "optional": False,
         "experimental": False,
-        "lazy_modules": ["app.parsing.parsers.text_parser"],
+        "lazy_modules": ["app.rag.ingestion.parsing.parsers.text_parser"],
     }
     assert auto["resolved_backend"] == "auto"
     assert auto["default"] is True
@@ -339,7 +335,7 @@ def test_parser_backend_capability_discovery_reports_tiers_and_aliases() -> None
 
 
 def test_parsers_package_missing_attribute_error_is_stable() -> None:
-    import app.parsing.parsers as parsers
+    import app.rag.ingestion.parsing.parsers as parsers
 
     with pytest.raises(AttributeError) as exc_info:
         parsers.MissingParser  # type: ignore[attr-defined]
@@ -359,7 +355,7 @@ def test_parser_factory_rejects_unsupported_pdf_backend_with_current_message() -
 
 
 def test_parser_factory_rejects_disabled_docling_backend_with_current_message(monkeypatch: pytest.MonkeyPatch) -> None:
-    from app.parsing import factory as factory_module
+    from app.rag.ingestion.parsing import factory as factory_module
 
     monkeypatch.setattr(factory_module.settings, "DOCLING_ENABLED", False, raising=False)
     factory = ParserFactory()
@@ -371,7 +367,7 @@ def test_parser_factory_rejects_disabled_docling_backend_with_current_message(mo
 
 
 def test_parser_factory_requires_external_docling_service_url(monkeypatch: pytest.MonkeyPatch) -> None:
-    from app.parsing import factory as factory_module
+    from app.rag.ingestion.parsing import factory as factory_module
 
     monkeypatch.setattr(factory_module.settings, "DOCLING_ENABLED", True, raising=False)
     monkeypatch.setattr(factory_module.settings, "DOCLING_API_URL", "", raising=False)
@@ -381,7 +377,7 @@ def test_parser_factory_requires_external_docling_service_url(monkeypatch: pytes
 
 
 def test_parser_factory_rejects_disabled_mineru_backend_with_current_message(monkeypatch: pytest.MonkeyPatch) -> None:
-    from app.parsing import factory as factory_module
+    from app.rag.ingestion.parsing import factory as factory_module
 
     monkeypatch.setattr(factory_module.settings, "MINERU_ENABLED", False, raising=False)
     monkeypatch.setattr(factory_module.settings, "MINERU_API_TOKEN", "", raising=False)
@@ -481,8 +477,8 @@ def test_importing_parsers_package_keeps_default_import_surface_light() -> None:
 
     assert payload == {
         "added": [
-            "app.parsing.parsers",
-            "app.parsing.parsers.base_parser",
+            "app.rag.ingestion.parsing.parsers",
+            "app.rag.ingestion.parsing.parsers.base_parser",
         ]
     }
 
@@ -516,12 +512,12 @@ def test_parser_capability_discovery_is_lazy() -> None:
 
     assert payload == {
         "after_import": [
-            "app.parsing.parsers",
-            "app.parsing.parsers.base_parser",
+            "app.rag.ingestion.parsing.parsers",
+            "app.rag.ingestion.parsing.parsers.base_parser",
         ],
         "after_capabilities": [
-            "app.parsing.parsers.capabilities",
-            "app.parsing.parsers.registry",
+            "app.rag.ingestion.parsing.parsers.capabilities",
+            "app.rag.ingestion.parsing.parsers.registry",
         ],
         "exports": [item["export_name"] for item in EXPECTED_EXPORT_CAPABILITIES],
     }
@@ -557,12 +553,12 @@ def test_parser_backend_capability_discovery_is_lazy() -> None:
 
     assert payload == {
         "after_import": [
-            "app.parsing.parsers",
-            "app.parsing.parsers.base_parser",
+            "app.rag.ingestion.parsing.parsers",
+            "app.rag.ingestion.parsing.parsers.base_parser",
         ],
         "after_capabilities": [
-            "app.parsing.parsers.capabilities",
-            "app.parsing.parsers.registry",
+            "app.rag.ingestion.parsing.parsers.capabilities",
+            "app.rag.ingestion.parsing.parsers.registry",
         ],
         "count": 29,
         "resolved_backends": [
@@ -591,8 +587,6 @@ def test_parser_backend_capability_discovery_is_lazy() -> None:
             "json",
             "email",
             "image",
-            "audio",
-            "video",
             "text",
             "markdown",
         ],
@@ -631,8 +625,6 @@ def test_parser_factory_and_backend_capability_discovery_do_not_import_implement
             "app.parsing.parsers.json_parser",
             "app.parsing.parsers.email_parser",
             "app.parsing.parsers.image_parser",
-            "app.parsing.parsers.audio_parser",
-            "app.parsing.parsers.video_parser",
         ]
         for name in parser_modules:
             sys.modules.pop(name, None)
@@ -676,12 +668,12 @@ def test_parser_export_resolution_loads_only_requested_parser_module() -> None:
 
     assert payload == {
         "after_import": [
-            "app.parsing.parsers",
-            "app.parsing.parsers.base_parser",
+            "app.rag.ingestion.parsing.parsers",
+            "app.rag.ingestion.parsing.parsers.base_parser",
         ],
         "after_attr": [
-            "app.parsing.parsers.etl4llm_parser",
-            "app.parsing.parsers.registry",
+            "app.rag.ingestion.parsing.parsers.etl4llm_parser",
+            "app.rag.ingestion.parsing.parsers.registry",
         ],
         "class_name": "Etl4LlmParser",
     }

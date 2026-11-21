@@ -2,18 +2,19 @@
 
 import { BarChart3, Database, FileText, Gauge, TextCursorInput } from '@/components/icons'
 import { cn } from '@/lib/utils'
+import { Skeleton } from '@/components/ui/skeleton'
 import { formatCount, formatWindow, quotaMode, quotaStatus, quotaValue, type QuotaReading } from './usage-model'
 import styles from './usage.module.css'
 
 const quotaIcons = { chat: BarChart3, documents: FileText, storage: Database, embedding: TextCursorInput, qps: Gauge }
 type Pending = { chat: boolean; tenant: boolean }
 
-function loading(quota: QuotaReading, pending: Pending) {
-  return quota.enabled === null && (quota.key === 'chat' ? pending.chat : pending.tenant)
+function isQuotaPending(quota: QuotaReading, pending: Pending) {
+  return quota.enabled === undefined && (quota.key === 'chat' ? pending.chat : pending.tenant)
 }
 
-function Progress({ quota }: { quota: QuotaReading }) {
-  if (quota.progress === null) return null
+function QuotaProgress({ quota }: Readonly<{ quota: QuotaReading }>) {
+  if (quota.progress === undefined) return null
   return (
     <div
       className={cn(styles.progress, styles[quota.tone])}
@@ -29,12 +30,12 @@ function Progress({ quota }: { quota: QuotaReading }) {
   )
 }
 
-export function QuotaSummary({ quotas, pending }: { quotas: QuotaReading[]; pending: Pending }) {
+export function QuotaSummary({ quotas, pending }: Readonly<{ quotas: readonly QuotaReading[]; pending: Pending }>) {
   return (
     <section className={styles.quotaBand} aria-label="租户配额概览">
       {quotas.map((quota) => {
-        const Icon = quotaIcons[quota.key],
-          busy = loading(quota, pending)
+        const Icon = quotaIcons[quota.key]
+        const busy = isQuotaPending(quota, pending)
         return (
           <section key={quota.key} aria-label={quota.title} className={styles.quotaItem} aria-busy={busy}>
             <h2>
@@ -49,7 +50,7 @@ export function QuotaSummary({ quotas, pending }: { quotas: QuotaReading[]; pend
                   {quota.key === 'qps' ? <small> 请求 / 秒</small> : null}
                 </>
               ) : busy ? (
-                '读取中…'
+                <Skeleton className="h-6 w-24" />
               ) : (
                 quotaStatus(quota)
               )}
@@ -61,10 +62,12 @@ export function QuotaSummary({ quotas, pending }: { quotas: QuotaReading[]; pend
                   : `上限 ${quotaValue(quota.limit, quota)}`}
               </span>
             ) : null}
-            <Progress quota={quota} />
+            <QuotaProgress quota={quota} />
             <span className={styles.quotaScope}>
-              {quota.key === 'qps' ? quota.scopes.join(' / ') || '速率配置' : quota.scope}
-              {quota.percentage === null ? '' : ` · ${formatCount(quota.percentage, 1)}%`}
+              {quota.key === 'qps' && quota.scopes !== undefined && quota.scopes.length > 0
+                ? quota.scopes.join(' / ')
+                : quota.scope}
+              {quota.percentage === undefined ? null : ` · ${formatCount(quota.percentage, 1)}%`}
               {quota.enabled && quota.mode === 'warn' ? ' · 仅告警' : ''}
             </span>
           </section>
@@ -74,7 +77,7 @@ export function QuotaSummary({ quotas, pending }: { quotas: QuotaReading[]; pend
   )
 }
 
-export function QuotaDetails({ quotas, pending }: { quotas: QuotaReading[]; pending: Pending }) {
+export function QuotaDetails({ quotas, pending }: Readonly<{ quotas: readonly QuotaReading[]; pending: Pending }>) {
   return (
     <section className={styles.quotaDetails} aria-label="完整配额状态">
       <div className={styles.sectionHeading}>
@@ -82,8 +85,8 @@ export function QuotaDetails({ quotas, pending }: { quotas: QuotaReading[]; pend
         <span>所有数据集共享，独立于上方累计用量</span>
       </div>
       {quotas.map((quota) => {
-        const Icon = quotaIcons[quota.key],
-          busy = loading(quota, pending)
+        const Icon = quotaIcons[quota.key]
+        const busy = isQuotaPending(quota, pending)
         return (
           <section key={quota.key} className={styles.quotaDetail} aria-label={`${quota.title}明细`}>
             <div className={styles.quotaIdentity}>
@@ -96,12 +99,12 @@ export function QuotaDetails({ quotas, pending }: { quotas: QuotaReading[]; pend
                 {busy ? '读取中' : quotaStatus(quota)}
               </span>
             </div>
-            <div className={styles.quotaDetailBody}>
+            <div className={styles.quotaDetailBody} aria-busy={busy}>
               {quota.enabled ? (
                 <>
                   <dl className={styles.quotaReadings}>
                     <div>
-                      <dt>{quota.key === 'qps' ? '请求速率' : '已用'}</dt>
+                      <dt>{quota.key === 'qps' ? '配置速率' : '已用'}</dt>
                       <dd>
                         {quotaValue(quota.used, quota)}
                         {quota.key === 'qps' ? (
@@ -122,23 +125,21 @@ export function QuotaDetails({ quotas, pending }: { quotas: QuotaReading[]; pend
                       </div>
                     ) : null}
                   </dl>
-                  <Progress quota={quota} />
+                  <QuotaProgress quota={quota} />
                   <p className={styles.quotaDetailMeta}>
                     {quota.scope}
-                    {quota.windowStart && quota.windowEnd
+                    {quota.windowStart !== undefined && quota.windowEnd !== undefined
                       ? ` · ${formatWindow(quota.windowStart, quota.windowEnd)}`
                       : ''}
-                    {quota.scopes.length ? ` · ${quota.scopes.join(' / ')}` : ''}
-                    {quota.mode ? ` · ${quotaMode(quota.mode)}` : ''}
+                    {quota.scopes !== undefined && quota.scopes.length > 0 ? ` · ${quota.scopes.join(' / ')}` : null}
+                    {quota.mode !== undefined ? ` · ${quotaMode(quota.mode)}` : null}
                   </p>
                 </>
+              ) : busy ? (
+                <Skeleton className="h-6 w-48" />
               ) : (
                 <p className={styles.quotaUnavailable}>
-                  {busy
-                    ? '正在读取配额…'
-                    : quota.enabled === false
-                      ? '此项限制未启用。'
-                      : '未取得配额，请在页面上方重试读取。'}
+                  {quota.enabled === false ? '此项限制未启用。' : '未取得配额，请在页面上方重试读取。'}
                 </p>
               )}
             </div>

@@ -49,9 +49,12 @@ export default defineConfig({
     : {
         command: useProdServer
           ? reuseBuildOutput
-            ? `MARKDOWN_IMAGE_PROXY_SECRET=${markdownImageProxySecret} HOST=127.0.0.1 PORT=${PORT} pnpm start`
-            : `MARKDOWN_IMAGE_PROXY_SECRET=${markdownImageProxySecret} pnpm exec next build --webpack && MARKDOWN_IMAGE_PROXY_SECRET=${markdownImageProxySecret} HOST=127.0.0.1 PORT=${PORT} pnpm start`
+            ? 'pnpm start'
+            : 'pnpm exec next build --webpack && pnpm start'
           : `pnpm exec next dev --webpack -H 127.0.0.1 -p ${PORT}`,
+        env: useProdServer
+          ? { MARKDOWN_IMAGE_PROXY_SECRET: markdownImageProxySecret, HOST: '127.0.0.1', PORT: String(PORT) }
+          : undefined,
         url: baseURL,
         reuseExistingServer: !process.env.CI && !useProdServer,
         stdout: 'pipe',

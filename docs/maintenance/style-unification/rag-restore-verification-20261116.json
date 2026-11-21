@@ -1,0 +1,30 @@
+{
+  "schema": "ragvia.rag_restore_verification.v1",
+  "date": "2026-11-16",
+  "rag_restored": true,
+  "rag_python_files": 693,
+  "app_files": 1244,
+  "app_python_files": 1225,
+  "resource_files_present": 19,
+  "expected_resource_files_from_completed_batch": 152,
+  "resource_files_missing": 133,
+  "tracked_git_index_unchanged": true,
+  "empty_source_directories_removed": true,
+  "empty_source_directories_remaining": [],
+  "ast_compile_verified": 1382,
+  "missing_app_imports": 0,
+  "ruff_check_exit": 0,
+  "openapi": {
+    "paths": 358,
+    "routes": 422,
+    "schemas": 671
+  },
+  "pytest_run": false,
+  "resource_recovery_note": "The 134 untracked parsing/model resources deleted with the directory were not found in Git or available local worktrees; only cl100k_base.tiktoken was recovered from E:/dataops/cankao/oh-my-pi.",
+  "cache_cleanup": {
+    "target": "app/parsing",
+    "attempted": true,
+    "removed": false,
+    "reason": "automatic approval blocked the recursive cache-only directory removal"
+  }
+}

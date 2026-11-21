@@ -4,18 +4,13 @@ from uuid import uuid4
 
 import pytest
 
-from app.rag.evaluation import (
-    agent_evals,
-    agent_redteam,
-    judge_calibration,
-    kg_hardcase_generator,
-    llm_judge,
-    test_generator,
-)
+from app.rag.evaluation.agents import agent_evals, agent_redteam
+from app.rag.evaluation.benchmarks.recall_at_k_runner import run_recall_at_k_runner
 from app.rag.evaluation.embedding_bench.runner import run_embedding_benchmark
+from app.rag.evaluation.generation import kg_hardcase_generator, test_generator
+from app.rag.evaluation.judging import judge_calibration, llm_judge
 from app.rag.evaluation.poc_runner.coverage_heatmap import build_document_heatmap
 from app.rag.evaluation.poc_runner.reports.html_renderer import render_dataset_analysis_html
-from app.rag.evaluation.recall_at_k_runner import run_recall_at_k_runner
 from app.rag.evaluation.runners.hybrid_runner import _actual_answer_text
 
 

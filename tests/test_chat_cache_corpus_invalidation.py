@@ -6,7 +6,7 @@ import pytest
 def test_resolve_chat_response_cache_key_changes_with_dataset_corpus_token(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.services.chat_response_cache as cache_mod
+    import app.services.chat.response_cache as cache_mod
 
     base = {
         "db": object(),
@@ -38,7 +38,7 @@ def test_resolve_chat_response_cache_key_changes_with_dataset_corpus_token(
 def test_resolve_chat_response_cache_key_fails_closed_when_corpus_token_missing(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.services.chat_response_cache as cache_mod
+    import app.services.chat.response_cache as cache_mod
 
     monkeypatch.setattr(cache_mod, "resolve_corpus_cache_token", lambda *_a, **_k: None, raising=False)
 
@@ -87,7 +87,7 @@ class _CorpusTokenDB:
 
 
 def test_build_dataset_scope_corpus_cache_token_changes_with_dataset_embedding_binding() -> None:
-    import app.services.corpus_cache_tokens as token_mod
+    import app.services.retrieval.corpus_tokens as token_mod
 
     dataset_id = uuid4()
     token_a = token_mod.build_dataset_scope_corpus_cache_token(
@@ -107,7 +107,7 @@ def test_build_dataset_scope_corpus_cache_token_changes_with_dataset_embedding_b
 
 
 def test_resolve_corpus_cache_token_fails_closed_when_document_scope_row_missing() -> None:
-    import app.services.corpus_cache_tokens as token_mod
+    import app.services.retrieval.corpus_tokens as token_mod
 
     token = token_mod.resolve_corpus_cache_token(
         _CorpusTokenDB(document_rows=[], dataset_rows=[]),
@@ -120,7 +120,7 @@ def test_resolve_corpus_cache_token_fails_closed_when_document_scope_row_missing
 
 
 def test_resolve_corpus_cache_token_changes_when_document_scope_dataset_embedding_defaults_change() -> None:
-    import app.services.corpus_cache_tokens as token_mod
+    import app.services.retrieval.corpus_tokens as token_mod
 
     tenant_id = uuid4()
     document_id = uuid4()
@@ -159,7 +159,7 @@ class _DatasetScopeTokenDB:
 
 
 def test_resolve_corpus_cache_token_for_multi_dataset_scope_is_order_stable_and_binding_sensitive() -> None:
-    import app.services.corpus_cache_tokens as token_mod
+    import app.services.retrieval.corpus_tokens as token_mod
 
     tenant_id = uuid4()
     dataset_a = uuid4()

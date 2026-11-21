@@ -2,7 +2,7 @@
 
 import { Suspense, useEffect, useState } from 'react'
 import dynamic from 'next/dynamic'
-import { usePathname, useRouter, useSearchParams } from 'next/navigation'
+import { useSearchParams } from 'next/navigation'
 import { AppFrame } from '@/components/app-frame'
 import { NavigationVisibilityGate } from '@/components/auth/navigation-visibility-gate'
 import { PageLoading } from '@/components/ui/page-loading'
@@ -22,8 +22,8 @@ const RegressionTestTab = dynamic(
   { loading: () => <PageLoading message="正在加载评测集…" /> },
 )
 const QuerysetHealthTab = dynamic(
-  () => import('@/components/evaluation/queryset-health-tab').then((mod) => mod.QuerysetHealthTab),
-  { loading: () => <PageLoading message="正在加载健康度…" /> },
+  () => import('@/components/evaluation/queryset-health-tab-client').then((mod) => mod.QuerysetHealthTab),
+  { ssr: false, loading: () => <PageLoading message="正在加载健康度…" /> },
 )
 const TABS = [
   { id: 'conversation', label: '对话评测' },
@@ -32,7 +32,7 @@ const TABS = [
 ] as const
 type EvaluationTab = (typeof TABS)[number]['id']
 function parseTab(value: string | null): EvaluationTab {
-  return TABS.find((tab) => tab.id === value)?.id || 'conversation'
+  return TABS.find((tab) => tab.id === value)?.id ?? 'conversation'
 }
 
 export default function EvaluationsPage() {
@@ -49,23 +49,17 @@ export default function EvaluationsPage() {
 
 function EvaluationWorkspace() {
   const searchParams = useSearchParams()
-  const pathname = usePathname()
-  const router = useRouter()
   const tenantAccess = useTenantAccess()
-  const [activeTab, setActiveTab] = useState<EvaluationTab>(() => parseTab(searchParams.get('tab')))
-  const [visited, setVisited] = useState<EvaluationTab[]>(() => [parseTab(searchParams.get('tab'))])
-  const urlTab = parseTab(searchParams.get('tab'))
+  const activeTab = parseTab(searchParams.get('tab'))
+  const [visited, setVisited] = useState<EvaluationTab[]>([activeTab])
   useEffect(() => {
-    setActiveTab(urlTab)
-    setVisited((previous) => (previous.includes(urlTab) ? previous : [...previous, urlTab]))
-  }, [urlTab])
+    setVisited((previous) => (previous.includes(activeTab) ? previous : [...previous, activeTab]))
+  }, [activeTab])
+
   function changeTab(value: string) {
-    const next = parseTab(value)
-    setActiveTab(next)
-    setVisited((previous) => (previous.includes(next) ? previous : [...previous, next]))
-    const query = new URLSearchParams(searchParams.toString())
-    query.set('tab', next)
-    router.replace(`${pathname}?${query.toString()}`, { scroll: false })
+    const url = new URL(window.location.href)
+    url.searchParams.set('tab', parseTab(value))
+    window.history.replaceState(null, '', url)
   }
   const showAblations =
     !tenantAccess.isLoading && canShowAdminControlledNavigationModule(tenantAccess.data, 'ablations')
@@ -79,7 +73,7 @@ function EvaluationWorkspace() {
         <div className={styles.headerActions}>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost">
+              <Button variant="ghost" aria-label="高级诊断">
                 <SlidersHorizontal aria-hidden="true" />
                 <span>高级诊断</span>
               </Button>
@@ -111,24 +105,24 @@ function EvaluationWorkspace() {
             </TabsTrigger>
           ))}
         </TabsList>
-        {visited.includes('conversation') && (
+        {(activeTab === 'conversation' || visited.includes('conversation')) && (
           <TabsContent value="conversation" forceMount hidden={activeTab !== 'conversation'} className={styles.panel}>
             <ConversationEvaluation active={activeTab === 'conversation'} />
           </TabsContent>
         )}
-        {visited.includes('regression') && (
+        {(activeTab === 'regression' || visited.includes('regression')) && (
           <TabsContent value="regression" forceMount hidden={activeTab !== 'regression'} className={styles.panel}>
-            <RegressionTestTab embedded />
+            <RegressionTestTab />
           </TabsContent>
         )}
-        {visited.includes('queryset_health') && (
+        {(activeTab === 'queryset_health' || visited.includes('queryset_health')) && (
           <TabsContent
             value="queryset_health"
             forceMount
             hidden={activeTab !== 'queryset_health'}
             className={styles.scrollPanel}
           >
-            <QuerysetHealthTab embedded />
+            <QuerysetHealthTab />
           </TabsContent>
         )}
       </Tabs>

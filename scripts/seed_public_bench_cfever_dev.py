@@ -37,16 +37,17 @@ from uuid import UUID, uuid5
 
 from huggingface_hub import HfApi, hf_hub_download
 
-import app.models._all  # noqa: F401
-from app.core.database import Base, SessionLocal, engine
-from app.core.migrations import apply_runtime_migrations
-from app.models.dataset import Dataset, DatasetPermissionEnum
-from app.models.document import Document as DBDocument
-from app.models.document import DocumentChunk
-from app.services.indexer import Indexer
+import app.models.registry  # noqa: F401
+from app.infrastructure.database.connection import Base, SessionLocal, engine
+from app.infrastructure.database.migrations import apply_runtime_migrations
+from app.models.datasets.access import DatasetPermissionEnum
+from app.models.datasets.records import Dataset
+from app.models.documents.records import Document as DBDocument
+from app.models.documents.records import DocumentChunk
+from app.rag.ingestion.indexing.indexer import Indexer
 from app.types.indexing import ChunkInput
 
-MODEL_REGISTRY = app.models._all.REGISTERED_MODEL_MODULES
+MODEL_REGISTRY = app.models.registry.REGISTERED_MODEL_MODULES
 
 BENCH_KEY = "public_bench.cfever_dev.v1"
 REPO_ID = "IKMLab-team/cfever"
@@ -686,7 +687,7 @@ def main(argv: list[str] | None = None) -> int:
     args = p.parse_args(argv)
     dry_run = not args.execute
 
-    from app.core.config import settings
+    from app.infrastructure.config import settings
 
     hf_revision = args.hf_revision.strip() or None
     if not hf_revision:

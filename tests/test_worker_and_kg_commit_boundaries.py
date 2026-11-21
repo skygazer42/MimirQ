@@ -13,7 +13,7 @@ import pytest
 )
 @pytest.mark.parametrize("rollback_fails", [False, True])
 def test_kg_authoritative_commit_and_rollback_failures_propagate(operation, rollback_fails, monkeypatch):
-    from app.rag.kg.api import routes
+    from app.api.v1.knowledge_graph import routes
 
     db = MagicMock()
     original = RuntimeError("KG primary commit failed")
@@ -43,7 +43,7 @@ def test_kg_authoritative_commit_and_rollback_failures_propagate(operation, roll
 
 
 def test_kg_cache_token_commit_failure_cannot_return_success(monkeypatch):
-    from app.services import corpus_cache_tokens
+    from app.services.retrieval import corpus_tokens as corpus_cache_tokens
     from app.tasks import jobs
 
     db = MagicMock()

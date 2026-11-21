@@ -92,6 +92,7 @@ secretEnv:
 
   # Postgres / Redis / Vector store
   DATABASE_URL: ""
+  # External ARQ broker must use maxmemory-policy=noeviction; this chart does not configure Redis.
   REDIS_URL: ""
   VECTOR_BACKEND: "milvus"
   MILVUS_HOST: ""
@@ -284,8 +285,10 @@ persistence:
     enabled: true
     existingClaim: ""
     storageClassName: ""
+    # API and worker each mount this claim, even with one replica apiece.
+    # Select a storage class that supports ReadWriteMany on your cluster.
     accessModes:
-      - ReadWriteOnce
+      - ReadWriteMany
     size: 20Gi
 
 migrations:

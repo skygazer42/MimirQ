@@ -9,8 +9,8 @@ import { Input } from '@/components/ui/input'
 import { assignRef } from '@/lib/radix-utils'
 import { cn } from '@/lib/utils'
 
-export type SearchInputProps = Readonly<
-  Omit<React.InputHTMLAttributes<HTMLInputElement>, 'type' | 'value' | 'onChange'> & {
+type SearchInputProps = Readonly<
+  Omit<React.InputHTMLAttributes<HTMLInputElement>, 'type' | 'value' | 'defaultValue' | 'onChange'> & {
     value: string
     onValueChange: (next: string) => void
     containerClassName?: string
@@ -20,17 +20,36 @@ export type SearchInputProps = Readonly<
 >
 
 export const SearchInput = React.forwardRef<HTMLInputElement, SearchInputProps>(function SearchInput(
-  { value, onValueChange, containerClassName, inputClassName, onClear, placeholder, disabled, readOnly, ...props },
+  {
+    value,
+    onValueChange,
+    className,
+    containerClassName,
+    inputClassName,
+    onClear,
+    placeholder,
+    disabled,
+    readOnly,
+    ...props
+  },
   forwardedRef,
 ) {
   const t = useTranslations('CommonUi')
   const inputRef = React.useRef<HTMLInputElement | null>(null)
   const resolvedPlaceholder = placeholder ?? t('searchInput.placeholder')
 
-  const setRefs = (node: HTMLInputElement | null) => {
-    inputRef.current = node
-    assignRef(forwardedRef, node)
-  }
+  const setRefs = React.useCallback(
+    (node: HTMLInputElement | null) => {
+      inputRef.current = node
+      const cleanup = assignRef(forwardedRef, node)
+      if (typeof cleanup !== 'function') return
+      return () => {
+        inputRef.current = null
+        cleanup()
+      }
+    },
+    [forwardedRef],
+  )
 
   return (
     <div className={cn('relative [&:has(input:focus)_svg]:text-primary', containerClassName)}>
@@ -45,11 +64,12 @@ export const SearchInput = React.forwardRef<HTMLInputElement, SearchInputProps>(
         placeholder={resolvedPlaceholder}
         className={cn(
           'pl-9 pr-10 [&::-webkit-search-cancel-button]:appearance-none [&::-webkit-search-decoration]:appearance-none',
+          className,
           inputClassName,
         )}
         {...props}
       />
-      {value ? (
+      {value !== '' ? (
         <IconButton
           label={t('searchInput.clearLabel')}
           type="button"

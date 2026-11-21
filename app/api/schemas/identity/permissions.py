@@ -4,7 +4,7 @@ from uuid import UUID
 from pydantic import BaseModel, Field, field_validator
 
 from app.api.schemas.base import OrmModel
-from app.core.constants import UserRoles
+from app.infrastructure.security.roles import UserRoles
 
 _TENANT_ROLE_DESCRIPTION = "owner|admin|auditor|editor|dataset_operator|viewer"
 

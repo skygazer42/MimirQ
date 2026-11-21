@@ -1,4 +1,5 @@
 import type { IngestionPolicy, IngestionRule } from '@/types'
+import { recordSchema } from '@/lib/response-schema'
 
 export type RuleDraft = {
   id: string
@@ -51,19 +52,23 @@ export function ruleToDraft(rule: IngestionRule): RuleDraft {
       : '',
   }
 }
-export function draftToRule(draft: RuleDraft, rules: IngestionRule[], originalId: string | null): IngestionRule {
-  const id = draft.id.trim(),
-    name = draft.name.trim()
+export function draftToRule(
+  draft: RuleDraft,
+  rules: readonly IngestionRule[],
+  originalId: string | null,
+): IngestionRule {
+  const id = draft.id.trim()
+  const name = draft.name.trim()
   if (!/^[a-zA-Z0-9][a-zA-Z0-9_.:\-]{0,99}$/.test(id))
     throw new Error('规则 ID 需以字母或数字开头，最多100个字符，可使用 . _ : -。')
   if (rules.some((rule) => rule.id === id && rule.id !== originalId)) throw new Error('规则 ID 已存在，请换一个。')
-  if (!name || name.length > 200) throw new Error('请填写规则名称，最多200个字符。')
+  if (name.length === 0 || name.length > 200) throw new Error('请填写规则名称，最多200个字符。')
   const extensions = [
     ...new Set(
       draft.extensionsText
         .split(/[,，\s]+/)
         .map((value) => value.toLowerCase())
-        .filter(Boolean)
+        .filter((value) => value.length > 0)
         .map((value) => (value.startsWith('.') ? value : `.${value}`)),
     ),
   ]
@@ -72,37 +77,48 @@ export function draftToRule(draft: RuleDraft, rules: IngestionRule[], originalId
     extensions.some((value) => value.length > 12 || !/^\.[a-z0-9][a-z0-9._-]*$/.test(value))
   )
     throw new Error('扩展名格式有误；最多30项，每项不超过12个字符。')
-  if (draft.filenameRegex.trim().length > 200) throw new Error('文件名匹配表达式最多200个字符。')
+  const filenameRegex = draft.filenameRegex.trim()
+  if (filenameRegex.length > 200) throw new Error('文件名匹配表达式最多200个字符。')
   let patch: Record<string, unknown> = {}
-  if (draft.pipelinePatchJson.trim()) {
+  if (draft.pipelinePatchJson.trim() !== '') {
     const parsed: unknown = JSON.parse(draft.pipelinePatchJson)
-    if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed))
-      throw new Error('参数覆盖需填写 JSON 对象。')
-    patch = parsed as Record<string, unknown>
+    const result = recordSchema.safeParse(parsed)
+    if (!result.success) throw new Error('参数覆盖需填写 JSON 对象。')
+    patch = result.data
   }
   return {
     id,
     name,
     enabled: draft.enabled,
-    match: { extensions, filename_regex: draft.filenameRegex.trim() || null },
+    match: { extensions, filename_regex: filenameRegex === '' ? null : filenameRegex },
     preprocess: {
       enabled: draft.preprocessEnabled,
       steps: draft.preprocessStepIds.map((stepId) => ({ id: stepId, params: draft.stepParams[stepId] ?? {} })),
     },
-    parser_backend: draft.parserBackend || null,
-    chunk_strategy: draft.chunkStrategy || null,
-    governance_profile_ref: draft.governanceProfileRef || null,
+    parser_backend: draft.parserBackend === '' ? null : draft.parserBackend,
+    chunk_strategy: draft.chunkStrategy === '' ? null : draft.chunkStrategy,
+    governance_profile_ref: draft.governanceProfileRef === '' ? null : draft.governanceProfileRef,
     pipeline_patch: patch,
   }
 }
 export function insertTemplate(rules: IngestionRule[], additions: IngestionRule[], placement: TemplatePlacement) {
-  const next =
-    placement === 'replace' ? additions : placement === 'append' ? [...rules, ...additions] : [...additions, ...rules]
+  let next: IngestionRule[]
+  switch (placement) {
+    case 'prepend':
+      next = [...additions, ...rules]
+      break
+    case 'append':
+      next = [...rules, ...additions]
+      break
+    case 'replace':
+      next = additions
+      break
+  }
   if (next.length > 60) throw new Error('一套策略最多60条规则，请减少后再添加。')
   return next
 }
 export function policyPayload(policy: IngestionPolicy): IngestionPolicy {
-  return { version: policy.version ?? '1', rules: policy.rules ?? [] }
+  return { version: policy.version, rules: policy.rules }
 }
 export function formatPolicyDate(value: string | null | undefined) {
   if (!value) return '未记录'

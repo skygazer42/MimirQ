@@ -1,4 +1,5 @@
 import uuid
+from datetime import UTC, datetime
 from io import BytesIO
 from pathlib import Path
 from types import SimpleNamespace
@@ -54,6 +55,12 @@ class _CaptureDB:
 
     def refresh(self, obj: object) -> None:
         self.refreshed.append(obj)
+        obj.created_at = obj.updated_at = datetime.now(UTC)
+        obj.chunk_count = obj.total_characters = obj.processing_attempts = 0
+        obj.publication_status = "published"
+
+    def close(self) -> None:
+        pass
 
 
 def _upload_file(*, filename: str, content: bytes) -> UploadFile:
@@ -64,12 +71,16 @@ def _upload_file(*, filename: str, content: bytes) -> UploadFile:
 async def test_upload_parsing_document_persists_selected_dataset(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    import app.api.v1.parsing as parsing_module
+    import app.api.v1.pipelines.parsing as parsing_module
 
     tenant_id = uuid.uuid4()
     target_dataset_id = uuid.uuid4()
     target_dataset = SimpleNamespace(id=target_dataset_id, name="Company KB")
     db = _CaptureDB()
+    from app.services.runtime import retrieval_limiter as rag_runtime_limiter
+
+    monkeypatch.setattr(rag_runtime_limiter, "SessionLocal", lambda: db)
+    monkeypatch.setattr(parsing_module, "SessionLocal", lambda: db)
 
     monkeypatch.setattr(parsing_module.settings, "UPLOAD_DIR", str(tmp_path), raising=False)
     monkeypatch.setattr(parsing_module.dataset_service, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
@@ -95,29 +106,32 @@ async def test_upload_parsing_document_persists_selected_dataset(
 
     async def _save_upload_file(file: UploadFile, target_path: Path, max_bytes: int) -> int:  # noqa: ARG001
         data = await file.read()
+        target_path.parent.mkdir(parents=True, exist_ok=True)
         target_path.write_bytes(data)
         return len(data)
 
     monkeypatch.setattr(parsing_module, "save_upload_file", _save_upload_file, raising=True)
 
     result = await parsing_module.upload_parsing_document(
-        file=_upload_file(filename="contract.pdf", content=b"%PDF-1.4\nbody\n"),
-        parser_backend="auto",
-        dataset_id=target_dataset_id,
         tenant_id=tenant_id,
         account_id="acct-1",
-        db=db,
+        form=parsing_module.ParsingDocumentUploadForm(
+            file=_upload_file(filename="contract.pdf", content=b"%PDF-1.4\nbody\n"),
+            parser_backend="auto",
+            dataset_id=target_dataset_id,
+        ),
     )
 
     assert result.dataset_id == target_dataset_id
     assert result.owner_id == "acct-1"
-    assert result.doc_metadata["workspace"] == "parsing"
-    assert result.doc_metadata["target_dataset_id"] == str(target_dataset_id)
-    assert result.doc_metadata["target_dataset_name"] == "Company KB"
-    assert Path(str(result.file_path)).exists()
-    assert db.added == [result]
+    assert result.metadata["workspace"] == "parsing"
+    assert result.metadata["target_dataset_id"] == str(target_dataset_id)
+    assert result.metadata["target_dataset_name"] == "Company KB"
+    assert Path(str(db.added[0].file_path)).exists()
+    assert len(db.added) == 1
+    assert db.added[0].id == result.id
     assert db.commits == 1
-    assert db.refreshed == [result]
+    assert db.refreshed == db.added
 
 
 @pytest.mark.asyncio
@@ -125,13 +139,17 @@ async def test_upload_parsing_document_uses_selected_dataset_for_object_storage(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    import app.api.v1.parsing as parsing_module
+    import app.api.v1.pipelines.parsing as parsing_module
 
     tenant_id = uuid.uuid4()
     target_dataset_id = uuid.uuid4()
     target_dataset = SimpleNamespace(id=target_dataset_id, name="Company KB")
     db = _CaptureDB()
     upload_calls: list[dict[str, str]] = []
+    from app.services.runtime import retrieval_limiter as rag_runtime_limiter
+
+    monkeypatch.setattr(rag_runtime_limiter, "SessionLocal", lambda: db)
+    monkeypatch.setattr(parsing_module, "SessionLocal", lambda: db)
 
     class _Store:
         def upload_document_file(self, **kwargs: str) -> str:  # noqa: ANN003
@@ -160,6 +178,9 @@ async def test_upload_parsing_document_uses_selected_dataset_for_object_storage(
     )
     monkeypatch.setattr(parsing_module, "document_object_storage_enabled", lambda: True, raising=True)
     monkeypatch.setattr(parsing_module, "get_document_object_store", lambda: _Store(), raising=True)
+    from app.services.documents import source_persistence as document_source_persistence
+
+    monkeypatch.setattr(document_source_persistence, "get_document_object_store", lambda: _Store())
     monkeypatch.setattr(
         parsing_module, "is_object_storage_uri", lambda value: str(value).startswith("minio://"), raising=True
     )
@@ -173,22 +194,24 @@ async def test_upload_parsing_document_uses_selected_dataset_for_object_storage(
     async def _save_upload_file(file: UploadFile, target_path: Path, max_bytes: int) -> int:  # noqa: ARG001
         data = await file.read()
         target_path.parent.mkdir(parents=True, exist_ok=True)
+        target_path.parent.mkdir(parents=True, exist_ok=True)
         target_path.write_bytes(data)
         return len(data)
 
     monkeypatch.setattr(parsing_module, "save_upload_file", _save_upload_file, raising=True)
 
     result = await parsing_module.upload_parsing_document(
-        file=_upload_file(filename="contract.pdf", content=b"%PDF-1.4\nbody\n"),
-        parser_backend="auto",
-        dataset_id=target_dataset_id,
         tenant_id=tenant_id,
         account_id="acct-1",
-        db=db,
+        form=parsing_module.ParsingDocumentUploadForm(
+            file=_upload_file(filename="contract.pdf", content=b"%PDF-1.4\nbody\n"),
+            parser_backend="auto",
+            dataset_id=target_dataset_id,
+        ),
     )
 
     assert result.dataset_id == target_dataset_id
-    assert result.file_path == "minio://bucket/doc.pdf"
+    assert db.added[0].file_path == "minio://bucket/doc.pdf"
     assert len(upload_calls) == 1
     upload_call = upload_calls[0]
     assert str(upload_call["file_path"]) == str(
@@ -209,7 +232,7 @@ async def test_upload_parsing_document_uses_selected_dataset_for_object_storage(
 def test_list_parsing_documents_default_scope_includes_owner_bound_company_docs(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.parsing as parsing_module
+    import app.api.v1.pipelines.parsing as parsing_module
 
     tenant_id = uuid.uuid4()
     workspace_dataset_id = uuid.uuid4()
@@ -229,9 +252,7 @@ def test_list_parsing_documents_default_scope_includes_owner_bound_company_docs(
     )
 
     parsing_module.list_parsing_documents(
-        tenant_id=tenant_id,
-        account_id="acct-1",
-        db=db,
+        tenant_id=tenant_id, account_id="acct-1", db=db, params=parsing_module.ParsingDocumentListQuery()
     )
 
     joined_filters = "\n".join(str(filter_expr) for filter_expr in db.query_obj.filters)
@@ -243,7 +264,7 @@ def test_list_parsing_documents_default_scope_includes_owner_bound_company_docs(
 def test_list_parsing_documents_dataset_filter_uses_real_dataset_with_legacy_fallback(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.parsing as parsing_module
+    import app.api.v1.pipelines.parsing as parsing_module
 
     tenant_id = uuid.uuid4()
     workspace_dataset_id = uuid.uuid4()
@@ -270,10 +291,10 @@ def test_list_parsing_documents_dataset_filter_uses_real_dataset_with_legacy_fal
     )
 
     parsing_module.list_parsing_documents(
-        dataset_id=target_dataset_id,
         tenant_id=tenant_id,
         account_id="acct-1",
         db=db,
+        params=parsing_module.ParsingDocumentListQuery(dataset_id=target_dataset_id),
     )
 
     joined_filters = "\n".join(str(filter_expr) for filter_expr in db.query_obj.filters)
@@ -284,7 +305,7 @@ def test_list_parsing_documents_dataset_filter_uses_real_dataset_with_legacy_fal
 def test_get_workspace_document_hides_owner_scoped_company_doc_from_other_users(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.parsing as parsing_module
+    import app.api.v1.pipelines.parsing as parsing_module
 
     tenant_id = uuid.uuid4()
     target_dataset_id = uuid.uuid4()

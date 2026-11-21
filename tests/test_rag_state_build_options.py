@@ -2,7 +2,7 @@ import sys
 from types import SimpleNamespace
 from typing import Any
 
-from app.rag.pipelines import langgraph
+from app.rag.runtime.graph import state as langgraph
 
 
 def test_build_rag_state_does_not_deepcopy_runtime_database_dependency(monkeypatch) -> None:

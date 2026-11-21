@@ -1,20 +1,6 @@
-export type RagMetricsSummaryResponse = {
-  enabled: boolean
-  path: string
-  window_minutes: number
-  truncated: boolean
-  record_count: number
-  rag_trace_count: number
-  reranker_api_count: number
-  retrieval_avg_elapsed_sec?: number | null
-  retrieval_p95_elapsed_sec?: number | null
-  rerank_avg_elapsed_sec?: number | null
-  citations_avg_count?: number | null
-  retrieval_mode_counts: Record<string, number>
-  hit_type_counts: Record<string, number>
-  error_counts: Record<string, number>
-  timeseries: Record<string, unknown[]>
-}
+import type { OpenApiSchema } from './backend'
+
+export type RagMetricsSummaryResponse = OpenApiSchema<'RagMetricsSummaryResponse'>
 
 export type OnlineQualitySummaryResponse = {
   enabled: boolean
@@ -30,44 +16,11 @@ export type OnlineQualitySummaryResponse = {
   alerts: Array<Record<string, unknown>>
 }
 
-export type QuerysetHealthRunsResponse = {
-  enabled: boolean
-  path: string
-  total: number
-  truncated: boolean
-  items: Array<Record<string, unknown>>
-  timeseries: Record<string, unknown[]>
-}
+export type QuerysetHealthRunsResponse = OpenApiSchema<'QuerysetHealthRunsResponse'>
 
-export type QuerysetHealthDiffResponse = {
-  diff: Record<string, unknown>
-}
+export type QuerysetHealthDiffResponse = OpenApiSchema<'QuerysetHealthDiffResponse'>
 
-export type RagQueryAnalyticsResponse = {
-  enabled: boolean
-  path: string
-  window_minutes: number
-  truncated: boolean
-  record_count: number
-  rag_trace_count: number
-  unique_query_hashes: number
-
-  zero_hit_count: number
-  zero_hit_rate?: number | null
-
-  slow_threshold_sec: number
-  slow_count: number
-  slow_rate?: number | null
-
-  retrieval_p50_elapsed_sec?: number | null
-  retrieval_p95_elapsed_sec?: number | null
-  retrieval_p99_elapsed_sec?: number | null
-
-  error_kind_counts: Record<string, number>
-  top_zero_hit_queries: Array<{ query_hash: string; count: number } | Record<string, unknown>>
-  top_slow_queries: Array<{ query_hash: string; count: number; max_elapsed_sec: number } | Record<string, unknown>>
-  timeseries: Record<string, unknown[]>
-}
+export type RagQueryAnalyticsResponse = OpenApiSchema<'RagQueryAnalyticsResponse'>
 
 export type DepsDiagnosticsResponse = {
   schema: string
@@ -265,14 +218,7 @@ export type IndexAuditResponse = {
   index_channels?: IndexAuditChannelSummary
 }
 
-export type IndexAuditReconcileResponse = {
-  schema?: string
-  task_id?: string | null
-  reconcile_task_id?: string | null
-  status?: string | null
-  enqueued?: boolean | null
-  message?: string | null
-}
+export type IndexAuditReconcileResponse = OpenApiSchema<'IndexAuditReconcileResponse'>
 
 export type IndexAuditReconcileEnqueueRequest = {
   dataset_id: string
@@ -325,5 +271,5 @@ export type IngestionDashboardSummaryResponse = {
   avg_completed_latency_sec?: number | null
 
   top_error_reasons: Record<string, number>
-  timeseries: Record<string, any[]>
+  timeseries: OpenApiSchema<'IngestionTimeseries'>
 }

@@ -10,7 +10,7 @@ Status: implemented
 
 表格页持有当前 dataset／table 选择的局部身份；切换选择时退休原身份和其结果／忙碌状态。详情、查询、问答和过滤只发布仍属于当前身份的成功、错误和完成状态。身份在点击时同步建立，页内自动选择变化和卸载也更新其归属，旧结果不能重新接管新选择。
 
-预检摘要归属于发起它的 effect，切换扫描或卸载后停止发布旧成功和失败。保留已有 SSE controller／run 身份检查。画像轮询使用原有 pollTimerRef 的实际定时器身份；等待期间该资源被清除或替换后，旧响应不再写状态、显示错误或安排下一次轮询。
+预检摘要归属于发起它的 effect，切换扫描或卸载后停止发布旧成功和失败。保留已有 SSE controller／run 身份检查。画像轮询归属于当前 Effect 的实际 runId/controller/timer；等待期间该资源被清除或替换后，旧响应不再写状态、显示错误或安排下一次轮询。[画像操作的后续整理](2026-11-17-dataset-profile-contracts-and-initial-details.md)用同一 Effect 内的 signal/timer 清理替换了原 pollTimerRef/callback ref，结束约束不变，当前运行表现未重测。
 
 保留所有 JSX、DOM、classes、文案、HTTP 方法／参数、权限、请求预算、轮询间隔、默认和普通失败策略。不引入通用请求管理器、Hook、模块或新依赖。
 
@@ -21,6 +21,8 @@ Status: implemented
 - 只保护成功分支仍允许旧错误、finally 或摘要失败清空新状态，因此同时约束这些发布路径。
 
 ## Consequences
+
+表格页的请求归属后来改由 React 组件身份和 TanStack Query 表达。目录只持有表格 ID，详情按数据集和表格身份隔离。切表时，SQL、问答和筛选的结果、错误及请求状态随原详情视图退场。同一数据集内，问答和筛选输入继续保留。详情响应与目录数据分别负责预览和基本信息。当前范围见[表格选择的规范依据](../../../../.frontend-structure/20261118-account-theme-tables/table-selection-evidence.json)。本次做了源码与差异检查，下面的运行结果属于旧实现。
 
 同一份真实 React DOM／QueryClient 和受控 API 测试在固定基线上得到 7 个失败、3 个正常流程通过；修复后同一 10 例全部通过。验证覆盖真实按钮、原 Radix 历史选择器、晚响应与卸载后请求次数；外部 API 和无关布局／图表为明确替身，不宣称真实后端或浏览器视觉验收。
 

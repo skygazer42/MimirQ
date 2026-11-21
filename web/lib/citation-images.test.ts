@@ -21,6 +21,8 @@ describe('citation image route boundary', () => {
     const { API_BASE_URL } = await import('./env')
     expect(API_BASE_URL).toBe('')
 
+    expect(resolveSafeCitationImageUrl(null)).toBeNull()
+    expect(resolveSafeCitationImageUrl('  ')).toBeNull()
     expect(resolveSafeCitationImageUrl('/api/v1/documents/image/image-a')).toBe(
       `${window.location.origin}/api/v1/documents/image/image-a`,
     )

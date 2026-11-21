@@ -80,17 +80,17 @@ export function SimilarityDiagnosticsView({
           <div className="grid gap-3 sm:grid-cols-3">
             <DiagnosticMetricCard
               label="诊断节点"
-              value={String(diagnostics.summary.totalNodes)}
+              value={diagnostics.summary.totalNodes}
               hint="当前 X/Y 两侧共同参与投影的节点数"
             />
             <DiagnosticMetricCard
               label="邻域连线"
-              value={String(diagnostics.summary.totalLinks)}
+              value={diagnostics.summary.totalLinks}
               hint="按当前筛选保留下来的高相似度近邻边"
             />
             <DiagnosticMetricCard
               label="活跃异常点"
-              value={String(diagnostics.summary.activeOutlierCount)}
+              value={diagnostics.summary.activeOutlierCount}
               hint="仍然需要人工处理的高分异常候选"
             />
           </div>
@@ -98,7 +98,7 @@ export function SimilarityDiagnosticsView({
           <section className="rounded-[1.35rem] border border-border/36 bg-card/62 p-3 shadow-[inset_0_1px_0_hsl(var(--card)/0.55)]">
             <div className="flex flex-col gap-3 border-b border-border/32 pb-3 md:flex-row md:items-start md:justify-between">
               <div>
-                <div className="text-sm font-semibold">3D 投影预览</div>
+                <h3 className="text-sm font-semibold">3D 投影预览</h3>
                 <p className="mt-1 text-xs text-muted-foreground">
                   基于当前相似度矩阵重建局部向量邻域，帮助观察高分簇、孤立点和异常连线。
                 </p>
@@ -119,7 +119,7 @@ export function SimilarityDiagnosticsView({
 
         <section className="overflow-hidden rounded-[1.35rem] border border-border/36 bg-card/62 shadow-[inset_0_1px_0_hsl(var(--card)/0.55)]">
           <div className="border-b border-border/32 p-4">
-            <div className="text-sm font-semibold">异常点标注</div>
+            <h3 className="text-sm font-semibold">异常点标注</h3>
             <p className="mt-1 text-xs text-muted-foreground">
               高分但词面支撑偏弱的候选会列在这里，可直接禁用候选或标记待审。
             </p>
@@ -150,7 +150,7 @@ export function SimilarityDiagnosticsView({
                       <span
                         className={cn(
                           'rounded-full border px-2 py-0.5 text-[11px]',
-                          diagnosticCandidateStatusClass(isDisabled, isMarked),
+                          diagnosticCandidateStatusClass(isDisabled),
                         )}
                       >
                         {diagnosticCandidateStatusLabel(isDisabled, isMarked)}
@@ -240,7 +240,7 @@ export function RelatedListCard({
                   <div
                     className="h-full rounded-full bg-foreground/60"
                     style={{
-                      width: `${Math.max(4, Math.min(100, item.value * 100))}%`,
+                      width: `${Math.max(0, Math.min(100, item.value * 100))}%`,
                     }}
                   />
                 </div>
@@ -263,7 +263,7 @@ function DiagnosticMetricCard({
   compact = false,
 }: Readonly<{
   label: string
-  value: string
+  value: string | number
   hint?: string
   compact?: boolean
 }>) {
@@ -280,6 +280,15 @@ export function StatsGrid({ children }: Readonly<{ children: ReactNode }>) {
   return <div className="grid grid-cols-2 gap-2">{children}</div>
 }
 
+const STAT_TONE_CLASSES = {
+  default: 'text-foreground',
+  muted: 'text-muted-foreground',
+  info: 'text-foreground',
+  success: 'text-success',
+  warning: 'text-warning',
+  danger: 'text-destructive',
+}
+
 export function StatsItem({
   label,
   value,
@@ -287,26 +296,10 @@ export function StatsItem({
 }: Readonly<{
   label: string
   value: ReactNode
-  tone?: 'default' | 'muted' | 'info' | 'success' | 'warning' | 'danger'
+  tone?: keyof typeof STAT_TONE_CLASSES
 }>) {
-  const toneClass = (() => {
-    if (tone === 'success') {
-      return 'text-success'
-    } else if (tone === 'warning') {
-      return 'text-warning'
-    } else if (tone === 'danger') {
-      return 'text-destructive'
-    } else if (tone === 'info') {
-      return 'text-foreground'
-    } else if (tone === 'muted') {
-      return 'text-muted-foreground'
-    } else {
-      return 'text-foreground'
-    }
-  })()
-
   return (
-    <div className={cn('border-b border-border py-3', toneClass)}>
+    <div className={cn('border-b border-border py-3', STAT_TONE_CLASSES[tone])}>
       <div className="text-[13px] font-medium text-muted-foreground">{label}</div>
       <div className="text-sm font-semibold mt-1">{value}</div>
     </div>

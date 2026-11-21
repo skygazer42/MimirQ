@@ -28,12 +28,12 @@ def evaluate_answer_deterministic(
     norm_gold = _normalize(gold_answer)
     answer_em = 1.0 if (not is_unanswerable and norm_answer == norm_gold and norm_gold) else 0.0
 
-    answer_tokens = _tokenize(norm_answer)
-    gold_tokens = _tokenize(norm_gold)
+    answer_tokens = set(_tokenize(norm_answer))
+    gold_tokens = set(_tokenize(norm_gold))
     if answer_tokens and gold_tokens:
-        overlap = len(set(answer_tokens) & set(gold_tokens))
-        precision = overlap / len(set(answer_tokens))
-        recall = overlap / len(set(gold_tokens))
+        overlap = len(answer_tokens & gold_tokens)
+        precision = overlap / len(answer_tokens)
+        recall = overlap / len(gold_tokens)
         answer_f1 = 0.0 if precision + recall == 0 else round(2 * precision * recall / (precision + recall), 4)
     else:
         answer_f1 = answer_em

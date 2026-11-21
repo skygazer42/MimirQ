@@ -4,12 +4,12 @@ from uuid import uuid4
 import pytest
 from pydantic import ValidationError
 
-from app.models.connector import ConnectorRun, ConnectorRunDocument
-from app.models.connector_config import ConnectorConfig
-from app.models.document_index_channel import DocumentIndexChannel
-from app.services.connector_config_operations import _config_out
-from app.services.connector_run_operations import _run_out
-from app.services.document_index_channel_service import document_index_channel_status
+from app.models.connectors.configs import ConnectorConfig
+from app.models.connectors.runs import ConnectorRun, ConnectorRunDocument
+from app.models.documents.records import DocumentIndexChannel
+from app.rag.ingestion.indexing.index_channels import document_index_channel_status
+from app.services.connectors.configs import _config_out
+from app.services.connectors.runs import _run_out
 
 
 def _saved_config(**overrides) -> ConnectorConfig:
@@ -81,6 +81,33 @@ def test_connector_run_keeps_an_explicit_empty_acl_summary() -> None:
 
     assert result.acl_summary is not None
     assert result.acl_summary.documents_total == 0
+
+
+@pytest.mark.parametrize(
+    ("connector_id", "supports_retry_failed", "supports_resume"),
+    [
+        ("url_batch", True, True),
+        ("web_crawl", True, True),
+        ("minio_bucket", False, True),
+        ("mysql_catalog", False, True),
+        ("sqlserver_catalog", False, True),
+        ("confluence_space", False, False),
+        ("jira_project", False, False),
+        ("github_repo", False, False),
+        ("drive_files", False, False),
+    ],
+)
+def test_connector_run_exposes_only_implemented_recovery_actions(
+    connector_id: str, supports_retry_failed: bool, supports_resume: bool
+) -> None:
+    result = _run_out(_run(connector_id=connector_id, stats={"failed_urls": ["https://example.test/failed"]}))
+
+    assert result.supports_retry_failed is supports_retry_failed
+    assert result.supports_resume is supports_resume
+
+
+def test_connector_run_without_failed_urls_does_not_offer_failed_item_retry() -> None:
+    assert _run_out(_run(status="failed", stats={})).supports_retry_failed is False
 
 
 @pytest.mark.parametrize("owner", ["config", "run"])

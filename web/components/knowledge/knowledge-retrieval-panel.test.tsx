@@ -247,8 +247,8 @@ describe('KnowledgeRetrievalPanel', () => {
     expect(result).toEqual({
       status: 'error',
       message: '索引修复状态轮询超时，请稍后手动刷新审计结果',
-      backendStatus: 'unknown',
-      currentIndexReadiness: null,
+      backendStatus: 'pending',
+      currentIndexReadiness: 'pending: bm25',
     })
   })
 })

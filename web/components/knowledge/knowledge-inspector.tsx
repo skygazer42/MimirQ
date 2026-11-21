@@ -1,27 +1,22 @@
 'use client'
 
 import { Layers, Route } from '@/components/icons'
-import type { ReactNode } from 'react'
 import { getFileTypeMeta } from '@/components/knowledge/file-type'
 import { Button } from '@/components/ui/button'
 import { Link } from '@/i18n/navigation'
 import { buildChunkPreviewDocumentHref } from '@/lib/chunk-preview-links'
 import { getUserTagsFromDocument } from '@/lib/document-user-tags'
-import { toTrimmedPrimitiveString } from '@/lib/primitive-text'
-import { cn, formatDate, formatFileSize } from '@/lib/utils'
-import type { Document } from '@/types'
+import { formatDate, formatFileSize } from '@/lib/utils'
+import type { Document } from '@/types/documents'
 
 import styles from './knowledge-page.module.css'
 
 type KnowledgeInspectorProps = {
-  selectedDocs: Document[]
+  document: Document | null
   datasetLabel?: string
-  children?: ReactNode
-  className?: string
-  embedded?: boolean
 }
 
-const STATUS_LABELS: Record<string, string> = {
+const STATUS_LABELS: Record<Document['status'], string> = {
   completed: '已就绪',
   pending: '等待处理',
   processing: '处理中',
@@ -31,36 +26,32 @@ const STATUS_LABELS: Record<string, string> = {
   deleting: '删除中',
 }
 
-export function KnowledgeInspector({
-  selectedDocs,
-  datasetLabel,
-  children,
-  className,
-}: Readonly<KnowledgeInspectorProps>) {
-  const selected = selectedDocs.length === 1 ? selectedDocs[0] : null
-  if (!selected) return <div className={cn(styles.inspector, className)}>选择一份文档以查看详情。</div>
+export function KnowledgeInspector({ document: selected, datasetLabel }: Readonly<KnowledgeInspectorProps>) {
+  if (selected === null) return <div className={styles.inspector}>选择一份文档以查看详情。</div>
 
   const fileType = getFileTypeMeta(selected)
   const TypeIcon = fileType.icon
-  const sourcePath = toTrimmedPrimitiveString(selected.metadata?.source_path)
-  const parserId = toTrimmedPrimitiveString(selected.metadata?.parser_backend)
-  const parser = !parserId || parserId === 'auto' ? '自动' : parserId
+  const rawSourcePath = selected.metadata?.source_path
+  const sourcePath = typeof rawSourcePath === 'string' ? rawSourcePath.trim() : undefined
+  const parserBackend = selected.metadata?.parser_backend
+  const parserId = typeof parserBackend === 'string' ? parserBackend.trim() : undefined
+  const parser = parserId === undefined || parserId.length === 0 ? '未提供' : parserId === 'auto' ? '自动' : parserId
   const userTags = getUserTagsFromDocument(selected)
   const details = [
-    ['处理状态', STATUS_LABELS[selected.status] || selected.status],
+    ['处理状态', STATUS_LABELS[selected.status]],
     ['生命周期', selected.archived_at ? '已归档' : selected.disabled_at ? '已禁用' : '启用中'],
-    ['所属数据集', datasetLabel || selected.dataset_id || '未分类'],
-    ['文件大小', formatFileSize(Number(selected.file_size || 0))],
-    ['分块数', String(selected.chunk_count ?? 0)],
+    ['所属数据集', datasetLabel ?? selected.dataset_id ?? '未分类'],
+    ['文件大小', formatFileSize(selected.file_size)],
+    ['分块数', String(selected.chunk_count)],
     ['上传时间', formatDate(selected.created_at)],
-    ['更新时间', formatDate(selected.updated_at || selected.created_at)],
+    ['更新时间', formatDate(selected.updated_at)],
     ['解析器', parser],
-    ...(userTags.length ? [['标签', userTags.join('、')]] : []),
+    ...(userTags.length > 0 ? [['标签', userTags.join('、')]] : []),
     ['文档 ID', selected.id],
   ]
 
   return (
-    <div className={cn(styles.inspector, className)}>
+    <div className={styles.inspector}>
       <div className={styles.inspectorIdentity}>
         <TypeIcon appearance="color" aria-hidden="true" />
         <div>
@@ -82,7 +73,7 @@ export function KnowledgeInspector({
           </div>
         ))}
       </dl>
-      {sourcePath ? (
+      {sourcePath !== undefined && sourcePath.length > 0 ? (
         <div className={styles.inspectorSource}>
           <h4>来源路径</h4>
           <p>{sourcePath}</p>
@@ -91,18 +82,17 @@ export function KnowledgeInspector({
       <div className={styles.inspectorActions}>
         <Button asChild variant="outline" size="sm">
           <Link href={buildChunkPreviewDocumentHref(selected.id)} target="_blank" rel="noopener noreferrer">
-            <Layers className="size-4" />
+            <Layers className="size-4" aria-hidden="true" />
             切片管理
           </Link>
         </Button>
         <Button asChild variant="ghost" size="sm">
-          <Link href={'/knowledge/' + selected.id + '/health'}>
-            <Route className="size-4" />
+          <Link href={`/knowledge/${selected.id}/health`}>
+            <Route className="size-4" aria-hidden="true" />
             健康卡片
           </Link>
         </Button>
       </div>
-      {children}
     </div>
   )
 }

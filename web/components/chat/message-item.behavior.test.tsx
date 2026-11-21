@@ -36,10 +36,10 @@ vi.mock('@/store/document-view', () => ({ useDocumentView: () => ({ openDocument
 vi.mock('@/lib/document-view-prefetch', () => ({ prefetchDocumentView: boundary.prefetch }))
 vi.mock('@/lib/client-logging', () => ({ reportClientError: vi.fn() }))
 vi.mock('sonner', () => ({ toast: { success: boundary.success, error: boundary.error } }))
-vi.mock('@/components/auth-image', () => ({
+vi.mock('@/components/auth-image', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/components/auth-image')>()),
   // eslint-disable-next-line @next/next/no-img-element -- Native image double exposes Markdown URL filtering in the DOM.
   AuthImage: ({ src, alt }: { src: string; alt: string }) => <img src={src} alt={alt} />,
-  useResolvedAuthAssetUrl: (src: string | null) => src,
 }))
 
 import { AUTH_SCOPE_CHANGED_EVENT, setAccessToken, setAuthSession } from '@/lib/auth-storage'
@@ -81,6 +81,13 @@ function feedback(rating = 2): MessageFeedback {
     tags: ['review'],
     reason: '可复现问题',
     expected_answer: '正确答案',
+    category: null,
+    category_source: null,
+    query_hash: null,
+    retrieval_trace_ref: null,
+    profile: null,
+    judge_score_ref: null,
+    extra: {},
     created_at: '2026-11-05T00:00:00Z',
     updated_at: '2026-11-05T00:00:00Z',
   }
@@ -149,7 +156,7 @@ describe('message rendering contracts', () => {
       const view = mount(
         assistant({
           content: '回答 [来源](mimirq-citation://evidence?document_id=document-a&chunk_id=chunk-a)',
-          citations: [citation()],
+          citations: [citation({ chunk_index: 0 })],
         }),
         variant,
       )
@@ -178,13 +185,135 @@ describe('message rendering contracts', () => {
             chunkId: 'chunk-a',
             documentName: '参考文档',
             chunkContent: '证据内容',
-            chunkIndex: null,
+            chunkIndex: 0,
             pageNumber: 3,
           },
         }),
       )
     },
   )
+
+  it('keeps an explicit inline range and page ahead of matching citation metadata', () => {
+    const view = mount(
+      assistant({
+        content:
+          '回答 [来源](mimirq-citation://evidence?document_id=document-a&chunk_id=chunk-a&start_char=0&end_char=8&page=2)',
+        citations: [citation()],
+      }),
+    )
+    act(() => button(view.container, '来源').click())
+
+    expect(boundary.openDocument).toHaveBeenCalledWith(
+      'document-a',
+      'chunk-a',
+      { start: 0, end: 8 },
+      expect.objectContaining({
+        previewAnchor: { pageNumber: 2 },
+        sourceContext: expect.objectContaining({ chunkContent: '证据内容', pageNumber: 3 }),
+      }),
+    )
+  })
+
+  it.each(['  quoted text\n\n', ''])('preserves citation source text at the actual viewer entry: %j', (content) => {
+    const view = mount(
+      assistant({
+        content: '回答 [来源](mimirq-citation://evidence?document_id=document-a&chunk_id=chunk-a)',
+        citations: [citation({ chunk_content: content })],
+      }),
+      'default',
+    )
+    act(() => button(view.container, '来源').click())
+    expect(boundary.openDocument).toHaveBeenCalledWith(
+      'document-a',
+      'chunk-a',
+      expect.anything(),
+      expect.objectContaining({ sourceContext: expect.objectContaining({ chunkContent: content }) }),
+    )
+  })
+
+  it('preserves a zero page and a zero rerank score on citation cards', () => {
+    const view = mount(
+      assistant({ citations: [citation({ page_number: 0, rerank_score: 0, vector_score: 0.8 })] }),
+      'default',
+    )
+    const title = Array.from(view.container.querySelectorAll('p')).find((item) =>
+      item.textContent?.startsWith('参考文档'),
+    )
+    expect(title).toBeDefined()
+    expect(title?.textContent).toContain('P.0')
+    expect(view.container.textContent).toContain('重排 0%')
+    expect(view.container.querySelector('[title*="重排 0% · 向量 80%"]')).not.toBeNull()
+  })
+
+  it.each([
+    { documentId: 'document-a', chunkId: 'chunk-missing' },
+    { documentId: 'document-b', chunkId: 'chunk-a' },
+  ])('preserves the explicit inline citation target $documentId/$chunkId when no exact metadata matches', (target) => {
+    const view = mount(
+      assistant({
+        content: `回答 [来源](mimirq-citation://evidence?document_id=${target.documentId}&chunk_id=${target.chunkId})`,
+        citations: [citation()],
+      }),
+    )
+    const link = button(view.container, '来源')
+    act(() => {
+      link.dispatchEvent(new FocusEvent('focusin', { bubbles: true }))
+      link.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }))
+      link.click()
+    })
+    expect(boundary.prefetch).toHaveBeenCalledWith(expect.objectContaining(target))
+    expect(boundary.openDocument).toHaveBeenCalledWith(
+      target.documentId,
+      target.chunkId,
+      undefined,
+      expect.objectContaining({
+        sourceContext: expect.objectContaining({
+          documentId: target.documentId,
+          chunkId: target.chunkId,
+          chunkContent: undefined,
+        }),
+      }),
+    )
+  })
+
+  it('passes exact citation text and zero metadata through the actual claim evidence entry', () => {
+    const content = '  claim source\n\n'
+    const view = mount(
+      assistant({
+        citations: [citation({ chunk_content: content, page_number: 0, chunk_index: 0 })],
+        message_metadata: {
+          claim_evidence: [
+            {
+              claim: 'Claim body',
+              evidence: [
+                {
+                  document_id: 'document-a',
+                  chunk_id: 'chunk-a',
+                  start_char: 0,
+                  end_char: 8,
+                  quote: 'Claim quote',
+                  score: 0,
+                },
+              ],
+            },
+          ],
+        },
+      }),
+    )
+    const target = Array.from(view.container.querySelectorAll('button')).find((item) =>
+      item.textContent?.includes('Claim quote'),
+    )
+    expect(target).toBeDefined()
+    act(() => target!.click())
+    expect(boundary.openDocument).toHaveBeenCalledWith(
+      'document-a',
+      'chunk-a',
+      { start: 0, end: 8 },
+      expect.objectContaining({
+        sourceContext: expect.objectContaining({ chunkContent: content, chunkIndex: 0, pageNumber: 0 }),
+      }),
+    )
+  })
 
   it('keeps unsafe schemes, raw HTML and blocked images out of the message DOM', () => {
     const view = mount(

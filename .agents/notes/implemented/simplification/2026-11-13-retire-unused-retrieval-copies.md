@@ -12,7 +12,7 @@ Status: implemented
 
 引用核查覆盖 app、scripts、Alembic、配置、动态导入入口、公开导出和开发文档。旧 Python 测试直接导入这些副本，不算生产调用；用户已排除测试维护，不因冻结用例恢复重复实现。当前的 schema、字段默认值、校验顺序、字段集与检索预算没有通过这次删除改变。
 
-只有一行空导出的 app/middleware 包也退出；实际中间件仍在 app/api/middleware。模型公共导出与完整 metadata 注册各有实际调用，分别保留 __init__.py 与 _all.py；后者的说明包含真实的应用启动用途。
+只有一行空导出的 app/middleware 包也退出；实际中间件仍在 app/api/middleware。本篇当时保留的模型公共导出和 metadata 注册入口，由后续[应用模块所有者](../architecture/2026-11-15-app-module-owners.md)承接：当前真实调用方明确使用 registry.py 完整注册，模型类从定义模块导入；根包只保留说明。本篇继续持有未使用 API／内部副本和空中间件包退出的决定。
 
 ## Alternatives considered
 

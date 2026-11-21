@@ -2,7 +2,7 @@
 
 import { OperationalWorkspace } from '@/components/ui/operational-workspace'
 import { Button } from '@/components/ui/button'
-import { useRouter } from '@/i18n/navigation'
+import { Link, useRouter } from '@/i18n/navigation'
 import { EvidenceSuiteWorkbenchShell } from '@/components/evidence/evidence-suite-workbench-shell'
 import { useEvidenceSuiteWorkbenchState } from '@/components/evidence/use-evidence-suite-workbench-state'
 
@@ -23,8 +23,8 @@ export function EvidenceSuiteWorkbench({
       context={state.dataset?.name ?? (state.datasetLoading ? '正在读取数据集…' : '数据集未取得')}
       back={() => router.push('/datasets')}
       actions={
-        <Button variant="outline" onClick={() => router.push(`/datasets/${datasetId}/profile`)}>
-          数据画像
+        <Button asChild variant="outline">
+          <Link href={`/datasets/${encodeURIComponent(datasetId)}/profile`}>数据画像</Link>
         </Button>
       }
     >

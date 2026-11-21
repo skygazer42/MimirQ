@@ -11,7 +11,7 @@ from pydantic import ValidationError
 
 @pytest.mark.parametrize("backend", ["tcadp", "TCADP Parser"])
 def test_settings_parser_write_rejects_retired_value_while_shared_read_stays_available(backend):
-    from app.api.schemas.settings import RAGConfig, UpdateSettingsRequest
+    from app.api.schemas.system.settings import RAGConfig, UpdateSettingsRequest
 
     saved = RAGConfig(default_parser_backend=backend)
     assert saved.default_parser_backend == backend
@@ -20,7 +20,7 @@ def test_settings_parser_write_rejects_retired_value_while_shared_read_stays_ava
 
 
 def _policy(backend, *, enabled=True):
-    from app.api.schemas.ingestion_policy import IngestionPolicy
+    from app.api.schemas.sources.policy import IngestionPolicy
 
     return IngestionPolicy(
         rules=[
@@ -50,10 +50,10 @@ class _DB:
 @pytest.mark.parametrize("backend", ["tcadp", "TCADP Parser"])
 @pytest.mark.parametrize("operation", ["put", "import", "rollback", "config-bundle"])
 async def test_actual_policy_activation_rejects_retired_selection_before_any_mutation(operation, backend, monkeypatch):
-    from app.api.schemas.dataset import DatasetConfigBundle
-    from app.api.schemas.ingestion_policy import IngestionPolicyRollbackRequest
-    from app.api.v1 import datasets as routes
-    from app.core.model_execution import RetiredModelProviderError
+    from app.api.schemas.datasets.dataset import DatasetConfigBundle
+    from app.api.schemas.sources.policy import IngestionPolicyRollbackRequest
+    from app.api.v1.datasets import routes
+    from app.infrastructure.model_policy import RetiredModelProviderError
 
     policy = _policy(backend)
     metadata = {"preserved": True, "ingestion_policy_versions": [{"id": "old", "policy": policy.model_dump()}]}
@@ -68,7 +68,7 @@ async def test_actual_policy_activation_rejects_retired_selection_before_any_mut
             routes.put_dataset_ingestion_policy(dataset.id, policy, **args)
         elif operation == "import":
             file = UploadFile(filename="policy.json", file=io.BytesIO(json.dumps(policy.model_dump()).encode()))
-            await routes.import_dataset_ingestion_policy(dataset.id, file, replace=True, **args)
+            routes.import_dataset_ingestion_policy(dataset.id, file, replace=True, **args)
         elif operation == "rollback":
             routes.rollback_dataset_ingestion_policy(
                 dataset.id, IngestionPolicyRollbackRequest(version_id="old"), **args
@@ -81,8 +81,8 @@ async def test_actual_policy_activation_rejects_retired_selection_before_any_mut
 
 
 def test_historical_policy_reads_exports_and_explicit_rule_deactivation_remain_available(monkeypatch):
-    from app.api.v1 import datasets as routes
-    from app.services.ingestion_policy import export_policy_json, parse_ingestion_policy_from_metadata
+    from app.api.v1.datasets import routes
+    from app.services.pipelines.ingestion_policy import export_policy_json, parse_ingestion_policy_from_metadata
 
     policy = _policy("tcadp")
     saved = parse_ingestion_policy_from_metadata({"ingestion_policy": policy.model_dump()})
@@ -108,9 +108,9 @@ def test_historical_policy_reads_exports_and_explicit_rule_deactivation_remain_a
     ],
 )
 def test_config_bundle_validates_effective_parser_and_reranker_before_any_metadata_change(selection):
-    from app.api.schemas.dataset import DatasetConfigBundle
-    from app.api.v1 import datasets as routes
-    from app.core.model_execution import RetiredModelProviderError
+    from app.api.schemas.datasets.dataset import DatasetConfigBundle
+    from app.api.v1.datasets import routes
+    from app.infrastructure.model_policy import RetiredModelProviderError
 
     metadata = {"preserved": True}
     with pytest.raises(RetiredModelProviderError, match="retired"):
@@ -119,19 +119,19 @@ def test_config_bundle_validates_effective_parser_and_reranker_before_any_metada
 
 
 def test_policy_metadata_writer_rejects_retired_enabled_rule():
-    from app.core.model_execution import RetiredModelProviderError
-    from app.services.ingestion_policy import policy_to_metadata
+    from app.infrastructure.model_policy import RetiredModelProviderError
+    from app.services.pipelines.ingestion_policy import validate_ingestion_policy_execution
 
     with pytest.raises(RetiredModelProviderError, match="retired"):
-        policy_to_metadata(_policy("tcadp"))
+        validate_ingestion_policy_execution(_policy("tcadp"))
 
 
 @pytest.mark.parametrize(
     "kind,expected", [("RetiredModelProviderError", 400), ("ValueError", 400), ("RuntimeError", 500)]
 )
 def test_production_document_preview_unwraps_retirement_as_actionable_input_error(kind, expected, monkeypatch):
-    from app.api.v1 import document_preview as routes
-    from app.parsing.subprocess_runner import SubprocessWorkerError
+    from app.api.v1.documents import preview as routes
+    from app.rag.ingestion.parsing.subprocess_runner import SubprocessWorkerError
 
     monkeypatch.setattr(routes, "is_production_env", lambda: True)
     error = SubprocessWorkerError("parser provider tcadp has been retired", details={"type": kind})
@@ -147,39 +147,55 @@ def test_production_document_preview_unwraps_retirement_as_actionable_input_erro
 @pytest.mark.asyncio
 @pytest.mark.parametrize("flow", ["chunk", "pipeline-parse", "pipeline-ingestion"])
 async def test_actual_preview_handlers_preserve_serialized_retirement_message(flow, monkeypatch, tmp_path):
-    from app.api.v1 import document_chunk_preview as chunks
-    from app.api.v1 import pipeline
-    from app.parsing.subprocess_runner import SubprocessWorkerError
+    from app.api.schemas.documents import ChunkPreviewQuery, ChunkPreviewUploadForm
+    from app.api.schemas.pipelines.preview import PipelineIngestionPreviewForm, PipelineParsePreviewForm
+    from app.api.v1.documents import chunk_preview as chunks
+    from app.api.v1.pipelines import routes as pipeline
+    from app.rag.ingestion.parsing.subprocess_runner import SubprocessWorkerError
 
     tenant, dataset_id = uuid4(), uuid4()
+    worker_calls = []
 
     async def retired(**_kwargs):
+        worker_calls.append(True)
         raise SubprocessWorkerError(
             "parser provider tcadp has been retired", details={"type": "RetiredModelProviderError"}
         )
 
     async def save(file, path, **_kwargs):
+        path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(await file.read())
 
     async def connected():
         return False
 
-    request = SimpleNamespace(is_disconnected=connected)
+    request = SimpleNamespace(is_disconnected=connected, headers={})
     file = UploadFile(filename="preview.pdf", file=io.BytesIO(b"PDF fixture"))
     monkeypatch.setattr(chunks, "_execute_preview_chunking", retired)
     monkeypatch.setattr(pipeline, "run_subprocess_worker", retired)
     monkeypatch.setattr(pipeline, "save_upload_file", save)
     monkeypatch.setattr(pipeline.settings, "UPLOAD_DIR", str(tmp_path))
-    monkeypatch.setattr(pipeline.dataset_service, "ensure_member", lambda *_args: None)
-    monkeypatch.setattr(pipeline.dataset_service, "get_dataset", lambda *_args: SimpleNamespace(dataset_metadata={}))
-    monkeypatch.setattr(pipeline.dataset_service, "assert_dataset_readable", lambda *_args: None)
-    args = {"tenant_id": tenant, "account_id": "member", "db": object()}
+    monkeypatch.setattr(pipeline.dataset_service, "ensure_member", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        pipeline.dataset_service, "get_dataset", lambda *_args, **_kwargs: SimpleNamespace(dataset_metadata={})
+    )
+    monkeypatch.setattr(pipeline.dataset_service, "assert_dataset_readable", lambda *_args, **_kwargs: None)
+    args = {"tenant_id": tenant, "account_id": "member"}
     with pytest.raises(HTTPException) as caught:
         if flow == "chunk":
-            await chunks.preview_chunking(request, Response(), file, SimpleNamespace(), **args)
+            await chunks.preview_chunking(
+                request,
+                Response(),
+                ChunkPreviewUploadForm(file=file, parser_backend="basic"),
+                ChunkPreviewQuery(),
+                **args,
+            )
         elif flow == "pipeline-parse":
-            await pipeline.parse_preview(request, file, parser_backend="tcadp", **args)
+            await pipeline.parse_preview(request, PipelineParsePreviewForm(file=file, parser_backend="basic"), **args)
         else:
-            await pipeline.ingestion_preview(request, file, dataset_id, parser_backend="tcadp", **args)
+            await pipeline.ingestion_preview(
+                request, PipelineIngestionPreviewForm(file=file, dataset_id=dataset_id, parser_backend="basic"), **args
+            )
     assert caught.value.status_code == 400
     assert "retired" in str(caught.value.detail)
+    assert worker_calls == [True]

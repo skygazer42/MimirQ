@@ -1,9 +1,13 @@
 'use client'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { z } from 'zod'
 import { ragvizApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
-import type { RagvizSimilarityCollection, RagvizSimilarityCalculateResponse, RagvizSimilarityRequest } from '@/types'
+import { getAuthSessionKey } from '@/lib/auth-storage'
+import { downloadBlob } from '@/lib/download'
+import { boundedNumberDraft } from '@/lib/number-draft-schema'
+import type { RagvizSimilarityCollection, RagvizSimilarityRequest } from '@/types'
 import { Button } from '@/components/ui/button'
 import {
   OperationalWorkspace,
@@ -21,9 +25,9 @@ import {
   COLOR_SCHEMES,
   createDefaultVisualConfig,
   generateUniqueLabels,
+  isColorSchemeKey,
   isVisualConfig,
   type ColorSchemeKey,
-  type MatrixButtonState,
   type SimilarityMatrixEntry,
   type VisualConfig,
 } from '@/components/ragviz/similarity/color-schemes'
@@ -39,8 +43,8 @@ import {
   CollectionSelectorBlock,
   NumberField,
   isEmptyCollectionOption,
-  similarityInputClass,
-  similarityNativeSelectClass,
+  similarityFieldClass,
+  type CollectionSelection,
   type SelectOption,
 } from '@/components/ragviz/similarity/form-controls'
 import { SimilarityMainPanel, type MainViewMode } from '@/components/ragviz/similarity/panels'
@@ -63,17 +67,31 @@ import {
   importedPayloadEntries,
   isRecord,
   isSimilarityMatrixResult,
+  readSimilarityItemId,
 } from '@/components/ragviz/similarity/utils'
 import { Eye, Filter, Grid3X3, Lock, Target } from '@/components/icons'
 import { toast } from 'sonner'
 
+const MAX_SIMILARITY_AXIS_ITEMS = 500
+type CalculationFailure = { message: string; request?: RagvizSimilarityRequest }
+const similarityItemLimitsSchema = z.object({
+  xMaxItems: boundedNumberDraft('横轴最大项目数', 1, MAX_SIMILARITY_AXIS_ITEMS).refine(
+    Number.isInteger,
+    '横轴最大项目数必须是整数',
+  ),
+  yMaxItems: boundedNumberDraft('纵轴最大项目数', 1, MAX_SIMILARITY_AXIS_ITEMS).refine(
+    Number.isInteger,
+    '纵轴最大项目数必须是整数',
+  ),
+})
+
 export function RagvizSimilarityWorkbench() {
   const [panel, setPanel] = useState<'source' | 'operations' | 'controls' | 'statistics' | 'filters' | null>(null)
-  const [calculationErrors, setCalculationErrors] = useState<string[]>([])
-  const [xSelections, setXSelections] = useState<string[]>([''])
-  const [ySelections, setYSelections] = useState<string[]>([''])
-  const [xMaxItems, setXMaxItems] = useState<number>(30)
-  const [yMaxItems, setYMaxItems] = useState<number>(30)
+  const [calculationErrors, setCalculationErrors] = useState<CalculationFailure[]>([])
+  const [xSelections, setXSelections] = useState<CollectionSelection[]>([{ rowId: 'initial', collectionId: '' }])
+  const [ySelections, setYSelections] = useState<CollectionSelection[]>([{ rowId: 'initial', collectionId: '' }])
+  const [xMaxItemsDraft, setXMaxItemsDraft] = useState('30')
+  const [yMaxItemsDraft, setYMaxItemsDraft] = useState('30')
   const [isCalculating, setIsCalculating] = useState(false)
   const [calcProgress, setCalcProgress] = useState<{
     done: number
@@ -89,18 +107,29 @@ export function RagvizSimilarityWorkbench() {
     axis: 'x',
   })
   const [mainView, setMainView] = useState<MainViewMode>('heatmap')
-  const [diagnosticDecisions, setDiagnosticDecisions] = useState<Record<string, DiagnosticDecision>>({})
+  const [diagnosticDecisions, setDiagnosticDecisions] = useState(
+    () => new Map<SimilarityMatrixEntry['result'], Record<string, DiagnosticDecision>>(),
+  )
   const [selectedCell, setSelectedCell] = useState<SelectedHeatmapCell | null>(null)
 
   const importInputRef = useRef<HTMLInputElement>(null)
+  const calculationLock = useRef(false)
+  const mountedRef = useRef(false)
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+    }
+  }, [])
 
   const [results, setResults] = useState<SimilarityMatrixEntry[]>([])
-  const [matrixButtons, setMatrixButtons] = useState<MatrixButtonState[]>([])
-  const [primaryIndex, setPrimaryIndex] = useState<number | null>(null)
+  const [primarySelection, setPrimaryIndex] = useState<number | null>(0)
   const [subtractIndex, setSubtractIndex] = useState<number | null>(null)
-  const [activeFilterIndices, setActiveFilterIndices] = useState<number[]>([])
-  const [exclusiveIndex, setExclusiveIndex] = useState<number | null>(null)
+  const [activeFilterIndices, setActiveFilterIndices] = useState<number[]>([0])
+  const [exclusiveSelection, setExclusiveIndex] = useState<number | null>(0)
   const [exportIndex, setExportIndex] = useState<number>(0)
+  const primaryIndex = results.length === 0 ? null : primarySelection
+  const exclusiveIndex = results.length === 0 ? null : exclusiveSelection
 
   const collectionsQuery = useQuery({
     queryKey: queryKeys.ragviz.similarityCollections,
@@ -136,16 +165,17 @@ export function RagvizSimilarityWorkbench() {
   }
 
   const calculateSimilarity = async () => {
+    if (calculationLock.current) return
     setCalculationErrors([])
-    const xs = xSelections.map((x) => x.trim()).filter(Boolean)
-    const ys = ySelections.map((y) => y.trim()).filter(Boolean)
+    const xs = xSelections.map(({ collectionId }) => collectionId).filter((id) => id !== '')
+    const ys = ySelections.map(({ collectionId }) => collectionId).filter((id) => id !== '')
 
     if (xs.length === 0) {
-      setCalculationErrors(['请至少选择一个横坐标 Collection'])
+      setCalculationErrors([{ message: '请至少选择一个横坐标 Collection' }])
       return
     }
     if (ys.length === 0) {
-      setCalculationErrors(['请至少选择一个纵坐标 Collection'])
+      setCalculationErrors([{ message: '请至少选择一个纵坐标 Collection' }])
       return
     }
     const emptySelections: SelectOption[] = []
@@ -161,106 +191,89 @@ export function RagvizSimilarityWorkbench() {
       return
     }
 
-    const total = xs.length * ys.length
-    setPanel(null)
-    setIsCalculating(true)
-    setCalcProgress({ done: 0, total })
-    setResults([])
-    setMatrixButtons([])
-    setPrimaryIndex(null)
-    setSubtractIndex(null)
-    setActiveFilterIndices([])
-    setExclusiveIndex(null)
-    setExportIndex(0)
-    setMainView('heatmap')
-    setDiagnosticDecisions({})
-    setSelectedCell(null)
-
-    const nextResults: SimilarityMatrixEntry[] = []
-    let done = 0
-
-    for (const x of xs) {
-      for (const y of ys) {
-        const payload: RagvizSimilarityRequest = {
-          x_collection: x,
-          y_collection: y,
-          x_max_items: xMaxItems,
-          y_max_items: yMaxItems,
-        }
-
-        try {
-          const res: RagvizSimilarityCalculateResponse = await ragvizApi.calculateSimilarityMatrix(payload)
-          if (!res.success || !res.result) {
-            throw new Error(res.error || '计算失败')
-          }
-
-          const visualConfig = createDefaultVisualConfig(res.result.x_available_fields, res.result.y_available_fields)
-          nextResults.push({
-            xCollectionId: x,
-            yCollectionId: y,
-            xCollectionLabel: resolveCollectionLabel(x),
-            yCollectionLabel: resolveCollectionLabel(y),
-            result: res.result,
-            visualConfig,
-          })
-        } catch (error: unknown) {
-          const msg = formatApiError(error, '计算失败')
-          setCalculationErrors((current) => [
-            ...current,
-            `${resolveCollectionLabel(x)} / ${resolveCollectionLabel(y)}：${msg}`,
-          ])
-          toast.error(`${resolveCollectionLabel(x)} vs ${resolveCollectionLabel(y)}：${msg}`)
-        } finally {
-          done += 1
-          setCalcProgress({ done, total })
-        }
-      }
-    }
-
-    setResults(nextResults)
-    initializeMatrixState(nextResults)
-    setIsCalculating(false)
-    setCalcProgress(null)
-    if (nextResults.length > 0) {
-      toast.success(`成功计算 ${nextResults.length} 个相似度矩阵`)
-    }
-  }
-
-  const initializeMatrixState = (entries: SimilarityMatrixEntry[]) => {
-    if (entries.length === 0) {
-      setMatrixButtons([])
-      setPrimaryIndex(null)
-      setSubtractIndex(null)
-      setActiveFilterIndices([])
-      setExclusiveIndex(null)
-      setExportIndex(0)
+    const limits = similarityItemLimitsSchema.safeParse({ xMaxItems: xMaxItemsDraft, yMaxItems: yMaxItemsDraft })
+    if (!limits.success) {
+      setCalculationErrors(limits.error.issues.map((issue) => ({ message: issue.message })))
       return
     }
 
-    const init: MatrixButtonState[] = entries.map(() => ({
-      applyData: false,
-      applyFilter: false,
-      exclusive: false,
-    }))
-    init[0] = { applyData: true, applyFilter: true, exclusive: true }
-    setMatrixButtons(init)
-    setPrimaryIndex(0)
-    setSubtractIndex(null)
-    setActiveFilterIndices([0])
-    setExclusiveIndex(0)
-    setExportIndex(0)
+    const requests = xs.flatMap((x) =>
+      ys.map((y) => ({
+        x_collection: x,
+        y_collection: y,
+        x_max_items: limits.data.xMaxItems,
+        y_max_items: limits.data.yMaxItems,
+      })),
+    )
+    await runSimilarityRequests(requests)
+  }
+
+  async function runSimilarityRequests(requests: RagvizSimilarityRequest[]) {
+    if (calculationLock.current || requests.length === 0) return
+    const sessionKey = getAuthSessionKey()
+    const isCurrent = () => mountedRef.current && getAuthSessionKey() === sessionKey
+    calculationLock.current = true
+    setPanel(null)
+    setCalculationErrors([])
+    setIsCalculating(true)
+    setCalcProgress({ done: 0, total: requests.length })
+    const accepted: SimilarityMatrixEntry[] = []
+    const failures: CalculationFailure[] = []
+
+    try {
+      for (const [index, request] of requests.entries()) {
+        const xCollectionId = request.x_collection
+        const yCollectionId = request.y_collection
+        const xCollectionLabel = resolveCollectionLabel(xCollectionId)
+        const yCollectionLabel = resolveCollectionLabel(yCollectionId)
+        try {
+          const response = await ragvizApi.calculateSimilarityMatrix(request)
+          if (!isCurrent()) return
+          if (!response.success) throw new Error(response.error ?? '计算失败')
+          if (!isSimilarityMatrixResult(response.result)) throw new Error('相似度矩阵响应格式不正确')
+          const { result } = response
+          accepted.push({
+            xCollectionId,
+            yCollectionId,
+            xCollectionLabel,
+            yCollectionLabel,
+            result,
+            visualConfig: createDefaultVisualConfig(result.x_available_fields, result.y_available_fields),
+          })
+        } catch (error: unknown) {
+          if (!isCurrent()) return
+          failures.push({
+            request,
+            message: `${xCollectionLabel} / ${yCollectionLabel}：${formatApiError(error, '计算失败')}`,
+          })
+        }
+        setCalcProgress({ done: index + 1, total: requests.length })
+      }
+
+      setCalculationErrors(failures)
+      if (accepted.length > 0) {
+        setResults((previous) => [...previous, ...accepted])
+        toast.success(`成功计算 ${accepted.length} 个相似度矩阵`)
+      }
+    } finally {
+      calculationLock.current = false
+      if (isCurrent()) {
+        setIsCalculating(false)
+        setCalcProgress(null)
+      }
+    }
   }
 
   const downloadJson = (filename: string, data: unknown) => {
     const blob = new Blob([JSON.stringify(data, null, 2)], {
       type: 'application/json;charset=utf-8',
     })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = filename
-    a.click()
-    URL.revokeObjectURL(url)
+    downloadBlob(filename, blob)
+  }
+
+  function openOperations() {
+    setExportIndex(primaryIndex ?? 0)
+    setPanel('operations')
   }
 
   const exportOne = () => {
@@ -280,13 +293,17 @@ export function RagvizSimilarityWorkbench() {
 
   const importFiles = async (files: FileList | null) => {
     if (!files || files.length === 0) return
+    const sessionKey = getAuthSessionKey()
+    const isCurrent = () => mountedRef.current && getAuthSessionKey() === sessionKey
     const imported: SimilarityMatrixEntry[] = []
     for (const file of Array.from(files)) {
       try {
         const text = await file.text()
+        if (!isCurrent()) return
         const json: unknown = JSON.parse(text)
         imported.push(...parseImportedPayload(json))
       } catch (error: unknown) {
+        if (!isCurrent()) return
         toast.error(`导入失败：${file.name}（${getErrorMessage(error, 'JSON 解析错误')}）`)
       }
     }
@@ -296,31 +313,21 @@ export function RagvizSimilarityWorkbench() {
       return
     }
 
-    setMainView('heatmap')
-    setDiagnosticDecisions({})
-    setSelectedCell(null)
-    setResults((prev) => {
-      if (prev.length === 0) return imported
-      return [...prev, ...imported]
-    })
-    setMatrixButtons((prev) => {
-      const appended = imported.map(() => ({
-        applyData: false,
-        applyFilter: false,
-        exclusive: false,
-      }))
-      return prev.length === 0 ? appended : [...prev, ...appended]
-    })
-    if (results.length === 0) {
-      initializeMatrixState(imported)
-    }
+    setResults((previous) => [...previous, ...imported])
 
     toast.success(`已导入 ${imported.length} 个矩阵`)
   }
 
   const primaryEntry = primaryIndex === null ? null : results[primaryIndex]
-  const subtractEntry = subtractIndex === null ? null : results[subtractIndex]
-  const isDifferenceMode = Boolean(primaryEntry && subtractEntry)
+  const subtractCandidate = subtractIndex === null ? null : results[subtractIndex]
+  const subtractEntry =
+    primaryEntry && subtractCandidate && sameMatrixAxes(primaryEntry, subtractCandidate) ? subtractCandidate : null
+  const isDifferenceMode = subtractEntry !== null
+  const matrixButtons = results.map((entry, index) => ({
+    applyData: index === primaryIndex || (subtractEntry !== null && index === subtractIndex),
+    applyFilter: activeFilterIndices.includes(index) && primaryEntry !== null && sameMatrixAxes(primaryEntry, entry),
+    exclusive: index === exclusiveIndex,
+  }))
   const rangeBounds = useMemo(() => (isDifferenceMode ? { min: -1, max: 1 } : { min: 0, max: 1 }), [isDifferenceMode])
 
   useEffect(() => {
@@ -341,17 +348,14 @@ export function RagvizSimilarityWorkbench() {
   }, [isDifferenceMode, mainView])
 
   useEffect(() => {
-    if (mainView !== 'heatmap') {
-      setSelectedCell(null)
-    }
-  }, [mainView])
+    setSelectedCell(null)
+  }, [mainView, primaryEntry?.result, subtractEntry?.result])
 
   const displayMatrix = useMemo(() => {
     if (!primaryEntry) return null
     const a = primaryEntry.result.matrix
     if (!subtractEntry) return a
     const b = subtractEntry.result.matrix
-    if (a.length !== b.length || (a[0]?.length || 0) !== (b[0]?.length || 0)) return a
     return a.map((row, i) => row.map((val, j) => val - b[i][j]))
   }, [primaryEntry, subtractEntry])
 
@@ -384,21 +388,14 @@ export function RagvizSimilarityWorkbench() {
     // Apply-filter mode: OR masks of selected matrices (based on their own configs),
     // then AND with temporary filter (applied on the displayed matrix).
     let mask: boolean[][] | null = null
-    const primaryShape = matrixShape(primaryEntry)
 
-    const filterMasks = activeFilterIndices
-      .map((idx) => {
-        const entry = results[idx]
-        if (!entry) return null
-        const shape = matrixShape(entry)
-        if (shape.rows !== primaryShape.rows || shape.cols !== primaryShape.cols) return null
-        return computeFinalMask(
-          entry.result.matrix,
-          entry.visualConfig.similarityRange,
-          entry.visualConfig.filters.topK,
-        )
-      })
-      .filter(Boolean) as boolean[][][]
+    const filterMasks = activeFilterIndices.flatMap((idx) => {
+      const entry = results[idx]
+      if (!entry || !sameMatrixAxes(primaryEntry, entry)) return []
+      return [
+        computeFinalMask(entry.result.matrix, entry.visualConfig.similarityRange, entry.visualConfig.filters.topK),
+      ]
+    })
 
     if (filterMasks.length > 0) {
       mask = combineWithOR(filterMasks)
@@ -457,28 +454,27 @@ export function RagvizSimilarityWorkbench() {
   }, [displayLabels, displayMatrix, selectedCell])
 
   const diagnostics = useMemo<SimilarityDiagnosticsResult | null>(() => {
-    if (!primaryEntry || !displayLabels || isDifferenceMode) return null
+    if (!primaryEntry || !displayLabels || isDifferenceMode || mainView !== 'diagnostics') return null
     const matrixForDiagnostics = maskedMatrix ?? displayMatrix
     if (!matrixForDiagnostics) return null
 
     return buildSimilarityDiagnostics({
-      matrix: matrixForDiagnostics.map((row) => row.map((value) => (typeof value === 'number' ? value : 0))),
+      matrix: matrixForDiagnostics,
       xItems: primaryEntry.result.x_data,
       yItems: primaryEntry.result.y_data,
       xLabels: displayLabels.xLabels,
       yLabels: displayLabels.yLabels,
-      decisions: diagnosticDecisions,
+      decisions: diagnosticDecisions.get(primaryEntry.result),
     })
-  }, [diagnosticDecisions, displayLabels, displayMatrix, isDifferenceMode, maskedMatrix, primaryEntry])
+  }, [diagnosticDecisions, displayLabels, displayMatrix, isDifferenceMode, mainView, maskedMatrix, primaryEntry])
 
   const setDiagnosticDecision = (candidateId: string, decision: DiagnosticDecision | null) => {
+    if (!primaryEntry) return
     setDiagnosticDecisions((prev) => {
-      if (decision === null || prev[candidateId] === decision) {
-        const next = { ...prev }
-        delete next[candidateId]
-        return next
-      }
-      return { ...prev, [candidateId]: decision }
+      const decisions = { ...prev.get(primaryEntry.result) }
+      if (decision === null || decisions[candidateId] === decision) delete decisions[candidateId]
+      else decisions[candidateId] = decision
+      return new Map(prev).set(primaryEntry.result, decisions)
     })
   }
 
@@ -517,7 +513,7 @@ export function RagvizSimilarityWorkbench() {
   }, [displayMatrix, primaryEntry, subtractEntry, tempSimilarityRange, tempTopK])
 
   const handleHeatmapCellSelect = useCallback((cell: SelectedHeatmapCell) => {
-    setSelectedCell((prev) => (prev?.rowIndex === cell.rowIndex && prev.colIndex === cell.colIndex ? null : cell))
+    setSelectedCell(cell)
   }, [])
 
   const updateDisplayFields = (xField: string, yField: string) => {
@@ -563,7 +559,7 @@ export function RagvizSimilarityWorkbench() {
     const max = nextTopK.axis === 'x' ? shape.cols : shape.rows
     const clamped = {
       ...nextTopK,
-      value: Math.max(0, Math.min(Number(nextTopK.value) || 0, max)),
+      value: Math.max(0, Math.min(nextTopK.value, max)),
     }
     if (exclusiveIndex !== null) {
       setResults((prev) =>
@@ -585,117 +581,58 @@ export function RagvizSimilarityWorkbench() {
     setPrimaryIndex(index)
     setSubtractIndex(null)
     setActiveFilterIndices([index])
-
-    setMatrixButtons((prev) =>
-      prev.map((_, i) => ({
-        applyData: i === index,
-        applyFilter: i === index,
-        exclusive: i === index,
-      })),
-    )
   }
 
-  const exitExclusiveMode = () => {
-    setExclusiveIndex(null)
-    setMatrixButtons((prev) => prev.map((s) => ({ ...s, exclusive: false })))
-  }
+  const exitExclusiveMode = () => setExclusiveIndex(null)
 
   const toggleApplyData = (index: number) => {
-    if (index < 0 || index >= results.length) return
+    const candidate = results[index]
+    if (candidate === undefined) return
 
-    // If enabling data on a different matrix while exclusive is active, exit exclusive first.
-    if (exclusiveIndex !== null && exclusiveIndex !== index) {
+    if (index === primaryIndex) {
+      setPrimaryIndex(null)
+      setSubtractIndex(null)
       exitExclusiveMode()
+      return
     }
 
-    setMatrixButtons((prev) => {
-      const next = [...prev]
-      const current = next[index]
-      if (!current) return prev
+    if (index === subtractIndex) {
+      setSubtractIndex(null)
+      return
+    }
 
-      if (current.applyData) {
-        // Turning off.
-        if (index === subtractIndex) {
-          next[index] = { ...current, applyData: false }
-          setSubtractIndex(null)
-        } else if (index === primaryIndex) {
-          next[index] = { ...current, applyData: false }
-          setPrimaryIndex(null)
-          setSubtractIndex(null)
-        } else {
-          next[index] = { ...current, applyData: false }
-        }
-        return next
-      }
+    if (primaryEntry !== null && !sameMatrixAxes(primaryEntry, candidate)) {
+      toast.warning('矩阵的行列项目或顺序不一致，无法计算差值')
+      return
+    }
 
-      // Turning on: ensure shape consistency.
-      if (primaryIndex !== null) {
-        const primary = results[primaryIndex]
-        const candidate = results[index]
-        if (!sameShape(primary, candidate)) {
-          toast.warning('矩阵大小不一致，无法用于差值/展示')
-          return prev
-        }
-      }
-
-      if (primaryIndex === null) {
-        // No primary -> set as primary.
-        setPrimaryIndex(index)
-        setSubtractIndex(null)
-        return next.map((s, i) => ({ ...s, applyData: i === index }))
-      }
-
-      if (primaryIndex === index) {
-        return prev
-      }
-
-      if (subtractIndex === null) {
-        setSubtractIndex(index)
-        return next.map((s, i) => ({
-          ...s,
-          applyData: i === primaryIndex || i === index,
-        }))
-      }
-
-      // Replace subtract.
-      setSubtractIndex(index)
-      return next.map((s, i) => ({
-        ...s,
-        applyData: i === primaryIndex || i === index,
-      }))
-    })
+    exitExclusiveMode()
+    if (primaryEntry === null) setPrimaryIndex(index)
+    else setSubtractIndex(index)
   }
 
   const toggleApplyFilter = (index: number) => {
-    if (index < 0 || index >= results.length) return
+    const candidate = results[index]
+    if (candidate === undefined) return
 
-    if (exclusiveIndex !== null && exclusiveIndex !== index) {
+    if (activeFilterIndices.includes(index)) {
       exitExclusiveMode()
+      setActiveFilterIndices((previous) => previous.filter((activeIndex) => activeIndex !== index))
+      return
     }
 
-    if (primaryIndex === null) {
+    if (primaryEntry === null) {
       toast.error('请先选择一个“应用数据”的矩阵作为主图')
       return
     }
 
-    const primary = results[primaryIndex]
-    const candidate = results[index]
-    if (!sameShape(primary, candidate)) {
-      toast.warning('矩阵大小不一致，无法合并筛选器')
+    if (!sameMatrixAxes(primaryEntry, candidate)) {
+      toast.warning('矩阵的行列项目或顺序不一致，无法合并筛选器')
       return
     }
 
-    setMatrixButtons((prev) => {
-      const next = [...prev]
-      const cur = next[index]
-      if (!cur) return prev
-      next[index] = { ...cur, applyFilter: !cur.applyFilter }
-      return next
-    })
-
-    setActiveFilterIndices((prev) => {
-      return prev.includes(index) ? prev.filter((i) => i !== index) : [...prev, index]
-    })
+    exitExclusiveMode()
+    setActiveFilterIndices((previous) => [...previous, index])
   }
 
   const heatmapSummaryMetrics = useMemo(() => {
@@ -704,7 +641,7 @@ export function RagvizSimilarityWorkbench() {
     const rowCount = primaryEntry.result.y_data.length
     const colCount = primaryEntry.result.x_data.length
     const stats = primaryEntry.result.stats
-    const totalPairs = Math.max(0, Number(stats?.total_pairs || rowCount * colCount || 0))
+    const totalPairs = Math.max(0, stats?.total_pairs ?? rowCount * colCount)
     const highCount = typeof stats?.high_similarity_count === 'number' ? Math.max(0, stats.high_similarity_count) : null
     const highRatio = highCount !== null && totalPairs > 0 ? highCount / totalPairs : null
 
@@ -766,7 +703,7 @@ export function RagvizSimilarityWorkbench() {
       }
       actions={
         <>
-          <Button variant="outline" disabled={isCalculating} onClick={() => setPanel('operations')}>
+          <Button variant="outline" disabled={isCalculating} onClick={openOperations}>
             导入与导出
           </Button>
           <Button disabled={isCalculating} onClick={() => setPanel('source')}>
@@ -789,7 +726,7 @@ export function RagvizSimilarityWorkbench() {
             </Button>
           </div>
           <Button variant="ghost" disabled={!results.length} onClick={() => setPanel('controls')}>
-            矩阵管理 {results.length || ''}
+            矩阵管理{results.length > 0 && ` ${results.length}`}
           </Button>
           <Button variant="ghost" disabled={!primaryEntry} onClick={() => setPanel('filters')}>
             显示与筛选
@@ -802,11 +739,14 @@ export function RagvizSimilarityWorkbench() {
             <select
               aria-label="矩阵色阶"
               value={colorScheme}
-              onChange={(event) => setColorScheme(event.target.value as ColorSchemeKey)}
+              onChange={(event) => {
+                const value = event.currentTarget.value
+                if (isColorSchemeKey(value)) setColorScheme(value)
+              }}
               className="h-9 rounded-md border border-input bg-background px-3"
             >
-              {COLOR_SCHEMES.map((scheme) => (
-                <option key={scheme.key} value={scheme.key}>
+              {Object.entries(COLOR_SCHEMES).map(([key, scheme]) => (
+                <option key={key} value={key}>
                   {scheme.label}
                 </option>
               ))}
@@ -817,9 +757,25 @@ export function RagvizSimilarityWorkbench() {
     >
       {calculationErrors.length ? (
         <div className="px-4">
-          {calculationErrors.map((message, index) => (
-            <WorkspaceNotice key={`${index}:${message}`} retry={() => setPanel('source')} retryLabel="检查数据源">
-              {message}
+          {calculationErrors.map((failure, index) => (
+            <WorkspaceNotice
+              key={`${index}:${failure.message}`}
+              pending={isCalculating}
+              retry={
+                failure.request === undefined
+                  ? () => setPanel('source')
+                  : index === 0
+                    ? () =>
+                        detachPromise(
+                          runSimilarityRequests(
+                            calculationErrors.flatMap(({ request }) => (request === undefined ? [] : [request])),
+                          ),
+                        )
+                    : undefined
+              }
+              retryLabel={failure.request === undefined ? '检查数据源' : '重试失败项'}
+            >
+              {failure.message}
             </WorkspaceNotice>
           ))}
         </div>
@@ -862,7 +818,7 @@ export function RagvizSimilarityWorkbench() {
               {!isCalculating ? (
                 <div className="flex flex-wrap gap-3">
                   <Button onClick={() => setPanel('source')}>选择数据源</Button>
-                  <Button variant="outline" onClick={() => setPanel('operations')}>
+                  <Button variant="outline" onClick={openOperations}>
                     导入矩阵
                   </Button>
                 </div>
@@ -907,7 +863,13 @@ export function RagvizSimilarityWorkbench() {
                       onChange={setXSelections}
                       options={availableCollectionOptions}
                     />
-                    <NumberField label="横轴最大项目数" value={xMaxItems} onChange={setXMaxItems} min={10} max={500} />
+                    <NumberField
+                      label="横轴最大项目数"
+                      value={xMaxItemsDraft}
+                      onChange={setXMaxItemsDraft}
+                      min={1}
+                      max={MAX_SIMILARITY_AXIS_ITEMS}
+                    />
                   </section>
                   <section className="space-y-4">
                     <h2 className={ws.sectionTitle}>纵轴</h2>
@@ -917,34 +879,40 @@ export function RagvizSimilarityWorkbench() {
                       onChange={setYSelections}
                       options={availableCollectionOptions}
                     />
-                    <NumberField label="纵轴最大项目数" value={yMaxItems} onChange={setYMaxItems} min={10} max={500} />
+                    <NumberField
+                      label="纵轴最大项目数"
+                      value={yMaxItemsDraft}
+                      onChange={setYMaxItemsDraft}
+                      min={1}
+                      max={MAX_SIMILARITY_AXIS_ITEMS}
+                    />
                   </section>
                 </div>
                 {calculationErrors.length ? (
-                  <p className="text-[13px] text-destructive">{calculationErrors.join('；')}</p>
+                  <p className="text-[13px] text-destructive">
+                    {calculationErrors.map(({ message }) => message).join('；')}
+                  </p>
                 ) : null}
               </fieldset>
             ) : null}
             {panel === 'operations' ? (
               <Panel title="">
                 <div className="space-y-3">
-                  <p className="text-xs text-muted-foreground">
-                    支持导入/导出当前矩阵数据（用于复现、分享、离线分析）。
-                  </p>
+                  <p className="text-xs text-muted-foreground">导入或导出原始相似度矩阵及各矩阵保存的显示设置。</p>
 
                   <div className="space-y-2">
                     <div className="text-xs font-medium text-foreground/80">选择要导出的图表</div>
                     <select
-                      className={similarityNativeSelectClass}
+                      className={similarityFieldClass}
                       value={String(exportIndex)}
-                      onChange={(e) => setExportIndex(Number(e.target.value) || 0)}
+                      onChange={(event) => setExportIndex(Number(event.target.value))}
                       disabled={results.length === 0}
                     >
                       {results.length === 0 ? (
                         <option value="0">请先计算相似度</option>
                       ) : (
                         results.map((r, idx) => (
-                          <option key={`${r.xCollectionId}__${r.yCollectionId}`} value={idx}>
+                          <option key={idx} value={idx}>
                             {idx + 1}. {r.xCollectionLabel} vs {r.yCollectionLabel}
                           </option>
                         ))
@@ -1008,7 +976,7 @@ export function RagvizSimilarityWorkbench() {
 
                         return (
                           <div
-                            key={`${entry.xCollectionId}__${entry.yCollectionId}`}
+                            key={idx}
                             className={cn(
                               'flex items-center gap-2 rounded-lg border p-2',
                               isPrimary ? 'border-primary/50 bg-primary/5' : 'border-border bg-background',
@@ -1237,7 +1205,7 @@ export function RagvizSimilarityWorkbench() {
                     <div className="space-y-2">
                       <div className="text-xs font-medium text-foreground/80">横坐标显示字段</div>
                       <select
-                        className={similarityNativeSelectClass}
+                        className={similarityFieldClass}
                         value={primaryEntry.visualConfig.displayFields.xField}
                         onChange={(e) =>
                           updateDisplayFields(e.target.value, primaryEntry.visualConfig.displayFields.yField)
@@ -1254,7 +1222,7 @@ export function RagvizSimilarityWorkbench() {
                     <div className="space-y-2">
                       <div className="text-xs font-medium text-foreground/80">纵坐标显示字段</div>
                       <select
-                        className={similarityNativeSelectClass}
+                        className={similarityFieldClass}
                         value={primaryEntry.visualConfig.displayFields.yField}
                         onChange={(e) =>
                           updateDisplayFields(primaryEntry.visualConfig.displayFields.xField, e.target.value)
@@ -1299,7 +1267,7 @@ export function RagvizSimilarityWorkbench() {
                                 max: uiSimilarityRange.max,
                               })
                             }
-                            className={cn(similarityInputClass, 'w-20')}
+                            className={cn(similarityFieldClass, 'w-20')}
                           />
                         </div>
                         <div className="flex items-center gap-2">
@@ -1330,7 +1298,7 @@ export function RagvizSimilarityWorkbench() {
                                 max: Number(e.target.value),
                               })
                             }
-                            className={cn(similarityInputClass, 'w-20')}
+                            className={cn(similarityFieldClass, 'w-20')}
                           />
                         </div>
                       </div>
@@ -1372,7 +1340,7 @@ export function RagvizSimilarityWorkbench() {
                               value: Number(e.target.value),
                             })
                           }
-                          className={cn(similarityInputClass, 'w-20')}
+                          className={cn(similarityFieldClass, 'w-20')}
                         />
                       </div>
                       <div className="flex items-center gap-2">
@@ -1425,7 +1393,10 @@ export function RagvizSimilarityWorkbench() {
             {panel === 'source' ? (
               <Button
                 disabled={
-                  isCalculating || collectionsLoading || !xSelections.some(Boolean) || !ySelections.some(Boolean)
+                  isCalculating ||
+                  collectionsLoading ||
+                  !xSelections.some(({ collectionId }) => collectionId !== '') ||
+                  !ySelections.some(({ collectionId }) => collectionId !== '')
                 }
                 onClick={() => {
                   void calculateSimilarity()
@@ -1448,14 +1419,14 @@ function parseImportedPayload(raw: unknown): SimilarityMatrixEntry[] {
     if (!isRecord(entry)) continue
     const result = entry.result
     if (!isSimilarityMatrixResult(result)) continue
-    const metadata = isRecord(result.metadata) ? result.metadata : null
-    const xCollectionId = firstSimilarityDisplayString(entry.xCollectionId, entry.xCollection, metadata?.x_collection)
-    const yCollectionId = firstSimilarityDisplayString(entry.yCollectionId, entry.yCollection, metadata?.y_collection)
+    const { metadata } = result
+    const xCollectionId = firstSimilarityDisplayString(entry.xCollectionId, entry.xCollection, metadata.x_collection)
+    const yCollectionId = firstSimilarityDisplayString(entry.yCollectionId, entry.yCollection, metadata.y_collection)
     const xCollectionLabel = collectionLabel(entry.xCollectionLabel, xCollectionId, 'X')
     const yCollectionLabel = collectionLabel(entry.yCollectionLabel, yCollectionId, 'Y')
     const visualConfig: VisualConfig = isVisualConfig(entry.visualConfig)
       ? entry.visualConfig
-      : createDefaultVisualConfig(result.x_available_fields || [], result.y_available_fields || [])
+      : createDefaultVisualConfig(result.x_available_fields, result.y_available_fields)
 
     out.push({
       xCollectionId,
@@ -1470,14 +1441,25 @@ function parseImportedPayload(raw: unknown): SimilarityMatrixEntry[] {
 }
 
 function matrixShape(entry: SimilarityMatrixEntry | null) {
-  const m = entry?.result?.matrix || []
-  const rows = m.length
-  const cols = rows > 0 ? m[0]?.length || 0 : 0
-  return { rows, cols }
+  const matrix = entry?.result.matrix
+  return { rows: matrix?.length ?? 0, cols: matrix?.[0]?.length ?? 0 }
 }
 
-function sameShape(a: SimilarityMatrixEntry | null, b: SimilarityMatrixEntry | null) {
-  const sa = matrixShape(a)
-  const sb = matrixShape(b)
-  return sa.rows === sb.rows && sa.cols === sb.cols
+function sameAxisItems(left: readonly Record<string, unknown>[], right: readonly Record<string, unknown>[]) {
+  if (left.length !== right.length) return false
+  const seen = new Set<string>()
+  return left.every((item, index) => {
+    const id = readSimilarityItemId(item)
+    if (id === undefined || seen.has(id) || id !== readSimilarityItemId(right[index])) return false
+    seen.add(id)
+    return true
+  })
+}
+
+function sameMatrixAxes(primary: SimilarityMatrixEntry, other: SimilarityMatrixEntry) {
+  if (primary.result === other.result) return true
+  return (
+    sameAxisItems(primary.result.x_data, other.result.x_data) &&
+    sameAxisItems(primary.result.y_data, other.result.y_data)
+  )
 }

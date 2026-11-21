@@ -31,20 +31,25 @@ async function main() {
   process.on('SIGINT', forwardSignal)
   process.on('SIGTERM', forwardSignal)
 
-  child.on('exit', (code, signal) => {
+  let processFailed = false
+  child.on('error', (error) => {
+    processFailed = true
+    console.error('[dev-server] Next.js process error', error)
+  })
+
+  child.once('close', (code, signal) => {
     process.off('SIGINT', forwardSignal)
     process.off('SIGTERM', forwardSignal)
-
     if (signal) {
       process.kill(process.pid, signal)
       return
     }
 
-    process.exit(code ?? 0)
+    process.exitCode = processFailed ? 1 : code
   })
 }
 
 main().catch((error) => {
   console.error('[dev-server] Failed to start Next.js', error)
-  process.exit(1)
+  process.exitCode = 1
 })

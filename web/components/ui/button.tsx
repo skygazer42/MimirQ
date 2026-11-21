@@ -41,8 +41,8 @@ export type ButtonProps = Readonly<
 >
 
 function normalizeAccessibleLabel(value: string | undefined): string | undefined {
-  const normalized = typeof value === 'string' ? value.trim() : ''
-  return normalized || undefined
+  const normalized = value?.trim()
+  return normalized === '' ? undefined : normalized
 }
 
 const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(

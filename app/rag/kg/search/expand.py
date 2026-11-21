@@ -3,12 +3,12 @@ Expand stage: multi-hop entity -> event expansion.
 """
 
 import asyncio
+import logging
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
-from app.core.config import settings
-from app.rag.core.logging import get_logger
+from app.infrastructure.config import settings
 from app.rag.kg.repository import EntityRepository, EventRepository, RelationRepository, get_session
 from app.rag.kg.search.config import SearchConfig
 from app.rag.kg.search.recall import RecallResult
@@ -17,9 +17,9 @@ from app.rag.kg.search.tracker import Tracker, build_entity_node, build_event_no
 from app.rag.kg.search.utils import confidence_bucket
 
 if TYPE_CHECKING:
-    from app.rag.kg.models import KgEntity, KgRelation, KgSourceEvent
+    from app.models.knowledge_graph.entities import KgEntity, KgRelation, KgSourceEvent
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 _SKILL_TYPES = {"Skill", "SkillTag", "SkillCategory"}
 
@@ -79,15 +79,15 @@ def _build_expand_state(recall_result: RecallResult, *, include_skills: bool) ->
     discovered_events = [str(event_id) for event_id in (recall_result.event_ids or []) if str(event_id)]
     event_hops = dict(recall_result.event_hops or {})
     for event_id in discovered_events:
-        if event_id not in event_hops:
-            event_hops[event_id] = 2
+        event_hops.setdefault(event_id, 2)
+    seed_entities = _entity_ids(recall_result.key_final, include_skills=include_skills)
     return _ExpandState(
-        known_entities=set(_entity_ids(list(recall_result.key_final or []), include_skills=include_skills)),
+        known_entities=set(seed_entities),
         entity_weights=dict(recall_result.key_weights),
         discovered_events=discovered_events,
         discovered_event_ids=set(discovered_events),
         event_hops=event_hops,
-        current_entities=_entity_ids(list(recall_result.key_final or []), include_skills=include_skills),
+        current_entities=seed_entities,
     )
 
 
@@ -97,26 +97,20 @@ def _resolve_expand_limit(
     discovered_count: int,
     max_candidates: int,
 ) -> int:
-    limit = int(config.expand.max_events_per_hop)
+    limit = config.expand.max_events_per_hop
     if max_candidates <= 0:
         return limit
-    remaining = max(0, int(max_candidates) - int(discovered_count))
-    if remaining <= 0:
-        return 0
-    return max(1, min(limit, remaining))
+    return max(0, min(limit, max_candidates - discovered_count))
 
 
 def _relation_expansion_enabled(config: SearchConfig) -> bool:
     if config.relation_expansion_enabled is not None:
-        return bool(config.relation_expansion_enabled)
-    return bool(settings.KG_SEARCH_RELATION_EXPANSION_ENABLED) and bool(settings.KG_RELATION_ENABLED)
+        return config.relation_expansion_enabled
+    return settings.KG_SEARCH_RELATION_EXPANSION_ENABLED and settings.KG_RELATION_ENABLED
 
 
-def _tenant_uuid(value: object) -> UUID | None:
-    try:
-        return UUID(str(value))
-    except Exception:
-        return None
+def _tenant_uuid(value: object) -> UUID:
+    return UUID(str(value))
 
 
 def _relation_neighbor_candidate(
@@ -194,14 +188,10 @@ def _filter_skill_neighbors(
 ) -> list[tuple[str, float]]:
     if include_skills or not neighbors:
         return neighbors
-    try:
-        neighbor_ids = [entity_id for entity_id, _weight in neighbors]
-        objs = entity_repo.get_entities_by_ids(neighbor_ids, tenant_id=tenant_id)
-        allowed_ids = {str(obj.id) for obj in (objs or []) if not _is_skill_type(obj.type)}
-        return [(entity_id, weight) for entity_id, weight in neighbors if entity_id in allowed_ids]
-    except Exception as exc:
-        logger.debug("Failed to filter KG expansion skill-like neighbors: %s", exc)
-        return neighbors
+    neighbor_ids = [entity_id for entity_id, _weight in neighbors]
+    objs = entity_repo.get_entities_by_ids(neighbor_ids, tenant_id=tenant_id)
+    allowed_ids = {str(obj.id) for obj in (objs or []) if not _is_skill_type(obj.type)}
+    return [(entity_id, weight) for entity_id, weight in neighbors if entity_id in allowed_ids]
 
 
 def _extend_seed_entities_with_relations(
@@ -222,8 +212,6 @@ def _extend_seed_entities_with_relations(
     if max_neighbors <= 0:
         return
     tenant_uuid = _tenant_uuid(tenant_id)
-    if tenant_uuid is None:
-        return
     min_confidence = float(settings.KG_SEARCH_RELATION_MIN_CONFIDENCE)
     max_edges = max(0, int(settings.KG_SEARCH_RELATION_MAX_EDGES)) or 500
     weight_factor = float(settings.KG_SEARCH_RELATION_NEIGHBOR_WEIGHT_FACTOR)
@@ -286,7 +274,7 @@ def _record_new_events(
     hop: int,
 ) -> list[str]:
     new_event_ids: list[str] = []
-    hop_len = 2 + int(hop or 0)
+    hop_len = 2 + hop
     for event in events:
         event_id = str(event.id)
         if event_id in discovered_event_ids:
@@ -294,8 +282,8 @@ def _record_new_events(
         discovered_event_ids.add(event_id)
         new_event_ids.append(event_id)
         prev = event_hops.get(event_id)
-        if prev is None or hop_len < int(prev or 0):
-            event_hops[event_id] = int(hop_len)
+        if prev is None or hop_len < prev:
+            event_hops[event_id] = hop_len
     return new_event_ids
 
 
@@ -499,6 +487,8 @@ async def expand(config: SearchConfig, recall_result: RecallResult) -> ExpandRes
 
 
 def _expand_sync(config: SearchConfig, recall_result: RecallResult) -> ExpandResult:
+    if config.tenant_id is None:
+        raise ValueError("tenant_id is required for KG search")
     if config.document_ids is not None and not config.document_ids:
         return _empty_scope_result(recall_result)
     if not config.expand.enabled:
@@ -511,7 +501,7 @@ def _expand_sync(config: SearchConfig, recall_result: RecallResult) -> ExpandRes
         entity_repo = EntityRepository(session)
         event_repo = EventRepository(session)
         relation_repo = RelationRepository(session)
-        tenant_id = config.tenant_id or settings.DEFAULT_TENANT_ID
+        tenant_id = config.tenant_id
         include_skills = bool(config.include_skill_entities)
         state = _build_expand_state(recall_result, include_skills=include_skills)
         max_candidates = max(0, int(settings.KG_SEARCH_MAX_RERANK_CANDIDATES))

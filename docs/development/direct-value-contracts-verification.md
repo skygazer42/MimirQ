@@ -91,7 +91,7 @@ Milvus 空凭据直接交给 SDK；CLI 请求头和配置 builder 不再重复�
 
 独立复核冻结的 21 个源码/测试文件，哈希全部匹配，发现 1 项 P2：关闭实体别名规范化时，描述缺少进入索引前的公共处理，与 embedding 使用的文本不一致。修复位于实体公共准备入口，保留 nullable/empty 差异，不恢复下游兜底。8 项分支、类型和输入不变性测试先得到 4 项预期失败、4 项已有通过；修复后相关 33 项通过。选中 KG 模板的旧提前归空 guard 也由 2 项先失败的用例纠正。
 
-解析输出新增 4 项先失败的用例，证明空 ID、文本、属性和源 hint 不被归空；旧 preview 夹具替换为真实 LangChain Document，已有 ownership/图片处理断言保留。标准化元素的旧精确形状用例只将两项期望属性从 `None` 改为实际空字典。vendor/DeepDoc 的 Docling 测试因缺少 `trio` 无法收集，未安装依赖；本轮实际修改的 app/parsing Docling wrapper 由新增用例及既有 wrapper 测试验证。
+解析输出新增 4 项先失败的用例，证明空 ID、文本、属性和源 hint 不被归空；旧 preview 夹具替换为真实 LangChain Document，已有 ownership/图片处理断言保留。标准化元素的旧精确形状用例只将两项期望属性从 `None` 改为实际空字典。vendor/DeepDoc 的 Docling 测试因缺少 `trio` 无法收集，未安装依赖；本轮实际修改的 app/rag/ingestion/parsing Docling wrapper 由新增用例及既有 wrapper 测试验证。
 
 缓存 token 新增 4 项用例，保留真实缺少身份时的拒绝，证明 datetime/ISO 等价，并区分实际空版本和缺失值。解析/corpus 相关定向测试 43 passed，1 项既有 manual-route mock 失败按已记录的基线排除。
 

@@ -3,7 +3,7 @@ from uuid import uuid4
 import pytest
 from fastapi import HTTPException
 
-from app.api.v1 import evidence_capsules
+from app.api.v1.evaluation import evidence_capsules
 
 
 class StorageBoundaryError(Exception):

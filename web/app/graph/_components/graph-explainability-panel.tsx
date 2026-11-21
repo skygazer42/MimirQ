@@ -13,9 +13,9 @@ type GraphExplainabilityStep = {
 
 type GraphExplainabilityPanelProps = Readonly<{
   open: boolean
-  explainSteps: GraphExplainabilityStep[]
+  explainSteps: readonly GraphExplainabilityStep[]
   currentStepIndex: number
-  nodes: GraphNodeLike[]
+  nodes: readonly GraphNodeLike[]
 }>
 
 export function GraphExplainabilityPanel({
@@ -27,16 +27,20 @@ export function GraphExplainabilityPanel({
   if (!open) return null
 
   return (
-    <div className="absolute bottom-8 left-8 z-20 w-80 rounded-2xl border border-border bg-card overflow-hidden shadow-none">
+    <section
+      className="absolute bottom-8 left-8 z-20 w-80 rounded-2xl border border-border bg-card overflow-hidden shadow-none"
+      aria-label="路径回放"
+    >
       <div className="p-4 border-b border-border bg-muted/30 flex items-center gap-2">
         <Lightbulb className="w-4 h-4 text-primary" />
-        <h3 className="font-bold text-foreground text-sm">RAG 推理过程</h3>
+        <h3 className="font-bold text-foreground text-sm">路径回放</h3>
       </div>
-      <div className="p-4 space-y-4 max-h-[300px] overflow-y-auto overscroll-contain no-scrollbar">
-        {explainSteps.map((step, idx) => {
-          const node = nodes.find((item) => item.id === step.node)
-          const isActive = idx === currentStepIndex
-          const isDone = idx < currentStepIndex
+      <ol className="list-none p-4 space-y-4 max-h-[300px] overflow-y-auto overscroll-contain no-scrollbar">
+        {explainSteps.map((step, index) => {
+          const nodeLabel = nodes.find((node) => node.id === step.node)?.label
+          const label = nodeLabel === undefined || nodeLabel === '' ? step.node : nodeLabel
+          const isActive = index === currentStepIndex
+          const isDone = index < currentStepIndex
           let borderClass = 'border-border opacity-50'
           let dotClass = 'bg-muted'
 
@@ -49,20 +53,21 @@ export function GraphExplainabilityPanel({
           }
 
           return (
-            <div
-              key={`${step.node}-${step.reason}`}
+            <li
+              key={JSON.stringify([step.node, index])}
+              aria-current={isActive ? 'step' : undefined}
               className={cn(
                 'relative pl-4 border-l-2 transition-colors duration-150 motion-reduce:transition-none',
                 borderClass,
               )}
             >
               <div className={cn('absolute -left-[5px] top-0 w-2 h-2 rounded-full transition-colors', dotClass)} />
-              <p className="text-xs font-semibold text-foreground mb-0.5">{node?.label || step.node}</p>
+              <p className="text-xs font-semibold text-foreground mb-0.5">{label}</p>
               <p className="text-[11px] text-muted-foreground leading-snug">{step.reason}</p>
-            </div>
+            </li>
           )
         })}
-      </div>
-    </div>
+      </ol>
+    </section>
   )
 }

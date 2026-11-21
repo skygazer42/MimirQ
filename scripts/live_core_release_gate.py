@@ -77,6 +77,11 @@ def _make_marker(prefix: str) -> str:
     return f"{prefix}-{uuid.uuid4().hex[:12]}"
 
 
+def _response_object(response: httpx.Response) -> dict[str, Any]:
+    payload = _parse_json(response)
+    return payload if isinstance(payload, dict) else {}
+
+
 def _create_dataset(client: httpx.Client, *, api_base: str, headers: dict[str, str], label: str) -> str:
     response = request_with_retries(
         client,
@@ -86,8 +91,7 @@ def _create_dataset(client: httpx.Client, *, api_base: str, headers: dict[str, s
         headers=headers,
         json={"name": f"live-gate-{label}-{uuid.uuid4().hex[:8]}", "description": "live core release gate"},
     )
-    payload = _parse_json(response)
-    dataset_id = str(payload.get("id") if isinstance(payload, dict) else "").strip()
+    dataset_id = str(_response_object(response).get("id") or "").strip()
     if not dataset_id:
         raise ValueError("dataset create returned no id")
     return dataset_id
@@ -111,8 +115,7 @@ def _upload_text_document(
         files={"file": ("live-core-gate.txt", text.encode("utf-8"), "text/plain")},
         data=_upload_form_data(dataset_id=dataset_id, parser_backend=parser_backend, core_only=True),
     )
-    payload = _parse_json(response)
-    document_id = str(payload.get("id") if isinstance(payload, dict) else "").strip()
+    document_id = str(_response_object(response).get("id") or "").strip()
     if not document_id:
         raise ValueError("upload returned no document id")
     return document_id
@@ -203,8 +206,7 @@ def _probe_png_cross_instance(
         expected={202},
         headers=headers,
     )
-    create_payload = _parse_json(create_response)
-    task_id = str(create_payload.get("task_id") if isinstance(create_payload, dict) else "").strip()
+    task_id = str(_response_object(create_response).get("task_id") or "").strip()
     if not task_id:
         return {"passed": False, "reason": "create returned no task_id"}
 
@@ -218,8 +220,7 @@ def _probe_png_cross_instance(
             expected={200},
             headers=headers,
         )
-        parsed = _parse_json(status_response)
-        status_payload = dict(parsed) if isinstance(parsed, dict) else {}
+        status_payload = _response_object(status_response)
         status = str(status_payload.get("status") or "").strip().lower()
         if status == "done":
             break
@@ -281,10 +282,8 @@ def _probe_png_worker_lost(
         expected={200},
         headers=headers,
     )
-    shared_state_payload = _parse_json(shared_state_response)
-    shared_state_status = (
-        str(shared_state_payload.get("status") if isinstance(shared_state_payload, dict) else "").strip().lower()
-    )
+    shared_state_payload = _response_object(shared_state_response)
+    shared_state_status = str(shared_state_payload.get("status") or "").strip().lower()
     if shared_state_status != "running":
         return {
             "task_id": task_id,
@@ -307,9 +306,9 @@ def _probe_png_worker_lost(
         expected={200},
         headers=headers,
     )
-    parsed = _parse_json(response)
-    status = str(parsed.get("status") if isinstance(parsed, dict) else "").strip().lower()
-    error_code = str(parsed.get("error_code") if isinstance(parsed, dict) else "").strip().lower()
+    payload = _response_object(response)
+    status = str(payload.get("status") or "").strip().lower()
+    error_code = str(payload.get("error_code") or "").strip().lower()
     return {
         "task_id": task_id,
         "shared_state_status": shared_state_status,
@@ -382,8 +381,7 @@ def _concurrent_duplicate_upload_ids(
                         f"duplicate upload failed: base_url={target_base} "
                         f"status={response.status_code} body={response.text[:500]}"
                     )
-                payload = _parse_json(response)
-                document_id = str(payload.get("id") if isinstance(payload, dict) else "").strip()
+                document_id = str(_response_object(response).get("id") or "").strip()
                 if not document_id:
                     raise ValueError("upload returned no document id")
                 return document_id
@@ -691,7 +689,8 @@ def _run_duplicate_upload_check(
         text=duplicate_text,
         client=client,
     )
-    for duplicate_document_id in sorted(set(duplicate_document_ids)):
+    unique_document_ids = set(duplicate_document_ids)
+    for duplicate_document_id in sorted(unique_document_ids):
         _wait_for_document_completion(
             client,
             api_base=config.api_base,
@@ -701,16 +700,17 @@ def _run_duplicate_upload_check(
             poll_interval_sec=config.poll_interval_sec,
             verbose=False,
         )
-    duplicate_passed = bool(duplicate_document_ids) and len(set(duplicate_document_ids)) == 1
-    duplicate_passed = duplicate_passed and duplicate_document_ids[0] != primary_document_id
+    duplicate_passed = len(unique_document_ids) == 1 and primary_document_id not in unique_document_ids
     report["duplicate_upload"] = {
         "first_document_id": primary_document_id,
         "concurrent_document_ids": duplicate_document_ids,
         "marker": duplicate_marker,
         "passed": duplicate_passed,
     }
-    if not duplicate_passed:
+    if len(unique_document_ids) != 1:
         _failures_extend(report, "concurrent duplicate upload returned different document ids")
+    elif not duplicate_passed:
+        _failures_extend(report, "concurrent duplicate upload reused the primary document id")
 
 
 def _run_same_key_probe(

@@ -1,9 +1,10 @@
 'use client'
-import { useState, type ReactNode } from 'react'
-import { Download, Loader2, PackageCheck, ShieldCheck } from '@/components/icons'
+import { useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
+import { Download, PackageCheck, ShieldCheck } from '@/components/icons'
 import type { PlatformIcon } from '@/components/icons'
 import { toast } from 'sonner'
-import { Button } from '@/components/ui/button'
+import { z } from 'zod'
+import { LoadingButton } from '@/components/ui/loading-button'
 import { Input } from '@/components/ui/input'
 import { WorkspaceNotice } from '@/components/ui/operational-workspace'
 import { Textarea } from '@/components/ui/textarea'
@@ -11,20 +12,18 @@ import { DatasetSelectField } from '@/components/ops/dataset-select-field'
 import { OperationResultPanel } from '@/components/ops/operation-result-panel'
 import { evidenceApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
-import { detachPromise } from '@/lib/utils'
+import { getAuthSessionKey, subscribeAuthSession } from '@/lib/auth-storage'
+import { downloadBlob } from '@/lib/download'
 
-function parseJson(raw: string) {
-  const value = raw.trim()
-  return value ? JSON.parse(value) : {}
-}
+const capsulePayloadSchema = z.looseObject({
+  capsule: z.record(z.string(), z.unknown()),
+  capsule_id: z.string().nullish(),
+  overwrite: z.boolean().optional(),
+})
 
-function downloadBlob(blob: Blob, filename: string) {
-  const url = URL.createObjectURL(blob)
-  const anchor = document.createElement('a')
-  anchor.href = url
-  anchor.download = filename
-  anchor.click()
-  globalThis.window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+function parsePayload(raw: string): Record<string, unknown> {
+  const payload: unknown = JSON.parse(raw)
+  return z.record(z.string(), z.unknown()).parse(payload)
 }
 
 export function EvidenceOpsPanel() {
@@ -38,30 +37,62 @@ export function EvidenceOpsPanel() {
   const [busy, setBusy] = useState<string | null>(null)
   const [result, setResult] = useState<{ title: string; payload: unknown } | null>(null)
 
-  const dataset = datasetId.trim()
   const suite = suiteId.trim()
   const item = itemId.trim()
   const capsule = capsuleId.trim()
 
-  const [actionError, setActionError] = useState<string | null>(null)
+  const [actionError, setActionError] = useState<{ scope: 'dataset' | 'advanced'; message: string } | null>(null)
 
-  async function runAction(key: string, title: string, action: () => Promise<unknown>) {
+  const sessionKey = useSyncExternalStore(subscribeAuthSession, getAuthSessionKey, getAuthSessionKey)
+  const activeOperation = useRef<object | null>(null)
+  useLayoutEffect(() => {
+    activeOperation.current = null
+    setBusy(null)
+    setActionError(null)
+    setResult(null)
+    return () => {
+      activeOperation.current = null
+    }
+  }, [datasetId, suiteId, itemId, capsuleId, payloadJson, sessionKey])
+
+  async function runAction<T>(
+    key: string,
+    title: string,
+    action: () => Promise<T>,
+    commit?: (response: T) => { payload: unknown; message: string; warning?: true },
+  ) {
+    if (activeOperation.current !== null) return
+    const operation = {}
+    activeOperation.current = operation
     setBusy(key)
     setActionError(null)
     setResult(null)
+    const isCurrent = () => activeOperation.current === operation && getAuthSessionKey() === sessionKey
     try {
-      const payload = await action()
-      setResult({ title, payload })
-      toast.success(`${title}完成`)
-    } catch (error) {
-      setActionError(formatApiError(error, `${title}失败`))
+      const response = await action()
+      if (!isCurrent()) return
+      const outcome = commit === undefined ? { payload: response, message: `${title}完成` } : commit(response)
+      setResult({ title, payload: outcome.payload })
+      if (outcome.warning) toast.warning(outcome.message)
+      else toast.success(outcome.message)
+    } catch (error: unknown) {
+      if (isCurrent()) {
+        setActionError({
+          scope: key === 'dataset-drift' || key === 'training-export' ? 'dataset' : 'advanced',
+          message: formatApiError(error, `${title}失败`),
+        })
+      }
     } finally {
-      setBusy(null)
+      if (isCurrent()) {
+        activeOperation.current = null
+        setBusy(null)
+      }
     }
   }
 
   return (
-    <fieldset disabled={Boolean(busy)} className="space-y-4">
+    <fieldset disabled={busy !== null} className="space-y-4">
+      <legend className="sr-only">Evidence 管理操作</legend>
       <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
         <div>
           <div className="text-sm font-semibold text-foreground">Evidence 管理操作</div>
@@ -69,7 +100,6 @@ export function EvidenceOpsPanel() {
             围绕选中数据集完成证据漂移审计与训练集导出；suite/item/capsule 维护放在高级参数中。
           </p>
         </div>
-        {busy ? <Loader2 className="h-4 w-4 animate-spin text-muted-foreground motion-reduce:animate-none" /> : null}
       </div>
 
       <div className="mt-3 grid gap-2 md:grid-cols-[minmax(0,1fr)_auto_auto] md:items-end">
@@ -77,37 +107,40 @@ export function EvidenceOpsPanel() {
         <ActionButton
           icon={ShieldCheck}
           busy={busy === 'dataset-drift'}
-          disabled={Boolean(busy) || !dataset}
+          disabled={datasetId === ''}
           label="数据集 Drift"
           onClick={() =>
             runAction('dataset-drift', '数据集 Drift Audit', () =>
-              evidenceApi.getDatasetDriftAudit(dataset, { include_details: true, details_limit: 20 }),
+              evidenceApi.getDatasetDriftAudit(datasetId, { include_details: true, details_limit: 20 }),
             )
           }
         />
-        <Button
-          variant="outline"
-          className="h-8 gap-1.5 rounded-lg px-3 text-xs font-semibold"
-          disabled={Boolean(busy) || !dataset}
+        <ActionButton
+          icon={Download}
+          busy={busy === 'training-export'}
+          disabled={datasetId === ''}
+          label="导出训练集"
           onClick={() =>
-            detachPromise(
-              runAction('training-export', '导出训练集', async () => {
-                const blob = await evidenceApi.exportTrainingDataset({
-                  dataset_id: dataset,
+            runAction(
+              'training-export',
+              '导出训练集',
+              () =>
+                evidenceApi.exportTrainingDataset({
+                  dataset_id: datasetId,
                   format: 'jsonl',
                   include_feedback: true,
                   include_evidence: true,
-                })
-                downloadBlob(blob, `evidence-training.${dataset.slice(0, 8)}.jsonl`)
-                return { bytes: blob.size, type: blob.type }
-              }),
+                }),
+              (blob) => {
+                downloadBlob(`evidence-training.${datasetId.slice(0, 8)}.jsonl`, blob)
+                return { payload: { bytes: blob.size, type: blob.type }, message: '训练集下载已开始' }
+              },
             )
           }
-        >
-          <Download className="h-3.5 w-3.5" />
-          导出训练集
-        </Button>
+        />
       </div>
+
+      {actionError?.scope === 'dataset' ? <WorkspaceNotice>{actionError.message}</WorkspaceNotice> : null}
 
       <details className="mt-3 rounded-lg border border-border/60 bg-background/70 p-3">
         <summary className="cursor-pointer text-xs font-semibold text-foreground">高级参数（可选）</summary>
@@ -141,60 +174,74 @@ export function EvidenceOpsPanel() {
           <ActionButton
             icon={ShieldCheck}
             busy={busy === 'repair'}
-            disabled={Boolean(busy) || !suite}
+            disabled={suite === ''}
             label="修复引用"
             onClick={() =>
-              runAction('repair', '修复 Suite Reference Sources', () =>
-                evidenceApi.repairSuiteReferenceSources(suite, parseJson(payloadJson)),
+              runAction(
+                'repair',
+                'Suite 引用修复',
+                () => evidenceApi.repairSuiteReferenceSources(suite, parsePayload(payloadJson)),
+                (report) => ({ payload: report, message: report.applied ? '已应用引用修复' : '引用修复预检完成' }),
               )
             }
           />
           <ActionButton
             icon={ShieldCheck}
             busy={busy === 'patch-suite'}
-            disabled={Boolean(busy) || !suite}
+            disabled={suite === ''}
             label="Patch Suite"
             onClick={() =>
               runAction('patch-suite', 'Patch Evidence Suite', () =>
-                evidenceApi.patchSuite(suite, parseJson(payloadJson)),
+                evidenceApi.patchSuite(suite, parsePayload(payloadJson)),
               )
             }
           />
           <ActionButton
             icon={ShieldCheck}
             busy={busy === 'patch-item'}
-            disabled={Boolean(busy) || !item}
+            disabled={item === ''}
             label="Patch Item"
             onClick={() =>
-              runAction('patch-item', 'Patch Evidence Item', () => evidenceApi.patchItem(item, parseJson(payloadJson)))
+              runAction('patch-item', 'Patch Evidence Item', () =>
+                evidenceApi.patchItem(item, parsePayload(payloadJson)),
+              )
             }
           />
           <ActionButton
             icon={PackageCheck}
             busy={busy === 'persist'}
-            disabled={Boolean(busy)}
             label="保存 Capsule"
             onClick={() =>
-              runAction('persist', '保存 Evidence Capsule', () => evidenceApi.persistCapsule(parseJson(payloadJson)))
+              runAction('persist', '保存 Evidence Capsule', () =>
+                evidenceApi.persistCapsule(capsulePayloadSchema.parse(JSON.parse(payloadJson))),
+              )
             }
           />
           <ActionButton
             icon={PackageCheck}
             busy={busy === 'get-capsule'}
-            disabled={Boolean(busy) || !capsule}
+            disabled={capsule === ''}
             label="读取 Capsule"
             onClick={() => runAction('get-capsule', '读取 Evidence Capsule', () => evidenceApi.getCapsule(capsule))}
           />
           <ActionButton
             icon={PackageCheck}
             busy={busy === 'verify'}
-            disabled={Boolean(busy)}
             label="校验 Capsule"
             onClick={() =>
-              runAction('verify', '校验 Evidence Capsule', () => evidenceApi.verifyCapsule(parseJson(payloadJson)))
+              runAction(
+                'verify',
+                '校验 Evidence Capsule',
+                () => evidenceApi.verifyCapsule(capsulePayloadSchema.parse(JSON.parse(payloadJson))),
+                (report) =>
+                  report.valid
+                    ? { payload: report, message: 'Capsule 校验通过' }
+                    : { payload: report, message: `Capsule 校验未通过（${report.reason}）`, warning: true },
+              )
             }
           />
         </div>
+        {actionError?.scope === 'advanced' ? <WorkspaceNotice>{actionError.message}</WorkspaceNotice> : null}
         <Field label="高级载荷（JSON）">
           <Textarea
             value={payloadJson}
@@ -210,7 +257,6 @@ export function EvidenceOpsPanel() {
         result={result}
         emptyMessage="选择上方操作后，这里展示执行摘要；原始响应默认收起。"
       />
-      {actionError ? <WorkspaceNotice>{actionError}</WorkspaceNotice> : null}
     </fieldset>
   )
 }
@@ -232,24 +278,21 @@ function ActionButton({
   onClick,
 }: Readonly<{
   busy: boolean
-  disabled: boolean
+  disabled?: boolean
   icon: PlatformIcon
   label: string
   onClick: () => Promise<void>
 }>) {
   return (
-    <Button
+    <LoadingButton
+      loading={busy}
       variant="outline"
       className="h-8 gap-1.5 rounded-lg px-3 text-xs font-semibold"
       disabled={disabled}
-      onClick={() => detachPromise(onClick())}
+      onClick={onClick}
     >
-      {busy ? (
-        <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" />
-      ) : (
-        <Icon className="h-3.5 w-3.5" />
-      )}
+      <Icon className="h-3.5 w-3.5" />
       {label}
-    </Button>
+    </LoadingButton>
   )
 }

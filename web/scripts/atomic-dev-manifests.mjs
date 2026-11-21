@@ -21,9 +21,12 @@ export function createAtomicManifestFileSystem(fileSystem) {
       return
     }
     const temporary = `${filename}.ragvia-${process.pid}-${randomUUID()}.tmp`
+    const removeFailedWrite = (error) => {
+      fileSystem.unlink(temporary, () => callback(error))
+    }
     fileSystem.writeFile(temporary, content, ...args, (error) => {
       if (error) {
-        callback(error)
+        removeFailedWrite(error)
         return
       }
       // Both files live in the same directory, so replacement is atomic.
@@ -40,7 +43,11 @@ export function createAtomicManifestFileSystem(fileSystem) {
             setTimeout(() => publish(attempt + 1), SHARING_LOCK_DELAYS[attempt])
             return
           }
-          callback(renameError)
+          if (renameError) {
+            removeFailedWrite(renameError)
+            return
+          }
+          callback(null)
         })
       publish(0)
     })

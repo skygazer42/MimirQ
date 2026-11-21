@@ -11,7 +11,7 @@ from sqlalchemy import Column, DateTime, String
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.sql import func
 
-from app.core.database import Base
+from app.infrastructure.database.connection import Base
 
 
 class AuditLog(Base):

@@ -6,12 +6,13 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { waitForAssertion } from '@/test/hook-harness'
+import type { RtbfCascadeResponse } from '@/lib/api/rtbf'
 
-const api = vi.hoisted(() => ({ access: vi.fn(), members: vi.fn(), request: vi.fn(), status: vi.fn() }))
+const api = vi.hoisted(() => ({ access: vi.fn(), members: vi.fn(), request: vi.fn() }))
 const notices = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }))
 vi.hoisted(() => vi.stubGlobal('BroadcastChannel', undefined))
 vi.mock('@/lib/api/access', () => ({ rbacApi: { getCurrentTenantAccess: api.access, listTenantMembers: api.members } }))
-vi.mock('@/lib/api/rtbf', () => ({ rtbfApi: { request: api.request, getStatus: api.status } }))
+vi.mock('@/lib/api/rtbf', () => ({ rtbfApi: { request: api.request } }))
 vi.mock('@/components/settings/governance-ops-panel', () => ({ GovernanceOpsPanel: () => null }))
 vi.mock('sonner', () => ({ toast: notices }))
 
@@ -28,10 +29,10 @@ const profile = {
   created_at: '2026-11-05T00:00:00Z',
 }
 
-function result() {
+function result(): RtbfCascadeResponse {
   return {
+    schema: 'mimirq.rtbf_cascade.v1',
     subject_account_id: 'account-a',
-    ticket_id: 'ticket-response',
     dry_run: true,
     eligible: 0,
     deleted: 0,
@@ -97,10 +98,8 @@ function button(container: ParentNode, label: string) {
 }
 
 function input(container: ParentNode, label: string) {
-  const node = [...container.querySelectorAll('div')].find(
-    (node) => node.textContent?.trim() === label && node.parentElement?.querySelector('input'),
-  )
-  const target = node?.querySelector('input') ?? node?.parentElement?.querySelector('input')
+  const node = [...container.querySelectorAll('label')].find((node) => node.textContent?.trim() === label)
+  const target = node?.querySelector('input')
   expect(target, label).toBeDefined()
   return target!
 }
@@ -128,11 +127,6 @@ beforeEach(() => {
   })
   api.members.mockResolvedValue({ items: [] })
   api.request.mockResolvedValue(result())
-  api.status.mockImplementation(async (ticket: string) => ({
-    ticket_id: ticket,
-    status: 'accepted',
-    note: 'RTBF status persistence is not enabled in this scaffold',
-  }))
 })
 afterEach(() => {
   for (const dispose of cleanup.splice(0).reverse()) dispose()
@@ -140,6 +134,13 @@ afterEach(() => {
 })
 
 describe('RTBF input and wire policy', () => {
+  it('offers cleanup requests without a ticket status input or action', async () => {
+    const view = await mount()
+    expect(view.container.textContent).not.toContain('状态查询工单')
+    expect(view.container.textContent).not.toContain('查询工单状态')
+    expect(view.container.querySelector('input[placeholder^="提交请求后自动回填"]')).toBeNull()
+  })
+
   it('preserves allowed zero retries and the original preview/body defaults', async () => {
     const view = await mount()
     fill(input(view.container, '失败重试'), '0')
@@ -152,6 +153,26 @@ describe('RTBF input and wire policy', () => {
       max_retries: 0,
     })
     expect(api.members).toHaveBeenCalledWith({ limit: 500 })
+  })
+
+  it('uses the authenticated account even when another member is marked current', async () => {
+    api.members.mockResolvedValueOnce({ items: [{ user_id: 'account-b', is_current: true }] })
+    const view = await mount()
+    await act(async () => button(view.container, '开始安全预演').click())
+
+    expect(api.request).toHaveBeenCalledWith(expect.objectContaining({ subject_account_id: 'account-a' }))
+  })
+
+  it('shows partial deletion errors without a success notification', async () => {
+    api.request.mockResolvedValueOnce({ ...result(), dry_run: false, eligible: 2, deleted: 1, errors: 1 })
+    const view = await mount()
+    act(() => button(view.container, '执行删除').click())
+    await act(async () => button(view.container, '确认执行删除').click())
+
+    const summary = view.container.querySelector('[data-testid="rtbf-result-summary"]')
+    expect(summary?.textContent).toContain('删除 1/2 个候选文档')
+    expect(notices.error).toHaveBeenCalledWith('RTBF 删除执行存在错误，请查看结果')
+    expect(notices.success).not.toHaveBeenCalled()
   })
 
   it.each([
@@ -202,20 +223,32 @@ describe('RTBF input and wire policy', () => {
 })
 
 describe('RTBF result lifetime', () => {
-  it('does not overwrite a ticket entered while a request is pending', async () => {
+  it('preserves request inputs edited while a preview is pending', async () => {
     const pending = deferred<ReturnType<typeof result>>()
     api.request.mockReturnValueOnce(pending.promise)
     const view = await mount()
     act(() => button(view.container, '开始安全预演').click())
     await waitForAssertion(() => expect(api.request).toHaveBeenCalledOnce())
-    const ticket = view.container.querySelector<HTMLInputElement>('input[placeholder^="提交请求后自动回填"]')!
-    fill(ticket, 'ticket-entered-after-submit')
+    const manual = view.container.querySelector<HTMLInputElement>('input[placeholder^="例如 user-123"]')!
+    fill(manual, 'next-subject')
+    fill(input(view.container, '最多扫描文档'), '25')
+    fill(input(view.container, '失败重试'), '0')
+    act(() => button(view.container, '执行删除').click())
+    expect(button(view.container, '确认执行删除').disabled).toBe(true)
+    expect(api.request).toHaveBeenCalledExactlyOnceWith({
+      subject_account_id: 'account-a',
+      dry_run: true,
+      max_docs: 100,
+      max_retries: 1,
+    })
     await act(async () => pending.resolve(result()))
-    await waitForAssertion(() => expect(button(view.container, '查询工单状态').disabled).toBe(false))
+    await waitForAssertion(() => expect(button(view.container, '确认执行删除').disabled).toBe(false))
 
-    expect(ticket.value).toBe('ticket-entered-after-submit')
-    await act(async () => button(view.container, '查询工单状态').click())
-    expect(api.status).toHaveBeenCalledWith('ticket-entered-after-submit')
+    expect(manual.value).toBe('next-subject')
+    expect(input(view.container, '最多扫描文档').value).toBe('25')
+    expect(input(view.container, '失败重试').value).toBe('0')
+    expect(notices.success).toHaveBeenCalledWith('RTBF 安全预演完成')
+    expect(view.container.querySelector('[data-testid="rtbf-result-summary"]')?.textContent).toContain('安全预演完成')
   })
 
   it('submits only one request before the pending render is committed', async () => {
@@ -256,7 +289,7 @@ describe('RTBF result lifetime', () => {
     await waitForAssertion(() => expect(button(view.container, '开始安全预演').disabled).toBe(false))
 
     expect(notices.success).not.toHaveBeenCalled()
-    expect(view.container.querySelector<HTMLInputElement>('input[placeholder^="提交请求后自动回填"]')?.value).toBe('')
+    expect(view.container.querySelector('[data-testid="rtbf-result-summary"]')).toBeNull()
   })
 
   it('keeps explicit false governance patches and zero response metrics', async () => {
@@ -267,6 +300,6 @@ describe('RTBF result lifetime', () => {
     expect(view.container.querySelector('[data-testid="rtbf-result-summary"]')?.textContent).toContain(
       '命中 0 个候选文档',
     )
-    expect(input(view.container, '状态查询工单').value).toBe('ticket-response')
+    expect(notices.success).toHaveBeenCalledWith('RTBF 安全预演完成')
   })
 })

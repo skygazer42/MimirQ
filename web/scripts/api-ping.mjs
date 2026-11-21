@@ -7,41 +7,34 @@
  */
 
 function resolveBaseUrl() {
-  const raw = String(process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000').trim()
-  return raw.replace(/\/+$/, '')
+  const configuredUrl = process.env.NEXT_PUBLIC_API_URL?.trim()
+  const baseUrl = configuredUrl === undefined || configuredUrl === '' ? 'http://localhost:8000' : configuredUrl
+  return baseUrl.replace(/\/+$/, '')
 }
 
-async function fetchJson(url, { timeoutMs = 5000 } = {}) {
-  const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), timeoutMs)
-  try {
-    const res = await fetch(url, {
-      method: 'GET',
-      headers: { Accept: 'application/json' },
-      signal: controller.signal,
-    })
-    const requestId = res.headers.get('x-request-id') || res.headers.get('X-Request-ID') || undefined
-    const contentType = String(res.headers.get('content-type') || '')
-    const isJsonContentType = /application\/json|application\/[^;]+\+json/i.test(contentType)
+async function fetchJson(url) {
+  const response = await fetch(url, {
+    headers: { Accept: 'application/json' },
+    signal: AbortSignal.timeout(5_000),
+  })
+  const requestId = response.headers.get('x-request-id')
+  const contentType = response.headers.get('content-type')
+  const isJsonContentType = contentType !== null && /application\/json|application\/[^;]+\+json/i.test(contentType)
 
-    const bodyText = await res.text()
-    let json = null
-    let jsonError = null
-    if (bodyText) {
-      try {
-        json = JSON.parse(bodyText)
-      } catch (err) {
-        jsonError = String(err?.message || err)
-      }
+  const bodyText = await response.text()
+  let json = null
+  let jsonError = null
+  if (bodyText !== '') {
+    try {
+      json = JSON.parse(bodyText)
+    } catch (error) {
+      jsonError = error instanceof Error ? error.message : String(error)
     }
-
-    // Require JSON on success; otherwise the frontend will likely crash on shape mismatches.
-    const ok = Boolean(res.ok && isJsonContentType && json && typeof json === 'object')
-    const snippet = bodyText ? bodyText.trimStart().slice(0, 160) : ''
-    return { ok, status: res.status, requestId, json, jsonError, contentType, snippet }
-  } finally {
-    clearTimeout(timeout)
   }
+
+  const ok = response.ok && isJsonContentType && json !== null && typeof json === 'object'
+  const snippet = bodyText.trimStart().slice(0, 160)
+  return { ok, status: response.status, requestId, json, jsonError, contentType, snippet }
 }
 
 async function main() {
@@ -54,27 +47,28 @@ async function main() {
 
   console.log(`[api-ping] base=${base}`)
 
-  let failed = 0
+  let failed = false
   for (const ep of endpoints) {
     try {
       const out = await fetchJson(ep.url)
       const rid = out.requestId ? ` request_id=${out.requestId}` : ''
       console.log(`[api-ping] ${ep.name} ${out.status}${rid}`)
       if (!out.ok) {
-        failed++
+        failed = true
         const ct = out.contentType ? ` content-type=${out.contentType}` : ''
         console.error(`[api-ping] ${ep.name} FAIL${ct}`)
-        if (out.json) console.error(JSON.stringify(out.json, null, 2))
+        if (out.json !== null) console.error(JSON.stringify(out.json, null, 2))
         else if (out.jsonError) console.error(`[api-ping] ${ep.name} JSON parse error: ${out.jsonError}`)
         if (out.snippet) console.error(`[api-ping] ${ep.name} body: ${out.snippet}`)
       }
-    } catch (err) {
-      failed++
-      console.error(`[api-ping] ${ep.name} ERROR: ${String(err?.message || err)}`)
+    } catch (error) {
+      failed = true
+      const message = error instanceof Error ? error.message : String(error)
+      console.error(`[api-ping] ${ep.name} ERROR: ${message}`)
     }
   }
 
-  if (failed) process.exit(1)
+  if (failed) process.exitCode = 1
 }
 
 main()

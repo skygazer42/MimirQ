@@ -1,11 +1,14 @@
 'use client'
 
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import type { EChartsOption } from 'echarts'
+import { Button } from '@/components/ui/button'
 import { EChart, type EChartEventHandler } from '@/components/ui/echart'
 import { DIFFERENCE_VISUALMAP_COLORS, toEchartsVisualMapColors, type ColorSchemeKey } from './color-schemes'
+import { similarityFieldClass } from './form-controls'
 import { resolveHeatmapPoint, type SelectedHeatmapCell } from './heatmap-types'
 import { formatHeatmapValue } from './similarity-matrix-math'
+import { isRecord } from './utils'
 
 const HEATMAP_CELL_TEXT_SIZE = 13
 
@@ -35,11 +38,11 @@ function escapeHtml(value: string) {
 }
 
 function resolveTooltipContext(params: unknown) {
+  if (!isRecord(params) || !Array.isArray(params.value)) return null
+
   const cell = resolveHeatmapPoint(params)
-  if (!cell) return null
-  const record = params as { value?: unknown }
-  const tuple = Array.isArray(record.value) ? record.value : null
-  const value = tuple?.[2]
+  if (cell === null) return null
+  const value = params.value[2]
   if (typeof value !== 'number' || !Number.isFinite(value)) return null
   return { cell, value }
 }
@@ -59,6 +62,12 @@ export function EchartsHeatmap({
   isDifference: boolean
   onCellSelect?: (cell: SelectedHeatmapCell) => void
 }>) {
+  const [cellSelection, setCellSelection] = useState<SelectedHeatmapCell>({ rowIndex: 0, colIndex: 0 })
+  const rowIndex = Math.min(cellSelection.rowIndex, yLabels.length - 1)
+  const colIndex = Math.min(cellSelection.colIndex, xLabels.length - 1)
+  const cellValue = matrix[rowIndex]?.[colIndex]
+  const canInspectCell = typeof cellValue === 'number' && Number.isFinite(cellValue)
+
   const option = useMemo<EChartsOption>(() => {
     const min = isDifference ? -1 : 0
     const max = 1
@@ -96,8 +105,9 @@ export function EchartsHeatmap({
         formatter: (params: unknown) => {
           const resolved = resolveTooltipContext(params)
           if (!resolved) return ''
-          const xLabel = xLabels[resolved.cell.colIndex] || ''
-          const yLabel = yLabels[resolved.cell.rowIndex] || ''
+          const xLabel = xLabels[resolved.cell.colIndex]
+          const yLabel = yLabels[resolved.cell.rowIndex]
+          if (xLabel === undefined || yLabel === undefined) return ''
           return [`<b>${resolved.value.toFixed(3)}</b>`, `X: ${escapeHtml(xLabel)}`, `Y: ${escapeHtml(yLabel)}`].join(
             '<br>',
           )
@@ -122,10 +132,9 @@ export function EchartsHeatmap({
               paper: { color: '#ffffff', fontSize: HEATMAP_CELL_TEXT_SIZE },
             },
             formatter: (params: unknown) => {
-              const record = params as { value?: unknown }
-              const tuple = Array.isArray(record.value) ? record.value : null
-              const value = tuple?.[2]
-              return typeof value === 'number'
+              if (!isRecord(params) || !Array.isArray(params.value)) return '—'
+              const value = params.value[2]
+              return typeof value === 'number' && Number.isFinite(value)
                 ? `{${cellLabelTone(value, min, max, colors)}|${formatHeatmapValue(value)}}`
                 : '—'
             },
@@ -145,15 +154,64 @@ export function EchartsHeatmap({
     () => ({
       click: (params: unknown) => {
         const cell = resolveHeatmapPoint(params)
-        if (cell) onCellSelect?.(cell)
+        if (cell === null) return
+        setCellSelection(cell)
+        onCellSelect?.(cell)
       },
     }),
     [onCellSelect],
   )
 
   return (
-    <div className="h-full min-h-[320px] w-full">
-      <EChart option={option} onEvents={onEvents} />
+    <div className="flex h-full min-h-[320px] w-full flex-col gap-2">
+      {onCellSelect !== undefined && xLabels.length > 0 && yLabels.length > 0 && (
+        <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-end">
+          <label className="grid min-w-0 gap-1 text-sm">
+            纵轴项目
+            <select
+              className={similarityFieldClass}
+              value={rowIndex}
+              onChange={(event) => setCellSelection({ rowIndex: Number(event.target.value), colIndex })}
+            >
+              {yLabels.map((label, index) => (
+                <option key={label} value={index}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="grid min-w-0 gap-1 text-sm">
+            横轴项目
+            <select
+              className={similarityFieldClass}
+              value={colIndex}
+              onChange={(event) => setCellSelection({ rowIndex, colIndex: Number(event.target.value) })}
+            >
+              {xLabels.map((label, index) => (
+                <option key={label} value={index}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={!canInspectCell}
+            onClick={() => onCellSelect({ rowIndex, colIndex })}
+          >
+            查看单元格
+          </Button>
+          {!canInspectCell && (
+            <p role="status" className="text-sm text-muted-foreground sm:col-span-3">
+              当前单元格已被筛选。
+            </p>
+          )}
+        </div>
+      )}
+      <div className="min-h-0 flex-1">
+        <EChart option={option} onEvents={onEvents} />
+      </div>
     </div>
   )
 }

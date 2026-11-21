@@ -1,7 +1,7 @@
 'use client'
 import { FeedbackToast } from '@/components/feedback-toast'
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useLayoutEffect, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Loader2, Wrench } from '@/components/icons'
 import { useTranslations } from 'next-intl'
@@ -17,13 +17,11 @@ import type { DocumentPipelineOptions } from '@/types/backend'
 import { usePipelineOptions } from '@/contexts/pipeline-options-context'
 import { CleanPreviewRuleStatsPanel } from '@/components/governance-profiles/clean-preview-rule-stats-panel'
 import styles from './governance-inbox.module.css'
-import { computeCleanPreviewImpact } from '@/lib/clean-preview-impact'
 
 const DATA_CLEANER_INPUT_FORMAT_VALUES = ['markdown', 'html'] as const
 
 type DataCleanerProps = {
   content: string
-  cleanedContent?: string
   disabled?: boolean
   onConfigure?: () => void
   resetRevision?: number
@@ -32,7 +30,6 @@ type DataCleanerProps = {
 
 export function DataCleaner({
   content,
-  cleanedContent = '',
   resetRevision = 0,
   onClean,
   disabled = false,
@@ -47,53 +44,63 @@ export function DataCleaner({
   const [inputFormat, setInputFormat] = useState<'markdown' | 'html'>('markdown')
   const [llmEnabled, setLlmEnabled] = useState(false)
   const [promptTemplateId, setPromptTemplateId] = useState<string>('')
-  const impact = useMemo(() => computeCleanPreviewImpact(lastPreview), [lastPreview])
-  const activeApplyRef = useRef<{ cleanedContent: string } | null>(null)
+  const inputChars = lastPreview?.input_chars
+  const outputChars = lastPreview?.output_chars
+  const activeApplyRef = useRef<AbortController | null>(null)
+  const appliedPreviewRef = useRef<{ content: string; resetRevision: number } | null>(null)
   const onCleanRef = useRef(onClean)
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     onCleanRef.current = onClean
   }, [onClean])
 
   const discardPreview = useCallback(() => {
+    activeApplyRef.current?.abort()
     activeApplyRef.current = null
+    appliedPreviewRef.current = null
     setIsApplying(false)
     setBackendError(null)
     setBackendInfo(null)
     setLastPreview(null)
   }, [])
 
-  useEffect(() => {
-    discardPreview()
-    return () => {
-      activeApplyRef.current = null
+  useLayoutEffect(() => {
+    const applied = appliedPreviewRef.current
+    if (applied?.content === content && applied.resetRevision === resetRevision) {
+      appliedPreviewRef.current = null
+      return
     }
+    discardPreview()
   }, [content, discardPreview, resetRevision])
 
-  useEffect(() => {
-    const apply = activeApplyRef.current
-    if (apply && apply.cleanedContent !== cleanedContent) discardPreview()
-  }, [cleanedContent, discardPreview])
+  useLayoutEffect(
+    () => () => {
+      activeApplyRef.current?.abort()
+      activeApplyRef.current = null
+    },
+    [],
+  )
 
   const promptTemplatesQuery = useQuery({
     queryKey: [...queryKeys.prompts.all, 'selection', { is_active: true }],
     queryFn: async ({ signal }) => {
-      const response = await promptTemplateApi.list({ is_active: true, limit: 50 })
+      const response = await promptTemplateApi.list({ is_active: true, limit: 50 }, { signal })
       const templates = [...response.items]
       let page = response
       while (page.items.length > 0 && templates.length < response.total) {
         signal.throwIfAborted()
-        page = await promptTemplateApi.list({ is_active: true, limit: 50, skip: templates.length })
+        page = await promptTemplateApi.list({ is_active: true, limit: 50, skip: templates.length }, { signal })
         templates.push(...page.items)
       }
       return templates
     },
   })
-  const promptTemplates = promptTemplatesQuery.data || []
+  const promptTemplates = promptTemplatesQuery.data ?? []
+  const suggestedPatch = lastPreview?.suggested_pipeline_patch
 
   const handleApply = useCallback(async () => {
-    if (isApplying || disabled || !content.trim()) return
-    const apply = { cleanedContent }
+    if (activeApplyRef.current !== null || disabled || content.trim() === '') return
+    const apply = new AbortController()
     activeApplyRef.current = apply
     setIsApplying(true)
     setBackendError(null)
@@ -153,27 +160,21 @@ export function DataCleaner({
         common_lines_min_occurrences: opt(options.governance_common_lines_min_docs),
       }
 
-      const response = await pipelineApi.cleanPreview(request)
+      const response = await pipelineApi.cleanPreview(request, { signal: apply.signal })
       if (activeApplyRef.current !== apply) return
       setLastPreview(response)
 
       const info: string[] = []
       if (typeof response.input_lines === 'number' && typeof response.output_lines === 'number') {
-        const removed = typeof response.removed_lines === 'number' ? response.removed_lines : 0
-        const added = typeof response.added_lines === 'number' ? response.added_lines : 0
-        const changedLines = typeof response.changed_lines === 'number' ? response.changed_lines : 0
-        const inputChars = typeof response.input_chars === 'number' ? response.input_chars : content.length
-        const outputChars = typeof response.output_chars === 'number' ? response.output_chars : response.markdown.length
-
         info.push(
           t('info.cleaningStats', {
             inputLines: response.input_lines,
             outputLines: response.output_lines,
-            removed,
-            added,
-            changedLines,
-            inputChars,
-            outputChars,
+            removed: response.removed_lines ?? '—',
+            added: response.added_lines ?? '—',
+            changedLines: response.changed_lines ?? '—',
+            inputChars: response.input_chars ?? '—',
+            outputChars: response.output_chars ?? '—',
           }),
         )
       }
@@ -232,11 +233,9 @@ export function DataCleaner({
       if (response.dropped) {
         setBackendError(
           t('errors.filtered', {
-            reason: response.drop_reason || t('errors.qualityFilterTriggered'),
+            reason: response.drop_reason ?? t('errors.qualityFilterTriggered'),
           }),
         )
-        apply.cleanedContent = response.markdown
-        onCleanRef.current(response.markdown)
         return
       }
 
@@ -246,9 +245,9 @@ export function DataCleaner({
         try {
           const llmRequest: LLMCleanPreviewRequest = {
             markdown: next,
-            prompt_template_id: promptTemplateId || undefined,
+            prompt_template_id: promptTemplateId === '' ? undefined : promptTemplateId,
           }
-          const llmResponse = await pipelineApi.llmCleanPreview(llmRequest)
+          const llmResponse = await pipelineApi.llmCleanPreview(llmRequest, { signal: apply.signal })
           if (activeApplyRef.current !== apply) return
           next = llmResponse.markdown
           if (llmResponse.warnings?.length) {
@@ -260,7 +259,7 @@ export function DataCleaner({
         }
       }
 
-      apply.cleanedContent = next
+      if (next !== content) appliedPreviewRef.current = { content: next, resetRevision }
       onCleanRef.current(next)
     } catch (error: unknown) {
       if (activeApplyRef.current !== apply) return
@@ -271,7 +270,7 @@ export function DataCleaner({
         setIsApplying(false)
       }
     }
-  }, [cleanedContent, content, disabled, inputFormat, isApplying, llmEnabled, options, promptTemplateId, t])
+  }, [content, disabled, inputFormat, llmEnabled, options, promptTemplateId, resetRevision, t])
 
   const applyPipelinePatch = useCallback(
     (patch: Partial<DocumentPipelineOptions>) => {
@@ -346,14 +345,28 @@ export function DataCleaner({
               ))}
             </select>
           )}
+          {llmEnabled && promptTemplatesQuery.isError && (
+            <div role="alert" className="flex items-center gap-2 text-xs text-destructive">
+              <span>{formatApiError(promptTemplatesQuery.error, '清洗提示词模板读取失败')}</span>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                disabled={promptTemplatesQuery.isFetching}
+                onClick={() => void promptTemplatesQuery.refetch()}
+              >
+                重新读取模板
+              </Button>
+            </div>
+          )}
         </div>
         {lastPreview && (
           <details className={styles.compactDetails} open>
             <summary>
               清洗结果
-              {impact
-                ? ' · ' + impact.inputChars.toLocaleString() + ' → ' + impact.outputChars.toLocaleString() + ' 字'
-                : ''}
+              {inputChars !== undefined && outputChars !== undefined
+                ? ` · ${inputChars.toLocaleString()} → ${outputChars.toLocaleString()} 字`
+                : null}
             </summary>
             <div>
               {lastPreview.dropped ? (
@@ -367,12 +380,12 @@ export function DataCleaner({
                   {issue.count ? ' · ' + issue.count + ' 处' : ''}
                 </p>
               ))}
-              {lastPreview.suggested_pipeline_patch && Object.keys(lastPreview.suggested_pipeline_patch).length > 0 && (
+              {suggestedPatch != null && Object.keys(suggestedPatch).length > 0 && (
                 <Button
                   variant="ghost"
                   size="sm"
                   disabled={isApplying || disabled}
-                  onClick={() => applyPipelinePatch(lastPreview.suggested_pipeline_patch!)}
+                  onClick={() => applyPipelinePatch(suggestedPatch)}
                 >
                   应用建议规则
                 </Button>

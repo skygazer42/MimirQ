@@ -7,10 +7,8 @@ from types import SimpleNamespace
 from fastapi import BackgroundTasks, HTTPException
 from pydantic import ConfigDict as _PydanticConfigDict
 
-from app.api.schemas.document import (
-    DocumentBatchReingestRequest,
-    DocumentLifecycleMetadataUpdateRequest,
-)
+from app.api.schemas.documents import DocumentVersionDiffQuery
+from app.api.schemas.documents.document import DocumentBatchReingestRequest, DocumentLifecycleMetadataUpdateRequest
 
 if not hasattr(_datetime, "UTC"):
     _datetime.UTC = _datetime.timezone.utc
@@ -71,6 +69,9 @@ class _QueuedDB:
             raise AssertionError("unexpected query call")
         return self._queries.pop(0)
 
+    def get_bind(self):
+        return SimpleNamespace(dialect=SimpleNamespace(name="sqlite"))
+
     def commit(self) -> None:
         self.commit_calls += 1
 
@@ -94,8 +95,10 @@ def _document(*, tenant_id: uuid.UUID, document_id: uuid.UUID, **overrides) -> S
 
 
 def test_batch_reingest_classifies_patch_failures_without_retry(monkeypatch) -> None:
-    from app.api.v1 import document_batches
-    from app.services import document_batch_operations, document_metadata_operations, document_processing_operations
+    from app.api.v1.documents import batches as document_batches
+    from app.services.documents import batch_operations as document_batch_operations
+    from app.services.documents import metadata_operations as document_metadata_operations
+    from app.services.documents import processing as document_processing_operations
 
     tenant_id = uuid.uuid4()
     document_ids = [uuid.uuid4() for _ in range(4)]
@@ -144,8 +147,8 @@ def test_batch_reingest_classifies_patch_failures_without_retry(monkeypatch) -> 
     assert retry_ids == [document_ids[3]]
 
 
-def test_diff_document_versions_falls_back_to_legacy_rows_and_chunk_ids(monkeypatch) -> None:
-    from app.api.v1 import document_versions
+def test_diff_document_versions_scans_sqlite_legacy_rows_and_chunk_ids(monkeypatch) -> None:
+    from app.api.v1.documents import versions as document_versions
 
     tenant_id = uuid.uuid4()
     document_id = uuid.uuid4()
@@ -156,7 +159,6 @@ def test_diff_document_versions_falls_back_to_legacy_rows_and_chunk_ids(monkeypa
     db = _QueuedDB(
         [
             _Query(first_result=document),
-            _Query(all_exc=RuntimeError("json path unavailable")),
             _Query(
                 all_result=[
                     (shared_from_chunk_id, {"doc_pipeline_key": f"{document_id}:v1", "content_hash": "shared"}),
@@ -164,7 +166,6 @@ def test_diff_document_versions_falls_back_to_legacy_rows_and_chunk_ids(monkeypa
                     (uuid.uuid4(), {"doc_pipeline_key": f"{document_id}:other", "content_hash": "ignored"}),
                 ]
             ),
-            _Query(all_exc=RuntimeError("json path unavailable")),
             _Query(
                 all_result=[
                     (uuid.uuid4(), {"doc_pipeline_key": f"{document_id}:v2", "content_hash": "shared"}),
@@ -184,11 +185,10 @@ def test_diff_document_versions_falls_back_to_legacy_rows_and_chunk_ids(monkeypa
 
     result = document_versions.diff_document_versions(
         document_id=document_id,
-        from_pipeline_hash="v1",
-        to_pipeline_hash="v2",
         tenant_id=tenant_id,
         account_id="acct-1",
         db=db,
+        params=DocumentVersionDiffQuery.model_validate({"from": "v1", "to": "v2"}),
     )
 
     assert result["from_chunk_count"] == 2
@@ -200,9 +200,9 @@ def test_diff_document_versions_falls_back_to_legacy_rows_and_chunk_ids(monkeypa
     assert result["removed_hashes"] == [f"id:{removed_from_chunk_id}"]
 
 
-def test_delete_document_version_falls_back_to_metadata_scan_and_restores_current_hash(monkeypatch) -> None:
-    from app.api.v1 import document_versions
-    from app.rag import retriever as retriever_module
+def test_delete_document_version_scans_sqlite_metadata_and_restores_current_hash(monkeypatch) -> None:
+    from app.api.v1.documents import versions as document_versions
+    from app.rag.retrieval.recall import retriever as retriever_module
 
     tenant_id = uuid.uuid4()
     document_id = uuid.uuid4()
@@ -216,7 +216,6 @@ def test_delete_document_version_falls_back_to_metadata_scan_and_restores_curren
     db = _QueuedDB(
         [
             _Query(first_result=document),
-            _Query(all_exc=RuntimeError("json path unavailable")),
             _Query(
                 all_result=[
                     (chunk_ids[0], {"doc_pipeline_key": f"{document_id}:v1"}),
@@ -283,7 +282,7 @@ def test_delete_document_version_falls_back_to_metadata_scan_and_restores_curren
 
 
 def test_lifecycle_patch_noop_returns_current_metadata_without_writes(monkeypatch) -> None:
-    from app.services import document_lifecycle_service
+    from app.services.documents import lifecycle as document_lifecycle_service
 
     document_id = uuid.uuid4()
     tenant_id = uuid.uuid4()

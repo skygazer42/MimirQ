@@ -7,8 +7,8 @@ import { EchartsHeatmap } from './echarts-heatmap'
 import type { SelectedHeatmapCell } from './heatmap-types'
 
 export type MainViewMode = 'heatmap' | 'diagnostics'
-export type DisplayLabels = { xLabels: string[]; yLabels: string[] }
-export type SimilarityDisplayMatrix = Array<Array<number | null>>
+type DisplayLabels = { xLabels: string[]; yLabels: string[] }
+type SimilarityDisplayMatrix = Array<Array<number | null>>
 
 type SimilarityMainPanelProps = Readonly<{
   primaryEntry: SimilarityMatrixEntry | null

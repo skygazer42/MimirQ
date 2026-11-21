@@ -1,9 +1,9 @@
 from collections import Counter
 from typing import Any
 
-from app.rag.core.metadata import _stringified_metadata_text
 from app.rag.evaluation.poc_runner.query_pattern_miner import mine_query_patterns
 from app.rag.industry_rules.schema import IndustryRuleset
+from app.types.document_metadata import metadata_text
 
 _SCHEMA = "mimirq.industry_rules_suggestions.v1"
 
@@ -26,7 +26,7 @@ _INTENT_LIBRARY = {
 def _build_glossary_suggestions(
     rows: list[dict[str, Any]], *, ruleset: IndustryRuleset | None, top_k: int
 ) -> list[dict[str, Any]]:
-    pattern_summary = mine_query_patterns(rows, abbreviation_min_frequency=1, top_k_keywords=max(1, int(top_k or 1)))
+    pattern_summary = mine_query_patterns(rows, abbreviation_min_frequency=1, top_k_keywords=top_k)
     existing = set(ruleset.glossary) if ruleset is not None else set()
     out: list[dict[str, Any]] = []
     for item in pattern_summary["glossary_candidates"]:
@@ -35,19 +35,13 @@ def _build_glossary_suggestions(
             continue
         out.append({"token": token, "count": item["count"], "source": item["source"]})
     out.sort(key=lambda item: (-item["count"], len(item["token"]), item["token"]))
-    out = out[: max(1, int(top_k or 1))]
-    return out
+    return out[:top_k]
 
 
-def _build_pattern_suggestions(rows: list[dict[str, Any]], *, top_k: int) -> list[dict[str, Any]]:
+def _build_pattern_suggestions(queries: list[str], *, top_k: int) -> list[dict[str, Any]]:
     suggestions: list[dict[str, Any]] = []
     for pattern_key, spec in _PATTERN_LIBRARY.items():
-        matches = [
-            query
-            for row in rows
-            if (query := _stringified_metadata_text(row, "original_query"))
-            and any(marker in query for marker in spec["markers"])
-        ]
+        matches = [query for query in queries if any(marker in query for marker in spec["markers"])]
         if not matches:
             continue
         suggestions.append(
@@ -59,26 +53,24 @@ def _build_pattern_suggestions(rows: list[dict[str, Any]], *, top_k: int) -> lis
             }
         )
     suggestions.sort(key=lambda item: (-item["count"], item["pattern_key"]))
-    return suggestions[: max(1, int(top_k or 1))]
+    return suggestions[:top_k]
 
 
-def _build_intent_suggestions(rows: list[dict[str, Any]], *, top_k: int) -> list[dict[str, Any]]:
+def _build_intent_suggestions(queries: list[str], *, top_k: int) -> list[dict[str, Any]]:
     counts: Counter[str] = Counter()
     samples: dict[str, list[str]] = {}
-    for row in rows:
-        query = _stringified_metadata_text(row, "original_query")
-        if not query:
-            continue
+    for query in queries:
         for intent, markers in _INTENT_LIBRARY.items():
             if any(marker in query for marker in markers):
                 counts[intent] += 1
-                samples.setdefault(intent, []).append(query)
+                matched = samples.setdefault(intent, [])
+                if len(matched) < 3:
+                    matched.append(query)
                 break
-    out = [
-        {"intent": intent, "count": count, "sample_queries": samples[intent][:3]}
-        for intent, count in counts.most_common(max(1, int(top_k or 1)))
+    return [
+        {"intent": intent, "count": count, "sample_queries": samples[intent]}
+        for intent, count in counts.most_common(top_k)
     ]
-    return out
 
 
 def build_ruleset_suggestions(
@@ -87,10 +79,21 @@ def build_ruleset_suggestions(
     ruleset: IndustryRuleset | None,
     top_k: int = 10,
 ) -> dict[str, Any]:
+    if top_k < 0:
+        raise ValueError("Rule suggestion limit must not be negative")
+    if top_k == 0:
+        return {
+            "schema": _SCHEMA,
+            "ruleset": ruleset.name if ruleset is not None else None,
+            "glossary_suggestions": [],
+            "pattern_suggestions": [],
+            "intent_suggestions": [],
+        }
+    queries = [query for row in rows if (query := metadata_text(row, "original_query"))]
     return {
         "schema": _SCHEMA,
         "ruleset": ruleset.name if ruleset is not None else None,
         "glossary_suggestions": _build_glossary_suggestions(rows, ruleset=ruleset, top_k=top_k),
-        "pattern_suggestions": _build_pattern_suggestions(rows, top_k=top_k),
-        "intent_suggestions": _build_intent_suggestions(rows, top_k=top_k),
+        "pattern_suggestions": _build_pattern_suggestions(queries, top_k=top_k),
+        "intent_suggestions": _build_intent_suggestions(queries, top_k=top_k),
     }

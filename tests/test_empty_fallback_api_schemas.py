@@ -3,8 +3,8 @@ from uuid import uuid4
 import pytest
 from pydantic import ValidationError
 
-from app.api.schemas.chat import ChatRAGConfig
-from app.api.schemas.regression import RagasRegressionRunCreateRequest
+from app.api.schemas.conversations.chat import ChatRAGConfig
+from app.api.schemas.evaluation.regression import RagasRegressionRunCreateRequest
 
 
 @pytest.mark.parametrize("value", [0, False, [], {}])

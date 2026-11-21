@@ -1,24 +1,25 @@
 'use client'
-import { FeedbackToast } from '@/components/feedback-toast'
 
-import type { ComponentProps, ReactNode } from 'react'
+import { useId, type FormEvent } from 'react'
 
 import { Pencil, Tags } from '@/components/icons'
 import { useTranslations } from 'next-intl'
 
 import { Button } from '@/components/ui/button'
+import { LoadingButton } from '@/components/ui/loading-button'
 import { Panel } from '@/components/ui/panel'
 import { TagInput } from '@/components/ui/tag-input'
 import { DocumentTags } from '@/components/documents/document-tags'
+import { DOCUMENT_TAG_LENGTH, DOCUMENT_TAG_LIMIT } from '@/lib/document-user-tags'
 
 type DocumentDetailTagsPanelProps = Readonly<{
   editing: boolean
-  saveAction: ComponentProps<'form'>['action']
-  saveButton: ReactNode
+  onSave: (event: FormEvent<HTMLFormElement>) => Promise<void>
+  canSave: boolean
   isSaving: boolean
   tagsDraft: string[]
   onTagsDraftChange: (next: string[]) => void
-  optimisticTags: string[]
+  tags: string[]
   tagsError: string | null
   onBeginEdit: () => void
   onCancelEdit: () => void
@@ -26,77 +27,85 @@ type DocumentDetailTagsPanelProps = Readonly<{
 
 export function DocumentDetailTagsPanel({
   editing,
-  saveAction,
-  saveButton,
+  onSave,
+  canSave,
   isSaving,
   tagsDraft,
   onTagsDraftChange,
-  optimisticTags,
+  tags,
   tagsError,
   onBeginEdit,
   onCancelEdit,
 }: DocumentDetailTagsPanelProps) {
   const commonT = useTranslations('Common')
   const t = useTranslations('DocumentDetailDialog')
+  const formId = useId()
+  const tagInputId = `${formId}-input`
 
   return (
     <Panel className="rounded-2xl">
-      <FeedbackToast type="error" message={tagsError} id="document-tagsError" />
-      {editing ? (
-        <form action={saveAction} className="space-y-4">
-          <input type="hidden" name="tags_json" value={JSON.stringify(tagsDraft)} />
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-            <div className="flex items-start gap-3 min-w-0">
-              <div className="grid h-10 w-10 place-items-center rounded-2xl border border-border bg-muted/40 text-muted-foreground">
-                <Tags className="h-5 w-5" aria-hidden="true" />
-              </div>
-              <div className="min-w-0">
-                <div className="text-sm font-semibold text-foreground">{t('tags.title')}</div>
-                <div className="text-xs text-muted-foreground truncate">{t('tags.description')}</div>
-              </div>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-2 justify-end">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex min-w-0 items-start gap-3">
+          <div className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl border border-border bg-muted/40 text-muted-foreground">
+            <Tags className="h-5 w-5" aria-hidden="true" />
+          </div>
+          <div className="min-w-0">
+            <h3 className="text-sm font-semibold text-foreground">{t('tags.title')}</h3>
+            <p className="text-xs text-muted-foreground">{t('tags.description')}</p>
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {editing ? (
+            <>
               <Button type="button" variant="outline" size="sm" onClick={onCancelEdit} disabled={isSaving}>
                 {commonT('cancel')}
               </Button>
-              {saveButton}
-            </div>
-          </div>
-
-          <div className="space-y-3">
-            <TagInput value={tagsDraft} onValueChange={onTagsDraftChange} disabled={isSaving} />
-          </div>
+              <LoadingButton type="submit" form={formId} size="sm" loading={isSaving} disabled={!canSave}>
+                {commonT('save')}
+              </LoadingButton>
+            </>
+          ) : (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="gap-2"
+              onClick={onBeginEdit}
+              disabled={isSaving}
+            >
+              <Pencil className="h-4 w-4" aria-hidden="true" />
+              {t('actions.edit')}
+            </Button>
+          )}
+        </div>
+      </div>
+      {editing ? (
+        <form id={formId} onSubmit={onSave} className="mt-4 space-y-3">
+          <label htmlFor={tagInputId} className="sr-only">
+            {t('tags.title')}
+          </label>
+          <TagInput
+            inputId={tagInputId}
+            value={tagsDraft}
+            onValueChange={onTagsDraftChange}
+            maxTags={DOCUMENT_TAG_LIMIT}
+            maxTagLen={DOCUMENT_TAG_LENGTH}
+            disabled={isSaving}
+          />
+          {tagsError !== null && (
+            <p role="alert" className="break-words text-sm text-destructive">
+              {tagsError}
+            </p>
+          )}
         </form>
       ) : (
-        <>
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-            <div className="flex items-start gap-3 min-w-0">
-              <div className="grid h-10 w-10 place-items-center rounded-2xl border border-border bg-muted/40 text-muted-foreground">
-                <Tags className="h-5 w-5" aria-hidden="true" />
-              </div>
-              <div className="min-w-0">
-                <div className="text-sm font-semibold text-foreground">{t('tags.title')}</div>
-                <div className="text-xs text-muted-foreground truncate">{t('tags.description')}</div>
-              </div>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-2 justify-end">
-              <Button variant="outline" size="sm" className="gap-2" onClick={onBeginEdit}>
-                <Pencil className="h-4 w-4" aria-hidden="true" />
-                {t('actions.edit')}
-              </Button>
-            </div>
-          </div>
-
-          <div className="mt-4 space-y-3">
-            {optimisticTags.length ? (
-              <DocumentTags tags={optimisticTags} max={10} />
-            ) : (
-              <div className="text-xs text-muted-foreground">{t('tags.empty')}</div>
-            )}
-          </div>
-        </>
+        <div className="mt-4">
+          {tags.length > 0 ? (
+            <DocumentTags tags={tags} />
+          ) : (
+            <p className="text-xs text-muted-foreground">{t('tags.empty')}</p>
+          )}
+        </div>
       )}
     </Panel>
   )

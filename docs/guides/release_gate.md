@@ -40,7 +40,6 @@ The GitHub Actions workflow runs:
 - `retrieval-only-bounded-gate` job to publish deterministic artifacts:
   - `artifacts/sample_retrieval_bench.json`
 - `artifacts/sample_retrieval_bench.hybrid.json`
-- `artifacts/sample_retrieval_bench.colbert.json`
 - `artifacts/retrieval_profile.grounded_strict.contract.json`
 - `artifacts/claim_verifier.contract.json`
 - `artifacts/queryset_health.snapshot*.json`
@@ -179,7 +178,7 @@ The JSON/Markdown reports include:
 
 - run id / dataset id / matched case count
 - top-level summary metrics
-- per-channel citation attribution where available (`vector` / `bm25` / `lexical` / `sparse`)
+- per-channel citation attribution where available (`vector` / `bm25` / `lexical`; legacy traces may contain `sparse`)
 - threshold failures when the gate does not pass
 
 ### 2) Run Release Gate (SLO + Cost)
@@ -268,4 +267,3 @@ python scripts/release_gate.py \
   - `retrieval_profile.grounded_strict.contract.json` proves the strict retrieval profile still enforces evidence-only semantics.
   - `claim_verifier.contract.json` proves claim-verifier diagnostics still emit stable `reason_code` and `contradiction_type` values.
   - `sample_retrieval_bench.hybrid.json` is the hybrid bounded quality baseline.
-  - `sample_retrieval_bench.colbert.json` is a bounded regression signal for the ColBERT fallback path, not a replacement for end-to-end leaderboard evaluation.

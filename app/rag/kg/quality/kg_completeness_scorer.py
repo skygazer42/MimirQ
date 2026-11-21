@@ -4,8 +4,8 @@ from uuid import UUID
 
 from sqlalchemy.orm import Session
 
-from app.core.config import settings
-from app.rag.kg.quality.kg_denoiser import summarize_relation_noise
+from app.infrastructure.config import settings
+from app.rag.kg.quality.kg_denoiser import query_scoped_relations, summarize_relation_noise
 
 
 @dataclass
@@ -21,7 +21,7 @@ class _UnionFind:
 
     def find(self, x: str) -> str:
         # Path compression.
-        p = self.parent.get(x, x)
+        p = self.parent[x]
         if p != x:
             p = self.find(p)
             self.parent[x] = p
@@ -32,15 +32,15 @@ class _UnionFind:
         rb = self.find(b)
         if ra == rb:
             return
-        sa = self.size.get(ra, 1)
-        sb = self.size.get(rb, 1)
+        sa = self.size[ra]
+        sb = self.size[rb]
         # Union by size.
         if sa < sb:
             ra, rb = rb, ra
             sa, sb = sb, sa
         self.parent[rb] = ra
         self.size[ra] = sa + sb
-        self.size.pop(rb, None)
+        del self.size[rb]
 
 
 def _active_pipeline_hash_expr(doc_model):  # noqa: ANN001
@@ -55,8 +55,8 @@ def _active_pipeline_hash_expr(doc_model):  # noqa: ANN001
 def _apply_event_pipeline_scope(query, *, pipeline_hash: str | None):  # noqa: ANN001
     from sqlalchemy import and_  # noqa: WPS433
 
-    from app.models.document import Document as DBDocument  # noqa: WPS433
-    from app.rag.kg.models import KgSourceEvent  # noqa: WPS433
+    from app.models.documents.records import Document as DBDocument  # noqa: WPS433
+    from app.models.knowledge_graph.entities import KgSourceEvent  # noqa: WPS433
 
     if pipeline_hash:
         return query.filter(KgSourceEvent.pipeline_hash == str(pipeline_hash))
@@ -70,29 +70,11 @@ def _apply_event_pipeline_scope(query, *, pipeline_hash: str | None):  # noqa: A
     ).filter(KgSourceEvent.pipeline_hash == _active_pipeline_hash_expr(DBDocument))
 
 
-def _apply_relation_pipeline_scope(query, *, pipeline_hash: str | None):  # noqa: ANN001
-    from sqlalchemy import and_  # noqa: WPS433
-
-    from app.models.document import Document as DBDocument  # noqa: WPS433
-    from app.rag.kg.models import KgRelation  # noqa: WPS433
-
-    if pipeline_hash:
-        return query.filter(KgRelation.pipeline_hash == str(pipeline_hash))
-
-    return query.join(
-        DBDocument,
-        and_(
-            DBDocument.id == KgRelation.document_id,
-            DBDocument.tenant_id == KgRelation.tenant_id,
-        ),
-    ).filter(KgRelation.pipeline_hash == _active_pipeline_hash_expr(DBDocument))
-
-
 def _connectivity_metrics(*, nodes: set[str], edges: list[tuple[str, str]]) -> dict[str, Any]:
     if not nodes:
         return {
             "nodes": 0,
-            "edges": len(edges or []),
+            "edges": len(edges),
             "components": 0,
             "largest_component_size": 0,
             "largest_component_ratio": 0.0,
@@ -100,19 +82,18 @@ def _connectivity_metrics(*, nodes: set[str], edges: list[tuple[str, str]]) -> d
         }
 
     uf = _UnionFind.from_nodes(nodes)
-    for a, b in edges or []:
+    for a, b in edges:
         if a in uf.parent and b in uf.parent and a != b:
             uf.union(a, b)
 
-    sizes = sorted(list(uf.size.values()), reverse=True)
-    comp = len(sizes)
-    largest = sizes[0] if sizes else 0
+    sizes = sorted(uf.size.values(), reverse=True)
+    largest = sizes[0]
     return {
         "nodes": len(nodes),
-        "edges": len(edges or []),
-        "components": comp,
+        "edges": len(edges),
+        "components": len(sizes),
         "largest_component_size": largest,
-        "largest_component_ratio": largest / max(1, len(nodes)),
+        "largest_component_ratio": largest / len(nodes),
         "components_top_sizes": sizes[:10],
     }
 
@@ -148,13 +129,14 @@ def build_kg_quality_report(
                 tenant_id=tenant_id,
                 document_ids=document_ids,
                 pipeline_hash=pipeline_hash,
+                low_confidence_threshold=float(settings.KG_QUALITY_LOW_CONFIDENCE_THRESHOLD),
             ),
             "truncation": {"relation_edges_truncated": False, "relation_edges_limit": 0},
         }
 
     from sqlalchemy import func, union_all  # noqa: WPS433
 
-    from app.rag.kg.models import KgEventEntity, KgRelation, KgSourceEvent  # noqa: WPS433
+    from app.models.knowledge_graph.entities import KgEventEntity, KgRelation, KgSourceEvent  # noqa: WPS433
 
     # Events + entity links (scoped by allowed docs + pipeline).
     events_q = db.query(func.count(KgSourceEvent.id)).filter(
@@ -187,24 +169,12 @@ def build_kg_quality_report(
     entity_count = int(entity_count_q.scalar() or 0)
 
     # Relations (triples) are document-scoped (with provenance).
-    relation_count_q = db.query(func.count(KgRelation.id)).filter(
-        KgRelation.tenant_id == tenant_id,
-        KgRelation.document_id.in_(document_ids),
-    )
-    relation_count_q = _apply_relation_pipeline_scope(relation_count_q, pipeline_hash=pipeline_hash)
-    relation_count = int(relation_count_q.scalar() or 0)
+    relations = query_scoped_relations(db, tenant_id=tenant_id, document_ids=document_ids, pipeline_hash=pipeline_hash)
+    relation_count = int(relations.with_entities(func.count(KgRelation.id)).scalar() or 0)
 
     # How many entities participate in at least one relation (degree>0).
-    rel_sub = db.query(KgRelation.subject_entity_id.label("eid")).filter(
-        KgRelation.tenant_id == tenant_id,
-        KgRelation.document_id.in_(document_ids),
-    )
-    rel_obj = db.query(KgRelation.object_entity_id.label("eid")).filter(
-        KgRelation.tenant_id == tenant_id,
-        KgRelation.document_id.in_(document_ids),
-    )
-    rel_sub = _apply_relation_pipeline_scope(rel_sub, pipeline_hash=pipeline_hash)
-    rel_obj = _apply_relation_pipeline_scope(rel_obj, pipeline_hash=pipeline_hash)
+    rel_sub = relations.with_entities(KgRelation.subject_entity_id.label("eid"))
+    rel_obj = relations.with_entities(KgRelation.object_entity_id.label("eid"))
     rel_union = union_all(rel_sub, rel_obj).subquery()
     rel_participants = int(db.query(func.count(func.distinct(rel_union.c.eid))).scalar() or 0)
 
@@ -220,15 +190,9 @@ def build_kg_quality_report(
     edges: list[tuple[str, str]] = []
     nodes: set[str] = set()
     if relation_count > 0 and edge_limit != 0:
-        edges_q = db.query(KgRelation.subject_entity_id, KgRelation.object_entity_id).filter(
-            KgRelation.tenant_id == tenant_id,
-            KgRelation.document_id.in_(document_ids),
-        )
-        edges_q = _apply_relation_pipeline_scope(edges_q, pipeline_hash=pipeline_hash)
-        if edge_limit > 0:
-            edges_q = edges_q.limit(edge_limit + 1)
-        rows = edges_q.all()
-        if edge_limit > 0 and len(rows) > edge_limit:
+        edges_q = relations.with_entities(KgRelation.subject_entity_id, KgRelation.object_entity_id)
+        rows = edges_q.limit(edge_limit + 1).all()
+        if len(rows) > edge_limit:
             rel_edges_truncated = True
             rows = rows[:edge_limit]
         for a, b in rows:

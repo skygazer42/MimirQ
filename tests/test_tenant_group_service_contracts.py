@@ -7,14 +7,13 @@ from sqlalchemy import create_engine, event
 from sqlalchemy.orm import Session
 from starlette.datastructures import State
 
-from app.api.schemas.group import TenantGroupUpdateRequest
-from app.api.v1 import scim
-from app.core.database import Base
-from app.core.exceptions import BadRequestError, ConflictError, MimirQError
-from app.core.request_state import bind_request_state, reset_request_state
-from app.models.tenant import Tenant, TenantMember
-from app.models.tenant_group import TenantGroup, TenantGroupMember
-from app.services import tenant_group_service
+from app.api.schemas.identity.groups import TenantGroupUpdateRequest
+from app.api.v1.identity import scim
+from app.infrastructure.database.connection import Base
+from app.infrastructure.exceptions import BadRequestError, ConflictError, MimirQError
+from app.infrastructure.runtime.request_state import bind_request_state, reset_request_state
+from app.models.identity.workspaces import Tenant, TenantGroup, TenantGroupMember, TenantMember
+from app.services.identity import groups as tenant_group_service
 
 
 @pytest.fixture

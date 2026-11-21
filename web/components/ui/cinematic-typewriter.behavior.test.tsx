@@ -124,4 +124,12 @@ describe('CinematicTypewriter content lifetime', () => {
     expect(view.container.querySelectorAll('a')).toHaveLength(1)
     expect(view.container.querySelector('script')).toBeNull()
   })
+
+  it('reveals a full Unicode character on the first animation step', async () => {
+    const { container } = mount({ content: '😀甲' })
+    expect(container.textContent).toBe('😀')
+
+    await advance()
+    expect(container.textContent).toBe('😀甲')
+  })
 })

@@ -18,6 +18,7 @@ import hashlib
 import json
 import sys
 from collections.abc import Iterable
+from contextlib import nullcontext
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -29,10 +30,10 @@ if str(REPO_ROOT) not in sys.path:
 from langchain_core.documents import Document  # noqa: E402
 
 from app.api.schemas.documents import ChunkPreviewItem  # noqa: E402
-from app.core.token_utils import estimate_tokens, num_tokens_from_string  # noqa: E402
-from app.rag.chunking.factory import chunker_factory  # noqa: E402
-from app.services.chunk_coverage_utils import compute_chunk_coverage_metrics_from_ranges  # noqa: E402
-from app.services.document_preview_utils import _compute_chunk_preview_quality  # noqa: E402
+from app.infrastructure.tokens import estimate_tokens, num_tokens_from_string  # noqa: E402
+from app.rag.ingestion.chunking.factory import chunker_factory  # noqa: E402
+from app.services.chunking.statistics import compute_chunk_coverage_metrics_from_ranges  # noqa: E402
+from app.services.documents.preview import _compute_chunk_preview_quality  # noqa: E402
 
 
 def _iter_files(paths: list[str]) -> Iterable[Path]:
@@ -198,31 +199,32 @@ def _evaluate_file(
 
 
 def main(argv: list[str] | None = None) -> int:
-    args = _build_parser().parse_args(argv)
+    parser = _build_parser()
+    args = parser.parse_args(argv)
+    output_path = Path(args.out).resolve() if args.out else None
+    if output_path is not None and output_path.exists():
+        if any(path.resolve() == output_path for path in _iter_files(args.paths)):
+            parser.error("--out must be distinct from the input files")
 
     strategy = chunker_factory.resolve_strategy(args.strategy)
     effective_overlap = 0 if strategy == "separator" else args.chunk_overlap
 
-    if args.out:
-        out_fp = Path(args.out)
-        out_fp.parent.mkdir(parents=True, exist_ok=True)
-        fh = out_fp.open("w", encoding="utf-8")
-    else:
-        fh = sys.stdout
-
+    if output_path is not None:
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+    output = output_path.open("w", encoding="utf-8") if output_path is not None else nullcontext(sys.stdout)
     processed = 0
-    for path in _iter_files(args.paths):
-        if args.max_files and processed >= args.max_files:
-            break
-        row = _evaluate_file(path, args, strategy=strategy, effective_overlap=effective_overlap)
-        if row is None:
-            continue
-        fh.write(json.dumps(row, ensure_ascii=False) + "\n")
-        fh.flush()
-        processed += 1
-
-    if fh is not sys.stdout:
-        fh.close()
+    with output as fh:
+        for path in _iter_files(args.paths):
+            if args.max_files and processed >= args.max_files:
+                break
+            if output_path is not None and path.resolve() == output_path:
+                continue
+            row = _evaluate_file(path, args, strategy=strategy, effective_overlap=effective_overlap)
+            if row is None:
+                continue
+            fh.write(json.dumps(row, ensure_ascii=False) + "\n")
+            fh.flush()
+            processed += 1
     return 0
 
 

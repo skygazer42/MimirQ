@@ -7,7 +7,7 @@ Typical use (from repo root):
 Defaults:
 - converts *.txt (you can add more extensions via --ext)
 - keeps relative folder structure under the target directory
-- uses app.parsing.utils.text.read_text_file() for best-effort decoding
+- uses app.rag.ingestion.parsing.utils.text.read_text_file() for best-effort decoding
 """
 
 import argparse
@@ -15,7 +15,7 @@ import os
 import shutil
 from pathlib import Path
 
-from app.parsing.utils.text import read_text_file
+from app.rag.ingestion.parsing.utils.text import read_text_file
 
 
 def _parse_args() -> argparse.Namespace:
@@ -72,6 +72,8 @@ def convert_encoding(
 ) -> int:
     source_dir = source_dir.resolve()
     target_dir = target_dir.resolve()
+    if clean_target and source_dir.is_relative_to(target_dir):
+        raise ValueError("--clean-target cannot delete the source directory or one of its parents")
     _prepare_target(target_dir, clean_target=clean_target, dry_run=dry_run)
 
     converted = 0

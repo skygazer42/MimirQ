@@ -15,8 +15,9 @@ def test_real_functional_workflow_keeps_session_out_of_graph_state(
     mode: str,
     with_context: bool,
 ) -> None:
-    import app.rag.pipelines.langgraph as graph
     import app.rag.retrieval.orchestrator as orchestrator
+    from app.rag.runtime.graph import tasks as graph
+    from app.rag.runtime.graph import workflow
 
     caller_thread_id = threading.get_ident()
     cancel_event = threading.Event()
@@ -53,18 +54,18 @@ def test_real_functional_workflow_keeps_session_out_of_graph_state(
     monkeypatch.setattr(graph.settings, "RAG_CORRECTIVE_ENABLED", False)
     monkeypatch.setattr(graph.settings, "STREAM_WRITER_ENABLED", False)
 
-    assert graph.rag_workflow.get_context_jsonschema()["type"] == "object"
+    assert workflow.rag_workflow.get_context_jsonschema()["type"] == "object"
     state = {"question": f"session-boundary-{uuid4()}", "history": [], "metrics": {}}
     config = {"configurable": {"thread_id": f"graph-session-{uuid4()}"}}
     context = {"cancel_event": cancel_event} if with_context else None
     if mode == "invoke":
-        result = graph.rag_workflow.invoke(state, config=config, context=context)
+        result = workflow.rag_workflow.invoke(state, config=config, context=context)
     else:
-        result = list(graph.rag_workflow.stream(state, config=config, context=context, stream_mode="values"))[-1]
+        result = list(workflow.rag_workflow.stream(state, config=config, context=context, stream_mode="values"))[-1]
 
     assert result["answer"] == "ok"
     assert "db" not in result
-    assert "db" not in graph.rag_workflow.get_state(config).values
+    assert "db" not in workflow.rag_workflow.get_state(config).values
     assert admitted_cancel_events == ([None] if context is None else [cancel_event])
     assert [name for name, _thread_id in events] == ["create", "retrieve", "rollback", "close"]
     assert len({thread_id for _name, thread_id in events}) == 1
@@ -75,7 +76,7 @@ def test_real_functional_workflow_keeps_session_out_of_graph_state(
 async def test_retrieval_admission_is_process_wide_across_event_loops(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.services.rag_runtime_limiter as limiter
+    import app.services.runtime.retrieval_limiter as limiter
 
     first_started = threading.Event()
     release_first = threading.Event()
@@ -113,7 +114,7 @@ async def test_retrieval_admission_is_process_wide_across_event_loops(
 async def test_sync_graph_retrieval_shares_async_admission_gate(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.services.rag_runtime_limiter as limiter
+    import app.services.runtime.retrieval_limiter as limiter
 
     first_started = threading.Event()
     release_first = threading.Event()
@@ -145,7 +146,7 @@ async def test_sync_graph_retrieval_shares_async_admission_gate(
 async def test_sync_graph_retrieval_drops_cancelled_queued_work(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.services.rag_runtime_limiter as limiter
+    import app.services.runtime.retrieval_limiter as limiter
 
     first_started = threading.Event()
     release_first = threading.Event()
@@ -180,7 +181,7 @@ async def test_sync_graph_retrieval_drops_cancelled_queued_work(
 async def test_generic_managed_worker_does_not_hold_retrieval_admission(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.services.rag_runtime_limiter as limiter
+    import app.services.runtime.retrieval_limiter as limiter
 
     graph_started = threading.Event()
     release_graph = threading.Event()
@@ -213,8 +214,8 @@ async def test_generic_managed_worker_does_not_hold_retrieval_admission(
 def test_graph_retrieval_uses_shared_gate_and_owns_session(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.rag.pipelines.langgraph as graph
     import app.rag.retrieval.orchestrator as orchestrator
+    from app.rag.runtime.graph import tasks as graph
 
     events: list[str] = []
 

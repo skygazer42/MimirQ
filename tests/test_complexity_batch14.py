@@ -19,8 +19,8 @@ class _AttrNamespace(SimpleNamespace):
 
 
 def test_chunk_quality_gate_and_summary_preserve_threshold_outputs() -> None:
-    from app.services.chunk_quality_gate import compute_chunk_quality_gate
-    from app.services.chunk_quality_scoring import summarize_retrieved_chunk_quality
+    from app.services.chunking.quality_gate import compute_chunk_quality_gate
+    from app.services.chunking.quality_scoring import summarize_retrieved_chunk_quality
 
     gate, recs, patches = compute_chunk_quality_gate(
         stats={
@@ -101,8 +101,8 @@ def test_chunk_quality_gate_and_summary_preserve_threshold_outputs() -> None:
 
 
 def test_ingestion_policy_normalizes_rules_and_fails_soft_on_invalid_metadata() -> None:
-    from app.api.schemas.ingestion_policy import IngestionPolicy
-    from app.services.ingestion_policy import (
+    from app.api.schemas.sources.policy import IngestionPolicy
+    from app.services.pipelines.ingestion_policy import (
         match_ingestion_rule,
         parse_ingestion_policy_from_metadata,
         validate_and_normalize_ingestion_policy,
@@ -152,80 +152,8 @@ def test_ingestion_policy_normalizes_rules_and_fails_soft_on_invalid_metadata() 
     )
 
 
-def test_fusion_weight_services_preserve_observability_and_learning_contracts() -> None:
-    from app.services.fusion_weight_learning_service import (
-        suggest_tenant_fusion_weights,
-        summarize_fusion_weight_observability,
-    )
-
-    tenant_id = "tenant-1"
-    reference_sources = [{"document_id": "doc-1", "chunk_id": "chunk-1"}]
-    citations = [
-        {
-            "document_id": "doc-1",
-            "chunk_id": "chunk-1",
-            "vector_score": 0.9,
-            "bm25_score": 0.2,
-            "lexical_score": 0.1,
-            "sparse_score": 0.0,
-        },
-        {
-            "document_id": "doc-9",
-            "chunk_id": "chunk-9",
-            "vector_score": 0.1,
-            "bm25_score": 0.05,
-            "lexical_score": 0.4,
-            "sparse_score": 0.2,
-        },
-    ]
-    trace_snapshot = {
-        "tenant_id": tenant_id,
-        "retrieval": {
-            "channels": {
-                "fusion_strategy": "rrf",
-                "rrf_k": 60,
-                "fusion_weights": {"vector": 0.4, "bm25": 0.2, "lexical": 0.2, "sparse": 0.2},
-            }
-        },
-        "citations": citations,
-    }
-    rows = [
-        {"event": "rag_trace", "tenant_id": tenant_id, **trace_snapshot},
-        {
-            "schema": "mimirq.training_export_row.v1",
-            "tenant_id": tenant_id,
-            "reference_sources": reference_sources,
-            "trace_snapshot": trace_snapshot,
-        },
-    ]
-
-    observability = summarize_fusion_weight_observability(rows, tenant_id=tenant_id)
-
-    assert observability == {
-        "schema": "mimirq.fusion_weight_observability.v1",
-        "tenant_id": tenant_id,
-        "summary": {
-            "observed_rows": 2,
-            "fusion_strategy_histogram": {"rrf": 2},
-            "rrf_k_histogram": {"60": 2},
-            "channel_signal_coverage": {"vector": 4, "bm25": 4, "lexical": 4, "sparse": 2},
-            "observed_weight_profiles": {"vector:0.400,bm25:0.200,lexical:0.200,sparse:0.200": 2},
-        },
-    }
-
-    learned = suggest_tenant_fusion_weights(rows * 5, tenant_id=tenant_id, min_rows=5)
-
-    assert learned["schema"] == "mimirq.tenant_fusion_weights.v1"
-    assert learned["tenant_id"] == tenant_id
-    assert learned["summary"]["training_rows"] == 5
-    assert learned["summary"]["weight_source"] == "feedback_trace_snapshot"
-    assert learned["fusion_weights"]["vector"] > learned["fusion_weights"]["bm25"]
-    assert learned["fusion_weights"]["bm25"] > learned["fusion_weights"]["sparse"]
-    assert pytest.approx(sum(learned["fusion_weights"].values()), abs=1e-6) == 1.0
-
-
 def test_access_graph_diff_preserves_changed_fields_and_top_churn() -> None:
-    from app.services.access_graph_diff_service import diff_access_graph_records
+    from app.services.identity.access_graph_diff import diff_access_graph_records
 
     records_a = [
         {"kind": "group", "id": "group-1", "name": "Admins", "external_id": "ext-1"},
@@ -270,8 +198,8 @@ def test_access_graph_diff_preserves_changed_fields_and_top_churn() -> None:
 async def test_stream_graph_chat_events_preserve_event_order_and_result_contract(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.services.chat_stream_graph as chat_stream_graph
-    import app.services.chat_tag_service as chat_tag_service
+    import app.services.chat.stream_graph as chat_stream_graph
+    import app.services.tables.chat_context as chat_tag_service
 
     tag_calls: list[dict[str, object]] = []
     rollback_calls: list[str] = []
@@ -280,7 +208,7 @@ async def test_stream_graph_chat_events_preserve_event_order_and_result_contract
         tag_calls.append(kwargs)
         return ["doc"], {"enabled": True, "used": True}
 
-    fake_langgraph = types.ModuleType("app.rag.pipelines.langgraph")
+    fake_langgraph = types.ModuleType("app.rag.runtime.graph.workflow")
     fake_langgraph.build_rag_state = lambda **_kwargs: {"seed": True}
     fake_langgraph.rag_workflow = SimpleNamespace(
         stream=lambda _state, **_kwargs: iter(
@@ -293,7 +221,7 @@ async def test_stream_graph_chat_events_preserve_event_order_and_result_contract
     )
 
     monkeypatch.setattr(chat_tag_service, "build_chat_tag_context_docs", build_chat_tag_context_docs, raising=True)
-    monkeypatch.setitem(sys.modules, "app.rag.pipelines.langgraph", fake_langgraph)
+    monkeypatch.setitem(sys.modules, "app.rag.runtime.graph.workflow", fake_langgraph)
     monkeypatch.setattr(chat_stream_graph.settings, "VECTOR_BACKEND", "pgvector", raising=False)
 
     db = SimpleNamespace(rollback=lambda: rollback_calls.append("rollback"))

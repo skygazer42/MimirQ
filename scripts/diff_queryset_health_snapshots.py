@@ -49,7 +49,7 @@ def run(
     out: Path | None,
     max_hard_case_ids: int,
 ) -> dict[str, Any]:
-    from app.services.queryset_health_diff_service import diff_queryset_health_snapshots
+    from app.services.evaluation.queryset_health_diff import diff_queryset_health_snapshots
 
     baseline = _load_json(baseline_path)
     current = _load_json(current_path)

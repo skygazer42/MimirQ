@@ -19,9 +19,9 @@ function walk(directory, predicate) {
 }
 
 function routePatternForPage(pagePath) {
-  let relativePath = path.relative(appRoot, path.dirname(pagePath)).split(path.sep).join('/')
-  relativePath = relativePath.replace(/^\[locale\](?:\/|$)/, '')
-  const segments = relativePath.split('/').filter(Boolean)
+  const relativePath = path.relative(appRoot, path.dirname(pagePath)).replaceAll(path.sep, '/')
+  const routePath = relativePath.replace(/^\[locale\](?:\/|$)/, '')
+  const segments = routePath.split('/').filter(Boolean)
   const pattern = segments
     .map((segment) => {
       if (/^\[\[\.\.\.[^\]]+\]\]$/.test(segment)) return '(?:.+)?'
@@ -51,11 +51,11 @@ const failures = []
 for (const sourcePath of sourceFiles) {
   const source = fs.readFileSync(sourcePath, 'utf8')
   for (const expression of navigationPatterns) {
-    let match
-    while ((match = expression.exec(source))) {
+    for (const match of source.matchAll(expression)) {
       const target = match[1]
       if (!target.startsWith('/') || target.startsWith('//') || target.startsWith('/api/')) continue
-      const pathname = target.split(/[?#]/, 1)[0].replace(/\/$/, '') || '/'
+      const pathWithoutQuery = target.split(/[?#]/, 1)[0]
+      const pathname = pathWithoutQuery === '/' ? pathWithoutQuery : pathWithoutQuery.replace(/\/$/, '')
       if (pagePatterns.some((pattern) => pattern.test(pathname))) continue
 
       const line = source.slice(0, match.index).split('\n').length

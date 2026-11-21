@@ -14,10 +14,10 @@ from fastapi.testclient import TestClient
 @pytest.mark.parametrize(
     ("module_name", "helper", "resource_key"),
     [
-        ("app.api.v1.datasets", "_commit_dataset_audit", "dataset_id"),
-        ("app.api.v1.ingestion_runs", "_commit_ingestion_run_audit", "run_id"),
-        ("app.api.v1.document_versions", "_commit_document_version_audit", "document_id"),
-        ("app.rag.kg.api.routes_support.extraction", "_audit_kg_extraction", "document_id"),
+        ("app.api.v1.datasets.routes", "_commit_dataset_audit", "dataset_id"),
+        ("app.api.v1.documents.ingestion_runs", "_commit_ingestion_run_audit", "run_id"),
+        ("app.api.v1.documents.versions", "_commit_document_version_audit", "document_id"),
+        ("app.api.v1.knowledge_graph.routes_support.extraction", "_audit_kg_extraction", "document_id"),
     ],
 )
 def test_audit_degradation_has_rollback_and_traceback(module_name, helper, resource_key, caplog):
@@ -34,7 +34,7 @@ def test_audit_degradation_has_rollback_and_traceback(module_name, helper, resou
 
 
 def test_template_usage_failure_is_observable(caplog):
-    from app.services.rag_config_template_resolver import record_rag_config_template_usage
+    from app.services.retrieval.template_resolver import record_rag_config_template_usage
 
     db = MagicMock()
     failure = RuntimeError("counter commit failed")
@@ -46,7 +46,7 @@ def test_template_usage_failure_is_observable(caplog):
 
 
 def test_qa_statistics_failure_is_observable(caplog):
-    from app.services.document_qa_service import _update_document_chunk_stats
+    from app.services.documents.qa import _update_document_chunk_stats
 
     db = MagicMock()
     db.query.return_value.filter.return_value.first.return_value = (2, 40)
@@ -61,26 +61,34 @@ def test_qa_statistics_failure_is_observable(caplog):
 
 
 def test_precheck_compensation_failure_is_observable(caplog):
-    from app.api.v1.dataset_precheck import _mark_precheck_scan_run_failed
+    from app.services.datasets.scan_session import fail_unhanded_scan_run
 
     db = MagicMock()
     failure = RuntimeError("compensation commit failed")
     db.commit.side_effect = failure
-    row = SimpleNamespace(id=uuid4())
-    with caplog.at_level(logging.WARNING):
-        _mark_precheck_scan_run_failed(db, row=row, error_message="enqueue failed")
-    assert row.status == "failed"
-    db.rollback.assert_called_once()
-    assert any(r.exc_info and r.exc_info[1] is failure for r in caplog.records)
+    query = db.query.return_value.filter.return_value
+    query.one.return_value = SimpleNamespace(status="pending")
+    query.filter.return_value = query
+    query.update.return_value = 1
+    with pytest.raises(RuntimeError) as caught:
+        fail_unhanded_scan_run(
+            db,
+            kind="precheck",
+            dataset_id=uuid4(),
+            tenant_id=uuid4(),
+            scan_run_id=uuid4(),
+            error_message="enqueue failed",
+        )
+    assert caught.value is failure
 
 
 def test_document_version_database_cleanup_failure_returns_500(monkeypatch):
-    from app.api.v1 import document_versions as module
-    from app.rag import retriever
+    from app.api.v1.documents import versions as module
+    from app.rag.retrieval.recall import retriever
 
     db = MagicMock()
     failure = RuntimeError("KG cleanup commit failed")
-    db.commit.side_effect = [None, failure, None]
+    db.commit.side_effect = failure
     monkeypatch.setattr(module.dataset_service, "ensure_member", lambda *a: None)
     monkeypatch.setattr(module, "assert_document_writable_for_lifecycle", lambda *a, **k: None)
     monkeypatch.setattr(
@@ -102,8 +110,8 @@ def test_document_version_database_cleanup_failure_returns_500(monkeypatch):
 
 @pytest.mark.parametrize("phase", ["audit", "relations"])
 def test_kg_document_degradation_is_observable(phase, monkeypatch, caplog):
-    from app.rag.kg.api import routes
-    from app.services import indexer
+    from app.api.v1.knowledge_graph import routes
+    from app.rag.ingestion.indexing import indexer
 
     db = MagicMock()
     failure = RuntimeError("KG cleanup boundary failed")

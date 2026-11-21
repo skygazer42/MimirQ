@@ -1,48 +1,31 @@
 'use client'
 
-import { useRef } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import { useReportWebVitals } from 'next/web-vitals'
 
 import { usePathname } from '@/i18n/navigation'
 import { getAuthHeaders } from '@/lib/auth-headers'
-import { observabilityApi } from '@/lib/api'
+import { observabilityApi, type FrontendWebVitalReportRequest } from '@/lib/api/observability'
 import { reportClientWarning } from '@/lib/client-logging'
 
-export type FrontendWebVitalName = 'LCP' | 'CLS' | 'FID' | 'INP'
+type FrontendWebVitalName = FrontendWebVitalReportRequest['name']
 
-export type FrontendWebVitalPayload = Readonly<{
+type WebVitalMetric = Readonly<{
   id: string
-  name: FrontendWebVitalName
+  name: string
   value: number
-  rating?: string
-  navigation_type?: string
-  page?: string
+  rating: string
+  navigationType: string
 }>
 
-const TRACKED_WEB_VITALS = new Set<FrontendWebVitalName>(['LCP', 'CLS', 'FID', 'INP'])
-type WebVitalMetric = Parameters<typeof useReportWebVitals>[0] extends (metric: infer T) => void ? T : never
+const TRACKED_WEB_VITALS = new Set<string>(['LCP', 'CLS', 'FID', 'INP'])
 
 export function shouldReportWebVital(name: string): name is FrontendWebVitalName {
-  return TRACKED_WEB_VITALS.has(name as FrontendWebVitalName)
+  return TRACKED_WEB_VITALS.has(name)
 }
 
-export function normalizeWebVitalMetric(metric: WebVitalMetric): FrontendWebVitalPayload {
-  return {
-    id: String(metric.id || ''),
-    name: metric.name as FrontendWebVitalName,
-    value: Number(metric.value),
-    ...(typeof metric.rating === 'string' && metric.rating ? { rating: metric.rating } : {}),
-    ...(typeof metric.navigationType === 'string' && metric.navigationType
-      ? { navigation_type: metric.navigationType }
-      : {}),
-  }
-}
-
-export function canReportWebVital(
-  pathname: string | null | undefined,
-  authHeaders: Readonly<Record<string, string>>,
-): boolean {
-  if (typeof pathname === 'string' && pathname.startsWith('/auth')) {
+export function canReportWebVital(pathname: string, authHeaders: Readonly<Record<string, string>>): boolean {
+  if (pathname.startsWith('/auth')) {
     return false
   }
   return Boolean(authHeaders.Authorization || authHeaders['X-User-ID'])
@@ -51,23 +34,35 @@ export function canReportWebVital(
 export function WebVitalsReporter() {
   const sentMetricIdsRef = useRef<Set<string>>(new Set())
   const pathname = usePathname()
+  const pathnameRef = useRef(pathname)
 
-  useReportWebVitals((metric) => {
+  useEffect(() => {
+    pathnameRef.current = pathname
+  }, [pathname])
+
+  const reportWebVital = useCallback((metric: WebVitalMetric) => {
     if (!shouldReportWebVital(metric.name)) return
     const authHeaders = getAuthHeaders()
-    if (!canReportWebVital(pathname, authHeaders)) return
+    if (!canReportWebVital(pathnameRef.current, authHeaders)) return
     if (sentMetricIdsRef.current.has(metric.id)) return
 
     sentMetricIdsRef.current.add(metric.id)
 
-    const payload = normalizeWebVitalMetric(metric)
-    const page = pathname || globalThis.window?.location?.pathname
-    const request = page ? { ...payload, page } : payload
+    const request: FrontendWebVitalReportRequest = {
+      id: metric.id,
+      name: metric.name,
+      value: metric.value,
+      rating: metric.rating,
+      navigation_type: metric.navigationType,
+      page: pathnameRef.current,
+    }
 
     void observabilityApi.reportFrontendVital(request, { keepalive: true }).catch((error) => {
       reportClientWarning('Failed to report web vital', error)
     })
-  })
+  }, [])
+
+  useReportWebVitals(reportWebVital)
 
   return null
 }

@@ -4,7 +4,7 @@ import pytest
 
 from app.rag.embedding import adapter
 from app.rag.kg.extraction_job_options import build_kg_extraction_job_options
-from app.rag.pipelines.langgraph import _retrieve_cache_key
+from app.rag.runtime.graph.tasks import _retrieve_cache_key
 from app.tasks import jobs
 
 

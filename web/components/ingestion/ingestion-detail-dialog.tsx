@@ -1,12 +1,13 @@
 'use client'
 
-import { useMemo, useRef, useState, useEffect } from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { skipToken, useQuery, useQueryClient } from '@tanstack/react-query'
 import { AlertCircle, CheckCircle2, Loader2 } from '@/components/icons'
 import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 
 import { documentApi } from '@/lib/api/documents'
+import { recordSchema } from '@/lib/response-schema'
 import type { Document, DocumentVersionDiff, DocumentVersionList } from '@/types'
 import { cn, formatDate, formatFileSize } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
@@ -19,26 +20,15 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 
 const STAGE_KEYS = ['queued', 'parsing', 'chunking', 'embedding', 'completed'] as const
 
-function displayPrimitive(value: unknown, fallback: string = '-'): string {
-  if (typeof value === 'string') return value || fallback
+function displayPrimitive(value: unknown): string {
+  if (typeof value === 'string') return value
   if (typeof value === 'number' || typeof value === 'boolean' || typeof value === 'bigint') return String(value)
-  return fallback
-}
-
-function inferStage(doc: Document): string {
-  const raw = (doc.current_stage || '').toLowerCase()
-  if (STAGE_KEYS.includes(raw as (typeof STAGE_KEYS)[number])) return raw
-  if (doc.status === 'pending') return 'queued'
-  if (doc.status === 'processing') return 'parsing'
-  if (doc.status === 'completed') return 'completed'
-  return raw || 'queued'
+  return '—'
 }
 
 function statusBadgeVariant(status: Document['status']): 'default' | 'secondary' | 'destructive' | 'outline' {
   if (status === 'completed') return 'default'
   if (status === 'failed') return 'destructive'
-  if (status === 'quarantined') return 'secondary'
-  if (status === 'cancelled') return 'secondary'
   if (status === 'processing' || status === 'pending') return 'outline'
   return 'secondary'
 }
@@ -61,10 +51,10 @@ function IngestionDetailContent({ open, onOpenChange, documentId }: Readonly<Ing
   const diffRequestRef = useRef<object | null>(null)
   const actionRef = useRef<object | null>(null)
   const [isActing, setIsActing] = useState(false)
-  const [diffFrom, setDiffFrom] = useState<string | null>(null)
-  const [diffTo, setDiffTo] = useState<string | null>(null)
+  const [selectedFromHash, setSelectedFromHash] = useState<string | null>(null)
+  const [selectedToHash, setSelectedToHash] = useState<string | null>(null)
   const [diffLoading, setDiffLoading] = useState(false)
-  const [diff, setDiff] = useState<DocumentVersionDiff | null>(null)
+  const [versionDiff, setVersionDiff] = useState<DocumentVersionDiff | null>(null)
   const [diffError, setDiffError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -81,11 +71,8 @@ function IngestionDetailContent({ open, onOpenChange, documentId }: Readonly<Ing
     refetch,
   } = useQuery({
     queryKey: ['ingestion-doc-detail', documentId],
-    queryFn: async ({ signal }) => {
-      if (!documentId) throw new Error('missing document id')
-      return await documentApi.get(documentId, undefined, { signal })
-    },
-    enabled: open && Boolean(documentId),
+    queryFn: documentId === null ? skipToken : ({ signal }) => documentApi.get(documentId, undefined, { signal }),
+    enabled: open,
     staleTime: 1_000,
     refetchInterval: (query) => {
       const data = query.state.data
@@ -101,73 +88,54 @@ function IngestionDetailContent({ open, onOpenChange, documentId }: Readonly<Ing
     refetch: refetchVersions,
   } = useQuery<DocumentVersionList>({
     queryKey: ['ingestion-doc-versions', documentId],
-    queryFn: async ({ signal }) => {
-      if (!documentId) throw new Error('missing document id')
-      return await documentApi.listVersions(documentId, { signal })
-    },
-    enabled: open && Boolean(documentId),
+    queryFn: documentId === null ? skipToken : ({ signal }) => documentApi.listVersions(documentId, { signal }),
+    enabled: open,
     staleTime: 3_000,
   })
 
-  // Default diff selection: active -> current (best-effort).
-  useEffect(() => {
-    if (!versions) return
-    const active = versions.active_pipeline_hash || versions.pipeline_hash || null
-    const current = versions.pipeline_hash || versions.active_pipeline_hash || null
-    if (!diffFrom && active) setDiffFrom(active)
-    if (!diffTo && current) setDiffTo(current)
-  }, [versions, diffFrom, diffTo])
-
-  const stageKey = doc ? inferStage(doc) : 'queued'
-  const stages = useMemo(
-    () =>
-      STAGE_KEYS.map((key) => ({ key })).map((stage) => ({
-        ...stage,
-        label: t(`stages.${stage.key}`),
-      })),
-    [t],
-  )
-  const activeIndex = Math.max(
-    0,
-    stages.findIndex((s) => s.key === stageKey),
-  )
+  const diffFrom = selectedFromHash ?? versions?.active_pipeline_hash ?? versions?.pipeline_hash
+  const diffTo = selectedToHash ?? versions?.pipeline_hash ?? versions?.active_pipeline_hash
+  const diff =
+    versionDiff?.from_pipeline_hash === diffFrom && versionDiff?.to_pipeline_hash === diffTo ? versionDiff : null
+  const stageKey = doc?.failed_stage ?? doc?.current_stage ?? (doc?.status === 'pending' ? 'queued' : undefined)
+  const activeIndex = STAGE_KEYS.findIndex((key) => key === stageKey?.toLowerCase())
 
   const runtime = useMemo(() => {
     if (!doc) return []
-    const meta = (doc.metadata ?? {}) as Record<string, unknown>
-    const pipeline = (meta.pipeline ?? {}) as unknown
-    const user = (meta.user ?? {}) as Record<string, unknown>
-    const userTags = user.tags
+    const meta = doc.metadata
+    const pipeline = meta?.pipeline
+    const user = recordSchema.safeParse(meta?.user)
+    const userTags = user.success ? user.data.tags : undefined
     return [
       { k: t('runtime.documentId'), v: doc.id },
-      { k: t('runtime.datasetId'), v: doc.dataset_id || '-' },
+      { k: t('runtime.datasetId'), v: doc.dataset_id ?? '—' },
       { k: t('runtime.file'), v: `${doc.file_type} · ${formatFileSize(doc.file_size)}` },
-      { k: t('runtime.chunks'), v: String(doc.chunk_count ?? '-') },
-      { k: t('runtime.progress'), v: `${doc.processing_progress ?? 0}%` },
-      { k: t('runtime.stage'), v: doc.current_stage || '-' },
+      { k: t('runtime.chunks'), v: String(doc.chunk_count) },
+      { k: t('runtime.progress'), v: `${doc.processing_progress}%` },
+      { k: t('runtime.stage'), v: doc.current_stage ?? '—' },
       { k: t('runtime.updated'), v: formatDate(doc.updated_at) },
-      { k: t('runtime.parser'), v: displayPrimitive(meta.parser_backend) },
-      { k: t('runtime.chunker'), v: displayPrimitive(meta.chunk_strategy) },
-      { k: t('runtime.pipelineHash'), v: displayPrimitive(meta.pipeline_hash) },
-      { k: t('runtime.taskId'), v: displayPrimitive(meta.task_id) },
-      { k: t('runtime.kgTaskId'), v: displayPrimitive(meta.kg_task_id) },
+      { k: t('runtime.parser'), v: displayPrimitive(meta?.parser_backend) },
+      { k: t('runtime.chunker'), v: displayPrimitive(meta?.chunk_strategy) },
+      { k: t('runtime.pipelineHash'), v: displayPrimitive(meta?.pipeline_hash) },
+      { k: t('runtime.taskId'), v: displayPrimitive(meta?.task_id) },
+      { k: t('runtime.kgTaskId'), v: displayPrimitive(meta?.kg_task_id) },
       {
         k: t('runtime.userTags'),
-        v: Array.isArray(userTags) ? userTags.join(', ') || '-' : displayPrimitive(userTags),
+        v: Array.isArray(userTags) ? userTags.join(', ') : displayPrimitive(userTags),
       },
       {
         k: t('runtime.pipeline'),
-        v: typeof pipeline === 'object' ? JSON.stringify(pipeline) : displayPrimitive(pipeline),
+        v: pipeline !== null && typeof pipeline === 'object' ? JSON.stringify(pipeline) : displayPrimitive(pipeline),
       },
     ]
   }, [doc, t])
 
-  const canCancel = Boolean(doc?.status === 'pending' || doc?.status === 'processing')
-  const canRetry = Boolean(doc?.status === 'failed' || doc?.status === 'cancelled' || doc?.status === 'quarantined')
-  const canForceRetry = Boolean(doc?.status === 'completed')
+  const canCancel = doc?.status === 'pending' || doc?.status === 'processing'
+  const canRetry = doc?.status === 'failed' || doc?.status === 'cancelled' || doc?.status === 'quarantined'
+  const canForceRetry = doc?.status === 'completed'
 
   const handleDiff = async () => {
-    if (!doc || !diffFrom || !diffTo || diffRequestRef.current) return
+    if (!doc || diffFrom == null || diffTo == null || diffRequestRef.current) return
     const request = {}
     const authRevision = getAuthSessionRevision()
     diffRequestRef.current = request
@@ -182,11 +150,11 @@ function IngestionDetailContent({ open, onOpenChange, documentId }: Readonly<Ing
         to: diffTo,
         sample_limit: 50,
       })
-      if (ownsRequest()) setDiff(data)
+      if (ownsRequest()) setVersionDiff(data)
     } catch (err: unknown) {
       if (!ownsRequest()) return
       setDiffError(formatApiError(err, t('errors.diffFailed')))
-      setDiff(null)
+      setVersionDiff(null)
     } finally {
       if (diffRequestRef.current === request) {
         diffRequestRef.current = null
@@ -256,8 +224,8 @@ function IngestionDetailContent({ open, onOpenChange, documentId }: Readonly<Ing
         className="h-[100dvh] w-[min(820px,100vw)] max-w-[820px] overflow-hidden border-l border-border/60 bg-background/95 shadow-strong"
       >
         <SheetHeader className="sr-only">
-          <SheetTitle>{doc?.filename || t('header.fallbackTitle')}</SheetTitle>
-          <SheetDescription>{documentId || ''}</SheetDescription>
+          <SheetTitle>{doc?.filename ?? t('header.fallbackTitle')}</SheetTitle>
+          <SheetDescription>{documentId}</SheetDescription>
         </SheetHeader>
 
         <div className="flex h-full min-h-0 flex-col bg-background">
@@ -268,10 +236,10 @@ function IngestionDetailContent({ open, onOpenChange, documentId }: Readonly<Ing
                   {t('pipeline.title')}
                 </div>
                 <div className="mt-1 truncate text-lg font-bold text-foreground">
-                  {doc?.filename || t('header.fallbackTitle')}
+                  {doc?.filename ?? t('header.fallbackTitle')}
                 </div>
                 <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                  <span className="font-mono">{documentId || '-'}</span>
+                  <span className="font-mono">{documentId ?? '—'}</span>
                   {doc ? (
                     <>
                       <span className="text-muted-foreground/40">·</span>
@@ -325,13 +293,13 @@ function IngestionDetailContent({ open, onOpenChange, documentId }: Readonly<Ing
                     <div className="flex items-center justify-between gap-3 mb-6">
                       <div className="text-sm font-bold uppercase text-foreground">{t('pipeline.title')}</div>
                       <div className="rounded-md bg-muted px-2 py-1 text-xs font-mono tabular-nums text-muted-foreground">
-                        {t('pipeline.progress')}: {doc.processing_progress ?? 0}%
+                        {t('pipeline.progress')}: {doc.processing_progress}%
                       </div>
                     </div>
 
                     <div className="relative z-10">
                       <div className="grid grid-cols-5 gap-4">
-                        {stages.map((s, idx) => {
+                        {STAGE_KEYS.map((key, idx) => {
                           const isDone = doc.status === 'completed' ? true : idx < activeIndex
                           const isActive = doc.status !== 'completed' && idx === activeIndex
                           const isFailed = (doc.status === 'failed' || doc.status === 'quarantined') && isActive
@@ -345,7 +313,7 @@ function IngestionDetailContent({ open, onOpenChange, documentId }: Readonly<Ing
                             }
                           })()
                           return (
-                            <div key={s.key} className="flex flex-col items-center gap-3 group">
+                            <div key={key} className="flex flex-col items-center gap-3 group">
                               <div
                                 className={cn(
                                   'flex size-10 items-center justify-center rounded-full border-2 text-sm font-semibold tabular-nums transition-colors duration-200 motion-reduce:transition-none',
@@ -366,7 +334,7 @@ function IngestionDetailContent({ open, onOpenChange, documentId }: Readonly<Ing
                                   isActive || isDone ? 'text-foreground' : 'text-muted-foreground',
                                 )}
                               >
-                                {s.label}
+                                {t(`stages.${key}`)}
                               </div>
                             </div>
                           )
@@ -379,7 +347,7 @@ function IngestionDetailContent({ open, onOpenChange, documentId }: Readonly<Ing
                             <div
                               className="h-full origin-left bg-primary transition-transform duration-200 motion-reduce:transition-none"
                               style={{
-                                transform: `scaleX(${Math.max(0, Math.min(100, doc.processing_progress || 0)) / 100})`,
+                                transform: `scaleX(${Math.max(0, Math.min(100, doc.processing_progress)) / 100})`,
                               }}
                             />
                           </div>
@@ -443,7 +411,7 @@ function IngestionDetailContent({ open, onOpenChange, documentId }: Readonly<Ing
                         size="sm"
                         variant="outline"
                         className="rounded-full"
-                        disabled={versionsLoading}
+                        disabled={versionsLoading || diffLoading}
                         onClick={() => refetchVersions()}
                       >
                         {versionsLoading ? (
@@ -460,12 +428,19 @@ function IngestionDetailContent({ open, onOpenChange, documentId }: Readonly<Ing
                     <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
                       <div className="space-y-1">
                         <div className="text-[11px] font-semibold text-muted-foreground">{t('versions.fromLabel')}</div>
-                        <Select value={diffFrom || ''} onValueChange={(v) => setDiffFrom(v || null)}>
+                        <Select
+                          value={diffFrom ?? ''}
+                          disabled={diffLoading}
+                          onValueChange={(hash) => {
+                            setSelectedFromHash(hash)
+                            setDiffError(null)
+                          }}
+                        >
                           <SelectTrigger className="h-9">
                             <SelectValue placeholder={t('versions.selectVersion')} />
                           </SelectTrigger>
                           <SelectContent>
-                            {(versions?.items || []).map((it) => (
+                            {versions?.items?.map((it) => (
                               <SelectItem key={it.pipeline_hash} value={it.pipeline_hash}>
                                 {it.pipeline_hash} {it.active ? `（${t('versions.activeTag')}）` : ''}
                               </SelectItem>
@@ -476,12 +451,19 @@ function IngestionDetailContent({ open, onOpenChange, documentId }: Readonly<Ing
 
                       <div className="space-y-1">
                         <div className="text-[11px] font-semibold text-muted-foreground">{t('versions.toLabel')}</div>
-                        <Select value={diffTo || ''} onValueChange={(v) => setDiffTo(v || null)}>
+                        <Select
+                          value={diffTo ?? ''}
+                          disabled={diffLoading}
+                          onValueChange={(hash) => {
+                            setSelectedToHash(hash)
+                            setDiffError(null)
+                          }}
+                        >
                           <SelectTrigger className="h-9">
                             <SelectValue placeholder={t('versions.selectVersion')} />
                           </SelectTrigger>
                           <SelectContent>
-                            {(versions?.items || []).map((it) => (
+                            {versions?.items?.map((it) => (
                               <SelectItem key={it.pipeline_hash} value={it.pipeline_hash}>
                                 {it.pipeline_hash} {it.active ? `（${t('versions.activeTag')}）` : ''}
                               </SelectItem>
@@ -492,7 +474,7 @@ function IngestionDetailContent({ open, onOpenChange, documentId }: Readonly<Ing
 
                       <Button
                         className="rounded-full"
-                        disabled={diffLoading || !diffFrom || !diffTo}
+                        disabled={diffLoading || diffFrom == null || diffTo == null}
                         onClick={handleDiff}
                       >
                         {diffLoading ? (
@@ -547,8 +529,8 @@ function IngestionDetailContent({ open, onOpenChange, documentId }: Readonly<Ing
                   <Button
                     variant="outline"
                     className="rounded-full"
-                    disabled={!doc || isActing}
-                    onClick={() => doc && openDocument(doc.id)}
+                    disabled={isActing}
+                    onClick={() => openDocument(doc.id)}
                   >
                     {t('actions.viewParsedContent')}
                   </Button>

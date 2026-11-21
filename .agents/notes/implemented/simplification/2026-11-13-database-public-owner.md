@@ -8,7 +8,7 @@ Status: implemented
 
 ## Decision
 
-引擎参数、engine、SessionLocal、Base 和 get_db 由 `app.core.database` 一个模块持有，删除测试专属 holder。所有生产导入及四个公开名字保持；正常 Python import 缓存维持进程内对象一致。测试故意删除模块缓存后的对象身份不再作为生产兼容要求，不恢复转发壳。
+引擎参数、engine、SessionLocal、Base 和 get_db 由 `app.infrastructure.database.connection` 一个模块持有，删除测试专属 holder。所有生产导入及四个公开名字保持；正常 Python import 缓存维持进程内对象一致。测试故意删除模块缓存后的对象身份不再作为生产兼容要求，不恢复转发壳。
 
 本次只移动实际实现，保留池参数、SQLite 分支、Session 选项和原 get_db 失败顺序。普通异常仍尝试 rollback，原 rollback suppression、finally close 及 close 可能成为最终异常的策略没有在此被修复；不能把迁移报告成完整资源可靠性改造。相关跨层所有权原则见[API 调用与输入所有者](2026-11-10-api-route-and-input-owners.md)。
 

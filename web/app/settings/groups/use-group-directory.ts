@@ -1,25 +1,24 @@
 'use client'
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { skipToken, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { groupApi, rbacApi } from '@/lib/api/access'
 import { useTenantAccess } from '@/hooks/use-tenant-access'
 import { TENANT_PERMISSIONS, tenantAccessAllows } from '@/lib/tenant-permissions'
 import { queryKeys } from '@/lib/query-keys'
 import { formatApiError } from '@/lib/api-errors'
-import { getAuthSessionRevision } from '@/lib/auth-storage'
+import { getAuthSessionKey } from '@/lib/auth-storage'
 import type { TenantGroupOut, TenantGroupMemberOut } from '@/types/backend'
+import { paginateDirectory, readDirectoryPages } from '@/lib/directory-pagination'
 import {
   filterGroups,
   filterMembers,
   groupDraft,
   memberIds,
   memberIdentity,
-  pageRows,
   parseGroupScope,
-  readAll,
-  writeGroupScope,
+  buildGroupLocation,
   type GroupScope,
 } from './groups-model'
 
@@ -27,13 +26,11 @@ export const groupDirectoryKey = queryKeys.groups.list({ scope: 'directory-all' 
 export const groupMemberKey = (id: string) => queryKeys.groups.members(id, { scope: 'directory-all' })
 export const tenantIdentityKey = queryKeys.rbac.members({ scope: 'groups-identities-all' })
 type Editor = {
-  mode: 'create' | 'edit'
-  group: TenantGroupOut | null
   name: string
   external: string
   errors: { name?: string; external?: string }
   error: string
-}
+} & ({ mode: 'create'; group: null } | { mode: 'edit'; group: TenantGroupOut })
 type Addition = { group: TenantGroupOut; query: string; selected: string[]; raw: string; error: string; limit: number }
 
 export function useGroupDirectory() {
@@ -56,11 +53,6 @@ export function useGroupDirectory() {
       const next = parseGroupScope(window.location.search)
       scopeRef.current = next
       setScope(next)
-      if (!lock.current) {
-        setEditor(null)
-        setAddition(null)
-        setDeletion(null)
-      }
     }
     window.addEventListener('popstate', restore)
     return () => {
@@ -73,83 +65,90 @@ export function useGroupDirectory() {
     const next = { ...scopeRef.current, ...patch }
     scopeRef.current = next
     setScope(next)
-    writeGroupScope(next)
+    window.history.replaceState(window.history.state, '', buildGroupLocation(window.location.href, next))
   }
   const directoryQuery = useQuery({
     queryKey: groupDirectoryKey,
-    queryFn: () =>
-      readAll(
-        (skip, limit) => groupApi.listGroups({ skip, limit }),
+    queryFn: ({ signal }) =>
+      readDirectoryPages(
+        (params) => groupApi.listGroups(params, { signal }),
         (group) => group.id,
+        signal,
       ),
     staleTime: 15_000,
     retry: false,
   })
   const groups = useMemo(() => directoryQuery.data ?? [], [directoryQuery.data])
-  const selectedId = scope.groupId || groups[0]?.id || ''
-  const visit = useMemo(() => ({ selectedId }), [selectedId])
-  const visitRef = useRef<typeof visit | null>(null)
+  const selectedId = scope.groupId === '' ? (groups[0]?.id ?? '') : scope.groupId
+  const visitRef = useRef<symbol | null>(null)
   useLayoutEffect(() => {
-    visitRef.current = visit
-    lock.current = null
+    visitRef.current = Symbol()
     setBusy(null)
+    setEditor(null)
+    setAddition(null)
+    setDeletion(null)
     return () => {
+      lock.current = null
       visitRef.current = null
     }
-  }, [visit])
+  }, [scope.groupId])
   const groupQuery = useQuery({
     queryKey: queryKeys.groups.detail(selectedId),
-    enabled: Boolean(selectedId),
-    queryFn: () => groupApi.getGroup(selectedId),
+    queryFn: selectedId === '' ? skipToken : ({ signal }) => groupApi.getGroup(selectedId, { signal }),
     staleTime: 15_000,
     retry: false,
   })
   const membersQuery = useQuery({
     queryKey: groupMemberKey(selectedId),
-    enabled: Boolean(selectedId),
-    queryFn: () =>
-      readAll(
-        (skip, limit) => groupApi.listGroupMembers(selectedId, { skip, limit }),
-        (member) => member.user_id,
-      ),
+    queryFn:
+      selectedId === ''
+        ? skipToken
+        : ({ signal }) =>
+            readDirectoryPages(
+              (params) => groupApi.listGroupMembers(selectedId, params, { signal }),
+              (member) => member.user_id,
+              signal,
+            ),
     staleTime: 15_000,
     retry: false,
   })
   const identitiesQuery = useQuery({
     queryKey: tenantIdentityKey,
-    enabled: Boolean(selectedId),
-    queryFn: () =>
-      readAll(
-        (skip, limit) => rbacApi.listTenantMembers({ skip, limit }),
-        (member) => member.id,
-      ),
+    queryFn:
+      selectedId === ''
+        ? skipToken
+        : ({ signal }) =>
+            readDirectoryPages(
+              (params) => rbacApi.listTenantMembers(params, { signal }),
+              (member) => member.id,
+              signal,
+            ),
     staleTime: 30_000,
     retry: false,
   })
   const group = groupQuery.data ?? groups.find((item) => item.id === selectedId) ?? null
-  const members = useMemo(() => membersQuery.data ?? [], [membersQuery.data]),
-    identities = useMemo(() => identitiesQuery.data ?? [], [identitiesQuery.data])
+  const members = useMemo(() => membersQuery.data ?? [], [membersQuery.data])
+  const identities = useMemo(() => identitiesQuery.data ?? [], [identitiesQuery.data])
+  const identitiesByUserId = useMemo(() => new Map(identities.map((member) => [member.user_id, member])), [identities])
   const filtered = useMemo(() => filterGroups(groups, scope), [groups, scope])
-  const directoryPage = pageRows(filtered, scope.page, scope.size)
+  const directoryPage = paginateDirectory(filtered, scope.page, scope.size)
   const filteredMembers = useMemo(
-    () => filterMembers(members, scope.memberQuery, identities),
-    [members, scope.memberQuery, identities],
+    () => filterMembers(members, scope.memberQuery, identitiesByUserId),
+    [members, scope.memberQuery, identitiesByUserId],
   )
-  const membersPage = pageRows(filteredMembers, scope.memberPage, 20)
+  const membersPage = paginateDirectory(filteredMembers, scope.memberPage, 20)
   const currentIds = new Set(members.map((member) => member.user_id))
-  const available = identities
-    .filter((person) => Boolean(person.user_id) && !currentIds.has(person.user_id!))
-    .filter((person) => {
-      const q = addition?.query.trim().toLocaleLowerCase() ?? ''
-      return (
-        !q ||
-        [person.username, person.email, person.user_id].some((value) =>
-          String(value ?? '')
-            .toLocaleLowerCase()
-            .includes(q),
-        )
-      )
-    })
+  const memberSearch = addition?.query.trim().toLocaleLowerCase()
+  const available =
+    memberSearch === undefined
+      ? []
+      : identities.filter((person) => {
+          if (person.user_id === '' || currentIds.has(person.user_id)) return false
+          if (memberSearch === '') return true
+          return [person.username, person.email, person.user_id].some(
+            (value) => value?.toLocaleLowerCase().includes(memberSearch) === true,
+          )
+        })
   const genuineEmpty = Boolean(directoryQuery.data) && groups.length === 0 && !directoryQuery.isError && !selectedId
   function selectGroup(id: string) {
     if (!lock.current) updateScope({ groupId: id, memberQuery: '', memberPage: 1, view: 'detail' })
@@ -184,16 +183,16 @@ export function useGroupDirectory() {
     }
   }
   function openEditor(mode: 'create' | 'edit', element: HTMLElement) {
-    if (!canManage || lock.current || (mode === 'edit' && !group)) return
+    if (!canManage || lock.current) return
+    const draft: Editor | null =
+      mode === 'create'
+        ? { mode, group: null, name: '', external: '', errors: {}, error: '' }
+        : group === null
+          ? null
+          : { mode, group, name: group.name, external: group.external_id ?? '', errors: {}, error: '' }
+    if (draft === null) return
     opener.current = element
-    setEditor({
-      mode,
-      group: mode === 'edit' ? group : null,
-      name: mode === 'edit' ? group!.name : '',
-      external: mode === 'edit' ? (group!.external_id ?? '') : '',
-      errors: {},
-      error: '',
-    })
+    setEditor(draft)
   }
   function openAddition(element: HTMLElement) {
     if (!canManage || lock.current || !group) return
@@ -236,30 +235,30 @@ export function useGroupDirectory() {
     }
     const operation = begin(captured.mode)
     if (!operation) return
-    const revision = getAuthSessionRevision()
-    const key = captured.mode === 'create' ? groupDirectoryKey : queryKeys.groups.detail(captured.group!.id)
+    const sessionKey = getAuthSessionKey()
+    const key = captured.mode === 'create' ? groupDirectoryKey : queryKeys.groups.detail(captured.group.id)
     const origin: object = client.getQueryCache().build(client, { queryKey: key })
     const lists = client
       .getQueryCache()
       .findAll({ predicate: (query) => query.queryKey[0] === 'groups' && query.queryKey[1] === 'list' })
     const canUpdateCache = () =>
-      getAuthSessionRevision() === revision && client.getQueryCache().find({ queryKey: key, exact: true }) === origin
-    const canPublish = () =>
-      mounted.current && visitRef.current === visit && lock.current === operation && canUpdateCache()
+      getAuthSessionKey() === sessionKey && client.getQueryCache().find({ queryKey: key, exact: true }) === origin
+    const canPublish = () => mounted.current && lock.current === operation && canUpdateCache()
     setEditor((previous) => (previous ? { ...previous, error: '', errors: {} } : null))
     try {
       const saved =
         captured.mode === 'create'
           ? await groupApi.createGroup(payload)
-          : await groupApi.patchGroup(captured.group!.id, payload)
+          : await groupApi.patchGroup(captured.group.id, payload)
       if (!canUpdateCache()) return
       if (canPublish()) {
         client.setQueryData(queryKeys.groups.detail(saved.id), saved)
-        client.setQueryData<TenantGroupOut[]>(groupDirectoryKey, (previous) =>
-          captured.mode === 'create'
-            ? [...(previous ?? []).filter((item) => item.id !== saved.id), saved]
-            : (previous ?? []).map((item) => (item.id === saved.id ? saved : item)),
-        )
+        client.setQueryData<TenantGroupOut[]>(groupDirectoryKey, (previous) => {
+          if (previous === undefined) return undefined
+          return captured.mode === 'create'
+            ? [...previous.filter((item) => item.id !== saved.id), saved]
+            : previous.map((item) => (item.id === saved.id ? saved : item))
+        })
       }
       await client.invalidateQueries({ predicate: (query) => query === origin || lists.includes(query) })
       if (!canPublish()) return
@@ -297,13 +296,12 @@ export function useGroupDirectory() {
     }
     const operation = begin('add')
     if (!operation) return
-    const revision = getAuthSessionRevision(),
-      key = groupMemberKey(captured.group.id)
+    const sessionKey = getAuthSessionKey()
+    const key = groupMemberKey(captured.group.id)
     const origin: object = client.getQueryCache().build(client, { queryKey: key })
     const canUpdateCache = () =>
-      getAuthSessionRevision() === revision && client.getQueryCache().find({ queryKey: key, exact: true }) === origin
-    const canPublish = () =>
-      mounted.current && visitRef.current === visit && lock.current === operation && canUpdateCache()
+      getAuthSessionKey() === sessionKey && client.getQueryCache().find({ queryKey: key, exact: true }) === origin
+    const canPublish = () => mounted.current && lock.current === operation && canUpdateCache()
     setAddition((previous) => (previous ? { ...previous, error: '' } : null))
     try {
       const result = await groupApi.addGroupMembers(captured.group.id, { member_ids: ids })
@@ -325,21 +323,23 @@ export function useGroupDirectory() {
       finish(operation)
     }
   }
-  async function restoreMember(target: TenantGroupOut, userId: string, label: string, revision: number) {
-    if (getAuthSessionRevision() !== revision) return
+  async function restoreMember(target: TenantGroupOut, userId: string, label: string, sessionKey: string) {
+    if (getAuthSessionKey() !== sessionKey) return
     const operation = begin('restore')
     if (!operation) return
     const key = groupMemberKey(target.id),
       origin: object = client.getQueryCache().build(client, { queryKey: key })
     const canUpdateCache = () =>
-      getAuthSessionRevision() === revision && client.getQueryCache().find({ queryKey: key, exact: true }) === origin
-    const canPublish = () =>
-      mounted.current && visitRef.current === visit && lock.current === operation && canUpdateCache()
+      getAuthSessionKey() === sessionKey && client.getQueryCache().find({ queryKey: key, exact: true }) === origin
+    const canPublish = () => mounted.current && lock.current === operation && canUpdateCache()
     try {
-      await groupApi.addGroupMembers(target.id, { member_ids: [userId] })
+      const result = await groupApi.addGroupMembers(target.id, { member_ids: [userId] })
       if (!canUpdateCache()) return
       await client.invalidateQueries({ predicate: (query) => query === origin })
-      if (canPublish()) toast.success(`已恢复成员「${label}」`)
+      if (canPublish()) {
+        if (result.updated === 0) toast.info('该成员已在组内。')
+        else toast.success(`已恢复成员「${label}」`)
+      }
     } catch (error) {
       if (canPublish()) toast.error(formatApiError(error, '恢复成员失败，可重新添加。'))
     } finally {
@@ -351,22 +351,22 @@ export function useGroupDirectory() {
     if (!target) return
     const operation = begin(`remove:${userId}`)
     if (!operation) return
-    const revision = getAuthSessionRevision(),
-      key = groupMemberKey(target.id)
+    const sessionKey = getAuthSessionKey()
+    const key = groupMemberKey(target.id)
     const origin: object = client.getQueryCache().build(client, { queryKey: key })
     const canUpdateCache = () =>
-      getAuthSessionRevision() === revision && client.getQueryCache().find({ queryKey: key, exact: true }) === origin
-    const canPublish = () =>
-      mounted.current && visitRef.current === visit && lock.current === operation && canUpdateCache()
-    const who = memberIdentity(userId, identities)
-    const index = members.findIndex((member) => member.user_id === userId),
-      nextMember = members[index + 1] ?? members[index - 1]
+      getAuthSessionKey() === sessionKey && client.getQueryCache().find({ queryKey: key, exact: true }) === origin
+    const canPublish = () => mounted.current && lock.current === operation && canUpdateCache()
+    const visit = visitRef.current
+    const who = memberIdentity(userId, identitiesByUserId.get(userId))
+    const index = membersPage.items.findIndex((member) => member.user_id === userId)
+    const nextMember = membersPage.items[index + 1] ?? membersPage.items[index - 1]
     try {
       const result = await groupApi.removeGroupMembers(target.id, { member_ids: [userId] })
       if (!canUpdateCache()) return
       if (canPublish())
         client.setQueryData<TenantGroupMemberOut[]>(key, (previous) =>
-          (previous ?? []).filter((member) => member.user_id !== userId),
+          previous?.filter((member) => member.user_id !== userId),
         )
       await client.invalidateQueries({ predicate: (query) => query === origin })
       if (!canPublish()) return
@@ -375,7 +375,7 @@ export function useGroupDirectory() {
           action: {
             label: '撤销',
             onClick: () => {
-              void restoreMember(target, userId, who.label, revision)
+              void restoreMember(target, userId, who.label, sessionKey)
             },
           },
         })
@@ -397,8 +397,8 @@ export function useGroupDirectory() {
     if (!deletion) return
     const operation = begin('delete')
     if (!operation) return
-    const target = deletion,
-      revision = getAuthSessionRevision()
+    const target = deletion
+    const sessionKey = getAuthSessionKey()
     const origin: object = client.getQueryCache().build(client, { queryKey: groupDirectoryKey })
     const affected = client.getQueryCache().findAll({
       predicate: (query) =>
@@ -406,23 +406,22 @@ export function useGroupDirectory() {
         (query.queryKey[1] === 'list' || (query.queryKey[1] === 'detail' && query.queryKey[2] === target.id)),
     })
     const canUpdateCache = () =>
-      getAuthSessionRevision() === revision &&
+      getAuthSessionKey() === sessionKey &&
       client.getQueryCache().find({ queryKey: groupDirectoryKey, exact: true }) === origin
-    const canPublish = () =>
-      mounted.current && visitRef.current === visit && lock.current === operation && canUpdateCache()
+    const canPublish = () => mounted.current && lock.current === operation && canUpdateCache()
     setDeleteError('')
     try {
       await groupApi.deleteGroup(target.id)
       if (!canUpdateCache()) return
-      if (canPublish())
+      if (canPublish()) {
+        setDeletion(null)
+        updateScope({ groupId: '', memberQuery: '', memberPage: 1, view: 'directory' })
         client.setQueryData<TenantGroupOut[]>(groupDirectoryKey, (previous) =>
-          (previous ?? []).filter((item) => item.id !== target.id),
+          previous?.filter((item) => item.id !== target.id),
         )
+        toast.success(`已删除组「${target.name}」`)
+      }
       await client.invalidateQueries({ predicate: (query) => affected.includes(query) })
-      if (!canPublish()) return
-      updateScope({ groupId: '', memberQuery: '', memberPage: 1, view: 'directory' })
-      setDeletion(null)
-      toast.success(`已删除组「${target.name}」`)
     } catch (error) {
       if (canPublish()) setDeleteError(formatApiError(error, '删除组失败，请重试。'))
     } finally {
@@ -431,6 +430,7 @@ export function useGroupDirectory() {
   }
   async function refresh() {
     await Promise.allSettled([
+      client.invalidateQueries({ queryKey: queryKeys.access.current }),
       directoryQuery.refetch(),
       ...(selectedId ? [groupQuery.refetch(), membersQuery.refetch(), identitiesQuery.refetch()] : []),
     ])
@@ -456,7 +456,7 @@ export function useGroupDirectory() {
     membersQuery,
     members,
     identitiesQuery,
-    identities,
+    identitiesByUserId,
     directoryPage,
     membersPage,
     available,
@@ -482,7 +482,7 @@ export function useGroupDirectory() {
     deleteGroup,
     refresh,
     copyId,
-    changeEditor: (patch: Partial<Editor>) => {
+    changeEditor: (patch: Partial<Pick<Editor, 'name' | 'external'>>) => {
       if (!lock.current) setEditor((previous) => (previous ? { ...previous, ...patch } : null))
     },
     changeAddition: (patch: Partial<Addition>) => {
@@ -492,7 +492,11 @@ export function useGroupDirectory() {
         )
     },
     refreshing:
-      directoryQuery.isFetching || groupQuery.isFetching || membersQuery.isFetching || identitiesQuery.isFetching,
+      access.isFetching ||
+      directoryQuery.isFetching ||
+      groupQuery.isFetching ||
+      membersQuery.isFetching ||
+      identitiesQuery.isFetching,
   }
 }
 export type GroupDirectoryController = ReturnType<typeof useGroupDirectory>

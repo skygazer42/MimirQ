@@ -1,4 +1,4 @@
-from app.rag.core.filters import (
+from app.infrastructure.metadata_filters import (
     INDEXED_METADATA_KEY,
     apply_metadata_filter_with_stats,
     match_metadata_filter,

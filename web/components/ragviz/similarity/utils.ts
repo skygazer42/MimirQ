@@ -1,12 +1,13 @@
 import type { RagvizSimilarityMatrixResult } from '@/types'
+import { readNonEmptyString } from '@/lib/primitive-text'
 
-export type JsonRecord = Record<string, unknown>
+type JsonRecord = Record<string, unknown>
 
 export function isRecord(value: unknown): value is JsonRecord {
-  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
 }
 
-export function similarityDisplayString(value: unknown): string {
+function similarityDisplayString(value: unknown): string {
   if (typeof value === 'string') return value.trim()
   if (typeof value === 'number' || typeof value === 'boolean' || typeof value === 'bigint') {
     return String(value)
@@ -23,14 +24,29 @@ export function firstSimilarityDisplayString(...values: unknown[]): string {
 }
 
 export function isSimilarityMatrixResult(value: unknown): value is RagvizSimilarityMatrixResult {
+  if (!isRecord(value) || !isRecord(value.metadata)) return false
+  if (value.stats != null && (!isRecord(value.stats) || !Object.values(value.stats).every(Number.isFinite)))
+    return false
+
+  const { matrix, x_data, y_data } = value
+  if (!Array.isArray(x_data) || x_data.length === 0 || !x_data.every(isRecord)) return false
+  if (!Array.isArray(y_data) || y_data.length === 0 || !y_data.every(isRecord)) return false
   return (
-    isRecord(value) &&
-    Array.isArray(value.matrix) &&
-    Array.isArray(value.x_data) &&
-    Array.isArray(value.y_data) &&
+    Array.isArray(matrix) &&
+    matrix.length === y_data.length &&
+    matrix.every((row) => Array.isArray(row) && row.length === x_data.length && row.every(Number.isFinite)) &&
     Array.isArray(value.x_available_fields) &&
+    value.x_available_fields.every((field) => typeof field === 'string') &&
     Array.isArray(value.y_available_fields) &&
-    isRecord(value.metadata)
+    value.y_available_fields.every((field) => typeof field === 'string')
+  )
+}
+
+export function readSimilarityItemId(item: JsonRecord): string | undefined {
+  const id = item.id
+  return (
+    readNonEmptyString(item.case_id) ??
+    (typeof id === 'number' && Number.isFinite(id) ? String(id) : readNonEmptyString(id))
   )
 }
 
@@ -51,27 +67,8 @@ export function collectionLabel(explicitLabel: unknown, collectionId: string, fa
   return firstSimilarityDisplayString(explicitLabel, collectionId, fallback)
 }
 
-export function metricToneClass(tone?: string) {
-  return tone === 'danger' ? 'text-destructive' : 'text-foreground'
-}
-
-export function emptyMatrixSwatchClass(index: number) {
-  if (index % 4 === 0) return 'bg-primary'
-  if (index % 3 === 0) return 'bg-primary'
-  return 'bg-primary/15'
-}
-
-export function emptyMatrixCellClass(index: number) {
-  if (index % 9 === 0) return 'bg-primary'
-  if (index % 5 === 0) return 'bg-primary/30'
-  return 'bg-primary/15'
-}
-
-export function diagnosticCandidateStatusClass(isDisabled: boolean, isMarked: boolean) {
+export function diagnosticCandidateStatusClass(isDisabled: boolean) {
   if (isDisabled) return 'border-border bg-muted text-muted-foreground'
-  if (isMarked) {
-    return 'border-warning/30 bg-warning/10 text-warning'
-  }
   return 'border-warning/30 bg-warning/10 text-warning'
 }
 

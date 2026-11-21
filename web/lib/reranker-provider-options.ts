@@ -1,7 +1,6 @@
 export const RERANKER_PROVIDER_OPTIONS = [
   { key: 'llm', label: '大模型重排' },
   { key: 'long_context', label: '长上下文重排' },
-  { key: 'colbert', label: 'ColBERT（离线验证）' },
   { key: 'pc', label: '父子片段重排' },
   { key: 'weighted', label: '加权重排' },
   { key: 'mmr', label: '多样性重排' },
@@ -12,22 +11,14 @@ export const RERANKER_PROVIDER_OPTIONS = [
   { key: 'none', label: '不使用重排' },
 ] as const
 
-function primitiveProviderString(value: unknown): string {
-  if (typeof value === 'string') return value
-  if (typeof value === 'number' || typeof value === 'boolean' || typeof value === 'bigint') {
-    return String(value)
-  }
-  return ''
-}
-
-export function normalizeRerankerProvider(value: unknown, fallback = 'llm'): string {
-  const provider = primitiveProviderString(value).trim().toLowerCase().replaceAll('-', '_')
-  if (!provider) return 'llm'
+export function normalizeRerankerProvider(value: string, fallback = 'llm'): string {
+  const provider = value.trim().toLowerCase().replaceAll('-', '_')
+  if (provider === '') return 'llm'
   if (provider === 'parent_child') return 'pc'
   if (provider === 'ltr' || provider === 'xgboost_ltr') return 'ltr'
   if (provider === 'bge_v2_m3') return 'local_bge_v2_m3'
   if (provider === 'aliyun') return 'dashscope'
-  if (provider === 'late_interaction') return 'colbert'
+  if (provider === 'colbert' || provider === 'late_interaction') return 'colbert'
   if (provider === 'sentence_transformers' || provider === 'sentence_transformer') {
     return 'cross_encoder'
   }

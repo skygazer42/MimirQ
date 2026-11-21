@@ -2,19 +2,19 @@
 Lightweight KG engine to run Extract -> Search using local adapters.
 """
 
+import logging
 from collections.abc import Sequence
 from uuid import UUID
 
-from app.core.config import settings
-from app.models.document import DocumentChunk
+from app.infrastructure.config import settings
+from app.models.documents.records import DocumentChunk
 from app.rag.kg.extraction.config import ExtractConfig
 from app.rag.kg.extraction.extractor import EventExtractor
 from app.rag.kg.search.config import SearchConfig
 from app.rag.kg.search.searcher import search as search_kg
-from app.rag.kg.utils import get_logger
 from app.types.indexing import IndexingOptions
 
-logger = get_logger("kg.engine")
+logger = logging.getLogger("kg.engine")
 
 
 class KGEngine:
@@ -42,7 +42,7 @@ class KGEngine:
     ):
         config = ExtractConfig(
             chunk_ids=list(chunk_ids),
-            tenant_id=tenant_id or settings.DEFAULT_TENANT_ID,
+            tenant_id=tenant_id,
             extract_relations=extract_relations,
             extract_skills=extract_skills,
             replace_existing=bool(
@@ -56,7 +56,7 @@ class KGEngine:
             prompt_ab_experiment_key=prompt_ab_experiment_key,
             ab_user_key=ab_user_key,
             extraction_backend=extraction_backend,
-            kg_python_plugin=(kg_python_plugin),
+            kg_python_plugin=kg_python_plugin,
             kg_python_params=dict(kg_python_params or {}),
         )
         return await self.extractor.extract(
@@ -79,12 +79,12 @@ class KGEngine:
     ) -> dict:
         config = SearchConfig(
             query=query,
-            tenant_id=tenant_id or settings.DEFAULT_TENANT_ID,
+            tenant_id=tenant_id,
             document_ids=document_ids,
             dataset_id=dataset_id,
             account_id=account_id,
-            query_mode=(str(query_mode or "auto")),
+            query_mode=query_mode or "auto",
             query_mode_reason_codes=[str(x) for x in (query_mode_reason_codes or []) if str(x).strip()][:8],
-            query_mode_confidence=(query_mode_confidence),
+            query_mode_confidence=query_mode_confidence,
         )
         return await search_kg(config)

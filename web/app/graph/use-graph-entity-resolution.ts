@@ -1,26 +1,26 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { skipToken, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { toast } from 'sonner'
 
 import { formatApiError } from '@/lib/api-errors'
 import { kgApi } from '@/lib/api/graph'
-import { detachPromise } from '@/lib/utils'
-import type { KGEntityAliasItem, KGEntityAliasSuggestionItem, KGEntityMergePreviewResponse, KGGraphNode } from '@/types'
+import { getAuthSessionKey } from '@/lib/auth-storage'
+import { queryKeys } from '@/lib/query-keys'
+import type { KGEntityAliasItem, KGEntityAliasSuggestionItem, KGGraphNode } from '@/types'
 
-import type { GraphNodeLike } from './graph-page-utils'
+import { getGraphNodeKind, type GraphNodeLike } from './graph-page-utils'
 import type { UseGraphDataLoadingResult } from './use-graph-data-loading'
 import type { UseGraphPageStateResult } from './use-graph-page-state'
-
-type GraphLoadOptions = Readonly<NonNullable<Parameters<UseGraphDataLoadingResult['loadInitialData']>[1]>>
 
 type UseGraphEntityResolutionParams = Readonly<{
   dataSource: 'live' | 'file'
   isDetailOpen: boolean
   selectedNode: GraphNodeLike | null
   scopeParams: UseGraphPageStateResult['scopeParams']
-  loadInitialData: (source?: 'live', opts?: GraphLoadOptions) => Promise<void>
+  loadLiveGraph: UseGraphDataLoadingResult['loadLiveGraph']
 }>
 
 export function useGraphEntityResolution({
@@ -28,234 +28,215 @@ export function useGraphEntityResolution({
   isDetailOpen,
   selectedNode,
   scopeParams,
-  loadInitialData,
+  loadLiveGraph,
 }: UseGraphEntityResolutionParams) {
-  const [entityAliases, setEntityAliases] = useState<KGEntityAliasItem[]>([])
-  const [entityAliasesLoading, setEntityAliasesLoading] = useState(false)
-  const [aliasDraft, setAliasDraft] = useState('')
+  const queryClient = useQueryClient()
+  const [entityAliasDraft, setEntityAliasDraft] = useState<{ entityId: string; value: string } | null>(null)
   const [aliasSaving, setAliasSaving] = useState(false)
-  const [aliasDeleteOpen, setAliasDeleteOpen] = useState(false)
-  const [aliasDeleteTarget, setAliasDeleteTarget] = useState<KGEntityAliasItem | null>(null)
-
-  const [aliasSuggestions, setAliasSuggestions] = useState<KGEntityAliasSuggestionItem[]>([])
-  const [aliasSuggestionsLoading, setAliasSuggestionsLoading] = useState(false)
+  const [aliasDeletion, setAliasDeletion] = useState<{ entityId: string; alias: KGEntityAliasItem } | null>(null)
 
   const [mergeOpen, setMergeOpen] = useState(false)
   const [mergeSearch, setMergeSearch] = useState('')
   const [mergeSearchLoading, setMergeSearchLoading] = useState(false)
+  const [mergeSearchError, setMergeSearchError] = useState<string | null>(null)
   const [mergeSearchResults, setMergeSearchResults] = useState<KGGraphNode[]>([])
-  const [mergeTarget, setMergeTarget] = useState<KGGraphNode | null>(null)
-  const [mergePreview, setMergePreview] = useState<KGEntityMergePreviewResponse | null>(null)
-  const [mergePreviewLoading, setMergePreviewLoading] = useState(false)
+  const [mergeSelection, setMergeSelection] = useState<{ sourceId: string; target: KGGraphNode } | null>(null)
   const [mergeConfirmOpen, setMergeConfirmOpen] = useState(false)
   const [mergeSubmitting, setMergeSubmitting] = useState(false)
-  const [mergeError, setMergeError] = useState<string | null>(null)
 
-  const [splitOpen, setSplitOpen] = useState(false)
+  const [splitEntityId, setSplitEntityId] = useState<string | null>(null)
   const [splitNameDraft, setSplitNameDraft] = useState('')
-  const [splitSelectedEventIds, setSplitSelectedEventIds] = useState<Set<string>>(new Set())
+  const [splitSelectedEventIds, setSplitSelectedEventIds] = useState<Set<string>>(() => new Set())
   const [splitSubmitting, setSplitSubmitting] = useState(false)
   const [splitError, setSplitError] = useState<string | null>(null)
 
   const [lastResolutionActionId, setLastResolutionActionId] = useState<string | null>(null)
   const [undoSubmitting, setUndoSubmitting] = useState(false)
+  const resolutionViewRef = useRef<object | null>(null)
 
-  const selectedEntityId = useMemo(() => {
-    return selectedNode?.meta?.kind === 'entity' ? String(selectedNode.id || '') : ''
-  }, [selectedNode])
+  const selectedEntityId =
+    dataSource === 'live' && selectedNode !== null && getGraphNodeKind(selectedNode) === 'entity'
+      ? selectedNode.id
+      : null
+  const activeEntityId = isDetailOpen ? selectedEntityId : null
 
-  const reloadEntityResolution = useCallback(async (entityId: string) => {
-    try {
-      setEntityAliasesLoading(true)
-      const resp = await kgApi.listEntityAliases(entityId)
-      setEntityAliases(resp.aliases || [])
-    } catch {
-      setEntityAliases([])
-    } finally {
-      setEntityAliasesLoading(false)
+  useLayoutEffect(() => {
+    resolutionViewRef.current = {}
+    return () => {
+      resolutionViewRef.current = null
     }
+  }, [activeEntityId, dataSource, scopeParams, selectedEntityId])
 
-    try {
-      setAliasSuggestionsLoading(true)
-      const resp = await kgApi.suggestEntityAliases(entityId, { mode: 'offline', k: 6, min_similarity: 0.75 })
-      setAliasSuggestions(resp.suggestions || [])
-    } catch {
-      setAliasSuggestions([])
-    } finally {
-      setAliasSuggestionsLoading(false)
-    }
+  const captureResolutionView = useCallback(() => {
+    const view = resolutionViewRef.current
+    const sessionKey = getAuthSessionKey()
+    return () => view !== null && resolutionViewRef.current === view && getAuthSessionKey() === sessionKey
   }, [])
 
+  const mergeTarget = mergeSelection?.sourceId === selectedEntityId ? mergeSelection.target : null
+  const mergeRequest =
+    selectedEntityId === null || mergeTarget === null
+      ? null
+      : { source_entity_id: selectedEntityId, target_entity_id: mergeTarget.id }
+  const mergePreviewQuery = useQuery({
+    queryKey: queryKeys.kg.entityMergePreview(mergeRequest),
+    queryFn:
+      mergeOpen && mergeRequest !== null
+        ? ({ signal }) => kgApi.previewMergeEntities(mergeRequest, { signal })
+        : skipToken,
+  })
+  const mergeError =
+    mergePreviewQuery.error === null ? null : formatApiError(mergePreviewQuery.error, '无法预览合并影响')
+
+  const aliasListQuery = useQuery({
+    queryKey: queryKeys.kg.entityAliases(activeEntityId),
+    queryFn: activeEntityId === null ? skipToken : ({ signal }) => kgApi.listEntityAliases(activeEntityId, { signal }),
+  })
+  const aliasSuggestionsQuery = useQuery({
+    queryKey: queryKeys.kg.entityAliasSuggestions(activeEntityId),
+    queryFn:
+      activeEntityId === null
+        ? skipToken
+        : ({ signal }) =>
+            kgApi.suggestEntityAliases(activeEntityId, { mode: 'offline', k: 6, min_similarity: 0.75 }, { signal }),
+  })
+  const aliasDraft = entityAliasDraft?.entityId === activeEntityId ? entityAliasDraft.value : ''
+  const aliasDeleteTarget = aliasDeletion?.entityId === activeEntityId ? aliasDeletion.alias : null
+
+  function setAliasDraft(value: string) {
+    if (activeEntityId !== null) setEntityAliasDraft({ entityId: activeEntityId, value })
+  }
+
+  const reloadEntityResolution = useCallback(
+    async (entityId: string) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.kg.entityAliases(entityId), exact: true }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.kg.entityAliasSuggestions(entityId), exact: true }),
+      ])
+    },
+    [queryClient],
+  )
+
   useEffect(() => {
-    if (dataSource !== 'live') {
-      setEntityAliases([])
-      setAliasSuggestions([])
-      setAliasDraft('')
-      setLastResolutionActionId(null)
-      return
-    }
-
-    if (!isDetailOpen || !selectedEntityId) {
-      setEntityAliases([])
-      setAliasSuggestions([])
-      setAliasDraft('')
-      return
-    }
-
-    let cancelled = false
-
-    setEntityAliasesLoading(true)
-    setAliasSuggestionsLoading(true)
-    setMergeError(null)
+    setEntityAliasDraft(null)
+    setAliasDeletion(null)
     setSplitError(null)
+    if (dataSource !== 'live') setLastResolutionActionId(null)
+  }, [activeEntityId, dataSource])
 
-    ;(async () => {
-      try {
-        const resp = await kgApi.listEntityAliases(selectedEntityId)
-        if (!cancelled) setEntityAliases(resp.aliases || [])
-      } catch {
-        if (!cancelled) setEntityAliases([])
-      } finally {
-        if (!cancelled) setEntityAliasesLoading(false)
-      }
-    })()
-
-    ;(async () => {
-      try {
-        const resp = await kgApi.suggestEntityAliases(selectedEntityId, {
-          mode: 'offline',
-          k: 6,
-          min_similarity: 0.75,
-        })
-        if (!cancelled) setAliasSuggestions(resp.suggestions || [])
-      } catch {
-        if (!cancelled) setAliasSuggestions([])
-      } finally {
-        if (!cancelled) setAliasSuggestionsLoading(false)
-      }
-    })()
-
-    return () => {
-      cancelled = true
-    }
-  }, [dataSource, isDetailOpen, selectedEntityId])
-
-  const handleSaveAlias = useCallback(async () => {
+  async function handleSaveAlias() {
     const alias = aliasDraft.trim()
-    if (!selectedEntityId) return
-    if (!alias) {
+    if (activeEntityId === null || aliasSaving) return
+    if (alias === '') {
       toast.error('请输入 alias')
       return
     }
 
+    const isCurrent = captureResolutionView()
+    const sessionKey = getAuthSessionKey()
     setAliasSaving(true)
     try {
-      await kgApi.createEntityAlias(selectedEntityId, { alias })
-      setAliasDraft('')
-      toast.success('已添加 alias')
-      await reloadEntityResolution(selectedEntityId)
+      await kgApi.createEntityAlias(activeEntityId, { alias })
+      if (isCurrent()) {
+        setEntityAliasDraft((current) =>
+          current?.entityId === activeEntityId && current.value === aliasDraft ? null : current,
+        )
+        toast.success('已添加 alias')
+      }
+      if (getAuthSessionKey() === sessionKey) await reloadEntityResolution(activeEntityId)
     } catch (error) {
-      toast.error(formatApiError(error, '添加 alias 失败'))
+      if (isCurrent()) toast.error(formatApiError(error, '添加 alias 失败'))
     } finally {
       setAliasSaving(false)
     }
-  }, [aliasDraft, reloadEntityResolution, selectedEntityId])
+  }
 
-  const requestDeleteAlias = useCallback((row: KGEntityAliasItem) => {
-    setAliasDeleteTarget(row)
-    setAliasDeleteOpen(true)
-  }, [])
+  function requestDeleteAlias(row: KGEntityAliasItem) {
+    if (activeEntityId !== null) setAliasDeletion({ entityId: activeEntityId, alias: row })
+  }
 
-  const confirmDeleteAlias = useCallback(async () => {
-    const aliasId = aliasDeleteTarget?.id ? String(aliasDeleteTarget.id) : ''
-    if (!selectedEntityId || !aliasId) {
-      setAliasDeleteOpen(false)
-      setAliasDeleteTarget(null)
-      return
-    }
+  async function confirmDeleteAlias() {
+    const deletion = aliasDeletion
+    if (aliasSaving || deletion === null || deletion.entityId !== activeEntityId) return
 
+    const isCurrent = captureResolutionView()
+    const sessionKey = getAuthSessionKey()
     setAliasSaving(true)
     try {
-      const resp = await kgApi.deleteEntityAlias(selectedEntityId, aliasId)
-      setEntityAliases(resp.aliases || [])
-      toast.success('已删除 alias')
-      await reloadEntityResolution(selectedEntityId)
+      await kgApi.deleteEntityAlias(deletion.entityId, deletion.alias.id)
+      if (isCurrent()) {
+        setAliasDeletion((current) => (current === deletion ? null : current))
+        toast.success('已删除 alias')
+      }
+      if (getAuthSessionKey() === sessionKey) await reloadEntityResolution(deletion.entityId)
     } catch (error) {
-      toast.error(formatApiError(error, '删除 alias 失败'))
+      if (isCurrent()) toast.error(formatApiError(error, '删除 alias 失败'))
     } finally {
       setAliasSaving(false)
-      setAliasDeleteOpen(false)
-      setAliasDeleteTarget(null)
     }
-  }, [aliasDeleteTarget, reloadEntityResolution, selectedEntityId])
+  }
 
   const openMergeDialog = useCallback(() => {
     setMergeOpen(true)
     setMergeSearch('')
     setMergeSearchResults([])
-    setMergeTarget(null)
-    setMergePreview(null)
-    setMergeError(null)
+    setMergeSearchError(null)
+    setMergeSelection(null)
   }, [])
 
   useEffect(() => {
-    if (!mergeOpen) return
+    setMergeSearchError(null)
+    if (!mergeOpen) {
+      setMergeSearchLoading(false)
+      return
+    }
     const query = mergeSearch.trim()
     if (query.length < 2) {
       setMergeSearchResults([])
+      setMergeSearchLoading(false)
       return
     }
 
-    let cancelled = false
+    const controller = new AbortController()
+    const { signal } = controller
     setMergeSearchLoading(true)
 
     const timer = globalThis.window.setTimeout(() => {
       ;(async () => {
         try {
-          const rows = await kgApi.searchGraphNodes({
-            q: query,
-            kind: 'entity',
-            limit: 8,
-            document_ids: scopeParams?.document_ids,
-            pipeline_hash: scopeParams?.pipeline_hash,
-          })
-          const filtered = (rows || []).filter((row) => String(row.id) !== selectedEntityId)
-          if (!cancelled) setMergeSearchResults(filtered)
-        } catch {
-          if (!cancelled) setMergeSearchResults([])
+          const rows = await kgApi.searchGraphNodes(
+            {
+              q: query,
+              kind: 'entity',
+              limit: 8,
+              document_ids: scopeParams?.document_ids,
+              pipeline_hash: scopeParams?.pipeline_hash,
+            },
+            { signal },
+          )
+          const filtered = rows.filter((row) => row.id !== selectedEntityId)
+          if (!signal.aborted) setMergeSearchResults(filtered)
+        } catch (error) {
+          if (!signal.aborted) {
+            setMergeSearchResults([])
+            setMergeSearchError(formatApiError(error, '搜索实体失败'))
+          }
         } finally {
-          if (!cancelled) setMergeSearchLoading(false)
+          if (!signal.aborted) setMergeSearchLoading(false)
         }
       })()
     }, 250)
 
     return () => {
-      cancelled = true
+      controller.abort()
       globalThis.window.clearTimeout(timer)
     }
   }, [mergeOpen, mergeSearch, scopeParams, selectedEntityId])
 
   const selectMergeTarget = useCallback(
-    async (node: KGGraphNode) => {
-      const targetId = String(node?.id || '')
-      if (!selectedEntityId || !targetId) return
-
-      setMergeTarget(node)
-      setMergePreview(null)
-      setMergeError(null)
-      setMergePreviewLoading(true)
-      try {
-        const preview = await kgApi.previewMergeEntities({
-          source_entity_id: selectedEntityId,
-          target_entity_id: targetId,
-        })
-        setMergePreview(preview)
-      } catch (error) {
-        setMergeError(formatApiError(error, '无法预览合并影响'))
-        setMergePreview(null)
-      } finally {
-        setMergePreviewLoading(false)
-      }
+    (node: KGGraphNode) => {
+      if (selectedEntityId === null || node.id === '') return
+      setMergeSelection({ sourceId: selectedEntityId, target: node })
     },
     [selectedEntityId],
   )
@@ -263,47 +244,43 @@ export function useGraphEntityResolution({
   const handleMergeAliasSuggestion = useCallback(
     (suggestion: KGEntityAliasSuggestionItem) => {
       openMergeDialog()
-      detachPromise(
-        selectMergeTarget({
-          id: suggestion.entity_id,
-          label: suggestion.name || suggestion.entity_id,
-          meta: { kind: 'entity', type: suggestion.type },
-        }),
-      )
+      selectMergeTarget({
+        id: suggestion.entity_id,
+        label: suggestion.name === '' ? suggestion.entity_id : suggestion.name,
+        meta: { kind: 'entity', type: suggestion.type },
+      })
     },
     [openMergeDialog, selectMergeTarget],
   )
 
-  const submitMerge = useCallback(async () => {
-    const targetId = String(mergeTarget?.id || '')
-    if (!selectedEntityId || !targetId) return
+  async function submitMerge() {
+    if (mergeRequest === null || mergeSubmitting) return
 
+    const isCurrent = captureResolutionView()
     setMergeSubmitting(true)
-    setMergeError(null)
     try {
-      const out = await kgApi.mergeEntities({
-        source_entity_id: selectedEntityId,
-        target_entity_id: targetId,
-      })
-      setLastResolutionActionId(String(out.action_id))
+      const out = await kgApi.mergeEntities(mergeRequest)
+      if (!isCurrent()) return
+      setLastResolutionActionId(out.action_id)
       toast.success('合并已完成（可撤销）')
       setMergeConfirmOpen(false)
       setMergeOpen(false)
-      await loadInitialData('live')
-      await reloadEntityResolution(selectedEntityId)
+      await loadLiveGraph()
+      await reloadEntityResolution(mergeRequest.source_entity_id)
     } catch (error) {
-      toast.error(formatApiError(error, '合并失败'))
+      if (isCurrent()) toast.error(formatApiError(error, '合并失败'))
     } finally {
       setMergeSubmitting(false)
     }
-  }, [loadInitialData, mergeTarget, reloadEntityResolution, selectedEntityId])
+  }
 
   const openSplitDialog = useCallback(() => {
-    setSplitOpen(true)
+    if (selectedEntityId === null || splitSubmitting) return
+    setSplitEntityId(selectedEntityId)
     setSplitNameDraft('')
     setSplitSelectedEventIds(new Set())
     setSplitError(null)
-  }, [])
+  }, [selectedEntityId, splitSubmitting])
 
   const toggleSplitEvent = useCallback((eventId: string, checked: boolean) => {
     setSplitSelectedEventIds((prev) => {
@@ -317,7 +294,7 @@ export function useGraphEntityResolution({
   const submitSplit = useCallback(async () => {
     const name = splitNameDraft.trim()
     const eventIds = Array.from(splitSelectedEventIds)
-    if (!selectedEntityId) return
+    if (splitSubmitting || splitEntityId === null || splitEntityId !== selectedEntityId) return
     if (!name) {
       setSplitError('请输入新实体名称')
       return
@@ -327,92 +304,111 @@ export function useGraphEntityResolution({
       return
     }
 
+    const isCurrent = captureResolutionView()
     setSplitSubmitting(true)
     setSplitError(null)
     try {
       const out = await kgApi.splitEntity({
-        entity_id: selectedEntityId,
+        entity_id: splitEntityId,
         new_entity_name: name,
         event_ids: eventIds,
       })
-      setLastResolutionActionId(String(out.action_id))
+      if (!isCurrent()) return
+      setLastResolutionActionId(out.action_id)
       toast.success('拆分已完成（可撤销）')
-      setSplitOpen(false)
-      await loadInitialData('live')
-      await reloadEntityResolution(selectedEntityId)
+      setSplitEntityId((current) => (current === splitEntityId ? null : current))
+      await loadLiveGraph()
+      await reloadEntityResolution(splitEntityId)
     } catch (error) {
-      toast.error(formatApiError(error, '拆分失败'))
+      if (isCurrent()) toast.error(formatApiError(error, '拆分失败'))
     } finally {
       setSplitSubmitting(false)
     }
-  }, [loadInitialData, reloadEntityResolution, selectedEntityId, splitNameDraft, splitSelectedEventIds])
+  }, [
+    captureResolutionView,
+    loadLiveGraph,
+    reloadEntityResolution,
+    selectedEntityId,
+    splitEntityId,
+    splitNameDraft,
+    splitSelectedEventIds,
+    splitSubmitting,
+  ])
 
   const undoLastResolution = useCallback(async () => {
-    const actionId = (lastResolutionActionId || '').trim()
-    if (!actionId) return
+    const actionId = lastResolutionActionId?.trim()
+    if (actionId === undefined || actionId === '') return
 
+    const isCurrent = captureResolutionView()
     setUndoSubmitting(true)
     try {
       const out = await kgApi.undoResolutionAction(actionId)
-      toast.success(`已撤销：${String(out.status || 'ok')}`)
+      if (!isCurrent()) return
+      toast.success(`已撤销：${out.status}`)
       setLastResolutionActionId(null)
-      await loadInitialData('live')
+      await loadLiveGraph()
     } catch (error) {
-      toast.error(formatApiError(error, '撤销失败'))
+      if (isCurrent()) toast.error(formatApiError(error, '撤销失败'))
     } finally {
       setUndoSubmitting(false)
     }
-  }, [lastResolutionActionId, loadInitialData])
+  }, [captureResolutionView, lastResolutionActionId, loadLiveGraph])
 
-  const handleAliasDeleteOpenChange = useCallback((open: boolean) => {
-    setAliasDeleteOpen(open)
-    if (!open) setAliasDeleteTarget(null)
-  }, [])
+  const handleAliasDeleteOpenChange = useCallback(
+    (open: boolean) => {
+      if (!open && !aliasSaving) setAliasDeletion(null)
+    },
+    [aliasSaving],
+  )
 
   const handleMergeOpenChange = useCallback((open: boolean) => {
     setMergeOpen(open)
     if (!open) {
       setMergeSearch('')
       setMergeSearchResults([])
-      setMergeTarget(null)
-      setMergePreview(null)
-      setMergeError(null)
+      setMergeSelection(null)
       setMergeConfirmOpen(false)
     }
   }, [])
 
-  const handleSplitOpenChange = useCallback((open: boolean) => {
-    setSplitOpen(open)
-    if (!open) {
-      setSplitNameDraft('')
-      setSplitSelectedEventIds(new Set())
-      setSplitError(null)
-    }
-  }, [])
+  const handleSplitOpenChange = useCallback(
+    (open: boolean) => {
+      if (!open && !splitSubmitting) {
+        setSplitEntityId(null)
+        setSplitNameDraft('')
+        setSplitSelectedEventIds(new Set())
+        setSplitError(null)
+      }
+    },
+    [splitSubmitting],
+  )
 
   return {
-    entityAliases,
-    entityAliasesLoading,
+    entityAliases: aliasListQuery.data?.aliases ?? [],
+    entityAliasesLoading: aliasListQuery.isFetching,
+    entityAliasesError: aliasListQuery.error === null ? null : formatApiError(aliasListQuery.error, '读取别名失败'),
     aliasDraft,
     setAliasDraft,
     aliasSaving,
-    aliasDeleteOpen,
     aliasDeleteTarget,
-    aliasSuggestions,
-    aliasSuggestionsLoading,
+    aliasSuggestions: aliasSuggestionsQuery.data?.suggestions ?? [],
+    aliasSuggestionsLoading: aliasSuggestionsQuery.isFetching,
+    aliasSuggestionsError:
+      aliasSuggestionsQuery.error === null ? null : formatApiError(aliasSuggestionsQuery.error, '读取相似实体建议失败'),
     mergeOpen,
     mergeSearch,
     setMergeSearch,
     mergeSearchLoading,
+    mergeSearchError,
     mergeSearchResults,
     mergeTarget,
-    mergePreview,
-    mergePreviewLoading,
+    mergePreview: mergePreviewQuery.data ?? null,
+    mergePreviewLoading: mergePreviewQuery.isFetching,
     mergeConfirmOpen,
     setMergeConfirmOpen,
     mergeSubmitting,
     mergeError,
-    splitOpen,
+    splitOpen: splitEntityId !== null && splitEntityId === selectedEntityId,
     splitNameDraft,
     setSplitNameDraft,
     splitSelectedEventIds,

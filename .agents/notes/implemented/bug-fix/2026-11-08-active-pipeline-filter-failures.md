@@ -10,7 +10,7 @@ Status: implemented
 
 两条入口都直接传播活动版本查询和过滤组装异常，由原请求或任务错误入口处理。租户与文档谓词、ready 判定、活动／历史 hash 优先级和 `doc_pipeline_key` 集合构造保持。真正没有 Session、租户或文档范围时仍直接返回原过滤器；查询成功但没有可用活动键时继续遵循原无版本记录规则。
 
-两份相同规则由 `app.rag.core.pipeline_scope.apply_active_pipeline_metadata_filter` 持有。LangGraph 以原私有名直接导入，RAGEngine 的原调用名静态绑定到同一模块函数；流式准备阶段的调用和既有替换入口保持。新模块在加载时仅依赖标准库，文档模型和 hash 所有者仍在原分支中延迟导入，不创建 Session 或增加框架对象。
+两份相同规则由 `app.rag.retrieval.pipeline_scope.apply_active_pipeline_metadata_filter` 持有。LangGraph 以原私有名直接导入，RAGEngine 的原调用名静态绑定到同一模块函数；流式准备阶段的调用和既有替换入口保持。新模块在加载时仅依赖标准库，文档模型和 hash 所有者仍在原分支中延迟导入，不创建 Session 或增加框架对象。
 
 该过滤只限制处理版本，不能代替既有的租户、文档权限或 dataset 过滤。原有用户 metadata 条件继续保留在新建的过滤器字典中；不修改调用方传入的字典，不通过空过滤器、缓存或其他存储替代失败查询。
 

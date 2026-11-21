@@ -17,7 +17,7 @@ from pydantic import ValidationError
     ],
 )
 def test_runtime_safety_settings_reject_invalid_values(field, value, monkeypatch):
-    from app.core.config import Settings
+    from app.infrastructure.config import Settings
 
     for key in list(os.environ):
         monkeypatch.delenv(key)
@@ -30,5 +30,5 @@ def test_task_timeout_helpers_use_configured_values(monkeypatch):
 
     monkeypatch.setattr(locks.settings, "TASK_JOB_TIMEOUT_SEC", 37)
     monkeypatch.setattr(locks.settings, "TASK_SEMAPHORE_LEASE_TTL_SEC", 19)
-    assert locks.task_job_timeout_sec(default_sec=99) == 37
-    assert locks.task_semaphore_lease_ttl_sec(default_sec=99) == 19
+    assert locks.task_job_lock_ttl_sec(minimum_sec=1) == 97
+    assert locks.task_semaphore_lease_ttl_sec(minimum_sec=1) == 19

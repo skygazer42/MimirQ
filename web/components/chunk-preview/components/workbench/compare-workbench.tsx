@@ -1,15 +1,16 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { Chunking, FolderOpen, HelpCircle, Upload } from '@/components/icons'
+import { toast } from 'sonner'
+import { Chunking, FolderOpen, HelpCircle, Loader2, Play, Settings2, Upload, X } from '@/components/icons'
 import { Button } from '@/components/ui/button'
 import { PageTitleIcon } from '@/components/ui/page-title-icon'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { Loader2, Play, Settings2, X } from '@/components/icons'
 import { FileTypeIcon } from '@/components/ui/file-type-icon'
 import { useChunkPreview } from '@/components/chunk-preview/context'
 import { ChunkingHelpDialog } from '@/components/chunk-preview/components/chunking-help-dialog'
+import { formatApiError } from '@/lib/api-errors'
 import { UPLOAD_ACCEPT } from '@/lib/upload-extensions'
 import { TopBar } from './top-bar'
 import { Sidebar } from './sidebar'
@@ -40,6 +41,7 @@ export function Workbench() {
     gapReviewRequest,
   } = useChunkPreview()
   const lastGapFocus = useRef(gapReviewRequest)
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const [documentsOpen, setDocumentsOpen] = useState(false)
   const [helpOpen, setHelpOpen] = useState(false)
   const [mobileView, setMobileView] = useState<'original' | 'chunks'>('chunks')
@@ -62,6 +64,7 @@ export function Workbench() {
     if (showSettingsPanel) toggleSettingsPanel()
   }
   const ready = Boolean(currentFile && currentFileItem)
+  const documentName = currentFileItem?.displayName ?? currentFile?.name
   return (
     <div className={styles.page} data-chunk-compare-page data-mobile-view={mobileView}>
       {ready ? (
@@ -119,35 +122,37 @@ export function Workbench() {
           data-dragging={isDragging}
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
-          onDrop={handleDrop}
+          onDrop={(event) => {
+            void handleDrop(event).catch((error) => toast.error(formatApiError(error, '无法读取拖入的文件')))
+          }}
         >
           <Chunking appearance="color" className="icon-ink-process" />
-          <h2>{isDragging ? '松开鼠标上传文档' : '选择文档，查看切块结果'}</h2>
-          <p>可以使用已解析的文档，也可以上传文件预览切分效果。</p>
+          <h2>{isDragging ? '松开鼠标上传文档' : '预览文档切片'}</h2>
           <div className={styles.emptyActions}>
             <Button onClick={openDocuments}>
               <FolderOpen />
               选择已有文档
             </Button>
-            <Button variant="outline" onClick={() => document.getElementById('chunk-empty-file-input')?.click()}>
+            <Button variant="outline" onClick={() => fileInputRef.current?.click()}>
               <Upload />
               上传文件
             </Button>
             <Button variant="ghost" onClick={loadExample}>
-              试用示例文档
+              打开示例文档
             </Button>
           </div>
           <input
             id="chunk-empty-file-input"
+            ref={fileInputRef}
             aria-label="上传切块预览文档"
             type="file"
             accept={UPLOAD_ACCEPT}
             multiple
             hidden
             onChange={(event) => {
-              const files = Array.from(event.target.files || [])
-              if (files.length > 0) addFiles(files)
-              event.target.value = ''
+              const input = event.currentTarget
+              if (input.files !== null && input.files.length > 0) addFiles(Array.from(input.files))
+              input.value = ''
             }}
           />
           <button type="button" className={styles.emptyHelp} onClick={() => setHelpOpen(true)}>
@@ -166,7 +171,7 @@ export function Workbench() {
         <SheetContent className={styles.drawer}>
           <SheetHeader className={styles.drawerHeader}>
             <SheetTitle>文档与数据范围</SheetTitle>
-            <SheetDescription>选择要预览的文档，或管理本次处理的文件</SheetDescription>
+            <SheetDescription>按数据集筛选文档，或管理已添加的文件。</SheetDescription>
           </SheetHeader>
           <div className={styles.drawerTabs} role="group" aria-label="切块配置面板">
             <button type="button" aria-pressed={true} disabled>
@@ -211,11 +216,8 @@ export function Workbench() {
               高级切块配置
             </DialogTitle>
             <DialogDescription>
-              <FileTypeIcon
-                type={currentFileItem?.originalFileType}
-                filename={currentFileItem?.displayName || currentFile?.name}
-              />
-              {currentFileItem?.displayName || currentFile?.name || '选择文档后生成预览'}
+              <FileTypeIcon type={currentFileItem?.originalFileType} filename={documentName} />
+              {documentName ?? '选择文档后生成预览'}
             </DialogDescription>
           </DialogHeader>
           <Sidebar variant="dialog" section="settings" />

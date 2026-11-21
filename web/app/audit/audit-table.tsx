@@ -1,18 +1,10 @@
 'use client'
 
 import { useRef } from 'react'
-import {
-  ChevronLeft,
-  ChevronRight,
-  Copy,
-  FileJson,
-  Loader2,
-  MoreHorizontal,
-  ScrollText,
-  Trash2,
-} from '@/components/icons'
+import { ChevronLeft, ChevronRight, Copy, FileJson, MoreHorizontal, ScrollText, Trash2 } from '@/components/icons'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
+import { Skeleton } from '@/components/ui/skeleton'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -22,39 +14,44 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
-import type { AuditLogItem } from '@/types/chat'
-import type { AuditController } from './use-audit'
-import { PAGE_SIZES, actionName, actionTone, compactId, emptyFilters, resourceLabel, stamp } from './audit-model'
+import type { AuditLogItem } from '@/types/audit'
+import type { AuditState } from './use-audit'
+import {
+  PAGE_SIZES,
+  getAuditActionLabel,
+  getAuditActionTone,
+  abbreviateAuditIdentifier,
+  createAuditFilterDraft,
+  getAuditResourceLabel,
+  formatAuditTimestamp,
+  formatAuditJson,
+} from './audit-model'
 import styles from './audit.module.css'
 
-export function AuditTable({ controller: c }: { controller: AuditController }) {
-  if (!c.rows.length) {
-    const loading = !c.filterError && c.logs.isPending,
-      failed = Boolean(c.filterError) || c.logs.isError,
-      filtered = Object.keys(c.filters).length > 0
+export function AuditTable({ audit }: Readonly<{ audit: AuditState }>) {
+  const loading = audit.snapshot === undefined && audit.filterError === undefined && audit.logs.isPending
+  if (!loading && audit.rows.length === 0) {
+    const failed = audit.snapshot === undefined && (audit.filterError !== undefined || audit.logs.isError)
+    const emptyPage = audit.snapshot !== undefined && audit.snapshot.data.total > 0
+    const filtered = audit.displayedFilters !== undefined && Object.keys(audit.displayedFilters).length > 0
+    let title = filtered ? '没有符合筛选条件的记录' : '暂无审计记录'
+    let message = filtered ? '调整条件，或清空筛选查看全部记录。' : '当前租户还没有审计记录。'
+    if (failed) {
+      title = '未取得审计记录'
+      message = '请调整筛选或在上方重试读取。'
+    } else if (emptyPage) {
+      title = '当前页没有审计记录'
+      message = '请切换页码，或刷新后核对当前记录。'
+    } else if (audit.showingPrevious) {
+      title = '已显示范围没有记录'
+    }
     return (
       <section className={styles.empty} aria-label="审计列表状态" aria-busy={loading}>
-        {loading ? <Loader2 className="animate-spin motion-reduce:animate-none" /> : <ScrollText />}
-        <h2>
-          {loading
-            ? '正在读取审计记录…'
-            : failed
-              ? '未取得审计记录'
-              : filtered
-                ? '没有符合筛选条件的记录'
-                : '暂无审计记录'}
-        </h2>
-        <p>
-          {loading
-            ? '记录将按时间倒序显示。'
-            : failed
-              ? '请调整筛选或在上方重试读取。'
-              : filtered
-                ? '调整条件，或清空筛选查看全部记录。'
-                : '当前租户还没有审计记录。'}
-        </p>
-        {!loading && !failed && filtered ? (
-          <Button variant="outline" onClick={() => c.setFilters(emptyFilters())}>
+        <ScrollText />
+        <h2>{title}</h2>
+        <p>{message}</p>
+        {!failed && !emptyPage && filtered ? (
+          <Button variant="outline" onClick={() => audit.setFilters(createAuditFilterDraft())}>
             清空筛选
           </Button>
         ) : null}
@@ -62,21 +59,32 @@ export function AuditTable({ controller: c }: { controller: AuditController }) {
     )
   }
   return (
-    <div className={styles.tableArea}>
+    <div className={styles.tableArea} aria-busy={audit.logs.isFetching}>
+      {loading && (
+        <p role="status" className="sr-only">
+          正在读取审计记录…
+        </p>
+      )}
       <p className={styles.scrollHint}>左右滑动查看表格，更多信息见明细</p>
       <div className={styles.tableScroll} role="region" aria-label="审计记录表，可横向滚动" tabIndex={0}>
-        <table className={styles.table} data-manage={c.canManage}>
+        <table className={styles.table} data-manage={audit.canManage}>
           <caption className="sr-only">按时间倒序排列的审计日志。查看明细可读取完整标识与原始数据。</caption>
           <thead>
             <tr>
-              {c.canManage ? (
+              {audit.canManage ? (
                 <th scope="col" className={styles.checkColumn}>
                   <Checkbox
                     className={styles.rowCheckbox}
                     aria-label="选择当前页审计日志"
-                    disabled={Boolean(c.busy) || c.logs.isFetching}
-                    checked={c.selectedVisible === c.rows.length ? true : c.selectedVisible ? 'indeterminate' : false}
-                    onCheckedChange={(checked) => c.togglePage(checked === true)}
+                    disabled={audit.busy !== null || loading || audit.showingPrevious || audit.logs.isFetching}
+                    checked={
+                      audit.rows.length > 0 && audit.selectedVisible === audit.rows.length
+                        ? true
+                        : audit.selectedVisible > 0
+                          ? 'indeterminate'
+                          : false
+                    }
+                    onCheckedChange={(checked) => audit.togglePage(checked === true)}
                   />
                 </th>
               ) : null}
@@ -101,9 +109,38 @@ export function AuditTable({ controller: c }: { controller: AuditController }) {
             </tr>
           </thead>
           <tbody>
-            {c.rows.map((row) => (
-              <AuditRow key={row.id} row={row} controller={c} />
-            ))}
+            {loading
+              ? [0, 1, 2, 3].map((index) => (
+                  <tr key={index} aria-hidden="true">
+                    {audit.canManage && (
+                      <td className={styles.checkColumn}>
+                        <Skeleton className="size-4" />
+                      </td>
+                    )}
+                    <td className={styles.timeColumn}>
+                      <Skeleton className="h-4 w-20" />
+                      <Skeleton className="mt-2 h-3 w-16" />
+                    </td>
+                    <td className={styles.actorColumn}>
+                      <Skeleton className="h-4 w-24" />
+                    </td>
+                    <td className={styles.eventColumn}>
+                      <Skeleton className="h-4 w-24" />
+                      <Skeleton className="mt-2 h-3 w-32" />
+                    </td>
+                    <td className={styles.resourceColumn}>
+                      <Skeleton className="h-4 w-24" />
+                      <Skeleton className="mt-2 h-3 w-32" />
+                    </td>
+                    <td className={styles.requestColumn}>
+                      <Skeleton className="h-4 w-24" />
+                    </td>
+                    <td className={styles.actionsColumn}>
+                      <Skeleton className="h-8 w-20" />
+                    </td>
+                  </tr>
+                ))
+              : audit.rows.map((row) => <AuditRow key={row.id} row={row} audit={audit} />)}
           </tbody>
         </table>
       </div>
@@ -111,21 +148,21 @@ export function AuditTable({ controller: c }: { controller: AuditController }) {
   )
 }
 
-function AuditRow({ row, controller: c }: { row: AuditLogItem; controller: AuditController }) {
-  const menuRef = useRef<HTMLButtonElement>(null),
-    time = stamp(row.created_at),
-    resource = resourceLabel(row),
-    selected = c.selectedSet.has(row.id)
+function AuditRow({ row, audit }: Readonly<{ row: AuditLogItem; audit: AuditState }>) {
+  const menuRef = useRef<HTMLButtonElement>(null)
+  const time = formatAuditTimestamp(row.created_at)
+  const resource = getAuditResourceLabel(row)
+  const selected = audit.selectedSet.has(row.id)
   return (
-    <tr className={cn(selected && styles.selectedRow)} aria-selected={c.canManage ? selected : undefined}>
-      {c.canManage ? (
+    <tr className={cn(selected && styles.selectedRow)} aria-selected={audit.canManage ? selected : undefined}>
+      {audit.canManage ? (
         <td className={styles.checkColumn}>
           <Checkbox
             className={styles.rowCheckbox}
             aria-label={`选择审计日志 ${row.id}`}
-            disabled={Boolean(c.busy) || c.logs.isFetching}
+            disabled={audit.busy !== null || audit.showingPrevious || audit.logs.isFetching}
             checked={selected}
-            onCheckedChange={(checked) => c.toggle(row.id, checked === true)}
+            onCheckedChange={(checked) => audit.toggle(row.id, checked === true)}
           />
         </td>
       ) : null}
@@ -136,12 +173,14 @@ function AuditRow({ row, controller: c }: { row: AuditLogItem; controller: Audit
         </time>
       </td>
       <td className={styles.actorColumn}>
-        <span title={row.actor_id || '未记录操作者'}>{row.actor_id ? compactId(row.actor_id) : '未记录操作者'}</span>
+        <span title={row.actor_id === null ? '未记录操作者' : row.actor_id}>
+          {row.actor_id === null ? '未记录操作者' : abbreviateAuditIdentifier(row.actor_id)}
+        </span>
       </td>
       <td className={styles.eventColumn}>
         <div className={styles.eventTitle}>
-          <i className={styles[actionTone(row.action)]} aria-hidden="true" />
-          <strong title={row.action}>{actionName(row.action)}</strong>
+          <i className={styles[getAuditActionTone(row.action)]} aria-hidden="true" />
+          <strong title={row.action}>{getAuditActionLabel(row.action)}</strong>
         </div>
         <small className={styles.eventCode} title={row.action}>
           {row.action}
@@ -152,14 +191,16 @@ function AuditRow({ row, controller: c }: { row: AuditLogItem; controller: Audit
         {resource.detail ? <small title={resource.detail}>{resource.detail}</small> : null}
       </td>
       <td className={styles.requestColumn}>
-        <span title={row.request_id || undefined}>{compactId(row.request_id)}</span>
+        <span title={row.request_id === null ? undefined : row.request_id}>
+          {abbreviateAuditIdentifier(row.request_id)}
+        </span>
       </td>
       <td className={styles.actionsColumn}>
         <div className={styles.rowActions}>
           <Button
             variant="ghost"
             aria-label={`查看审计记录 ${row.id}`}
-            onClick={(event) => c.openRecord(row, event.currentTarget)}
+            onClick={(event) => audit.openRecord(row, event.currentTarget)}
           >
             <span>明细</span>
             <ChevronRight />
@@ -179,7 +220,7 @@ function AuditRow({ row, controller: c }: { row: AuditLogItem; controller: Audit
             <DropdownMenuContent align="end">
               <DropdownMenuItem
                 onSelect={() => {
-                  void c.copy(c.pretty(row.details))
+                  void audit.copy(formatAuditJson(row.details))
                 }}
               >
                 <FileJson />
@@ -187,19 +228,19 @@ function AuditRow({ row, controller: c }: { row: AuditLogItem; controller: Audit
               </DropdownMenuItem>
               <DropdownMenuItem
                 onSelect={() => {
-                  void c.copy(row.id)
+                  void audit.copy(row.id)
                 }}
               >
                 <Copy />
                 复制日志 ID
               </DropdownMenuItem>
-              {c.canManage ? (
+              {audit.canManage ? (
                 <>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
                     className="text-destructive"
-                    disabled={Boolean(c.busy)}
-                    onSelect={() => c.askDelete([row.id], menuRef.current)}
+                    disabled={audit.busy !== null || audit.showingPrevious}
+                    onSelect={() => audit.askDelete([row.id], menuRef.current)}
                   >
                     <Trash2 />
                     删除记录
@@ -214,23 +255,22 @@ function AuditRow({ row, controller: c }: { row: AuditLogItem; controller: Audit
   )
 }
 
-export function AuditPagination({ controller: c }: { controller: AuditController }) {
-  const start = c.rows.length ? (c.scope.page - 1) * c.scope.limit + 1 : 0
+export function AuditPagination({ audit }: Readonly<{ audit: AuditState }>) {
   return (
     <footer className={styles.footer} data-task-center-dock>
       <span>
-        {c.total === null
+        {audit.total === undefined
           ? '记录数未取得'
-          : c.total === 0
+          : audit.total === 0 && audit.rows.length === 0
             ? '共 0 条'
-            : `${start}–${Math.min(start + c.rows.length - 1, c.total)} · 共 ${c.total} 条`}
+            : `本页 ${audit.rows.length} 条 · 统计 ${audit.total} 条`}
       </span>
       <span className={styles.spacer} />
       <span className={styles.pageSizeLabel}>每页</span>
       <Select
-        value={String(c.scope.limit)}
-        onValueChange={(value) => c.update({ limit: Number(value) })}
-        disabled={Boolean(c.busy)}
+        value={String(audit.scope.limit)}
+        onValueChange={(value) => audit.setPageSize(Number(value))}
+        disabled={audit.busy !== null || audit.showingPrevious}
       >
         <SelectTrigger aria-label="审计每页条数" className={styles.pageSize}>
           <SelectValue />
@@ -247,20 +287,41 @@ export function AuditPagination({ controller: c }: { controller: AuditController
         variant="ghost"
         size="icon"
         aria-label="审计上一页"
-        disabled={c.scope.page <= 1 || c.logs.isFetching || Boolean(c.busy)}
-        onClick={() => c.update({ page: c.scope.page - 1 })}
+        disabled={
+          audit.snapshot === undefined ||
+          audit.snapshot.scope.page <= 1 ||
+          audit.showingPrevious ||
+          audit.logs.isFetching ||
+          audit.busy !== null
+        }
+        onClick={() => audit.changePage(-1)}
       >
         <ChevronLeft />
       </Button>
       <span className={styles.pageNumber}>
-        {c.scope.page} / {c.pageCount}
+        {audit.snapshot === undefined
+          ? '页数未取得'
+          : audit.pageCount === undefined
+            ? `第 ${audit.snapshot.scope.page} 页，页数待核对`
+            : audit.pageCount === 0
+              ? '0 / 0'
+              : audit.snapshot.scope.page > audit.pageCount
+                ? '请求页超过统计页数'
+                : `${audit.snapshot.scope.page} / ${audit.pageCount}`}
       </span>
       <Button
         variant="ghost"
         size="icon"
         aria-label="审计下一页"
-        disabled={c.total === null || c.scope.page >= c.pageCount || c.logs.isFetching || Boolean(c.busy)}
-        onClick={() => c.update({ page: c.scope.page + 1 })}
+        disabled={
+          audit.pageCount === undefined ||
+          audit.snapshot === undefined ||
+          audit.snapshot.scope.page >= audit.pageCount ||
+          audit.showingPrevious ||
+          audit.logs.isFetching ||
+          audit.busy !== null
+        }
+        onClick={() => audit.changePage(1)}
       >
         <ChevronRight />
       </Button>

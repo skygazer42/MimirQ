@@ -1,8 +1,45 @@
+import ast
 import hashlib
+from pathlib import Path
 
 import pytest
 
+from scripts import bootstrap_mimirq_models as bootstrap
 from scripts.bootstrap_mimirq_models import verify_model_snapshot
+
+
+def test_default_model_directory_matches_all_deepdoc_consumers() -> None:
+    root = Path(__file__).resolve().parents[1]
+    expected = root / "app/rag/ingestion/parsing/resources/models"
+    assert bootstrap.DEFAULT_MODEL_DIR == expected
+    for module_name, constant, model_subdir in (
+        ("ocr", "_OCR_MODEL_DIR", "ocr"),
+        ("layout", "_LAYOUT_MODEL_DIR", "layout"),
+        ("table_structure", "_TABLE_MODEL_DIR", "table"),
+    ):
+        module_path = root / f"app/rag/ingestion/parsing/models/{module_name}.py"
+        tree = ast.parse(module_path.read_text(encoding="utf-8"))
+        assignment = next(
+            node
+            for node in tree.body
+            if isinstance(node, ast.Assign)
+            and any(isinstance(target, ast.Name) and target.id == constant for target in node.targets)
+        )
+        actual = eval(
+            compile(ast.Expression(assignment.value), str(module_path), "eval"),
+            {"Path": Path, "__file__": str(module_path)},
+        )
+        assert actual == expected / model_subdir
+
+
+def test_bootstrap_checks_the_downloaded_snapshot_without_loading_models(tmp_path, monkeypatch) -> None:
+    def download(**kwargs):
+        assert kwargs["repo_id"] == bootstrap.MODEL_REPO_ID
+        assert kwargs["revision"] == bootstrap.MODEL_REVISION
+        _write_manifest(kwargs["local_dir"], "ocr/det.onnx", b"fixture model bytes")
+
+    monkeypatch.setattr(bootstrap, "snapshot_download", download)
+    assert bootstrap.download_and_verify_models(tmp_path) == 1
 
 
 def _write_manifest(model_dir, relative_name: str, payload: bytes) -> None:

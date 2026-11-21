@@ -114,7 +114,7 @@ def test_get_vector_store_embedding_cache_key_changes_without_leaking_api_key(mo
 
 
 def test_apply_runtime_settings_clears_vector_store_singletons_on_embedding_change(monkeypatch) -> None:
-    import app.api.v1.settings as settings_api
+    import app.api.v1.system.settings as settings_api
     import app.storage.vector.factory as factory_module
 
     factory_module.reset_vector_store_singletons()

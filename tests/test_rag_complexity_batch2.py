@@ -3,15 +3,15 @@ from types import SimpleNamespace
 import pytest
 from langchain_core.documents import Document as LangChainDocument
 
-from app.models.chunk import Document as ChunkDocument
-from app.rag.chunking.strategies.parent_child import ParentChildChunker
-from app.rag.preprocessing.cleaning import RegexRule
-from app.rag.preprocessing.rule_packs import GOVERNANCE_RULE_PACKS
-from app.rag.preprocessing.rules import DEFAULT_MARKDOWN_RULES, build_governance_rules
-from app.rag.reranker.hybrid import KeywordSetting, VectorSetting, WeightedReranker, Weights
-from app.rag.retrieval.document_structure import build_document_structure_from_chunks
-from app.rag.retrieval.orchestration.kg_merge_boost import _merge_kg_metadata_into_main
+from app.rag.ingestion.chunking.strategies.text.parent_child import ParentChildChunker
+from app.rag.ingestion.governance.cleaning import RegexRule
+from app.rag.ingestion.governance.rule_packs import GOVERNANCE_RULE_PACKS
+from app.rag.ingestion.governance.rules import DEFAULT_MARKDOWN_RULES, build_governance_rules
+from app.rag.retrieval.evidence.document_structure import build_document_structure_from_chunks
+from app.rag.retrieval.ranking.knowledge_graph import _merge_kg_metadata_into_main
+from app.rag.retrieval.reranking.weighted import KeywordSetting, VectorSetting, WeightedReranker, Weights
 from app.rag.workflows.evaluator_optimizer import EvaluatorOptimizerWorkflow
+from app.types.rag_document import Document as ChunkDocument
 
 
 def test_parent_child_chunker_reuses_cached_splits_without_sharing_mutations() -> None:
@@ -78,7 +78,7 @@ def test_weighted_reranker_keyword_scores_use_current_keyword_extractor(monkeypa
             }
             return list(mapping[text])
 
-    monkeypatch.setattr("app.rag.preprocessing.keyword.JiebaKeywordTableHandler", _FakeKeywordHandler)
+    monkeypatch.setattr("app.rag.ingestion.governance.tagging.keyword.JiebaKeywordTableHandler", _FakeKeywordHandler)
 
     reranker = WeightedReranker(
         tenant_id="tenant",

@@ -1,6 +1,6 @@
 from langchain_core.documents import Document
 
-from app.rag.retrieval.hybrid.text_preparation import (
+from app.rag.retrieval.recall.text_preparation import (
     normalize_document_questions,
     prepare_retrieval_document,
     question_channel_overlap_score,
@@ -22,7 +22,6 @@ def test_prepare_retrieval_document_appends_unique_questions_and_preserves_displ
                 ],
             },
         ),
-        log_fallback=lambda *_args, **_kwargs: None,
     )
 
     assert prepared.page_content == (

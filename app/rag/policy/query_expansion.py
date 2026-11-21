@@ -11,6 +11,7 @@ Constraints:
 """
 
 import re
+from collections.abc import Iterator
 
 from app.rag.policy.clause_refs import extract_clause_refs
 
@@ -63,8 +64,7 @@ def _iter_lightweight_query_candidates(
     raw: str,
     min_part_chars: int,
     max_part_chars: int,
-) -> list[str]:
-    candidates: list[str] = []
+) -> Iterator[str]:
     for sentence in _SENTENCE_SPLIT_RE.split(raw):
         sentence = _normalize_lightweight_query_part(sentence)
         if not sentence:
@@ -77,7 +77,7 @@ def _iter_lightweight_query_candidates(
                 max_chars=max_part_chars,
             )
             if useful:
-                candidates.append(useful)
+                yield useful
 
             enum_parts = [_normalize_lightweight_query_part(item) for item in _ENUM_SPLIT_RE.split(part)]
             if len(enum_parts) < 2:
@@ -89,8 +89,7 @@ def _iter_lightweight_query_candidates(
                     max_chars=max_part_chars,
                 )
                 if useful_item:
-                    candidates.append(useful_item)
-    return candidates
+                    yield useful_item
 
 
 def build_lightweight_subquery_queries(

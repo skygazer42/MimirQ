@@ -1,8 +1,8 @@
 const governanceMessages = {
   DataGovernancePage: {
     loading: {
-      message: '正在加载数据治理面板...',
-      srMessage: 'Loading data governance panel',
+      message: '正在加载数据治理面板…',
+      srMessage: '正在加载数据治理面板',
     },
   },
   GovernanceProfilesRoutePage: {
@@ -13,8 +13,8 @@ const governanceMessages = {
   },
   GovernanceCommonLinesRoutePage: {
     loading: {
-      message: '正在加载重复内容治理...',
-      srMessage: 'Loading common lines learning page',
+      message: '正在加载重复内容治理…',
+      srMessage: '正在加载重复内容治理页面',
     },
   },
   DataAnnotator: {
@@ -273,7 +273,7 @@ const governanceMessages = {
   },
   DataCleaner: {
     header: {
-      title: '智能清洗配置',
+      title: '文档清洗设置',
     },
     inputFormat: {
       label: '输入格式',
@@ -292,7 +292,7 @@ const governanceMessages = {
     },
     actions: {
       reset: '重置内容',
-      apply: '执行智能清洗',
+      apply: '运行清洗',
       applying: '清洗中...',
     },
     llm: {
@@ -364,7 +364,7 @@ const governanceMessages = {
         description: '检测文档质量与格式问题',
       },
       clean: {
-        label: '智能清洗',
+        label: '文档清洗',
         description: '修复格式错误与乱码',
       },
       annotate: {

@@ -27,11 +27,11 @@ test('missing account associations and external identities remain honest and non
       ...state.members[0],
       id: 'external-record',
       user_id: 'external-subject@company.org',
-      username: null,
-      email: null,
+      username: '',
+      email: '',
       role: 'new-role',
     },
-    { ...state.members[1], id: 'unlinked-record', user_id: null, username: null, email: null, role: '' },
+    { ...state.members[1], id: 'unlinked-record', user_id: '', username: '', email: '', role: '' },
   ]
   await openMembers(page)
   await expect(page.getByRole('table')).toContainText('external-subject@company.org')

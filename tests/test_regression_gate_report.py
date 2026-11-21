@@ -78,7 +78,8 @@ def test_build_regression_gate_report_includes_channel_attribution() -> None:
     assert report["channel_attribution"]["totals"]["vector"] == 1
     assert report["channel_attribution"]["totals"]["bm25"] == 1
     assert report["channel_attribution"]["totals"]["lexical"] == 1
-    assert report["channel_attribution"]["totals"]["sparse"] == 1
+    assert "sparse" not in report["channel_attribution"]["totals"]
+    assert report["channel_attribution"]["totals"]["citations_with_scores"] == 2
     assert report["channel_attribution"]["totals"]["multi"] == 1
     assert report["multihop"]["cases_with_expectation"] == 1
     assert report["multihop"]["path_completeness"] == pytest.approx(1.0)
@@ -101,7 +102,7 @@ def test_render_regression_gate_markdown_renders_summary_and_failures() -> None:
                 "plugin_package_hash": "pkg_hash_abc123",
             },
             "summary": {"retrieval_recall": 0.2},
-            "channel_attribution": {"totals": {"vector": 1, "bm25": 2, "lexical": 0, "sparse": 0, "multi": 0}},
+            "channel_attribution": {"totals": {"vector": 1, "bm25": 2, "lexical": 0, "multi": 0}},
             "multihop": {
                 "cases_with_expectation": 2,
                 "path_completeness": 0.75,
@@ -119,6 +120,7 @@ def test_render_regression_gate_markdown_renders_summary_and_failures() -> None:
     assert "Plugin package hash: `pkg_hash_abc123`" in markdown
     assert "| retrieval_recall | 0.2000 |" in markdown
     assert "| bm25 | 2 |" in markdown
+    assert "sparse" not in markdown.lower()
     assert "retrieval_recall=0.2000 < min 0.3000" in markdown
     assert "## Multi-hop Diagnostics" in markdown
 

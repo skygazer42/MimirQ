@@ -10,9 +10,7 @@ export function randomBytes(byteLength: number): Uint8Array {
     throw new Error('crypto_unavailable')
   }
 
-  const out = new Uint8Array(byteLength)
-  globalThis.crypto.getRandomValues(out)
-  return out
+  return globalThis.crypto.getRandomValues(new Uint8Array(byteLength))
 }
 
 export function generateOauthState(): string {
@@ -26,12 +24,12 @@ export function generatePkceCodeVerifier(): string {
   return base64UrlEncode(randomBytes(32))
 }
 
-export async function sha256Bytes(input: string): Promise<Uint8Array> {
+async function sha256Bytes(input: string): Promise<Uint8Array> {
   if (!globalThis.crypto?.subtle) {
     throw new Error('crypto_subtle_unavailable')
   }
 
-  const data = encodeUtf8(String(input || ''))
+  const data = encodeUtf8(input)
   const digest = await globalThis.crypto.subtle.digest('SHA-256', data as BufferSource)
   return new Uint8Array(digest)
 }
@@ -41,8 +39,8 @@ export async function pkceChallengeFromVerifier(verifier: string): Promise<strin
   return base64UrlEncode(digest)
 }
 
-export function decodeJwtPayload<T = unknown>(token: string): T {
-  const raw = String(token || '').trim()
+function decodeJwtPayload<T = unknown>(token: string): T {
+  const raw = token.trim()
   const parts = raw.split('.')
   if (parts.length < 2) {
     throw new Error('invalid_jwt')

@@ -2,7 +2,7 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any, Literal, TypedDict
 
-from app.parsing.quality.grits import compute_table_collection_grits, compute_table_grits
+from app.rag.ingestion.parsing.quality.grits import compute_table_collection_grits, compute_table_grits
 
 _MetricKey = Literal[
     "text_edit_similarity",

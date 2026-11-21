@@ -24,8 +24,8 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from app.rag.core.hashing import stable_hash  # noqa: E402
-from app.rag.evaluation.replay_capture import (  # noqa: E402
+from app.infrastructure.hashing import stable_hash  # noqa: E402
+from app.rag.evaluation.regression.replay_capture import (  # noqa: E402
     RETRIEVAL_REPLAY_CAPTURE_SCHEMA_V1,
     fingerprint_citations,
 )
@@ -117,9 +117,9 @@ def _compare_capture(
 ) -> tuple[bool, dict[str, Any]]:
     fingerprint_expected = str(record.get("citations_fingerprint") or "").strip()
     fingerprint_actual = fingerprint_citations(payload.get("citations"))
-    config_expected = record.get("retrieval_config_hash")
+    config_expected = str(record.get("retrieval_config_hash") or "").strip() or None
     metrics = payload.get("metrics") if isinstance(payload.get("metrics"), dict) else {}
-    config_actual = metrics.get("retrieval_config_hash")
+    config_actual = str(metrics.get("retrieval_config_hash") or "").strip() or None
     matched = bool(fingerprint_expected) and fingerprint_actual == fingerprint_expected
     matched = matched and (config_expected is None or config_actual == config_expected)
     mismatch = {

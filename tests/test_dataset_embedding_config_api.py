@@ -6,8 +6,8 @@ from fastapi import HTTPException
 
 
 def test_dataset_embedding_defaults_reject_non_milvus_backend(monkeypatch: pytest.MonkeyPatch) -> None:
-    from app.api.schemas.dataset import DatasetEmbeddingDefaults
-    from app.api.v1 import datasets
+    from app.api.schemas.datasets.dataset import DatasetEmbeddingDefaults
+    from app.api.v1.datasets import routes as datasets
 
     monkeypatch.setattr(datasets.settings, "VECTOR_BACKEND", "memory", raising=False)
     metadata: dict[str, object] = {}
@@ -26,8 +26,8 @@ def test_dataset_embedding_defaults_reject_non_milvus_backend(monkeypatch: pytes
 def test_create_dataset_rejects_invalid_embedding_defaults_before_service_call(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from app.api.schemas.dataset import DatasetCreate, DatasetEmbeddingDefaults
-    from app.api.v1 import datasets
+    from app.api.schemas.datasets.dataset import DatasetCreate, DatasetEmbeddingDefaults
+    from app.api.v1.datasets import routes as datasets
 
     called = False
 
@@ -56,8 +56,8 @@ def test_create_dataset_rejects_invalid_embedding_defaults_before_service_call(
 
 
 def test_create_checks_membership_before_embedding_config(monkeypatch: pytest.MonkeyPatch) -> None:
-    from app.api.schemas.dataset import DatasetCreate, DatasetEmbeddingDefaults
-    from app.api.v1 import datasets
+    from app.api.schemas.datasets.dataset import DatasetCreate, DatasetEmbeddingDefaults
+    from app.api.v1.datasets import routes as datasets
 
     monkeypatch.setattr(datasets.settings, "VECTOR_BACKEND", "memory", raising=False)
 
@@ -83,9 +83,8 @@ def test_create_checks_membership_before_embedding_config(monkeypatch: pytest.Mo
 def test_clone_dataset_drops_invalid_embedding_defaults_on_non_milvus_backend(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from app.api.schemas.dataset import DatasetCloneRequest
-    from app.api.v1 import datasets
-    from app.models.dataset import DatasetPermissionEnum
+    from app.api.schemas.datasets.dataset import DatasetCloneRequest, DatasetPermissionEnum
+    from app.api.v1.datasets import routes as datasets
 
     tenant_id = uuid4()
     source_dataset = SimpleNamespace(
@@ -134,8 +133,8 @@ def test_clone_dataset_drops_invalid_embedding_defaults_on_non_milvus_backend(
 
 
 def test_update_rejects_invalid_embedding_before_dataset_commit(monkeypatch: pytest.MonkeyPatch) -> None:
-    from app.api.schemas.dataset import DatasetEmbeddingDefaults, DatasetUpdate
-    from app.api.v1 import datasets
+    from app.api.schemas.datasets.dataset import DatasetEmbeddingDefaults, DatasetUpdate
+    from app.api.v1.datasets import routes as datasets
 
     monkeypatch.setattr(datasets.settings, "VECTOR_BACKEND", "memory", raising=False)
     dataset = SimpleNamespace(dataset_metadata={})

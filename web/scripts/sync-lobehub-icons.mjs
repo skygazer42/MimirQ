@@ -20,22 +20,23 @@ const OUT_DIR = path.join(WEB_ROOT, 'public', 'logos', 'lobehub')
 const PACKAGE = '@lobehub/icons-static-svg'
 
 function parseArgs(argv) {
-  const out = {
-    version: 'latest',
-  }
-  for (let i = 0; i < argv.length; i++) {
-    const a = argv[i]
-    if (a === '--version') {
-      out.version = argv[i + 1] || out.version
-      i += 1
-      continue
+  const options = { version: 'latest', help: false }
+  for (let index = 0; index < argv.length; index += 1) {
+    const argument = argv[index]
+    if (argument === '--version') {
+      const version = argv[index + 1]
+      if (version === undefined || version.trim() === '' || version.startsWith('-')) {
+        throw new Error('--version requires a version or release tag')
+      }
+      options.version = version
+      index += 1
+    } else if (argument === '-h' || argument === '--help') {
+      options.help = true
+    } else {
+      throw new Error(`Unknown option: ${argument}`)
     }
-    if (a === '-h' || a === '--help') {
-      out.help = true
-      continue
-    }
   }
-  return out
+  return options
 }
 
 function unpkgUrl(version, filename) {
@@ -49,8 +50,7 @@ async function fetchBytes(url) {
   if (!res.ok) {
     throw new Error(`fetch failed: ${res.status} ${res.statusText} (${url})`)
   }
-  const buf = Buffer.from(await res.arrayBuffer())
-  return buf
+  return Buffer.from(await res.arrayBuffer())
 }
 
 async function syncOne(version, iconName) {
@@ -82,7 +82,7 @@ async function main() {
     return
   }
 
-  const version = String(args.version || 'latest')
+  const { version } = args
 
   // Keep this list small and aligned with MODEL_PROVIDERS.
   const ICONS = [
@@ -104,23 +104,25 @@ async function main() {
     'yi', // LingYiWanWu
   ]
 
-  await fs.mkdir(OUT_DIR, { recursive: true })
-
   const results = []
   for (const name of ICONS) {
-    const r = await syncOne(version, name)
-    const outPath = path.join(OUT_DIR, r.out)
-    await fs.writeFile(outPath, r.bytes)
-    results.push({ name, ...r })
+    const icon = await syncOne(version, name)
+    results.push({ name, ...icon })
+  }
+
+  await fs.mkdir(OUT_DIR, { recursive: true })
+  for (const { out, bytes } of results) {
+    await fs.writeFile(path.join(OUT_DIR, out), bytes)
   }
 
   process.stdout.write(`Synced ${results.length} icons to ${path.relative(WEB_ROOT, OUT_DIR)} (version=${version})\n`)
-  for (const r of results) {
-    process.stdout.write(`- ${r.name}: ${r.source} -> ${r.out}\n`)
+  for (const { name, source, out } of results) {
+    process.stdout.write(`- ${name}: ${source} -> ${out}\n`)
   }
 }
 
-main().catch((err) => {
-  process.stderr.write(`sync-lobehub-icons: ERROR ${String(err?.message || err)}\n`)
+main().catch((error) => {
+  const message = error instanceof Error ? error.message : String(error)
+  process.stderr.write(`sync-lobehub-icons: ERROR ${message}\n`)
   process.exit(1)
 })

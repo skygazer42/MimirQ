@@ -24,10 +24,11 @@ describe('global page title baseline', () => {
 
   it('keeps management and knowledge-ops title surfaces flat', () => {
     const src = readWorkspaceFile('components/ui/knowledge-ops-hero.tsx')
+    const header = readWorkspaceFile('components/ui/page-header.tsx')
 
     expect(src).toContain('rounded-none border-x-0 border-t-0 border-b')
-    expect(src).toContain('min-h-14')
-    expect(src).toContain('text-[19px]')
+    expect(header).toContain('min-h-14')
+    expect(header).toContain('text-[19px]')
     expect(src).not.toContain('rounded-[28px]')
     expect(src).not.toContain('blur-3xl')
     expect(src).not.toContain('text-transparent')
@@ -52,7 +53,6 @@ describe('global page title baseline', () => {
       'app/datasets/[id]/tables/page.tsx',
       'app/datasets/[id]/ingestion/page.tsx',
       'app/datasets/[id]/precheck/page-client.tsx',
-      'app/datasets/[id]/workflow/page.tsx',
       'app/datasets/[id]/db-catalog/page.tsx',
     ]
 
@@ -66,7 +66,6 @@ describe('global page title baseline', () => {
 
   it('keeps ingestion and graph private title implementations on the same baseline', () => {
     const routeFiles = [
-      'components/knowledge/ingestion/ingestion-hero-panel.tsx',
       'app/knowledge/ingestion/page-client.tsx',
       'app/knowledge/ingestion/operation-page-client.tsx',
       'app/graph/_components/graph-page-header.tsx',

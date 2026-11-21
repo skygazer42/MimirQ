@@ -3,7 +3,7 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
-from app.core.config import settings
+from app.infrastructure.config import settings
 from app.rag.safety.regex_safety_guard import RegexSafetyGuard
 
 _PHONE_RE = re.compile(r"(?<!\d)1\d{10}(?!\d)")
@@ -73,7 +73,7 @@ class OutputGuard:
         if context_text:
             answer_entities = {item for item in _CN_ENTITY_RE.findall(text) if len(item) >= 4}
             context_entities = {item for item in _CN_ENTITY_RE.findall(context_text) if len(item) >= 4}
-            missing = sorted(entity for entity in answer_entities if entity not in context_entities)
+            missing = sorted(answer_entities - context_entities)
             if missing:
                 matched["citation_consistency"] = 0.41
                 details["missing_entities"] = missing[:10]

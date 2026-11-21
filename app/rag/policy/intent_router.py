@@ -13,14 +13,13 @@ based on the query "shape" (faq/howto/api/log) when enabled.
 import re
 from typing import Any
 
-from app.rag.core.retrieval_modes import normalize_retrieval_mode
-from app.rag.core.retrieval_profiles import PRODUCTION_RETRIEVAL_PROFILE
 from app.rag.policy.intent_router_model import (
     IntentRouterModel,
     load_intent_router_model,
     normalize_intent_router_model,
-    predict_learned_router_hint,
+    predict_normalized_router_hint,
 )
+from app.rag.retrieval.configuration.profiles import PRODUCTION_RETRIEVAL_PROFILE, normalize_retrieval_mode
 
 _INTENT_ROUTER_POLICY_SCHEMA_V1 = "mimirq.intent_router_policy.v1"
 _ADAPTIVE_ROUTER_POLICY_SCHEMA_V1 = "mimirq.adaptive_router_policy.v1"
@@ -86,6 +85,12 @@ _POLICY_ALLOWED_OVERRIDES = {
     "mmr_lambda",
 }
 _INVALID_POLICY_OVERRIDE = object()
+_PROFILE_MIN_TOP_K = {
+    "recall20": 20,
+    "recall50": 50,
+    "coverage80": 80,
+    PRODUCTION_RETRIEVAL_PROFILE: 20,
+}
 
 
 def _bounded_reason_codes(reasons: list[str], *, max_items: int = 6) -> list[str]:
@@ -135,11 +140,6 @@ def _normalize_social_query(query: str) -> str:
     return text
 
 
-def _matches_social_query(query: str, terms: set[str]) -> bool:
-    text = _normalize_social_query(query)
-    return bool(text and text in terms)
-
-
 def _coerce_policy_bool(value: Any) -> bool | None:
     if value is None:
         return None
@@ -156,7 +156,7 @@ def _coerce_policy_bool(value: Any) -> bool | None:
 def _coerce_policy_int(value: Any, *, minimum: int, maximum: int) -> int | None:
     try:
         iv = int(value) if value is not None else None
-    except Exception:
+    except (OverflowError, TypeError, ValueError):
         return None
     if iv is None:
         return None
@@ -166,7 +166,7 @@ def _coerce_policy_int(value: Any, *, minimum: int, maximum: int) -> int | None:
 def _coerce_policy_float(value: Any, *, minimum: float, maximum: float) -> float | None:
     try:
         fv = float(value) if value is not None else None
-    except Exception:
+    except (OverflowError, TypeError, ValueError):
         return None
     if fv is None:
         return None
@@ -179,8 +179,7 @@ def _normalize_policy_override(name: str, value: Any) -> Any:
         return mode or _INVALID_POLICY_OVERRIDE
     if name == "retrieval_profile":
         profile = str(value).strip().lower() if value is not None else None
-        allowed = {"recall20", "recall50", "coverage80", PRODUCTION_RETRIEVAL_PROFILE}
-        return profile if profile in allowed else _INVALID_POLICY_OVERRIDE
+        return profile if profile in _PROFILE_MIN_TOP_K else _INVALID_POLICY_OVERRIDE
     if name in {"top_k", "reranker_top_n"}:
         normalized = _coerce_policy_int(value, minimum=1, maximum=200)
         return normalized if normalized is not None else _INVALID_POLICY_OVERRIDE
@@ -272,14 +271,10 @@ def _query_matches_policy_rule(query: str, rule: dict[str, Any]) -> bool:
 
 def route_intent(query: str) -> dict[str, Any]:
     """Route lightweight no-retrieval intents before retrieval preset logic."""
-    q = (query).strip()
-    if q:
-        if _matches_social_query(q, _GREETING_TERMS):
-            return {"intent": "greeting", "reasons": ["social:greeting"], "skip_retrieval": True}
-        if _matches_social_query(q, _THANKS_TERMS):
-            return {"intent": "thanks", "reasons": ["social:thanks"], "skip_retrieval": True}
-        if _matches_social_query(q, _SMALLTALK_TERMS):
-            return {"intent": "smalltalk", "reasons": ["social:smalltalk"], "skip_retrieval": True}
+    social_query = _normalize_social_query(query)
+    for intent, terms in (("greeting", _GREETING_TERMS), ("thanks", _THANKS_TERMS), ("smalltalk", _SMALLTALK_TERMS)):
+        if social_query in terms:
+            return {"intent": intent, "reasons": [f"social:{intent}"], "skip_retrieval": True}
 
     intent, reasons = classify_query_intent(query)
     return {"intent": intent, "reasons": reasons, "skip_retrieval": False}
@@ -331,15 +326,9 @@ def _apply_profile_contract(*, profile: str, top_k: int, score_threshold: float)
     """
     Enforce the preset's top_k/threshold contract without relying on ChatRAGConfig validation.
     """
-    p = (profile).strip().lower()
-    if p == "recall20":
-        return max(int(top_k or 0), 20), 0.0
-    if p == "recall50":
-        return max(int(top_k or 0), 50), 0.0
-    if p == "coverage80":
-        return max(int(top_k or 0), 80), 0.0
-    if p == PRODUCTION_RETRIEVAL_PROFILE:
-        return max(int(top_k or 0), 20), 0.0
+    minimum = _PROFILE_MIN_TOP_K.get(profile.strip().lower())
+    if minimum is not None:
+        return max(int(top_k or 0), minimum), 0.0
     return int(top_k or 0), float(score_threshold or 0.0)
 
 
@@ -439,7 +428,7 @@ def _apply_learned_router_hint(
         return meta
 
     meta["enabled"] = True
-    hint = predict_learned_router_hint(query=query, model=learned_model)
+    hint = predict_normalized_router_hint(query=query, model=learned_model)
     confidence = min(1.0, max(0.0, hint["confidence"]))
     meta["confidence"] = round(confidence, 6)
     meta["rule_id"] = hint["rule_id"]
@@ -477,8 +466,7 @@ def _enforce_profile_contract(
         effective = profile
     if effective is not None:
         effective = effective.strip().lower()
-    supported = {"recall20", "recall50", "coverage80", PRODUCTION_RETRIEVAL_PROFILE}
-    if effective not in supported:
+    if effective not in _PROFILE_MIN_TOP_K:
         return
     effective_top_k = int(overrides.get("top_k") or top_k)
     effective_threshold = float(overrides.get("score_threshold") or score_threshold)

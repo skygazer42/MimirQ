@@ -5,10 +5,12 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
-from app.core.database import Base
-from app.models.document import Document
-from app.models.index_drift_item import IndexDriftItem
-from app.services import document_index_channel_service, document_ingestion, index_audit_service
+from app.infrastructure.database.connection import Base
+from app.models.documents.indexing import IndexDriftItem
+from app.models.documents.records import Document
+from app.rag.ingestion.indexing import index_channels as document_index_channel_service
+from app.services.documents import ingestion as document_ingestion
+from app.services.indexing import audit as index_audit_service
 
 
 @pytest.fixture

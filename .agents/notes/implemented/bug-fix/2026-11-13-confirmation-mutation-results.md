@@ -10,7 +10,7 @@ Status: implemented
 
 ## Decision
 
-ConfirmDialog 使用原有 primitives 和按钮，阻止 Action 的默认提前关闭，等待实际同步/异步结果。失败保留对象和重试，处理中阻止重复、取消及 Escape；组件结束后不再调用旧父级或回写自己。内部说明保留真正缺失与合法 React 内容的区别。错误文字约束在实际 grid 项内，组件拥有视口高度与滚动边界，保留标签占位让按钮等待时不跳宽。
+ConfirmDialog 使用原有 primitives 和按钮，阻止 Action 的默认提前关闭，等待实际同步/异步结果。回调开始前同步占用，防止同一渲染中的连续点击；失败保留对象和重试，处理中阻止重复、取消及 Escape。组件归属在 layout 清理中结束，之后不再调用旧父级或回写自己。内部说明保留真正缺失与合法 React 内容的区别。错误文字约束在实际 grid 项内，组件拥有视口高度与滚动边界，保留标签占位让按钮等待时不跳宽。
 
 实际确认调用方直接返回操作 Promise，失败继续传播；透明 detach 包装与确认路径重复失败提示退出。读取类动作仍在其已有反馈边界消费错误，不新建统一请求/事务管理器。三个 ops 确认在服务真正完成后发布各自结果。
 
@@ -23,6 +23,8 @@ ConfirmDialog 使用原有 primitives 和按钮，阻止 Action 的默认提前�
 测试用例删除等待 allSettled，按输入顺序对应 IDs；先将确认成功项从当前缓存/统计/选择移除，再刷新，失败项继续在原确认中重试。父级选择读取当前引用，失效组件/身份不发旧通知。没有把 404 当作成功，也不增加即时重试。
 
 ## Related decisions
+
+[证据集草稿与审计覆盖](2026-11-16-evidence-suite-drafts-and-audit-coverage.md)接管证据集同步、条目归档及同步回执重试，保持本篇共享确认合同。
 
 [解析正文恢复](2026-11-13-parsing-content-restoration.md)、[Store 恢复](2026-11-12-browser-store-restoration.md)和[缓存局部写入](2026-11-12-browser-cache-partial-writes.md)均部分重叠，其正文、读取保护和缓存职责保持；本篇把变更请求提前纳入已有保护，并接管队列与共享确认的提交顺序。
 

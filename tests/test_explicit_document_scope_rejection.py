@@ -3,8 +3,9 @@ from uuid import uuid4
 import pytest
 from fastapi import HTTPException
 
-from app.api.schemas.chat import ChatRAGConfig
-from app.api.v1 import rag, retrieval_explain
+from app.api.schemas.conversations.chat import ChatRAGConfig
+from app.api.v1.retrieval import explain as retrieval_explain
+from app.api.v1.retrieval import routes as rag
 
 
 class _NoDocumentsQuery:

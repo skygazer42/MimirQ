@@ -1,8 +1,8 @@
 import re
 from typing import Any
 
-from app.rag.policy.intent_router import route_intent
-from app.rag.utils.entity_matcher import extract_partition_keys
+from app.rag.policy.intent_router import _bounded_reason_codes, route_intent
+from app.rag.retrieval.planning.entities import extract_partition_keys
 
 ROUTER_LAYERS_SCHEMA_V1 = "mimirq.router_layers.v1"
 
@@ -14,20 +14,6 @@ _MULTI_CLAUSE_RE = re.compile(
     r"(?i)\b(and|then|also|plus)\b|"
     r"以及|并且|同时|然后|另外|此外|；|;"
 )
-
-
-def _bounded_reason_codes(items: list[str], *, max_items: int = 8) -> list[str]:
-    out: list[str] = []
-    seen: set[str] = set()
-    for raw in items:
-        text = raw.strip().lower()
-        if not text or text in seen:
-            continue
-        seen.add(text)
-        out.append(text[:40])
-        if len(out) >= max_items:
-            break
-    return out
 
 
 def _normalize_partition_keys(raw: Any, *, max_items: int = 8) -> list[str]:

@@ -1,36 +1,31 @@
 export function parseHttpUrls(raw: string, limit: number): string[] {
-  const parts = (raw || '')
-    .split(/[\n,;]+/g)
-    .map((s) => s.trim())
-    .filter(Boolean)
-  const out: string[] = []
+  const urls: string[] = []
   const seen = new Set<string>()
 
-  for (const p of parts) {
-    if (!/^https?:\/\//i.test(p)) continue
-    if (seen.has(p)) continue
-    seen.add(p)
-    out.push(p)
-    if (out.length >= limit) break
+  for (const part of raw.split(/[\n,;]+/g)) {
+    const url = part.trim()
+    if (!/^https?:\/\//i.test(url) || seen.has(url)) continue
+    try {
+      new URL(url)
+    } catch {
+      continue
+    }
+    seen.add(url)
+    urls.push(url)
+    if (urls.length >= limit) break
   }
 
-  return out
+  return urls
 }
 
 export function parseAccessMembers(raw: string): string[] {
-  const parts = (raw || '')
-    .split(/[\n,;]+/g)
-    .map((s) => s.trim())
-    .filter(Boolean)
-  const out: string[] = []
-  const seen = new Set<string>()
-
-  for (const p of parts) {
-    if (seen.has(p)) continue
-    seen.add(p)
-    out.push(p)
-    if (out.length >= 200) break
+  const memberIds = new Set<string>()
+  for (const part of raw.split(/[\n,;]+/g)) {
+    const memberId = part.trim()
+    if (memberId.length === 0) continue
+    memberIds.add(memberId)
+    if (memberIds.size === 200) break
   }
 
-  return out
+  return Array.from(memberIds)
 }

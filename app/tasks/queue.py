@@ -8,18 +8,18 @@ API compatibility:
 from __future__ import annotations
 
 import asyncio
+import logging
 import threading
 from typing import TYPE_CHECKING, Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
-from app.core.config import settings
-from app.rag.core.logging import get_logger
+from app.infrastructure.config import settings
 
 if TYPE_CHECKING:
     from arq.connections import ArqRedis, RedisSettings
     from arq.jobs import Job
 
-logger = get_logger("tasks.queue")
+logger = logging.getLogger("tasks.queue")
 
 # arq is optional: when TASK_QUEUE_ENABLED=false, do not require arq.
 _queue: ArqRedis | None = None
@@ -113,15 +113,29 @@ async def get_task_job_status(job_id: str) -> str | None:
     return status.value
 
 
-async def _resolve_scan_job_handoff(job: Job | None, *, job_id: str | None) -> str | None:
+async def _resolve_job_handoff(job: Job | None, *, job_id: str | None) -> str:
     if job is not None:
         return job.job_id
     if not job_id:
-        raise TaskEnqueueRejectedError("scan job was not accepted by arq")
+        raise TaskEnqueueRejectedError("job was not accepted by arq")
     status = await get_task_job_status(job_id)
     if status in _LIVE_ARQ_JOB_STATUSES:
         return job_id
-    raise TaskEnqueueRejectedError(f"scan job was not accepted by arq (status={status or 'missing'})")
+    raise TaskEnqueueRejectedError(f"job was not accepted by arq (status={status or 'missing'})")
+
+
+async def _enqueue_job(name: str, *args: object, job_id: str | None) -> str | None:
+    queue = await get_queue()
+    if queue is None:
+        return None
+    job = await queue.enqueue_job(
+        name,
+        *args,
+        _queue_name=settings.TASK_QUEUE_NAME,
+        _job_id=job_id,
+        _job_try=1,
+    )
+    return await _resolve_job_handoff(job, job_id=job_id)
 
 
 def _local_scan_run_key(
@@ -205,18 +219,31 @@ async def enqueue_document_processing(
         return None
 
     queue_name = settings.TASK_QUEUE_NAME
-    # Arq job_id can dedupe (behavior depends on arq version); we still enforce
-    # idempotency with Redis locks on the worker side.
-    job = await q.enqueue_job(
-        "process_document_job",
-        str(tenant_id),
-        str(document_id),
-        requested_by,
-        _queue_name=queue_name,
-        _job_id=job_id,
-        _job_try=1,
-    )
-    return job.job_id if job is not None else job_id
+
+    async def submit(candidate_id: str | None) -> Job | None:
+        return await q.enqueue_job(
+            "process_document_job",
+            str(tenant_id),
+            str(document_id),
+            requested_by,
+            _queue_name=queue_name,
+            _job_id=candidate_id,
+            _job_try=1,
+        )
+
+    job = await submit(job_id)
+    if job is not None:
+        return job.job_id
+    if job_id is None:
+        raise TaskEnqueueRejectedError("document job was not accepted by arq")
+    status = await get_task_job_status(job_id)
+    if status in _LIVE_ARQ_JOB_STATUSES:
+        return job_id
+    if status != "complete":
+        raise TaskEnqueueRejectedError(f"document job was not accepted by arq (status={status or 'missing'})")
+    # ARQ retains completed results under the original ID, including failed attempts.
+    attempt_id = f"{job_id}:attempt:{uuid4().hex}"
+    return await _resolve_job_handoff(await submit(attempt_id), job_id=attempt_id)
 
 
 async def enqueue_kg_extraction(
@@ -232,12 +259,8 @@ async def enqueue_kg_extraction(
     extract_skills: bool | None = None,
     effective_options: dict[str, Any] | None = None,
 ) -> str | None:
-    """Enqueue KG extraction job (returns None if queue disabled or deduped)."""
-    q = await get_queue()
-    if q is None:
-        return None
-    queue_name = settings.TASK_QUEUE_NAME
-    job = await q.enqueue_job(
+    """Enqueue KG extraction or reuse a live job; return None only when disabled."""
+    return await _enqueue_job(
         "extract_kg_job",
         str(tenant_id),
         str(document_id),
@@ -248,11 +271,8 @@ async def enqueue_kg_extraction(
         extract_skills,
         pipeline_hash,
         dict(effective_options) if effective_options is not None else None,
-        _queue_name=queue_name,
-        _job_id=job_id,
-        _job_try=1,
+        job_id=job_id,
     )
-    return job.job_id if job is not None else None
 
 
 async def enqueue_rebuild_indexes(
@@ -262,21 +282,14 @@ async def enqueue_rebuild_indexes(
     document_id: UUID | None = None,
     job_id: str | None = None,
 ) -> str | None:
-    """Enqueue index rebuild job (returns None if queue disabled or deduped)."""
-    q = await get_queue()
-    if q is None:
-        return None
-    queue_name = settings.TASK_QUEUE_NAME
-    job = await q.enqueue_job(
+    """Enqueue an index rebuild or reuse a live job; return None only when disabled."""
+    return await _enqueue_job(
         "rebuild_indexes_job",
         str(tenant_id),
         requested_by,
         str(document_id) if document_id is not None else None,
-        _queue_name=queue_name,
-        _job_id=job_id,
-        _job_try=1,
+        job_id=job_id,
     )
-    return job.job_id if job is not None else None
 
 
 async def enqueue_index_audit_reconcile_job(
@@ -290,11 +303,7 @@ async def enqueue_index_audit_reconcile_job(
     job_id: str | None = None,
 ) -> str | None:
     """Enqueue a bounded tenant+dataset scoped index-audit reconcile job."""
-    q = await get_queue()
-    if q is None:
-        return None
-    queue_name = settings.TASK_QUEUE_NAME
-    job = await q.enqueue_job(
+    return await _enqueue_job(
         "reconcile_index_audit_job",
         str(tenant_id),
         str(dataset_id),
@@ -302,11 +311,8 @@ async def enqueue_index_audit_reconcile_job(
         str(document_id) if document_id is not None else None,
         limit,
         dry_run,
-        _queue_name=queue_name,
-        _job_id=job_id,
-        _job_try=1,
+        job_id=job_id,
     )
-    return job.job_id if job is not None else None
 
 
 async def enqueue_dataset_profile_scan(
@@ -318,21 +324,14 @@ async def enqueue_dataset_profile_scan(
     job_id: str | None = None,
 ) -> str | None:
     """Enqueue a dataset profile deep scan job (returns None if queue disabled)."""
-    q = await get_queue()
-    if q is None:
-        return None
-    queue_name = settings.TASK_QUEUE_NAME
-    job = await q.enqueue_job(
+    return await _enqueue_job(
         "dataset_profile_scan_job",
         str(tenant_id),
         str(dataset_id),
         str(scan_run_id),
         requested_by,
-        _queue_name=queue_name,
-        _job_id=job_id,
-        _job_try=1,
+        job_id=job_id,
     )
-    return await _resolve_scan_job_handoff(job, job_id=job_id)
 
 
 async def enqueue_dataset_precheck_scan(
@@ -344,21 +343,14 @@ async def enqueue_dataset_precheck_scan(
     job_id: str | None = None,
 ) -> str | None:
     """Enqueue a dataset precheck scan job (returns None if queue disabled)."""
-    q = await get_queue()
-    if q is None:
-        return None
-    queue_name = settings.TASK_QUEUE_NAME
-    job = await q.enqueue_job(
+    return await _enqueue_job(
         "dataset_precheck_scan_job",
         str(tenant_id),
         str(dataset_id),
         str(scan_run_id),
         requested_by,
-        _queue_name=queue_name,
-        _job_id=job_id,
-        _job_try=1,
+        job_id=job_id,
     )
-    return await _resolve_scan_job_handoff(job, job_id=job_id)
 
 
 async def enqueue_connector_run(
@@ -369,20 +361,13 @@ async def enqueue_connector_run(
     job_id: str | None = None,
 ) -> str | None:
     """Enqueue a connector run job (returns None if queue disabled)."""
-    q = await get_queue()
-    if q is None:
-        return None
-    queue_name = settings.TASK_QUEUE_NAME
-    job = await q.enqueue_job(
+    return await _enqueue_job(
         "connector_run_job",
         str(tenant_id),
         str(run_id),
         requested_by,
-        _queue_name=queue_name,
-        _job_id=job_id,
-        _job_try=1,
+        job_id=job_id,
     )
-    return job.job_id if job is not None else job_id
 
 
 async def enqueue_evidence_reference_sources_repair(
@@ -405,11 +390,7 @@ async def enqueue_evidence_reference_sources_repair(
         - task_id/job_id (queue enabled)
         - None (queue disabled)
     """
-    q = await get_queue()
-    if q is None:
-        return None
-    queue_name = settings.TASK_QUEUE_NAME
-    job = await q.enqueue_job(
+    return await _enqueue_job(
         "evidence_reference_sources_repair_job",
         str(tenant_id),
         str(suite_id),
@@ -420,8 +401,5 @@ async def enqueue_evidence_reference_sources_repair(
         max_items,
         max_refs_per_item,
         max_changes,
-        _queue_name=queue_name,
-        _job_id=job_id,
-        _job_try=1,
+        job_id=job_id,
     )
-    return job.job_id if job is not None else job_id

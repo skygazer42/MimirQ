@@ -2,14 +2,14 @@ from uuid import uuid4
 
 import pytest
 
-from app.models.connector import ConnectorRun
-from app.models.document import Document
-from app.services.connector_execution.confluence import _confluence_attachment_connector_metadata
-from app.services.connector_execution.jira import (
+from app.models.connectors.runs import ConnectorRun
+from app.models.documents.records import Document
+from app.services.connectors.execution.confluence import _confluence_attachment_connector_metadata
+from app.services.connectors.execution.jira import (
     _jira_attachment_connector_metadata,
     _jira_linked_artifact_connector_metadata,
 )
-from app.services.connector_execution.shared.artifacts import _apply_connector_identity_metadata
+from app.services.connectors.execution.shared.artifacts import _apply_connector_identity_metadata
 
 
 @pytest.mark.parametrize("value", ["", None])
@@ -91,10 +91,10 @@ def test_connector_identity_exposes_invalid_internal_reference_types(value) -> N
 
 
 def test_excluded_table_diagnostics_expose_the_actual_content_type_fields() -> None:
-    from app.parsing.processors.processor import DocumentProcessorService
+    from app.rag.ingestion.indexing.processor import _table_sidecar_excluded_sample
 
     metadata = {"content_type": False, "doc_type_kwd": "", "page": 0}
 
-    sample = DocumentProcessorService._table_sidecar_excluded_sample(index=0, meta=metadata)
+    sample = _table_sidecar_excluded_sample(index=0, meta=metadata)
 
     assert sample == {"chunk_index": 0, "page": 0, "content_type": False, "doc_type_kwd": ""}

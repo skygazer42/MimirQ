@@ -1,8 +1,8 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { useQuery } from '@tanstack/react-query'
+import { skipToken, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { evaluationApi } from '@/lib/api/evaluation'
 import { chatApi } from '@/lib/api/chat'
@@ -10,6 +10,8 @@ import type { RagasRun, RagasRunDetail } from '@/types/evaluation'
 import type { Conversation } from '@/types/chat'
 import { queryKeys } from '@/lib/query-keys'
 import { formatApiError } from '@/lib/api-errors'
+import { getAuthSessionKey, subscribeAuthSession } from '@/lib/auth-storage'
+import { downloadBlob } from '@/lib/download'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -22,7 +24,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog'
-import { getRagasMetricOptions } from '@/components/evaluation/ragas-metric-selector'
+import { getRagasMetricOptions } from '@/components/evaluation/ragas-metrics'
 import {
   AlertCircle,
   ArrowLeft,
@@ -51,33 +53,44 @@ import {
   metricStatistics,
   numericScore,
   runDuration,
+  LOW_SCORE_THRESHOLD,
 } from './evaluation-model'
 import styles from '../evaluations.module.css'
 
 const EMPTY_CONVERSATIONS: Conversation[] = []
 const EMPTY_RUNS: RagasRun[] = []
 const EMPTY_ITEMS: RagasRunDetail['items'] = []
+const EMPTY_METRICS: string[] = []
 const DETAIL_OPTIONS = { include_items: true, include_contexts: true } as const
+type ConversationEvaluationScope = { conversationId: string | undefined; active: boolean }
 function RunStatus({ status }: { status?: string }) {
-  if (!status) return null
-  const completed = status === 'completed',
-    failed = status === 'failed'
+  if (status === undefined) return null
+  const completed = status === 'completed'
+  const failed = status === 'failed'
   const Icon = completed ? CheckCircle2 : failed ? AlertCircle : Clock3
   return (
     <span className={cn(styles.status, completed ? styles.success : failed ? styles.danger : styles.processing)}>
       <Icon aria-hidden="true" />
-      {completed ? '已完成' : failed ? '失败' : status === 'pending' ? '待运行' : '运行中'}
+      {completed
+        ? '已完成'
+        : failed
+          ? '失败'
+          : status === 'pending'
+            ? '待运行'
+            : status === 'running'
+              ? '运行中'
+              : status}
     </span>
   )
 }
 function Score({ value, bars = false }: { value: unknown; bars?: boolean }) {
   const number = numericScore(value)
   return (
-    <span className={cn(styles.score, number !== null && number < 0.8 && styles.lowScore)}>
+    <span className={cn(styles.score, number !== null && number < LOW_SCORE_THRESHOLD && styles.lowScore)}>
       {number === null ? '—' : number.toFixed(2)}
-      {bars && number !== null && (
+      {bars && number !== null && number >= 0 && number <= 1 && (
         <i className={styles.track} aria-hidden="true">
-          <i style={{ width: `${Math.max(0, Math.min(1, number)) * 100}%` }} />
+          <i style={{ width: `${number * 100}%` }} />
         </i>
       )}
     </span>
@@ -86,73 +99,155 @@ function Score({ value, bars = false }: { value: unknown; bars?: boolean }) {
 
 export function ConversationEvaluation({ active }: { active: boolean }) {
   const searchParams = useSearchParams()
-  const deepLink = searchParams.get('conversation_id')?.trim() || ''
-  const [conversationId, setConversationId] = useState(deepLink)
-  const [runChoice, setRunChoice] = useState({ conversationId: '', id: '' })
+  const sessionKey = useSyncExternalStore(subscribeAuthSession, getAuthSessionKey, getAuthSessionKey)
+  const deepLink = searchParams.get('conversation_id')
+  const initialConversationId = deepLink === null ? undefined : deepLink.trim().toLowerCase()
+  return (
+    <ConversationEvaluationWorkspace
+      key={`${sessionKey}:${initialConversationId}`}
+      sessionKey={sessionKey}
+      initialConversationId={initialConversationId}
+      active={active}
+    />
+  )
+}
+
+function ConversationEvaluationWorkspace({
+  active,
+  initialConversationId,
+  sessionKey,
+}: {
+  active: boolean
+  initialConversationId: string | undefined
+  sessionKey: string
+}) {
+  const queryClient = useQueryClient()
+  const [conversationId, setConversationId] = useState(initialConversationId)
+  const [runChoices, setRunChoices] = useState<ReadonlyMap<string, string>>(new Map())
   const [sampleChoice, setSampleChoice] = useState({ runId: '', id: '' })
   const [metricKeys, setMetricKeys] = useState(['faithfulness', 'response_relevancy'])
   const [maxTurns, setMaxTurns] = useState('20')
   const [skipEmpty, setSkipEmpty] = useState(true)
   const [onlyLow, setOnlyLow] = useState(false)
   const [search, setSearch] = useState('')
-  const [conversationSearch, setConversationSearch] = useState('')
+  const [conversationWindow, setConversationWindow] = useState({ search: '', skip: 0 })
   const [evidenceFilter, setEvidenceFilter] = useState('all')
   const [pickerOpen, setPickerOpen] = useState(false)
   const [recordsOpen, setRecordsOpen] = useState(false)
   const [recordSearch, setRecordSearch] = useState('')
-  const [isStarting, setIsStarting] = useState(false)
-  const startingRef = useRef(false)
+  const startRequests = useRef(new Map<string, Promise<RagasRun>>())
+  const [pendingConversations, setPendingConversations] = useState<ReadonlySet<string>>(new Set())
+  const scopeRef = useRef<ConversationEvaluationScope | null>(null)
+  const focusFrame = useRef<number | null>(null)
+  const runSelectionIntent = useRef(0)
   const [mobileReader, setMobileReader] = useState(false)
   const readerRef = useRef<HTMLHeadingElement>(null)
   const readerScrollRef = useRef<HTMLDivElement>(null)
   const selectedButtonRef = useRef<HTMLButtonElement | null>(null)
-  useEffect(() => {
-    if (deepLink) setConversationId(deepLink)
-  }, [deepLink])
+  const conversationParams = { limit: 100, skip: conversationWindow.skip, q: conversationWindow.search }
   const conversationsQuery = useQuery({
-    queryKey: queryKeys.chat.conversations({ limit: 100 }),
-    queryFn: () => chatApi.listConversations({ limit: 100 }),
+    queryKey: queryKeys.chat.conversations(conversationParams),
+    queryFn: ({ signal }) => chatApi.listConversations(conversationParams, { signal }),
     enabled: active,
   })
   const conversations = conversationsQuery.data?.items ?? EMPTY_CONVERSATIONS
-  const scopedId = conversationId || conversations[0]?.id || ''
+  const scopedId = conversationId
+  const isStarting = scopedId !== undefined && pendingConversations.has(scopedId)
   const currentConversation = conversations.find((conversation) => conversation.id === scopedId)
-  const messagesQuery = useQuery({
-    queryKey: queryKeys.chat.messages(scopedId),
-    queryFn: () => chatApi.getMessages(scopedId, { limit: 200 }),
-    enabled: active && Boolean(scopedId),
-  })
-  const ids = useMemo(() => conversations.map((conversation) => conversation.id), [conversations])
+  const conversationLabel =
+    scopedId === undefined
+      ? '选择对话'
+      : currentConversation?.title === undefined ||
+          currentConversation.title === null ||
+          currentConversation.title.trim() === ''
+        ? scopedId
+        : currentConversation.title
+  useEffect(() => {
+    if (conversationId === undefined && conversations[0] !== undefined) setConversationId(conversations[0].id)
+  }, [conversationId, conversations])
+  useLayoutEffect(() => {
+    const scope = { conversationId: scopedId, active }
+    scopeRef.current = scope
+    return () => {
+      scope.active = false
+      scopeRef.current = null
+      if (focusFrame.current !== null) cancelAnimationFrame(focusFrame.current)
+    }
+  }, [scopedId, active])
+  const ids = useMemo(() => {
+    const conversationIds = conversations.map((conversation) => conversation.id)
+    if (scopedId !== undefined && !conversationIds.includes(scopedId)) conversationIds.push(scopedId)
+    return conversationIds
+  }, [conversations, scopedId])
   const readinessQuery = useQuery({
     queryKey: queryKeys.evaluations.ragasConversationReadiness(ids),
-    queryFn: () => evaluationApi.getRagasConversationReadiness({ conversation_ids: ids }),
+    queryFn:
+      ids.length === 0
+        ? skipToken
+        : ({ signal }) => evaluationApi.getRagasConversationReadiness({ conversation_ids: ids }, { signal }),
     enabled: active && ids.length > 0,
     staleTime: 60000,
   })
   const readiness = useMemo(
-    () => new Map((readinessQuery.data?.items || []).map((item) => [item.conversation_id, item])),
+    () => new Map(readinessQuery.data?.items.map((item) => [item.conversation_id, item])),
     [readinessQuery.data?.items],
   )
-  const runListParams = useMemo(() => ({ limit: 50, ...(scopedId ? { conversation_id: scopedId } : {}) }), [scopedId])
+  const runListParams = { limit: 50, conversation_id: scopedId }
   const runsQuery = useQuery({
     queryKey: queryKeys.evaluations.ragasRuns(runListParams),
-    queryFn: () => evaluationApi.listRagasRuns(runListParams),
-    enabled: active && Boolean(scopedId),
+    queryFn:
+      scopedId === undefined ? skipToken : ({ signal }) => evaluationApi.listRagasRuns(runListParams, { signal }),
+    enabled: active,
   })
   const runs = runsQuery.data?.items ?? EMPTY_RUNS
-  const selectedRunId = runChoice.conversationId === scopedId ? runChoice.id : runs[0]?.id || ''
+  const selectedRunId = scopedId === undefined ? undefined : runChoices.get(scopedId)
+  useEffect(() => {
+    const firstRun = runs[0]
+    if (scopedId !== undefined && !runChoices.has(scopedId) && firstRun !== undefined) {
+      setRunChoices((previous) => new Map(previous).set(scopedId, firstRun.id))
+    }
+  }, [scopedId, runChoices, runs])
   const detailQuery = useQuery({
-    queryKey: queryKeys.evaluations.ragasRunDetail(selectedRunId, DETAIL_OPTIONS),
-    queryFn: () => evaluationApi.getRagasRun(selectedRunId, DETAIL_OPTIONS),
-    enabled: active && Boolean(selectedRunId),
-    refetchInterval: (query) =>
-      active && ['pending', 'running'].includes(query.state.data?.run?.status || '') ? 2000 : false,
+    queryKey: [...queryKeys.evaluations.ragasRunDetail(selectedRunId, DETAIL_OPTIONS), scopedId],
+    queryFn:
+      selectedRunId === undefined || scopedId === undefined
+        ? skipToken
+        : async ({ signal }) => {
+            const result = await evaluationApi.getRagasRun(selectedRunId, DETAIL_OPTIONS, { signal })
+            if (result.run.conversation_id?.toLowerCase() !== scopedId.toLowerCase()) {
+              throw new Error('评测结果不属于当前对话，请重新读取运行记录')
+            }
+            return result
+          },
+    enabled: active,
+    refetchInterval: (query) => {
+      const status = query.state.data?.run.status
+      return active && (status === 'pending' || status === 'running') ? 2000 : false
+    },
   })
-  const detail = detailQuery.data?.run.id === selectedRunId ? detailQuery.data : null
-  const selectedRun = detail?.run || runs.find((run) => run.id === selectedRunId)
+  const detail = detailQuery.data === undefined ? null : detailQuery.data
+  const loadedRunId = detail?.run.id
+  const loadedRunStatus = detail?.run.status
+  useEffect(() => {
+    if (
+      scopedId !== undefined &&
+      loadedRunId !== undefined &&
+      (loadedRunStatus === 'completed' || loadedRunStatus === 'failed')
+    ) {
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.evaluations.ragasRuns({ limit: 50, conversation_id: scopedId }),
+        exact: true,
+      })
+    }
+  }, [queryClient, scopedId, loadedRunId, loadedRunStatus])
+  const initialQuery = scopedId === undefined ? conversationsQuery : runsQuery
+  const awaitingSelection =
+    selectedRunId === undefined &&
+    (initialQuery.isPending || (scopedId === undefined ? conversations.length > 0 : runs.length > 0))
+  const selectedRun = detail === null ? runs.find((run) => run.id === selectedRunId) : detail.run
   const items = detail?.items ?? EMPTY_ITEMS
-  const resultMetricKeys = selectedRun?.metrics?.length ? selectedRun.metrics : metricKeys
-  const statistics = useMemo(() => metricStatistics(detail, resultMetricKeys), [detail, resultMetricKeys])
+  const resultMetricKeys = selectedRun === undefined ? EMPTY_METRICS : selectedRun.metrics
+  const statistics = useMemo(() => metricStatistics(items, resultMetricKeys), [items, resultMetricKeys])
   const lowCount = items.filter((item) => hasLowScore(item, resultMetricKeys)).length
   const visibleItems = useMemo(
     () =>
@@ -164,128 +259,149 @@ export function ConversationEvaluation({ active }: { active: boolean }) {
     [items, onlyLow, resultMetricKeys, search],
   )
   const selectedItem =
-    visibleItems.find((item) => sampleChoice.runId === selectedRunId && item.id === sampleChoice.id) ||
-    visibleItems[0] ||
+    visibleItems.find((item) => sampleChoice.runId === selectedRunId && item.id === sampleChoice.id) ??
+    visibleItems[0] ??
     null
   const selectedIndex = selectedItem ? visibleItems.indexOf(selectedItem) : -1
-  const assistantMessages = (messagesQuery.data?.messages || []).filter((message) => message.role === 'assistant')
-  const evaluableTurns = assistantMessages.filter((message) => (message.citations?.length || 0) > 0).length
-  const checkingEvidence = Boolean(scopedId) && messagesQuery.isPending
-  const missingEvidence = Boolean(scopedId) && messagesQuery.isSuccess && evaluableTurns === 0
+  const currentReadiness = scopedId === undefined ? undefined : readiness.get(scopedId)
+  const checkingEvidence = scopedId !== undefined && readinessQuery.isPending
+  const missingEvidence = currentReadiness !== undefined && !currentReadiness.is_evaluable
   const validTurns = Number.isInteger(Number(maxTurns)) && Number(maxTurns) >= 1 && Number(maxTurns) <= 200
   const canStart =
-    Boolean(scopedId) &&
-    messagesQuery.isSuccess &&
-    !missingEvidence &&
+    active &&
+    scopedId !== undefined &&
+    readinessQuery.isSuccess &&
+    currentReadiness !== undefined &&
+    currentReadiness.is_evaluable &&
     metricKeys.length > 0 &&
     validTurns &&
     !isStarting
   const filteredConversations = conversations.filter((conversation) => {
     const item = readiness.get(conversation.id)
-    return (
-      (!conversationSearch.trim() ||
-        (conversation.title || conversation.id)
-          .toLocaleLowerCase()
-          .includes(conversationSearch.trim().toLocaleLowerCase())) &&
-      (evidenceFilter === 'all' || (item && (evidenceFilter === 'ready' ? item.is_evaluable : !item.is_evaluable)))
-    )
+    return evidenceFilter === 'all' || (item && (evidenceFilter === 'ready' ? item.is_evaluable : !item.is_evaluable))
   })
-  const runError = String(selectedRun?.error_message || '').trim()
-  const deterministic = selectedRun?.summary?.mode === 'deterministic_conversation'
+  const runError = selectedRun?.error_message
+  const deterministic = selectedRun?.summary.mode === 'deterministic_conversation'
+  const tokenCount = numericScore(selectedRun?.summary.total_tokens)
+  const modelCostUsd = numericScore(selectedRun?.summary.total_cost)
+  const duration = runDuration(selectedRun?.started_at, selectedRun?.finished_at)
+  const selectedContexts = selectedItem === null ? [] : itemContexts(selectedItem)
   function chooseRun(id: string) {
-    setRunChoice({ conversationId: scopedId, id })
+    if (scopedId === undefined) return
+    runSelectionIntent.current += 1
+    setRunChoices((previous) => new Map(previous).set(scopedId, id))
     setSearch('')
     setOnlyLow(false)
     setMobileReader(false)
     setRecordsOpen(false)
   }
-  function chooseSample(item: RagasRunDetail['items'][number], button?: HTMLButtonElement) {
-    setSampleChoice({ runId: selectedRunId, id: item.id })
+  function chooseSample(item: RagasRunDetail['items'][number]) {
+    setSampleChoice({ runId: item.run_id, id: item.id })
     setMobileReader(true)
-    if (button) selectedButtonRef.current = button
-    requestAnimationFrame(() => {
+    if (focusFrame.current !== null) cancelAnimationFrame(focusFrame.current)
+    focusFrame.current = requestAnimationFrame(() => {
+      focusFrame.current = null
       readerScrollRef.current?.scrollTo({ top: 0 })
       readerRef.current?.focus({ preventScroll: true })
     })
   }
   function returnToMatrix() {
     setMobileReader(false)
-    requestAnimationFrame(() => selectedButtonRef.current?.focus())
+    if (focusFrame.current !== null) cancelAnimationFrame(focusFrame.current)
+    focusFrame.current = requestAnimationFrame(() => {
+      focusFrame.current = null
+      selectedButtonRef.current?.focus()
+    })
   }
   async function start() {
-    if (!canStart || startingRef.current) return
-    startingRef.current = true
-    setIsStarting(true)
+    const scope = scopeRef.current
+    if (!canStart || scopedId === undefined || scope === null || !scope.active || startRequests.current.has(scopedId))
+      return
+    const selectionIntent = runSelectionIntent.current
+    const request = evaluationApi.createRagasRun({
+      conversation_id: scopedId,
+      metrics: metricKeys,
+      max_turns: Number(maxTurns),
+      skip_empty_contexts: skipEmpty,
+      include_contexts_in_response: false,
+    })
+    startRequests.current.set(scopedId, request)
+    setPendingConversations(new Set(startRequests.current.keys()))
     try {
-      const run = await evaluationApi.createRagasRun({
-        conversation_id: scopedId,
-        metrics: metricKeys,
-        max_turns: Number(maxTurns),
-        skip_empty_contexts: skipEmpty,
-        include_contexts_in_response: false,
+      const run = await request
+      if (scopeRef.current === null || getAuthSessionKey() !== sessionKey) return
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.evaluations.ragasRuns({ limit: 50, conversation_id: scope.conversationId }),
+        exact: true,
       })
-      chooseRun(run.id)
-      toast.success('评测已开始')
-      await runsQuery.refetch()
+      if (!scope.active || scopeRef.current !== scope || getAuthSessionKey() !== sessionKey) return
+      if (runSelectionIntent.current === selectionIntent) chooseRun(run.id)
+      toast.success('评测请求已接受，正在等待后台结果')
     } catch (error) {
-      toast.error(formatApiError(error, '启动评测失败'))
+      if (scope.active && scopeRef.current === scope && getAuthSessionKey() === sessionKey) {
+        toast.error('未确认创建成功，请先刷新运行记录再决定是否重试', {
+          description: formatApiError(error, '创建请求未得到有效回执'),
+        })
+      }
     } finally {
-      startingRef.current = false
-      setIsStarting(false)
+      startRequests.current.delete(scopedId)
+      if (scopeRef.current !== null && getAuthSessionKey() === sessionKey) {
+        setPendingConversations(new Set(startRequests.current.keys()))
+      }
     }
   }
   function exportItems() {
-    if (!detail) return
-    const url = URL.createObjectURL(
+    if (detail === null) return
+    downloadBlob(
+      `ragas-run-items.${detail.run.id}.json`,
       new Blob([JSON.stringify(detail.items, null, 2)], { type: 'application/json;charset=utf-8' }),
     )
-    const anchor = document.createElement('a')
-    anchor.href = url
-    anchor.download = `ragas-run-items.${selectedRunId}.json`
-    anchor.click()
-    setTimeout(() => URL.revokeObjectURL(url), 1000)
-    toast.success('结果已导出')
+    toast.success('已发起结果下载')
   }
-  const reason = !scopedId
-    ? '选择对话后开始'
-    : checkingEvidence
-      ? '正在检查引用'
-      : messagesQuery.isError
-        ? '引用读取失败，请重试'
-        : missingEvidence
-          ? '这条对话没有引用上下文'
-          : !metricKeys.length
-            ? '至少选择一项指标'
-            : !validTurns
-              ? '最近轮次应为 1–200 的整数'
-              : ''
-  const contextCount = items.reduce(
-    (sum, item) => sum + Math.max(itemContexts(item).length, item.citations?.length || 0),
-    0,
-  )
+  const reason =
+    scopedId === undefined
+      ? '选择对话后开始'
+      : checkingEvidence
+        ? '正在检查引用'
+        : readinessQuery.isError
+          ? '评测状态读取失败，请重试'
+          : currentReadiness === undefined
+            ? '未返回当前对话的评测状态，请确认对话仍可访问'
+            : missingEvidence
+              ? '这条对话没有引用上下文'
+              : !metricKeys.length
+                ? '至少选择一项指标'
+                : !validTurns
+                  ? '最近轮次应为 1–200 的整数'
+                  : ''
+  const contextCount = items.reduce((sum, item) => sum + item.citations.length, 0)
   return (
     <div className={styles.conversation} data-evaluation-matrix>
       <div className={styles.runbar}>
         <Dialog open={pickerOpen} onOpenChange={setPickerOpen}>
           <DialogTrigger asChild>
-            <Button variant="ghost" className={styles.conversationPicker} disabled={isStarting}>
+            <Button variant="ghost" className={styles.conversationPicker}>
               <MessageSquare aria-hidden="true" />
-              <span>{currentConversation?.title || '选择对话'}</span>
+              <span>{conversationLabel}</span>
               <ChevronRight aria-hidden="true" />
             </Button>
           </DialogTrigger>
           <DialogContent className={styles.dialog}>
             <DialogHeader>
               <DialogTitle>选择对话</DialogTitle>
-              <DialogDescription>选择已有问答，使用它的回答和引用进行评测。</DialogDescription>
+              <DialogDescription>
+                搜索全部已有对话，使用它的回答和引用进行评测。引用筛选作用于当前页。
+              </DialogDescription>
             </DialogHeader>
+            {scopedId !== undefined && <p className={styles.muted}>当前对话：{scopedId}</p>}
             <div className={styles.dialogToolbar}>
               <Search aria-hidden="true" />
               <Input
                 aria-label="搜索对话"
                 placeholder="搜索对话"
-                value={conversationSearch}
-                onChange={(event) => setConversationSearch(event.target.value)}
+                maxLength={500}
+                value={conversationWindow.search}
+                onChange={(event) => setConversationWindow({ search: event.target.value, skip: 0 })}
               />
             </div>
             <div className={styles.viewFilters}>
@@ -304,8 +420,24 @@ export function ConversationEvaluation({ active }: { active: boolean }) {
                 </button>
               ))}
             </div>
+            {readinessQuery.isError && (
+              <div className={styles.notice} role="alert">
+                <span>{formatApiError(readinessQuery.error, '引用状态读取失败')}</span>
+                <Button variant="ghost" onClick={() => readinessQuery.refetch()}>
+                  重试
+                </Button>
+              </div>
+            )}
+            {conversationsQuery.isError && conversationsQuery.data !== undefined && (
+              <div className={styles.notice} role="alert">
+                <span>{formatApiError(conversationsQuery.error, '刷新失败，继续显示已读取的对话')}</span>
+                <Button variant="ghost" onClick={() => conversationsQuery.refetch()}>
+                  重试
+                </Button>
+              </div>
+            )}
             <div className={styles.dialogList}>
-              {conversationsQuery.isError ? (
+              {conversationsQuery.isError && conversationsQuery.data === undefined ? (
                 <div className={styles.state}>
                   <p>对话加载失败</p>
                   <Button variant="outline" onClick={() => conversationsQuery.refetch()}>
@@ -316,6 +448,10 @@ export function ConversationEvaluation({ active }: { active: boolean }) {
                 <div className={styles.state}>
                   <Loader2 className="animate-spin" />
                   正在加载对话…
+                </div>
+              ) : conversations.length > 0 && evidenceFilter !== 'all' && readinessQuery.data === undefined ? (
+                <div className={styles.state} role="status">
+                  {readinessQuery.isError ? '引用状态未知，无法按引用筛选。' : '正在读取本页引用状态…'}
                 </div>
               ) : filteredConversations.length ? (
                 filteredConversations.map((conversation) => {
@@ -335,7 +471,14 @@ export function ConversationEvaluation({ active }: { active: boolean }) {
                       }}
                     >
                       <span>
-                        <strong>{conversation.title || '未命名对话'}</strong>
+                        <strong>
+                          {conversation.title === null ||
+                          conversation.title === undefined ||
+                          conversation.title.trim() === ''
+                            ? conversation.id
+                            : conversation.title}
+                        </strong>
+                        <small>{conversation.id}</small>
                         <small>{displayDate(conversation.created_at)}</small>
                       </span>
                       <span className={cn(styles.listHint, evidence && !evidence.is_evaluable && styles.lowScore)}>
@@ -345,7 +488,9 @@ export function ConversationEvaluation({ active }: { active: boolean }) {
                             : '缺少引用'
                           : readinessQuery.isError
                             ? '证据状态未知'
-                            : '检查引用中'}
+                            : readinessQuery.isPending
+                              ? '检查引用中'
+                              : '未返回引用状态'}
                         {scopedId === conversation.id && <Check aria-hidden="true" />}
                       </span>
                     </button>
@@ -353,7 +498,13 @@ export function ConversationEvaluation({ active }: { active: boolean }) {
                 })
               ) : (
                 <div className={styles.state}>
-                  <p>{conversationSearch ? '没有匹配的对话' : '没有符合条件的对话'}</p>
+                  <p>
+                    {conversationWindow.search.trim() !== ''
+                      ? '当前页没有匹配的对话'
+                      : conversations.length === 0
+                        ? '当前页没有对话'
+                        : '当前页没有符合引用条件的对话'}
+                  </p>
                   {evidenceFilter !== 'all' && (
                     <Button variant="outline" onClick={() => setEvidenceFilter('all')}>
                       查看全部
@@ -363,28 +514,55 @@ export function ConversationEvaluation({ active }: { active: boolean }) {
                 </div>
               )}
             </div>
+            <div className={styles.dialogFooter}>
+              <span>
+                {conversationsQuery.data === undefined ? '对话总数未知' : `共 ${conversationsQuery.data.total} 条对话`}
+              </span>
+              <Button
+                variant="outline"
+                disabled={conversationWindow.skip === 0 || conversationsQuery.isFetching}
+                onClick={() =>
+                  setConversationWindow((previous) => ({ ...previous, skip: Math.max(0, previous.skip - 100) }))
+                }
+              >
+                上一页
+              </Button>
+              <Button
+                variant="outline"
+                disabled={
+                  conversationsQuery.isFetching ||
+                  conversationsQuery.data === undefined ||
+                  !conversationsQuery.data.has_more
+                }
+                onClick={() => {
+                  const nextSkip = conversationsQuery.data?.next_skip
+                  if (nextSkip !== undefined && nextSkip !== null)
+                    setConversationWindow((previous) => ({ ...previous, skip: nextSkip }))
+                }}
+              >
+                下一页
+              </Button>
+            </div>
           </DialogContent>
         </Dialog>
         <div className={styles.runMeta}>
           <span>{selectedRunId ? selectedRunId.slice(0, 12) : '尚未运行'}</span>
           <RunStatus status={selectedRun?.status} />
           <span>{displayDate(selectedRun?.created_at)}</span>
-          {runDuration(selectedRun?.started_at, selectedRun?.finished_at) && (
-            <span>耗时 {runDuration(selectedRun?.started_at, selectedRun?.finished_at)}</span>
-          )}
+          {duration !== null && <span>耗时 {duration}</span>}
         </div>
         <div className={styles.runActions}>
           <Dialog open={recordsOpen} onOpenChange={setRecordsOpen}>
             <DialogTrigger asChild>
-              <Button variant="outline">
+              <Button variant="outline" disabled={scopedId === undefined}>
                 <History aria-hidden="true" />
-                <span>运行记录 {runsQuery.data?.total ?? runs.length}</span>
+                <span>运行记录 {runsQuery.data === undefined ? '—' : runsQuery.data.total}</span>
               </Button>
             </DialogTrigger>
             <DialogContent className={styles.dialog}>
               <DialogHeader>
                 <DialogTitle>运行记录</DialogTitle>
-                <DialogDescription>{currentConversation?.title || '当前对话'}的最近 50 次运行</DialogDescription>
+                <DialogDescription>{conversationLabel}的最近 50 次运行</DialogDescription>
               </DialogHeader>
               <div className={styles.dialogToolbar}>
                 <Search aria-hidden="true" />
@@ -403,8 +581,16 @@ export function ConversationEvaluation({ active }: { active: boolean }) {
                   <RefreshCw />
                 </Button>
               </div>
+              {runsQuery.isError && runsQuery.data !== undefined && (
+                <div className={styles.notice} role="alert">
+                  <span>{formatApiError(runsQuery.error, '刷新失败，继续显示已读取的运行记录')}</span>
+                  <Button variant="ghost" onClick={() => runsQuery.refetch()}>
+                    重试
+                  </Button>
+                </div>
+              )}
               <div className={styles.dialogList}>
-                {runsQuery.isError ? (
+                {runsQuery.isError && runsQuery.data === undefined ? (
                   <div className={styles.state}>
                     <p>运行记录加载失败</p>
                     <Button variant="outline" onClick={() => runsQuery.refetch()}>
@@ -434,7 +620,12 @@ export function ConversationEvaluation({ active }: { active: boolean }) {
                       </button>
                     ))
                 )}
-                {!runsQuery.isPending && !runsQuery.isError && !runs.length && (
+                {runsQuery.data !== undefined &&
+                  runs.length > 0 &&
+                  !runs.some(
+                    (run) => recordSearch.trim() === '' || `${run.id} ${run.status}`.includes(recordSearch.trim()),
+                  ) && <div className={styles.state}>最近 50 次运行中没有匹配记录，请调整搜索条件。</div>}
+                {runsQuery.data !== undefined && runs.length === 0 && (
                   <div className={styles.state}>
                     <p>暂无运行记录</p>
                     <p>运行完成后，可在这里切换查看结果。</p>
@@ -467,7 +658,7 @@ export function ConversationEvaluation({ active }: { active: boolean }) {
           下次评测 <b>{metricKeys.length} 项指标</b>
         </span>
         <span>
-          最近 <b>{maxTurns || '—'} 轮</b>
+          最近 <b>{maxTurns === '' ? '—' : maxTurns} 轮</b>
         </span>
         <span className={styles.skip}>
           {skipEmpty && <Check aria-hidden="true" />}
@@ -483,7 +674,9 @@ export function ConversationEvaluation({ active }: { active: boolean }) {
           <DialogContent className={styles.configDialog}>
             <DialogHeader>
               <DialogTitle>评测参数</DialogTitle>
-              <DialogDescription>参数用于下一次运行，已完成的结果保持不变。</DialogDescription>
+              <DialogDescription>
+                参数用于下一次运行。引用状态统计整条对话，实际评测以最近轮次和可读取的上下文为准。
+              </DialogDescription>
             </DialogHeader>
             <div className={styles.configBody}>
               <fieldset>
@@ -555,7 +748,7 @@ export function ConversationEvaluation({ active }: { active: boolean }) {
       {reason && (
         <div
           className={cn(styles.notice, missingEvidence && styles.warning)}
-          role={messagesQuery.isError ? 'alert' : 'status'}
+          role={readinessQuery.isError ? 'alert' : 'status'}
         >
           {checkingEvidence ? (
             <Loader2 className="animate-spin motion-reduce:animate-none" aria-hidden="true" />
@@ -563,12 +756,13 @@ export function ConversationEvaluation({ active }: { active: boolean }) {
             <AlertCircle aria-hidden="true" />
           )}
           <span>{reason}</span>
-          {messagesQuery.isError && (
-            <Button variant="ghost" size="sm" onClick={() => messagesQuery.refetch()}>
+          {(readinessQuery.isError ||
+            (scopedId !== undefined && readinessQuery.isSuccess && currentReadiness === undefined)) && (
+            <Button variant="ghost" size="sm" onClick={() => readinessQuery.refetch()}>
               重试
             </Button>
           )}
-          {(!scopedId || missingEvidence) && (
+          {(scopedId === undefined || missingEvidence) && (
             <Button variant="ghost" size="sm" onClick={() => setPickerOpen(true)}>
               {missingEvidence ? '更换对话' : '选择对话'}
             </Button>
@@ -588,7 +782,7 @@ export function ConversationEvaluation({ active }: { active: boolean }) {
         <div className={styles.notice}>
           <span>确定性证据校验</span>
           <span className={styles.muted}>
-            {selectedRun?.summary?.ragas_skipped_reason === 'ragas_wall_timeout'
+            {selectedRun?.summary.ragas_skipped_reason === 'ragas_wall_timeout'
               ? 'RAGAS 超时，当前分数来自证据一致性校验。'
               : '当前分数来自证据一致性校验。'}
           </span>
@@ -598,14 +792,14 @@ export function ConversationEvaluation({ active }: { active: boolean }) {
         <section className={styles.matrixPane} aria-label="样本矩阵">
           <div className={styles.matrixToolbar}>
             <h2>
-              样本矩阵 <small>{items.length} 个样本</small>
+              样本矩阵 <small>{detail === null ? '样本数未知' : `${items.length} 个样本`}</small>
             </h2>
             <div className={styles.viewFilters}>
               <button type="button" aria-pressed={!onlyLow} onClick={() => setOnlyLow(false)}>
                 全部
               </button>
               <button type="button" aria-pressed={onlyLow} onClick={() => setOnlyLow(true)}>
-                低分 {lowCount}
+                低分 {detail === null ? '—' : lowCount}
               </button>
             </div>
             <div className={styles.sampleSearch}>
@@ -645,43 +839,61 @@ export function ConversationEvaluation({ active }: { active: boolean }) {
                 </tr>
               </thead>
               <tbody>
-                <tr className={styles.meanRow}>
-                  <td />
-                  <th scope="row">
-                    <strong>运行均值</strong>
-                    <small>{items.length ? `${items.length} 个样本` : '尚无样本'}</small>
-                  </th>
-                  {statistics.map((metric) => (
-                    <td key={metric.key}>
-                      <Score value={metric.mean} />
-                    </td>
-                  ))}
-                  <td>{items.length ? `${contextCount} 条` : '—'}</td>
-                </tr>
+                {detail !== null && (
+                  <tr className={styles.meanRow}>
+                    <td />
+                    <th scope="row">
+                      <strong>样本均值</strong>
+                      <small>{detail === null ? '尚未读取样本' : `${items.length} 个样本`}</small>
+                    </th>
+                    {statistics.map((metric) => (
+                      <td key={metric.key}>
+                        <Score value={metric.mean} />
+                        <small>{metric.scoredCount} 项有效评分</small>
+                      </td>
+                    ))}
+                    <td>{items.length ? `${contextCount} 条` : '—'}</td>
+                  </tr>
+                )}
                 {visibleItems.map((item) => (
                   <tr key={item.id} data-sample-row data-selected={selectedItem?.id === item.id}>
                     <td>{String(item.turn_index).padStart(2, '0')}</td>
                     <th scope="row">
                       <button
+                        ref={selectedItem?.id === item.id ? selectedButtonRef : undefined}
                         type="button"
-                        onClick={(event) => chooseSample(item, event.currentTarget)}
+                        onClick={() => chooseSample(item)}
                         aria-pressed={selectedItem?.id === item.id}
                       >
-                        {item.user_input || '未记录问题'}
+                        {item.user_input === '' ? '问题正文为空' : item.user_input}
                       </button>
                       {hasLowScore(item, resultMetricKeys) && <small className={styles.lowScore}>低分</small>}
                     </th>
                     {resultMetricKeys.map((key) => (
                       <td key={key}>
-                        <Score value={item.scores?.[key]} bars />
+                        <Score value={item.scores[key]} bars />
                       </td>
                     ))}
-                    <td>{Math.max(itemContexts(item).length, item.citations?.length || 0)} 条</td>
+                    <td>{item.citations.length} 条</td>
                   </tr>
                 ))}
               </tbody>
             </table>
-            {detailQuery.isError ? (
+            {selectedRunId === undefined && initialQuery.isError ? (
+              <div className={styles.state} role="alert">
+                <AlertCircle />
+                <h3>{scopedId === undefined ? '对话加载失败' : '运行记录加载失败'}</h3>
+                <p>{formatApiError(initialQuery.error, '无法确定可查看的运行记录')}</p>
+                <Button variant="outline" onClick={() => initialQuery.refetch()}>
+                  重试
+                </Button>
+              </div>
+            ) : awaitingSelection ? (
+              <div className={styles.state} role="status">
+                <Loader2 className="animate-spin motion-reduce:animate-none" aria-hidden="true" />
+                <p>{scopedId === undefined ? '正在读取对话…' : '正在读取运行记录…'}</p>
+              </div>
+            ) : detailQuery.isError ? (
               <div className={styles.state} role="alert">
                 <AlertCircle />
                 <h3>评测结果加载失败</h3>
@@ -709,12 +921,13 @@ export function ConversationEvaluation({ active }: { active: boolean }) {
                 <p>
                   {items.length
                     ? '调整搜索条件或查看全部样本。'
-                    : runError ||
-                      (!selectedRunId
+                    : runError !== null && runError !== undefined && runError !== ''
+                      ? runError
+                      : !selectedRunId
                         ? '选择包含引用的对话，点击「开始评测」。'
                         : selectedRun?.status === 'completed'
                           ? '这次运行没有返回逐轮样本。'
-                          : '完成后将自动显示逐轮评分。')}
+                          : '完成后将自动显示逐轮评分。'}
                 </p>
                 {items.length > 0 && (
                   <Button
@@ -736,7 +949,9 @@ export function ConversationEvaluation({ active }: { active: boolean }) {
             <span>
               {detailQuery.isFetching && !detailQuery.isPending
                 ? '更新中…'
-                : `${visibleItems.length} / ${items.length} 个样本`}
+                : detail === null
+                  ? '尚未读取样本'
+                  : `${visibleItems.length} / ${items.length} 个样本`}
             </span>
           </footer>
         </section>
@@ -777,44 +992,46 @@ export function ConversationEvaluation({ active }: { active: boolean }) {
                 data-evaluation-reader-item={selectedItem.id}
               >
                 <h3 ref={readerRef} tabIndex={-1}>
-                  {selectedItem.user_input || '未记录问题'}
+                  {selectedItem.user_input === '' ? '问题正文为空' : selectedItem.user_input}
                 </h3>
                 <dl className={styles.readerScores}>
                   {resultMetricKeys.map((key) => (
                     <div key={key}>
                       <dt>{metricName(key)}</dt>
                       <dd>
-                        <Score value={selectedItem.scores?.[key]} />
+                        <Score value={selectedItem.scores[key]} />
                       </dd>
                     </div>
                   ))}
                 </dl>
                 <section className={styles.readerSection}>
                   <h4>回答</h4>
-                  <p>{selectedItem.response || '未记录回答'}</p>
+                  <p>{selectedItem.response === '' ? '回答正文为空' : selectedItem.response}</p>
                 </section>
                 <section className={styles.readerSection}>
                   <h4>
                     <FileText aria-hidden="true" />
                     引用上下文{' '}
-                    <small>{Math.max(itemContexts(selectedItem).length, selectedItem.citations?.length || 0)} 条</small>
+                    <small>
+                      {selectedItem.retrieved_contexts === null ? '未保存正文' : `${selectedContexts.length} 段`}
+                    </small>
                   </h4>
-                  {itemContexts(selectedItem).length ? (
-                    itemContexts(selectedItem).map((text, index) => (
+                  {selectedContexts.length > 0 ? (
+                    selectedContexts.map((text, index) => (
                       <blockquote key={index}>
                         <span>{String(index + 1).padStart(2, '0')}</span>
-                        <p>{text}</p>
+                        <p>{text === '' ? '上下文正文为空' : text}</p>
                       </blockquote>
                     ))
                   ) : (
                     <p className={styles.muted}>
-                      {selectedItem.citations?.length
+                      {selectedItem.citations.length > 0
                         ? '这次运行保留了引用记录，但没有保存上下文正文。'
                         : '这个样本没有引用上下文。'}
                     </p>
                   )}
                 </section>
-                {selectedItem.citations?.length > 0 && (
+                {selectedItem.citations.length > 0 && (
                   <details className={styles.sourceDetails}>
                     <summary>引用记录</summary>
                     <pre>{JSON.stringify(selectedItem.citations, null, 2)}</pre>
@@ -824,16 +1041,12 @@ export function ConversationEvaluation({ active }: { active: boolean }) {
                   <summary>运行统计</summary>
                   <dl className={styles.runStats}>
                     <div>
-                      <dt>令牌消耗</dt>
-                      <dd>{numericScore(selectedRun?.summary?.total_tokens) ?? '—'}</dd>
+                      <dt>评测令牌消耗</dt>
+                      <dd>{tokenCount === null ? '—' : tokenCount}</dd>
                     </div>
                     <div>
-                      <dt>模型成本</dt>
-                      <dd>
-                        {numericScore(selectedRun?.summary?.total_cost) !== null
-                          ? `¥${Number(selectedRun?.summary?.total_cost).toFixed(4)}`
-                          : '—'}
-                      </dd>
+                      <dt>评测成本（美元）</dt>
+                      <dd>{modelCostUsd === null ? '—' : `$${modelCostUsd}`}</dd>
                     </div>
                   </dl>
                   <table aria-label="指标统计">

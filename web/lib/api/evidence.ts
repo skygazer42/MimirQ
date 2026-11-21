@@ -1,3 +1,5 @@
+import { z } from 'zod'
+
 import type {
   EvidenceHardcaseDiscovery,
   EvidenceItem,
@@ -19,6 +21,18 @@ import type {
 
 import { API_LONG_TIMEOUT_MS } from '@/lib/env'
 import { apiClient, openapiRequest } from '@/lib/api/core'
+import { parseApiResponse } from '@/lib/openapi-request'
+import { matchesResourceId } from '@/lib/resource-id'
+import { integerSchema, recordSchema } from '@/lib/response-schema'
+
+const evidenceImportSchema = z.looseObject({
+  suite_id: z.string(),
+  dataset_id: z.string(),
+  parsed: integerSchema.nonnegative(),
+  created: integerSchema.nonnegative(),
+  skipped: integerSchema.nonnegative(),
+  errors: z.array(recordSchema),
+}) satisfies z.ZodType<EvidenceItemImportResponse>
 
 export const evidenceApi = {
   async createSuite(payload: EvidenceSuiteCreate): Promise<EvidenceSuite> {
@@ -109,15 +123,14 @@ export const evidenceApi = {
 
   async repairSuiteReferenceSources(
     suiteId: string,
-    payload: EvidenceReferenceRepairRequest,
+    payload: Partial<EvidenceReferenceRepairRequest>,
   ): Promise<EvidenceReferenceRepairResponse> {
-    return openapiRequest({
-      path: '/api/v1/evidence/suites/{suite_id}/repair-reference-sources',
-      method: 'post',
-      pathParams: { suite_id: suiteId },
-      body: payload,
-      timeoutMs: API_LONG_TIMEOUT_MS,
-    })
+    const { data } = await apiClient.post<EvidenceReferenceRepairResponse>(
+      `/evidence/suites/${encodeURIComponent(suiteId)}/repair-reference-sources`,
+      payload,
+      { timeout: API_LONG_TIMEOUT_MS },
+    )
+    return data
   },
 
   async patchSuite(suiteId: string, payload: EvidenceSuitePatch): Promise<EvidenceSuite> {
@@ -208,22 +221,25 @@ export const evidenceApi = {
     include_archived_evidence?: boolean
     max_rows_per_source?: number
   }): Promise<Blob> {
-    const { data } = await apiClient.get('/evidence/training-export', {
+    const { data } = await apiClient.get<Blob>('/evidence/training-export', {
       params,
       responseType: 'blob',
       timeout: API_LONG_TIMEOUT_MS,
     })
-    return data as Blob
+    return data
   },
 
-  async importItems(suiteId: string, file: File, params?: { max_items?: number }): Promise<EvidenceItemImportResponse> {
+  async importItems(suiteId: string, file: File, params?: { max_items?: number }) {
     const formData = new FormData()
     formData.append('file', file)
-    const { data } = await apiClient.post(`/evidence/suites/${suiteId}/items/import`, formData, {
-      params,
-      timeout: API_LONG_TIMEOUT_MS,
-    })
-    return data
+    const response = await apiClient.post<unknown>(
+      `/evidence/suites/${encodeURIComponent(suiteId)}/items/import`,
+      formData,
+      { params, timeout: API_LONG_TIMEOUT_MS },
+    )
+    const receipt = parseApiResponse(response, evidenceImportSchema, 'EvidenceItemImport')
+    if (!matchesResourceId(receipt.suite_id, suiteId)) throw new Error('导入回执的证据集不匹配，请重新读取列表核对')
+    return receipt
   },
 
   async persistCapsule(payload: {

@@ -4,11 +4,11 @@ Workflow factory for creating workflow instances.
 Provides factory functions and configuration-based workflow selection.
 """
 
+import logging
 from collections.abc import Awaitable, Callable
 from typing import Any
 
-from app.core.config import settings
-from app.rag.core.logging import get_logger
+from app.infrastructure.config import settings
 from app.rag.workflows.base import BaseWorkflow, WorkflowMode
 from app.rag.workflows.chain import ChainWorkflow
 from app.rag.workflows.evaluator_optimizer import EvaluatorOptimizerWorkflow
@@ -17,7 +17,7 @@ from app.rag.workflows.planner_worker import PlannerWorkerWorkflow
 from app.rag.workflows.react import ReActWorkflow
 from app.rag.workflows.routing import RoutingWorkflow
 
-logger = get_logger("rag.workflows.factory")
+logger = logging.getLogger("rag.workflows.factory")
 
 # Configuration
 WORKFLOW_MODE = settings.WORKFLOW_MODE
@@ -164,9 +164,12 @@ def create_rag_workflow(
     """
     Create a standard RAG workflow.
 
+    Chain binds retrieval and generation. Parallel binds retrieval only;
+    other modes return their basic workflow instance for caller configuration.
+
     Args:
         retrieve_func: Retrieval function
-        generate_func: Generation function
+        generate_func: Generation function used by chain mode
         mode: Workflow mode
         **kwargs: Additional configuration
 
@@ -180,14 +183,12 @@ def create_rag_workflow(
 
         return create_rag_chain(retrieve_func, generate_func, **kwargs)
 
-    elif resolved_mode == WorkflowMode.PARALLEL:
+    if resolved_mode == WorkflowMode.PARALLEL:
         workflow = ParallelWorkflow(**kwargs)
         workflow.add_task("retrieve", retrieve_func)
         return workflow
 
-    else:
-        # For other modes, create basic workflow
-        return create_workflow(mode, **kwargs)
+    return create_workflow(resolved_mode, **kwargs)
 
 
 def create_multi_query_workflow(
@@ -203,7 +204,7 @@ def create_multi_query_workflow(
     Args:
         retrieve_func: Retrieval function
         query_rewrite_func: Query rewriting function
-        generate_func: Generation function
+        generate_func: Compatibility argument; this helper retrieves and aggregates only
         num_queries: Number of query variations
         **kwargs: Additional configuration
 

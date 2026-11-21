@@ -12,11 +12,15 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from app.parsing.models.hf_cache import download_hf_snapshot  # noqa: E402
-from app.parsing.models.manifest import SmallModelManifest, SmallModelSpec, load_small_model_manifest  # noqa: E402
+from app.rag.ingestion.parsing.models.hf_cache import download_hf_snapshot  # noqa: E402
+from app.rag.ingestion.parsing.models.manifest import (  # noqa: E402
+    SmallModelManifest,
+    SmallModelSpec,
+    load_small_model_manifest,
+)
 
 _DEFAULT_MANIFEST = _REPO_ROOT / "config" / "parsing_small_models.yaml"
-_DEFAULT_OUTPUT_ROOT = _REPO_ROOT / "app" / "deepdoc" / "resources" / "models"
+_DEFAULT_OUTPUT_ROOT = _REPO_ROOT / "app" / "rag" / "ingestion" / "parsing" / "resources" / "models"
 _SAFE_SLUG_RE = re.compile(r"[^A-Za-z0-9._-]+")
 
 
@@ -337,7 +341,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--output-root",
         default=str(_DEFAULT_OUTPUT_ROOT),
-        help="Project model resource root. Defaults to app/deepdoc/resources/models.",
+        help="Project model resource root. Defaults to app/rag/ingestion/parsing/resources/models.",
     )
     parser.add_argument(
         "--convert-onnx", action="store_true", help="Try ONNX conversion when the HF snapshot has no .onnx file."

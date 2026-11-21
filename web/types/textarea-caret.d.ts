@@ -4,6 +4,10 @@ declare module 'textarea-caret' {
     left: number
     height: number
   }
-  function getCaretCoordinates(element: HTMLElement, position: number, options?: any): Coordinates
+  function getCaretCoordinates(
+    element: HTMLInputElement | HTMLTextAreaElement,
+    position: number,
+    options?: { debug?: boolean },
+  ): Coordinates
   export = getCaretCoordinates
 }

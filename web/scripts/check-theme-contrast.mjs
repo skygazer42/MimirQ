@@ -88,7 +88,7 @@ async function main() {
     throw new Error('Could not locate :root/default html.dark token blocks in app/globals.css')
   }
 
-  const surfaceNames = ['ocean', 'deepsea', 'neutral', 'classic', 'earth']
+  const surfaceNames = ['ocean', 'neutral', 'classic', 'earth']
   const themes = []
 
   for (const surface of surfaceNames) {
@@ -164,7 +164,8 @@ async function main() {
   process.stdout.write(`ui-check(contrast): OK (${reports.join(', ')})\n`)
 }
 
-main().catch((err) => {
-  process.stderr.write(`ui-check(contrast): ERROR ${String(err?.message || err)}\n`)
-  process.exit(2)
+main().catch((error) => {
+  const message = error instanceof Error ? error.message : String(error)
+  process.stderr.write(`ui-check(contrast): ERROR ${message}\n`)
+  process.exitCode = 2
 })

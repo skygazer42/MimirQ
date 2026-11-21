@@ -1,15 +1,13 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, type MouseEvent } from 'react'
+import { useCallback, useEffect, useRef, type KeyboardEvent, type MouseEvent } from 'react'
+import type { ForceGraphMethods } from 'react-force-graph-2d'
 
 import { cn } from '@/lib/utils'
 
 type GraphMinimapProps = {
   readonly graphRef: Readonly<{ current?: GraphMinimapHandle | null }>
-  readonly data: {
-    nodes: GraphMinimapNode[]
-    links: unknown[]
-  }
+  readonly nodes: readonly GraphMinimapNode[]
   readonly graphWidth: number
   readonly graphHeight: number
   readonly isDark?: boolean
@@ -23,25 +21,24 @@ type GraphMinimapNode = {
   readonly y?: unknown
 }
 
-type GraphBbox = {
-  readonly x?: readonly unknown[]
-  readonly y?: readonly unknown[]
-}
+type GraphMinimapHandle = Partial<Pick<ForceGraphMethods, 'getGraphBbox' | 'centerAt' | 'zoom'>>
 
-type GraphMinimapHandle = {
-  readonly getGraphBbox?: () => GraphBbox | null | undefined
-  readonly centerAt?: (x?: number, y?: number, ms?: number) => unknown
-  readonly zoom?: () => unknown
-}
+type RenderedBounds = { xmin: number; xmax: number; ymin: number; ymax: number }
+
+const PAN_DIRECTIONS = new Map<string, readonly [number, number]>([
+  ['ArrowLeft', [-1, 0]],
+  ['ArrowRight', [1, 0]],
+  ['ArrowUp', [0, -1]],
+  ['ArrowDown', [0, 1]],
+])
 
 function safeNumber(value: unknown, fallback: number): number {
-  const n = Number(value)
-  return Number.isFinite(n) ? n : fallback
+  return typeof value === 'number' && Number.isFinite(value) ? value : fallback
 }
 
 export function GraphMinimap({
   graphRef,
-  data,
+  nodes,
   graphWidth,
   graphHeight,
   isDark = false,
@@ -50,21 +47,12 @@ export function GraphMinimap({
   height = 100,
 }: GraphMinimapProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
-
-  const nodePositions = useMemo(() => {
-    const out: Array<{ x: number; y: number }> = []
-    for (const n of data.nodes || []) {
-      const x = safeNumber(n?.x, Number.NaN)
-      const y = safeNumber(n?.y, Number.NaN)
-      if (!Number.isFinite(x) || !Number.isFinite(y)) continue
-      out.push({ x, y })
-    }
-    return out
-  }, [data.nodes])
+  const renderedBounds = useRef<RenderedBounds | null>(null)
 
   const draw = useCallback(() => {
+    renderedBounds.current = null
     const canvas = canvasRef.current
-    const g = graphRef?.current
+    const g = graphRef.current
     if (!canvas || !g) return
     if (!graphWidth || !graphHeight) return
 
@@ -78,6 +66,14 @@ export function GraphMinimap({
     // Background
     ctx.fillStyle = isDark ? 'rgba(2, 6, 23, 0.6)' : 'rgba(255, 255, 255, 0.8)'
     ctx.fillRect(0, 0, w, h)
+
+    // The force simulation updates coordinates on the existing nodes.
+    const nodePositions: Array<{ x: number; y: number }> = []
+    for (const node of nodes) {
+      const x = safeNumber(node.x, Number.NaN)
+      const y = safeNumber(node.y, Number.NaN)
+      if (Number.isFinite(x) && Number.isFinite(y)) nodePositions.push({ x, y })
+    }
 
     // BBox (prefer force-graph API when available)
     let xmin = Infinity
@@ -114,6 +110,7 @@ export function GraphMinimap({
     xmax += padX
     ymin -= padY
     ymax += padY
+    renderedBounds.current = { xmin, xmax, ymin, ymax }
 
     const sx = (x: number) => ((x - xmin) / (xmax - xmin)) * w
     const sy = (y: number) => ((y - ymin) / (ymax - ymin)) * h
@@ -126,7 +123,7 @@ export function GraphMinimap({
 
     // Viewport rectangle
     let center = { x: 0, y: 0 }
-    let zoom = 1
+    let zoom = Number.NaN
     try {
       const currentCenter = g.centerAt?.()
       if (currentCenter && typeof currentCenter === 'object' && 'x' in currentCenter && 'y' in currentCenter) {
@@ -135,9 +132,9 @@ export function GraphMinimap({
           y: safeNumber(currentCenter.y, center.y),
         }
       }
-      zoom = safeNumber(g.zoom?.(), 1)
+      zoom = safeNumber(g.zoom?.(), Number.NaN)
     } catch {}
-    zoom = Math.max(0.1, zoom)
+    if (!Number.isFinite(zoom) || zoom <= 0) return
 
     const halfW = graphWidth / (2 * zoom)
     const halfH = graphHeight / (2 * zoom)
@@ -154,68 +151,65 @@ export function GraphMinimap({
     ctx.strokeStyle = isDark ? 'rgba(56, 189, 248, 0.9)' : 'rgba(2, 132, 199, 0.9)'
     ctx.lineWidth = 1
     ctx.strokeRect(vx, vy, Math.max(0, vw), Math.max(0, vh))
-  }, [graphRef, graphWidth, graphHeight, isDark, nodePositions])
+  }, [graphRef, graphWidth, graphHeight, isDark, nodes])
 
   useEffect(() => {
-    let raf = 0
-    let last = 0
+    let frameId: number
+    let lastDrawTime = 0
 
-    const tick = (t: number) => {
-      if (t - last > 140) {
-        last = t
+    const tick = (time: number) => {
+      if (time - lastDrawTime > 140) {
+        lastDrawTime = time
         draw()
       }
-      raf = requestAnimationFrame(tick)
+      frameId = requestAnimationFrame(tick)
     }
 
-    raf = requestAnimationFrame(tick)
-    return () => cancelAnimationFrame(raf)
+    frameId = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(frameId)
   }, [draw])
 
-  const handleClick = useCallback(
-    (evt: MouseEvent<HTMLCanvasElement>) => {
-      const canvas = canvasRef.current
-      const g = graphRef?.current
-      if (!canvas || !g) return
+  function handleClick(event: MouseEvent<HTMLButtonElement>) {
+    const graph = graphRef.current
+    const bounds = renderedBounds.current
+    const rect = canvasRef.current?.getBoundingClientRect()
+    if (graph === undefined || graph === null || bounds === null || rect === undefined) return
+    if (rect.width === 0 || rect.height === 0) return
 
-      const rect = canvas.getBoundingClientRect()
-      const cx = evt.clientX - rect.left
-      const cy = evt.clientY - rect.top
+    const { xmin, xmax, ymin, ymax } = bounds
+    const horizontal = event.detail === 0 ? 0.5 : (event.clientX - rect.left) / rect.width
+    const vertical = event.detail === 0 ? 0.5 : (event.clientY - rect.top) / rect.height
+    graph.centerAt?.(xmin + horizontal * (xmax - xmin), ymin + vertical * (ymax - ymin), 400)
+  }
 
-      // Recompute bbox quickly (same as draw; keep it simple).
-      let xmin = Infinity
-      let xmax = -Infinity
-      let ymin = Infinity
-      let ymax = -Infinity
-      for (const p of nodePositions) {
-        xmin = Math.min(xmin, p.x)
-        xmax = Math.max(xmax, p.x)
-        ymin = Math.min(ymin, p.y)
-        ymax = Math.max(ymax, p.y)
-      }
-      if (!Number.isFinite(xmin) || !Number.isFinite(xmax) || xmax - xmin <= 0) return
-      if (!Number.isFinite(ymin) || !Number.isFinite(ymax) || ymax - ymin <= 0) return
-
-      const tx = xmin + (cx / canvas.width) * (xmax - xmin)
-      const ty = ymin + (cy / canvas.height) * (ymax - ymin)
-
-      try {
-        g.centerAt?.(tx, ty, 400)
-      } catch {}
-    },
-    [graphRef, nodePositions],
-  )
+  function handleKeyDown(event: KeyboardEvent<HTMLButtonElement>) {
+    const direction = PAN_DIRECTIONS.get(event.key)
+    if (direction === undefined) return
+    const graph = graphRef.current
+    const center = graph?.centerAt?.()
+    const zoom = graph?.zoom?.()
+    if (center === undefined || zoom === undefined || !Number.isFinite(zoom) || zoom <= 0) return
+    event.preventDefault()
+    const [horizontal, vertical] = direction
+    graph?.centerAt?.(
+      center.x + (horizontal * graphWidth) / (4 * zoom),
+      center.y + (vertical * graphHeight) / (4 * zoom),
+      400,
+    )
+  }
 
   return (
-    <div className={cn('rounded-xl border border-border/50 bg-card/60 shadow-sm backdrop-blur-sm', className)}>
-      <canvas
-        ref={canvasRef}
-        width={width}
-        height={height}
-        className="block cursor-pointer rounded-xl"
-        onClick={handleClick}
-        aria-label="Graph minimap"
-      />
-    </div>
+    <button
+      type="button"
+      className={cn(
+        'block cursor-pointer rounded-xl border border-border/50 bg-card/60 shadow-sm backdrop-blur-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring',
+        className,
+      )}
+      onClick={handleClick}
+      onKeyDown={handleKeyDown}
+      aria-label="图谱小地图，按 Enter 居中，方向键平移"
+    >
+      <canvas ref={canvasRef} width={width} height={height} className="block rounded-xl" aria-hidden="true" />
+    </button>
   )
 }

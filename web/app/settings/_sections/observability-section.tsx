@@ -1,7 +1,7 @@
 'use client'
 
+import { SettingsNumberInput } from '@/components/settings/settings-number-input'
 import { SettingsSwitch } from '@/components/settings/settings-switch'
-import { Input } from '@/components/ui/input'
 import { settingsTextTokens } from '@/components/ui/system-page-tokens'
 import type { ObservabilityConfig } from '@/types/settings'
 import { cn } from '@/lib/utils'
@@ -12,10 +12,30 @@ type ObservabilitySectionProps = {
   updateObservability: (patch: Partial<ObservabilityConfig>) => void
 }
 
+const MAX_PREVIEW_CHARACTERS = 5000
+
+function PreviewCharacterLimit({
+  label,
+  value,
+  onChange,
+}: Readonly<{ label: string; value: number; onChange: (value: number) => void }>) {
+  return (
+    <label className="block">
+      <span className={cn(settingsTextTokens.fieldLabel, 'mb-1 block')}>{label}</span>
+      <SettingsNumberInput
+        max={MAX_PREVIEW_CHARACTERS}
+        value={value}
+        className="h-11 sm:h-9 border-input bg-background text-[13px]"
+        onValueChange={onChange}
+      />
+    </label>
+  )
+}
+
 export function ObservabilitySection({ observability, updateObservability }: Readonly<ObservabilitySectionProps>) {
-  const isToolCallLogEnabled = observability.tool_call_log_enabled ?? false
-  const isAgentLogEnabled = observability.agent_log_enabled ?? false
-  const isMetricsLogEnabled = observability.metrics_log_enabled ?? false
+  const isToolCallLogEnabled = observability.tool_call_log_enabled
+  const isAgentLogEnabled = observability.agent_log_enabled
+  const isMetricsLogEnabled = observability.metrics_log_enabled
 
   return (
     <section>
@@ -44,26 +64,16 @@ export function ObservabilitySection({ observability, updateObservability }: Rea
               <div className="flex items-center justify-between gap-3">
                 <span className={settingsTextTokens.fieldLabel}>记录结果摘要</span>
                 <SettingsSwitch
-                  checked={observability.tool_call_log_include_preview ?? false}
+                  checked={observability.tool_call_log_include_preview}
                   onCheckedChange={(checked) => updateObservability({ tool_call_log_include_preview: checked })}
                   aria-label="切换工具调用结果摘要记录"
                 />
               </div>
-              <div>
-                <div className={cn(settingsTextTokens.fieldLabel, 'mb-1')}>结果摘要最大字符数</div>
-                <Input
-                  type="number"
-                  min={0}
-                  max={5000}
-                  value={observability.tool_call_log_max_preview_chars ?? 500}
-                  className="h-11 sm:h-9 border-input bg-background text-[13px]"
-                  onChange={(event) =>
-                    updateObservability({
-                      tool_call_log_max_preview_chars: Number(event.target.value || '0'),
-                    })
-                  }
-                />
-              </div>
+              <PreviewCharacterLimit
+                label="结果摘要最大字符数"
+                value={observability.tool_call_log_max_preview_chars}
+                onChange={(length) => updateObservability({ tool_call_log_max_preview_chars: length })}
+              />
             </div>
           ) : null}
         </div>
@@ -92,26 +102,16 @@ export function ObservabilitySection({ observability, updateObservability }: Rea
               <div className="flex items-center justify-between gap-3">
                 <span className={settingsTextTokens.fieldLabel}>记录步骤路径</span>
                 <SettingsSwitch
-                  checked={observability.agent_log_include_execution_path ?? false}
+                  checked={observability.agent_log_include_execution_path}
                   onCheckedChange={(checked) => updateObservability({ agent_log_include_execution_path: checked })}
                   aria-label="切换工作流步骤路径记录"
                 />
               </div>
-              <div>
-                <div className={cn(settingsTextTokens.fieldLabel, 'mb-1')}>错误摘要最大字符数</div>
-                <Input
-                  type="number"
-                  min={0}
-                  max={5000}
-                  value={observability.agent_log_max_preview_chars ?? 500}
-                  className="h-11 sm:h-9 border-input bg-background text-[13px]"
-                  onChange={(event) =>
-                    updateObservability({
-                      agent_log_max_preview_chars: Number(event.target.value || '0'),
-                    })
-                  }
-                />
-              </div>
+              <PreviewCharacterLimit
+                label="错误摘要最大字符数"
+                value={observability.agent_log_max_preview_chars}
+                onChange={(length) => updateObservability({ agent_log_max_preview_chars: length })}
+              />
             </div>
           ) : null}
         </div>
@@ -124,7 +124,7 @@ export function ObservabilitySection({ observability, updateObservability }: Rea
                 RAG 过程指标
               </h3>
               <div className={cn(settingsTextTokens.helpText, 'mt-0.5')}>
-                将每次问答的检索与生成指标写入 logs/rag_metrics.jsonl，用于趋势分析和问题复盘。
+                记录每次问答的检索与生成指标，用于趋势分析和问题复盘。
               </div>
             </div>
             <SettingsSwitch
@@ -140,7 +140,7 @@ export function ObservabilitySection({ observability, updateObservability }: Rea
               <div className="flex items-center justify-between gap-3">
                 <span className={settingsTextTokens.fieldLabel}>写入问题与答案原文</span>
                 <SettingsSwitch
-                  checked={observability.metrics_log_include_text ?? false}
+                  checked={observability.metrics_log_include_text}
                   onCheckedChange={(checked) => updateObservability({ metrics_log_include_text: checked })}
                   aria-label="切换 RAG 指标原文写入"
                 />

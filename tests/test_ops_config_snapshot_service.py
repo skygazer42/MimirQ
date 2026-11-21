@@ -1,7 +1,7 @@
 import pytest
 
-from app.core.config import Settings
-from app.services import ops_config_snapshot_service as snapshots
+from app.infrastructure.config import Settings
+from app.services.observability import config_snapshot as snapshots
 
 
 @pytest.mark.parametrize(

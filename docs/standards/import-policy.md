@@ -24,10 +24,10 @@ At the import boundary:
 
 Use the shared helpers:
 
-- `app.core.optional_deps.optional_import("pkg", feature="...")`
+- `app.infrastructure.runtime.dependencies.optional_import("pkg", feature="...")`
   - Returns the module or `None`
   - Emits a warning log with remediation (install hint)
-- `app.core.optional_deps.require_dependency("pkg", feature="...")`
+- `app.infrastructure.runtime.dependencies.require_dependency("pkg", feature="...")`
   - Raises `RuntimeError` on `ImportError` with remediation
   - Use when a feature is enabled/selected and should fail-fast
 
@@ -48,7 +48,7 @@ Use `lru_cache` so missing-dependency warnings are emitted at most once per proc
 ```python
 from functools import lru_cache
 
-from app.core.optional_deps import optional_import
+from app.infrastructure.runtime.dependencies import optional_import
 
 
 @lru_cache(maxsize=1)
@@ -61,7 +61,7 @@ def _get_lxml_html():  # noqa: ANN202
 When a config flag / API parameter selects a feature, missing deps should raise a clear error:
 
 ```python
-from app.core.optional_deps import require_dependency
+from app.infrastructure.runtime.dependencies import require_dependency
 
 
 def build_markitdown_converter():  # noqa: ANN202
@@ -82,5 +82,5 @@ except Exception:
 
 Refactor instead:
 
-- Move the shared utility into `app.core.*` (or a lower-level module) so both sides can import it safely.
+- Move the shared utility into `app.infrastructure.*` (or a lower-level module) so both sides can import it safely.
 - Keep degradation at the third-party boundary (`ImportError`) and make it observable (log + reason).

@@ -3,22 +3,20 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { useSearchParams } from 'next/navigation'
+import { useQuery } from '@tanstack/react-query'
 
 import { type KnowledgeGraph3DRef } from '@/components/graph/force-graph-3d'
 import { GraphViewerRef, LayoutMode } from '@/components/graph/graph-viewer'
 import { documentApi } from '@/lib/api/documents'
-import { type GraphData } from '@/lib/graph-parser'
+import { queryKeys } from '@/lib/query-keys'
+import type { GraphData } from '@/lib/graph-types'
 import { useResizeObserver } from '@/hooks/use-resize-observer'
-import type { KGEntityDetailResponse, KGEventDetailResponse, KGStatsResponse, RagTrace } from '@/types'
-
 import {
   GraphConfBucket,
-  type GraphDatasetDocumentSummary,
   type GraphLinkLike,
   type GraphNodeLike,
+  type GraphTraceReplay,
   coerceBoundedInt,
-  getScopedDocumentId,
-  isPendingScopedDocument,
   parseCsvList,
 } from './graph-page-utils'
 
@@ -63,20 +61,20 @@ export function useGraphPageState() {
   const scope = useMemo<GraphScope>(() => {
     const sp = new URLSearchParams(scopeParamKey)
     const directDocIds = [...parseCsvList(sp.get('document_ids')), ...sp.getAll('document_id')]
-      .map((value) => String(value || '').trim())
-      .filter(Boolean)
+      .map((value) => value.trim())
+      .filter((value) => value !== '')
 
     const uniqDocIds = Array.from(new Set(directDocIds))
-    const datasetId = (sp.get('dataset_id') || '').trim() || null
-    const pipelineHash = (sp.get('pipeline_hash') || '').trim() || null
+    const datasetId = sp.get('dataset_id')?.trim()
+    const pipelineHash = sp.get('pipeline_hash')?.trim()
     const docLimit = coerceBoundedInt(sp.get('doc_limit'), 200, 1, 500)
     const hasScope = uniqDocIds.length > 0 || Boolean(datasetId) || Boolean(pipelineHash)
 
     return {
       hasScope,
       directDocIds: uniqDocIds,
-      datasetId,
-      pipelineHash,
+      datasetId: datasetId === '' ? null : (datasetId ?? null),
+      pipelineHash: pipelineHash === '' ? null : (pipelineHash ?? null),
       docLimit,
     }
   }, [scopeParamKey])
@@ -97,86 +95,38 @@ export function useGraphPageState() {
   const [minSharedEvents, setMinSharedEvents] = useState(2)
   const maxEntityLinks = 1000
 
-  const [scopedDatasetDocIds, setScopedDatasetDocIds] = useState<string[] | null>(null)
-  const [scopedDatasetDocIdsLoading, setScopedDatasetDocIdsLoading] = useState(false)
-  const [scopedDatasetPendingDocs, setScopedDatasetPendingDocs] = useState<number | null>(null)
-
+  const needsScopedDocuments = scope.datasetId !== null && scope.directDocIds.length === 0
+  const scopedDocumentParams = {
+    skip: 0,
+    limit: scope.docLimit,
+    dataset_id: scope.datasetId,
+    order_by: 'created_at',
+    order_dir: 'desc',
+  } as const
+  const scopedDocumentsQuery = useQuery({
+    queryKey: queryKeys.documents.list(scopedDocumentParams),
+    queryFn: ({ signal }) => documentApi.list(scopedDocumentParams, { signal }),
+    enabled: needsScopedDocuments,
+  })
+  const scopedDatasetDocuments = needsScopedDocuments ? scopedDocumentsQuery.data?.items : undefined
   const scopedDocumentIds = useMemo(() => {
     if (scope.directDocIds.length > 0) return scope.directDocIds
-    if (scope.datasetId) return scopedDatasetDocIds
-    return null
-  }, [scope.datasetId, scope.directDocIds, scopedDatasetDocIds])
+    return scopedDatasetDocuments?.map((document) => document.id) ?? null
+  }, [scope.directDocIds, scopedDatasetDocuments])
+  const scopedDatasetPendingDocs = scopedDatasetDocuments?.filter(
+    (document) => document.status === 'pending' || document.status === 'processing',
+  ).length
+  const scopedDatasetDocIdsLoading =
+    needsScopedDocuments && scopedDocumentIds === null && scopedDocumentsQuery.isFetching
 
   const scopeParams = useMemo<GraphScopeParams>(() => {
     const document_ids = scopedDocumentIds && scopedDocumentIds.length > 0 ? scopedDocumentIds : undefined
-    const dataset_id = scope.datasetId || undefined
-    const pipeline_hash = scope.pipelineHash || undefined
-    if (!document_ids && !dataset_id && !pipeline_hash) return null
+    const dataset_id = scope.datasetId ?? undefined
+    const pipeline_hash = scope.pipelineHash ?? undefined
+    if (document_ids === undefined && dataset_id === undefined && pipeline_hash === undefined) return null
     return { document_ids, dataset_id, pipeline_hash }
   }, [scopedDocumentIds, scope.datasetId, scope.pipelineHash])
 
-  useEffect(() => {
-    let cancelled = false
-
-    if (scope.directDocIds.length > 0) {
-      setScopedDatasetDocIds(null)
-      setScopedDatasetDocIdsLoading(false)
-      setScopedDatasetPendingDocs(null)
-      return () => {
-        cancelled = true
-      }
-    }
-
-    const datasetId = scope.datasetId
-    if (!datasetId) {
-      setScopedDatasetDocIds(null)
-      setScopedDatasetDocIdsLoading(false)
-      setScopedDatasetPendingDocs(null)
-      return () => {
-        cancelled = true
-      }
-    }
-
-    setScopedDatasetDocIdsLoading(true)
-    setScopedDatasetPendingDocs(null)
-
-    ;(async () => {
-      try {
-        const list = await documentApi.list({
-          skip: 0,
-          limit: scope.docLimit,
-          dataset_id: datasetId,
-          order_by: 'created_at',
-          order_dir: 'desc',
-        })
-        const items: GraphDatasetDocumentSummary[] = Array.isArray(list.items) ? list.items : []
-        const ids = items.map((item) => getScopedDocumentId(item)).filter(Boolean)
-        const pending = items.filter((item) => isPendingScopedDocument(item)).length
-
-        if (!cancelled) {
-          setScopedDatasetDocIds(ids)
-          setScopedDatasetPendingDocs(pending)
-        }
-      } catch {
-        if (!cancelled) {
-          setScopedDatasetDocIds([])
-          setScopedDatasetPendingDocs(null)
-        }
-      } finally {
-        if (!cancelled) {
-          setScopedDatasetDocIdsLoading(false)
-        }
-      }
-    })()
-
-    return () => {
-      cancelled = true
-    }
-  }, [scope.datasetId, scope.docLimit, scope.directDocIds])
-
-  const [kgStats, setKgStats] = useState<KGStatsResponse | null>(null)
-  const [kgNodeDetail, setKgNodeDetail] = useState<KGEntityDetailResponse | KGEventDetailResponse | null>(null)
-  const [kgNodeDetailLoading, setKgNodeDetailLoading] = useState(false)
   const [viewMode, setViewMode] = useState<'2d' | '3d'>('2d')
   const [filtersOpen, setFiltersOpen] = useState(false)
   const [entityTypeFilters, setEntityTypeFilters] = useState<string[]>([])
@@ -218,7 +168,7 @@ export function useGraphPageState() {
   const [isExplainMode, setIsExplainMode] = useState(false)
   const [explainSteps, setExplainSteps] = useState<GraphExplainabilityStep[]>([])
   const [currentStepIndex, setCurrentStepIndex] = useState(-1)
-  const [traceReplay, setTraceReplay] = useState<RagTrace | null>(null)
+  const [traceReplay, setTraceReplay] = useState<GraphTraceReplay | null>(null)
 
   const graphViewportRef = useRef<HTMLDivElement>(null)
   const graph2dRef = useRef<GraphViewerRef>(null)
@@ -240,6 +190,8 @@ export function useGraphPageState() {
   const resetConnectMode = useCallback(() => {
     setIsConnectMode(false)
     setConnectSourceNode(null)
+    setConnectTargetNode(null)
+    setConnectLabelOpen(false)
   }, [])
 
   const resetExplainMode = useCallback(() => {
@@ -258,11 +210,25 @@ export function useGraphPageState() {
     setHighlightedLinkIds(new Set())
   }, [])
 
+  const resetGraphSurface = useCallback(() => {
+    setSelectedNode(null)
+    setIsDetailOpen(false)
+    setSelectedLink(null)
+    setIsLinkDetailOpen(false)
+    setDeleteNodeTarget(null)
+    setDeleteNodeOpen(false)
+    resetPathMode()
+    resetConnectMode()
+    resetExplainMode()
+  }, [resetConnectMode, resetExplainMode, resetPathMode])
+
   return {
     scope,
     scopedDocumentIds,
     scopedDatasetDocIdsLoading,
     scopedDatasetPendingDocs,
+    scopedDocumentsError: needsScopedDocuments ? scopedDocumentsQuery.error : null,
+    refetchScopedDocuments: scopedDocumentsQuery.refetch,
     scopeParams,
     graphData,
     setGraphData,
@@ -294,12 +260,6 @@ export function useGraphPageState() {
     minSharedEvents,
     setMinSharedEvents,
     maxEntityLinks,
-    kgStats,
-    setKgStats,
-    kgNodeDetail,
-    setKgNodeDetail,
-    kgNodeDetailLoading,
-    setKgNodeDetailLoading,
     viewMode,
     setViewMode,
     filtersOpen,
@@ -361,6 +321,7 @@ export function useGraphPageState() {
     resetConnectMode,
     resetExplainMode,
     resetPathMode,
+    resetGraphSurface,
   }
 }
 

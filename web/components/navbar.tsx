@@ -3,8 +3,8 @@
  */
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { ComponentType, KeyboardEvent as ReactKeyboardEvent } from 'react'
+import { Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import type { ComponentType } from 'react'
 import { useTranslations } from 'next-intl'
 import { useLinkStatus } from 'next/link'
 import { Portal as TooltipPortal } from '@radix-ui/react-tooltip'
@@ -31,7 +31,6 @@ import {
   Usage,
   ChevronDown,
   ChevronRight,
-  LogIn,
   LogOut,
   Loader2,
   PanelLeftClose,
@@ -41,6 +40,7 @@ import {
   Search,
   Settings,
   User,
+  ChevronsUpDown,
 } from '@/components/icons'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
@@ -49,13 +49,13 @@ import { Link, usePathname, useRouter } from '@/i18n/navigation'
 import { readClientStorage, writeClientStorage } from '@/lib/client-storage'
 import { BrandLogo } from '@/components/brand-logo'
 import { BRAND_NAME } from '@/lib/brand'
-import { SURFACE_THEMES } from '@/lib/theme-surface'
 import { cn } from '@/lib/utils'
-import { ModeToggle } from '@/components/mode-toggle'
-import { ThemeCustomizer } from '@/components/theme-customizer'
+import { ThemeAppearancePanel, ThemeCustomizer } from '@/components/theme-customizer'
+import { RecentConversations } from '@/components/recent-conversations'
 import { useAuth } from '@/hooks/use-auth'
-import { useBackendMetaDetails } from '@/hooks/use-backend-meta'
+import { useBackendHealth } from '@/hooks/use-backend-health'
 import { useBackendReady } from '@/hooks/use-backend-ready'
+import { useIsMobile } from '@/hooks/use-media-query'
 import { useTenantAccess } from '@/hooks/use-tenant-access'
 import { useCommandMenuState } from '@/store/command-menu'
 import { TENANT_PERMISSIONS, tenantAccessAllows, type TenantPermission } from '@/lib/tenant-permissions'
@@ -160,8 +160,8 @@ const menuSections: MenuSection[] = [
   },
 ]
 
-const DEFAULT_OPEN_SECTIONS = new Set<SectionId>(['core', 'knowledge', 'ingestion', 'analysis'])
-const OPEN_SECTIONS_STORAGE_KEY = 'mimirq_navbar_open_sections_v2'
+const DEFAULT_OPEN_SECTIONS = new Set<SectionId>(['core'])
+const OPEN_SECTIONS_STORAGE_KEY = 'mimirq_navbar_open_sections_v3'
 const NAVIGATION_PARENT_ROUTES: Record<string, string> = {
   '/knowledge/similarity': '/evaluations',
 }
@@ -187,24 +187,6 @@ function getMostSpecificActiveHref(pathname: string, items: MenuItem[]): string 
 function sectionHasActiveRoute(activeHref: string | null, items: MenuItem[]) {
   if (!activeHref) return false
   return items.some((item) => item.href === activeHref)
-}
-
-function trimmedPrimitiveString(value: unknown): string {
-  if (typeof value === 'string') return value.trim()
-  if (typeof value === 'number' || typeof value === 'boolean' || typeof value === 'bigint') return String(value).trim()
-  return ''
-}
-
-function formatDepStatus(status: unknown): { label: string; className: string } {
-  const label = trimmedPrimitiveString(status) || 'unknown'
-  const lower = label.toLowerCase()
-  if (lower === 'connected' || lower === 'ready') {
-    return { label, className: 'text-success' }
-  }
-  if (lower === 'disabled' || lower === 'not_configured' || lower === 'unknown') {
-    return { label, className: 'text-muted-foreground' }
-  }
-  return { label, className: 'text-destructive' }
 }
 
 function createInitialOpenSections(): Record<SectionId, boolean> {
@@ -278,24 +260,43 @@ export function Navbar({
   setSidebarOpen?: (isOpen: boolean) => void
   variant?: 'default' | 'rail'
 }> = {}) {
-  const navRef = useRef<HTMLElement | null>(null)
   const toggleButtonRef = useRef<HTMLButtonElement | null>(null)
   const firstActionRef = useRef<HTMLButtonElement | null>(null)
-  const prevIsSidebarOpenRef = useRef<boolean | null>(null)
-  const restoreToggleFocusOnCloseRef = useRef(false)
+  const sidebarFocusTargetRef = useRef<'firstAction' | 'toggle' | null>(null)
   const [internalIsOpen, setInternalIsOpen] = useState(true)
+  const isSidebarOpen = externalIsOpen ?? internalIsOpen
+  const setSidebarOpen = externalSetOpen ?? setInternalIsOpen
+  const isMobile = useIsMobile()
+  const isSidebarVisible = variant === 'default' && isSidebarOpen
+  const isSidebarOverlayOpen = isMobile && isSidebarVisible
   const [openSections, setOpenSections] = useState<Record<SectionId, boolean>>(createInitialOpenSections)
   const [hasHydratedOpenSections, setHasHydratedOpenSections] = useState(false)
   const [hasHydratedNavigationAccess, setHasHydratedNavigationAccess] = useState(false)
-  const isSidebarOpen = externalIsOpen ?? internalIsOpen
-  const setSidebarOpen = externalSetOpen ?? setInternalIsOpen
+  const [commandShortcut, setCommandShortcut] = useState('Ctrl K')
+  const [accountView, setAccountView] = useState<'closed' | 'main' | 'appearance'>('closed')
+  const accountMenuOpen = isSidebarVisible && accountView !== 'closed'
+  const previousAccountView = useRef(accountView)
+  const appearanceButtonRef = useRef<HTMLButtonElement>(null)
+
+  useEffect(() => {
+    if (!isSidebarVisible) setAccountView('closed')
+  }, [isSidebarVisible])
+
+  useLayoutEffect(() => {
+    if (previousAccountView.current === 'appearance' && accountView === 'main' && accountMenuOpen)
+      appearanceButtonRef.current?.focus()
+    previousAccountView.current = accountView
+  }, [accountMenuOpen, accountView])
   const pathname = usePathname()
   const router = useRouter()
   const { user, isAuthenticated, isDevMode, logout } = useAuth()
   const t = useTranslations('Navbar')
-  const { data: backendMeta } = useBackendMetaDetails()
   const backendReady = useBackendReady()
   const tenantAccess = useTenantAccess()
+  const canReadBackendHealth = tenantAccessAllows(tenantAccess.data, TENANT_PERMISSIONS.OBSERVABILITY_READ)
+  const backendHealth = useBackendHealth({
+    enabled: canReadBackendHealth,
+  })
   const navigationTenantAccess = hasHydratedNavigationAccess ? tenantAccess.data : undefined
   const allowDevNavigation = hasHydratedNavigationAccess && isDevMode
   const commandMenuOpen = useCommandMenuState((state) => state.open)
@@ -325,120 +326,41 @@ export function Navbar({
   const visibleMenuItems = useMemo(() => visibleMenuSections.flatMap((section) => section.items), [visibleMenuSections])
   const activePathname = NAVIGATION_PARENT_ROUTES[pathname] || pathname
   const activeHref = getMostSpecificActiveHref(activePathname, visibleMenuItems)
-  const readyDetails = backendReady.data ?? null
-  const backendOk = (() => {
-    if (typeof readyDetails?.ok === 'boolean') {
-      return readyDetails.ok
-    } else if (backendReady.isError) {
-      return false
-    } else {
-      return null
-    }
-  })()
-  const lastReadyAt = Math.max(backendReady.dataUpdatedAt || 0, backendReady.errorUpdatedAt || 0) || null
   const closeSidebarOnMobile = useCallback(() => {
-    if (globalThis.window === undefined) return
-    try {
-      if (globalThis.window.matchMedia('(max-width: 768px)').matches) setSidebarOpen(false)
-    } catch {
-      // ignore
-    }
-  }, [setSidebarOpen])
+    if (isSidebarOverlayOpen) setSidebarOpen(false)
+  }, [isSidebarOverlayOpen, setSidebarOpen])
   const toggleSection = useCallback((sectionId: SectionId) => {
-    setOpenSections((current) => ({
-      ...current,
-      [sectionId]: !current[sectionId],
-    }))
-  }, [])
-  const handleSidebarTogglePointerDown = useCallback(() => {
-    restoreToggleFocusOnCloseRef.current = false
-  }, [])
-  const handleSidebarToggleKeyDown = useCallback((event: ReactKeyboardEvent<HTMLButtonElement>) => {
-    if (event.key === 'Enter' || event.key === ' ') {
-      restoreToggleFocusOnCloseRef.current = true
-    }
+    setOpenSections((current) => ({ ...createInitialOpenSections(), [sectionId]: !current[sectionId] }))
   }, [])
   const handleSidebarToggle = useCallback(() => {
-    if (isSidebarOpen) {
-      restoreToggleFocusOnCloseRef.current =
-        restoreToggleFocusOnCloseRef.current || document.activeElement === toggleButtonRef.current
-    } else {
-      restoreToggleFocusOnCloseRef.current = false
-    }
+    sidebarFocusTargetRef.current = isSidebarOpen ? 'toggle' : 'firstAction'
     setSidebarOpen(!isSidebarOpen)
   }, [isSidebarOpen, setSidebarOpen])
 
-  // Accessibility: prevent focus from entering the sidebar when collapsed/hidden.
   useEffect(() => {
-    const el = navRef.current as (HTMLElement & { inert: boolean }) | null
-    if (!el) return
-    const inertNow = !isSidebarOpen
-    try {
-      el.inert = inertNow
-    } catch {
-      // ignore: inert is not supported in all environments
-    }
-  }, [isSidebarOpen])
+    if (!isSidebarOverlayOpen) return
 
-  // Accessibility: close the mobile overlay with Escape.
-  useEffect(() => {
-    if (!isSidebarOpen) return
-    if (globalThis.window === undefined) return
-
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.defaultPrevented) return
-      if (e.key !== 'Escape') return
-      try {
-        // Only treat as an overlay on small screens.
-        if (!globalThis.window.matchMedia('(max-width: 768px)').matches) return
-      } catch {
-        return
-      }
-      e.preventDefault()
-      restoreToggleFocusOnCloseRef.current = true
-      setSidebarOpen(false)
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || event.key !== 'Escape') return
+      event.preventDefault()
+      handleSidebarToggle()
     }
 
-    globalThis.window.addEventListener('keydown', onKeyDown)
-    return () => globalThis.window.removeEventListener('keydown', onKeyDown)
-  }, [isSidebarOpen, setSidebarOpen])
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [handleSidebarToggle, isSidebarOverlayOpen])
 
-  // Accessibility: restore focus to the toggle on close; move focus into the sidebar on open.
-  useEffect(() => {
-    if (globalThis.window === undefined) return
-    if (prevIsSidebarOpenRef.current === null) {
-      prevIsSidebarOpenRef.current = isSidebarOpen
-      return
-    }
-
-    const prev = prevIsSidebarOpenRef.current
-    prevIsSidebarOpenRef.current = isSidebarOpen
-    if (prev === isSidebarOpen) return
-
-    const active = document.activeElement
-    if (isSidebarOpen) {
-      // Only move focus when the user opened the sidebar from the toggle (keyboard).
-      if (active && toggleButtonRef.current && active !== toggleButtonRef.current) return
-      requestAnimationFrame(() => {
-        firstActionRef.current?.focus()
-      })
-      return
-    }
-
-    const navEl = navRef.current
-    const shouldRestore =
-      !active || active === document.body || Boolean(navEl && active instanceof Node && navEl.contains(active))
-    const shouldRestoreToggleFocus = restoreToggleFocusOnCloseRef.current
-    restoreToggleFocusOnCloseRef.current = false
-    if (!shouldRestore || !shouldRestoreToggleFocus) return
-
-    requestAnimationFrame(() => {
-      toggleButtonRef.current?.focus()
-    })
-  }, [isSidebarOpen])
+  useLayoutEffect(() => {
+    const focusTarget = sidebarFocusTargetRef.current
+    sidebarFocusTargetRef.current = null
+    if (variant === 'rail') return
+    if (isSidebarOpen && focusTarget === 'firstAction') firstActionRef.current?.focus()
+    if (!isSidebarOpen && focusTarget === 'toggle') toggleButtonRef.current?.focus()
+  }, [isSidebarOpen, variant])
 
   useEffect(() => {
     setOpenSections(loadOpenSections())
+    setCommandShortcut(/Mac|iPhone|iPad|iPod/.test(navigator.platform) ? '⌘ K' : 'Ctrl K')
     setHasHydratedOpenSections(true)
     // Keep SSR and the first client render structurally identical. Tenant access can
     // be cached on the client, so applying it before mount can reorder/insert links.
@@ -452,7 +374,7 @@ export function Navbar({
     setOpenSections((current) => {
       if (current[activeSection.id]) return current
       return {
-        ...current,
+        ...createInitialOpenSections(),
         [activeSection.id]: true,
       }
     })
@@ -464,95 +386,34 @@ export function Navbar({
     writeClientStorage(OPEN_SECTIONS_STORAGE_KEY, JSON.stringify(openSections))
   }, [hasHydratedOpenSections, openSections])
 
-  // Dev UX: warm up route chunks in the background so first-click navigation feels snappier.
-  useEffect(() => {
-    if (process.env.NODE_ENV === 'production') return
-    if (globalThis.window === undefined) return
-    if (globalThis.navigator?.webdriver) return
-    const key = '__mimirq_routes_prefetched__'
-    const routeCache = globalThis.window as typeof globalThis.window & Record<string, boolean>
-    if (routeCache[key]) return
-    routeCache[key] = true
-
-    const hrefs = visibleMenuItems.map((i) => i.href).filter(Boolean)
-    const prefetchAll = () => {
-      for (const href of hrefs) {
-        if (href === pathname) continue
-        try {
-          router.prefetch(href)
-        } catch {
-          // ignore
-        }
-      }
-    }
-
-    // Prefer idle time to avoid blocking initial render.
-    const w = globalThis.window as Window & {
-      requestIdleCallback?: (
-        callback: (deadline: { didTimeout: boolean; timeRemaining: () => number }) => void,
-        options?: { timeout?: number },
-      ) => number
-      cancelIdleCallback?: (id: number) => void
-    }
-    if (typeof w.requestIdleCallback === 'function') {
-      const id = w.requestIdleCallback(prefetchAll, { timeout: 2000 })
-      return () => w.cancelIdleCallback?.(id)
-    }
-
-    const t = setTimeout(prefetchAll, 800)
-    return () => clearTimeout(t)
-  }, [router, pathname, visibleMenuItems])
-
-  const authMode = String(backendMeta?.features?.auth_mode || '')
-  const vectorBackend = String(backendMeta?.features?.vector_backend || readyDetails?.vector?.backend || '')
-  const buildSha = String(backendMeta?.build?.sha || '')
-  const buildShaShort = buildSha ? buildSha.slice(0, 8) : ''
-  const checkedAtLabel = lastReadyAt ? new Date(lastReadyAt).toLocaleTimeString() : '—'
-
-  const depRows: Array<{ key: string; status: unknown; note?: string; error?: unknown }> = readyDetails
-    ? [
-        {
-          key: 'DB',
-          status: readyDetails.database?.status,
-          error: readyDetails.database?.error,
-        },
-        {
-          key: `Vector (${String(readyDetails.vector?.backend || vectorBackend || '-')})`,
-          status: readyDetails.vector?.status,
-          error: readyDetails.vector?.error,
-        },
-        {
-          key: 'Redis',
-          status: readyDetails.redis?.status,
-          note: (() => {
-            const r = readyDetails.redis
-            if (!r) return undefined
-            if (!r.enabled) return 'disabled'
-            const required = Boolean(r.required)
-            const cache = Boolean(r.embedding_cache_enabled)
-            return `${required ? 'required' : 'optional'}${cache ? ', cache' : ''}`
-          })(),
-          error: readyDetails.redis?.error,
-        },
-        {
-          key: 'MinIO',
-          status: readyDetails.minio?.status,
-          note: (() => {
-            const m = readyDetails.minio
-            if (!m) return undefined
-            if (!m.enabled) return 'disabled'
-            return m.bucket ? `bucket: ${m.bucket}` : undefined
-          })(),
-          error: readyDetails.minio?.error,
-        },
-      ]
-    : []
-
+  const profileName = user?.username?.trim()
   const userDisplayName =
-    user?.username || user?.email || (isDevMode ? t('user.developerMode') : t('user.unauthenticatedName'))
-  const userInitial = Array.from(user?.username?.trim() || user?.email?.trim() || '')[0]?.toLocaleUpperCase()
-  const userStatusLine = isAuthenticated ? user?.email || t('user.onlineStatus') : t('user.offlineEnvironment')
+    profileName !== undefined && profileName !== ''
+      ? profileName
+      : (user?.email ?? (isDevMode ? t('user.workspace') : t('user.account')))
+  const userInitial = Array.from(userDisplayName)[0]?.toLocaleUpperCase()
+  const userStatusLine = isAuthenticated ? (user?.email ?? t('user.onlineStatus')) : t('user.offlineEnvironment')
+  const cache = canReadBackendHealth && !backendHealth.isError ? backendHealth.data?.redis : undefined
+  const optionalCacheDegraded = cache?.enabled === true && cache.required === false && cache.status === 'disconnected'
+  const serviceStatusKey =
+    backendReady.isError || backendReady.data?.ok === false
+      ? 'statusNotReady'
+      : backendReady.data === undefined
+        ? 'statusChecking'
+        : canReadBackendHealth && backendHealth.isError
+          ? 'statusUnknown'
+          : optionalCacheDegraded
+            ? 'statusDegraded'
+            : 'statusReady'
+  const serviceStatus = t(`deps.${serviceStatusKey}`)
+  const serviceStatusClass =
+    serviceStatusKey === 'statusReady'
+      ? 'bg-success'
+      : serviceStatusKey === 'statusNotReady'
+        ? 'bg-destructive'
+        : 'bg-warning'
   const canOpenDiagnostics = canAccessPermission(TENANT_PERMISSIONS.OBSERVABILITY_READ)
+  const canOpenSettings = canAccessPermission(TENANT_PERMISSIONS.SETTINGS_READ)
 
   if (variant === 'rail') {
     return (
@@ -599,20 +460,22 @@ export function Navbar({
               })}
           </div>
           <div className="flex shrink-0 flex-col items-center border-t border-sidebar-border py-3">
-            <Link
-              href="/settings"
-              aria-label={t('items.settings')}
-              title={t('items.settings')}
-              aria-current={activeHref === '/settings' ? 'page' : undefined}
-              className={cn(
-                'grid size-10 place-items-center rounded-md focus-ring',
-                activeHref === '/settings'
-                  ? 'bg-muted text-foreground'
-                  : 'text-muted-foreground hover:bg-muted hover:text-foreground',
-              )}
-            >
-              <Settings className="size-[18px]" />
-            </Link>
+            {canOpenSettings ? (
+              <Link
+                href="/settings"
+                aria-label={t('items.settings')}
+                title={t('items.settings')}
+                aria-current={activeHref === '/settings' ? 'page' : undefined}
+                className={cn(
+                  'grid size-10 place-items-center rounded-md focus-ring',
+                  activeHref === '/settings'
+                    ? 'bg-muted text-foreground'
+                    : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+                )}
+              >
+                <Settings className="size-[18px]" />
+              </Link>
+            ) : null}
             <ThemeCustomizer
               trigger={
                 <Button
@@ -627,7 +490,6 @@ export function Navbar({
                 </Button>
               }
             />
-            <ModeToggle />
           </div>
         </nav>
       </TooltipProvider>
@@ -640,20 +502,17 @@ export function Navbar({
       {isSidebarOpen ? (
         <button
           type="button"
+          tabIndex={-1}
           aria-label={t('toolbar.sidebarClose')}
           className="fixed inset-0 z-40 bg-black/50 transition-opacity md:hidden border-0 p-0 focus:outline-none"
-          onClick={() => {
-            restoreToggleFocusOnCloseRef.current = false
-            setSidebarOpen(false)
-          }}
+          onClick={handleSidebarToggle}
         />
       ) : null}
 
       <nav
         id="mimirq-sidebar"
-        ref={navRef}
         aria-label={t('toolbar.navLabel')}
-        aria-hidden={!isSidebarOpen}
+        inert={!isSidebarOpen}
         className={cn(
           'peer flex-shrink-0 border-r border-sidebar-border/60 bg-sidebar text-sidebar-foreground flex flex-col transition-transform duration-200 ease-out motion-reduce:transition-none z-50',
           'fixed inset-y-0 left-0 md:relative', // Mobile: fixed, Desktop: relative
@@ -677,8 +536,6 @@ export function Navbar({
               variant="ghost"
               size="icon"
               className="ml-auto size-9 rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
-              onPointerDown={handleSidebarTogglePointerDown}
-              onKeyDown={handleSidebarToggleKeyDown}
               onClick={handleSidebarToggle}
               aria-controls="mimirq-sidebar"
               aria-expanded={true}
@@ -730,277 +587,210 @@ export function Navbar({
                 <p className="truncate text-body font-medium">{t('command.triggerLabel')}</p>
               </div>
             </div>
-            <kbd className="shrink-0 text-micro font-normal text-muted-foreground">⌘K</kbd>
+            <kbd className="shrink-0 text-micro font-normal tabular-nums text-muted-foreground">{commandShortcut}</kbd>
           </button>
         </div>
 
         {/* 导航菜单 */}
         {/* Allow internal scroll so items are never clipped on short viewports. */}
         <div className="flex-1 min-h-0 px-3 py-2 overflow-y-auto overscroll-contain no-scrollbar">
+          <Suspense fallback={<p className="px-3 py-2 text-xs text-muted-foreground">{t('recent.loading')}</p>}>
+            <RecentConversations enabled={isSidebarOpen} onNavigate={closeSidebarOnMobile} />
+          </Suspense>
           <div className="space-y-4">
-            {visibleMenuSections.map((section) => {
-              const isOpen = openSections[section.id] ?? false
-              const hasActiveItem = sectionHasActiveRoute(activeHref, section.items)
-              const ToggleIcon = isOpen ? ChevronDown : ChevronRight
+            {visibleMenuSections
+              .filter((section) => section.id !== 'core')
+              .map((section) => {
+                const isOpen = openSections[section.id] ?? false
+                const hasActiveItem = sectionHasActiveRoute(activeHref, section.items)
+                const ToggleIcon = isOpen ? ChevronDown : ChevronRight
 
-              return (
-                <section key={section.id} className="space-y-1">
-                  <button
-                    type="button"
-                    className={cn(
-                      'flex w-full items-center justify-between gap-3 rounded-md px-3 py-1.5 text-left transition-colors duration-150 focus-ring',
-                      hasActiveItem
-                        ? 'text-muted-foreground'
-                        : 'text-muted-foreground hover:bg-muted hover:text-foreground',
-                    )}
-                    onClick={() => toggleSection(section.id)}
-                    aria-expanded={isOpen}
-                    aria-controls={`sidebar-section-${section.id}`}
-                  >
-                    <div className="min-w-0">
-                      <p className="text-caption font-medium">{t(section.titleKey)}</p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <ToggleIcon className="size-3.5 shrink-0" />
-                    </div>
-                  </button>
+                return (
+                  <section key={section.id} className="space-y-1">
+                    <button
+                      type="button"
+                      className={cn(
+                        'flex w-full items-center justify-between gap-3 rounded-md px-3 py-1.5 text-left transition-colors duration-150 focus-ring',
+                        hasActiveItem
+                          ? 'text-muted-foreground'
+                          : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+                      )}
+                      onClick={() => toggleSection(section.id)}
+                      aria-expanded={isOpen}
+                      aria-controls={`sidebar-section-${section.id}`}
+                    >
+                      <div className="min-w-0">
+                        <p className="text-xs font-medium">{t(section.titleKey)}</p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <ToggleIcon className="size-3.5 shrink-0" />
+                      </div>
+                    </button>
 
-                  <div
-                    id={`sidebar-section-${section.id}`}
-                    className={cn(
-                      'grid overflow-hidden transition-[grid-template-rows,opacity] duration-300 ease-out',
-                      isOpen ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0',
-                    )}
-                  >
-                    <div className="overflow-hidden">
-                      <div className="space-y-1 pb-1">
-                        {section.items.map((item) => {
-                          const Icon = item.icon
-                          const isActive = activeHref === item.href
+                    <div
+                      id={`sidebar-section-${section.id}`}
+                      inert={!isOpen}
+                      className={cn(
+                        'grid overflow-hidden transition-[grid-template-rows,opacity] duration-300 ease-out',
+                        isOpen ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0',
+                      )}
+                    >
+                      <div className="overflow-hidden">
+                        <div className="space-y-1 pb-1">
+                          {section.items.map((item) => {
+                            const Icon = item.icon
+                            const isActive = activeHref === item.href
 
-                          return (
-                            <div key={item.href}>
-                              <Link
-                                href={item.href}
-                                prefetch={false}
-                                onClick={closeSidebarOnMobile}
-                                aria-current={isActive ? 'page' : undefined}
-                                className={cn(
-                                  'relative flex items-center gap-3 px-3 py-2.5 rounded-md transition-colors duration-150 group focus-ring',
-                                  'before:pointer-events-none before:absolute before:left-1 before:top-2 before:bottom-2 before:w-[3px] before:rounded-full before:transition-all before:duration-200',
-                                  isActive
-                                    ? 'text-sidebar-foreground font-semibold bg-primary/5 shadow-none before:bg-primary'
-                                    : 'font-medium text-sidebar-foreground/80 hover:bg-muted hover:text-sidebar-foreground before:bg-transparent',
-                                )}
-                              >
-                                <Icon
+                            return (
+                              <div key={item.href}>
+                                <Link
+                                  href={item.href}
+                                  prefetch={false}
+                                  onClick={closeSidebarOnMobile}
+                                  aria-current={isActive ? 'page' : undefined}
                                   className={cn(
-                                    'size-4 transition-colors duration-150',
+                                    'relative flex items-center gap-3 px-3 py-2.5 rounded-md transition-colors duration-150 group focus-ring',
+                                    'before:pointer-events-none before:absolute before:left-1 before:top-2 before:bottom-2 before:w-[3px] before:rounded-full before:transition-all before:duration-200',
                                     isActive
-                                      ? 'text-sidebar-foreground'
-                                      : 'text-muted-foreground group-hover:text-sidebar-foreground',
+                                      ? 'text-sidebar-foreground font-medium bg-ring/10 shadow-none before:bg-ring'
+                                      : 'font-normal text-sidebar-foreground/80 hover:bg-muted hover:text-sidebar-foreground before:bg-transparent',
                                   )}
-                                />
-                                <span className="text-sm">{t(item.labelKey)}</span>
-                              </Link>
-                            </div>
-                          )
-                        })}
+                                >
+                                  <Icon
+                                    className={cn(
+                                      'size-4 transition-colors duration-150',
+                                      isActive
+                                        ? 'text-sidebar-foreground'
+                                        : 'text-muted-foreground group-hover:text-sidebar-foreground',
+                                    )}
+                                  />
+                                  <span className="text-sm">{t(item.labelKey)}</span>
+                                </Link>
+                              </div>
+                            )
+                          })}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                </section>
-              )
-            })}
+                  </section>
+                )
+              })}
           </div>
         </div>
 
-        {/* 底部信息 */}
-        <div className="p-3 border-t border-sidebar-border/60 bg-sidebar">
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              aria-label={isAuthenticated ? t('user.openSettings') : t('auth.goToLogin')}
-              title={isAuthenticated ? t('user.openSettings') : t('auth.goToLogin')}
-              className="group flex min-w-0 flex-1 items-center gap-3 rounded-md p-2 text-left transition-colors duration-150 hover:bg-muted focus-ring motion-reduce:transition-none"
-              onClick={() => {
-                if (isAuthenticated) {
-                  router.push('/settings')
-                } else {
-                  router.push('/auth')
-                }
-                closeSidebarOnMobile()
-              }}
-            >
-              <div
-                className="relative flex size-9 shrink-0 items-center justify-center rounded-full border border-sidebar-border bg-secondary text-sm font-medium text-sidebar-foreground"
-                aria-hidden="true"
+        <div className="shrink-0 border-t border-sidebar-border/60 bg-sidebar p-2.5">
+          <Popover open={accountMenuOpen} onOpenChange={(open) => setAccountView(open ? 'main' : 'closed')}>
+            <PopoverTrigger asChild>
+              <button
+                type="button"
+                aria-label={t('user.menu')}
+                className="flex min-h-14 w-full items-center gap-3 rounded-xl px-2.5 py-2 text-left transition-colors hover:bg-muted focus-ring"
               >
-                {isAuthenticated && userInitial ? userInitial : <User className="size-4" />}
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="truncate text-sm font-medium leading-5 text-sidebar-foreground">{userDisplayName}</p>
-                <p className="mt-0.5 truncate text-caption text-muted-foreground">{userStatusLine}</p>
-              </div>
-            </button>
-            <div className="flex flex-col gap-1">
-              <Button
-                variant="ghost"
-                size="icon"
-                className="size-8 rounded-lg hover:bg-destructive/8 hover:text-destructive transition-all duration-200"
-                onClick={() => {
-                  if (isAuthenticated) {
-                    logout()
-                    return
-                  }
-                  router.push('/auth')
-                }}
-                title={isAuthenticated ? t('auth.logout') : t('auth.login')}
-                aria-label={isAuthenticated ? t('auth.logout') : t('auth.login')}
-              >
-                {isAuthenticated ? <LogOut className="size-4" /> : <LogIn className="size-4" />}
-              </Button>
-              <ModeToggle />
-            </div>
-          </div>
-
-          <div className="mt-2">
-            <ThemeCustomizer
-              trigger={
-                <Button
-                  variant="ghost"
-                  className="h-9 w-full justify-start gap-2 rounded-md px-2 text-compact font-medium text-sidebar-foreground/80 shadow-none transition-colors duration-150 hover:bg-muted hover:text-foreground"
-                  title={t('toolbar.appearance')}
-                  aria-label={t('toolbar.appearance')}
-                >
-                  <Palette className="size-4" aria-hidden="true" />
-                  <span>{t('toolbar.appearance')}</span>
-                  <span className="ml-auto text-micro font-medium text-muted-foreground">
-                    {t('toolbar.appearanceHint', { count: SURFACE_THEMES.length })}
-                  </span>
-                </Button>
-              }
-            />
-          </div>
-
-          <div className="mt-2 flex items-center justify-between gap-2">
-            <Popover>
-              <PopoverTrigger asChild>
-                <button
-                  type="button"
-                  className="flex min-h-8 items-center gap-2 rounded-md px-2 text-caption font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-ring"
-                  aria-label={t('deps.openStatus')}
-                  title={t('deps.openStatus')}
-                >
+                <span className="relative grid size-9 shrink-0 place-items-center rounded-full bg-secondary text-sm font-medium text-sidebar-foreground">
+                  {isAuthenticated && userInitial ? userInitial : <User className="size-4" aria-hidden="true" />}
                   <span
+                    title={serviceStatus}
                     aria-hidden="true"
                     className={cn(
-                      'size-1.5 rounded-full',
-                      backendOk === true ? 'bg-success' : backendOk === false ? 'bg-warning' : 'bg-muted-foreground',
+                      'absolute -bottom-0.5 -right-0.5 size-2.5 rounded-full ring-2 ring-sidebar',
+                      serviceStatusClass,
+                      serviceStatusKey === 'statusChecking' && 'animate-pulse motion-reduce:animate-none',
                     )}
                   />
-                  <span>
-                    {backendOk === true
-                      ? t('deps.statusReady')
-                      : backendOk === false
-                        ? t('deps.statusNotReady')
-                        : t('deps.statusChecking')}
-                  </span>
-                </button>
-              </PopoverTrigger>
-              <PopoverContent align="start" side="top" className="w-80">
-                <div className="space-y-3 text-xs">
-                  <div className="flex items-center justify-between">
-                    <p className="font-semibold">{t('deps.ready')}</p>
-                    <span
-                      className={cn(
-                        'font-medium',
-                        (() => {
-                          if (backendOk === true) {
-                            return 'text-success'
-                          } else if (backendOk === false) {
-                            return 'text-destructive'
-                          } else {
-                            return 'text-muted-foreground'
-                          }
-                        })(),
-                      )}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-medium text-sidebar-foreground">{userDisplayName}</span>
+                  <span className="mt-0.5 block truncate text-xs text-muted-foreground">{userStatusLine}</span>
+                </span>
+                <ChevronsUpDown className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+              </button>
+            </PopoverTrigger>
+            <PopoverContent
+              aria-label={accountView === 'appearance' ? t('toolbar.appearance') : t('user.menu')}
+              align="start"
+              side="top"
+              sideOffset={8}
+              collisionPadding={12}
+              className="flex max-h-[min(32rem,var(--radix-popover-content-available-height))] w-80 max-w-[calc(100vw-1.5rem)] flex-col overflow-hidden rounded-xl p-0"
+            >
+              {accountView === 'appearance' ? (
+                <ThemeAppearancePanel onBack={() => setAccountView('main')} />
+              ) : (
+                <div className="min-h-0 overflow-y-auto overscroll-contain p-2">
+                  <div className="border-b border-border/60 px-3 pb-3 pt-2">
+                    <p className="text-sm font-medium">{userDisplayName}</p>
+                    <p className="mt-1 break-words text-xs text-muted-foreground">{userStatusLine}</p>
+                  </div>
+                  {canOpenDiagnostics ? (
+                    <Link
+                      href="/diagnostics"
+                      onClick={() => {
+                        setAccountView('closed')
+                        closeSidebarOnMobile()
+                      }}
+                      className="my-1 flex min-h-12 items-center gap-2.5 rounded-lg px-3 py-2 text-xs hover:bg-muted focus-ring"
                     >
-                      {(() => {
-                        if (backendOk === true) {
-                          return 'OK'
-                        } else if (backendOk === false) {
-                          return 'Down'
-                        } else {
-                          return '...'
-                        }
-                      })()}
-                    </span>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-x-3 gap-y-2 text-[11px] text-muted-foreground">
-                    <div className="flex items-center justify-between gap-2">
-                      <span>Auth</span>
-                      <span className="text-foreground">{authMode || '-'}</span>
+                      <span aria-hidden="true" className={cn('size-2 shrink-0 rounded-full', serviceStatusClass)} />
+                      <span className="min-w-0 flex-1">
+                        <span className="block font-medium">{t('deps.summaryLabel')}</span>
+                        <span className="mt-1 block text-muted-foreground">{serviceStatus}</span>
+                      </span>
+                      <ChevronRight className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+                    </Link>
+                  ) : (
+                    <div className="my-1 flex min-h-12 items-center gap-2.5 px-3 py-2 text-xs">
+                      <span aria-hidden="true" className={cn('size-2 shrink-0 rounded-full', serviceStatusClass)} />
+                      <span>{serviceStatus}</span>
                     </div>
-                    <div className="flex items-center justify-between gap-2">
-                      <span>Vector</span>
-                      <span className="text-foreground">{vectorBackend || '-'}</span>
-                    </div>
-                    <div className="flex items-center justify-between gap-2">
-                      <span>Build</span>
-                      <span className="font-mono text-foreground">{buildShaShort || '-'}</span>
-                    </div>
-                    <div className="flex items-center justify-between gap-2">
-                      <span>Checked</span>
-                      <span className="text-foreground">{checkedAtLabel}</span>
-                    </div>
+                  )}
+                  <div className="border-t border-border/60 pt-1">
+                    <Button
+                      ref={appearanceButtonRef}
+                      type="button"
+                      variant="ghost"
+                      className="h-11 w-full justify-start gap-2.5 px-3 text-sm font-normal"
+                      onClick={() => setAccountView('appearance')}
+                    >
+                      <Palette className="size-4" aria-hidden="true" />
+                      <span className="flex-1 text-left">{t('toolbar.appearance')}</span>
+                      <ChevronRight className="size-3.5 text-muted-foreground" aria-hidden="true" />
+                    </Button>
+                    {canOpenSettings ? (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        className="h-11 w-full justify-start gap-2.5 px-3 text-sm font-normal"
+                        onClick={() => {
+                          setAccountView('closed')
+                          router.push('/settings')
+                          closeSidebarOnMobile()
+                        }}
+                      >
+                        <Settings className="size-4" aria-hidden="true" />
+                        {t('items.settings')}
+                      </Button>
+                    ) : null}
                   </div>
-
-                  <div className="rounded-md border border-border/60 bg-background/40 p-2.5">
-                    {readyDetails ? (
-                      <div className="space-y-2">
-                        {depRows.map((row) => {
-                          const st = formatDepStatus(row.status)
-                          const errText = trimmedPrimitiveString(row.error)
-                          return (
-                            <div key={row.key} className="space-y-0.5">
-                              <div className="flex items-start justify-between gap-2">
-                                <span className="font-medium text-foreground">{row.key}</span>
-                                <span className={cn('font-medium', st.className)}>{st.label}</span>
-                              </div>
-                              {row.note ? <div className="text-[11px] text-muted-foreground">{row.note}</div> : null}
-                              {errText ? (
-                                <div
-                                  className="text-[11px] text-muted-foreground max-w-[260px] truncate"
-                                  title={errText}
-                                >
-                                  {errText}
-                                </div>
-                              ) : null}
-                            </div>
-                          )
-                        })}
-                      </div>
-                    ) : (
-                      <p className="text-[11px] text-muted-foreground">{t('deps.unavailable')}</p>
-                    )}
-                  </div>
-
-                  <div className="flex items-center justify-between pt-1">
-                    {canOpenDiagnostics ? (
-                      <Link href="/diagnostics" className="text-[11px] text-primary hover:underline">
-                        {t('deps.diagnosticsLink')}
-                      </Link>
-                    ) : (
-                      <span className="text-[11px] text-muted-foreground">仅管理员可查看诊断</span>
-                    )}
-                    <span className="text-[11px] text-muted-foreground">{t('deps.requestIdHint')}</span>
-                  </div>
+                  {isAuthenticated && (
+                    <div className="mt-1 border-t border-border/60 pt-1">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        className="h-11 w-full justify-start gap-2.5 px-3 text-sm font-normal text-destructive hover:text-destructive"
+                        onClick={() => {
+                          setAccountView('closed')
+                          logout()
+                        }}
+                      >
+                        <LogOut className="size-4" aria-hidden="true" />
+                        {t('auth.logout')}
+                      </Button>
+                    </div>
+                  )}
                 </div>
-              </PopoverContent>
-            </Popover>
-          </div>
+              )}
+            </PopoverContent>
+          </Popover>
         </div>
       </nav>
 
@@ -1014,8 +804,6 @@ export function Navbar({
           aria-label={t('toolbar.expand')}
           title={t('toolbar.expand')}
           className="fixed left-4 top-4 z-50 size-9 rounded-md bg-card text-muted-foreground shadow-none hover:bg-muted hover:text-foreground"
-          onPointerDown={handleSidebarTogglePointerDown}
-          onKeyDown={handleSidebarToggleKeyDown}
           onClick={handleSidebarToggle}
         >
           <PanelLeftOpen className="size-4" />

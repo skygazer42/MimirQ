@@ -1,7 +1,8 @@
 'use client'
 
-import { Copy, Loader2, Trash2 } from '@/components/icons'
+import { Copy, RefreshCw, Trash2 } from '@/components/icons'
 import { Button } from '@/components/ui/button'
+import { LoadingButton } from '@/components/ui/loading-button'
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
 import {
   AlertDialog,
@@ -12,53 +13,56 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { actionName, resourceTypeName, stamp } from './audit-model'
-import type { AuditController } from './use-audit'
+import { formatAuditJson, formatAuditTimestamp, getAuditActionLabel, getAuditResourceTypeLabel } from './audit-model'
+import type { AuditState } from './use-audit'
 import styles from './audit.module.css'
 
-export function AuditDialogs({ controller: c }: { controller: AuditController }) {
-  const record = c.record
+export function AuditDialogs({ audit }: Readonly<{ audit: AuditState }>) {
+  const record = audit.record
+  const raw = audit.rawResponse
+  const target = audit.deleteTarget
+  const receipt = audit.deleteResult
+  const busy = audit.busy !== null
+  const fields: Array<[string, string | null]> =
+    record === null
+      ? []
+      : [
+          ['时间', `${formatAuditTimestamp(record.created_at).date} ${formatAuditTimestamp(record.created_at).time}`],
+          ['操作者 ID', record.actor_id],
+          ['资源类型', getAuditResourceTypeLabel(record.resource_type)],
+          ['资源 ID', record.resource_id],
+          ['请求 ID', record.request_id],
+          ['来源 IP', record.ip],
+          ['租户', record.tenant_id],
+          ['日志 ID', record.id],
+        ]
   return (
     <>
       <Dialog
-        open={Boolean(record)}
+        open={record !== null}
         onOpenChange={(open) => {
-          if (!open) c.setRecord(null)
+          if (!open) audit.setRecord(null)
         }}
       >
-        <DialogContent className={styles.recordDialog} onCloseAutoFocus={c.restoreRecordOpener}>
-          {record ? (
+        <DialogContent className={styles.recordDialog} onCloseAutoFocus={audit.restoreRecordOpener}>
+          <div className={styles.dialogHeader}>
+            <DialogTitle>{record === null ? '审计记录' : getAuditActionLabel(record.action)}</DialogTitle>
+            <DialogDescription>{record === null ? '审计记录明细' : record.action}</DialogDescription>
+          </div>
+          {record !== null && (
             <>
-              <div className={styles.dialogHeader}>
-                <DialogTitle>{actionName(record.action)}</DialogTitle>
-                <DialogDescription>{record.action}</DialogDescription>
-              </div>
               <div className={styles.dialogBody}>
                 <dl className={styles.recordFields}>
-                  {[
-                    ['时间', `${stamp(record.created_at).date} ${stamp(record.created_at).time}`],
-                    ['操作者 ID', record.actor_id],
-                    ['资源类型', resourceTypeName(record.resource_type)],
-                    ['资源 ID', record.resource_id],
-                    ['请求 ID', record.request_id],
-                    ['来源 IP', record.ip],
-                    ['租户', record.tenant_id],
-                    ['日志 ID', record.id],
-                  ].map(([label, value]) => (
+                  {fields.map(([label, value]) => (
                     <div key={label}>
                       <dt>{label}</dt>
                       <dd>
-                        {value ? (
-                          <button
-                            title={`复制${label}`}
-                            onClick={() => {
-                              void c.copy(value)
-                            }}
-                          >
-                            {value}
-                          </button>
-                        ) : (
+                        {value === null ? (
                           '未记录'
+                        ) : (
+                          <button type="button" title={`复制${label}`} onClick={() => void audit.copy(value)}>
+                            {value.length === 0 ? '""' : value}
+                          </button>
                         )}
                       </dd>
                     </div>
@@ -66,114 +70,137 @@ export function AuditDialogs({ controller: c }: { controller: AuditController })
                 </dl>
                 <dl className={styles.userAgent}>
                   <dt>User-Agent</dt>
-                  <dd>{record.user_agent || '未记录'}</dd>
+                  <dd>
+                    {record.user_agent === null ? '未记录' : record.user_agent.length === 0 ? '""' : record.user_agent}
+                  </dd>
                 </dl>
                 <div className={styles.detailHeading}>
                   <h3>原始明细</h3>
                   <Button
+                    type="button"
                     variant="ghost"
-                    onClick={() => {
-                      void c.copy(c.pretty(record.details))
-                    }}
+                    onClick={() => void audit.copy(formatAuditJson(record.details))}
                   >
                     <Copy />
                     复制明细
                   </Button>
                 </div>
                 <pre className={styles.json} tabIndex={0} aria-label="审计原始明细">
-                  {c.pretty(record.details)}
+                  {formatAuditJson(record.details)}
                 </pre>
               </div>
               <div className={styles.dialogFooter}>
-                {c.canManage ? (
+                {audit.canManage && (
                   <Button
+                    type="button"
                     variant="ghost"
                     className={styles.deleteAction}
-                    disabled={Boolean(c.busy)}
-                    onClick={(event) => c.askDelete([record.id], event.currentTarget)}
+                    disabled={busy || audit.showingPrevious}
+                    onClick={(event) => audit.askDelete([record.id], event.currentTarget)}
                   >
                     <Trash2 />
                     删除记录
                   </Button>
-                ) : null}
+                )}
                 <span className={styles.spacer} />
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    void c.copy(c.pretty(record))
-                  }}
-                >
+                <Button type="button" variant="outline" onClick={() => void audit.copy(formatAuditJson(record))}>
                   <Copy />
                   复制记录
                 </Button>
-                <Button onClick={() => c.setRecord(null)}>关闭</Button>
+                <Button type="button" onClick={() => audit.setRecord(null)}>
+                  关闭
+                </Button>
               </div>
             </>
-          ) : null}
+          )}
         </DialogContent>
       </Dialog>
-      <Dialog open={c.rawOpen} onOpenChange={c.setRawOpen}>
-        <DialogContent className={styles.recordDialog} onCloseAutoFocus={c.restoreOpener}>
+      <Dialog
+        open={raw !== null}
+        onOpenChange={(open) => {
+          if (!open) audit.setRawResponse(null)
+        }}
+      >
+        <DialogContent className={styles.recordDialog} onCloseAutoFocus={audit.restoreOpener}>
           <div className={styles.dialogHeader}>
             <DialogTitle>原始响应</DialogTitle>
-            <DialogDescription>当前筛选与当前页返回的审计数据。</DialogDescription>
+            <DialogDescription>打开此窗口时所读取的筛选、页范围与服务器响应。</DialogDescription>
           </div>
-          <div className={styles.dialogBody}>
-            <pre className={styles.json} tabIndex={0}>
-              {c.pretty(c.logs.data ?? null)}
-            </pre>
-          </div>
-          <div className={styles.dialogFooter}>
-            <Button
-              variant="outline"
-              onClick={() => {
-                void c.copy(c.pretty(c.logs.data ?? null))
-              }}
-            >
-              <Copy />
-              复制响应
-            </Button>
-            <span className={styles.spacer} />
-            <Button onClick={() => c.setRawOpen(false)}>关闭</Button>
-          </div>
+          {raw !== null && (
+            <>
+              <div className={styles.dialogBody}>
+                <details>
+                  <summary>请求范围</summary>
+                  <pre className={styles.json}>{formatAuditJson(raw.params)}</pre>
+                </details>
+                <pre className={styles.json} tabIndex={0}>
+                  {formatAuditJson(raw.data)}
+                </pre>
+              </div>
+              <div className={styles.dialogFooter}>
+                <Button type="button" variant="outline" onClick={() => void audit.copy(formatAuditJson(raw.data))}>
+                  <Copy />
+                  复制响应
+                </Button>
+                <span className={styles.spacer} />
+                <Button type="button" onClick={() => audit.setRawResponse(null)}>
+                  关闭
+                </Button>
+              </div>
+            </>
+          )}
         </DialogContent>
       </Dialog>
       <AlertDialog
-        open={Boolean(c.deleteTarget)}
+        open={target !== null}
         onOpenChange={(open) => {
-          if (!open && c.busy !== 'delete') c.setDeleteTarget(null)
+          if (!open) audit.closeDelete()
         }}
       >
-        <AlertDialogContent className={styles.confirmDialog} onCloseAutoFocus={c.restoreDeleteOpener}>
+        <AlertDialogContent
+          className={styles.confirmDialog}
+          onCloseAutoFocus={audit.restoreDeleteOpener}
+          onEscapeKeyDown={(event) => {
+            if (busy) event.preventDefault()
+          }}
+        >
           <AlertDialogHeader>
-            <AlertDialogTitle>确认删除审计日志</AlertDialogTitle>
+            <AlertDialogTitle>{audit.deletionConfirmed ? '删除已确认' : '确认删除审计日志'}</AlertDialogTitle>
             <AlertDialogDescription>
-              将删除{c.deleteTarget?.length === 1 ? '这条' : `已选 ${c.deleteTarget?.length ?? 0} 条`}
-              审计日志。此操作不可撤销，删除操作本身会生成新的审计记录。
+              {target !== null &&
+                (audit.deletionConfirmed
+                  ? '所列日志已确认删除或原已不存在，请重新读取列表核对当前记录。'
+                  : `将处理所列 ${target.length} 条审计日志。删除不可撤销，删除操作本身会生成新的审计记录。`)}
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <div className={styles.confirmIds}>
-            {c.deleteTarget?.map((id) => (
-              <span key={id}>{id}</span>
-            ))}
-          </div>
-          {c.deleteError ? (
-            <p className={styles.fieldError} role="alert">
-              {c.deleteError}
+          {target !== null && (
+            <div className={styles.confirmIds}>
+              {target.map((id) => (
+                <span key={id}>{id}</span>
+              ))}
+            </div>
+          )}
+          {receipt !== null && (
+            <p>
+              本次已确认删除 {receipt.deleted} 条，{receipt.missing} 条原已不存在。
             </p>
-          ) : null}
+          )}
+          {audit.deleteError !== undefined && (
+            <p className={styles.fieldError} role="alert">
+              {audit.deleteError}
+            </p>
+          )}
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={c.busy === 'delete'}>取消</AlertDialogCancel>
-            <Button
-              variant="destructive"
-              disabled={!c.canManage || Boolean(c.busy)}
-              onClick={() => {
-                void c.deleteRecords()
-              }}
+            <AlertDialogCancel disabled={busy}>{audit.deletionConfirmed ? '关闭' : '取消'}</AlertDialogCancel>
+            <LoadingButton
+              loading={busy}
+              variant={audit.deletionConfirmed ? 'default' : 'destructive'}
+              disabled={!audit.deletionConfirmed && !audit.canManage}
+              onClick={() => void (audit.deletionConfirmed ? audit.retryDeleteRefresh() : audit.deleteRecords())}
             >
-              {c.busy === 'delete' ? <Loader2 className="animate-spin motion-reduce:animate-none" /> : <Trash2 />}
-              {c.busy === 'delete' ? '正在删除' : '确认删除'}
-            </Button>
+              {audit.deletionConfirmed ? <RefreshCw /> : <Trash2 />}
+              {audit.deletionConfirmed ? '重新读取列表' : '确认删除'}
+            </LoadingButton>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

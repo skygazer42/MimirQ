@@ -1,7 +1,7 @@
 from langchain_core.documents import Document
 
-from app.rag.chunking.strategies.maven_pom import MavenPOMChunker, _iter_records
-from app.rag.chunking.strategies.toml_config import TOMLConfigChunker, _parse_toml_key_line
+from app.rag.ingestion.chunking.strategies.config.maven_pom import MavenPOMChunker, _iter_records
+from app.rag.ingestion.chunking.strategies.config.toml_config import TOMLConfigChunker, _parse_toml_key_line
 
 
 def test_maven_pom_chunker_preserves_preamble_records_and_artifacts() -> None:

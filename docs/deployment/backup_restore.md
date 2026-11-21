@@ -4,7 +4,7 @@
 
 - Postgres（元数据/审计日志/评估结果等）
 - MinIO（对象存储：文档/图片等，取决于部署开关）
-- 向量库（Milvus / Qdrant / pgvector，取决于 `VECTOR_BACKEND`）
+- 向量库（Milvus，取决于 `VECTOR_BACKEND`）
 
 > 重要：不同团队的合规/成本/恢复时长（RTO/RPO）目标不同。你需要先明确：哪些数据必须“原样恢复”，哪些可以“恢复后重算”。
 
@@ -106,7 +106,7 @@ mc mirror --overwrite backups/minio/<bucket-name> mimirq-minio/<bucket-name>
 
 ---
 
-## 3) 向量库（Milvus / Qdrant / pgvector）
+## 3) 向量库（Milvus）
 
 ### 3.1) 原则：先确认你们的 `VECTOR_BACKEND`
 

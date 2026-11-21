@@ -11,7 +11,7 @@ from fastapi import UploadFile
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.api.schemas.documents import DocumentPipelineOptions
-from app.core.model_execution import reject_retired_provider
+from app.infrastructure.model_policy import reject_retired_provider
 
 PipelinePluginStage = Literal["governance", "chunk", "kg"]
 PipelinePluginParamValue = str | int | float | bool | None
@@ -36,19 +36,24 @@ class ImageInfo(BaseModel):
 
 class PDFQualityScore(BaseModel):
     """
-    PDF quality score (sampled from first 3 pages).
+    PDF quality score from a configurable page sample.
 
     Scoring dimensions:
-    - text_quality_score (50%): Text extraction quality
-    - format_consistency_score (30%): Format consistency
+    - text_quality_score (40%): Text extraction quality
+    - format_consistency_score (25%): Format consistency
     - table_quality_score (20%): Table completeness
+    - reading_order_score (15%): Reading-order consistency
+
+    An unavailable reading-order score remains None; the other weights are normalized to sum to one.
     """
 
     score: float = Field(description="Overall score 0-1, higher is cleaner")
     text_quality_score: float = Field(description="Text extraction quality (0-1)")
     format_consistency_score: float = Field(description="Format consistency (0-1)")
     table_quality_score: float = Field(description="Table completeness (0-1)")
-    reading_order_score: float | None = Field(default=None, description="Reading-order consistency (0-1)")
+    reading_order_score: float | None = Field(
+        default=None, description="Reading-order consistency (0-1); None when no measurement is available"
+    )
     is_scanned: bool = Field(description="Whether it is a scanned document")
     page_count: float = Field(description="Total page count")
 

@@ -1,4 +1,4 @@
-export type ChunkKeyboardNavigationInput = {
+type ChunkKeyboardNavigationInput = {
   key: string
   matchCount: number
   matchCursor: number
@@ -6,8 +6,7 @@ export type ChunkKeyboardNavigationInput = {
   highlightIndex: number
 }
 
-export type ChunkKeyboardNavigationAction =
-  { type: 'match'; nextIndex: number } | { type: 'chunk'; nextIndex: number } | null
+type ChunkKeyboardNavigationAction = { type: 'match'; nextIndex: number } | { type: 'chunk'; nextIndex: number } | null
 
 function normalizeLoopIndex(value: number, length: number) {
   return ((value % length) + length) % length

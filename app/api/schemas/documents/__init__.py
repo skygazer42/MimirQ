@@ -1,28 +1,6 @@
 """Public document, ingestion and folder API contracts."""
 
-from app.api.schemas.documents.folders import (
-    DocumentFolderNode,
-    DocumentFolderQuery,
-    DocumentFolderTreeResponse,
-)
-from app.api.schemas.documents.health import (
-    DocumentHealthCard,
-    DocumentHealthChunkCoverage,
-    DocumentHealthChunking,
-    DocumentHealthParsing,
-    DocumentHealthQuery,
-    DocumentHealthRetrievalHits,
-    DocumentHealthSemanticQualitySummary,
-)
-from app.api.schemas.documents.ingestion import (
-    DocumentPreviewForm,
-    LocalHtmlIngestRequest,
-    PipelineOptionOverrides,
-    UploadDocumentFormFields,
-    UploadDocumentsBatchFormFields,
-    UrlUploadRequest,
-)
-from app.api.schemas.documents.models import (
+from app.api.schemas.documents.document import (
     BatchTaskStatus,
     BatchUploadRequest,
     BatchUploadResponse,
@@ -95,6 +73,28 @@ from app.api.schemas.documents.models import (
     ManualChunkCreate,
     ManualDocumentCreate,
     ParsedSegment,
+)
+from app.api.schemas.documents.folders import (
+    DocumentFolderNode,
+    DocumentFolderQuery,
+    DocumentFolderTreeResponse,
+)
+from app.api.schemas.documents.health import (
+    DocumentHealthCard,
+    DocumentHealthChunkCoverage,
+    DocumentHealthChunking,
+    DocumentHealthParsing,
+    DocumentHealthQuery,
+    DocumentHealthRetrievalHits,
+    DocumentHealthSemanticQualitySummary,
+)
+from app.api.schemas.documents.ingestion import (
+    DocumentPreviewForm,
+    LocalHtmlIngestRequest,
+    PipelineOptionOverrides,
+    UploadDocumentFormFields,
+    UploadDocumentsBatchFormFields,
+    UrlUploadRequest,
 )
 from app.api.schemas.documents.qa import (
     DocumentQAGenerateRequest,

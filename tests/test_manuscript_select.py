@@ -4,8 +4,8 @@ from collections.abc import Iterable
 import pytest
 from langchain_core.documents import Document
 
-import app.rag.chunking.strategies.manuscript as manuscript_module
-from app.rag.chunking.strategies.manuscript import ManuscriptChunker
+import app.rag.ingestion.chunking.strategies.manuscript as manuscript_module
+from app.rag.ingestion.chunking.strategies.manuscript import ManuscriptChunker
 
 if not hasattr(dt, "UTC"):
     dt.UTC = dt.timezone.utc

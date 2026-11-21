@@ -2,13 +2,15 @@
 
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import { HighlightedText } from '@/components/ui/highlighted-text'
 import { cn } from '@/lib/utils'
 import type { DocumentChunk } from '@/types/backend'
 import { Copy, Link2, Loader2, Pencil, Trash2 } from '@/components/icons'
 
-import { HighlightLayer } from './highlight-layer'
+import type { CitationSnapshot, DocumentChunkLocation } from './document-viewer-models'
 
 type DocumentChunkCardProps = {
+  id?: string
   chunk: DocumentChunk
   query: string
   isActive?: boolean
@@ -16,13 +18,67 @@ type DocumentChunkCardProps = {
   canEditChunks: boolean
   chunkEditorSubmitting: boolean
   chunkDeleteSubmitting: string | null
-  onCopyContent: (content: string) => void
-  onCopyLink: (chunk: DocumentChunk) => void
+  onCopyContent: (content: string) => Promise<void>
+  onCopyLink: (location: DocumentChunkLocation) => Promise<void>
   onEdit: (chunk: DocumentChunk) => void
-  onDelete: (chunk: DocumentChunk) => void
+  onDelete: (chunk: DocumentChunk) => Promise<void>
+}
+
+type CitationSnapshotCardProps = {
+  snapshot: CitationSnapshot
+  query: string
+  onCopyContent: (content: string) => Promise<void>
+  onCopyLink: (location: DocumentChunkLocation) => Promise<void>
+}
+
+export function CitationSnapshotCard({
+  snapshot,
+  query,
+  onCopyContent,
+  onCopyLink,
+}: Readonly<CitationSnapshotCardProps>) {
+  return (
+    <section aria-label="对话引用" className="rounded-xl border border-border bg-background p-4">
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <span>对话引用</span>
+          <span>{typeof snapshot.chunkIndex === 'number' ? `#${snapshot.chunkIndex}` : '序号未知'}</span>
+          {snapshot.pageNumber == null ? null : <span>P.{snapshot.pageNumber}</span>}
+        </div>
+        <div className="flex items-center gap-1">
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            onClick={() => onCopyContent(snapshot.content)}
+            aria-label="复制引用原文"
+            title="复制引用原文"
+          >
+            <Copy className="size-4" />
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            onClick={() =>
+              onCopyLink({ id: snapshot.chunkId, start_char: snapshot.range?.start, end_char: snapshot.range?.end })
+            }
+            aria-label="复制定位链接"
+            title="复制定位链接"
+          >
+            <Link2 className="size-4" />
+          </Button>
+        </div>
+      </div>
+      <p className="font-mono text-sm leading-relaxed text-foreground/90 whitespace-pre-wrap">
+        {snapshot.content.length === 0 ? '引用原文为空' : <HighlightedText content={snapshot.content} query={query} />}
+      </p>
+    </section>
+  )
 }
 
 export function DocumentChunkCard({
+  id,
   chunk,
   query,
   isActive = false,
@@ -37,9 +93,9 @@ export function DocumentChunkCard({
 }: Readonly<DocumentChunkCardProps>) {
   return (
     <div
-      id={`chunk-${chunk.id}`}
+      id={id}
       className={cn(
-        'group rounded-xl border p-4 transition-colors transition-shadow duration-200 motion-reduce:transition-none',
+        'group rounded-xl border p-4 transition-[background-color,border-color,box-shadow] duration-200 motion-reduce:transition-none',
         isActive
           ? 'bg-primary/5 border-primary shadow-[0_0_0_1px_rgba(var(--primary),0.2)] ring-1 ring-primary/20'
           : 'bg-background border-border hover:border-primary/30 hover:shadow-sm',
@@ -56,7 +112,9 @@ export function DocumentChunkCard({
           <div
             className={cn(
               'flex items-center gap-1',
-              showHoverActions ? 'opacity-100 transition-opacity lg:opacity-0 lg:group-hover:opacity-100' : '',
+              showHoverActions
+                ? 'opacity-100 transition-opacity lg:opacity-0 lg:group-hover:opacity-100 lg:group-focus-within:opacity-100'
+                : '',
             )}
           >
             <Button
@@ -122,7 +180,7 @@ export function DocumentChunkCard({
         </div>
       </div>
       <p className="font-mono text-sm leading-relaxed text-foreground/90 whitespace-pre-wrap">
-        <HighlightLayer content={chunk.content} query={query} />
+        <HighlightedText content={chunk.content} query={query} />
       </p>
     </div>
   )

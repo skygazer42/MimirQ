@@ -5,10 +5,10 @@ function main() {
   const frontend = parseFrontendRoutes()
 
   const missing = []
-  for (const r of frontend) {
-    const key = `${r.method} ${r.path}`
+  for (const route of frontend) {
+    const key = `${route.method} ${route.path}`
     if (!backend.has(key)) {
-      missing.push({ ...r, key })
+      missing.push({ ...route, key })
     }
   }
 
@@ -18,8 +18,8 @@ function main() {
   }
 
   console.error('[api-contract] FAIL: missing backend routes for web calls:')
-  for (const m of missing) {
-    console.error(`- ${m.key}  (from ${m.src})`)
+  for (const route of missing) {
+    console.error(`- ${route.key}  (from ${route.src})`)
   }
   process.exitCode = 1
 }

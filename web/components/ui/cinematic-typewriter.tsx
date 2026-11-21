@@ -2,7 +2,7 @@
 
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import dynamic from 'next/dynamic'
-import { startTransition, useEffect, useMemo, useRef, useState, type ComponentPropsWithoutRef } from 'react'
+import { startTransition, useEffect, useRef, useState, type ComponentPropsWithoutRef } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { AuthImage } from '@/components/auth-image'
@@ -14,11 +14,8 @@ const CinematicCodeBlock = dynamic(() => import('./cinematic-code-block').then((
   ssr: false,
 })
 
-// Typing configuration (ms).
-// Keep it deterministic and relatively low-frequency to reduce layout jitter while streaming.
 const MIN_UNIT_DELAY_MS = 12
 const MAX_UNIT_DELAY_MS = 22
-const STREAM_WAIT_MS = 50
 const NEWLINE_DELAY_MS = 60
 const PUNCTUATION_DELAY_MS = 140
 
@@ -55,7 +52,7 @@ function CinematicMarkdownOrderedList({ children }: MarkdownChildrenProps) {
 
 function CinematicMarkdownLink({ href, children }: MarkdownLinkProps) {
   const safeHref = sanitizeMarkdownHref(href)
-  if (!safeHref) return <span className="text-muted-foreground">{children}</span>
+  if (safeHref === null) return <span className="text-muted-foreground">{children}</span>
 
   return (
     <a
@@ -70,13 +67,13 @@ function CinematicMarkdownLink({ href, children }: MarkdownLinkProps) {
 }
 
 function CinematicMarkdownImage({ src, alt }: MarkdownImageProps) {
-  const resolved = resolveMarkdownImageSrc(typeof src === 'string' ? src : '')
-  if (!resolved) return null
+  const resolved = resolveMarkdownImageSrc(src)
+  if (resolved === null) return null
 
   return (
     <AuthImage
       src={resolved}
-      alt={alt || 'image'}
+      alt={alt ?? 'image'}
       width={1200}
       height={800}
       unoptimized
@@ -88,7 +85,7 @@ function CinematicMarkdownImage({ src, alt }: MarkdownImageProps) {
 }
 
 function CinematicMarkdownCode({ className, children, ...props }: ComponentPropsWithoutRef<'code'>) {
-  const match = /language-(\w+)/.exec(className || '')
+  const match = className?.match(/language-(\w+)/)
   if (match) {
     return <CinematicCodeBlock language={match[1]} code={String(children).replace(/\n$/, '')} />
   }
@@ -109,10 +106,6 @@ const CINEMATIC_MARKDOWN_COMPONENTS = {
   ul: CinematicMarkdownList,
 }
 
-function randomDelay(minMs: number, maxMs: number) {
-  return randomIntInclusive(minMs, maxMs)
-}
-
 function isAsciiWordChar(char: string) {
   return /\w/.test(char)
 }
@@ -121,30 +114,20 @@ function isWhitespace(char: string) {
   return char === ' ' || char === '\t'
 }
 
-function readCodePointAt(text: string, index: number): { char: string; nextIndex: number } {
-  const cp = text.codePointAt(index)
-  if (cp == null) return { char: '', nextIndex: index }
-  const char = String.fromCodePoint(cp)
-  const nextIndex = index + (cp > 0xffff ? 2 : 1)
-  return { char, nextIndex }
-}
-
 function computeNextTypingStep(text: string, startIndex: number): { nextIndex: number; delayMs: number } {
-  if (startIndex >= text.length) return { nextIndex: startIndex, delayMs: STREAM_WAIT_MS }
-
   // Group ASCII words to reduce re-render frequency while keeping a "token-ish" feel.
   const head = text[startIndex]
   if (isAsciiWordChar(head)) {
     let idx = startIndex + 1
     while (idx < text.length && isAsciiWordChar(text[idx])) idx += 1
-    return { nextIndex: idx, delayMs: randomDelay(MIN_UNIT_DELAY_MS, MAX_UNIT_DELAY_MS) }
+    return { nextIndex: idx, delayMs: randomIntInclusive(MIN_UNIT_DELAY_MS, MAX_UNIT_DELAY_MS) }
   }
 
   // Group consecutive spaces/tabs.
   if (isWhitespace(head)) {
     let idx = startIndex + 1
     while (idx < text.length && isWhitespace(text[idx])) idx += 1
-    return { nextIndex: idx, delayMs: randomDelay(MIN_UNIT_DELAY_MS, MAX_UNIT_DELAY_MS) }
+    return { nextIndex: idx, delayMs: randomIntInclusive(MIN_UNIT_DELAY_MS, MAX_UNIT_DELAY_MS) }
   }
 
   // Newline: a tiny pause so paragraph boundaries feel intentional.
@@ -152,13 +135,13 @@ function computeNextTypingStep(text: string, startIndex: number): { nextIndex: n
     return { nextIndex: startIndex + 1, delayMs: NEWLINE_DELAY_MS }
   }
 
-  // Default: one code point (good for CJK + punctuation).
-  const { char, nextIndex } = readCodePointAt(text, startIndex)
-  let delayMs = randomDelay(MIN_UNIT_DELAY_MS, MAX_UNIT_DELAY_MS)
-  if (['.', '!', '?', '。', '！', '？', ',', '，', '、', ':', '：', ';', '；'].includes(char)) {
+  // A code point may occupy two UTF-16 code units.
+  const [character] = text.slice(startIndex, startIndex + 2)
+  let delayMs = randomIntInclusive(MIN_UNIT_DELAY_MS, MAX_UNIT_DELAY_MS)
+  if (['.', '!', '?', '。', '！', '？', ',', '，', '、', ':', '：', ';', '；'].includes(character)) {
     delayMs += PUNCTUATION_DELAY_MS
   }
-  return { nextIndex, delayMs }
+  return { nextIndex: startIndex + character.length, delayMs }
 }
 
 export function CinematicTypewriter({
@@ -176,9 +159,8 @@ export function CinematicTypewriter({
   const contentRef = useRef(content)
   const streamingRef = useRef(isStreaming)
   const onCompleteRef = useRef(onComplete)
-  const displayedRef = useRef(displayedContent)
-  const pendingRef = useRef(pendingToken)
-  const indexRef = useRef(0)
+  const displayedRef = useRef('')
+  const pendingRef = useRef('')
   const timeoutRef = useRef<number | null>(null)
   const completedRef = useRef(false)
   const tickRef = useRef<(() => void) | null>(null)
@@ -198,39 +180,28 @@ export function CinematicTypewriter({
   }, [onComplete])
 
   useEffect(() => {
-    displayedRef.current = displayedContent
-  }, [displayedContent])
-
-  useEffect(() => {
-    pendingRef.current = pendingToken
-  }, [pendingToken])
-
-  useEffect(() => {
     if (reduceMotion) return
 
     // Streaming-safe typing loop: always reads latest content via refs, so appends keep flowing.
     function resetIfReplaced() {
       const full = contentRef.current
       const currentDisplayed = displayedRef.current + pendingRef.current
-      if (currentDisplayed && !full.startsWith(currentDisplayed)) {
-        indexRef.current = 0
-        completedRef.current = false
-        displayedRef.current = ''
-        pendingRef.current = ''
-        startTransition(() => setDisplayedContent(''))
-        startTransition(() => setPendingToken(''))
-      }
+      if (full.startsWith(currentDisplayed)) return
+      completedRef.current = false
+      displayedRef.current = ''
+      pendingRef.current = ''
+      startTransition(() => {
+        setDisplayedContent('')
+        setPendingToken('')
+      })
     }
 
     function schedule(delayMs: number) {
-      if (timeoutRef.current != null) {
-        globalThis.window.clearTimeout(timeoutRef.current)
-      }
-      timeoutRef.current = globalThis.window.setTimeout(tick, Math.max(0, delayMs))
+      timeoutRef.current = globalThis.window.setTimeout(tick, delayMs)
     }
 
     function tick() {
-      if (reduceMotion) return
+      timeoutRef.current = null
       resetIfReplaced()
 
       const full = contentRef.current
@@ -239,24 +210,21 @@ export function CinematicTypewriter({
         const nextDisplayed = displayedRef.current + buffered
         displayedRef.current = nextDisplayed
         pendingRef.current = ''
-        startTransition(() => setDisplayedContent(nextDisplayed))
-        startTransition(() => setPendingToken(''))
+        startTransition(() => {
+          setDisplayedContent(nextDisplayed)
+          setPendingToken('')
+        })
       }
 
-      const idx = indexRef.current
+      const startIndex = displayedRef.current.length
 
-      if (idx >= full.length) {
+      if (startIndex >= full.length) {
         if (streamingRef.current) {
           setIsTyping(true)
-          schedule(STREAM_WAIT_MS)
           return
         }
 
         setIsTyping(false)
-        if (timeoutRef.current != null) {
-          globalThis.window.clearTimeout(timeoutRef.current)
-          timeoutRef.current = null
-        }
 
         if (!completedRef.current) {
           completedRef.current = true
@@ -266,15 +234,15 @@ export function CinematicTypewriter({
       }
 
       setIsTyping(true)
-      const step = computeNextTypingStep(full, idx)
-      const nextIndex = Math.min(full.length, Math.max(idx, step.nextIndex))
-      const token = full.slice(idx, nextIndex)
-      indexRef.current = nextIndex
+      const { nextIndex, delayMs } = computeNextTypingStep(full, startIndex)
+      const token = full.slice(startIndex, nextIndex)
       pendingRef.current = token
 
-      startTransition(() => setPendingToken(token))
-      startTransition(() => setPendingTokenKey((prev) => prev + 1))
-      schedule(step.delayMs)
+      startTransition(() => {
+        setPendingToken(token)
+        setPendingTokenKey((previousKey) => previousKey + 1)
+      })
+      schedule(delayMs)
     }
 
     tickRef.current = tick
@@ -293,7 +261,6 @@ export function CinematicTypewriter({
 
   useEffect(() => {
     if (reduceMotion) {
-      indexRef.current = content.length
       displayedRef.current = content
       pendingRef.current = ''
       setDisplayedContent(content)
@@ -311,14 +278,6 @@ export function CinematicTypewriter({
     if (timeoutRef.current == null) tickRef.current?.()
   }, [content, isStreaming, reduceMotion])
 
-  const tokenRevealTransition = useMemo(
-    () => ({
-      duration: reduceMotion ? 0 : 0.18,
-      ease: [0.16, 1, 0.3, 1] as const,
-    }),
-    [reduceMotion],
-  )
-
   return (
     <div className={cn('relative leading-relaxed', className)}>
       <ReactMarkdown remarkPlugins={[remarkGfm]} skipHtml components={CINEMATIC_MARKDOWN_COMPONENTS}>
@@ -331,7 +290,7 @@ export function CinematicTypewriter({
             initial={{ opacity: 0, y: '0.35em', filter: 'blur(6px)' }}
             animate={{ opacity: 1, y: '0em', filter: 'blur(0px)' }}
             exit={{ opacity: 0, y: '-0.2em', filter: 'blur(4px)' }}
-            transition={tokenRevealTransition}
+            transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
             className="inline whitespace-pre-wrap align-baseline text-foreground/90 motion-safe:animate-fade-in"
           >
             {pendingToken}

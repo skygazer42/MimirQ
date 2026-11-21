@@ -1,4 +1,4 @@
-from app.services.evidence_item_import import parse_qa_faq_import_bytes
+from app.services.evidence.item_import import parse_qa_faq_import_bytes
 
 
 def test_evidence_jsonl_import_keeps_zero_tags_and_source_values():

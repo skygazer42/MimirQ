@@ -1,8 +1,8 @@
 'use client'
 
-import React, { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState, useSyncExternalStore } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { FolderTree, Loader2, Pencil, Search, X } from '@/components/icons'
+import { FolderTree, Loader2, Pencil, RefreshCw, Search, X } from '@/components/icons'
 import { toast } from 'sonner'
 
 import { Badge } from '@/components/ui/badge'
@@ -19,19 +19,17 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Panel } from '@/components/ui/panel'
-import { datasetApi, datasetCategoryApi } from '@/lib/api'
+import { datasetApi, datasetCategoryApi } from '@/lib/api/datasets'
 import { formatApiError } from '@/lib/api-errors'
+import { getAuthSessionKey, subscribeAuthSession } from '@/lib/auth-storage'
 import { reportClientError } from '@/lib/client-logging'
 import { flattenDatasetCategoryTree } from '@/lib/dataset-categories'
 import { queryKeys } from '@/lib/query-keys'
 import { cn } from '@/lib/utils'
 
-import type { DatasetCategoryNode } from '@/types'
-
-function toggleId(list: string[], id: string): string[] {
-  const exists = list.includes(id)
-  if (exists) return list.filter((x) => x !== id)
-  return [...list, id]
+function toggleCategoryId(selectedIds: readonly string[], categoryId: string): string[] {
+  if (selectedIds.includes(categoryId)) return selectedIds.filter((id) => id !== categoryId)
+  return [...selectedIds, categoryId]
 }
 
 export function DatasetCategoryMultiSelect({
@@ -39,79 +37,75 @@ export function DatasetCategoryMultiSelect({
   className,
 }: Readonly<{ datasetId: string; className?: string }>) {
   const queryClient = useQueryClient()
-  const [open, setOpen] = useState(false)
+  const [openedSessionKey, setOpenedSessionKey] = useState<string | null>(null)
+  const sessionKey = useSyncExternalStore(subscribeAuthSession, getAuthSessionKey, getAuthSessionKey)
+  const open = openedSessionKey === sessionKey
   const [draft, setDraft] = useState<string[]>([])
   const [query, setQuery] = useState('')
 
   const categoryTreeQuery = useQuery({
     queryKey: queryKeys.datasetCategories.tree,
-    queryFn: () => datasetCategoryApi.listTree(),
+    queryFn: ({ signal }) => datasetCategoryApi.listTree({ signal }),
   })
 
   const assignedCategoriesQuery = useQuery({
     queryKey: queryKeys.datasets.categories(datasetId),
-    enabled: Boolean(datasetId),
-    queryFn: () => datasetApi.getCategories(datasetId),
+    queryFn: ({ signal }) => datasetApi.getCategories(datasetId, { signal }),
   })
 
   const saveCategoriesMutation = useMutation({
-    mutationFn: (categoryIds: string[]) => datasetApi.setCategories(datasetId, { category_ids: categoryIds }),
-    onSuccess: (res) => {
-      queryClient.setQueryData(queryKeys.datasets.categories(datasetId), res)
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.datasets.categories(datasetId),
-      })
+    networkMode: 'always',
+    mutationFn: (assignment: { datasetId: string; categoryIds: string[]; sessionKey: string }) => {
+      if (assignment.sessionKey !== getAuthSessionKey()) throw new Error('当前会话已变化')
+      return datasetApi.setCategories(assignment.datasetId, { category_ids: assignment.categoryIds })
+    },
+    onSuccess: async (result, assignment) => {
+      if (assignment.sessionKey !== getAuthSessionKey()) return
+      const queryKey = queryKeys.datasets.categories(assignment.datasetId)
+      await queryClient.cancelQueries({ queryKey, exact: true })
+      if (assignment.sessionKey !== getAuthSessionKey()) return
+      queryClient.setQueryData(queryKey, result)
+      void queryClient.invalidateQueries({ queryKey: queryKeys.datasets.lists })
     },
   })
 
-  useEffect(() => {
-    const error = categoryTreeQuery.error || assignedCategoriesQuery.error
-    if (!error) return
-    reportClientError('Failed to load dataset categories', error)
-    toast.error(formatApiError(error, '加载分类失败'))
-  }, [assignedCategoriesQuery.error, categoryTreeQuery.error])
-
-  const tree = useMemo<DatasetCategoryNode[]>(() => categoryTreeQuery.data?.items || [], [categoryTreeQuery.data])
-  const assigned = useMemo(
-    () => (assignedCategoriesQuery.data?.category_ids || []).map(String),
-    [assignedCategoriesQuery.data],
-  )
+  const loadError = categoryTreeQuery.error ?? assignedCategoriesQuery.error
+  const assigned = assignedCategoriesQuery.data?.category_ids
+  const canEdit = categoryTreeQuery.data !== undefined && assigned !== undefined
   const loading = categoryTreeQuery.isLoading || assignedCategoriesQuery.isLoading
   const refreshing = categoryTreeQuery.isFetching || assignedCategoriesQuery.isFetching
   const saving = saveCategoriesMutation.isPending
-  const flat = useMemo(() => flattenDatasetCategoryTree(tree), [tree])
-  const nameById = useMemo(() => new Map(flat.map((x) => [x.id, x.name])), [flat])
-
-  const assignedBadges = useMemo(() => {
-    const names = assigned.map((id) => nameById.get(id) || id)
-    const shown = names.slice(0, 4)
-    const rest = Math.max(0, names.length - shown.length)
-    return { shown, rest }
-  }, [assigned, nameById])
+  const flat = useMemo(() => flattenDatasetCategoryTree(categoryTreeQuery.data?.items ?? []), [categoryTreeQuery.data])
+  const nameById = useMemo(() => new Map(flat.map(({ id, name }) => [id, name])), [flat])
 
   const filteredFlat = useMemo(() => {
-    const q = query.trim().toLowerCase()
-    if (!q) return flat
-    return flat.filter((x) =>
-      String(x.name || '')
-        .toLowerCase()
-        .includes(q),
-    )
+    const searchText = query.trim().toLowerCase()
+    if (searchText === '') return flat
+    return flat.filter((category) => category.name.toLowerCase().includes(searchText))
   }, [flat, query])
 
-  const openEditor = () => {
-    setDraft([...assigned])
-    setQuery('')
-    setOpen(true)
+  function changeOpen(nextOpen: boolean) {
+    if (saving) return
+    if (nextOpen) {
+      if (assigned === undefined || categoryTreeQuery.data === undefined) return
+      setDraft([...assigned])
+      setQuery('')
+      setOpenedSessionKey(sessionKey)
+      return
+    }
+    setOpenedSessionKey(null)
   }
 
   const save = async () => {
-    if (!datasetId) return
+    if (!canEdit || saving || openedSessionKey === null) return
+    const sessionKey = openedSessionKey
     try {
-      await saveCategoriesMutation.mutateAsync(draft)
+      await saveCategoriesMutation.mutateAsync({ datasetId, categoryIds: draft, sessionKey })
+      if (sessionKey !== getAuthSessionKey()) return
       toast.success('分类已更新')
-      setOpen(false)
+      setOpenedSessionKey(null)
     } catch (e: unknown) {
+      if (sessionKey !== getAuthSessionKey()) return
       reportClientError('Failed to set dataset categories', e)
       toast.error(formatApiError(e, '更新分类失败'))
     }
@@ -134,24 +128,32 @@ export function DatasetCategoryMultiSelect({
                     加载中…
                   </span>
                 )
-              } else if (assignedBadges.shown.length) {
+              }
+              if (assigned === undefined) return null
+              const visibleCategories = assigned.slice(0, 4)
+              const remainingCategoryCount = assigned.length - visibleCategories.length
+              if (visibleCategories.length > 0) {
                 return (
                   <>
-                    {assignedBadges.shown.map((name) => (
-                      <Badge key={name} variant="outline" className="text-xs">
-                        {name}
+                    {visibleCategories.map((id) => (
+                      <Badge key={id} variant="outline" className="text-xs">
+                        {nameById.get(id) ?? id}
                       </Badge>
                     ))}
-                    {assignedBadges.rest ? (
-                      <Badge variant="soft" className="text-xs">{`+${assignedBadges.rest}`}</Badge>
+                    {remainingCategoryCount > 0 ? (
+                      <Badge variant="soft" className="text-xs">{`+${remainingCategoryCount}`}</Badge>
                     ) : null}
                   </>
                 )
-              } else {
-                return <span className="text-xs text-muted-foreground">未设置</span>
               }
+              return <span className="text-xs text-muted-foreground">未设置</span>
             })()}
           </div>
+          {loadError !== null ? (
+            <p role="alert" className="mt-2 text-sm text-destructive">
+              {formatApiError(loadError, '加载分类失败')}
+            </p>
+          ) : null}
         </div>
 
         <div className="flex items-center gap-2">
@@ -160,17 +162,21 @@ export function DatasetCategoryMultiSelect({
             size="sm"
             className="h-9 px-3"
             onClick={() => {
-              Promise.all([categoryTreeQuery.refetch(), assignedCategoriesQuery.refetch()])
+              void Promise.all([categoryTreeQuery.refetch(), assignedCategoriesQuery.refetch()])
             }}
             disabled={refreshing}
             aria-label="刷新分类"
           >
-            <Loader2 className={cn('h-4 w-4', refreshing ? 'animate-spin motion-reduce:animate-none' : 'opacity-0')} />
+            {refreshing ? (
+              <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />
+            ) : (
+              <RefreshCw className="h-4 w-4" />
+            )}
             <span className="sr-only">刷新</span>
           </Button>
-          <Dialog open={open} onOpenChange={setOpen}>
+          <Dialog open={open} onOpenChange={changeOpen}>
             <DialogTrigger asChild>
-              <Button variant="outline" size="sm" className="h-9 px-3 gap-2" onClick={openEditor} disabled={loading}>
+              <Button variant="outline" size="sm" className="h-9 px-3 gap-2" disabled={!canEdit}>
                 <Pencil className="h-4 w-4" />
                 编辑
               </Button>
@@ -210,24 +216,21 @@ export function DatasetCategoryMultiSelect({
                 <div className="max-h-[360px] overflow-auto rounded-xl border border-border/60">
                   {filteredFlat.length ? (
                     <div className="divide-y divide-border/60">
-                      {filteredFlat.map((c) => {
-                        const checked = draft.includes(c.id)
-                        return (
-                          <button
-                            key={c.id}
-                            type="button"
-                            className="w-full flex items-center justify-between gap-3 px-3 py-2 text-left hover:bg-muted/20 transition-colors focus-ring"
-                            onClick={() => setDraft((prev) => toggleId(prev, c.id))}
-                          >
-                            <span className="min-w-0 flex items-center gap-3">
-                              <Checkbox checked={checked} onCheckedChange={() => undefined} />
-                              <span className="truncate" style={{ paddingLeft: Math.max(0, c.depth) * 12 }}>
-                                {c.name}
-                              </span>
-                            </span>
-                          </button>
-                        )
-                      })}
+                      {filteredFlat.map((category) => (
+                        <label
+                          key={category.id}
+                          className="flex w-full cursor-pointer items-center gap-3 px-3 py-2 transition-colors hover:bg-muted/20"
+                        >
+                          <Checkbox
+                            checked={draft.includes(category.id)}
+                            disabled={saving}
+                            onCheckedChange={() => setDraft((previous) => toggleCategoryId(previous, category.id))}
+                          />
+                          <span className="truncate" style={{ paddingLeft: category.depth * 12 }}>
+                            {category.name}
+                          </span>
+                        </label>
+                      ))}
                     </div>
                   ) : (
                     <div className="p-6 text-sm text-muted-foreground text-center">暂无分类</div>
@@ -236,15 +239,10 @@ export function DatasetCategoryMultiSelect({
               </div>
 
               <DialogFooter>
-                <Button variant="ghost" onClick={() => setOpen(false)} disabled={saving}>
+                <Button variant="ghost" onClick={() => setOpenedSessionKey(null)} disabled={saving}>
                   取消
                 </Button>
-                <Button
-                  onClick={() => {
-                    save()
-                  }}
-                  disabled={saving}
-                >
+                <Button onClick={() => void save()} disabled={!canEdit || saving}>
                   {saving ? <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none mr-2" /> : null}
                   保存
                 </Button>

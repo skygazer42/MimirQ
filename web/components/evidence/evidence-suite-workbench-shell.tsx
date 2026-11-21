@@ -1,11 +1,12 @@
 'use client'
 
-import { useRef, useState } from 'react'
-import { DirectoryWorkspace, workspaceStyles as ws } from '@/components/ui/operational-workspace'
+import { useId, useRef, useState } from 'react'
+import { DirectoryWorkspace, WorkspaceNotice, workspaceStyles as ws } from '@/components/ui/operational-workspace'
 import { SuiteActionsBar } from './suite-actions-bar'
-import { Loader2 } from '@/components/icons'
 
 import { Button } from '@/components/ui/button'
+import { LoadingButton } from '@/components/ui/loading-button'
+import { Skeleton } from '@/components/ui/skeleton'
 import {
   Dialog,
   DialogContent,
@@ -35,20 +36,29 @@ export function EvidenceSuiteWorkbenchShell({
   createItemTab,
   createSuiteOpen,
   creatingItem,
+  createItemError,
   creatingSuite,
-  convertingFeedbackId,
+  createSuiteError,
+  convertingFeedbackIds,
+  feedbackErrors,
   copyText,
-  dashboard,
+  dashboardSnapshot,
   dashboardError,
   dashboardIncludeArchived,
   dashboardLoading,
   dashboardOpen,
   dataset,
+  datasetError,
+  loadDataset,
   datasetId,
   datasetLoading,
   evidenceStatusBadgeVariant,
   expectedNeedles,
   exportWhyMissedReport,
+  exportingSuite,
+  syncingSuite,
+  syncNeedsRefresh,
+  itemAction,
   fileInputRef,
   filteredItems,
   filteredSuites,
@@ -68,13 +78,14 @@ export function EvidenceSuiteWorkbenchShell({
   hardcaseMaxCandidates,
   hardcaseMaxRating,
   hardcaseOpen,
-  hardcaseRes,
+  hardcaseSnapshot,
   hardcaseTags,
   importCitations,
   importError,
   importPack,
   importSelectedChunkIds,
   importingQAFaq,
+  importingPack,
   includeArchivedSuites,
   itemQuery,
   itemsError,
@@ -94,7 +105,6 @@ export function EvidenceSuiteWorkbenchShell({
   profile,
   qaFaqInputRef,
   resetCreateSuiteForm,
-  retrieveCitations,
   retrieveError,
   retrieveRanked,
   retrieveRes,
@@ -118,7 +128,6 @@ export function EvidenceSuiteWorkbenchShell({
   setHardcaseMaxRating,
   setHardcaseOpen,
   setHardcaseTags,
-  setImportSelectedChunkIds,
   setIncludeArchivedSuites,
   setItemQuery,
   setNewExpected,
@@ -133,13 +142,8 @@ export function EvidenceSuiteWorkbenchShell({
   setSuiteName,
   setSuiteQuery,
   setSuiteTags,
-  setWhyMissedCitations,
-  setWhyMissedDriftError,
-  setWhyMissedDriftedRefs,
   setWhyMissedOpen,
   setWhyMissedProfile,
-  setWhyMissedRanRetrieve,
-  setWhyMissedError,
   statusFilter,
   suggestedRetrieveChunkIds,
   suiteCounts,
@@ -163,8 +167,17 @@ export function EvidenceSuiteWorkbenchShell({
   whyMissedError,
 }: Readonly<EvidenceSuiteWorkbenchState>) {
   const [pane, setPane] = useState<'directory' | 'detail'>('directory')
+  const createSuiteFormId = useId()
   const [detailOpen, setDetailOpen] = useState(false)
   const detailTrigger = useRef<HTMLElement | null>(null)
+  const pendingFeedbackError = feedbackErrors.get(pendingFeedbackId)
+  function restoreItemFocus(event: Event) {
+    const trigger = detailTrigger.current
+    if (trigger?.isConnected) {
+      event.preventDefault()
+      trigger.focus()
+    }
+  }
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       {pendingFeedbackId ? (
@@ -177,30 +190,30 @@ export function EvidenceSuiteWorkbenchShell({
                 后，可直接导入为 draft EvidenceItem。
               </div>
               <div className="text-[11px] font-mono text-foreground/80">feedback_id={pendingFeedbackId}</div>
+              {pendingFeedbackError !== undefined ? (
+                <p role="alert" className="break-words text-sm text-destructive">
+                  {pendingFeedbackError}
+                </p>
+              ) : null}
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              <Button
+              <LoadingButton
+                loading={convertingFeedbackIds.has(pendingFeedbackId)}
                 type="button"
                 size="sm"
                 className="gap-2"
-                disabled={!selectedSuiteId || convertingFeedbackId === pendingFeedbackId}
+                disabled={!selectedSuiteId}
                 onClick={() => {
                   detachPromise(
-                    (async () => {
-                      const createdId = await handleConvertFeedbackToEvidence(pendingFeedbackId, undefined, {
-                        tags: ['expert-loop'],
-                        source: 'chat_feedback_action',
-                      })
-                      if (createdId) setPendingFeedbackId('')
-                    })(),
+                    handleConvertFeedbackToEvidence(pendingFeedbackId, undefined, {
+                      tags: ['expert-loop'],
+                      source: 'chat_feedback_action',
+                    }),
                   )
                 }}
               >
-                {convertingFeedbackId === pendingFeedbackId ? (
-                  <Loader2 className="size-4 animate-spin motion-reduce:animate-none" aria-hidden="true" />
-                ) : null}
                 导入待处理反馈
-              </Button>
+              </LoadingButton>
               <Button type="button" size="sm" variant="outline" onClick={() => setPendingFeedbackId('')}>
                 稍后处理
               </Button>
@@ -209,6 +222,11 @@ export function EvidenceSuiteWorkbenchShell({
         </div>
       ) : null}
 
+      {datasetError !== null ? (
+        <WorkspaceNotice pending={datasetLoading} retry={() => detachPromise(loadDataset())}>
+          {datasetError}
+        </WorkspaceNotice>
+      ) : null}
       <DirectoryWorkspace
         pane={pane}
         onPaneChange={setPane}
@@ -216,7 +234,7 @@ export function EvidenceSuiteWorkbenchShell({
         detailLabel="证据条目"
         directory={
           <SuiteListPanel
-            datasetLabel={datasetLoading ? '加载中…' : dataset?.name || datasetId || '-'}
+            datasetLabel={datasetLoading && dataset === null ? '加载中…' : (dataset?.name ?? datasetId)}
             suiteQuery={suiteQuery}
             onSuiteQueryChange={setSuiteQuery}
             onRefresh={() => detachPromise(loadSuites())}
@@ -238,22 +256,23 @@ export function EvidenceSuiteWorkbenchShell({
         {selectedSuiteId ? (
           <>
             <SuiteActionsBar
+              key={selectedSuiteId}
               selectedSuite={selectedSuite}
               suiteCounts={suiteCounts}
               importingQAFaq={importingQAFaq}
+              exportingSuite={exportingSuite}
+              syncingSuite={syncingSuite}
+              syncNeedsRefresh={syncNeedsRefresh}
               qaFaqInputRef={qaFaqInputRef}
               onImportQAFaqFile={(file) => {
                 void handleImportQAFaq(file)
               }}
               onOpenHardcases={() => setHardcaseOpen(true)}
               onOpenDashboard={() => setDashboardOpen(true)}
-              onExportSuite={handleExportSuite}
-              onSyncSuite={() => {
-                void handleSyncSuite()
-              }}
+              onExportSuite={() => detachPromise(handleExportSuite())}
+              onSyncSuite={handleSyncSuite}
             />
             <ItemListPanel
-              selectedSuite={selectedSuite}
               selectedSuiteId={selectedSuiteId}
               itemQuery={itemQuery}
               onItemQueryChange={setItemQuery}
@@ -270,9 +289,13 @@ export function EvidenceSuiteWorkbenchShell({
                 setSelectedItemId(id)
                 setDetailOpen(true)
               }}
-              statusBadgeVariant={evidenceStatusBadgeVariant}
             />
           </>
+        ) : suitesLoading ? (
+          <div className="space-y-3 p-4" aria-label="正在读取证据集">
+            <Skeleton className="h-6 w-40" />
+            <Skeleton className="h-20 w-full" />
+          </div>
         ) : (
           <div className={ws.empty}>
             <h2>
@@ -300,21 +323,16 @@ export function EvidenceSuiteWorkbenchShell({
         )}
       </DirectoryWorkspace>
       <Dialog open={detailOpen} onOpenChange={setDetailOpen}>
-        <DialogContent
-          className={ws.dialog}
-          onCloseAutoFocus={(event) => {
-            event.preventDefault()
-            detailTrigger.current?.focus()
-          }}
-        >
+        <DialogContent className={ws.dialog} onCloseAutoFocus={restoreItemFocus}>
           <DialogHeader className={ws.dialogHeader}>
             <DialogTitle>证据条目</DialogTitle>
             <DialogDescription>复核标准答案和引用证据。</DialogDescription>
           </DialogHeader>
           <div className={ws.dialogBody}>
             <ItemDetailPanel
+              key={selectedItemId}
+              itemAction={itemAction}
               selectedItem={selectedItem}
-              selectedSuite={selectedSuite}
               statusBadgeVariant={evidenceStatusBadgeVariant}
               onReviewItem={(itemId) => detachPromise(handleReviewItem(itemId))}
               onApproveItem={(itemId) => detachPromise(handleApproveItem(itemId))}
@@ -322,7 +340,7 @@ export function EvidenceSuiteWorkbenchShell({
                 setDetailOpen(false)
                 openWhyMissed()
               }}
-              onArchiveItem={(itemId) => detachPromise(handleArchiveItem(itemId))}
+              onArchiveItem={handleArchiveItem}
             />
           </div>
         </DialogContent>
@@ -333,12 +351,13 @@ export function EvidenceSuiteWorkbenchShell({
         selectedSuiteId={selectedSuiteId}
         loading={hardcaseLoading}
         error={hardcaseError}
-        hardcaseRes={hardcaseRes}
+        snapshot={hardcaseSnapshot}
         maxRating={hardcaseMaxRating}
         includeExisting={hardcaseIncludeExisting}
         maxCandidates={hardcaseMaxCandidates}
         tags={hardcaseTags}
-        convertingFeedbackId={convertingFeedbackId}
+        convertingFeedbackIds={convertingFeedbackIds}
+        feedbackErrors={feedbackErrors}
         onOpenChange={(open) => {
           setHardcaseOpen(open)
           if (!open) {
@@ -365,7 +384,7 @@ export function EvidenceSuiteWorkbenchShell({
         includeArchived={dashboardIncludeArchived}
         loading={dashboardLoading}
         error={dashboardError}
-        dashboard={dashboard}
+        snapshot={dashboardSnapshot}
         onOpenChange={(open) => {
           setDashboardOpen(open)
           if (!open) {
@@ -388,8 +407,15 @@ export function EvidenceSuiteWorkbenchShell({
             <DialogTitle>新建证据集</DialogTitle>
             <DialogDescription className="text-pretty">将相关问题与引用证据组织在同一个证据集中。</DialogDescription>
           </DialogHeader>
-          <div className={ws.dialogBody}>
-            <div className="space-y-3">
+          <form
+            id={createSuiteFormId}
+            className={ws.dialogBody}
+            onSubmit={(event) => {
+              event.preventDefault()
+              detachPromise(handleCreateSuite())
+            }}
+          >
+            <fieldset disabled={creatingSuite} className="space-y-3">
               <div className="space-y-1">
                 <Label htmlFor="suite-name">名称</Label>
                 <Input
@@ -410,21 +436,28 @@ export function EvidenceSuiteWorkbenchShell({
                 />
               </div>
               <div className="space-y-1">
-                <Label>标签（选填）</Label>
-                <TagInput value={suiteTags} onValueChange={setSuiteTags} placeholder="输入后回车添加标签" />
+                <Label htmlFor="evidence-suite-tags">标签（选填）</Label>
+                <TagInput
+                  inputId="evidence-suite-tags"
+                  value={suiteTags}
+                  onValueChange={setSuiteTags}
+                  placeholder="输入后回车添加标签"
+                />
               </div>
-            </div>
-          </div>
-          <DialogFooter className={ws.dialogFooter}>
-            <Button variant="outline" onClick={() => setCreateSuiteOpen(false)}>
+            </fieldset>
+          </form>
+          <DialogFooter className={`${ws.dialogFooter} flex-wrap`}>
+            {createSuiteError !== null ? (
+              <p role="alert" className="w-full min-w-0 break-words text-sm text-destructive">
+                {createSuiteError}
+              </p>
+            ) : null}
+            <Button type="button" variant="outline" onClick={() => setCreateSuiteOpen(false)}>
               取消
             </Button>
-            <Button onClick={() => detachPromise(handleCreateSuite())} disabled={creatingSuite || !suiteName.trim()}>
-              {creatingSuite ? (
-                <Loader2 className="mr-2 size-4 animate-spin motion-reduce:animate-none" aria-hidden="true" />
-              ) : null}
+            <LoadingButton loading={creatingSuite} type="submit" form={createSuiteFormId} disabled={!suiteName.trim()}>
               创建
-            </Button>
+            </LoadingButton>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -442,15 +475,17 @@ export function EvidenceSuiteWorkbenchShell({
         selectedChunkIds={selectedChunkIds}
         retrieveError={retrieveError}
         expectedNeedles={expectedNeedles}
-        hasRetrieveResult={Boolean(retrieveRes)}
+        hasRetrieveResult={retrieveRes !== null}
         retrieveRanked={retrieveRanked}
         fileInputRef={fileInputRef}
-        hasImportPack={Boolean(importPack)}
-        importPackVersionLabel={String(importPack?.version ?? '?')}
+        hasImportPack={importPack !== null}
+        importingPack={importingPack}
+        importPackVersionLabel={importPack?.version == null ? '未提供' : String(importPack.version)}
         importCitations={importCitations}
         importError={importError}
         importSelectedChunkIds={importSelectedChunkIds}
         creatingItem={creatingItem}
+        createItemError={createItemError}
         selectedSuiteId={selectedSuiteId}
         onOpenChange={setCreateItemOpen}
         onNewQueryChange={setNewQuery}
@@ -469,6 +504,7 @@ export function EvidenceSuiteWorkbenchShell({
       />
 
       <WhyMissedDialog
+        onCloseAutoFocus={restoreItemFocus}
         open={whyMissedOpen}
         datasetId={datasetId}
         selectedSuiteId={selectedSuiteId}
@@ -483,16 +519,7 @@ export function EvidenceSuiteWorkbenchShell({
         whyMissedCitations={whyMissedCitations}
         whyMissedRefDocIds={whyMissedRefDocIds}
         whyMissedRefChunkIds={whyMissedRefChunkIds}
-        onOpenChange={(open) => {
-          setWhyMissedOpen(open)
-          if (!open) {
-            setWhyMissedError(null)
-            setWhyMissedRanRetrieve(false)
-            setWhyMissedCitations([])
-            setWhyMissedDriftError(null)
-            setWhyMissedDriftedRefs([])
-          }
-        }}
+        onOpenChange={setWhyMissedOpen}
         onWhyMissedProfileChange={setWhyMissedProfile}
         onRunRetrieve={() => detachPromise(runWhyMissedRetrieve())}
         onLoadDrift={() => detachPromise(loadWhyMissedDrift())}

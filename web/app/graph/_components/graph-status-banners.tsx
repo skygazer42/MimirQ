@@ -53,12 +53,7 @@ export function GraphStatusBanners({
   onExitConnectMode,
   onExitExplainMode,
 }: GraphStatusBannersProps) {
-  const pathMessage = (() => {
-    if (hasPathStart) {
-      return hasPathEnd ? '路径分析完成' : '请点击选择【终点】'
-    }
-    return '请点击选择【起点】'
-  })()
+  const pathMessage = hasPathEnd ? '路径分析完成' : hasPathStart ? '请点击选择【终点】' : '请点击选择【起点】'
 
   return (
     <>
@@ -87,12 +82,12 @@ export function GraphStatusBanners({
       {isExplainMode ? (
         <GraphModeBanner
           toneClassName="bg-muted/35 text-foreground"
-          dismissLabel="退出推理演示"
+          dismissLabel="退出路径回放"
           onDismiss={onExitExplainMode}
         >
           <Lightbulb className="w-4 h-4" />
           <span className="text-sm font-medium">
-            推理路径演示中... ({currentStepIndex + 1}/{explainStepCount})
+            路径回放中… ({currentStepIndex + 1}/{explainStepCount})
           </span>
         </GraphModeBanner>
       ) : null}

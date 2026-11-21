@@ -591,8 +591,7 @@
   align-items: center;
   gap: 8px;
 }
-.inlineActions > button,
-.inlineActions > span > button {
+.inlineActions > button {
   height: 34px;
   gap: 6px;
   border-radius: 5px;
@@ -615,24 +614,6 @@
   width: 30px;
   padding: 0;
   color: hsl(var(--muted-foreground));
-}
-.actionError {
-  display: flex;
-  align-items: flex-start;
-  gap: 7px;
-  color: var(--review-danger);
-  font-size: 13px;
-  line-height: 22px;
-  overflow-wrap: anywhere;
-}
-.actionError > svg {
-  width: 15px;
-  height: 15px;
-  flex-shrink: 0;
-  margin-top: 3px;
-}
-.actionError > div {
-  min-width: 0;
 }
 .diagnostics {
   margin-top: 5px;
@@ -727,7 +708,11 @@
 }
 .fileButton:focus-visible,
 .tab:focus-visible,
-.rowAction:focus-visible {
+.rowAction:focus-visible,
+.sync:focus-visible,
+.export:focus-visible,
+.filterControl:focus-visible,
+.inlineActions > button:focus-visible {
   outline: 2px solid hsl(var(--ring));
   outline-offset: 3px;
 }
@@ -880,7 +865,6 @@
     flex-basis: 45%;
   }
   .search {
-    order: -1;
     width: 100%;
     flex: 1 0 100%;
   }
@@ -979,31 +963,13 @@
   .basis h3 {
     font-size: 15px;
   }
-  .documentFacts {
-    display: grid;
-    grid-template-columns: 68px minmax(0, 1fr);
-    gap: 7px 12px;
-    margin-top: 12px;
-    font-size: 12px;
-    line-height: 20px;
-  }
-  .documentFacts dt {
-    color: hsl(var(--muted-foreground));
-  }
-  .documentFacts dd {
-    overflow-wrap: anywhere;
-  }
   .reviewContent {
     padding: 14px 16px 16px;
   }
   .excerpt pre {
     max-height: 175px;
   }
-  .inlineActions {
-    gap: 8px;
-  }
-  .inlineActions > button,
-  .inlineActions > span > button {
+  .inlineActions > button {
     height: 44px;
   }
   .inlineActions .original {
@@ -1035,7 +1001,7 @@
   .inlineReview {
     animation: none;
   }
-  .record,
+  .table .record,
   .tab,
   .tab::after,
   .rowAction > svg {

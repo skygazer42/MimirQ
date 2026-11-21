@@ -18,7 +18,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from app.parsing.quality.grits import compute_table_collection_grits  # noqa: E402
+from app.rag.ingestion.parsing.quality.grits import compute_table_collection_grits  # noqa: E402
 
 
 @dataclass(frozen=True, slots=True)
@@ -76,7 +76,6 @@ _FENCE_RE = re.compile(r"(?m)^\s*```")
 _TABLE_SEP_RE = re.compile(r"(?m)^\s*\|?(?:\s*:?-+:?\s*\|)+\s*:?-+:?\s*\|?\s*$")
 _MD_IMAGE_RE = re.compile(r"!\[[^\]]*\]\([^)]+\)")
 _MD_IMAGE_CAPTURE_RE = re.compile(r"!\[[^\]]*\]\(([^)\s]+)")
-_HTML_IMG_RE = re.compile(r"(?i)<img\\b[^>]*>")
 _HTML_IMG_TAG_RE = re.compile(r"<img\b[^>]*>", re.IGNORECASE)
 _HTML_IMG_ATTR_RE = re.compile(r"(src)\s*=\s*([\"'])(.*?)\2", re.IGNORECASE)
 _POSITION_TAG_INLINE_RE = re.compile(r"@@[0-9-]+\t[0-9.]+\t[0-9.]+\t[0-9.]+\t[0-9.]+##")
@@ -236,19 +235,7 @@ def _load_specialty_payload(input_dir: Path, row: dict[str, Any]) -> dict[str, A
     return dict(payload) if isinstance(payload, dict) else None
 
 
-def _load_specialty_elements(input_dir: Path, row: dict[str, Any]) -> dict[str, int] | None:
-    payload = _load_specialty_payload(input_dir, row)
-    return _coerce_specialty_elements(payload)
-
-
-def _load_image_visual_kinds(input_dir: Path, row: dict[str, Any]) -> dict[str, int] | None:
-    payload = _load_specialty_payload(input_dir, row)
-    return _coerce_count_map((payload or {}).get("image_visual_kinds"))
-
-
-def _load_image_code_values(input_dir: Path, row: dict[str, Any]) -> dict[str, list[str]] | None:
-    payload = _load_specialty_payload(input_dir, row)
-    raw = (payload or {}).get("image_code_values")
+def _coerce_image_code_values(raw: Any) -> dict[str, list[str]] | None:
     if not isinstance(raw, dict):
         return None
     out: dict[str, list[str]] = {}
@@ -262,9 +249,7 @@ def _load_image_code_values(input_dir: Path, row: dict[str, Any]) -> dict[str, l
     return out or None
 
 
-def _load_table_continuity(input_dir: Path, row: dict[str, Any]) -> dict[str, Any] | None:
-    payload = _load_specialty_payload(input_dir, row)
-    raw = (payload or {}).get("table_continuity")
+def _coerce_table_continuity(raw: Any) -> dict[str, Any] | None:
     if not isinstance(raw, dict):
         return None
     header = str(raw.get("header") or "").strip()
@@ -299,8 +284,8 @@ def _apply_governance_cleaning(*, markdown: str, governance_rule_packs: list[str
     if not packs:
         return str(markdown or "")
 
-    from app.rag.preprocessing.cleaning import clean_markdown
-    from app.rag.preprocessing.rules import build_governance_rules
+    from app.rag.ingestion.governance.cleaning import clean_markdown
+    from app.rag.ingestion.governance.rules import build_governance_rules
 
     result = clean_markdown(
         str(markdown or ""),
@@ -319,13 +304,12 @@ def _join_documents_to_markdown(documents: Iterable[Any]) -> str:
     saw_image_ref = False
     for d in documents or []:
         text = str(getattr(d, "page_content", "") or "")
-        if _MD_IMAGE_RE.search(text) or _HTML_IMG_RE.search(text):
+        if _MD_IMAGE_RE.search(text) or _HTML_IMG_TAG_RE.search(text):
             saw_image_ref = True
         meta = getattr(d, "metadata", None)
         if isinstance(meta, dict):
             doc_type = str(meta.get("doc_type_kwd") or meta.get("content_type") or "").strip().lower()
-            has_image_ref = bool(_MD_IMAGE_RE.search(text) or _HTML_IMG_RE.search(text))
-            if doc_type == "image" and not has_image_ref and not saw_image_ref:
+            if doc_type == "image" and not saw_image_ref:
                 visual_kind = str(meta.get("visual_kind") or "").strip().lower() or "image"
                 page = str(meta.get("page") or "na").strip() or "na"
                 image_index = str(meta.get("image_index") or 0).strip() or "0"
@@ -350,7 +334,7 @@ def _table_continuity_recall(*, golden_markdown: str, parsed_markdown: str) -> f
 
 
 def _reading_order_score(markdown: str) -> float | None:
-    from app.parsing.quality.reading_order import score_reading_order
+    from app.rag.ingestion.parsing.quality.reading_order import score_reading_order
 
     result = score_reading_order(markdown)
     if not isinstance(result, dict):
@@ -363,7 +347,7 @@ def _reading_order_score(markdown: str) -> float | None:
 
 
 def _count_specialty_elements(documents: Iterable[Any]) -> dict[str, int]:
-    from app.parsing.utils.document_elements import normalize_document_elements
+    from app.rag.ingestion.parsing.utils.document_elements import normalize_document_elements
 
     counts = {kind: 0 for kind in _SPECIALTY_KINDS}
     for item in normalize_document_elements(documents):
@@ -397,7 +381,7 @@ def _collect_image_code_values(documents: Iterable[Any]) -> dict[str, list[str]]
 
 
 def _benchmark_image_elements(documents: Iterable[Any]) -> list[dict[str, Any]]:
-    from app.parsing.utils.document_elements import normalize_document_elements
+    from app.rag.ingestion.parsing.utils.document_elements import normalize_document_elements
 
     images = [
         dict(item)
@@ -423,7 +407,7 @@ def _benchmark_image_elements(documents: Iterable[Any]) -> list[dict[str, Any]]:
 
 
 def _augment_documents_with_inline_image_codes(*, documents: list[Any], markdown: str, origin_path: Path) -> list[Any]:
-    from app.parsing.enrich.image_code import add_image_code_blocks
+    from app.rag.ingestion.parsing.enrich.image_code import add_image_code_blocks
 
     try:
         _next_markdown, added, audit = add_image_code_blocks(markdown, origin_path=origin_path)
@@ -464,7 +448,7 @@ def _augment_documents_with_inline_image_codes(*, documents: list[Any], markdown
 
 
 def _augment_markdown_with_inline_image_ocr(*, markdown: str, origin_path: Path) -> str:
-    from app.parsing.enrich.image_ocr import add_image_ocr_blocks
+    from app.rag.ingestion.parsing.enrich.image_ocr import add_image_ocr_blocks
 
     try:
         next_markdown, _added, _audit = add_image_ocr_blocks(markdown, origin_path=origin_path)
@@ -634,7 +618,7 @@ def _structure_metrics(markdown: str) -> dict[str, Any]:
         "list_items": len(_LIST_ITEM_RE.findall(md)),
         "fences": len(_FENCE_RE.findall(md)),
         "table_separators": len(_TABLE_SEP_RE.findall(md)),
-        "image_refs": len(_MD_IMAGE_RE.findall(md)) + len(_HTML_IMG_RE.findall(md)),
+        "image_refs": len(_MD_IMAGE_RE.findall(md)) + len(_HTML_IMG_TAG_RE.findall(md)),
     }
 
 
@@ -686,21 +670,22 @@ def _load_cases(input_dir: Path, *, manifest_path: Path | None, max_files: int) 
             src = (input_dir / rel).resolve()
             golden_rel = str(row.get("golden_markdown") or row.get("golden_markdown_path") or "").strip()
             golden = (input_dir / golden_rel).resolve() if golden_rel else None
+            specialty = _load_specialty_payload(input_dir, row) or {}
             cases.append(
                 BenchmarkCase(
                     case_id=cid,
                     path=src,
                     golden_markdown_path=golden,
-                    golden_specialty_elements=_load_specialty_elements(input_dir, row),
-                    golden_image_visual_kinds=_load_image_visual_kinds(input_dir, row),
-                    golden_image_code_values=_load_image_code_values(input_dir, row),
-                    golden_table_continuity=_load_table_continuity(input_dir, row),
+                    golden_specialty_elements=_coerce_specialty_elements(specialty),
+                    golden_image_visual_kinds=_coerce_count_map(specialty.get("image_visual_kinds")),
+                    golden_image_code_values=_coerce_image_code_values(specialty.get("image_code_values")),
+                    golden_table_continuity=_coerce_table_continuity(specialty.get("table_continuity")),
                     governance_rule_packs=_load_governance_rule_packs(row),
                 )
             )
         return cases[: max(0, int(max_files or 0))]
 
-    from app.core.config import settings
+    from app.infrastructure.config import settings
 
     paths = _iter_files(input_dir, exts=getattr(settings, "allowed_extensions_list", [".pdf", ".md", ".txt"]))
     cases = [
@@ -1235,11 +1220,11 @@ def _build_run_config(args: argparse.Namespace) -> RunConfig:
 
 
 def _load_benchmark_dependencies() -> BenchmarkDependencies:
-    from app.parsing.factory import parser_factory
-    from app.parsing.processors.cross_page_merge import merge_cross_page_documents
-    from app.parsing.quality.document_quality import score_document_parse_quality
-    from app.parsing.quality.scorer import score_pdf_quality
-    from app.parsing.quality.text_quality import score_parsed_text_quality
+    from app.rag.ingestion.parsing.factory import parser_factory
+    from app.rag.ingestion.parsing.processors.cross_page_merge import merge_cross_page_documents
+    from app.rag.ingestion.parsing.quality.document_quality import score_document_parse_quality
+    from app.rag.ingestion.parsing.quality.scorer import score_pdf_quality
+    from app.rag.ingestion.parsing.quality.text_quality import score_parsed_text_quality
 
     return BenchmarkDependencies(
         parser_factory=parser_factory,
@@ -1579,6 +1564,7 @@ def _record_success_metrics(
     golden: CaseGoldenData,
     parse_quality: dict[str, Any],
 ) -> None:
+    parse_score = float(parse_quality.get("score") or 0.0)
     reading_order_score = attempt.get("reading_order_score")
     if reading_order_score is not None:
         stats["reading_order_score"].append(float(reading_order_score))
@@ -1586,8 +1572,8 @@ def _record_success_metrics(
     _record_specialty_recall(attempt=attempt, stats=stats, golden=golden)
     _record_image_visual_kind_recall(attempt=attempt, stats=stats, golden=golden)
     _record_image_code_value_recall(attempt=attempt, stats=stats, golden=golden)
+    stats["parse_score"].append(parse_score)
     stats["ok"] += 1
-    stats["parse_score"].append(float(parse_quality.get("score") or 0.0))
 
 
 def _run_backend_attempt(

@@ -1,0 +1,366 @@
+"""
+Stale report job helpers (ops / governance automation).
+
+Purpose:
+- Generate a bounded, PII-safe daily "staleness" summary for connector-created documents.
+- Record the summary to audit logs (no raw content).
+
+Design principles (similar to retention jobs):
+- Bounded: callers provide max_documents
+- Auditable: best-effort audit_log_event
+- Audit writes are best-effort; required database lookups propagate failures
+"""
+
+import logging
+from collections import Counter
+from datetime import UTC, datetime, timedelta
+from email.utils import parsedate_to_datetime
+from typing import Any
+from uuid import UUID
+
+from sqlalchemy.orm import Session
+
+from app.models.audit_log import AuditLog
+from app.models.connectors.runs import ConnectorRun, ConnectorRunDocument
+from app.models.documents.records import Document as DBDocument
+from app.services.observability.audit_log import audit_log_event
+
+logger = logging.getLogger("app.services.stale_report_jobs")
+
+
+def _dt_to_json(value: datetime) -> str:
+    return value.astimezone(UTC).isoformat().replace("+00:00", "Z")
+
+
+def _parse_datetime_best_effort(raw: object) -> datetime | None:
+    if raw is None:
+        return None
+    value = str(raw).strip()
+    if not value:
+        return None
+
+    # HTTP-date (e.g. Last-Modified) is common for URL-based connectors.
+    try:
+        dt = parsedate_to_datetime(value)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=UTC)
+        return dt.astimezone(UTC)
+    except (ValueError, OverflowError):
+        pass
+
+    # ISO timestamps (e.g. connector metadata) are also common.
+    try:
+        iso = value[:-1] + "+00:00" if value.endswith("Z") else value
+        dt = datetime.fromisoformat(iso)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=UTC)
+        return dt.astimezone(UTC)
+    except (ValueError, OverflowError):
+        return None
+
+
+def _bounded_top_counts(counter: Counter[str], *, max_items: int) -> dict[str, int]:
+    return dict(counter.most_common(max(0, max_items)))
+
+
+def _audit_already_written(db: Session, *, tenant_id: UUID, action: str, report_date: str) -> bool:
+    row = (
+        db.query(AuditLog.id)
+        .filter(
+            AuditLog.tenant_id == tenant_id,
+            AuditLog.action == str(action),
+            AuditLog.resource_type == "stale_report",
+            AuditLog.resource_id == str(report_date),
+        )
+        .limit(1)
+        .first()
+    )
+    return row is not None
+
+
+def _list_connector_document_rows(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    cutoff: datetime,
+    max_documents: int,
+) -> list[dict[str, Any]]:
+    """
+    List candidate connector-created documents for staleness reporting.
+
+    Notes:
+    - Uses a conservative pre-filter on `documents.updated_at <= cutoff` to reduce work.
+    - Returns a list of JSON-safe dict rows (bounded by max_documents).
+    """
+    q = (
+        db.query(
+            ConnectorRun.connector_id,
+            ConnectorRun.dataset_id.label("run_dataset_id"),
+            ConnectorRunDocument.document_id,
+            ConnectorRunDocument.created_at.label("linked_at"),
+            DBDocument.dataset_id.label("document_dataset_id"),
+            DBDocument.status,
+            DBDocument.created_at,
+            DBDocument.updated_at,
+            DBDocument.processed_at,
+            DBDocument.doc_metadata,
+        )
+        .join(ConnectorRunDocument, ConnectorRunDocument.run_id == ConnectorRun.id)
+        .join(DBDocument, DBDocument.id == ConnectorRunDocument.document_id)
+        .filter(
+            ConnectorRun.tenant_id == tenant_id,
+            ConnectorRunDocument.tenant_id == tenant_id,
+            DBDocument.tenant_id == tenant_id,
+        )
+        .filter(DBDocument.disabled_at.is_(None))
+        .filter(DBDocument.updated_at <= cutoff)
+        .order_by(DBDocument.updated_at.asc(), ConnectorRunDocument.created_at.asc())
+        .limit(max_documents)
+    )
+
+    rows = q.all()
+    out: list[dict[str, Any]] = []
+    for r in rows:
+        out.append(
+            {
+                "connector_id": str(r.connector_id),
+                "run_dataset_id": r.run_dataset_id,
+                "document_id": r.document_id,
+                "linked_at": r.linked_at,
+                "document_dataset_id": r.document_dataset_id,
+                "status": r.status,
+                "created_at": r.created_at,
+                "updated_at": r.updated_at,
+                "processed_at": r.processed_at,
+                "doc_metadata": dict(r.doc_metadata or {}),
+            }
+        )
+    return out
+
+
+def _normalize_stale_report_limits(
+    *,
+    stale_after_days: int,
+    max_documents: int,
+) -> tuple[int, int]:
+    days_i = max(1, int(stale_after_days))
+    max_docs_i = max(1, int(max_documents))
+    return days_i, min(max_docs_i, 50_000)
+
+
+def _skip_summary(
+    *,
+    tenant_id: UUID,
+    report_date: str,
+    now: datetime,
+    stale_after_days: int,
+    max_documents: int,
+) -> dict[str, Any]:
+    return {
+        "tenant_id": str(tenant_id),
+        "report_date": report_date,
+        "ran_at": _dt_to_json(now),
+        "stale_after_days": stale_after_days,
+        "max_documents": max_documents,
+        "ok": True,
+        "skipped": True,
+        "skip_reason": "already_written",
+    }
+
+
+def _bucket_age_days(age_days: int) -> str:
+    if age_days < 7:
+        return "<7d"
+    if age_days < 30:
+        return "7-29d"
+    if age_days < 90:
+        return "30-89d"
+    if age_days < 180:
+        return "90-179d"
+    return ">=180d"
+
+
+def _effective_timestamp_and_reason(
+    *,
+    row: dict[str, Any],
+    now: datetime,
+) -> tuple[datetime, str]:
+    meta = row["doc_metadata"]
+
+    eff_dt = _parse_datetime_best_effort(meta.get("source_last_modified_at"))
+    reason = "meta:source_last_modified_at"
+    if eff_dt is None:
+        eff_dt = _parse_datetime_best_effort(meta.get("source_fetched_at"))
+        reason = "meta:source_fetched_at"
+    if eff_dt is None:
+        eff_dt = row["processed_at"] or row["updated_at"] or row["created_at"] or row["linked_at"]
+        reason = "fallback:document_timestamps"
+
+    if isinstance(eff_dt, datetime):
+        if eff_dt.tzinfo is None:
+            eff_dt = eff_dt.replace(tzinfo=UTC)
+        return eff_dt.astimezone(UTC), reason
+    return now, "fallback:unknown"
+
+
+def _summarize_stale_rows(
+    *,
+    rows: list[dict[str, Any]],
+    tenant_id: UUID,
+    report_date: str,
+    now: datetime,
+    stale_after_days: int,
+    max_documents: int,
+    cutoff: datetime,
+) -> dict[str, Any]:
+    seen_doc_ids: set[str] = set()
+    scanned = 0
+    stale = 0
+    stale_sample_ids: list[str] = []
+    by_connector_scanned: Counter[str] = Counter()
+    by_connector_stale: Counter[str] = Counter()
+    by_dataset_stale: Counter[str] = Counter()
+    by_source_kind: Counter[str] = Counter()
+    by_reason: Counter[str] = Counter()
+    age_buckets: Counter[str] = Counter()
+
+    for row in rows:
+        doc_id = str(row["document_id"])
+        if doc_id in seen_doc_ids:
+            continue
+        seen_doc_ids.add(doc_id)
+
+        connector_id = row["connector_id"].strip() or "unknown"
+        by_connector_scanned[connector_id] += 1
+        scanned += 1
+
+        meta = row["doc_metadata"]
+        source_kind = meta.get("source_last_modified_source")
+        src_kind = "unknown" if source_kind is None else str(source_kind).strip() or "unknown"
+        by_source_kind[src_kind] += 1
+
+        eff_dt, reason = _effective_timestamp_and_reason(row=row, now=now)
+        by_reason[reason] += 1
+
+        age_days = int(max(0, (now - eff_dt).total_seconds() // 86400))
+        age_buckets[_bucket_age_days(age_days)] += 1
+        if eff_dt > cutoff:
+            continue
+
+        stale += 1
+        by_connector_stale[connector_id] += 1
+
+        dataset_id = row["document_dataset_id"] or row["run_dataset_id"]
+        if dataset_id is not None:
+            by_dataset_stale[str(dataset_id)] += 1
+        if len(stale_sample_ids) < 20:
+            stale_sample_ids.append(doc_id)
+
+    return {
+        "tenant_id": str(tenant_id),
+        "report_date": report_date,
+        "ran_at": _dt_to_json(now),
+        "stale_after_days": stale_after_days,
+        "max_documents": max_documents,
+        "scanned": scanned,
+        "stale": stale,
+        "by_connector_scanned": _bounded_top_counts(by_connector_scanned, max_items=50),
+        "by_connector_stale": _bounded_top_counts(by_connector_stale, max_items=50),
+        "by_dataset_stale": _bounded_top_counts(by_dataset_stale, max_items=50),
+        "by_source_kind": _bounded_top_counts(by_source_kind, max_items=20),
+        "by_reason": _bounded_top_counts(by_reason, max_items=20),
+        "age_buckets": dict(age_buckets),
+        "stale_sample_document_ids": list(stale_sample_ids),
+        "ok": True,
+        "skipped": False,
+    }
+
+
+def run_daily_stale_report(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    stale_after_days: int,
+    max_documents: int,
+    execute: bool,
+    force: bool = False,
+    actor_id: str | None = "system:stale_report",
+    now: datetime | None = None,
+) -> dict[str, Any]:
+    """
+    Generate a bounded stale summary for one tenant and optionally write an audit log entry.
+
+    "Stale" definition (bounded, metadata-only):
+    - For connector-created documents, compute an effective "source timestamp" in this order:
+      1) metadata.source_last_modified_at (preferred; best-effort from HTTP header / connector metadata)
+      2) metadata.source_fetched_at
+      3) processed_at / updated_at / created_at / linked_at (fallback)
+    - If effective timestamp is older than (now - stale_after_days), classify as stale.
+    """
+    now0 = now or datetime.now(UTC)
+    days_i, max_docs_i = _normalize_stale_report_limits(
+        stale_after_days=stale_after_days,
+        max_documents=max_documents,
+    )
+    report_date = now0.date().isoformat()
+    cutoff = now0 - timedelta(days=days_i)
+
+    if (
+        execute
+        and not force
+        and _audit_already_written(
+            db, tenant_id=tenant_id, action="connectors.stale_report.daily", report_date=report_date
+        )
+    ):
+        return _skip_summary(
+            tenant_id=tenant_id,
+            report_date=report_date,
+            now=now0,
+            stale_after_days=days_i,
+            max_documents=max_docs_i,
+        )
+
+    rows = _list_connector_document_rows(db, tenant_id=tenant_id, cutoff=cutoff, max_documents=max_docs_i)
+    summary = _summarize_stale_rows(
+        rows=rows,
+        tenant_id=tenant_id,
+        report_date=report_date,
+        now=now0,
+        stale_after_days=days_i,
+        max_documents=max_docs_i,
+        cutoff=cutoff,
+    )
+
+    if not execute:
+        summary["dry_run"] = True
+        return summary
+
+    # Best-effort audit log write (PII-safe; no raw URLs/content).
+    try:
+        audit_log_event(
+            db,
+            tenant_id=tenant_id,
+            actor_id=actor_id,
+            action="connectors.stale_report.daily",
+            resource_type="stale_report",
+            resource_id=report_date,
+            details={k: v for k, v in summary.items() if k not in {"ok"}},
+        )
+        db.commit()
+        summary["dry_run"] = False
+        return summary
+    except Exception:
+        db.rollback()
+        logger.warning(
+            "Stale report audit write failed: tenant_id=%s report_date=%s",
+            tenant_id,
+            report_date,
+            exc_info=True,
+        )
+        summary["ok"] = False
+        summary["error"] = "failed_to_write_audit"
+        summary["dry_run"] = False
+        return summary
+
+
+__all__ = ["run_daily_stale_report"]

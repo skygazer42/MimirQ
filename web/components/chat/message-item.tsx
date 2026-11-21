@@ -29,12 +29,12 @@ import { useRouter } from '@/i18n/navigation'
 import { resolveMarkdownImageSrc, sanitizeMarkdownHref } from '@/components/markdown/markdown-safety'
 import type { Citation } from '@/types/processing'
 import type { FeedbackCategory, MessageFeedback } from '@/types/feedback'
-import type { Message } from '@/types/chat'
+import type { ClaimEvidenceReference, Message } from '@/types/chat'
+import { getCitationRange } from '@/lib/citations'
 import { getDocumentPreviewAnchorFromCitation } from '@/lib/document-preview-anchor'
 import { cn, detachPromise } from '@/lib/utils'
 import { BRAND_NAME } from '@/lib/brand'
 import { globalEventBus } from '@/lib/event-bus'
-import { toAbsoluteBackendUrl } from '@/lib/env'
 import { prefetchDocumentView } from '@/lib/document-view-prefetch'
 import { useDocumentView, type DocumentViewSourceContext } from '@/store/document-view'
 import { resolveSafeCitationImageUrl } from '@/lib/citation-images'
@@ -43,7 +43,6 @@ import { EvidenceViewerDialog } from '@/components/evidence/evidence-viewer-dial
 import { CinematicTypewriter } from '@/components/ui/cinematic-typewriter'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
-import { documentApi } from '@/lib/api/documents'
 import { feedbackApi } from '@/lib/api/feedback'
 import { formatApiError } from '@/lib/api-errors'
 import { AUTH_SCOPE_CHANGED_EVENT, getAuthSessionRevision } from '@/lib/auth-storage'
@@ -62,72 +61,78 @@ const InlineCitationHandlersContext = createContext<InlineCitationHandlers>({
   onPrefetch: () => {},
 })
 
-function isCurrentFeedbackRequest(owner: { active: boolean }, sessionRevision: number): boolean {
+function isCurrentMessageOperation(owner: { active: boolean }, sessionRevision: number): boolean {
   return owner.active && sessionRevision === getAuthSessionRevision()
 }
 
 type ConfidenceMeta = Readonly<{
   label: string
-  summary: string
   badgeClass: string
   lineClass: string
 }>
-type ClaimEvidenceReference = Record<string, unknown> & {
-  document_id?: string
-  chunk_id?: string
-  start_char?: number
-  end_char?: number
-  score?: number
-  quote?: string
-}
-type ClaimEvidenceItem = Record<string, unknown> & {
-  claim?: string
-  evidence?: ClaimEvidenceReference[]
-}
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-}
+type CitationRow = Readonly<{ key: string; citation: Citation }>
 
-function claimEvidenceReferences(value: unknown): ClaimEvidenceReference[] {
-  return Array.isArray(value) ? value.filter((item): item is ClaimEvidenceReference => isRecord(item)) : []
-}
-
-function claimEvidenceItems(value: unknown): ClaimEvidenceItem[] | null {
-  return Array.isArray(value) ? value.filter((item): item is ClaimEvidenceItem => isRecord(item)) : null
-}
-
-function claimEvidenceReferenceKey(ev: ClaimEvidenceReference): string {
-  return String(ev.chunk_id || ev.document_id || '')
+function getCitationRows(citations: readonly Citation[] | undefined): CitationRow[] {
+  if (citations === undefined) return []
+  const occurrences = new Map<string, number>()
+  return citations
+    .slice()
+    .sort((first, second) => second.relevance_score - first.relevance_score)
+    .map((citation) => {
+      const identity = JSON.stringify([
+        citation.document_id,
+        citation.chunk_id,
+        citation.page_number,
+        citation.start_char,
+        citation.end_char,
+        citation.evidence_start_char,
+        citation.evidence_end_char,
+        citation.img_id,
+        citation.img_url,
+      ])
+      const occurrence = occurrences.get(identity) ?? 0
+      occurrences.set(identity, occurrence + 1)
+      return { key: `${identity}:${occurrence}`, citation }
+    })
 }
 
-function getCitationRange(citation: Citation): { start: number; end: number } | undefined {
-  let start: number | null = null
-  if (typeof citation.evidence_start_char === 'number') {
-    start = citation.evidence_start_char
-  } else if (typeof citation.start_char === 'number') {
-    start = citation.start_char
-  }
-
-  let end: number | null = null
-  if (typeof citation.evidence_end_char === 'number') {
-    end = citation.evidence_end_char
-  } else if (typeof citation.end_char === 'number') {
-    end = citation.end_char
-  }
-
-  return start != null && end != null && end > start ? { start, end } : undefined
+type CitationTarget = {
+  documentId?: string | null
+  chunkId?: string | null
+  range?: { start: number; end: number }
+  pageNumber?: number
 }
 
-function parseInlineCitationHref(href?: string): { documentId?: string; chunkId?: string } | null {
+function readInlineCitationInteger(params: URLSearchParams, name: string): number | undefined {
+  const raw = params.get(name)
+  if (raw === null) return undefined
+  if (!/^(0|[1-9]\d*)$/.test(raw)) throw new TypeError(`Invalid citation ${name}`)
+  const value = Number(raw)
+  if (!Number.isSafeInteger(value)) throw new TypeError(`Invalid citation ${name}`)
+  return value
+}
+
+function parseInlineCitationHref(href?: string): CitationTarget | null {
   if (!href?.startsWith(INLINE_CITATION_HREF_PREFIX)) return null
 
   try {
     const parsed = new URL(href)
-    const documentId = (parsed.searchParams.get('document_id') || '').trim() || undefined
-    const chunkId = (parsed.searchParams.get('chunk_id') || '').trim() || undefined
+    const documentId = parsed.searchParams.get('document_id')?.trim()
+    const chunkId = parsed.searchParams.get('chunk_id')?.trim()
     if (!documentId && !chunkId) return null
-    return { documentId, chunkId }
+    const start = readInlineCitationInteger(parsed.searchParams, 'start_char')
+    const end = readInlineCitationInteger(parsed.searchParams, 'end_char')
+    const pageNumber = readInlineCitationInteger(parsed.searchParams, 'page')
+    if ((start === undefined) !== (end === undefined)) return null
+    if (start !== undefined && end !== undefined && end <= start) return null
+    if (pageNumber === 0) return null
+    return {
+      documentId: documentId === '' ? undefined : documentId,
+      chunkId: chunkId === '' ? undefined : chunkId,
+      range: start === undefined || end === undefined ? undefined : { start, end },
+      pageNumber,
+    }
   } catch {
     return null
   }
@@ -137,115 +142,103 @@ function transformMessageMarkdownUrl(url: string, key: string): string {
   return key === 'href' && parseInlineCitationHref(url) ? url : defaultUrlTransform(url)
 }
 
+function findTargetCitation(citations: readonly Citation[] | undefined, target: CitationTarget): Citation | undefined {
+  if (!target.chunkId) return undefined
+  return citations?.find(
+    (citation) =>
+      citation.chunk_id === target.chunkId && (target.documentId == null || citation.document_id === target.documentId),
+  )
+}
+
 function buildChatCitationSourceContext(
   messageId: string,
-  documentId: string | null | undefined,
+  documentId: string,
   chunkId?: string | null,
-  citation?: Citation | null,
-): DocumentViewSourceContext | null {
-  const normalizedMessageId = String(messageId || '').trim()
-  const normalizedDocumentId = String(documentId || '').trim()
-  if (!normalizedMessageId || !normalizedDocumentId) return null
-
-  const normalizedChunkId = String(chunkId || '').trim()
+  citation?: Partial<Pick<Citation, 'document_name' | 'chunk_content' | 'chunk_index' | 'page_number'>>,
+): DocumentViewSourceContext {
   return {
     kind: 'chat-citation',
-    messageId: normalizedMessageId,
-    documentId: normalizedDocumentId,
-    chunkId: normalizedChunkId || null,
-    documentName: String(citation?.document_name || '').trim() || null,
-    chunkContent: String(citation?.chunk_content || '').trim() || null,
-    chunkIndex: typeof citation?.chunk_index === 'number' ? citation.chunk_index : null,
-    pageNumber: typeof citation?.page_number === 'number' ? citation.page_number : null,
+    messageId,
+    documentId,
+    chunkId,
+    documentName: citation?.document_name,
+    chunkContent: citation?.chunk_content,
+    chunkIndex: citation?.chunk_index,
+    pageNumber: citation?.page_number,
   }
 }
 
-function getConfidenceMeta(confidenceScore: number | null): ConfidenceMeta | null {
-  if (confidenceScore == null) return null
-  if (confidenceScore >= 0.75) {
+function getConfidenceMeta(band: unknown): ConfidenceMeta | null {
+  if (band === 'high') {
     return {
       label: '✓ 高置信度',
-      summary: '证据与回答整体一致',
       badgeClass: 'border-success/20 bg-success/10 text-success',
       lineClass: 'border-l-emerald-500/80',
     }
   }
-  if (confidenceScore >= 0.5) {
+  if (band === 'medium') {
     return {
-      label: '⚠ 部分支撑',
-      summary: '存在有效证据，但仍建议交叉确认',
+      label: '中置信度',
       badgeClass: 'border-warning/20 bg-warning/10 text-warning',
       lineClass: 'border-l-amber-500/80',
     }
   }
-  return {
-    label: '✗ 证据不足',
-    summary: '当前回答缺少足够支撑，建议继续追问',
-    badgeClass: 'border-destructive/20 bg-destructive/10 text-destructive',
-    lineClass: 'border-l-rose-500/80',
-  }
-}
-
-function formatMetricValue(value: unknown): string | null {
-  if (typeof value === 'string') {
-    const normalized = value.trim()
-    return normalized || null
-  }
-  if (typeof value === 'number') {
-    return Number.isFinite(value) ? String(value) : null
-  }
-  if (typeof value === 'boolean') {
-    return value ? 'true' : 'false'
+  if (band === 'low') {
+    return {
+      label: '低置信度',
+      badgeClass: 'border-destructive/20 bg-destructive/10 text-destructive',
+      lineClass: 'border-l-rose-500/80',
+    }
   }
   return null
 }
 
-function toFiniteScore(value: unknown): number | null {
-  const score = Number(value)
-  return Number.isFinite(score) ? score : null
+function formatMetricValue(value: unknown): string | undefined {
+  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') return String(value)
+  return undefined
 }
 
-function formatCitationScore(value: unknown): string {
-  const score = toFiniteScore(value)
-  if (score == null) return '—'
+function formatCitationScore(score: number): string {
   if (score >= 0 && score <= 1) return `${Math.round(score * 100)}%`
   return score.toFixed(3)
 }
 
-function isUsableScore(value: unknown): boolean {
-  const score = toFiniteScore(value)
-  return score != null && score > 0
-}
-
-function getCitationSecondaryScore(citation: Citation): { label: string; value: string } | null {
-  if (isUsableScore(citation.rerank_score)) {
-    return { label: '重排', value: formatCitationScore(citation.rerank_score) }
-  }
-  if (isUsableScore(citation.vector_score)) {
-    return { label: '向量', value: formatCitationScore(citation.vector_score) }
-  }
-  if (isUsableScore(citation.bm25_score)) {
-    return { label: '关键词', value: formatCitationScore(citation.bm25_score) }
-  }
-  if (isUsableScore(citation.retrieval_score)) {
-    return { label: '召回', value: formatCitationScore(citation.retrieval_score) }
-  }
-  return null
-}
-
-function buildCitationScoreTitle(citation: Citation): string {
-  const parts = [
-    `综合分 ${formatCitationScore(citation.relevance_score)}`,
-    isUsableScore(citation.rerank_score) ? `重排 ${formatCitationScore(citation.rerank_score)}` : null,
-    isUsableScore(citation.vector_score) ? `向量 ${formatCitationScore(citation.vector_score)}` : null,
-    isUsableScore(citation.bm25_score) ? `关键词 ${formatCitationScore(citation.bm25_score)}` : null,
-    isUsableScore(citation.retrieval_score) ? `召回 ${formatCitationScore(citation.retrieval_score)}` : null,
-    citation.hit_type ? `命中类型 ${citation.hit_type}` : null,
+function getCitationScoreDetails(citation: Citation) {
+  const relevanceScore = formatCitationScore(citation.relevance_score)
+  const titleParts = [`综合分 ${relevanceScore}`]
+  const optionalScores = [
+    { label: '重排', score: citation.rerank_score },
+    { label: '向量', score: citation.vector_score },
+    { label: '关键词', score: citation.bm25_score },
+    { label: '召回', score: citation.retrieval_score },
   ]
-  return parts.filter(Boolean).join(' · ')
+  let secondaryScore: { label: string; value: string } | undefined
+
+  for (const { label, score } of optionalScores) {
+    if (score === undefined) continue
+    const value = formatCitationScore(score)
+    secondaryScore ??= { label, value }
+    titleParts.push(`${label} ${value}`)
+  }
+  if (citation.hit_type !== undefined) titleParts.push(`命中类型 ${citation.hit_type}`)
+  return { relevanceScore, title: titleParts.join(' · '), secondaryScore }
 }
 
 const markdownPlugins = [remarkGfm]
+const DIAGNOSTIC_METRICS = [
+  'request_id',
+  'retrieval_mode',
+  'retrieval_mode_requested',
+  'vector_backend',
+  'route',
+  'model_route',
+  'elapsed_sec',
+  'retrieval_elapsed_sec',
+  'generation_elapsed_sec',
+  'docs_returned',
+  'distinct_documents',
+  'top_k',
+]
 type MessageMarkdownChildrenProps = Readonly<{ children?: ReactNode }>
 type MessageMarkdownLinkProps = Readonly<{ href?: string; children?: ReactNode }>
 type MessageMarkdownImageProps = Readonly<{ src?: string | Blob; alt?: string }>
@@ -285,7 +278,7 @@ function MessageMarkdownAnchor({ href, children }: MessageMarkdownLinkProps) {
   }
 
   const safeHref = sanitizeMarkdownHref(href)
-  if (!safeHref) return <span className="text-muted-foreground">{children}</span>
+  if (safeHref === null) return <span className="text-muted-foreground">{children}</span>
 
   return (
     <a
@@ -300,13 +293,12 @@ function MessageMarkdownAnchor({ href, children }: MessageMarkdownLinkProps) {
 }
 
 function MessageMarkdownImage({ src, alt }: MessageMarkdownImageProps) {
-  const raw = typeof src === 'string' ? src : ''
-  const resolved = resolveMarkdownImageSrc(raw)
-  if (!resolved) return null
+  const resolved = resolveMarkdownImageSrc(src)
+  if (resolved === null) return null
   return (
     <AuthImage
       src={resolved}
-      alt={alt || 'image'}
+      alt={alt === undefined ? 'image' : alt}
       width={1200}
       height={800}
       unoptimized
@@ -326,8 +318,7 @@ function MessageMarkdownBlockquote({ children }: MessageMarkdownChildrenProps) {
 }
 
 function MessageMarkdownCode({ className, children, ...props }: MessageMarkdownCodeProps) {
-  const match = /language-(\w+)/.exec(className || '')
-  if (match) {
+  if (className !== undefined && /language-\w+/.test(className)) {
     return (
       <code className={className} {...props}>
         {children}
@@ -360,10 +351,12 @@ const markdownBaseComponents = {
 export const ChatMessageItem = memo(function ChatMessageItem({
   message,
   isStreaming = false,
+  onFollowupSelect,
   variant = 'default',
 }: Readonly<{
   message: Message
   isStreaming?: boolean
+  onFollowupSelect?: (prompt: string) => void
   variant?: 'default' | 'minimal' | 'history'
 }>) {
   const router = useRouter()
@@ -380,7 +373,7 @@ export const ChatMessageItem = memo(function ChatMessageItem({
   const [stepsOpen, setStepsOpen] = useState(() => isStreaming)
   const copyTimerRef = useRef<number | null>(null)
   const prefetchedCitationTargetsRef = useRef<Set<string>>(new Set())
-  const feedbackOwnerRef = useRef<{
+  const messageOwnerRef = useRef<{
     active: boolean
     ratingSending: boolean
     expertAction: 'evidence' | 'regression' | null
@@ -390,218 +383,176 @@ export const ChatMessageItem = memo(function ChatMessageItem({
     ? { duration: 0 }
     : { duration: 0.24, ease: [0.16, 1, 0.3, 1] as const }
   const stepCount = message.steps?.length ?? 0
-  const latestStep = stepCount > 0 ? message.steps?.[stepCount - 1] : ''
+  const latestStep = message.steps?.[stepCount - 1]
   const stepsPanelId = `chat-steps-${message.id}`
+
+  const clearCopyTimer = useCallback(() => {
+    if (copyTimerRef.current !== null) {
+      globalThis.window.clearTimeout(copyTimerRef.current)
+      copyTimerRef.current = null
+    }
+  }, [])
 
   useEffect(() => {
     setStepsOpen(isStreaming)
   }, [isStreaming, message.id])
 
   useEffect(() => {
-    feedbackOwnerRef.current = { active: true, ratingSending: false, expertAction: null }
+    messageOwnerRef.current = { active: true, ratingSending: false, expertAction: null }
 
-    function resetFeedback() {
-      feedbackOwnerRef.current.active = false
-      feedbackOwnerRef.current = { active: true, ratingSending: false, expertAction: null }
+    function resetMessageOperations() {
+      messageOwnerRef.current.active = false
+      messageOwnerRef.current = { active: true, ratingSending: false, expertAction: null }
       setRating(null)
       setRatingSending(false)
       setFeedbackRecord(null)
       setExpertAction(null)
+      clearCopyTimer()
+      setCopied(false)
     }
 
-    globalThis.window.addEventListener(AUTH_SCOPE_CHANGED_EVENT, resetFeedback)
+    globalThis.window.addEventListener(AUTH_SCOPE_CHANGED_EVENT, resetMessageOperations)
     return () => {
-      feedbackOwnerRef.current.active = false
-      globalThis.window.removeEventListener(AUTH_SCOPE_CHANGED_EVENT, resetFeedback)
+      messageOwnerRef.current.active = false
+      globalThis.window.removeEventListener(AUTH_SCOPE_CHANGED_EVENT, resetMessageOperations)
+      clearCopyTimer()
     }
-  }, [])
-
-  useEffect(() => {
-    return () => {
-      if (copyTimerRef.current != null) {
-        globalThis.window.clearTimeout(copyTimerRef.current)
-      }
-    }
-  }, [])
+  }, [clearCopyTimer])
 
   const handleCopy = async () => {
-    const text = (message.content || '').trimEnd()
-    if (!text) return
+    const owner = messageOwnerRef.current
+    const sessionRevision = getAuthSessionRevision()
+    if (message.content.length === 0) return
 
     try {
-      await navigator.clipboard.writeText(text)
+      await navigator.clipboard.writeText(message.content)
     } catch (error) {
-      reportClientError('Failed to copy chat message to clipboard', error)
-      toast.error('复制失败，请检查浏览器剪贴板权限')
+      if (isCurrentMessageOperation(owner, sessionRevision)) {
+        reportClientError('Failed to copy chat message to clipboard', error)
+        toast.error('复制失败，请检查浏览器剪贴板权限')
+      }
       return
     }
 
+    if (!isCurrentMessageOperation(owner, sessionRevision)) return
     setCopied(true)
-    if (copyTimerRef.current != null) {
-      globalThis.window.clearTimeout(copyTimerRef.current)
-    }
-    copyTimerRef.current = globalThis.window.setTimeout(() => setCopied(false), 1200)
+    clearCopyTimer()
+    copyTimerRef.current = globalThis.window.setTimeout(() => {
+      copyTimerRef.current = null
+      setCopied(false)
+    }, 1200)
   }
 
-  const handleCopyDiagnostics = useCallback(async () => {
-    const payload = {
-      message_id: message.id,
-      message_metadata: message.message_metadata || null,
-      citations: message.citations || [],
-    }
+  const diagnostics = {
+    message_id: message.id,
+    message_metadata: message.message_metadata,
+    citations: message.citations,
+  }
+  const handleCopyDiagnostics = async () => {
+    const owner = messageOwnerRef.current
+    const sessionRevision = getAuthSessionRevision()
     try {
-      await navigator.clipboard.writeText(JSON.stringify(payload, null, 2))
-    } catch {
-      // ignore
+      await navigator.clipboard.writeText(JSON.stringify(diagnostics, null, 2))
+      if (isCurrentMessageOperation(owner, sessionRevision)) toast.success('已复制诊断信息')
+    } catch (error) {
+      if (isCurrentMessageOperation(owner, sessionRevision)) {
+        reportClientError('Failed to copy chat diagnostics to clipboard', error)
+        toast.error('诊断信息复制失败，请检查浏览器剪贴板权限')
+      }
     }
-  }, [message.citations, message.id, message.message_metadata])
+  }
 
-  const metrics = message.message_metadata || {}
-  const confidenceScoreRaw = metrics.confidence_score
-  const confidenceScore = (() => {
-    const value =
-      typeof confidenceScoreRaw === 'number'
-        ? confidenceScoreRaw
-        : typeof confidenceScoreRaw === 'string' && confidenceScoreRaw.trim()
-          ? Number(confidenceScoreRaw)
-          : Number.NaN
-    return Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : null
-  })()
-  const confidenceMeta = getConfidenceMeta(confidenceScore)
-  const claimEvidence = claimEvidenceItems(metrics.claim_evidence)
+  const metrics = message.message_metadata
+  const confidenceScore = metrics?.confidence_score
+  const confidenceMeta = getConfidenceMeta(metrics?.confidence_band)
+  const hasConfidence = confidenceScore != null || confidenceMeta !== null
+  const claimEvidence = metrics?.claim_evidence
   const claimEvidenceCount = claimEvidence?.length ?? 0
-  const messageDatasetId =
-    typeof metrics.dataset_id === 'string' && metrics.dataset_id.trim() ? metrics.dataset_id.trim() : null
-  const followupQuestions = Array.isArray(metrics.followup_questions)
-    ? metrics.followup_questions
-        .map((item: unknown) => (typeof item === 'string' ? item.trim() : ''))
-        .filter((item: string) => item.length > 0)
-        .slice(0, 3)
-    : []
-  const metricEntries = [
-    { k: 'request_id', v: metrics.request_id },
-    { k: 'retrieval_mode', v: metrics.retrieval_mode ?? metrics.retrieval_mode_requested },
-    { k: 'vector_backend', v: metrics.vector_backend },
-    { k: 'route', v: metrics.route ?? metrics.model_route },
-    { k: 'elapsed_sec', v: metrics.elapsed_sec },
-    { k: 'retrieval_elapsed_sec', v: metrics.retrieval_elapsed_sec },
-    { k: 'generation_elapsed_sec', v: metrics.generation_elapsed_sec },
-    { k: 'docs_returned', v: metrics.docs_returned },
-    { k: 'distinct_documents', v: metrics.distinct_documents },
-    { k: 'top_k', v: metrics.top_k },
-  ].flatMap((entry) => {
-    const value = formatMetricValue(entry.v)
-    return value == null ? [] : [{ k: entry.k, value }]
+  const messageDatasetId = metrics?.dataset_id?.trim()
+  const followupQuestions = metrics?.followup_questions
+    ?.map((question) => question.trim())
+    .filter((question) => question.length > 0)
+    .slice(0, 3)
+  const metricEntries = DIAGNOSTIC_METRICS.flatMap((name) => {
+    const value = formatMetricValue(metrics?.[name])
+    return value === undefined ? [] : [{ name, value }]
   })
 
-  const citationRows = (message.citations || [])
-    .slice()
-    .sort((a, b) => (Number(b.relevance_score) || 0) - (Number(a.relevance_score) || 0))
+  const citationRows = getCitationRows(message.citations)
   const citationPreviewRows = citationRows.slice(0, 2)
 
-  const citationByChunkId = (() => {
-    const map = new Map<string, Citation>()
-    for (const c of message.citations || []) {
-      if (c && typeof c.chunk_id === 'string' && c.chunk_id) {
-        map.set(c.chunk_id, c)
-      }
-    }
-    return map
-  })()
-
-  const citationByDocumentId = (() => {
-    const map = new Map<string, Citation>()
-    for (const c of message.citations || []) {
-      if (c && typeof c.document_id === 'string' && c.document_id && !map.has(c.document_id)) {
-        map.set(c.document_id, c)
-      }
-    }
-    return map
-  })()
-
   const handleOpenEvidence = useCallback(
-    (ev: ClaimEvidenceReference) => {
-      const docId = typeof ev?.document_id === 'string' ? ev.document_id : ''
-      if (!docId) return
-      const chunkId = typeof ev?.chunk_id === 'string' && ev.chunk_id ? ev.chunk_id : undefined
-      const start = typeof ev?.start_char === 'number' ? ev.start_char : null
-      const end = typeof ev?.end_char === 'number' ? ev.end_char : null
+    (reference: ClaimEvidenceReference) => {
+      const documentId = reference.document_id
+      if (!documentId) return
+      const chunkId = reference.chunk_id ?? undefined
+      const start = reference.start_char
+      const end = reference.end_char
       const range = start != null && end != null && end > start ? { start, end } : undefined
-      openDocument(docId, chunkId, range, {
-        sourceContext: buildChatCitationSourceContext(message.id, docId, chunkId),
+      const citation = findTargetCitation(message.citations, { documentId, chunkId })
+      openDocument(documentId, chunkId, range, {
+        previewAnchor: { searchText: reference.quote },
+        sourceContext: buildChatCitationSourceContext(message.id, documentId, chunkId, citation),
       })
     },
-    [message.id, openDocument],
+    [message.citations, message.id, openDocument],
   )
 
-  const handleFollowupPrefill = useCallback((question: string) => {
-    const prompt = question.trim()
-    if (!prompt) return
-    globalEventBus.emit('chat:submit', prompt)
-  }, [])
+  const handleFollowupPrefill = useCallback(
+    (question: string) => {
+      const prompt = question.trim()
+      if (prompt === '') return
+      if (onFollowupSelect) onFollowupSelect(prompt)
+      else globalEventBus.emit('chat:submit', prompt)
+    },
+    [onFollowupSelect],
+  )
 
   const handleInlineCitationClick = useCallback(
     (href?: string) => {
       const target = parseInlineCitationHref(href)
       if (!target) return
 
-      const citation =
-        (target.chunkId ? citationByChunkId.get(target.chunkId) : undefined) ||
-        (target.documentId ? citationByDocumentId.get(target.documentId) : undefined)
+      const citation = findTargetCitation(message.citations, target)
 
-      const documentId = citation?.document_id || target.documentId
+      const documentId = target.documentId ?? citation?.document_id
       if (!documentId) return
+      const range = target.range ?? (citation ? getCitationRange(citation) : undefined)
 
-      openDocument(
-        documentId,
-        citation?.chunk_id || target.chunkId,
-        citation ? getCitationRange(citation) : undefined,
-        {
-          activeTab: 'preview',
-          previewAnchor: getDocumentPreviewAnchorFromCitation(citation),
-          sourceContext: buildChatCitationSourceContext(
-            message.id,
-            documentId,
-            citation?.chunk_id || target.chunkId,
-            citation,
-          ),
-        },
-      )
-    },
-    [citationByChunkId, citationByDocumentId, message.id, openDocument],
-  )
-
-  const prefetchCitationTarget = useCallback(
-    (citation?: Citation | null, target?: { documentId?: string; chunkId?: string } | null) => {
-      const documentId = citation?.document_id || target?.documentId
-      if (!documentId) return
-
-      const chunkId = citation?.chunk_id || target?.chunkId
-      const cacheKey = `${documentId}:${chunkId || ''}`
-      if (prefetchedCitationTargetsRef.current.has(cacheKey)) return
-      prefetchedCitationTargetsRef.current.add(cacheKey)
-
-      prefetchDocumentView({
-        documentId,
-        chunkId,
-        rawFileUrl: toAbsoluteBackendUrl(`/api/v1/documents/${documentId}/download`),
+      openDocument(documentId, target.chunkId ?? undefined, range, {
+        activeTab: 'preview',
+        previewAnchor: target.pageNumber === undefined ? undefined : { pageNumber: target.pageNumber },
+        sourceContext: buildChatCitationSourceContext(message.id, documentId, target.chunkId, citation),
       })
     },
-    [],
+    [message.citations, message.id, openDocument],
   )
+
+  const prefetchCitationTarget = useCallback((citation?: Citation | null, target?: CitationTarget | null) => {
+    const documentId = target?.documentId ?? citation?.document_id
+    if (!documentId) return
+
+    const chunkId = target?.chunkId ?? citation?.chunk_id
+    const cacheKey = JSON.stringify([documentId, chunkId])
+    if (prefetchedCitationTargetsRef.current.has(cacheKey)) return
+    prefetchedCitationTargetsRef.current.add(cacheKey)
+
+    prefetchDocumentView({
+      documentId,
+      chunkId: chunkId ?? undefined,
+    })
+  }, [])
 
   const handleInlineCitationPrefetch = useCallback(
     (href?: string) => {
       const target = parseInlineCitationHref(href)
       if (!target) return
 
-      const citation =
-        (target.chunkId ? citationByChunkId.get(target.chunkId) : undefined) ||
-        (target.documentId ? citationByDocumentId.get(target.documentId) : undefined)
+      const citation = findTargetCitation(message.citations, target)
 
       prefetchCitationTarget(citation, target)
     },
-    [citationByChunkId, citationByDocumentId, prefetchCitationTarget],
+    [message.citations, prefetchCitationTarget],
   )
 
   const handleOpenCitation = useCallback(
@@ -662,7 +613,7 @@ export const ChatMessageItem = memo(function ChatMessageItem({
 
   const submitRating = useCallback(
     async (nextRating: number) => {
-      const owner = feedbackOwnerRef.current
+      const owner = messageOwnerRef.current
       if (!canRate || !owner.active || owner.ratingSending) return
       const sessionRevision = getAuthSessionRevision()
       const previousRating = rating
@@ -670,13 +621,19 @@ export const ChatMessageItem = memo(function ChatMessageItem({
       setRating(nextRating)
       setRatingSending(true)
       try {
-        const created = await feedbackApi.create({ message_id: message.id, rating: nextRating })
-        if (!isCurrentFeedbackRequest(owner, sessionRevision)) return
+        const created = await feedbackApi.create({
+          message_id: message.id,
+          rating: nextRating,
+          reason: feedbackRecord?.reason,
+          tags: feedbackRecord?.tags,
+          expected_answer: feedbackRecord?.expected_answer,
+        })
+        if (!isCurrentMessageOperation(owner, sessionRevision)) return
         setRating(created.rating)
         setFeedbackRecord(created)
         toast.success('已提交反馈')
       } catch (err: unknown) {
-        if (isCurrentFeedbackRequest(owner, sessionRevision)) {
+        if (isCurrentMessageOperation(owner, sessionRevision)) {
           setRating(previousRating)
           toast.error(formatApiError(err, '反馈提交失败'))
         }
@@ -688,12 +645,12 @@ export const ChatMessageItem = memo(function ChatMessageItem({
         }
       }
     },
-    [canRate, message.id, rating],
+    [canRate, feedbackRecord, message.id, rating],
   )
 
   const submitFeedbackCategory = useCallback(
     async (category: FeedbackCategory) => {
-      const owner = feedbackOwnerRef.current
+      const owner = messageOwnerRef.current
       if (!canRate || rating == null || rating > 2 || !owner.active || owner.ratingSending) return
       const sessionRevision = getAuthSessionRevision()
       owner.ratingSending = true
@@ -707,11 +664,11 @@ export const ChatMessageItem = memo(function ChatMessageItem({
           tags: feedbackRecord?.tags,
           expected_answer: feedbackRecord?.expected_answer,
         })
-        if (!isCurrentFeedbackRequest(owner, sessionRevision)) return
+        if (!isCurrentMessageOperation(owner, sessionRevision)) return
         setFeedbackRecord(updated)
         toast.success('已记录问题分类')
       } catch (err: unknown) {
-        if (isCurrentFeedbackRequest(owner, sessionRevision)) toast.error(formatApiError(err, '问题分类提交失败'))
+        if (isCurrentMessageOperation(owner, sessionRevision)) toast.error(formatApiError(err, '问题分类提交失败'))
       } finally {
         owner.ratingSending = false
         if (owner.active) setRatingSending(false)
@@ -720,43 +677,33 @@ export const ChatMessageItem = memo(function ChatMessageItem({
     [canRate, feedbackRecord, message.id, rating],
   )
 
-  const resolveFeedbackDatasetId = useCallback(async () => {
-    if (messageDatasetId) return messageDatasetId
-
-    const firstDocumentId = (message.citations || []).find((citation) => citation.document_id)?.document_id
-    if (!firstDocumentId) return null
-
-    const document = await documentApi.get(firstDocumentId, { includeChunks: false })
-    return typeof document.dataset_id === 'string' && document.dataset_id.trim() ? document.dataset_id.trim() : null
-  }, [message.citations, messageDatasetId])
-
-  const handleSendFeedbackToEvidence = useCallback(async () => {
-    const feedbackId = String(feedbackRecord?.id || '').trim()
-    const owner = feedbackOwnerRef.current
+  const handleSendFeedbackToEvidence = useCallback(() => {
+    const feedbackId = feedbackRecord?.id.trim()
+    const owner = messageOwnerRef.current
     if (!feedbackId || !owner.active || owner.expertAction) return
     const sessionRevision = getAuthSessionRevision()
 
     owner.expertAction = 'evidence'
     setExpertAction('evidence')
     try {
-      const datasetId = await resolveFeedbackDatasetId()
-      if (!isCurrentFeedbackRequest(owner, sessionRevision)) return
+      const feedbackDatasetId = feedbackRecord?.extra?.dataset_id
+      const datasetId = typeof feedbackDatasetId === 'string' ? feedbackDatasetId.trim() : messageDatasetId
       if (!datasetId) {
         toast.error('未解析到数据集，暂时无法打开证据库')
         return
       }
       router.push(`/datasets/${encodeURIComponent(datasetId)}/evidence?feedback_id=${encodeURIComponent(feedbackId)}`)
     } catch (error: unknown) {
-      if (isCurrentFeedbackRequest(owner, sessionRevision)) toast.error(formatApiError(error, '打开证据库失败'))
+      if (isCurrentMessageOperation(owner, sessionRevision)) toast.error(formatApiError(error, '打开证据库失败'))
     } finally {
       owner.expertAction = null
       if (owner.active) setExpertAction(null)
     }
-  }, [feedbackRecord?.id, resolveFeedbackDatasetId, router])
+  }, [feedbackRecord?.extra, feedbackRecord?.id, messageDatasetId, router])
 
   const handleCreateRegressionCase = useCallback(async () => {
-    const feedbackId = String(feedbackRecord?.id || '').trim()
-    const owner = feedbackOwnerRef.current
+    const feedbackId = feedbackRecord?.id.trim()
+    const owner = messageOwnerRef.current
     if (!feedbackId || !owner.active || owner.expertAction) return
     const sessionRevision = getAuthSessionRevision()
 
@@ -767,10 +714,10 @@ export const ChatMessageItem = memo(function ChatMessageItem({
         include_document_scope: true,
         extra: { source: 'chat_feedback_action' },
       })
-      if (!isCurrentFeedbackRequest(owner, sessionRevision)) return
+      if (!isCurrentMessageOperation(owner, sessionRevision)) return
       toast.success('已创建回归用例')
     } catch (error: unknown) {
-      if (isCurrentFeedbackRequest(owner, sessionRevision)) toast.error(formatApiError(error, '转为回归用例失败'))
+      if (isCurrentMessageOperation(owner, sessionRevision)) toast.error(formatApiError(error, '转为回归用例失败'))
     } finally {
       owner.expertAction = null
       if (owner.active) setExpertAction(null)
@@ -809,24 +756,16 @@ export const ChatMessageItem = memo(function ChatMessageItem({
         className={cn(
           'relative text-[15px] transition-all duration-300 motion-reduce:transition-none',
           isHistory
-            ? isUser
-              ? 'min-w-0 flex-1 text-foreground'
-              : 'min-w-0 flex-1 text-foreground'
+            ? 'min-w-0 flex-1 text-foreground'
             : variant === 'minimal'
               ? isUser
                 ? 'max-w-[78%] px-4 py-3 rounded-2xl rounded-br-md border border-[#BDE0FE] bg-[#A2D2FF] text-black shadow-sm backdrop-blur-sm'
                 : 'max-w-[88%] px-4 py-3 flex-1 rounded-2xl rounded-bl-md border border-border/60 bg-background/92 text-foreground shadow-sm backdrop-blur-sm'
               : isUser
                 ? 'max-w-3xl px-6 py-4 rounded-2xl rounded-tr-sm border border-[#8FC8E8] bg-[#AAD9F2] text-[#17384D] shadow-sm backdrop-blur-sm'
-                : cn(
-                    'max-w-3xl px-6 py-4 glass-card text-foreground rounded-2xl rounded-tl-sm border border-border/60 border-l-4 hover:shadow-lg hover:shadow-primary/10',
-                    confidenceMeta?.lineClass || 'border-l-primary/30',
-                  ),
-          !isUser && isCompact
-            ? ''
-            : (confidenceMeta?.lineClass || 'border-l-primary/30').replace('border-l-', 'border-l-'),
+                : 'max-w-3xl px-6 py-4 glass-card text-foreground rounded-2xl rounded-tl-sm border border-border/60 border-l-4 hover:shadow-lg hover:shadow-primary/10',
+          (isUser || !isCompact) && (confidenceMeta?.lineClass ?? 'border-l-primary/30'),
         )}
-        style={undefined}
       >
         {isHistory && isUser && (
           <div className="mb-3 flex items-center gap-2.5 text-[12.5px] font-medium text-foreground">
@@ -871,7 +810,7 @@ export const ChatMessageItem = memo(function ChatMessageItem({
         )}
         {/* 思维链 / 步骤展示 */}
         <AnimatePresence initial={false}>
-          {!isUser && message.steps && message.steps.length > 0 ? (
+          {!isUser && message.steps && stepCount > 0 ? (
             <motion.div
               layout={!reduceMotion && isStreaming}
               transition={streamingLayoutTransition}
@@ -897,7 +836,7 @@ export const ChatMessageItem = memo(function ChatMessageItem({
                   <div className="flex items-center gap-2">
                     <span className="text-[11px] font-bold uppercase text-primary/75">思考路径</span>
                     <span className="rounded-full border border-primary/15 bg-background/60 px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
-                      {message.steps.length} 步
+                      {stepCount} 步
                     </span>
                   </div>
                   {!stepsOpen && latestStep ? (
@@ -929,7 +868,7 @@ export const ChatMessageItem = memo(function ChatMessageItem({
                           key={`${idx}-${step}`}
                           className={cn(
                             'text-xs transition-opacity duration-200 motion-reduce:transition-none',
-                            idx === message.steps!.length - 1
+                            idx === stepCount - 1
                               ? 'font-medium text-foreground motion-safe:animate-pulse'
                               : 'text-muted-foreground/60',
                           )}
@@ -1000,8 +939,8 @@ export const ChatMessageItem = memo(function ChatMessageItem({
                           {metricEntries.length ? (
                             <dl className="space-y-2 text-xs">
                               {metricEntries.map((entry) => (
-                                <div key={entry.k} className="flex items-start justify-between gap-3">
-                                  <dt className="text-muted-foreground">{entry.k}</dt>
+                                <div key={entry.name} className="flex items-start justify-between gap-3">
+                                  <dt className="text-muted-foreground">{entry.name}</dt>
                                   <dd className="font-mono tabular-nums text-foreground text-right break-all">
                                     {entry.value}
                                   </dd>
@@ -1019,7 +958,7 @@ export const ChatMessageItem = memo(function ChatMessageItem({
                           <div className="text-xs font-semibold text-foreground">Raw payload</div>
                         </div>
                         <pre className="p-4 text-[11px] font-mono tabular-nums text-muted-foreground overflow-auto max-h-56 custom-scrollbar">
-                          {JSON.stringify({ message_metadata: message.message_metadata || null }, null, 2)}
+                          {diagOpen ? JSON.stringify(diagnostics, null, 2) : null}
                         </pre>
                       </div>
                     </div>
@@ -1046,34 +985,35 @@ export const ChatMessageItem = memo(function ChatMessageItem({
                                 </tr>
                               </thead>
                               <tbody className="divide-y divide-border">
-                                {citationRows.map((c, idx) => {
-                                  const score = Number(c.relevance_score)
+                                {citationRows.map(({ citation, key }, idx) => {
                                   return (
                                     <tr
-                                      key={`${c.document_id}-${c.chunk_id || c.page_number || idx}`}
+                                      key={key}
                                       className="hover:bg-muted/30 transition-colors duration-200 motion-reduce:transition-none"
                                     >
                                       <td className="px-4 py-2.5 text-muted-foreground">{idx + 1}</td>
                                       <td className="px-4 py-2.5">
                                         <div
                                           className="max-w-[240px] truncate text-foreground font-medium"
-                                          title={c.document_name}
+                                          title={citation.document_name}
                                         >
-                                          {c.document_name}
+                                          {citation.document_name}
                                         </div>
                                       </td>
-                                      <td className="px-4 py-2.5 text-right font-mono">{c.page_number ?? '-'}</td>
+                                      <td className="px-4 py-2.5 text-right font-mono">
+                                        {citation.page_number ?? '-'}
+                                      </td>
                                       <td className="px-4 py-2.5 text-right font-mono font-semibold">
-                                        {Number.isFinite(score) ? score.toFixed(3) : '-'}
+                                        {citation.relevance_score.toFixed(3)}
                                       </td>
                                       <td className="px-4 py-2.5 text-right font-mono">
-                                        {c.vector_score == null ? '-' : Number(c.vector_score).toFixed(3)}
+                                        {citation.vector_score === undefined ? '-' : citation.vector_score.toFixed(3)}
                                       </td>
                                       <td className="px-4 py-2.5 text-right font-mono">
-                                        {c.bm25_score == null ? '-' : Number(c.bm25_score).toFixed(3)}
+                                        {citation.bm25_score === undefined ? '-' : citation.bm25_score.toFixed(3)}
                                       </td>
                                       <td className="px-4 py-2.5 text-right font-mono">
-                                        {c.rerank_score == null ? '-' : Number(c.rerank_score).toFixed(3)}
+                                        {citation.rerank_score === undefined ? '-' : citation.rerank_score.toFixed(3)}
                                       </td>
                                     </tr>
                                   )
@@ -1099,16 +1039,16 @@ export const ChatMessageItem = memo(function ChatMessageItem({
                         {claimEvidence?.length ? (
                           <div className="p-4 space-y-3 overflow-auto max-h-72 custom-scrollbar">
                             {claimEvidence.slice(0, 24).map((item, idx) => {
-                              const claim = String(item?.claim || '').trim()
-                              const evidence = claimEvidenceReferences(item?.evidence)
+                              const claim = item.claim
+                              const evidence = item.evidence
                               return (
                                 <div
-                                  key={claim || evidence.map(claimEvidenceReferenceKey).join(':') || 'claim'}
+                                  key={`${idx}:${claim}`}
                                   className="rounded-lg border border-border/60 bg-background/40 p-3"
                                 >
                                   <div className="flex items-start justify-between gap-3">
                                     <div className="min-w-0 text-xs font-semibold text-foreground leading-relaxed line-clamp-3">
-                                      {claim || `Claim #${idx + 1}`}
+                                      {claim}
                                     </div>
                                     <div className="flex-shrink-0 text-[11px] text-muted-foreground tabular-nums">
                                       {evidence.length} 证据
@@ -1117,26 +1057,23 @@ export const ChatMessageItem = memo(function ChatMessageItem({
 
                                   {evidence.length ? (
                                     <div className="mt-2 space-y-2">
-                                      {evidence.slice(0, 3).map((ev, eidx) => {
-                                        const docId = typeof ev?.document_id === 'string' ? ev.document_id : ''
-                                        const chunkId = typeof ev?.chunk_id === 'string' ? ev.chunk_id : ''
-                                        const c =
-                                          (chunkId ? citationByChunkId.get(chunkId) : undefined) ||
-                                          (docId ? citationByDocumentId.get(docId) : undefined)
-
-                                        const score = typeof ev?.score === 'number' ? ev.score : null
-                                        const quote = String(ev?.quote || '').trim()
-                                        const disabled = !docId
+                                      {evidence.slice(0, 3).map((reference, referenceIndex) => {
+                                        const documentId = reference.document_id
+                                        const chunkId = reference.chunk_id
+                                        const citation = findTargetCitation(message.citations, { documentId, chunkId })
+                                        const documentName =
+                                          citation?.document_name ?? (documentId === null ? '未提供文档' : documentId)
+                                        const disabled = !documentId
 
                                         return (
                                           <button
-                                            key={`${docId}:${chunkId}:${quote.slice(0, 24)}`}
+                                            key={JSON.stringify([documentId, chunkId, referenceIndex])}
                                             type="button"
                                             disabled={disabled}
                                             aria-label={
                                               disabled ? 'Evidence unavailable' : 'Open evidence in document viewer'
                                             }
-                                            onClick={() => handleOpenEvidence(ev)}
+                                            onClick={() => handleOpenEvidence(reference)}
                                             className={cn(
                                               'w-full text-left rounded-md border border-border/50 bg-background/50 px-3 py-2 transition-colors duration-200 motion-reduce:transition-none',
                                               disabled
@@ -1148,25 +1085,26 @@ export const ChatMessageItem = memo(function ChatMessageItem({
                                               <div className="min-w-0">
                                                 <div
                                                   className="text-[11px] font-semibold text-foreground truncate"
-                                                  title={c?.document_name || docId || 'Unknown'}
+                                                  title={documentName}
                                                 >
-                                                  {c?.document_name || docId || 'Unknown'}
+                                                  {documentName}
                                                 </div>
                                                 <div className="text-[11px] text-muted-foreground tabular-nums">
-                                                  {c?.page_number == null ? '—' : `P.${c.page_number}`}
-                                                  {typeof ev?.start_char === 'number' &&
-                                                  typeof ev?.end_char === 'number'
-                                                    ? ` · ${Math.trunc(ev.start_char)}-${Math.trunc(ev.end_char)}`
-                                                    : ''}
+                                                  {citation?.page_number === undefined
+                                                    ? '—'
+                                                    : `P.${citation.page_number}`}
+                                                  {reference.start_char !== null && reference.end_char !== null
+                                                    ? ` · ${reference.start_char}-${reference.end_char}`
+                                                    : null}
                                                 </div>
                                               </div>
                                               <div className="text-[11px] font-mono text-muted-foreground tabular-nums">
-                                                {score == null ? '' : score.toFixed(3)}
+                                                {reference.score.toFixed(3)}
                                               </div>
                                             </div>
-                                            {quote ? (
+                                            {reference.quote ? (
                                               <div className="mt-1 text-xs text-muted-foreground line-clamp-2 leading-relaxed">
-                                                {quote}
+                                                {reference.quote}
                                               </div>
                                             ) : null}
                                           </button>
@@ -1218,21 +1156,20 @@ export const ChatMessageItem = memo(function ChatMessageItem({
           {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
         </button>
 
-        {!isUser && (confidenceMeta || (!isHistory && citationPreviewRows.length > 0)) && (
+        {!isUser && (hasConfidence || (!isHistory && citationPreviewRows.length > 0)) && (
           <div className="mb-4 space-y-3 pr-16">
-            {confidenceMeta && confidenceScore != null ? (
+            {hasConfidence ? (
               <div className="flex flex-wrap items-center gap-2">
                 <div
                   className={cn(
                     'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold tabular-nums',
-                    confidenceMeta.badgeClass,
+                    confidenceMeta?.badgeClass,
                   )}
                 >
                   <BarChart3 className="size-3" />
-                  <span>{confidenceMeta.label}</span>
-                  <span>{Math.round(confidenceScore * 100)}%</span>
+                  <span>{confidenceMeta?.label ?? '置信度'}</span>
+                  {confidenceScore != null ? <span>{Math.round(confidenceScore * 100)}%</span> : null}
                 </div>
-                <div className="text-[11px] text-muted-foreground">{confidenceMeta.summary}</div>
               </div>
             ) : null}
 
@@ -1242,11 +1179,10 @@ export const ChatMessageItem = memo(function ChatMessageItem({
                   来源速览
                 </div>
                 <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
-                  {citationPreviewRows.map((citation, idx) => {
-                    const citationKey = `${citation.document_id}-${citation.chunk_id || citation.page_number || idx}`
+                  {citationPreviewRows.map(({ citation, key }, idx) => {
                     return (
                       <button
-                        key={citationKey}
+                        key={key}
                         type="button"
                         onClick={() => handleOpenCitation(citation)}
                         className="flex shrink-0 items-center gap-2 rounded-full border border-border/60 bg-background/70 px-3 py-1.5 text-xs text-foreground transition-colors hover:border-primary/25 hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
@@ -1286,13 +1222,27 @@ export const ChatMessageItem = memo(function ChatMessageItem({
           {renderedContent}
         </div>
 
+        {isUser && message.message_metadata?.send_state === 'sending' && (
+          <p role="status" className="mt-2 text-xs text-primary-foreground/80">
+            正在发送…
+          </p>
+        )}
+        {isUser && message.message_metadata?.send_state === 'unconfirmed' && (
+          <p role="status" className="mt-2 text-xs text-primary-foreground/80">
+            尚未确认发送，请查看错误后再重试
+          </p>
+        )}
+        {!isUser && message.message_metadata?.stopped === true && (
+          <p className="mt-2 text-xs text-muted-foreground">已停止，部分回答暂存在本页</p>
+        )}
+
         {isHistory && !isUser && citationRows.length > 0 && (
           <section aria-label="引用来源" className="mt-6 border-t border-border pt-4">
             <h3 className="mb-2 text-xs font-medium text-muted-foreground">引用来源</h3>
             <div className="space-y-1">
-              {citationRows.map((citation, idx) => (
+              {citationRows.map(({ citation, key }, idx) => (
                 <button
-                  key={`${citation.document_id}-${citation.chunk_id || citation.page_number || idx}`}
+                  key={key}
                   type="button"
                   onClick={() => handleOpenCitation(citation)}
                   className="flex min-h-8 w-full items-center gap-2 rounded-sm py-1 text-left text-[13px] leading-5 text-foreground transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none max-md:min-h-11"
@@ -1310,7 +1260,7 @@ export const ChatMessageItem = memo(function ChatMessageItem({
           </section>
         )}
 
-        {!isUser && followupQuestions.length > 0 && (
+        {!isUser && followupQuestions && followupQuestions.length > 0 && (
           <div className="mt-5 pt-3 border-t border-border/40 space-y-3">
             <div className="flex items-center gap-2 text-[11px] font-bold text-muted-foreground uppercase opacity-80">
               继续追问
@@ -1365,9 +1315,8 @@ export const ChatMessageItem = memo(function ChatMessageItem({
                     参考来源
                   </div>
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    {citationRows.map((citation, idx) => {
-                      const citationKey = `${citation.document_id}-${citation.chunk_id || citation.page_number || idx}`
-                      return <CitationCard key={citationKey} messageId={message.id} citation={citation} index={idx} />
+                    {citationRows.map(({ citation, key }, idx) => {
+                      return <CitationCard key={key} messageId={message.id} citation={citation} index={idx} />
                     })}
                   </div>
                 </div>
@@ -1383,38 +1332,31 @@ export const ChatMessageItem = memo(function ChatMessageItem({
                   </div>
                   <div className="space-y-3">
                     {claimEvidence?.slice(0, 6).map((item, idx) => {
-                      const claim = String(item?.claim || '').trim()
-                      const evidence = claimEvidenceReferences(item?.evidence)
+                      const claim = item.claim
+                      const evidence = item.evidence
                       return (
-                        <div
-                          key={claim || evidence.map(claimEvidenceReferenceKey).join(':') || `claim-${idx}`}
-                          className="rounded-xl border border-border/60 bg-card/70 p-3"
-                        >
+                        <div key={`${idx}:${claim}`} className="rounded-xl border border-border/60 bg-card/70 p-3">
                           <div className="flex items-start justify-between gap-3">
-                            <div className="min-w-0 text-sm font-medium leading-6 text-foreground/90">
-                              {claim || `Claim #${idx + 1}`}
-                            </div>
+                            <div className="min-w-0 text-sm font-medium leading-6 text-foreground/90">{claim}</div>
                             <div className="shrink-0 text-[11px] text-muted-foreground">{evidence.length} 证据</div>
                           </div>
 
                           {evidence.length ? (
                             <div className="mt-3 flex flex-col gap-2">
-                              {evidence.slice(0, 2).map((ev) => {
-                                const docId = typeof ev?.document_id === 'string' ? ev.document_id : ''
-                                const chunkId = typeof ev?.chunk_id === 'string' ? ev.chunk_id : ''
-                                const citation =
-                                  (chunkId ? citationByChunkId.get(chunkId) : undefined) ||
-                                  (docId ? citationByDocumentId.get(docId) : undefined)
-                                const score = typeof ev?.score === 'number' ? ev.score : null
-                                const quote = String(ev?.quote || '').trim()
-                                const disabled = !docId
+                              {evidence.slice(0, 2).map((reference, referenceIndex) => {
+                                const documentId = reference.document_id
+                                const chunkId = reference.chunk_id
+                                const citation = findTargetCitation(message.citations, { documentId, chunkId })
+                                const documentName =
+                                  citation?.document_name ?? (documentId === null ? '未提供文档' : documentId)
+                                const disabled = !documentId
 
                                 return (
                                   <button
-                                    key={`${docId}:${chunkId}:${quote.slice(0, 24)}`}
+                                    key={JSON.stringify([documentId, chunkId, referenceIndex])}
                                     type="button"
                                     disabled={disabled}
-                                    onClick={() => handleOpenEvidence(ev)}
+                                    onClick={() => handleOpenEvidence(reference)}
                                     className={cn(
                                       'w-full rounded-xl border border-border/50 bg-background/70 px-3 py-2 text-left transition-colors',
                                       disabled
@@ -1426,26 +1368,24 @@ export const ChatMessageItem = memo(function ChatMessageItem({
                                       <div className="min-w-0">
                                         <div
                                           className="truncate text-[11px] font-semibold text-foreground"
-                                          title={citation?.document_name || docId || 'Unknown'}
+                                          title={documentName}
                                         >
-                                          {citation?.document_name || docId || 'Unknown'}
+                                          {documentName}
                                         </div>
                                         <div className="text-[11px] text-muted-foreground tabular-nums">
-                                          {citation?.page_number == null ? '—' : `P.${citation.page_number}`}
-                                          {typeof ev?.start_char === 'number' && typeof ev?.end_char === 'number'
-                                            ? ` · ${Math.trunc(ev.start_char)}-${Math.trunc(ev.end_char)}`
-                                            : ''}
+                                          {citation?.page_number === undefined ? '—' : `P.${citation.page_number}`}
+                                          {reference.start_char !== null && reference.end_char !== null
+                                            ? ` · ${reference.start_char}-${reference.end_char}`
+                                            : null}
                                         </div>
                                       </div>
-                                      {score == null ? null : (
-                                        <div className="text-[11px] font-mono text-muted-foreground tabular-nums">
-                                          {score.toFixed(3)}
-                                        </div>
-                                      )}
+                                      <div className="text-[11px] font-mono text-muted-foreground tabular-nums">
+                                        {reference.score.toFixed(3)}
+                                      </div>
                                     </div>
-                                    {quote ? (
+                                    {reference.quote ? (
                                       <div className="mt-1 line-clamp-2 text-xs leading-relaxed text-muted-foreground">
-                                        {quote}
+                                        {reference.quote}
                                       </div>
                                     ) : null}
                                   </button>
@@ -1636,7 +1576,6 @@ const CitationCard = memo(function CitationCard({
   index,
 }: Readonly<{ messageId: string; citation: Citation; index: number }>) {
   const { openDocument } = useDocumentView()
-  const [hideImage, setHideImage] = useState(false)
   const [viewerOpen, setViewerOpen] = useState(false)
   const prefetchedRef = useRef(false)
   const imgUrl = (() => {
@@ -1645,28 +1584,21 @@ const CitationCard = memo(function CitationCard({
   })()
 
   const isTableEvidence = (() => {
-    const hitType = String(citation.hit_type || '')
-      .trim()
-      .toLowerCase()
-    const chunkRole = String(citation.chunk_role || '')
-      .trim()
-      .toLowerCase()
-    const semanticRole = String(citation.chunk_semantic_role || '')
-      .trim()
-      .toLowerCase()
+    const hitType = citation.hit_type?.trim().toLowerCase()
+    const chunkRole = citation.chunk_role?.trim().toLowerCase()
+    const semanticRole = citation.chunk_semantic_role?.trim().toLowerCase()
     return (
       hitType === 'tag' ||
       hitType === 'table' ||
-      chunkRole.includes('tag') ||
-      chunkRole.includes('table') ||
+      chunkRole?.includes('tag') ||
+      chunkRole?.includes('table') ||
       semanticRole === 'table'
     )
   })()
 
-  const canViewEvidence = Boolean((citation.has_image && imgUrl && !hideImage) || isTableEvidence)
+  const canViewEvidence = Boolean((citation.has_image && imgUrl) || isTableEvidence)
   const sourceContext = buildChatCitationSourceContext(messageId, citation.document_id, citation.chunk_id, citation)
-  const citationScoreTitle = buildCitationScoreTitle(citation)
-  const secondaryScore = getCitationSecondaryScore(citation)
+  const { relevanceScore, title: citationScoreTitle, secondaryScore } = getCitationScoreDetails(citation)
 
   const handleClick = useCallback(
     (e?: React.MouseEvent) => {
@@ -1690,7 +1622,6 @@ const CitationCard = memo(function CitationCard({
     prefetchDocumentView({
       documentId: citation.document_id,
       chunkId: citation.chunk_id,
-      rawFileUrl: toAbsoluteBackendUrl(`/api/v1/documents/${citation.document_id}/download`),
     })
   }, [citation])
 
@@ -1711,7 +1642,7 @@ const CitationCard = memo(function CitationCard({
             <div className="flex-1 min-w-0 space-y-1">
               <p className="font-semibold text-foreground truncate transition-colors">
                 {citation.document_name}
-                {citation.page_number && (
+                {citation.page_number != null && (
                   <span className="text-muted-foreground font-normal ml-1">· P.{citation.page_number}</span>
                 )}
               </p>
@@ -1727,9 +1658,9 @@ const CitationCard = memo(function CitationCard({
             className="bg-secondary/50 border border-border text-muted-foreground px-1.5 py-0.5 rounded text-[11px]"
             title={citationScoreTitle}
           >
-            综合分 {formatCitationScore(citation.relevance_score)}
+            综合分 {relevanceScore}
           </span>
-          {secondaryScore ? (
+          {secondaryScore !== undefined ? (
             <span
               className="bg-secondary/35 border border-border/70 text-muted-foreground px-1.5 py-0.5 rounded text-[11px]"
               title={citationScoreTitle}
@@ -1757,7 +1688,7 @@ const CitationCard = memo(function CitationCard({
           ) : null}
         </div>
 
-        {citation.has_image && imgUrl && !hideImage && (
+        {citation.has_image && imgUrl && (
           <div className="mt-2 rounded-md overflow-hidden border border-border/50">
             <button
               type="button"
@@ -1776,7 +1707,6 @@ const CitationCard = memo(function CitationCard({
                 unoptimized
                 sizes="(max-width: 768px) 100vw, 300px"
                 className="object-cover"
-                onError={() => setHideImage(true)}
               />
             </button>
           </div>

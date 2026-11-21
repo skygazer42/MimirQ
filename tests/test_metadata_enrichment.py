@@ -2,7 +2,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.rag.preprocessing import metadata_enrichment
+from app.rag.ingestion.governance.tagging import metadata_enrichment
 
 
 def test_metadata_fields_take_precedence_and_keep_output_order(

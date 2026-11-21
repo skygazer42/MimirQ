@@ -126,7 +126,7 @@ The Makefile is the source of truth for common workflows; these scripts are the 
 - `remote_chunking_matrix.py`: live chunking matrix against a running API; set `MIMIRQ_REMOTE_LONG_PDF_FIXTURE=/path/to/long.pdf` to reuse a local long PDF, or set `MIMIRQ_REMOTE_FIXTURE_DOWNLOADS=1` to download the RFC sample.
 - `convert_text_encoding.py`: best-effort text encoding conversion utility
 - `backfill_kg_event_vector_metadata.py`: re-upsert KG event vectors to backfill Milvus metadata fields (`pipeline_hash`, `doc_pipeline_key`)
-- `learn_fusion_weights_offline.py`: grid-search fusion weights (vector/bm25/lexical/sparse) offline via Evidence API
+- `learn_fusion_weights_offline.py`: grid-search fusion weights (vector/bm25/lexical) offline via Evidence API
 - `apply_fusion_weights_to_dataset.py`: persist learned fusion weights into dataset `rag_defaults` (safe by default; dry-run unless --execute)
 - `gen_secret_key.py`: generate a SECRET_KEY value
 - `rag_trace_tail.py`: tail and pretty-print `event=rag_trace` records from the metrics JSONL (PII-safe by default)
@@ -137,9 +137,6 @@ The Makefile is the source of truth for common workflows; these scripts are the 
   - Plugin Golden source example: `python scripts/regression_gate.py --dataset-id <dataset_uuid> --plugin-golden-ref plugin:<id>@<version>:chunk --metrics "" --thresholds ci/plugin.thresholds.json`
   - Generated Plugin Golden thresholds preserve compact `case_source` provenance and reject plugin ref/package-hash mismatches before starting a run.
 - `release_gate.py`: combine regression gate + SLO snapshot + cost budgets into a single release gate (CI/staging)
-- `eval_rerank_pipeline_offline.py`: compare baseline retrieval vs a local multi-stage rerank pipeline (ColBERT), offline
-  - Uses the retained deterministic ColBERT scaffold; no local model weights are loaded
-  - Summary JSON includes per-metric `wins/losses/ties` so you can see when the stronger path helps or hurts
 - `eval_retrieval_fusion_offline.py`: compare fusion strategy variants offline via Evidence API (retrieval-only)
 - `run_sample_retrieval_benchmark.py`: run a deterministic local sample benchmark from `data/sample/retrieval_fixture_v1.json`
   - Outputs: `runs/sample_bench.json` (schema: `mimirq.sample_retrieval_benchmark.v1`)

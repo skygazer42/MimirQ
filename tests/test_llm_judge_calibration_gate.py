@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from app.rag.evaluation.judge_calibration import build_calibration_report
+from app.rag.evaluation.judging.judge_calibration import build_calibration_report
 from scripts.llm_judge_calibration_gate import main
 
 

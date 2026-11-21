@@ -8,19 +8,21 @@ This complements event/entity extraction by capturing process knowledge:
 - tags
 """
 
+import logging
 from typing import Any
 
 from app.rag.kg.extraction.evidence import clamp_confidence
-from app.rag.kg.utils import get_logger
 from app.rag.llm.base import BaseLLMClient
 from app.rag.llm.models import LLMMessage, LLMRole
 
-logger = get_logger("kg.extract.skills")
+logger = logging.getLogger("kg.extract.skills")
 
 
 def _strip_text(value: object) -> str:
     if value is None:
         return ""
+    if not isinstance(value, (str, int, float, bool)):
+        raise ValueError("Skill text items must be strings, numbers, or booleans")
     return str(value).strip()
 
 
@@ -84,6 +86,7 @@ class SkillProcessor:
 
         schema: dict[str, Any] = {
             "type": "object",
+            "required": ["skills"],
             "properties": {
                 "skills": {
                     "type": "array",
@@ -126,16 +129,18 @@ class SkillProcessor:
         messages = [LLMMessage(role=LLMRole.USER, content=prompt)]
         result = await self.llm_client.chat_with_schema(messages, response_schema=schema, temperature=0.2)
 
-        raw_skills = result.get("skills") if isinstance(result, dict) else None
-        if not isinstance(raw_skills, list) or not raw_skills:
-            return []
+        raw_skills = result.get("skills")
+        if not isinstance(raw_skills, list):
+            raise ValueError("Skill extraction response requires a skills array")
 
         out: list[dict[str, Any]] = []
         for raw in raw_skills:
             if not isinstance(raw, dict):
-                continue
+                raise ValueError("Skill extraction response contains a non-object skill")
             name = raw.get("name")
-            if not isinstance(name, str) or not name.strip():
+            if not isinstance(name, str):
+                raise ValueError("Extracted skill name must be a string")
+            if not name.strip():
                 continue
             name = name.strip()
 
@@ -143,7 +148,7 @@ class SkillProcessor:
             summary = raw.get("summary")
             evidence_quote = raw.get("evidence_quote")
             if any(value is not None and not isinstance(value, str) for value in (category, summary, evidence_quote)):
-                continue
+                raise ValueError("Extracted skill text fields must be strings or null")
             category = category.strip() or None if category is not None else None
             summary = summary.strip() or None if summary is not None else None
             evidence_quote = evidence_quote.strip() or None if evidence_quote is not None else None

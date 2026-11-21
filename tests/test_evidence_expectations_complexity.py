@@ -1,6 +1,6 @@
 from typing import Any
 
-from app.rag.core.evidence_expectations import evaluate_evidence_anchor_expectations
+from app.rag.retrieval.evidence.gaps import evaluate_evidence_anchor_expectations
 
 
 def test_evidence_expectations_tracks_skips_and_missing_examples() -> None:

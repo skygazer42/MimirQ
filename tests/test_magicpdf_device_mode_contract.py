@@ -1,4 +1,4 @@
-from app.api.schemas.settings import MagicPDFConfig
+from app.api.schemas.system.settings import MagicPDFConfig
 
 
 def test_magicpdf_device_mode_default_matches_declared_setting():
@@ -6,7 +6,7 @@ def test_magicpdf_device_mode_default_matches_declared_setting():
 
 
 def test_get_settings_exposes_unconfigured_magicpdf_device_mode(monkeypatch):
-    from app.api.v1 import settings as settings_api
+    from app.api.v1.system import settings as settings_api
 
     monkeypatch.setattr(settings_api, "_ensure_settings_readable", lambda *_args: None)
     monkeypatch.setattr(settings_api.settings, "MAGIC_PDF_DEVICE_MODE", "")

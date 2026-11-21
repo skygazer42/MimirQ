@@ -1,15 +1,16 @@
 import uuid
 from datetime import UTC, datetime
+from urllib.parse import urlsplit
 
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from app.api.dependencies.auth import get_current_account_id
-from app.api.dependencies.tenant import get_tenant_id
-from app.api.schemas.document import DocumentDetail
-from app.core.database import get_db
-from app.services import document_processing_dispatch as document_dispatch
+from app.api.dependencies import get_current_account_id, get_tenant_id
+from app.api.schemas.documents.document import DocumentDetail
+from app.api.utils.url_ingest import ValidatedFetchTarget
+from app.infrastructure.database.connection import get_db
+from app.services.documents import processing_dispatch as document_dispatch
 from tests.helpers.async_utils import yield_control
 
 
@@ -47,28 +48,28 @@ def _override_get_current_account_id() -> str:
 
 
 def test_documents_upload_url_happy_path(monkeypatch, tmp_path):  # noqa: ANN001
-    import app.services.document_ingestion as document_ingestion
-    import app.services.document_ingestion_sources as ingestion_sources
+    import app.services.documents.ingestion as document_ingestion
+    import app.services.documents.source_acquisition as ingestion_sources
     from app.api.utils.url_ingest import DownloadedURL
-    from app.api.v1.documents import upload_document_from_url
-    from app.core.config import settings
+    from app.api.v1.documents.upload import upload_document_from_url
+    from app.infrastructure.config import settings
 
     monkeypatch.setattr(settings, "URL_INGEST_ENABLED", True, raising=False)
     monkeypatch.setattr(settings, "UPLOAD_DIR", str(tmp_path), raising=False)
 
     # Avoid SSRF/DNS logic in unit test.
-    async def _ok_validate(url: str) -> str:  # noqa: ANN001
+    async def _ok_validate(url: str) -> ValidatedFetchTarget:
         await yield_control()
-        return url
+        return _validated_target(url)
 
-    async def _fake_download(url: str, destination, **kwargs):  # noqa: ANN001, ANN202
+    async def _fake_download(target: ValidatedFetchTarget, destination, **kwargs):
         await yield_control()
         payload = b"hello from url"
         destination.write_bytes(payload)
         return DownloadedURL(
             size_bytes=len(payload),
             content_type="text/plain",
-            final_url=url,
+            final_url=target.raw,
             last_modified="Wed, 21 Oct 2015 07:28:00 GMT",
             etag="etag-123",
         )
@@ -84,7 +85,7 @@ def test_documents_upload_url_happy_path(monkeypatch, tmp_path):  # noqa: ANN001
 
     dataset_id = uuid.uuid4()
 
-    monkeypatch.setattr(document_ingestion, "validate_url_for_ingest", _ok_validate, raising=True)
+    monkeypatch.setattr(document_ingestion, "validate_fetch_target", _ok_validate, raising=True)
     monkeypatch.setattr(ingestion_sources, "download_url_to_path", _fake_download, raising=True)
     monkeypatch.setattr(document_dispatch, "enqueue_document_processing", _fake_enqueue, raising=True)
     monkeypatch.setattr(
@@ -133,24 +134,24 @@ def test_documents_upload_url_happy_path(monkeypatch, tmp_path):  # noqa: ANN001
 
 
 def test_documents_upload_url_falls_back_when_last_modified_missing(monkeypatch, tmp_path):  # noqa: ANN001
-    import app.services.document_ingestion as document_ingestion
-    import app.services.document_ingestion_sources as ingestion_sources
+    import app.services.documents.ingestion as document_ingestion
+    import app.services.documents.source_acquisition as ingestion_sources
     from app.api.utils.url_ingest import DownloadedURL
-    from app.api.v1.documents import upload_document_from_url
-    from app.core.config import settings
+    from app.api.v1.documents.upload import upload_document_from_url
+    from app.infrastructure.config import settings
 
     monkeypatch.setattr(settings, "URL_INGEST_ENABLED", True, raising=False)
     monkeypatch.setattr(settings, "UPLOAD_DIR", str(tmp_path), raising=False)
 
-    async def _ok_validate(url: str) -> str:  # noqa: ANN001
+    async def _ok_validate(url: str) -> ValidatedFetchTarget:
         await yield_control()
-        return url
+        return _validated_target(url)
 
-    async def _fake_download(url: str, destination, **kwargs):  # noqa: ANN001, ANN202
+    async def _fake_download(target: ValidatedFetchTarget, destination, **kwargs):
         await yield_control()
         payload = b"hello from url"
         destination.write_bytes(payload)
-        return DownloadedURL(size_bytes=len(payload), content_type="text/plain", final_url=url, etag="etag-456")
+        return DownloadedURL(size_bytes=len(payload), content_type="text/plain", final_url=target.raw, etag="etag-456")
 
     async def _fake_enqueue(**kwargs):  # noqa: ANN001, ANN202
         await yield_control()
@@ -163,7 +164,7 @@ def test_documents_upload_url_falls_back_when_last_modified_missing(monkeypatch,
 
     dataset_id = uuid.uuid4()
 
-    monkeypatch.setattr(document_ingestion, "validate_url_for_ingest", _ok_validate, raising=True)
+    monkeypatch.setattr(document_ingestion, "validate_fetch_target", _ok_validate, raising=True)
     monkeypatch.setattr(ingestion_sources, "download_url_to_path", _fake_download, raising=True)
     monkeypatch.setattr(document_dispatch, "enqueue_document_processing", _fake_enqueue, raising=True)
     monkeypatch.setattr(
@@ -200,8 +201,8 @@ def test_documents_upload_url_falls_back_when_last_modified_missing(monkeypatch,
 
 
 def test_documents_upload_url_rejects_unknown_pipeline_fields_with_422(monkeypatch, tmp_path):  # noqa: ANN001
-    from app.api.v1.documents import upload_document_from_url
-    from app.core.config import settings
+    from app.api.v1.documents.upload import upload_document_from_url
+    from app.infrastructure.config import settings
 
     monkeypatch.setattr(settings, "URL_INGEST_ENABLED", True, raising=False)
     monkeypatch.setattr(settings, "UPLOAD_DIR", str(tmp_path), raising=False)
@@ -225,3 +226,13 @@ def test_documents_upload_url_rejects_unknown_pipeline_fields_with_422(monkeypat
     )
 
     assert response.status_code == 422, response.text
+
+
+def _validated_target(url: str) -> ValidatedFetchTarget:
+    parsed = urlsplit(url)
+    return ValidatedFetchTarget(
+        raw=url,
+        connect_url=parsed._replace(netloc="93.184.216.34").geturl(),
+        host=parsed.hostname,
+        host_header=parsed.netloc,
+    )

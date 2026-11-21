@@ -55,7 +55,7 @@
   width: 15px;
   height: 15px;
 }
-.headerActions button > svg:last-child:not(:first-child) {
+.primary > span > svg:last-child:not(:first-child) {
   width: 12px;
 }
 .primary {
@@ -139,6 +139,12 @@
 .reportTime svg {
   width: 14px;
   height: 14px;
+}
+.headerActions button:focus-visible,
+.scopeBar > label > button:focus-visible,
+.findingsTable td:last-child > button:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 2px;
 }
 .reportTime:focus-visible {
   outline: 2px solid hsl(var(--ring));
@@ -1252,14 +1258,14 @@
   .headerActions > button {
     padding: 0 7px;
   }
-  .headerActions > button > span {
+  .headerActions .actionLabel {
     display: none;
   }
   .headerActions button {
     font-size: 12px;
     padding: 0 9px;
   }
-  .headerActions button > svg:last-child:not(:first-child) {
+  .primary > span > svg:last-child:not(:first-child) {
     display: none;
   }
   .scopeBar > label {

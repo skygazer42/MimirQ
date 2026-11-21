@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from app.parsing.enrich.image_ocr import add_image_ocr_blocks
+from app.rag.ingestion.parsing.enrich.image_ocr import add_image_ocr_blocks
 from scripts.build_parsing_retrieval_fixture import build_retrieval_fixture
 
 
@@ -37,7 +37,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--retrieval-mode", default="keyword", help="Fixture default retrieval mode.")
     args = parser.parse_args(argv)
 
-    from app.parsing.factory import parser_factory
+    from app.rag.ingestion.parsing.factory import parser_factory
 
     input_path = Path(args.input_file).resolve()
     queries = _read_json(Path(args.queries_json).resolve())

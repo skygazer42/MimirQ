@@ -736,8 +736,8 @@ def _resolve_auth_headers(
 
     headers = build_headers(
         tenant_id=tenant_id,
-        user_id=(user_id),
-        token=(token),
+        user_id=user_id,
+        token=token,
     )
     report["headers"] = {
         "tenant": bool(headers.get("X-Tenant-ID")),
@@ -747,6 +747,14 @@ def _resolve_auth_headers(
     return headers
 
 
+def _require_created_id(response: httpx.Response, *, url: str, detail: str) -> str:
+    payload = _parse_json(response)
+    created_id = payload.get("id") if isinstance(payload, dict) else None
+    if isinstance(created_id, str) and created_id.strip():
+        return created_id
+    raise CallError(method="POST", url=url, status_code=response.status_code, detail=detail)
+
+
 def _ensure_dataset(
     client: httpx.Client,
     *,
@@ -754,35 +762,27 @@ def _ensure_dataset(
     headers: dict[str, str],
     dataset_id_arg: str | None,
 ) -> tuple[str, bool]:
-    dataset_id = str(dataset_id_arg or "").strip() or None
-    created_dataset = dataset_id is None
-    if dataset_id:
-        print(f"[smoke] dataset: reuse {dataset_id}")
-        return dataset_id, created_dataset
+    existing_id = dataset_id_arg.strip() if dataset_id_arg is not None else ""
+    if existing_id:
+        print(f"[smoke] dataset: reuse {existing_id}")
+        return existing_id, False
 
     ds_payload = {
         "name": f"smoke-{uuid.uuid4().hex[:8]}",
         "description": "smoke test dataset",
     }
-    ds_resp = request_with_retries(
+    url = _join(api_base, "datasets/")
+    response = request_with_retries(
         client,
         "POST",
-        _join(api_base, "datasets/"),
+        url,
         expected={201},
         headers=headers,
         json=ds_payload,
     )
-    ds_json = _parse_json(ds_resp)
-    dataset_id = ds_json["id"]
-    if not dataset_id:
-        raise CallError(
-            method="POST",
-            url=_join(api_base, "datasets/"),
-            status_code=ds_resp.status_code,
-            detail="dataset create returned no id",
-        )
+    dataset_id = _require_created_id(response, url=url, detail="dataset create returned no id")
     print(f"[smoke] dataset: created {dataset_id}")
-    return dataset_id, created_dataset
+    return dataset_id, True
 
 
 def _upload_smoke_document(
@@ -801,10 +801,11 @@ def _upload_smoke_document(
         "SMOKE_NOTE: This is a test artifact.\n"
     )
     files = {"file": ("smoke.txt", doc_text.encode("utf-8"), "text/plain")}
-    up_resp = request_with_retries(
+    url = _join(api_base, "documents/upload")
+    response = request_with_retries(
         client,
         "POST",
-        _join(api_base, "documents/upload"),
+        url,
         expected={201},
         headers=headers,
         files=files,
@@ -814,15 +815,7 @@ def _upload_smoke_document(
             core_only=core_only,
         ),
     )
-    up_json = _parse_json(up_resp)
-    doc_id = up_json["id"]
-    if not doc_id:
-        raise CallError(
-            method="POST",
-            url=_join(api_base, "documents/upload"),
-            status_code=up_resp.status_code,
-            detail="upload returned no document id",
-        )
+    doc_id = _require_created_id(response, url=url, detail="upload returned no document id")
     print(f"[smoke] upload: document_id={doc_id}")
     return doc_id, smoke_fact
 

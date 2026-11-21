@@ -1,8 +1,8 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { useParams } from 'next/navigation'
-import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
+import { skipToken, useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import {
   AlertCircle,
@@ -47,9 +47,12 @@ import { SafeResponsiveChart } from '@/components/ui/safe-responsive-chart'
 
 import { datasetApi, sseApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
+import { getAuthSessionKey, subscribeAuthSession } from '@/lib/auth-storage'
+import { downloadBlob } from '@/lib/download'
 import { reportClientError, reportClientWarning } from '@/lib/client-logging'
 import { normalizePrecheckEmbeddingAdvisories } from '@/lib/precheck-embedding-advisories'
 import { queryKeys } from '@/lib/query-keys'
+import { sanitizeFilename } from '@/lib/sanitize'
 import { cn, formatFileSize, formatDate, detachPromise } from '@/lib/utils'
 import { useRouter } from '@/i18n/navigation'
 
@@ -77,25 +80,10 @@ const PRECHECK_POLICY_SUGGESTION_PARAMS = { max_names_per_bucket: 50 } as const
 const PRECHECK_FINDING_PAGE_SIZE = 50
 const POLICY_APPLY_TOAST_ID = 'precheck-policy-apply'
 
-function asDatasetId(raw: unknown): string | null {
-  if (typeof raw === 'string' && raw.trim()) return raw
-  if (Array.isArray(raw) && typeof raw[0] === 'string') return raw[0]
-  return null
-}
-
-function downloadBlob(blob: Blob, filename: string) {
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = filename
-  a.click()
-  URL.revokeObjectURL(url)
-}
-
-function findingBadgeVariant(sev: string): 'secondary' | 'outline' | 'soft' | 'destructive' {
-  const s = String(sev || '').toLowerCase()
-  if (s === 'error') return 'destructive'
-  if (s === 'warning') return 'soft'
+function findingBadgeVariant(severity: string): 'secondary' | 'outline' | 'soft' | 'destructive' {
+  const normalized = severity.toLowerCase()
+  if (normalized === 'error') return 'destructive'
+  if (normalized === 'warning') return 'soft'
   return 'outline'
 }
 
@@ -121,7 +109,7 @@ function formatPrecheckTimestamp(value?: string | null): string {
 }
 
 function formatRunStatus(status?: string | null): string {
-  const normalized = String(status || '').toLowerCase()
+  const normalized = status?.toLowerCase()
   if (normalized === 'pending') return '排队中'
   if (normalized === 'running') return '运行中'
   if (normalized === 'completed') return '已完成'
@@ -131,13 +119,10 @@ function formatRunStatus(status?: string | null): string {
 }
 
 export function isPrecheckSseAbortError(error: unknown): boolean {
-  const candidate = error as { code?: unknown; name?: unknown; message?: unknown } | null
-  if (!candidate || typeof candidate !== 'object') return false
-  if (candidate.code === 'ERR_CANCELED') return true
-  if (candidate.name === 'AbortError' || candidate.name === 'CanceledError') return true
-
-  const message = typeof candidate.message === 'string' ? candidate.message.trim().toLowerCase() : ''
-  return message === 'canceled'
+  if (typeof error !== 'object' || error === null) return false
+  if ('code' in error && error.code === 'ERR_CANCELED') return true
+  if ('name' in error && (error.name === 'AbortError' || error.name === 'CanceledError')) return true
+  return 'message' in error && typeof error.message === 'string' && error.message.trim().toLowerCase() === 'canceled'
 }
 
 export function isCurrentPrecheckSseStream(
@@ -146,7 +131,7 @@ export function isCurrentPrecheckSseStream(
   runId: string,
   activeRunId: string | null,
 ): boolean {
-  return activeController === controller && activeRunId === runId
+  return activeController === controller && activeRunId === runId && !controller.signal.aborted
 }
 
 export function shouldFallbackToPrecheckPolling(
@@ -160,23 +145,39 @@ export function shouldFallbackToPrecheckPolling(
 }
 
 export default function DatasetPrecheckPage() {
+  const { id: datasetId } = useParams<{ id: string }>()
+  const sessionKey = useSyncExternalStore(subscribeAuthSession, getAuthSessionKey, getAuthSessionKey)
+  return <DatasetPrecheckWorkspace key={JSON.stringify([datasetId, sessionKey])} datasetId={datasetId} />
+}
+
+function DatasetPrecheckWorkspace({ datasetId }: Readonly<{ datasetId: string }>) {
   const router = useRouter()
-  const params = useParams()
-  const datasetId = asDatasetId((params as Record<string, unknown>)?.id)
+  const queryClient = useQueryClient()
 
   const [selectedRun, setSelectedRun] = useState<DatasetPrecheckScanRunOut | null>(null)
 
-  const [scanRunning, setScanRunning] = useState(false)
+  const scanRunning = selectedRun?.status === 'pending' || selectedRun?.status === 'running'
   const [starting, setStarting] = useState(false)
   const [cancelling, setCancelling] = useState(false)
   const [startError, setStartError] = useState<string | null>(null)
   const [cancelError, setCancelError] = useState<string | null>(null)
-  const [policyApplyError, setPolicyApplyError] = useState<string | null>(null)
+  const [policyApplyError, setPolicyApplyError] = useState<{ runId: string; message: string } | null>(null)
+  const [trackingError, setTrackingError] = useState<{ runId: string; message: string } | null>(null)
+  const [trackingRetry, setTrackingRetry] = useState(0)
   const configTriggerRef = useRef<HTMLButtonElement | null>(null)
-  const pollTimerRef = useRef<number | null>(null)
-  const pollRunRef = useRef<(datasetIdValue: string, runId: string) => Promise<void>>(async () => {})
   const sseAbortRef = useRef<AbortController | null>(null)
   const sseRunIdRef = useRef<string | null>(null)
+  const exportControllerRef = useRef<AbortController | null>(null)
+  const workspaceRef = useRef({ active: true })
+
+  useLayoutEffect(() => {
+    const workspace = { active: true }
+    workspaceRef.current = workspace
+    return () => {
+      workspace.active = false
+      exportControllerRef.current?.abort()
+    }
+  }, [])
 
   const [isExporting, setIsExporting] = useState(false)
   const [advancedOpen, setAdvancedOpen] = useState(false)
@@ -222,99 +223,96 @@ export default function DatasetPrecheckPage() {
 
   const [diffBaseRunId, setDiffBaseRunId] = useState<string>('')
 
-  const stopPolling = useCallback(() => {
-    const t = pollTimerRef.current
-    if (t) globalThis.window.clearTimeout(t)
-    pollTimerRef.current = null
-  }, [])
-
-  const stopSse = useCallback(() => {
-    const ctrl = sseAbortRef.current
-    if (ctrl) ctrl.abort()
-    sseAbortRef.current = null
-    sseRunIdRef.current = null
-  }, [])
-
   const datasetQuery = useQuery({
-    queryKey: queryKeys.datasets.detail(datasetId || ''),
-    queryFn: () => datasetApi.get(datasetId as string),
-    enabled: Boolean(datasetId),
+    queryKey: queryKeys.datasets.detail(datasetId),
+    queryFn: ({ signal }) => datasetApi.get(datasetId, { signal }),
   })
 
   const runsQuery = useQuery({
-    queryKey: queryKeys.datasets.precheckRuns(datasetId || '', PRECHECK_RUNS_PARAMS),
-    queryFn: () => datasetApi.listPrecheckScanRuns(datasetId as string, PRECHECK_RUNS_PARAMS),
-    enabled: Boolean(datasetId),
+    queryKey: queryKeys.datasets.precheckRuns(datasetId, PRECHECK_RUNS_PARAMS),
+    queryFn: ({ signal }) => datasetApi.listPrecheckScanRuns(datasetId, PRECHECK_RUNS_PARAMS, { signal }),
   })
 
   const dataset = datasetQuery.data ?? null
-  const runs = useMemo(() => runsQuery.data?.items || [], [runsQuery.data?.items])
-  const loading = Boolean(datasetId) && (datasetQuery.isPending || runsQuery.isPending)
-  const selectedRunId = selectedRun?.id || ''
+  const filenameStem = sanitizeFilename(dataset?.name ?? datasetId).slice(0, 64)
+  const datasetFilename = filenameStem === '' ? datasetId : filenameStem
+  const runs = runsQuery.data?.items ?? []
+  const latestRun = runs[0]
+  const loading = datasetQuery.isPending || runsQuery.isPending
+  const selectedRunId = selectedRun?.id
+  const completedRunId = selectedRun?.status === 'completed' ? selectedRun.id : undefined
   const summaryQuery = useQuery({
-    queryKey: queryKeys.datasets.precheckSummary(datasetId || '', selectedRunId),
-    queryFn: () => datasetApi.getPrecheckSummary(datasetId as string, selectedRunId),
-    enabled: Boolean(datasetId && selectedRunId && selectedRun?.status === 'completed'),
+    queryKey: queryKeys.datasets.precheckSummary(datasetId, completedRunId),
+    queryFn:
+      completedRunId === undefined
+        ? skipToken
+        : ({ signal }) => datasetApi.getPrecheckSummary(datasetId, completedRunId, { signal }),
   })
   const summary = summaryQuery.data ?? null
-  const selectedFindingKey = selectedFinding?.key || ''
-  const sampleSize = scanConfig.sample_size ?? undefined
+  const selectedFindingKey = selectedFinding?.key
+  const runSampleSize = selectedRun?.config.sample_size
+  const sampleParams = { size: typeof runSampleSize === 'number' ? runSampleSize : undefined, prefer_artifact: true }
 
   const samplesQuery = useQuery({
-    queryKey: queryKeys.datasets.precheckSamples(datasetId || '', selectedRunId, {
-      size: sampleSize,
-      prefer_artifact: true,
-    }),
+    queryKey: queryKeys.datasets.precheckSamples(datasetId, selectedRunId, sampleParams),
     enabled: false,
-    queryFn: () =>
-      datasetApi.getPrecheckSamples(datasetId as string, selectedRunId, {
-        size: sampleSize,
-        prefer_artifact: true,
-      }),
+    queryFn:
+      selectedRunId === undefined
+        ? skipToken
+        : ({ signal }) => datasetApi.getPrecheckSamples(datasetId, selectedRunId, sampleParams, { signal }),
   })
   const nearDupQuery = useQuery({
-    queryKey: queryKeys.datasets.precheckNearDups(datasetId || '', selectedRunId),
+    queryKey: queryKeys.datasets.precheckNearDups(datasetId, selectedRunId),
     enabled: false,
-    queryFn: () => datasetApi.getPrecheckNearDups(datasetId as string, selectedRunId),
+    queryFn:
+      selectedRunId === undefined
+        ? skipToken
+        : ({ signal }) => datasetApi.getPrecheckNearDups(datasetId, selectedRunId, { signal }),
   })
+  const compareBaseRuns = runs.filter((run) => run.id !== selectedRunId && Object.keys(run.summary).length > 0)
+  const diffParams = { base_scan_run_id: diffBaseRunId }
+  const canCompareRuns = selectedRunId !== undefined && compareBaseRuns.some((run) => run.id === diffBaseRunId)
   const diffQuery = useQuery({
-    queryKey: queryKeys.datasets.precheckDiff(datasetId || '', selectedRunId, {
-      base_scan_run_id: diffBaseRunId,
-    }),
+    queryKey: queryKeys.datasets.precheckDiff(datasetId, selectedRunId, diffParams),
     enabled: false,
-    queryFn: () =>
-      datasetApi.diffPrecheckScanRuns(datasetId as string, selectedRunId, {
-        base_scan_run_id: diffBaseRunId,
-      }),
+    queryFn: !canCompareRuns
+      ? skipToken
+      : ({ signal }) => datasetApi.diffPrecheckScanRuns(datasetId, selectedRunId, diffParams, { signal }),
   })
   const policySuggestionQuery = useQuery({
     queryKey: queryKeys.datasets.precheckIngestionPolicySuggestion(
-      datasetId || '',
+      datasetId,
       selectedRunId,
       PRECHECK_POLICY_SUGGESTION_PARAMS,
     ),
     enabled: false,
-    queryFn: () => {
-      if (!datasetId || !selectedRunId) throw new Error('缺少预检扫描 ID')
-      return datasetApi.suggestPrecheckIngestionPolicy(datasetId, selectedRunId, PRECHECK_POLICY_SUGGESTION_PARAMS)
-    },
+    queryFn:
+      selectedRunId === undefined
+        ? skipToken
+        : ({ signal }) =>
+            datasetApi.suggestPrecheckIngestionPolicy(datasetId, selectedRunId, PRECHECK_POLICY_SUGGESTION_PARAMS, {
+              signal,
+            }),
   })
   const findingItemsQuery = useInfiniteQuery({
-    queryKey: queryKeys.datasets.precheckFindingFiles(datasetId || '', selectedRunId, selectedFindingKey, {
+    queryKey: queryKeys.datasets.precheckFindingFiles(datasetId, selectedRunId, selectedFindingKey, {
       limit: PRECHECK_FINDING_PAGE_SIZE,
     }),
-    enabled: Boolean(datasetId && selectedRunId && selectedFindingKey && findingOpen),
     initialPageParam: 0,
-    queryFn: ({ pageParam }) => {
-      if (!datasetId || !selectedRunId || !selectedFindingKey) throw new Error('缺少预检清单 ID')
-      return datasetApi.listPrecheckFinding(datasetId, selectedRunId, selectedFindingKey, {
-        skip: Number(pageParam) || 0,
-        limit: PRECHECK_FINDING_PAGE_SIZE,
-      })
-    },
-    getNextPageParam: (lastPage, allPages) => {
-      const loaded = allPages.reduce((acc, page) => acc + (page.items?.length || 0), 0)
-      return loaded < (lastPage.total || 0) ? loaded : undefined
+    queryFn:
+      !findingOpen || selectedRunId === undefined || selectedFindingKey === undefined
+        ? skipToken
+        : ({ pageParam, signal }) =>
+            datasetApi.listPrecheckFinding(
+              datasetId,
+              selectedRunId,
+              selectedFindingKey,
+              { skip: pageParam, limit: PRECHECK_FINDING_PAGE_SIZE },
+              { signal },
+            ),
+    getNextPageParam: (lastPage, _pages, pageOffset) => {
+      const nextOffset = pageOffset + lastPage.items.length
+      return lastPage.items.length > 0 && nextOffset < lastPage.total ? nextOffset : undefined
     },
   })
   const samplesLoading = samplesQuery.isFetching
@@ -325,14 +323,15 @@ export default function DatasetPrecheckPage() {
   const diffRes = diffQuery.data ?? null
   const policyLoading = policySuggestionQuery.isFetching
   const policyRes = policySuggestionQuery.data ?? null
+  const hasSuggestedRules = Array.isArray(policyRes?.policy.rules)
   const findingLoading = findingItemsQuery.isFetching
   const findingRes = useMemo(() => {
-    const pages = findingItemsQuery.data?.pages || []
-    if (!pages.length) return null
-    const items = pages.flatMap((page) => page.items || [])
+    const pages = findingItemsQuery.data?.pages
+    const lastPage = pages?.at(-1)
+    if (pages === undefined || lastPage === undefined) return null
     return {
-      total: pages[pages.length - 1]?.total || 0,
-      items,
+      total: lastPage.total,
+      items: pages.flatMap((page) => page.items),
     }
   }, [findingItemsQuery.data])
 
@@ -347,146 +346,76 @@ export default function DatasetPrecheckPage() {
     const error = findingItemsQuery.error
     if (!error) return
     reportClientError('Failed to load precheck finding', error)
-    toast.error(formatApiError(error, '加载清单失败'))
   }, [findingItemsQuery.error, findingItemsQuery.errorUpdatedAt])
 
   const { refetch: refetchRunsQuery } = runsQuery
-  const { refetch: refetchPolicySuggestion } = policySuggestionQuery
   const { fetchNextPage: fetchNextFindingPage } = findingItemsQuery
 
   const refreshPrecheckRuns = useCallback(async () => {
     await refetchRunsQuery()
   }, [refetchRunsQuery])
 
-  const refetchPrecheckQuery = useCallback(
-    async (action: () => Promise<{ error: unknown }>, errorMessage: string, logLabel: string) => {
-      const { error } = await action()
-      if (!error) return
-      reportClientError(logLabel, error)
-      toast.error(formatApiError(error, errorMessage))
-    },
-    [],
-  )
+  useEffect(() => {
+    if (latestRun !== undefined) {
+      setSelectedRun((current) => current ?? latestRun)
+    }
+  }, [latestRun])
 
   useEffect(() => {
-    if (!selectedRun && runs.length) {
-      setSelectedRun(runs[0])
-    }
-  }, [runs, selectedRun])
+    if (!scanRunning || selectedRunId === undefined) return
+    const workspace = workspaceRef.current
+    const runId = selectedRunId
+    const controller = new AbortController()
+    let pollTimer: number | undefined
+    sseAbortRef.current = controller
+    sseRunIdRef.current = runId
+    const isCurrent = () =>
+      workspace.active && isCurrentPrecheckSseStream(controller, sseAbortRef.current, runId, sseRunIdRef.current)
 
-  useEffect(() => {
-    return () => {
-      stopPolling()
-      stopSse()
-    }
-  }, [stopPolling, stopSse])
-
-  const pollRun = useCallback(
-    async (datasetIdValue: string, runId: string) => {
-      try {
-        const next = await datasetApi.getPrecheckScanRun(datasetIdValue, runId)
-        setSelectedRun(next)
-        const st = String(next.status || '').toLowerCase()
-        if (st === 'pending' || st === 'running') {
-          pollTimerRef.current = globalThis.window.setTimeout(
-            () => detachPromise(pollRunRef.current(datasetIdValue, runId)),
-            2000,
-          )
-          return
-        }
-        setScanRunning(false)
-        stopPolling()
-        await refreshPrecheckRuns()
-        if (next.error_message) {
-          toast.error(`预检扫描失败：${next.error_message}`)
-        }
-      } catch (e: unknown) {
-        reportClientError('Failed to poll precheck run', e)
-        setScanRunning(false)
-        stopPolling()
+    function acceptRun(run: DatasetPrecheckScanRunOut) {
+      if (!isCurrent()) return
+      setSelectedRun((current) => (current?.id === runId ? run : current))
+      if (run.status !== 'pending' && run.status !== 'running') {
+        controller.abort()
+        void refreshPrecheckRuns()
       }
-    },
-    [refreshPrecheckRuns, stopPolling],
-  )
-
-  useEffect(() => {
-    pollRunRef.current = pollRun
-  }, [pollRun])
-
-  const startSse = useCallback(
-    (datasetIdValue: string, runId: string) => {
-      const activeController = sseAbortRef.current
-      if (activeController && !activeController.signal.aborted && sseRunIdRef.current === runId) return
-
-      stopPolling()
-      stopSse()
-      const ctrl = new AbortController()
-      sseAbortRef.current = ctrl
-      sseRunIdRef.current = runId
-      const isCurrentStream = () => isCurrentPrecheckSseStream(ctrl, sseAbortRef.current, runId, sseRunIdRef.current)
-
-      detachPromise(
-        sseApi
-          .streamPrecheckScanEvents(
-            datasetIdValue,
-            runId,
-            (jsonStr) => {
-              if (!isCurrentStream()) return
-              try {
-                const obj = JSON.parse(String(jsonStr || '') || '{}')
-                if (obj?.id) setSelectedRun(obj)
-                const st = String(obj?.status || '').toLowerCase()
-                if (st && st !== 'pending' && st !== 'running') {
-                  if (!isCurrentStream()) return
-                  setScanRunning(false)
-                  stopSse()
-                  stopPolling()
-                  detachPromise(refreshPrecheckRuns())
-                }
-              } catch {
-                // ignore
-              }
-            },
-            {
-              onError: (err) => {
-                if (!isCurrentStream() || isPrecheckSseAbortError(err)) return
-                reportClientError('Precheck SSE error', err)
-              },
-              signal: ctrl.signal,
-            },
-          )
-          .catch((e) => {
-            if (!shouldFallbackToPrecheckPolling(e, ctrl, sseAbortRef.current, runId, sseRunIdRef.current)) {
-              return
-            }
-            reportClientWarning('Precheck SSE unavailable; fallback to polling', e)
-            if (isCurrentStream()) {
-              stopSse()
-            }
-            pollTimerRef.current = globalThis.window.setTimeout(() => {
-              detachPromise(pollRun(datasetIdValue, runId))
-            }, 800)
-          }),
-      )
-    },
-    [pollRun, refreshPrecheckRuns, stopPolling, stopSse],
-  )
-
-  // Follow the selected run; completed reports are owned by their query key.
-  useEffect(() => {
-    if (!datasetId || !selectedRun?.id) return
-    if (selectedRun.status === 'pending' || selectedRun.status === 'running') {
-      setScanRunning(true)
-      startSse(datasetId, selectedRun.id)
-      return
     }
-    setScanRunning(false)
-    stopPolling()
-    stopSse()
-  }, [datasetId, selectedRun, startSse, stopPolling, stopSse])
+
+    async function pollRun() {
+      try {
+        const run = await datasetApi.getPrecheckScanRun(datasetId, runId, { signal: controller.signal })
+        acceptRun(run)
+        if (isCurrent()) pollTimer = window.setTimeout(pollRun, 2000)
+      } catch (error) {
+        if (!isCurrent()) return
+        reportClientError('Failed to poll precheck run', error)
+        setTrackingError({ runId, message: formatApiError(error, '预检状态读取失败') })
+      }
+    }
+
+    detachPromise(
+      sseApi.streamPrecheckScanEvents(datasetId, runId, acceptRun, { signal: controller.signal }).catch((error) => {
+        if (
+          workspace.active &&
+          shouldFallbackToPrecheckPolling(error, controller, sseAbortRef.current, runId, sseRunIdRef.current)
+        ) {
+          reportClientWarning('Precheck SSE unavailable; fallback to polling', error)
+          pollTimer = window.setTimeout(pollRun, 800)
+        }
+      }),
+    )
+
+    return () => {
+      controller.abort()
+      window.clearTimeout(pollTimer)
+      sseAbortRef.current = null
+      sseRunIdRef.current = null
+    }
+  }, [datasetId, refreshPrecheckRuns, scanRunning, selectedRunId, trackingRetry])
 
   const startScan = useCallback(async () => {
-    if (!datasetId) return false
+    const workspace = workspaceRef.current
+    if (!workspace.active || starting) return false
     if (!scanConfig.root_path.trim()) {
       setStartError('请输入 API 或 Worker 能访问的扫描目录。')
       return false
@@ -495,115 +424,110 @@ export default function DatasetPrecheckPage() {
     setStarting(true)
     try {
       const run = await datasetApi.startPrecheckScan(datasetId, scanConfig)
+      if (!workspace.active) return false
       setSelectedRun(run)
-      await refreshPrecheckRuns()
-      const st = String(run.status || '').toLowerCase()
-      if (st === 'pending' || st === 'running') {
-        startSse(datasetId, run.id)
-      } else {
-        setScanRunning(false)
-      }
+      void refreshPrecheckRuns()
       toast.success('已启动预检扫描')
       return true
     } catch (e: unknown) {
+      if (!workspace.active) return false
       reportClientError('Failed to start precheck scan', e)
       setStartError(formatApiError(e, '启动预检扫描失败'))
       return false
     } finally {
-      setStarting(false)
+      if (workspace.active) setStarting(false)
     }
-  }, [datasetId, refreshPrecheckRuns, scanConfig, startSse])
+  }, [datasetId, refreshPrecheckRuns, scanConfig, starting])
 
   const cancelScan = useCallback(async () => {
-    if (!datasetId || !selectedRun?.id) return
+    const workspace = workspaceRef.current
+    if (!workspace.active || selectedRunId === undefined || cancelling) return
     setCancelling(true)
     setCancelError(null)
     try {
-      const run = await datasetApi.cancelPrecheckScan(datasetId, selectedRun.id)
-      setSelectedRun(run)
+      const run = await datasetApi.cancelPrecheckScan(datasetId, selectedRunId)
+      if (!workspace.active) return
+      setSelectedRun((current) => (current?.id === selectedRunId ? run : current))
+      void refreshPrecheckRuns()
       toast.success('已请求取消')
     } catch (e: unknown) {
+      if (!workspace.active) return
       reportClientError('Failed to cancel precheck scan', e)
       setCancelError(formatApiError(e, '取消预检失败，请重试。'))
     } finally {
-      setCancelling(false)
+      if (workspace.active) setCancelling(false)
     }
-  }, [datasetId, selectedRun?.id])
+  }, [cancelling, datasetId, refreshPrecheckRuns, selectedRunId])
 
-  const openPolicy = useCallback(async () => {
-    if (!datasetId || !selectedRunId) return
+  function openPolicy() {
+    if (selectedRunId === undefined) return
     toast.dismiss(POLICY_APPLY_TOAST_ID)
     setPolicyApplyError(null)
     setPolicyOpen(true)
-    const { error } = await refetchPolicySuggestion()
-    if (error) {
-      reportClientError('Failed to suggest ingestion policy', error)
-      toast.error(formatApiError(error, '生成入库策略失败'))
-    }
-  }, [datasetId, refetchPolicySuggestion, selectedRunId])
+    void policySuggestionQuery.refetch()
+  }
+
+  function changePolicyOpen(open: boolean) {
+    setPolicyOpen(open)
+    if (!open) setPolicyApplyReplace(false)
+  }
 
   const applyPolicy = useCallback(async () => {
-    if (!datasetId || !selectedRun?.id) return
+    const workspace = workspaceRef.current
+    if (selectedRunId === undefined || !workspace.active || policyApplying) return
+    const sessionKey = getAuthSessionKey()
     toast.dismiss(POLICY_APPLY_TOAST_ID)
     setPolicyApplying(true)
     setPolicyApplyError(null)
     try {
       const res: IngestionPolicyImportResponse = await datasetApi.applyPrecheckIngestionPolicy(
         datasetId,
-        selectedRun.id,
+        selectedRunId,
         {
-          replace: !!policyApplyReplace,
+          replace: policyApplyReplace,
         },
       )
+      if (getAuthSessionKey() !== sessionKey) return
+      void queryClient.invalidateQueries({ queryKey: queryKeys.datasets.ingestionPolicy(datasetId), exact: true })
+      if (!workspace.active) return
       toast.success(`已应用入库策略，共 ${res.rule_count} 条规则`, { id: POLICY_APPLY_TOAST_ID })
     } catch (e: unknown) {
+      if (!workspace.active || getAuthSessionKey() !== sessionKey) return
       reportClientError('Failed to apply ingestion policy', e)
-      setPolicyApplyError(formatApiError(e, '应用入库策略失败'))
+      setPolicyApplyError({ runId: selectedRunId, message: formatApiError(e, '应用入库策略失败') })
     } finally {
-      setPolicyApplying(false)
+      if (workspace.active) setPolicyApplying(false)
     }
-  }, [datasetId, policyApplyReplace, selectedRun?.id])
+  }, [datasetId, policyApplyReplace, policyApplying, queryClient, selectedRunId])
 
-  const exportJson = useCallback(async () => {
-    if (!datasetId || !selectedRun?.id) return
+  async function exportReport(format: 'json' | 'html') {
+    if (selectedRunId === undefined || exportControllerRef.current !== null) return
+    const controller = new AbortController()
+    exportControllerRef.current = controller
     setIsExporting(true)
     try {
-      const blob = await datasetApi.exportPrecheckSummary(datasetId, selectedRun.id)
-      const safe = String(dataset?.name || 'dataset')
-        .replaceAll(/[^a-zA-Z0-9_.-]+/g, '_')
-        .slice(0, 64)
-      downloadBlob(blob, `${safe}.precheck.json`)
-      toast.success('已导出 JSON 报告')
-    } catch (e: unknown) {
-      reportClientError('Failed to export precheck json', e)
-      toast.error(formatApiError(e, '导出失败'))
+      const options = { signal: controller.signal }
+      const blob =
+        format === 'json'
+          ? await datasetApi.exportPrecheckSummary(datasetId, selectedRunId, options)
+          : await datasetApi.exportPrecheckHtml(datasetId, selectedRunId, { redact: true }, options)
+      if (controller.signal.aborted) return
+      downloadBlob(`${datasetFilename}.precheck.${format}`, blob)
+      toast.success(`已开始下载 ${format.toUpperCase()} 报告`)
+    } catch (error) {
+      if (controller.signal.aborted) return
+      reportClientError('Failed to export precheck report', error)
+      toast.error(formatApiError(error, '导出失败'))
     } finally {
-      setIsExporting(false)
+      exportControllerRef.current = null
+      if (!controller.signal.aborted) setIsExporting(false)
     }
-  }, [datasetId, dataset?.name, selectedRun?.id])
-
-  const exportHtml = useCallback(async () => {
-    if (!datasetId || !selectedRun?.id) return
-    setIsExporting(true)
-    try {
-      const blob = await datasetApi.exportPrecheckHtml(datasetId, selectedRun.id, { redact: true })
-      const safe = String(dataset?.name || 'dataset')
-        .replaceAll(/[^a-zA-Z0-9_.-]+/g, '_')
-        .slice(0, 64)
-      downloadBlob(blob, `${safe}.precheck.html`)
-      toast.success('已导出 HTML 报告')
-    } catch (e: unknown) {
-      reportClientError('Failed to export precheck html', e)
-      toast.error(formatApiError(e, '导出失败'))
-    } finally {
-      setIsExporting(false)
-    }
-  }, [datasetId, dataset?.name, selectedRun?.id])
+  }
 
   const downloadJsonObject = useCallback((obj: unknown, filename: string) => {
     try {
       const blob = new Blob([JSON.stringify(obj, null, 2)], { type: 'application/json' })
-      downloadBlob(blob, filename)
+      downloadBlob(filename, blob)
     } catch {
       toast.error('无法生成下载文件，请重试。')
     }
@@ -612,7 +536,7 @@ export default function DatasetPrecheckPage() {
   const fileTypeChartData = useMemo(() => {
     const m = summary?.by_file_type || {}
     const entries = Object.entries(m)
-      .map(([name, value]) => ({ name, value: Number(value || 0) }))
+      .map(([name, value]) => ({ name, value }))
       .filter((x) => x.value > 0)
       .sort((a, b) => b.value - a.value)
     const top = entries.slice(0, 10)
@@ -623,11 +547,11 @@ export default function DatasetPrecheckPage() {
   }, [summary])
 
   const lengthHistogramData = useMemo(() => {
-    return (summary?.length_histogram || []).map((b) => ({ name: b.label, value: Number(b.count || 0) }))
+    return (summary?.length_histogram ?? []).map((bin) => ({ name: bin.label, value: bin.count }))
   }, [summary])
 
   const fileSizeHistogramData = useMemo(() => {
-    return (summary?.file_size_histogram || []).map((b) => ({ name: b.label, value: Number(b.count || 0) }))
+    return (summary?.file_size_histogram ?? []).map((bin) => ({ name: bin.label, value: bin.count }))
   }, [summary])
 
   const pdfScanData = useMemo(() => {
@@ -643,7 +567,7 @@ export default function DatasetPrecheckPage() {
   const piiChartData = useMemo(() => {
     const m = summary?.pii_hits_total || {}
     return Object.entries(m)
-      .map(([name, value]) => ({ name, value: Number(value || 0) }))
+      .map(([name, value]) => ({ name, value }))
       .filter((x) => x.value > 0)
       .sort((a, b) => b.value - a.value)
       .slice(0, 10)
@@ -652,7 +576,7 @@ export default function DatasetPrecheckPage() {
   const secretsChartData = useMemo(() => {
     const m = summary?.secrets_hits_total || {}
     return Object.entries(m)
-      .map(([name, value]) => ({ name, value: Number(value || 0) }))
+      .map(([name, value]) => ({ name, value }))
       .filter((x) => x.value > 0)
       .sort((a, b) => b.value - a.value)
       .slice(0, 10)
@@ -660,18 +584,18 @@ export default function DatasetPrecheckPage() {
 
   const openFinding = useCallback(
     (finding: DatasetPrecheckFindingSummary) => {
-      if (!datasetId || !selectedRunId) return
+      if (selectedRunId === undefined) return
       setSelectedFinding(finding)
       setFindingOpen(true)
       setFileDetailOpen(false)
       setFileDetail(null)
     },
-    [datasetId, selectedRunId],
+    [selectedRunId],
   )
 
   const loadMoreFindingPage = useCallback(async () => {
     if (!findingItemsQuery.hasNextPage) return
-    await fetchNextFindingPage()
+    await fetchNextFindingPage({ cancelRefetch: false })
   }, [fetchNextFindingPage, findingItemsQuery.hasNextPage])
 
   const runStatus = selectedRun?.status
@@ -752,13 +676,15 @@ export default function DatasetPrecheckPage() {
             <History className="size-4 text-muted-foreground" />
             <Label htmlFor="precheck-run-history">历史运行</Label>
             <Select
-              value={selectedRunId}
+              value={selectedRunId ?? ''}
               disabled={!runs.length || starting || cancelling}
               onValueChange={(value) => {
                 const run = runs.find((item) => item.id === value)
                 if (run) {
                   setSelectedRun(run)
+                  setDiffBaseRunId((current) => (current === run.id ? '' : current))
                   setCancelError(null)
+                  setTrackingError(null)
                   setFileDetailOpen(false)
                   setFindingOpen(false)
                 }
@@ -805,13 +731,7 @@ export default function DatasetPrecheckPage() {
                 {cancelling ? '正在取消…' : '取消预检'}
               </Button>
             ) : null}
-            <Button
-              variant="ghost"
-              disabled={!summary}
-              onClick={() => {
-                void openPolicy()
-              }}
-            >
+            <Button variant="ghost" disabled={!summary} onClick={openPolicy}>
               <Wand2 />
               生成策略
             </Button>
@@ -824,14 +744,14 @@ export default function DatasetPrecheckPage() {
               <DropdownMenuContent align="end">
                 <DropdownMenuItem
                   onSelect={() => {
-                    void exportJson()
+                    void exportReport('json')
                   }}
                 >
                   JSON 报告
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   onSelect={() => {
-                    void exportHtml()
+                    void exportReport('html')
                   }}
                 >
                   HTML 报告
@@ -859,6 +779,21 @@ export default function DatasetPrecheckPage() {
             {cancelError}
           </div>
         ) : null}
+        {scanRunning && trackingError !== null && trackingError.runId === selectedRunId && (
+          <div role="alert" className={styles.notice}>
+            <span>{trackingError.message}</span>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                setTrackingError(null)
+                setTrackingRetry((count) => count + 1)
+              }}
+            >
+              重读扫描状态
+            </Button>
+          </div>
+        )}
         {selectedRun ? (
           <div className={styles.runMeta}>
             <span>
@@ -1281,15 +1216,9 @@ export default function DatasetPrecheckPage() {
                           <Button
                             variant="outline"
                             className="gap-2"
-                            onClick={() =>
-                              detachPromise(
-                                refetchPrecheckQuery(
-                                  () => samplesQuery.refetch(),
-                                  '加载样本失败',
-                                  'Failed to load precheck samples',
-                                ),
-                              )
-                            }
+                            onClick={() => {
+                              void samplesQuery.refetch()
+                            }}
                             disabled={!selectedRun?.id || samplesLoading}
                           >
                             {samplesLoading ? (
@@ -1305,7 +1234,7 @@ export default function DatasetPrecheckPage() {
                             onClick={() =>
                               downloadJsonObject(
                                 samplesRes,
-                                `${String(dataset?.name || 'dataset')
+                                `${(dataset?.name || 'dataset')
                                   .replaceAll(/[^a-zA-Z0-9_.-]+/g, '_')
                                   .slice(0, 64)}.precheck.samples.json`,
                               )
@@ -1318,6 +1247,11 @@ export default function DatasetPrecheckPage() {
                         </div>
                       </div>
 
+                      {samplesQuery.isError && (
+                        <p role="alert" className={styles.notice}>
+                          {formatApiError(samplesQuery.error, '样本读取失败，请重试。')}
+                        </p>
+                      )}
                       {samplesRes ? (
                         <div className="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-4">
                           <div className={styles.tableScroll}>
@@ -1379,13 +1313,9 @@ export default function DatasetPrecheckPage() {
                             </div>
                           </div>
                         </div>
-                      ) : (
-                        <div className="mt-4 text-[11px] text-muted-foreground/65">
-                          {samplesQuery.isError
-                            ? formatApiError(samplesQuery.error, '样本读取失败，请重试。')
-                            : '尚未读取样本'}
-                        </div>
-                      )}
+                      ) : !samplesQuery.isError ? (
+                        <div className="mt-4 text-[11px] text-muted-foreground/65">尚未读取样本</div>
+                      ) : null}
                     </Panel>
                     <Panel variant="seamless" className={styles.section}>
                       <div className={styles.sectionHead}>
@@ -1399,15 +1329,9 @@ export default function DatasetPrecheckPage() {
                           <Button
                             variant="outline"
                             className="gap-2"
-                            onClick={() =>
-                              detachPromise(
-                                refetchPrecheckQuery(
-                                  () => nearDupQuery.refetch(),
-                                  '加载近重复失败（可能未开启）',
-                                  'Failed to load precheck near-dups',
-                                ),
-                              )
-                            }
+                            onClick={() => {
+                              void nearDupQuery.refetch()
+                            }}
                             disabled={!selectedRun?.id || nearDupLoading}
                           >
                             {nearDupLoading ? (
@@ -1423,7 +1347,7 @@ export default function DatasetPrecheckPage() {
                             onClick={() =>
                               downloadJsonObject(
                                 nearDupRes,
-                                `${String(dataset?.name || 'dataset')
+                                `${(dataset?.name || 'dataset')
                                   .replaceAll(/[^a-zA-Z0-9_.-]+/g, '_')
                                   .slice(0, 64)}.precheck.near_dups.json`,
                               )
@@ -1436,18 +1360,21 @@ export default function DatasetPrecheckPage() {
                         </div>
                       </div>
 
+                      {nearDupQuery.isError && (
+                        <p role="alert" className={styles.notice}>
+                          {formatApiError(nearDupQuery.error, '近重复候选读取失败，请重试。')}
+                        </p>
+                      )}
                       {nearDupRes ? (
                         <div className="mt-4 text-[11px] text-muted-foreground/65">
                           候选分组 {nearDupRes.clusters_returned} · 相似对 {nearDupRes.pairs_returned} · 阈值{' '}
                           {nearDupRes.threshold}
                         </div>
-                      ) : (
+                      ) : !nearDupQuery.isError ? (
                         <div className="mt-4 text-[11px] text-muted-foreground/65">
-                          {nearDupQuery.isError
-                            ? formatApiError(nearDupQuery.error, '近重复候选读取失败，请重试。')
-                            : '尚未读取候选；扫描时需要启用近重复检测。'}
+                          尚未读取候选，扫描时需要启用近重复检测。
                         </div>
-                      )}
+                      ) : null}
                     </Panel>
                   </TabsContent>
                   <TabsContent value="compare" className={styles.tabContent}>
@@ -1466,28 +1393,20 @@ export default function DatasetPrecheckPage() {
                               <SelectValue placeholder="选择对比运行" />
                             </SelectTrigger>
                             <SelectContent>
-                              {(runs || [])
-                                .filter((r) => r.id !== selectedRun?.id)
-                                .map((r) => (
-                                  <SelectItem key={`base-${r.id}`} value={r.id}>
-                                    {formatPrecheckTimestamp(r.created_at)} · {formatRunStatus(r.status)}
-                                  </SelectItem>
-                                ))}
+                              {compareBaseRuns.map((r) => (
+                                <SelectItem key={`base-${r.id}`} value={r.id}>
+                                  {formatPrecheckTimestamp(r.created_at)} · {formatRunStatus(r.status)}
+                                </SelectItem>
+                              ))}
                             </SelectContent>
                           </Select>
                           <Button
                             variant="outline"
                             className="gap-2"
-                            onClick={() =>
-                              detachPromise(
-                                refetchPrecheckQuery(
-                                  () => diffQuery.refetch(),
-                                  '对比失败',
-                                  'Failed to diff precheck runs',
-                                ),
-                              )
-                            }
-                            disabled={!diffBaseRunId || diffLoading || !selectedRun?.id}
+                            onClick={() => {
+                              void diffQuery.refetch()
+                            }}
+                            disabled={!canCompareRuns || diffLoading}
                           >
                             {diffLoading ? (
                               <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" />
@@ -1497,6 +1416,11 @@ export default function DatasetPrecheckPage() {
                         </div>
                       </div>
 
+                      {diffQuery.isError && (
+                        <p role="alert" className={styles.notice}>
+                          {formatApiError(diffQuery.error, '对比读取失败，请重试。')}
+                        </p>
+                      )}
                       {diffRes ? (
                         <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
                           <div className="py-3 text-sm">
@@ -1555,13 +1479,9 @@ export default function DatasetPrecheckPage() {
                             </div>
                           </div>
                         </div>
-                      ) : (
-                        <p className="mt-4">
-                          {diffQuery.isError
-                            ? formatApiError(diffQuery.error, '对比读取失败，请重试。')
-                            : '选择另一次运行后开始对比。'}
-                        </p>
-                      )}
+                      ) : !diffQuery.isError ? (
+                        <p className="mt-4">选择另一次运行后开始对比。</p>
+                      ) : null}
                     </Panel>
                   </TabsContent>
                 </Tabs>
@@ -1683,25 +1603,23 @@ export default function DatasetPrecheckPage() {
                 </>
               ) : (
                 <>
-                  {' '}
-                  <div className="mt-2">
+                  <div className="mt-2 space-y-3">
+                    {findingItemsQuery.isError && (
+                      <div role="alert" className="space-y-3">
+                        <p>{formatApiError(findingItemsQuery.error, '问题清单读取失败')}</p>
+                        <Button
+                          variant="outline"
+                          disabled={findingLoading}
+                          onClick={() => {
+                            if (findingItemsQuery.isFetchNextPageError) void loadMoreFindingPage()
+                            else void findingItemsQuery.refetch()
+                          }}
+                        >
+                          重新读取清单
+                        </Button>
+                      </div>
+                    )}
                     {(() => {
-                      if (findingItemsQuery.isError) {
-                        return (
-                          <div role="alert" className="space-y-3">
-                            <p>{formatApiError(findingItemsQuery.error, '问题清单读取失败')}</p>
-                            <Button
-                              variant="outline"
-                              disabled={findingLoading}
-                              onClick={() => {
-                                void findingItemsQuery.refetch()
-                              }}
-                            >
-                              重新读取清单
-                            </Button>
-                          </div>
-                        )
-                      }
                       if (findingLoading && !findingRes) {
                         return (
                           <div className="py-10 flex items-center justify-center text-muted-foreground">
@@ -1797,9 +1715,10 @@ export default function DatasetPrecheckPage() {
                             </div>
                           </div>
                         )
-                      } else {
+                      } else if (!findingItemsQuery.isError) {
                         return <div className="py-10 text-center text-muted-foreground">暂无数据</div>
                       }
+                      return null
                     })()}
                   </div>
                 </>
@@ -1807,13 +1726,7 @@ export default function DatasetPrecheckPage() {
             </div>
           </DialogContent>
         </Dialog>
-        <Dialog
-          open={policyOpen}
-          onOpenChange={(open) => {
-            setPolicyOpen(open)
-            if (!open) setPolicyApplyReplace(false)
-          }}
-        >
+        <Dialog open={policyOpen} onOpenChange={changePolicyOpen}>
           <DialogContent className={styles.reportDialog}>
             <DialogHeader className={styles.dialogHeader}>
               <DialogTitle>生成入库策略</DialogTitle>
@@ -1828,12 +1741,7 @@ export default function DatasetPrecheckPage() {
               ) : policySuggestionQuery.isError ? (
                 <div role="alert" className="space-y-3 text-sm">
                   <p>{formatApiError(policySuggestionQuery.error, '生成入库策略失败')}</p>
-                  <Button
-                    variant="outline"
-                    onClick={() => {
-                      void openPolicy()
-                    }}
-                  >
+                  <Button variant="outline" onClick={openPolicy}>
                     重新生成建议
                   </Button>
                 </div>
@@ -1884,7 +1792,7 @@ export default function DatasetPrecheckPage() {
                       id="precheck-policy-replace"
                       checked={policyApplyReplace}
                       disabled={policyApplying}
-                      onCheckedChange={(value) => setPolicyApplyReplace(Boolean(value))}
+                      onCheckedChange={(value) => setPolicyApplyReplace(value === true)}
                     />
                     <Label htmlFor="precheck-policy-replace">覆盖已有入库策略</Label>
                   </div>
@@ -1894,30 +1802,29 @@ export default function DatasetPrecheckPage() {
                 </div>
               ) : null}
             </div>
-            {policyApplyError ? (
+            {policyApplyError !== null && policyApplyError.runId === selectedRunId ? (
               <div role="alert" className={styles.formError}>
-                {policyApplyError}
+                {policyApplyError.message}
               </div>
             ) : null}
             <div className={styles.dialogFooter}>
-              <Button variant="ghost" onClick={() => setPolicyOpen(false)}>
+              <Button variant="ghost" onClick={() => changePolicyOpen(false)}>
                 关闭
               </Button>
               <Button
                 variant="outline"
-                disabled={!policyRes || policyLoading}
-                onClick={() =>
-                  downloadJsonObject(
-                    policyRes?.policy,
-                    `${(dataset?.name || 'dataset').replaceAll(/[^a-zA-Z0-9_.-]+/g, '_').slice(0, 64)}.ingestion_policy.suggested.json`,
-                  )
-                }
+                disabled={policyRes === null || policyLoading || policySuggestionQuery.isError}
+                onClick={() => {
+                  if (policyRes !== null) {
+                    downloadJsonObject(policyRes.policy, `${datasetFilename}.ingestion_policy.suggested.json`)
+                  }
+                }}
               >
                 <Download />
                 下载策略
               </Button>
               <Button
-                disabled={!policyRes || policyLoading || policyApplying || policySuggestionQuery.isError}
+                disabled={!hasSuggestedRules || policyLoading || policyApplying || policySuggestionQuery.isError}
                 onClick={() => {
                   void applyPolicy()
                 }}

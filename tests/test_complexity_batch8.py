@@ -3,16 +3,13 @@ from types import SimpleNamespace
 
 import pytest
 
+from app.rag.ingestion.governance.markup.frontmatter import extract_markdown_frontmatter
 from app.rag.kg.extraction.relation_processor import CandidateEntity, RelationProcessor
 from app.rag.kg.extraction.relation_verifier import RelationCandidate, RelationVerifier
-from app.rag.preprocessing.frontmatter import extract_markdown_frontmatter
-from app.rag.retrieval.hybrid.lexical import LexicalDBMixin
-from app.services.dify_integration.metadata_condition_helpers import (
-    MetadataConditionValidationError,
-    metadata_condition_to_filter,
-)
-from app.services.evidence_drift_audit_service import audit_reference_sources_drift
-from app.services.rag_config_template_resolver import resolve_rag_config_template
+from app.rag.retrieval.recall.metadata_scope import collect_dataset_scope
+from app.services.dify.metadata_filters import MetadataConditionValidationError, metadata_condition_to_filter
+from app.services.evidence.drift_audit import audit_reference_sources_drift
+from app.services.retrieval.template_resolver import resolve_rag_config_template
 
 
 class _FakeAsyncLLM:
@@ -199,10 +196,8 @@ def test_collect_lexical_dataset_scope_preserves_current_and_or_semantics() -> N
     dataset_a = uuid.uuid4()
     dataset_b = uuid.uuid4()
 
-    assert LexicalDBMixin._collect_lexical_dataset_scope({"dataset_id": {"$in": [str(dataset_a), str(dataset_a)]}}) == [
-        dataset_a
-    ]
-    assert LexicalDBMixin._collect_lexical_dataset_scope(
+    assert collect_dataset_scope({"dataset_id": {"$in": [str(dataset_a), str(dataset_a)]}}) == [dataset_a]
+    assert collect_dataset_scope(
         {
             "$and": [
                 {"dataset_id": str(dataset_a)},
@@ -210,12 +205,7 @@ def test_collect_lexical_dataset_scope_preserves_current_and_or_semantics() -> N
             ]
         }
     ) == [dataset_a, dataset_b]
-    assert (
-        LexicalDBMixin._collect_lexical_dataset_scope(
-            {"$or": [{"dataset_id": str(dataset_a)}, {"other": "missing-scope"}]}
-        )
-        == []
-    )
+    assert collect_dataset_scope({"$or": [{"dataset_id": str(dataset_a)}, {"other": "missing-scope"}]}) == []
 
 
 def test_metadata_condition_to_filter_preserves_explicit_filters_and_allowed_field_validation() -> None:
@@ -234,7 +224,7 @@ def test_metadata_condition_to_filter_preserves_explicit_filters_and_allowed_fie
 def test_audit_reference_sources_drift_preserves_invalid_ref_accounting_and_slice_payloads(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.services.evidence_drift_audit_service as audit_mod
+    import app.services.evidence.drift_audit as audit_mod
 
     tenant_id = uuid.uuid4()
     dataset_id = uuid.uuid4()
@@ -314,7 +304,7 @@ def test_audit_reference_sources_drift_preserves_invalid_ref_accounting_and_slic
 def test_resolve_rag_config_template_adaptive_mode_preserves_exploit_and_debug_contract(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.services.rag_config_template_resolver as resolver_mod
+    import app.services.retrieval.template_resolver as resolver_mod
 
     tenant_id = uuid.uuid4()
     variant_a = SimpleNamespace(id=uuid.uuid4(), ab_variant="A", ab_weight=1.0)

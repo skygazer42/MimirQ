@@ -19,11 +19,37 @@ import { PreviewTabPanel } from '@/components/document-viewer/preview-tab-panel'
 import { QAGenerationDialog } from '@/components/document-viewer/qa-generation-dialog'
 import { TextTabPanel } from '@/components/document-viewer/text-tab-panel'
 import { cn, detachPromise } from '@/lib/utils'
+import { Button } from '@/components/ui/button'
+import { MIN_DOCUMENT_VIEWER_PANEL_WIDTH, MAX_DOCUMENT_VIEWER_PANEL_WIDTH } from '@/store/document-view'
 
 import type { DocumentViewerPanelState } from './use-document-viewer-panel-state'
 
-const MIN_DOCUMENT_VIEWER_PANEL_WIDTH = 360
 const DOCUMENT_VIEWER_PANEL_RESIZE_STEP = 24
+
+function ReadErrorFeedback({
+  error,
+  loading,
+  label,
+  onRetry,
+}: Readonly<{
+  error: string | null
+  loading: boolean
+  label: string
+  onRetry: () => void
+}>) {
+  if (error === null) return null
+  return (
+    <div
+      role="alert"
+      className="flex shrink-0 items-center justify-between gap-3 border-b border-border bg-destructive/10 px-4 py-2 text-xs text-destructive"
+    >
+      <p className="min-w-0 break-words">{error}</p>
+      <Button size="sm" variant="ghost" disabled={loading} onClick={onRetry}>
+        {label}
+      </Button>
+    </div>
+  )
+}
 
 export function DocumentViewerPanelShell({
   activeTab,
@@ -47,13 +73,18 @@ export function DocumentViewerPanelShell({
   chunksListRef,
   chunksLoaded,
   chunksLoading,
+  chunksError,
   clearRetrievePreview,
   closeDocument,
   copyChunkContent,
   copyChunkLink,
   doc,
+  documentError,
   documentId,
-  downloadUrl,
+  canDownloadOriginalFile,
+  downloadOriginalFile,
+  downloadLoading,
+  downloadError,
   fileUrl,
   handleActiveTabChange,
   handleChunkEditorOpenChange,
@@ -62,9 +93,10 @@ export function DocumentViewerPanelShell({
   handleQaDialogOpenChange,
   handleSelectTextChunkIndex,
   handleTextScrollTopChange,
-  highlightChunk,
+  highlightContent,
   highlightChunkId,
   highlightChunkLoading,
+  highlightChunkError,
   highlightRange,
   isExpanded,
   isLoading,
@@ -83,20 +115,27 @@ export function DocumentViewerPanelShell({
   previewAnchor,
   qaDialogOpen,
   qaLastResult,
-  qaMaxSourceChars,
-  qaNumPairs,
+  qaMaxSourceCharsInput,
+  qaNumPairsInput,
   qaPreferLlm,
   qaReplaceExisting,
   qaSubmitting,
-  rawFileUrl,
   retrieveCitations,
   retrieveError,
+  retrieveFailedQuery,
   retrieveLoading,
   retrieveQuery,
+  retrieveResultQuery,
+  retryDocument,
+  retryChunks,
+  retryParsedContent,
+  retryChunkSearch,
+  retryHighlightedChunk,
   rowVirtualizer,
   runQaGeneration,
   runRetrievePreview,
   serverMatchTruncated,
+  serverMatchError,
   sourceContext,
   setChunkEditorContent,
   setChunkEditorEndChar,
@@ -107,8 +146,8 @@ export function DocumentViewerPanelShell({
   setIsExpanded,
   setPanelWidthPx,
   setLoadAllChunks,
-  setQaMaxSourceChars,
-  setQaNumPairs,
+  setQaMaxSourceCharsInput,
+  setQaNumPairsInput,
   setQaPreferLlm,
   setQaReplaceExisting,
   setRetrieveQuery,
@@ -116,6 +155,8 @@ export function DocumentViewerPanelShell({
   submitChunkEditor,
   textActiveChunkIndex,
   textChunkItems,
+  textHighlightRange,
+  textUnpositionedChunkCount,
   textInitialScrollTop,
   textMode,
   textValue,
@@ -123,28 +164,44 @@ export function DocumentViewerPanelShell({
   const [isResizing, setIsResizing] = useState(false)
   const [measuredPanelWidthPx, setMeasuredPanelWidthPx] = useState<number | null>(null)
   const panelRef = useRef<HTMLDivElement>(null)
+  function selectViewerTab(tab: typeof activeTab) {
+    handleActiveTabChange(tab)
+    panelRef.current?.querySelector<HTMLButtonElement>(`[data-viewer-tab="${tab}"]`)?.focus()
+  }
   const resizeStartRef = useRef<{ pointerId: number; startX: number; startWidth: number } | null>(null)
 
-  const panelStyle =
-    !isExpanded && panelWidthPx
-      ? ({ '--document-viewer-panel-width': `min(${panelWidthPx}px, calc(100vw - 48px))` } as CSSProperties)
-      : undefined
+  const panelStyle = {
+    '--document-viewer-panel-width': panelWidthPx === null ? undefined : `${panelWidthPx}px`,
+    '--document-viewer-panel-min-width': `${MIN_DOCUMENT_VIEWER_PANEL_WIDTH}px`,
+    '--document-viewer-panel-max-width': `min(${MAX_DOCUMENT_VIEWER_PANEL_WIDTH}px, 86vw, calc(100vw - 48px))`,
+  } as CSSProperties
 
   const clampPanelWidth = useCallback((width: number) => {
-    if (globalThis.window === undefined) {
-      return Math.max(MIN_DOCUMENT_VIEWER_PANEL_WIDTH, Math.round(width))
-    }
-    const maxWidth = Math.max(420, Math.floor(globalThis.window.innerWidth * 0.86))
+    const maxWidth =
+      globalThis.window === undefined
+        ? MAX_DOCUMENT_VIEWER_PANEL_WIDTH
+        : Math.max(
+            MIN_DOCUMENT_VIEWER_PANEL_WIDTH,
+            Math.min(MAX_DOCUMENT_VIEWER_PANEL_WIDTH, Math.floor(globalThis.window.innerWidth * 0.86)),
+          )
     return Math.max(MIN_DOCUMENT_VIEWER_PANEL_WIDTH, Math.min(maxWidth, Math.round(width)))
   }, [])
 
   useLayoutEffect(() => {
-    if (!isOpen || isExpanded || panelWidthPx !== null) return
-    const width = panelRef.current?.getBoundingClientRect().width ?? 0
-    if (width > 0) setMeasuredPanelWidthPx(clampPanelWidth(width))
-  }, [clampPanelWidth, isExpanded, isOpen, panelWidthPx])
+    if (!isOpen || isExpanded) return
+    const panel = panelRef.current
+    if (panel === null) return
+    const updateMeasuredWidth = () => {
+      const width = panel.getBoundingClientRect().width
+      if (width > 0) setMeasuredPanelWidthPx(Math.floor(width))
+    }
+    updateMeasuredWidth()
+    const observer = new ResizeObserver(updateMeasuredWidth)
+    observer.observe(panel)
+    return () => observer.disconnect()
+  }, [isExpanded, isOpen])
 
-  const effectivePanelWidthPx = panelWidthPx ?? measuredPanelWidthPx ?? 500
+  const effectivePanelWidthPx = measuredPanelWidthPx ?? panelWidthPx ?? 500
 
   const finishResize = useCallback((event: PointerEvent<HTMLDivElement>) => {
     const current = resizeStartRef.current
@@ -163,7 +220,8 @@ export function DocumentViewerPanelShell({
       if (isExpanded || globalThis.window === undefined || globalThis.window.innerWidth < 768) return
       event.preventDefault()
       const panel = event.currentTarget.parentElement
-      const currentWidth = panelWidthPx ?? panel?.getBoundingClientRect().width ?? 500
+      if (panel === null) return
+      const currentWidth = panel.getBoundingClientRect().width
       resizeStartRef.current = {
         pointerId: event.pointerId,
         startX: event.clientX,
@@ -172,7 +230,7 @@ export function DocumentViewerPanelShell({
       setIsResizing(true)
       event.currentTarget.setPointerCapture(event.pointerId)
     },
-    [isExpanded, panelWidthPx],
+    [isExpanded],
   )
 
   const handleResizePointerMove = useCallback(
@@ -192,7 +250,9 @@ export function DocumentViewerPanelShell({
       }
 
       const step = event.shiftKey ? DOCUMENT_VIEWER_PANEL_RESIZE_STEP * 2 : DOCUMENT_VIEWER_PANEL_RESIZE_STEP
-      const currentWidth = panelWidthPx ?? panelRef.current?.getBoundingClientRect().width ?? effectivePanelWidthPx
+      const currentWidth = clampPanelWidth(
+        panelWidthPx ?? panelRef.current?.getBoundingClientRect().width ?? effectivePanelWidthPx,
+      )
 
       if (event.key === 'ArrowLeft') {
         event.preventDefault()
@@ -211,7 +271,7 @@ export function DocumentViewerPanelShell({
 
   return (
     <>
-      <FloatingMenu />
+      <FloatingMenu panelRef={panelRef} />
       <ChunkEditorDialog
         open={chunkEditorOpen}
         mode={chunkEditorMode}
@@ -232,8 +292,8 @@ export function DocumentViewerPanelShell({
       />
       <QAGenerationDialog
         open={qaDialogOpen}
-        qaNumPairs={qaNumPairs}
-        qaMaxSourceChars={qaMaxSourceChars}
+        qaNumPairsInput={qaNumPairsInput}
+        qaMaxSourceCharsInput={qaMaxSourceCharsInput}
         qaReplaceExisting={qaReplaceExisting}
         qaPreferLlm={qaPreferLlm}
         qaSubmitting={qaSubmitting}
@@ -241,8 +301,8 @@ export function DocumentViewerPanelShell({
         canEditChunks={canEditChunks}
         documentId={documentId}
         onOpenChange={handleQaDialogOpenChange}
-        onNumPairsChange={setQaNumPairs}
-        onMaxSourceCharsChange={setQaMaxSourceChars}
+        onNumPairsInputChange={setQaNumPairsInput}
+        onMaxSourceCharsInputChange={setQaMaxSourceCharsInput}
         onReplaceExistingChange={setQaReplaceExisting}
         onPreferLlmChange={setQaPreferLlm}
         onSubmit={() => detachPromise(runQaGeneration())}
@@ -253,6 +313,8 @@ export function DocumentViewerPanelShell({
         className={cn(
           'fixed inset-y-0 right-0 z-50 flex flex-col border-l border-sidebar-border/70 bg-sidebar/90 backdrop-blur-xl shadow-strong',
           isResizing ? 'select-none' : 'transition-[width] duration-150 ease-out motion-reduce:transition-none',
+          !isExpanded &&
+            'md:min-w-[var(--document-viewer-panel-min-width)] md:max-w-[var(--document-viewer-panel-max-width)]',
           isExpanded
             ? 'w-full md:w-[80vw]'
             : panelWidthPx
@@ -292,14 +354,35 @@ export function DocumentViewerPanelShell({
           />
         </div>
         <DocumentViewerHeader
-          filename={doc?.filename}
-          chunkCount={doc?.chunk_count ?? chunks.length}
+          doc={doc}
+          isLoading={isLoading}
           isExpanded={isExpanded}
-          downloadUrl={downloadUrl}
+          canDownload={canDownloadOriginalFile}
+          downloadLoading={downloadLoading}
+          onDownload={downloadOriginalFile}
           onJumpToSource={sourceContext?.kind === 'chat-citation' ? jumpToSource : null}
           onToggleExpanded={() => setIsExpanded(!isExpanded)}
           onClose={closeDocument}
         />
+        <ReadErrorFeedback error={documentError} loading={isLoading} label="重试读取文档" onRetry={retryDocument} />
+        <ReadErrorFeedback
+          error={downloadError}
+          loading={downloadLoading}
+          label="重试下载原文件"
+          onRetry={downloadOriginalFile}
+        />
+        <ReadErrorFeedback
+          error={highlightChunkError}
+          loading={highlightChunkLoading}
+          label="重试读取引用切片"
+          onRetry={retryHighlightedChunk}
+        />
+        {activeTab === 'chunks' || activeTab === 'text' ? (
+          <ReadErrorFeedback error={chunksError} loading={chunksLoading} label="重试读取切片" onRetry={retryChunks} />
+        ) : null}
+        {activeTab === 'chunks' && !chunksLoaded ? (
+          <ReadErrorFeedback error={serverMatchError} loading={false} label="重试搜索" onRetry={retryChunkSearch} />
+        ) : null}
 
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
           <Tabs value={activeTab} onValueChange={handleActiveTabChange} className="flex min-h-0 flex-1 flex-col">
@@ -307,21 +390,24 @@ export function DocumentViewerPanelShell({
               <TabsList className="h-10 w-full justify-start gap-6 bg-transparent p-0">
                 <TabsTrigger
                   value="preview"
+                  data-viewer-tab="preview"
                   className="h-10 rounded-none border-b-2 border-transparent px-2 text-[11px] font-semibold tracking-[0.14em] text-muted-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-foreground"
                 >
                   原文
                 </TabsTrigger>
                 <TabsTrigger
                   value="text"
+                  data-viewer-tab="text"
                   className="h-10 rounded-none border-b-2 border-transparent px-2 text-[11px] font-semibold tracking-[0.14em] text-muted-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-foreground"
                 >
                   文本定位
                 </TabsTrigger>
                 <TabsTrigger
                   value="chunks"
+                  data-viewer-tab="chunks"
                   className="h-10 rounded-none border-b-2 border-transparent px-2 text-[11px] font-semibold tracking-[0.14em] text-muted-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-foreground"
                 >
-                  智能切片
+                  切片
                 </TabsTrigger>
               </TabsList>
             </div>
@@ -335,13 +421,13 @@ export function DocumentViewerPanelShell({
                 doc={doc}
                 canInlinePreview={canInlinePreview}
                 fileUrl={fileUrl}
-                rawFileUrl={rawFileUrl}
-                downloadUrl={downloadUrl}
+                downloadLoading={downloadLoading}
+                onDownload={downloadOriginalFile}
                 previewAnchor={previewAnchor}
                 highlightChunkId={highlightChunkId}
                 highlightRange={highlightRange}
-                onViewText={() => handleActiveTabChange('text')}
-                onViewChunks={() => handleActiveTabChange('chunks')}
+                onViewText={() => selectViewerTab('text')}
+                onViewChunks={() => selectViewerTab('chunks')}
               />
             </TabsContent>
 
@@ -355,15 +441,19 @@ export function DocumentViewerPanelShell({
                 retrieveQuery={retrieveQuery}
                 retrieveLoading={retrieveLoading}
                 retrieveError={retrieveError}
+                retrieveFailedQuery={retrieveFailedQuery}
                 retrieveCitations={retrieveCitations}
+                retrieveResultQuery={retrieveResultQuery}
                 parsedContent={parsedContent}
                 parsedContentLoading={parsedContentLoading}
                 parsedContentError={parsedContentError}
+                onRetryParsedContent={retryParsedContent}
                 textValue={textValue}
                 textChunkItems={textChunkItems}
+                unpositionedChunkCount={textUnpositionedChunkCount}
                 textActiveChunkIndex={textActiveChunkIndex}
                 initialScrollTop={textInitialScrollTop}
-                highlightRange={highlightRange}
+                highlightRange={textHighlightRange}
                 highlightParentRange={sourceContext?.kind !== 'chat-citation'}
                 onTextModeChange={setTextMode}
                 onTextScrollTopChange={handleTextScrollTopChange}
@@ -377,8 +467,8 @@ export function DocumentViewerPanelShell({
                   setHighlightChunk(chunkId)
                 }}
                 onSelectChunkIndex={handleSelectTextChunkIndex}
-                onGoToChunks={() => handleActiveTabChange('chunks')}
-                onGoToPreview={() => handleActiveTabChange('preview')}
+                onGoToChunks={() => selectViewerTab('chunks')}
+                onGoToPreview={() => selectViewerTab('preview')}
               />
             </TabsContent>
 
@@ -394,11 +484,11 @@ export function DocumentViewerPanelShell({
                 canEditChunks={canEditChunks}
                 serverMatchTruncatedHint={Boolean(!chunksLoaded && chunkQuery.trim() && serverMatchTruncated)}
                 highlightChunkId={highlightChunkId}
-                loadAllChunks={loadAllChunks}
                 chunksLoaded={chunksLoaded}
                 chunksLoading={chunksLoading}
                 highlightChunkLoading={highlightChunkLoading}
-                highlightChunk={highlightChunk}
+                highlightChunkError={highlightChunkError}
+                highlightContent={highlightContent}
                 chunkEditorSubmitting={chunkEditorSubmitting}
                 chunkDeleteSubmitting={chunkDeleteSubmitting}
                 matchCursor={matchCursor}

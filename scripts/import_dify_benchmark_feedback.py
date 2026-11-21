@@ -19,7 +19,7 @@ from uuid import UUID, uuid5
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
 
-    from app.models.chat import Message
+    from app.models.conversations.chat import Message
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
@@ -431,9 +431,8 @@ def select_balanced_audit_rows(
 
 
 def _upsert_feedback_records(records: list[FeedbackImportRecord]) -> dict[str, Any]:
-    from app.core.database import SessionLocal
-    from app.models.chat import Conversation, Message
-    from app.models.feedback import MessageFeedback
+    from app.infrastructure.database.connection import SessionLocal
+    from app.models.conversations.chat import Conversation, Message, MessageFeedback
 
     created_feedback = 0
     updated_feedback = 0
@@ -594,7 +593,7 @@ def _bucket_counts(rows: list[dict[str, Any]]) -> dict[str, int]:
 def _resolve_tenant_id(raw: str | None) -> UUID:
     if raw:
         return UUID(raw)
-    from app.core.config import settings
+    from app.infrastructure.config import settings
 
     return UUID(str(settings.DEFAULT_TENANT_ID))
 

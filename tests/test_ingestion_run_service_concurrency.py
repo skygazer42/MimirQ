@@ -6,8 +6,8 @@ import pytest
 from sqlalchemy import UniqueConstraint
 from sqlalchemy.exc import IntegrityError
 
-from app.models.ingestion_run import IngestionRunDocument
-from app.services import ingestion_run_service
+from app.models.documents.ingestion import IngestionRunDocument
+from app.services.documents import ingestion_runs as ingestion_run_service
 
 
 class _QueryStub:

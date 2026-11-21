@@ -6,8 +6,8 @@ import pytest
 from fastapi import HTTPException
 from PIL import Image
 
-from app.services import document_preview_legacy as legacy_preview_service
-from app.services import document_preview_utils as preview_utils
+from app.services.documents import preview as preview_utils
+from app.services.documents import preview_legacy as legacy_preview_service
 
 
 def _write_preview_image(root: Path, *, tenant_id: str, image_id: str, binding: dict[str, str]) -> Path:
@@ -196,7 +196,7 @@ def test_manual_preview_reuse_fails_closed_when_binding_promotion_cannot_persist
 
 
 def test_preview_owner_binding_rejects_mixed_account_and_document_scope(tmp_path) -> None:
-    from app.services.document_preview_utils import _load_preview_owner_binding
+    from app.services.documents.preview import _load_preview_owner_binding
 
     tenant_id = str(uuid4())
     dataset_id = str(uuid4())
@@ -218,7 +218,7 @@ def test_preview_owner_binding_rejects_mixed_account_and_document_scope(tmp_path
 
 
 def test_manual_preview_reuse_claims_legacy_reference_for_same_document(monkeypatch, tmp_path) -> None:
-    from app.services import document_preview_utils as preview_utils
+    from app.services.documents import preview as preview_utils
 
     tenant_id = str(uuid4())
     dataset_id = str(uuid4())
@@ -259,8 +259,8 @@ def test_manual_preview_reuse_claims_legacy_reference_for_same_document(monkeypa
 
 
 def test_legacy_preview_lookup_requires_an_exact_image_reference() -> None:
-    from app.models.document import DocumentChunk
-    from app.services.document_preview_legacy import find_legacy_preview_document_ids
+    from app.models.documents.records import DocumentChunk
+    from app.services.documents.preview_legacy import find_legacy_preview_document_ids
 
     tenant_id = uuid4()
     image_id = uuid4()

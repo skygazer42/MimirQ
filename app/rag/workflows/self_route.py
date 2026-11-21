@@ -1,7 +1,7 @@
 from typing import Any, TypedDict
 
-from app.rag.core.retrieval_profiles import LONG_CONTEXT_RETRIEVAL_PROFILE, PRODUCTION_RETRIEVAL_PROFILE
 from app.rag.policy.complexity_classifier import classify_query_complexity
+from app.rag.retrieval.configuration.profiles import LONG_CONTEXT_RETRIEVAL_PROFILE, PRODUCTION_RETRIEVAL_PROFILE
 from app.rag.workflows.base import BaseWorkflow, WorkflowMode, WorkflowResult
 
 _SCHEMA = "mimirq.self_route.v1"
@@ -22,41 +22,30 @@ def route_self_query(
     raw_question = question.strip()
     raw_decision = decision_text.strip().lower() if decision_text is not None else None
 
-    reason_codes: list[str] = []
     route = "rag"
-    retrieval_profile = PRODUCTION_RETRIEVAL_PROFILE
 
-    if raw_decision:
-        if "long_context" in raw_decision or "long context" in raw_decision:
-            route = "long_context"
-            retrieval_profile = LONG_CONTEXT_RETRIEVAL_PROFILE
-            reason_codes.append("llm_decision_long_context")
-        elif "rag" in raw_decision:
-            route = "rag"
-            retrieval_profile = PRODUCTION_RETRIEVAL_PROFILE
-            reason_codes.append("llm_decision_rag")
-
-    if not reason_codes:
+    if raw_decision and ("long_context" in raw_decision or "long context" in raw_decision):
+        route = "long_context"
+        reason_code = "llm_decision_long_context"
+    elif raw_decision and "rag" in raw_decision:
+        reason_code = "llm_decision_rag"
+    else:
         classified = classify_query_complexity(raw_question)
-        label = classified["label"]
-        if label == "multi_hop":
-            route = "rag"
-            retrieval_profile = PRODUCTION_RETRIEVAL_PROFILE
-            reason_codes.append("complexity_multi_hop")
-        elif "summarize" in raw_question.lower() or "full document" in raw_question.lower():
+        question_lower = raw_question.lower()
+        if classified["label"] == "multi_hop":
+            reason_code = "complexity_multi_hop"
+        elif "summarize" in question_lower or "full document" in question_lower:
             route = "long_context"
-            retrieval_profile = LONG_CONTEXT_RETRIEVAL_PROFILE
-            reason_codes.append("heuristic_long_context")
+            reason_code = "heuristic_long_context"
         else:
-            route = "rag"
-            retrieval_profile = PRODUCTION_RETRIEVAL_PROFILE
-            reason_codes.append("heuristic_default_rag")
+            reason_code = "heuristic_default_rag"
 
+    retrieval_profile = LONG_CONTEXT_RETRIEVAL_PROFILE if route == "long_context" else PRODUCTION_RETRIEVAL_PROFILE
     return {
         "schema": _SCHEMA,
         "route": route,
         "retrieval_profile": retrieval_profile,
-        "reason_codes": reason_codes,
+        "reason_codes": [reason_code],
     }
 
 

@@ -1,12 +1,12 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
-import { toast } from 'sonner'
-import { Code, Copy, Loader2, RefreshCw } from '@/components/icons'
+import { Suspense, useSyncExternalStore } from 'react'
+import { Code, Copy, RefreshCw } from '@/components/icons'
 import { TenantPermissionGate } from '@/components/auth/tenant-permission-gate'
 import { AppFrame } from '@/components/app-frame'
 import { Button } from '@/components/ui/button'
+import { LoadingButton } from '@/components/ui/loading-button'
+import { PageLoading } from '@/components/ui/page-loading'
 import {
   Dialog,
   DialogClose,
@@ -17,158 +17,90 @@ import {
 } from '@/components/ui/dialog'
 import { PageTitleIcon } from '@/components/ui/page-title-icon'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { datasetApi } from '@/lib/api/datasets'
-import { usageApi } from '@/lib/api/usage'
 import { formatApiError } from '@/lib/api-errors'
-import { queryKeys } from '@/lib/query-keys'
+import { getAuthSessionKey, subscribeAuthSession } from '@/lib/auth-storage'
 import { TENANT_PERMISSIONS } from '@/lib/tenant-permissions'
 import { cn } from '@/lib/utils'
 import { QuotaDetails, QuotaSummary } from './quota-summary'
 import { UsageTable } from './usage-table'
+import { useUsage } from './use-usage'
 import {
+  USAGE_WINDOW_DAYS,
   averageRetrievalMs,
-  buildQuotaReadings,
-  buildUsageRows,
-  dateTime,
+  formatUsageDateTime,
   formatCount,
   formatDuration,
   formatWindow,
-  parseUsageLocation,
-  type UsageView,
+  buildUsageLocation,
+  type UsageScope,
 } from './usage-model'
 import styles from './usage.module.css'
 
-const WINDOW_DAYS = [7, 14, 30] as const
+function replaceUsageLocation(next: Partial<UsageScope>) {
+  window.history.replaceState(null, '', buildUsageLocation(window.location.href, next))
+}
 
 export default function UsagePage() {
+  const sessionKey = useSyncExternalStore(subscribeAuthSession, getAuthSessionKey, getAuthSessionKey)
   return (
     <TenantPermissionGate permission={TENANT_PERMISSIONS.USAGE_READ} pageName="用量／配额">
-      <UsageOverview />
+      <Suspense fallback={<PageLoading message="正在加载用量与配额…" srMessage="正在加载用量与配额" />}>
+        <UsageOverview key={sessionKey} sessionKey={sessionKey} />
+      </Suspense>
     </TenantPermissionGate>
   )
 }
 
-function UsageOverview() {
-  const [scope, setScope] = useState(() =>
-    parseUsageLocation(typeof window === 'undefined' ? '' : window.location.search),
-  )
+function UsageOverview({ sessionKey }: Readonly<{ sessionKey: string }>) {
+  const {
+    scope,
+    summaryQuery,
+    costQuery,
+    summarySnapshot,
+    costSnapshot,
+    summary,
+    cost,
+    rows,
+    attributionWindowDays,
+    hasAttributionSnapshot,
+    quotas,
+    quotaPending,
+    rawQuota,
+    hasQuotaData,
+    errors,
+    quotaOpen,
+    setQuotaOpen,
+    copying,
+    refresh,
+    retryRead,
+    copyQuota,
+    refreshing,
+  } = useUsage(sessionKey)
   const { windowDays, view, page } = scope
-  useEffect(() => {
-    const restoreScope = () => setScope(parseUsageLocation(window.location.search))
-    window.addEventListener('popstate', restoreScope)
-    return () => window.removeEventListener('popstate', restoreScope)
-  }, [])
-  function updateScope(next: Partial<typeof scope>) {
-    const updated = { ...scope, ...next }
-    setScope(updated)
-    const url = new URL(window.location.href)
-    url.searchParams.set('window_days', String(updated.windowDays))
-    if (updated.view === 'attribution') url.searchParams.delete('view')
-    else url.searchParams.set('view', updated.view)
-    if (updated.page === 1) url.searchParams.delete('page')
-    else url.searchParams.set('page', String(updated.page))
-    window.history.replaceState(window.history.state, '', url)
-  }
-  const refreshingRef = useRef(false)
-  const params = useMemo(() => ({ window_days: windowDays }), [windowDays])
-  const summaryQuery = useQuery({
-    queryKey: queryKeys.usage.summary(params),
-    queryFn: () => usageApi.getChatTokenUsageSummary(params),
-  })
-  const costQuery = useQuery({
-    queryKey: queryKeys.usage.cost(params),
-    queryFn: () => usageApi.getChatCostUsageSummary(params),
-  })
-  const chatQuotaQuery = useQuery({
-    queryKey: queryKeys.usage.quota,
-    queryFn: () => usageApi.getChatTokenQuotaStatus(),
-    staleTime: 60_000,
-  })
-  const tenantQuotaQuery = useQuery({
-    queryKey: queryKeys.usage.tenantQuotaSummary,
-    queryFn: () => usageApi.getTenantQuotaSummary(),
-    staleTime: 60_000,
-  })
-  const labelsQuery = useQuery({
-    queryKey: queryKeys.datasets.exhaustive({ purpose: 'usage-labels' }),
-    queryFn: async () => {
-      const datasets = await datasetApi.listAll()
-      return Object.fromEntries(
-        datasets.filter((d) => d.id).map((d) => [String(d.id), String(d.name || '').trim() || String(d.id)]),
-      )
-    },
-    staleTime: 300_000,
-  })
-  const summary = summaryQuery.data,
-    cost = costQuery.data
-  const rows = useMemo(
-    () =>
-      buildUsageRows(
-        summary,
-        cost,
-        labelsQuery.data ?? {},
-        labelsQuery.isError ? 'error' : labelsQuery.isSuccess ? 'ready' : 'pending',
-      ),
-    [summary, cost, labelsQuery.data, labelsQuery.isError, labelsQuery.isSuccess],
-  )
-  const costRows = useMemo(
-    () =>
-      rows.filter((row) => row.cost).sort((a, b) => (b.cost?.llm_total_tokens ?? 0) - (a.cost?.llm_total_tokens ?? 0)),
-    [rows],
-  )
-  const quotas = useMemo(
-    () => buildQuotaReadings(chatQuotaQuery.data, tenantQuotaQuery.data),
-    [chatQuotaQuery.data, tenantQuotaQuery.data],
-  )
-  const quotaPending = { chat: chatQuotaQuery.isPending, tenant: tenantQuotaQuery.isPending }
-  const queries = [summaryQuery, costQuery, chatQuotaQuery, tenantQuotaQuery, labelsQuery]
-  const refreshing = queries.some((q) => q.isFetching)
-  const windowSource = summary ?? cost
-  const rawQuota = useMemo(
-    () =>
-      JSON.stringify(
-        { chat_token_quota: chatQuotaQuery.data ?? null, tenant_quotas: tenantQuotaQuery.data ?? null },
-        null,
-        2,
-      ),
-    [chatQuotaQuery.data, tenantQuotaQuery.data],
-  )
-  const hasQuotaData = Boolean(chatQuotaQuery.data || tenantQuotaQuery.data)
-  const errors = [
-    { label: '助手用量', query: summaryQuery },
-    { label: '链路资源', query: costQuery },
-    { label: '聊天配额', query: chatQuotaQuery },
-    { label: '租户资源配额', query: tenantQuotaQuery },
-    { label: '数据集名称', query: labelsQuery },
-  ].filter((item) => item.query.isError)
-  const tablePending = view === 'resources' ? costQuery.isPending : summaryQuery.isPending || costQuery.isPending
-  const tableFailed = view === 'resources' ? costQuery.isError : summaryQuery.isError || costQuery.isError
-  const updatedAt = Math.max(summaryQuery.dataUpdatedAt, costQuery.dataUpdatedAt)
-
-  async function refresh() {
-    if (refreshingRef.current) return
-    refreshingRef.current = true
-    try {
-      const results = await Promise.all(queries.map((query) => query.refetch({ cancelRefetch: false })))
-      if (results.every((result) => !result.isError)) toast.success('用量已刷新')
-    } finally {
-      refreshingRef.current = false
-    }
-  }
-
-  async function copyQuota() {
-    try {
-      await navigator.clipboard.writeText(rawQuota)
-      toast.success('配额已复制')
-    } catch {
-      toast.error('复制失败，请重试')
-    }
-  }
+  const windowSource = summarySnapshot ?? costSnapshot
+  const displayedWindow =
+    windowSource === undefined ? undefined : formatWindow(windowSource.data.window_start, windowSource.data.window_end)
+  const resourceWindow =
+    costSnapshot === undefined ? undefined : formatWindow(costSnapshot.data.window_start, costSnapshot.data.window_end)
+  const showResourceWindow =
+    costSnapshot !== undefined &&
+    summarySnapshot !== undefined &&
+    (costSnapshot.windowDays !== summarySnapshot.windowDays || resourceWindow !== displayedWindow)
+  const updatedAt = windowSource?.receivedAt
+  const tableFailed =
+    view === 'resources'
+      ? costSnapshot === undefined && costQuery.isError
+      : !hasAttributionSnapshot && (summaryQuery.isError || costQuery.isError)
+  const tablePending =
+    !tableFailed &&
+    (view === 'resources'
+      ? costSnapshot === undefined && costQuery.isPending
+      : !hasAttributionSnapshot && (summaryQuery.isPending || costQuery.isPending))
 
   return (
     <AppFrame>
       <section className={styles.workspace} data-usage-overview="a">
-        <Dialog>
+        <Dialog open={quotaOpen} onOpenChange={setQuotaOpen}>
           <header className={styles.header}>
             <div className={styles.heading}>
               <PageTitleIcon name="usage-quota" />
@@ -178,51 +110,53 @@ function UsageOverview() {
               <DialogTrigger asChild>
                 <Button variant="ghost" aria-label="查看原始配额" disabled={!hasQuotaData}>
                   <Code />
-                  <span>原始配额</span>
+                  <span className={styles.actionLabel}>原始配额</span>
                 </Button>
               </DialogTrigger>
-              <Button
+              <LoadingButton
                 variant="ghost"
                 aria-label="复制配额"
                 disabled={!hasQuotaData}
+                loading={copying}
                 onClick={() => {
                   void copyQuota()
                 }}
               >
                 <Copy />
-                <span>复制配额</span>
-              </Button>
-              <Button
+                <span className={styles.actionLabel}>复制配额</span>
+              </LoadingButton>
+              <LoadingButton
                 variant="outline"
                 aria-label="刷新用量"
-                disabled={refreshing}
+                loading={refreshing}
                 onClick={() => {
                   void refresh()
                 }}
               >
-                {refreshing ? <Loader2 className="animate-spin motion-reduce:animate-none" /> : <RefreshCw />}
-                <span>刷新用量</span>
-              </Button>
+                <RefreshCw />
+                <span className={styles.actionLabel}>刷新用量</span>
+              </LoadingButton>
             </div>
           </header>
           <DialogContent className={styles.rawDialog}>
             <div className={styles.dialogHeading}>
               <DialogTitle>原始配额</DialogTitle>
-              <DialogDescription>聊天 token 与租户资源的当前响应；未取得的响应为 null。</DialogDescription>
+              <DialogDescription>仅包含已取得的聊天 token 与租户资源配额响应。</DialogDescription>
             </div>
             <pre tabIndex={0} aria-label="原始配额 JSON">
               {rawQuota}
             </pre>
             <div className={styles.dialogActions}>
-              <Button
+              <LoadingButton
                 variant="outline"
+                loading={copying}
                 onClick={() => {
                   void copyQuota()
                 }}
               >
                 <Copy />
                 复制配额
-              </Button>
+              </LoadingButton>
               <DialogClose asChild>
                 <Button>关闭</Button>
               </DialogClose>
@@ -233,12 +167,12 @@ function UsageOverview() {
           <div className={styles.scopeBar}>
             <span>统计窗口</span>
             <div className={styles.windowPresets} role="group" aria-label="用量统计窗口">
-              {WINDOW_DAYS.map((days) => (
+              {USAGE_WINDOW_DAYS.map((days) => (
                 <button
                   key={days}
                   type="button"
                   aria-pressed={windowDays === days}
-                  onClick={() => updateScope({ windowDays: days, page: 1 })}
+                  onClick={() => replaceUsageLocation({ windowDays: days, page: 1 })}
                 >
                   近 {days} 天
                 </button>
@@ -246,29 +180,44 @@ function UsageOverview() {
             </div>
             <span className={styles.window}>
               {windowSource
-                ? formatWindow(windowSource.window_start, windowSource.window_end)
-                : summaryQuery.isPending || costQuery.isPending
+                ? `近 ${windowSource.windowDays} 天 · ${displayedWindow}`
+                : tablePending
                   ? '正在读取统计窗口…'
                   : '统计窗口未取得'}
             </span>
             <span className={styles.tenant}>当前租户</span>
           </div>
+          {summarySnapshot !== undefined && summarySnapshot.windowDays !== windowDays ? (
+            <p className={styles.resourceWindow} role="status">
+              助手用量仍显示近 {summarySnapshot.windowDays} 天的结果；当前选择为近 {windowDays} 天。
+            </p>
+          ) : null}
+          {showResourceWindow ? (
+            <p className={styles.resourceWindow}>
+              链路资源 · 近 {costSnapshot.windowDays} 天 · {resourceWindow}
+            </p>
+          ) : null}
+          {costSnapshot !== undefined && costSnapshot.windowDays !== windowDays ? (
+            <p className={styles.resourceWindow} role="status">
+              链路资源仍显示近 {costSnapshot.windowDays} 天的结果；当前选择为近 {windowDays} 天。
+            </p>
+          ) : null}
           {errors.length ? (
             <div className={styles.errors} aria-label="数据读取状态">
-              {errors.map(({ label, query }) => (
-                <div key={label} role="alert">
+              {errors.map((read) => (
+                <div key={read.label} role="alert">
                   <span>
-                    <strong>{label}读取失败</strong> · {formatApiError(query.error, '请重试')}
-                    {query.data ? '，显示上次读取结果' : ''}
+                    <strong>{read.label}读取失败</strong> · {formatApiError(read.query.error, '请重试')}
+                    {read.hasResult ? '，显示上次读取结果' : null}
                   </span>
                   <Button
                     variant="ghost"
-                    disabled={query.isFetching}
+                    disabled={read.query.isFetching}
                     onClick={() => {
-                      void query.refetch({ cancelRefetch: false })
+                      void retryRead(read)
                     }}
                   >
-                    重试{label}
+                    重试{read.label}
                   </Button>
                 </div>
               ))}
@@ -287,7 +236,7 @@ function UsageOverview() {
             <Metric label="助手 token" value={formatCount(summary?.total_assistant_tokens)} />
             <Metric label="向量查询 token" value={formatCount(cost?.total_embedding_query_tokens)} />
             <Metric
-              label="平均检索"
+              label="每条助手消息平均检索耗时"
               value={formatDuration(
                 averageRetrievalMs(cost?.total_retrieval_elapsed_sec, cost?.total_assistant_messages),
               )}
@@ -296,7 +245,10 @@ function UsageOverview() {
           <QuotaSummary quotas={quotas} pending={quotaPending} />
           <Tabs
             value={view}
-            onValueChange={(value) => updateScope({ view: value as UsageView, page: 1 })}
+            onValueChange={(view) => {
+              if (view === 'attribution' || view === 'resources' || view === 'quotas')
+                replaceUsageLocation({ view, page: 1 })
+            }}
             className={styles.tabsRoot}
           >
             <TabsList aria-label="用量视图" className={styles.tabs}>
@@ -315,10 +267,10 @@ function UsageOverview() {
                 rows={rows}
                 mode="attribution"
                 page={page}
-                onPageChange={(page) => updateScope({ page })}
+                onPageChange={(page) => replaceUsageLocation({ page })}
                 pending={tablePending}
                 failed={tableFailed}
-                windowDays={windowDays}
+                windowDays={attributionWindowDays}
               />
             </TabsContent>
             <TabsContent value="resources" className={styles.tabBody}>
@@ -329,31 +281,21 @@ function UsageOverview() {
                 <Metric label="向量查询字符" value={formatCount(cost?.total_embedding_query_chars)} />
                 <Metric
                   label="检索总耗时"
-                  value={formatDuration(
-                    cost?.total_retrieval_elapsed_sec == null ? null : cost.total_retrieval_elapsed_sec * 1000,
-                  )}
+                  value={formatDuration(cost === undefined ? undefined : cost.total_retrieval_elapsed_sec * 1000)}
                 />
                 <Metric
                   label="重排总耗时"
-                  value={formatDuration(
-                    cost?.total_rerank_elapsed_sec == null ? null : cost.total_rerank_elapsed_sec * 1000,
-                  )}
+                  value={formatDuration(cost === undefined ? undefined : cost.total_rerank_elapsed_sec * 1000)}
                 />
               </dl>
-              {cost &&
-              windowSource &&
-              formatWindow(cost.window_start, cost.window_end) !==
-                formatWindow(windowSource.window_start, windowSource.window_end) ? (
-                <p className={styles.resourceWindow}>资源统计 · {formatWindow(cost.window_start, cost.window_end)}</p>
-              ) : null}
               <UsageTable
-                rows={costRows}
+                rows={rows}
                 mode="resources"
                 page={page}
-                onPageChange={(page) => updateScope({ page })}
+                onPageChange={(page) => replaceUsageLocation({ page })}
                 pending={tablePending}
                 failed={tableFailed}
-                windowDays={windowDays}
+                windowDays={costSnapshot === undefined ? windowDays : costSnapshot.windowDays}
               />
             </TabsContent>
             <TabsContent value="quotas" className={styles.tabBody}>
@@ -363,26 +305,29 @@ function UsageOverview() {
         </div>
         <footer className={styles.footer} data-task-center-dock>
           <span>
-            当前租户 · 近 {windowDays} 天{refreshing ? ' · 正在更新' : ''}
+            当前租户{windowSource === undefined ? '' : ` · 显示近 ${windowSource.windowDays} 天`}
+            {refreshing ? ' · 正在更新' : ''}
           </span>
           <span className={styles.spacer} />
           <span>配额按各自窗口统计</span>
-          {updatedAt ? <time dateTime={new Date(updatedAt).toISOString()}>读取于 {dateTime(updatedAt)}</time> : null}
+          {updatedAt !== undefined ? (
+            <time dateTime={new Date(updatedAt).toISOString()}>读取于 {formatUsageDateTime(updatedAt)}</time>
+          ) : null}
         </footer>
       </section>
     </AppFrame>
   )
 }
 
-function Metric({ label, value, unit }: { label: string; value: string; unit?: string }) {
-  const duration = !unit ? /^(.+) (ms|s)$/.exec(value) : null
-  const displayUnit = unit ?? duration?.[2]
+function Metric({ label, value, unit }: Readonly<{ label: string; value: string; unit?: string }>) {
+  const duration = unit === undefined ? /^(.+) (ms|s)$/.exec(value) : null
+  const displayUnit = unit === undefined ? duration?.[2] : unit
   return (
     <div>
       <dt>{label}</dt>
       <dd className={cn(value === '—' && styles.missingValue)}>
-        {duration?.[1] ?? value}
-        {displayUnit ? <small>{duration ? ` ${displayUnit}` : displayUnit}</small> : null}
+        {duration === null ? value : duration[1]}
+        {displayUnit !== undefined ? <small>{duration === null ? displayUnit : ` ${displayUnit}`}</small> : null}
       </dd>
     </div>
   )

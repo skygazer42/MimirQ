@@ -4,13 +4,18 @@
 'use client'
 
 import loader from '@monaco-editor/loader'
+import type { Monaco } from '@monaco-editor/react'
+import type { editor as MonacoEditorApi, IDisposable, IRange } from 'monaco-editor'
 import dynamic from 'next/dynamic'
-import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from 'react'
 import { useTranslations } from 'next-intl'
 import { useTheme } from 'next-themes'
 import { PageLoading } from '@/components/ui/page-loading'
-import { getChunkMetadata, getChunkRole } from '@/components/chunk-preview/utils/metadata'
+import { getChunkParentRange, getChunkRole } from '@/components/chunk-preview/utils/metadata'
 import type { ChunkPreviewItem } from '@/types'
+import { reportClientWarning } from '@/lib/client-logging'
+import { THEME_APPEARANCE_CHANGED_EVENT } from '@/lib/theme-surface'
+import styles from './original-preview-monaco.module.css'
 
 loader.config({
   paths: {
@@ -37,71 +42,18 @@ const MonacoEditor = dynamic(() => import('@monaco-editor/react'), {
 
 const MAX_OVERVIEW_MARKERS = 4000
 
-type MonacoRangeLike = {
-  startLineNumber: number
-  startColumn: number
-  endLineNumber: number
-  endColumn: number
-}
-
-type MonacoDecoration = {
-  range: MonacoRangeLike
-  options: {
-    overviewRuler?: { color: string; position: number }
-    inlineClassName?: string
-  }
-}
-
-type MonacoPosition = {
-  lineNumber: number
-  column: number
-}
-
-type MonacoMouseEvent = {
-  event: { leftButton: boolean }
-  target: { position: MonacoPosition | null }
-}
-
-type MonacoScrollEvent = {
-  scrollTop: number
-}
-
-type MonacoDisposable = {
-  dispose: () => void
-}
-
-type MonacoModel = {
-  getOffsetAt: (position: MonacoPosition) => number
-}
-
-type MonacoEditorInstance = {
-  deltaDecorations: (oldDecorations: string[], newDecorations: MonacoDecoration[]) => string[]
-  revealRangeInCenter: (range: MonacoRangeLike, scrollType?: number) => void
-  onMouseDown: (listener: (event: MonacoMouseEvent) => void) => MonacoDisposable
-  onDidScrollChange: (listener: (event: MonacoScrollEvent) => void) => MonacoDisposable
-  getModel: () => MonacoModel | null
-  getScrollTop: () => number
-  setScrollTop: (scrollTop: number) => void
-}
-
-type MonacoModule = {
-  Range: new (startLineNumber: number, startColumn: number, endLineNumber: number, endColumn: number) => MonacoRangeLike
-  editor: {
-    OverviewRulerLane: { Right: number }
-    ScrollType: { Smooth: number }
-  }
-}
+/** UTF-16 bounds already projected into this viewer's text. */
+type DisplayRange = Readonly<{ start: number; end: number }>
 
 function buildLineStarts(text: string) {
-  const starts = [0]
-  for (let i = 0; i < text.length; i++) {
-    if (text.codePointAt(i) === 10) starts.push(i + 1) // '\n'
+  // Monaco stores a leading BOM separately from the visible first line.
+  const starts = [text.charCodeAt(0) === 0xfeff ? 1 : 0]
+  for (let index = 0; index < text.length; index++) {
+    const charCode = text.charCodeAt(index)
+    if (charCode === 13 && text.charCodeAt(index + 1) === 10) index++
+    if (charCode === 13 || charCode === 10) starts.push(index + 1)
   }
   return starts
-}
-
-function clampOffset(value: number, min: number, max: number) {
-  return Math.max(min, Math.min(max, value))
 }
 
 function offsetToPosition(lineStarts: number[], offset: number) {
@@ -110,72 +62,43 @@ function offsetToPosition(lineStarts: number[], offset: number) {
   let hi = lineStarts.length - 1
   while (lo <= hi) {
     const mid = (lo + hi) >> 1
-    const v = lineStarts[mid]
-    if (v === offset) {
+    const lineStart = lineStarts[mid]
+    if (lineStart === offset) {
       return { lineNumber: mid + 1, column: 1 }
     }
-    if (v < offset) lo = mid + 1
+    if (lineStart < offset) lo = mid + 1
     else hi = mid - 1
   }
   const lineIndex = Math.max(0, lo - 1)
-  const lineStart = lineStarts[lineIndex] ?? 0
+  const lineStart = lineStarts[lineIndex]
   return {
     lineNumber: lineIndex + 1,
-    column: offset - lineStart + 1,
+    column: Math.max(1, offset - lineStart + 1),
   }
 }
 
-function pickBestChunkAtOffset(chunks: ChunkPreviewItem[], offset: number) {
+function pickBestChunkAtOffset(chunks: readonly ChunkPreviewItem[], offset: number) {
   let best: ChunkPreviewItem | null = null
-  let bestLen = Number.POSITIVE_INFINITY
+  let bestLength = Number.POSITIVE_INFINITY
   for (const chunk of chunks) {
-    const start = Number(chunk.start_index) || 0
-    const end = Number(chunk.end_index) || start
+    const start = chunk.start_index
+    const end = chunk.end_index
     if (offset < start || offset >= end) continue
-    const len = Math.max(0, end - start)
-    if (len < bestLen) {
+    const length = end - start
+    if (length < bestLength) {
       best = chunk
-      bestLen = len
+      bestLength = length
     }
   }
   return best
 }
 
-function resolveParentRange(chunk: ChunkPreviewItem, chunks: ChunkPreviewItem[]) {
-  const meta = getChunkMetadata(chunk)
-  const role = getChunkRole(chunk) ?? ''
-  if (role !== 'child') return null
-
-  const parentStartRaw = meta.parent_start_char ?? meta.parent_start_index ?? meta.parent_start
-  const parentEndRaw = meta.parent_end_char ?? meta.parent_end_index ?? meta.parent_end
-  const parentStart = parentStartRaw == null ? Number.NaN : Number(parentStartRaw)
-  const parentEnd = parentEndRaw == null ? Number.NaN : Number(parentEndRaw)
-  if (Number.isFinite(parentStart) && Number.isFinite(parentEnd) && parentEnd > parentStart) {
-    return { start: parentStart, end: parentEnd }
-  }
-
-  const parentId = meta.parent_id ?? meta.parent_node_id
-  if (!parentId) return null
-  const parent = chunks.find((it) => {
-    const parentMeta = getChunkMetadata(it)
-    return (
-      getChunkRole(it) === 'parent' &&
-      (parentMeta.parent_id === parentId || parentMeta.node_id === parentId || parentMeta.id === parentId)
-    )
-  })
-  if (!parent) return null
-  const start = Number(parent.start_index) || 0
-  const end = Number(parent.end_index) || start
-  if (end <= start) return null
-  return { start, end }
-}
-
 export function OriginalPreviewMonaco(
   props: Readonly<{
     text: string
-    chunks: ChunkPreviewItem[]
+    chunks: readonly ChunkPreviewItem[]
     activeChunkIndex: number | null
-    activeRange?: { start: number; end: number } | null
+    activeRange?: DisplayRange | null
     highlightParentRange?: boolean
     initialScrollTop?: number
     chunkOverrides?: Record<number, { disabled?: boolean }>
@@ -195,17 +118,12 @@ export function OriginalPreviewMonaco(
     onSelectChunkIndex,
   } = props
 
-  const editorRef = useRef<MonacoEditorInstance | null>(null)
-  const monacoRef = useRef<MonacoModule | null>(null)
+  const editorRef = useRef<MonacoEditorApi.IStandaloneCodeEditor | null>(null)
+  const monacoRef = useRef<Monaco | null>(null)
   const overviewDecorationIdsRef = useRef<string[]>([])
   const activeDecorationIdsRef = useRef<string[]>([])
-  const clickDisposableRef = useRef<MonacoDisposable | null>(null)
-  const scrollDisposableRef = useRef<MonacoDisposable | null>(null)
-  const listenerPropsRef = useRef({ chunks, onSelectChunkIndex, onScrollTopChange })
-
-  useEffect(() => {
-    listenerPropsRef.current = { chunks, onSelectChunkIndex, onScrollTopChange }
-  }, [chunks, onSelectChunkIndex, onScrollTopChange])
+  const clickDisposableRef = useRef<IDisposable | null>(null)
+  const scrollDisposableRef = useRef<IDisposable | null>(null)
 
   const lineStarts = useMemo(() => buildLineStarts(text), [text])
   const { theme, systemTheme } = useTheme()
@@ -216,7 +134,7 @@ export function OriginalPreviewMonaco(
     const editor = editorRef.current
     const monaco = monacoRef.current
     if (!editor || !monaco) return
-    if (!Array.isArray(chunks) || chunks.length === 0) {
+    if (chunks.length === 0) {
       overviewDecorationIdsRef.current = editor.deltaDecorations(overviewDecorationIdsRef.current, [])
       return
     }
@@ -225,26 +143,22 @@ export function OriginalPreviewMonaco(
       return
     }
 
-    const textLen = text.length
+    const palette = getComputedStyle(document.documentElement)
+    const foreground = palette.getPropertyValue('--foreground').trim()
+    const mutedForeground = palette.getPropertyValue('--muted-foreground').trim()
     const decorations = chunks.map((chunk) => {
-      const start = clampOffset(Number(chunk.start_index) || 0, 0, textLen)
-      const end = clampOffset(Math.max(start, Number(chunk.end_index) || start), 0, textLen)
-      const startPos = offsetToPosition(lineStarts, start)
-      const endPos = offsetToPosition(lineStarts, end)
-      const meta = chunk.metadata || {}
-      const role = typeof meta.chunk_role === 'string' ? meta.chunk_role : ''
-      const isChild = role === 'child'
+      const startPos = offsetToPosition(lineStarts, chunk.start_index)
+      const endPos = offsetToPosition(lineStarts, chunk.end_index)
+      const isChild = getChunkRole(chunk) === 'child'
       const disabled = Boolean(chunkOverrides?.[chunk.index]?.disabled)
 
       const color = (() => {
         if (disabled) {
-          return 'rgba(148,163,184,0.35)'
-        } else if (isChild) {
-          return 'rgba(59,130,246,0.65)' // child highlight
-        } else {
-          return 'rgba(148,163,184,0.45)' // parent/others
+          return `hsl(${mutedForeground} / 0.35)`
         }
-      })() // parent/others
+        if (isChild) return `hsl(${foreground} / 0.65)`
+        return `hsl(${mutedForeground} / 0.45)`
+      })()
 
       return {
         range: new monaco.Range(startPos.lineNumber, startPos.column, endPos.lineNumber, endPos.column),
@@ -255,98 +169,87 @@ export function OriginalPreviewMonaco(
     })
 
     overviewDecorationIdsRef.current = editor.deltaDecorations(overviewDecorationIdsRef.current, decorations)
-  }, [chunkOverrides, chunks, lineStarts, text.length])
+  }, [chunkOverrides, chunks, lineStarts])
 
   const applyActiveDecorations = useCallback(() => {
     const editor = editorRef.current
     const monaco = monacoRef.current
     if (!editor || !monaco) return
 
-    const textLen = text.length
     const chunk = activeChunkIndex == null ? null : chunks[activeChunkIndex]
-    const explicitStartRaw = activeRange?.start
-    const explicitEndRaw = activeRange?.end
-    const explicitStart =
-      typeof explicitStartRaw === 'number' && Number.isFinite(explicitStartRaw) ? Math.trunc(explicitStartRaw) : null
-    const explicitEnd =
-      typeof explicitEndRaw === 'number' && Number.isFinite(explicitEndRaw) ? Math.trunc(explicitEndRaw) : null
-
-    const explicit =
-      explicitStart != null && explicitEnd != null && explicitEnd > explicitStart
-        ? {
-            start: clampOffset(explicitStart, 0, textLen),
-            end: clampOffset(Math.max(explicitStart, explicitEnd), 0, textLen),
-          }
-        : null
-
-    if (!chunk && !explicit) {
-      activeDecorationIdsRef.current = editor.deltaDecorations(activeDecorationIdsRef.current, [])
-      return
+    const parent = highlightParentRange && chunk ? getChunkParentRange(chunk, chunks) : null
+    const decorations: MonacoEditorApi.IModelDeltaDecoration[] = []
+    const decorateRange = (range: DisplayRange, className: string) => {
+      const start = offsetToPosition(lineStarts, range.start)
+      const end = offsetToPosition(lineStarts, range.end)
+      const selection = new monaco.Range(start.lineNumber, start.column, end.lineNumber, end.column)
+      decorations.push({ range: selection, options: { inlineClassName: className } })
+      return selection
     }
 
-    const activeStart = chunk ? clampOffset(Number(chunk.start_index) || 0, 0, textLen) : 0
-    const activeEnd = chunk ? clampOffset(Math.max(activeStart, Number(chunk.end_index) || activeStart), 0, textLen) : 0
-
-    const parent = highlightParentRange && chunk ? resolveParentRange(chunk, chunks) : null
-
-    const decos: MonacoDecoration[] = []
     if (parent) {
-      const parentStart = clampOffset(parent.start, 0, textLen)
-      const parentEnd = clampOffset(Math.max(parentStart, parent.end), 0, textLen)
-      if (parentEnd > parentStart) {
-        const s = offsetToPosition(lineStarts, parentStart)
-        const e = offsetToPosition(lineStarts, parentEnd)
-        decos.push({
-          range: new monaco.Range(s.lineNumber, s.column, e.lineNumber, e.column),
-          options: {
-            inlineClassName: 'mimirq-monaco-parent-highlight',
-          },
-        })
-      }
+      decorateRange(parent, 'mimirq-monaco-parent-highlight')
     }
 
-    let revealRange: MonacoRangeLike | null = null
-
-    if (chunk && activeEnd > activeStart) {
-      const s = offsetToPosition(lineStarts, activeStart)
-      const e = offsetToPosition(lineStarts, activeEnd)
-      const chunkRange = new monaco.Range(s.lineNumber, s.column, e.lineNumber, e.column)
-      decos.push({
-        range: chunkRange,
-        options: {
-          inlineClassName: 'mimirq-monaco-active-highlight',
-        },
-      })
-      revealRange = chunkRange
+    let revealRange: IRange | null = null
+    if (chunk && chunk.end_index > chunk.start_index) {
+      revealRange = decorateRange({ start: chunk.start_index, end: chunk.end_index }, 'mimirq-monaco-active-highlight')
+    }
+    if (activeRange && activeRange.end > activeRange.start) {
+      revealRange = decorateRange(activeRange, 'mimirq-monaco-citation-highlight')
     }
 
-    if (explicit && explicit.end > explicit.start) {
-      const s = offsetToPosition(lineStarts, explicit.start)
-      const e = offsetToPosition(lineStarts, explicit.end)
-      const explicitRange = new monaco.Range(s.lineNumber, s.column, e.lineNumber, e.column)
-      decos.push({
-        range: explicitRange,
-        options: {
-          inlineClassName: 'mimirq-monaco-citation-highlight',
-        },
-      })
-      revealRange = explicitRange
-    }
-
-    activeDecorationIdsRef.current = editor.deltaDecorations(activeDecorationIdsRef.current, decos)
+    activeDecorationIdsRef.current = editor.deltaDecorations(activeDecorationIdsRef.current, decorations)
 
     try {
       if (revealRange) {
         editor.revealRangeInCenter(revealRange, monaco.editor.ScrollType.Smooth)
       }
-    } catch {
-      // no-op
+    } catch (error) {
+      reportClientWarning('Reveal original preview range failed', error)
     }
-  }, [activeChunkIndex, activeRange, chunks, highlightParentRange, lineStarts, text.length])
+  }, [activeChunkIndex, activeRange, chunks, highlightParentRange, lineStarts])
+
+  const currentEditorPropsRef = useRef({
+    chunks,
+    lineStarts,
+    onSelectChunkIndex,
+    onScrollTopChange,
+    initialScrollTop,
+    activeChunkIndex,
+    activeRange,
+    applyOverviewDecorations,
+    applyActiveDecorations,
+  })
+  useLayoutEffect(() => {
+    currentEditorPropsRef.current = {
+      chunks,
+      lineStarts,
+      onSelectChunkIndex,
+      onScrollTopChange,
+      initialScrollTop,
+      activeChunkIndex,
+      activeRange,
+      applyOverviewDecorations,
+      applyActiveDecorations,
+    }
+  }, [
+    chunks,
+    lineStarts,
+    onSelectChunkIndex,
+    onScrollTopChange,
+    initialScrollTop,
+    activeChunkIndex,
+    activeRange,
+    applyOverviewDecorations,
+    applyActiveDecorations,
+  ])
 
   useEffect(() => {
     applyOverviewDecorations()
-  }, [applyOverviewDecorations])
+    window.addEventListener(THEME_APPEARANCE_CHANGED_EVENT, applyOverviewDecorations)
+    return () => window.removeEventListener(THEME_APPEARANCE_CHANGED_EVENT, applyOverviewDecorations)
+  }, [applyOverviewDecorations, resolvedTheme])
 
   useEffect(() => {
     applyActiveDecorations()
@@ -360,8 +263,8 @@ export function OriginalPreviewMonaco(
 
     try {
       editor.setScrollTop(Math.max(0, initialScrollTop))
-    } catch {
-      // no-op
+    } catch (error) {
+      reportClientWarning('Restore original preview scroll failed', error)
     }
   }, [activeChunkIndex, activeRange, initialScrollTop, text])
 
@@ -375,11 +278,15 @@ export function OriginalPreviewMonaco(
         scrollDisposableRef.current.dispose()
         scrollDisposableRef.current = null
       }
+      editorRef.current = null
+      monacoRef.current = null
     }
   }, [])
 
   return (
-    <div className="relative h-full min-h-[520px] rounded-xl border border-border/60 overflow-hidden bg-background">
+    <div
+      className={`${styles.viewer} relative h-full min-h-[520px] rounded-xl border border-border/60 overflow-hidden bg-background`}
+    >
       <MonacoEditor
         height="100%"
         language="markdown"
@@ -398,69 +305,50 @@ export function OriginalPreviewMonaco(
           folding: false,
           overviewRulerBorder: false,
         }}
-        onMount={(editor: MonacoEditorInstance, monaco: MonacoModule) => {
+        onMount={(editor, monaco) => {
+          clickDisposableRef.current?.dispose()
+          scrollDisposableRef.current?.dispose()
+          overviewDecorationIdsRef.current = []
+          activeDecorationIdsRef.current = []
           editorRef.current = editor
           monacoRef.current = monaco
-
-          applyOverviewDecorations()
-          applyActiveDecorations()
+          const current = currentEditorPropsRef.current
+          current.applyOverviewDecorations()
+          current.applyActiveDecorations()
 
           if (
-            typeof initialScrollTop === 'number' &&
-            Number.isFinite(initialScrollTop) &&
-            activeChunkIndex == null &&
-            !activeRange
+            typeof current.initialScrollTop === 'number' &&
+            Number.isFinite(current.initialScrollTop) &&
+            current.activeChunkIndex == null &&
+            !current.activeRange
           ) {
             try {
-              editor.setScrollTop(Math.max(0, initialScrollTop))
-            } catch {
-              // no-op
+              editor.setScrollTop(Math.max(0, current.initialScrollTop))
+            } catch (error) {
+              reportClientWarning('Restore mounted original preview scroll failed', error)
             }
           }
 
-          if (onSelectChunkIndex) {
-            clickDisposableRef.current?.dispose()
-            clickDisposableRef.current = editor.onMouseDown((event: MonacoMouseEvent) => {
-              const current = listenerPropsRef.current
-              if (!current.onSelectChunkIndex) return
-              if (!event.event.leftButton) return
-              const position = event.target.position
-              if (!position) return
-              const model = editor.getModel()
-              if (!model) return
-              const offset = model.getOffsetAt(position)
-              const best = pickBestChunkAtOffset(current.chunks, offset)
-              if (!best) return
-              current.onSelectChunkIndex(best.index)
-            })
-          }
+          clickDisposableRef.current = editor.onMouseDown((event) => {
+            const current = currentEditorPropsRef.current
+            if (!current.onSelectChunkIndex) return
+            if (!event.event.leftButton) return
+            const position = event.target.position
+            if (!position) return
+            if (editor.getModel() === null) return
+            const lineStart = current.lineStarts[position.lineNumber - 1]
+            if (lineStart === undefined) return
+            const offset = lineStart + position.column - 1
+            const best = pickBestChunkAtOffset(current.chunks, offset)
+            if (!best) return
+            current.onSelectChunkIndex(best.index)
+          })
 
-          if (onScrollTopChange) {
-            scrollDisposableRef.current?.dispose()
-            scrollDisposableRef.current = editor.onDidScrollChange((event: MonacoScrollEvent) => {
-              const onScroll = listenerPropsRef.current.onScrollTopChange
-              if (!onScroll) return
-              onScroll(typeof event.scrollTop === 'number' ? event.scrollTop : editor.getScrollTop())
-            })
-          }
+          scrollDisposableRef.current = editor.onDidScrollChange((event) => {
+            if (event.scrollTopChanged) currentEditorPropsRef.current.onScrollTopChange?.(event.scrollTop)
+          })
         }}
       />
-
-      <style jsx global>{`
-        .mimirq-monaco-parent-highlight {
-          background: rgba(59, 130, 246, 0.08);
-        }
-        .mimirq-monaco-active-highlight {
-          background: rgba(59, 130, 246, 0.18);
-          border-radius: 2px;
-          box-shadow: inset 0 0 0 1px rgba(59, 130, 246, 0.25);
-        }
-        .mimirq-monaco-citation-highlight {
-          background: rgba(245, 158, 11, 0.22);
-          border-radius: 2px;
-          box-shadow: inset 0 0 0 1px rgba(245, 158, 11, 0.35);
-        }
-      `}</style>
     </div>
   )
 }

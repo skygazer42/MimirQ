@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState, type ReactNode } from 'react'
+import { useId, useMemo, useRef, useState, type ReactNode } from 'react'
 import { FileJson, FileText, FolderInput, Loader2 } from '@/components/icons'
 import type { PlatformIcon } from '@/components/icons'
 import { toast } from 'sonner'
@@ -11,13 +11,16 @@ import { Panel } from '@/components/ui/panel'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { documentApi } from '@/lib/api/documents'
 import { formatApiError } from '@/lib/api-errors'
+import { getAuthSessionKey } from '@/lib/auth-storage'
 import { cn, detachPromise } from '@/lib/utils'
+import type { DocumentBatchMoveResponse } from '@/types/backend'
 import type { Dataset } from '@/types/datasets'
 
 type DocumentOperationsPanelProps = {
   selectedDocumentIds: string[]
   datasetId?: string | null
   datasets?: Dataset[]
+  onRefresh: () => Promise<void>
 }
 
 const NO_TARGET_DATASET = '__none__'
@@ -64,15 +67,19 @@ export function DocumentOperationsPanel({
   selectedDocumentIds,
   datasetId,
   datasets = [],
+  onRefresh,
 }: Readonly<DocumentOperationsPanelProps>) {
+  const targetSelectId = useId()
+  const operationRef = useRef<object | null>(null)
   const [targetDatasetId, setTargetDatasetId] = useState('')
   const [resultDetailsOpen, setResultDetailsOpen] = useState(false)
   const [busy, setBusy] = useState<string | null>(null)
-  const [result, setResult] = useState<{ title: string; payload: unknown } | null>(null)
+  const [result, setResult] = useState<{ title: string; payload: unknown; summary: string } | null>(null)
 
   const ids = selectedDocumentIds
-  const firstDocumentId = ids[0] || ''
-  const effectiveDatasetId = String(datasetId || '').trim()
+  const firstDocumentId = ids.at(0)
+  const trimmedDatasetId = datasetId?.trim()
+  const effectiveDatasetId = trimmedDatasetId === '' ? undefined : trimmedDatasetId
   const currentDatasetLabel = useMemo(() => {
     const dataset = datasets.find((item) => item.id === effectiveDatasetId)
     if (dataset?.name) return dataset.name
@@ -82,22 +89,53 @@ export function DocumentOperationsPanel({
     () => datasets.filter((dataset) => dataset.id && dataset.id !== effectiveDatasetId),
     [datasets, effectiveDatasetId],
   )
-  const targetDatasetValue = targetDatasetId.trim() || NO_TARGET_DATASET
+  const normalizedTargetDatasetId = targetDatasetId.trim()
+  const targetDatasetValue = normalizedTargetDatasetId || NO_TARGET_DATASET
   const selectedScopeLabel = ids.length ? `${ids.length} 个文档` : '未勾选文档'
-  const resultSummary = result ? formatResultSummary(result.payload) : null
-
-  async function runAction(key: string, title: string, action: () => Promise<unknown>) {
+  async function runAction<Payload>(
+    key: string,
+    title: string,
+    action: () => Promise<Payload>,
+    onResult?: (payload: Payload) => string,
+  ) {
+    if (operationRef.current !== null) return
+    const operation = {}
+    const sessionKey = getAuthSessionKey()
+    operationRef.current = operation
     setBusy(key)
     try {
       const payload = await action()
-      setResult({ title, payload })
+      if (getAuthSessionKey() !== sessionKey) return
+      const summary = onResult === undefined ? formatResultSummary(payload) : onResult(payload)
+      setResult({ title, payload, summary })
       setResultDetailsOpen(false)
-      toast.success(`${title}完成`)
+      if (onResult === undefined) toast.success(`${title}完成`)
     } catch (error) {
-      toast.error(formatApiError(error, `${title}失败`))
+      if (getAuthSessionKey() === sessionKey) toast.error(formatApiError(error, `${title}失败`))
     } finally {
-      setBusy(null)
+      if (operationRef.current === operation) {
+        operationRef.current = null
+        setBusy(null)
+      }
     }
+  }
+
+  function showMoveResult(payload: DocumentBatchMoveResponse): string {
+    const skipped = (payload.not_found?.length ?? 0) + (payload.denied?.length ?? 0) + (payload.conflicts?.length ?? 0)
+    const summary =
+      skipped > 0 ? `移动了 ${payload.moved} 个文档，${skipped} 个未移动。` : `移动了 ${payload.moved} 个文档。`
+    if (skipped > 0) toast.warning(summary)
+    else if (payload.moved > 0) toast.success(summary)
+    else toast.info(summary)
+    if (payload.moved > 0) {
+      const sessionKey = getAuthSessionKey()
+      detachPromise(
+        onRefresh().catch((error) => {
+          if (getAuthSessionKey() === sessionKey) toast.error(formatApiError(error, '刷新文档列表失败'))
+        }),
+      )
+    }
+    return summary
   }
 
   return (
@@ -152,12 +190,15 @@ export function DocumentOperationsPanel({
         </div>
 
         <div className="rounded-[15px] border border-border/48 bg-card/66 p-2.5 shadow-[inset_0_1px_0_hsl(var(--card)/0.78)] dark:border-border/60 dark:bg-background/35">
-          <Field label="移动到知识库">
+          <Field id={targetSelectId} label="移动到知识库">
             <Select
               value={targetDatasetValue}
               onValueChange={(value) => setTargetDatasetId(value === NO_TARGET_DATASET ? '' : value)}
             >
-              <SelectTrigger className="h-8 rounded-xl border-border/55 bg-background/78 text-[12px] shadow-none dark:border-border/60 dark:bg-background/70">
+              <SelectTrigger
+                id={targetSelectId}
+                className="h-8 rounded-xl border-border/55 bg-background/78 text-[12px] shadow-none dark:border-border/60 dark:bg-background/70"
+              >
                 <SelectValue placeholder="选择目标知识库" />
               </SelectTrigger>
               <SelectContent>
@@ -193,9 +234,7 @@ export function DocumentOperationsPanel({
                 disabled={Boolean(busy)}
                 label="文档统计"
                 onClick={() =>
-                  runAction('stats', '文档统计', () =>
-                    documentApi.stats({ dataset_id: effectiveDatasetId || undefined }),
-                  )
+                  runAction('stats', '文档统计', () => documentApi.stats({ dataset_id: effectiveDatasetId }))
                 }
               />
               <ActionButton
@@ -203,19 +242,21 @@ export function DocumentOperationsPanel({
                 busy={busy === 'parsed'}
                 disabled={Boolean(busy) || !firstDocumentId}
                 label="查看解析内容"
-                onClick={() =>
-                  runAction('parsed', '解析内容', () =>
+                onClick={async () => {
+                  if (!firstDocumentId) return
+                  return runAction('parsed', '解析内容', () =>
                     documentApi.getParsedContent(firstDocumentId, { max_chars: 20_000 }),
                   )
-                }
+                }}
               />
               <ActionButton
                 icon={FileJson}
                 busy={busy === 'duplicates'}
                 disabled={Boolean(busy) || !effectiveDatasetId}
                 label="重复文档"
-                onClick={() =>
-                  runAction('duplicates', '重复文档', () =>
+                onClick={async () => {
+                  if (effectiveDatasetId === undefined) return
+                  return runAction('duplicates', '重复文档', () =>
                     documentApi.listDuplicates({
                       dataset_id: effectiveDatasetId,
                       min_count: 2,
@@ -223,29 +264,36 @@ export function DocumentOperationsPanel({
                       max_docs_per_group: 10,
                     }),
                   )
-                }
+                }}
               />
               <ActionButton
                 icon={FileJson}
                 busy={busy === 'lifecycle'}
                 disabled={Boolean(busy) || !firstDocumentId}
                 label="生命周期元数据"
-                onClick={() =>
-                  runAction('lifecycle', '生命周期元数据', () => documentApi.getLifecycleMetadata(firstDocumentId))
-                }
+                onClick={async () => {
+                  if (!firstDocumentId) return
+                  return runAction('lifecycle', '生命周期元数据', () =>
+                    documentApi.getLifecycleMetadata(firstDocumentId),
+                  )
+                }}
               />
             </ActionGroup>
             <ActionGroup icon={FolderInput} title="批量变更" description="仅使用当前勾选文档。">
               <ActionButton
                 icon={FolderInput}
                 busy={busy === 'move'}
-                disabled={Boolean(busy) || ids.length === 0 || !targetDatasetId.trim()}
+                disabled={Boolean(busy) || ids.length === 0 || normalizedTargetDatasetId === ''}
                 label="批量移动"
-                onClick={() =>
-                  runAction('move', '批量移动', () =>
-                    documentApi.batchMove({ document_ids: ids, target_dataset_id: targetDatasetId.trim() }),
+                onClick={async () => {
+                  if (ids.length === 0 || normalizedTargetDatasetId === '') return
+                  return runAction(
+                    'move',
+                    '批量移动',
+                    () => documentApi.batchMove({ document_ids: ids, target_dataset_id: normalizedTargetDatasetId }),
+                    showMoveResult,
                   )
-                }
+                }}
               />
             </ActionGroup>
           </div>
@@ -253,25 +301,19 @@ export function DocumentOperationsPanel({
       </div>
 
       {result ? (
-        <div className="mx-3 mb-3 overflow-hidden rounded-[15px] border border-success/22 bg-[linear-gradient(135deg,hsl(var(--success)/0.08),hsl(var(--card)/0.70))] shadow-[inset_0_1px_0_hsl(var(--card)/0.72)] dark:bg-success/[0.06]">
+        <div className="mx-3 mb-3 overflow-hidden rounded-[15px] border border-border/60 bg-muted/20">
           <div className="flex flex-col gap-2 px-3 py-2.5 sm:flex-row sm:items-start sm:justify-between">
             <div className="flex min-w-0 gap-2.5">
-              <span className="mt-1 size-2 shrink-0 rounded-full bg-success shadow-[0_0_0_4px_hsl(var(--success)/0.12)]" />
               <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-2">
-                  <div className="text-[12px] font-semibold text-foreground">{result.title}已完成</div>
-                  <span className="rounded-full border border-success/22 bg-card/68 px-2 py-0.5 text-[10px] font-medium text-success dark:bg-success/10 dark:text-success">
-                    完成
-                  </span>
-                </div>
-                <div className="mt-1 text-[12px] leading-5 text-muted-foreground">{resultSummary}</div>
+                <div className="text-[12px] font-semibold text-foreground">{result.title}</div>
+                <div className="mt-1 text-[12px] leading-5 text-muted-foreground">{result.summary}</div>
               </div>
             </div>
             <Button
               type="button"
               variant="ghost"
               size="sm"
-              className="h-7 shrink-0 rounded-full border border-success/18 bg-card/58 px-2.5 text-[11px] font-medium text-success hover:bg-card/86 dark:bg-success/10 dark:text-success"
+              className="h-7 shrink-0 rounded-full border border-border/60 bg-card/58 px-2.5 text-[11px] font-medium hover:bg-card/86"
               aria-expanded={resultDetailsOpen}
               onClick={() => setResultDetailsOpen((open) => !open)}
             >
@@ -281,7 +323,7 @@ export function DocumentOperationsPanel({
           {resultDetailsOpen ? (
             <pre
               className={cn(
-                'max-h-56 overflow-auto border-t border-success/16 bg-background/78 p-2.5 text-[11px] leading-5 dark:bg-background/80',
+                'max-h-56 overflow-auto border-t border-border/60 bg-background/78 p-2.5 text-[11px] leading-5 dark:bg-background/80',
                 'whitespace-pre-wrap break-words',
               )}
             >
@@ -294,10 +336,13 @@ export function DocumentOperationsPanel({
   )
 }
 
-function Field({ label, children }: Readonly<{ label: string; children: ReactNode }>) {
+function Field({ id, label, children }: Readonly<{ id: string; label: string; children: ReactNode }>) {
   return (
     <div className="space-y-1">
-      <Label className="text-[11px] font-semibold leading-none text-foreground/74 dark:text-muted-foreground">
+      <Label
+        htmlFor={id}
+        className="text-[11px] font-semibold leading-none text-foreground/74 dark:text-muted-foreground"
+      >
         {label}
       </Label>
       {children}

@@ -1,19 +1,19 @@
 'use client'
-import { FeedbackToast } from '@/components/feedback-toast'
-import { toast } from 'sonner'
 
-import { useEffect, useMemo, useRef, useState, type ReactNode, type SyntheticEvent } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type SyntheticEvent } from 'react'
 import Image from 'next/image'
-import { User, Mail, LockKeyhole, ArrowRight, Loader2, Copy, Eye, EyeOff, AlertCircle } from '@/components/icons'
+import { FeedbackToast } from '@/components/feedback-toast'
+import { ArrowRight, Loader2, Eye, EyeOff, AlertCircle } from '@/components/icons'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useRouter } from '@/i18n/navigation'
 import { authApi } from '@/lib/api/auth'
 import { getAuthSessionRevision, setAuthSession } from '@/lib/auth-storage'
-import { startOidcLogin } from '@/lib/oidc'
+import { prepareOidcLogin } from '@/lib/oidc'
 import { getOidcPublicProvidersFromEnv, type OidcProviderPublic } from '@/lib/oidc-providers'
 import { toApiErrorInfo, type ApiErrorInfo } from '@/lib/api-errors'
+import { reportClientWarning } from '@/lib/client-logging'
 import { FullScreenFrame } from '@/components/full-screen-frame'
 import { cn, detachPromise } from '@/lib/utils'
 import type { AuthPolicy } from '@/types/backend'
@@ -26,7 +26,7 @@ const DEFAULT_ADMIN_CONTACT_URL = 'https://github.com/skygazer42/MimirQ/issues'
 const SAFE_ADMIN_CONTACT_PROTOCOLS = new Set(['http:', 'https:', 'mailto:', 'tel:'])
 
 function getAdminContactHref(): string {
-  const configuredUrl = (process.env.NEXT_PUBLIC_ADMIN_CONTACT_URL || '').trim()
+  const configuredUrl = process.env.NEXT_PUBLIC_ADMIN_CONTACT_URL?.trim()
   if (!configuredUrl) return DEFAULT_ADMIN_CONTACT_URL
 
   try {
@@ -37,10 +37,8 @@ function getAdminContactHref(): string {
   }
 }
 
-function getAuthSsoProviderLabel(provider?: Pick<OidcProviderPublic, 'id' | 'name'>): string {
-  if (provider?.name) return `使用 ${provider.name} 登录`
-  if (provider?.id) return `使用 ${provider.id} 登录`
-  return '使用 SSO 登录'
+function getAuthSsoProviderLabel(provider: OidcProviderPublic): string {
+  return `使用 ${provider.name ?? provider.id} 登录`
 }
 
 function AuthPasswordInput({
@@ -50,6 +48,7 @@ function AuthPasswordInput({
   onChange,
   autoComplete,
   minLength,
+  recoveryHref,
 }: {
   id: string
   label: string
@@ -57,21 +56,41 @@ function AuthPasswordInput({
   onChange: (value: string) => void
   autoComplete: 'current-password' | 'new-password'
   minLength?: number
+  recoveryHref?: string
 }) {
   const [visible, setVisible] = useState(false)
+  const [recoveryOpen, setRecoveryOpen] = useState(false)
 
   return (
     <div className="space-y-2">
-      <Label htmlFor={id} className="text-sm font-medium text-foreground">
-        {label}
-      </Label>
+      <div className={styles.passwordHeading}>
+        <Label htmlFor={id} className="text-sm font-medium text-foreground">
+          {label}
+        </Label>
+        {recoveryHref && (
+          <button
+            type="button"
+            className={cn('focus-ring', styles.recoveryButton)}
+            aria-expanded={recoveryOpen}
+            aria-controls={`${id}-recovery`}
+            onClick={() => setRecoveryOpen((current) => !current)}
+          >
+            忘记密码？
+          </button>
+        )}
+      </div>
       <div className="relative">
-        <LockKeyhole className={styles.inputIcon} aria-hidden="true" />
         <Input
           id={id}
           name={id}
           type={visible ? 'text' : 'password'}
-          placeholder={id === 'confirmPassword' ? '再次输入密码' : '请输入密码'}
+          placeholder={
+            id === 'confirmPassword'
+              ? '再次输入密码'
+              : autoComplete === 'new-password'
+                ? '设置登录密码'
+                : '输入登录密码'
+          }
           className={cn(styles.input, 'pr-12')}
           value={value}
           onChange={(event) => onChange(event.target.value)}
@@ -91,6 +110,14 @@ function AuthPasswordInput({
           {visible ? <EyeOff className="size-4" aria-hidden="true" /> : <Eye className="size-4" aria-hidden="true" />}
         </button>
       </div>
+      {recoveryOpen && (
+        <p id={`${id}-recovery`} className={styles.recoveryHelp}>
+          请联系管理员重置密码。
+          <a href={recoveryHref} className={cn('focus-ring', styles.helpLink)}>
+            联系管理员
+          </a>
+        </p>
+      )}
     </div>
   )
 }
@@ -108,103 +135,40 @@ function getAuthSubmitContent(isSubmitting: boolean, mode: Mode): ReactNode {
   return <>{mode === 'login' ? '登录' : '注册'}</>
 }
 
-function AuthNotice({
-  info,
-  isSubmitError,
-  onRetry,
-}: {
-  info: ApiErrorInfo
-  isSubmitError: boolean
-  onRetry?: () => void
-}) {
-  const copyRequestId = async () => {
-    try {
-      if (!navigator.clipboard || !info.requestId) throw new Error('Clipboard unavailable')
-      await navigator.clipboard.writeText(info.requestId)
-      toast.success('已复制请求编号。')
-    } catch {
-      toast.error('无法复制，请手动选择请求编号。')
-    }
-  }
-
-  if (isSubmitError)
-    return (
-      <>
-        <FeedbackToast type="error" message={info.message} id="auth-submit-feedback" />
-        <span id="auth-error" className="sr-only">
-          {info.message}
-        </span>
-        {info.requestId && (
-          <details className={styles.errorDetails}>
-            <summary className="focus-ring">错误详情</summary>
-            <div className={styles.errorReference}>
-              <span>请求编号</span>
-              <code>{info.requestId}</code>
-              <Button type="button" variant="ghost" size="sm" onClick={() => detachPromise(copyRequestId())}>
-                <Copy className="size-3.5" aria-hidden="true" />
-                复制编号
-              </Button>
-            </div>
-          </details>
-        )}
-      </>
-    )
-
+function AuthNotice({ info, isSubmitError }: { info: ApiErrorInfo; isSubmitError: boolean }) {
   return (
     <div
-      id="auth-service-notice"
+      id={isSubmitError ? 'auth-error' : 'auth-service-notice'}
       role={isSubmitError ? 'alert' : 'status'}
       className={styles.notice}
       data-tone={isSubmitError ? 'error' : 'service'}
     >
       <AlertCircle className={styles.noticeIcon} aria-hidden="true" />
-      <div className={styles.noticeBody}>
-        <p className={styles.noticeMessage}>{info.message}</p>
-        <div className={styles.noticeActions}>
-          {onRetry && (
-            <button type="button" className={cn('focus-ring', styles.noticeRetry)} onClick={onRetry}>
-              重试
-            </button>
-          )}
-          {info.requestId && (
-            <details className={styles.errorDetails}>
-              <summary className="focus-ring">错误详情</summary>
-              <div className={styles.errorReference}>
-                <span>请求编号</span>
-                <code>{info.requestId}</code>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="h-11 justify-start px-0 text-muted-foreground sm:h-11"
-                  onClick={() => detachPromise(copyRequestId())}
-                >
-                  <Copy className="size-3.5" aria-hidden="true" />
-                  复制编号
-                </Button>
-              </div>
-            </details>
-          )}
-        </div>
-      </div>
+      <p className={styles.noticeMessage}>{info.message}</p>
     </div>
   )
 }
 
 function toAuthPageError(err: unknown, mode?: Mode): ApiErrorInfo {
-  const info = toApiErrorInfo(err, '请求失败，请重试')
-  if (
-    (info.status !== undefined && info.status >= 500 && info.status < 600) ||
-    /internal server error|service unavailable|bad gateway|gateway timeout|backend returned html|无法连接后端|请求超时/i.test(
-      info.message,
-    )
-  ) {
+  const info = toApiErrorInfo(err, '请求失败')
+  if (mode === undefined || info.status === 404 || (info.status !== undefined && info.status >= 500)) {
     return { ...info, message: '服务暂时不可用，请稍后重试。' }
   }
-  if (mode === 'login' && info.status === 401) {
-    return { ...info, message: '账号或密码不正确，请重试。' }
+  if (info.status === 429) {
+    return { ...info, message: '尝试次数过多，请稍后再试。' }
   }
-  if (mode !== 'register') return info
+  if (info.status === undefined) {
+    return { ...info, message: '网络连接异常，请检查网络后重试。' }
+  }
+  if (mode === 'login') {
+    if (info.status === 400 || info.status === 401) {
+      return { ...info, message: '账号或密码不正确，请核对后重新输入。' }
+    }
+    if (info.status === 403) {
+      return { ...info, message: '暂时无法登录，请联系管理员。' }
+    }
+    return { ...info, message: '登录失败，请稍后重试或联系管理员。' }
+  }
 
   if (info.status === 403) {
     return {
@@ -220,7 +184,13 @@ function toAuthPageError(err: unknown, mode?: Mode): ApiErrorInfo {
     }
   }
 
-  return info
+  return { ...info, message: '暂时无法注册，请检查注册信息或联系管理员。' }
+}
+
+function reportAuthFailure(info: ApiErrorInfo, operation: string) {
+  reportClientWarning('Authentication request failed', new Error(`Authentication ${operation} failed`), {
+    tags: { operation, http_status: String(info.status ?? 'network'), request_id: info.requestId ?? '' },
+  })
 }
 
 export default function AuthPage() {
@@ -251,8 +221,12 @@ export default function AuthPage() {
   const authVisitRef = useRef<typeof authVisit | null>(null)
   const submitRequestRef = useRef<object | null>(null)
   const contactAdminHref = getAdminContactHref()
+  const hasRequiredFields =
+    mode === 'login'
+      ? Boolean(identifier.trim() && password)
+      : Boolean(email.trim() && username.trim() && password && confirmPassword)
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     authVisitRef.current = authVisit
     return () => {
       authVisitRef.current = null
@@ -266,7 +240,10 @@ export default function AuthPage() {
         if (active) setPolicy(value)
       },
       (err: unknown) => {
-        if (active) setPolicyError(toAuthPageError(err))
+        if (!active) return
+        const info = toAuthPageError(err)
+        reportAuthFailure(info, 'policy')
+        setPolicyError(info)
       },
     )
     return () => {
@@ -286,7 +263,7 @@ export default function AuthPage() {
       : (policyError ?? (policy && !policy.initialized ? { message: '账号服务尚未准备好，请稍后重试。' } : null)))
 
   const handleModeChange = (nextMode: Mode) => {
-    if (nextMode === mode || (nextMode === 'register' && !canRegister)) return
+    if (submitRequestRef.current || nextMode === mode || (nextMode === 'register' && !canRegister)) return
     setMode(nextMode)
     setError(null)
     setRegistrationSucceeded(false)
@@ -294,21 +271,39 @@ export default function AuthPage() {
     setConfirmPassword('')
   }
 
-  const handleSso = async (providerId: string) => {
+  const ownsSubmission = (request: object, sessionRevision: number) =>
+    submitRequestRef.current === request &&
+    authVisitRef.current === authVisit &&
+    getAuthSessionRevision() === sessionRevision
+
+  const handleSso = async (provider: OidcProviderPublic) => {
+    if (submitRequestRef.current) return
+    const request = {}
+    const sessionRevision = getAuthSessionRevision()
+    submitRequestRef.current = request
     setError(null)
     setRegistrationSucceeded(false)
-    setSsoProviderWorkingId(providerId)
+    setSsoProviderWorkingId(provider.id)
     try {
-      await startOidcLogin({ providerId, returnTo: '/' })
+      const redirect = await prepareOidcLogin(provider)
+      if (ownsSubmission(request, sessionRevision)) {
+        redirect()
+        return
+      }
     } catch (err: unknown) {
-      setError(toApiErrorInfo(err, 'SSO login failed'))
-      setSsoProviderWorkingId(null)
+      if (ownsSubmission(request, sessionRevision)) {
+        const info = { ...toApiErrorInfo(err, '单点登录失败'), message: '单点登录暂时不可用，请稍后重试或联系管理员。' }
+        reportAuthFailure(info, 'sso')
+        setError(info)
+      }
     }
+    submitRequestRef.current = null
+    if (authVisitRef.current) setSsoProviderWorkingId(null)
   }
 
   const handleSubmit = async (event: SyntheticEvent<HTMLFormElement>) => {
     event.preventDefault()
-    if (submitRequestRef.current) return
+    if (submitRequestRef.current || !hasRequiredFields) return
     setError(null)
     setRegistrationSucceeded(false)
 
@@ -320,16 +315,12 @@ export default function AuthPage() {
     const request = {}
     const sessionRevision = getAuthSessionRevision()
     submitRequestRef.current = request
-    const canPublish = () =>
-      submitRequestRef.current === request &&
-      authVisitRef.current === authVisit &&
-      getAuthSessionRevision() === sessionRevision
     setIsSubmitting(true)
     try {
       if (mode === 'register') {
         const registeredEmail = email.trim()
         await authApi.signup({ email: registeredEmail, username: username.trim(), password })
-        if (!canPublish()) return
+        if (!ownsSubmission(request, sessionRevision)) return
         setIdentifier(registeredEmail)
         setEmail('')
         setUsername('')
@@ -342,12 +333,13 @@ export default function AuthPage() {
       }
 
       const response = await authApi.login({ identifier: identifier.trim(), password })
-      if (!canPublish()) return
+      if (!ownsSubmission(request, sessionRevision)) return
       setAuthSession({ token: response.token, user: response.user })
       router.push('/')
     } catch (err: unknown) {
-      if (!canPublish()) return
+      if (!ownsSubmission(request, sessionRevision)) return
       const info = toAuthPageError(err, mode)
+      reportAuthFailure(info, mode)
       setError(info)
       if (mode === 'register' && (info.status === 409 || info.status === 403)) {
         refreshPolicy()
@@ -375,7 +367,7 @@ export default function AuthPage() {
               variant="outline"
               className={cn(styles.submit, 'justify-between hover:bg-muted hover:text-foreground')}
               disabled={isSubmitting || isSsoSubmitting}
-              onClick={() => detachPromise(handleSso(provider.id))}
+              onClick={() => detachPromise(handleSso(provider))}
             >
               <span className="inline-flex items-center">
                 {working ? (
@@ -397,7 +389,7 @@ export default function AuthPage() {
         variant="outline"
         className={cn(styles.submit, 'hover:bg-muted hover:text-foreground')}
         disabled={isSubmitting || isSsoSubmitting}
-        onClick={() => detachPromise(handleSso(provider?.id || 'default'))}
+        onClick={() => detachPromise(handleSso(provider))}
       >
         {isSsoSubmitting ? (
           <>
@@ -415,13 +407,13 @@ export default function AuthPage() {
   }
 
   return (
-    <FullScreenFrame className={cn('w-full', styles.frame)} mainClassName="items-start p-0" showBackground={false}>
+    <FullScreenFrame className={cn('w-full', styles.frame)} mainClassName="items-start p-0">
       <div className={styles.shell} data-auth-layout="centered">
         <AuthBrandPanel />
         <section className={styles.formPanel} data-auth-panel="ruled" aria-labelledby="auth-title">
           <Image
             src="/brand/explorations/ragvia/logo.svg"
-            alt="Ragvia"
+            alt="ragvia"
             width={144}
             height={44}
             priority
@@ -433,7 +425,7 @@ export default function AuthPage() {
               <h1 id="auth-title" className={styles.title}>
                 {mode === 'login' ? '欢迎回来' : '创建账号'}
               </h1>
-              <p className={styles.subtitle}>{mode === 'login' ? '登录 Ragvia' : '使用邮箱注册'}</p>
+              <p className={styles.subtitle}>{mode === 'login' ? '登录 ragvia' : '使用邮箱注册'}</p>
             </header>
             <FeedbackToast
               type="success"
@@ -473,14 +465,13 @@ export default function AuthPage() {
                         邮箱地址
                       </Label>
                       <div className="relative group">
-                        <Mail className={styles.inputIcon} aria-hidden="true" />
                         <Input
                           id="email"
                           name="email"
                           type="email"
                           autoComplete="email"
-                          placeholder="请输入邮箱"
-                          className={cn(styles.input, 'pl-10')}
+                          placeholder="邮箱地址"
+                          className={styles.input}
                           value={email}
                           onChange={(e) => setEmail(e.target.value)}
                           required
@@ -492,7 +483,6 @@ export default function AuthPage() {
                         用户名
                       </Label>
                       <div className="relative group">
-                        <User className={styles.inputIcon} aria-hidden="true" />
                         <Input
                           id="username"
                           name="username"
@@ -500,7 +490,7 @@ export default function AuthPage() {
                           minLength={3}
                           maxLength={64}
                           placeholder="设置用户名"
-                          className={cn(styles.input, 'pl-10')}
+                          className={styles.input}
                           value={username}
                           onChange={(e) => setUsername(e.target.value)}
                           required
@@ -516,15 +506,14 @@ export default function AuthPage() {
                       账号
                     </Label>
                     <div className="relative group">
-                      <User className={styles.inputIcon} aria-hidden="true" />
                       <Input
                         id="identifier"
                         name="identifier"
                         autoComplete="username"
                         autoCapitalize="none"
                         spellCheck={false}
-                        placeholder="输入邮箱或用户名"
-                        className={cn(styles.input, 'pl-10')}
+                        placeholder="邮箱或用户名"
+                        className={styles.input}
                         value={identifier}
                         onChange={(e) => setIdentifier(e.target.value)}
                         required
@@ -541,6 +530,7 @@ export default function AuthPage() {
                   onChange={setPassword}
                   autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
                   minLength={mode === 'register' ? policy?.password_min_length : undefined}
+                  recoveryHref={mode === 'login' ? contactAdminHref : undefined}
                 />
 
                 {mode === 'register' && (
@@ -561,7 +551,6 @@ export default function AuthPage() {
                     key={`${Boolean(error)}:${notice.requestId || notice.message}`}
                     info={notice}
                     isSubmitError={Boolean(error)}
-                    onRetry={error ? undefined : refreshPolicy}
                   />
                 )}
 
@@ -571,7 +560,7 @@ export default function AuthPage() {
                     styles.submit,
                     'font-medium motion-reduce:transform-none motion-reduce:transition-none',
                   )}
-                  disabled={isSubmitting || isSsoSubmitting}
+                  disabled={isSubmitting || isSsoSubmitting || !hasRequiredFields}
                 >
                   {getAuthSubmitContent(isSubmitting, mode)}
                 </Button>
@@ -591,13 +580,11 @@ export default function AuthPage() {
                 </button>
               </div>
             )}
-            {policy && (!canRegister || error) && (
+            {policy && !canRegister && (
               <p className={styles.help}>
-                <a
-                  href={contactAdminHref}
-                  className="focus-ring mt-1 inline-flex min-h-11 items-center rounded-sm text-sm font-medium text-foreground underline underline-offset-4 transition-colors hover:text-info"
-                >
-                  联系管理员
+                还没有账号？
+                <a href={contactAdminHref} className={cn('focus-ring', styles.helpLink)}>
+                  联系管理员开通
                 </a>
               </p>
             )}

@@ -5,7 +5,7 @@ import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-quer
 import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import type { RagasRegressionRunDiffResponse, RegressionRunMetricDiff } from '@/types'
+import type { RagasRegressionRunDiffResponse, RegressionRunMetricDiff, RegressionRunMetricSignificance } from '@/types'
 
 const controlled = vi.hoisted(() => ({ get: vi.fn() }))
 vi.mock('@/lib/api/core', () => ({ apiClient: { get: controlled.get } }))
@@ -27,11 +27,31 @@ function fixture(overrides: Partial<RagasRegressionRunDiffResponse> = {}): Ragas
     base_params: {},
     target_params: {},
     metric_diffs: [],
+    diff_score: null,
     slice_diffs: {},
     significance: [],
     case_diffs: [],
     significance_summary: {},
     ...overrides,
+  }
+}
+
+function significance(key: string, compared: number, delta: number | null): RegressionRunMetricSignificance {
+  return {
+    key,
+    compared,
+    base_mean: null,
+    target_mean: null,
+    delta_mean: delta,
+    bootstrap_ci_low: null,
+    bootstrap_ci_high: null,
+    p_value: null,
+    p_value_method: null,
+    p_value_bh: null,
+    wilcoxon_p_value: null,
+    mcnemar_p_value: null,
+    cohen_d: null,
+    significant: false,
   }
 }
 
@@ -50,7 +70,7 @@ function DiffSurface() {
         <AblationStatisticsPanel diff={query.data ?? null} />
       </div>
       <div data-testid="slices">
-        <AblationSliceDiffPanel diff={query.data ?? null} />
+        <AblationSliceDiffPanel diff={query.data ?? null} metricKey="retrieval_recall" />
       </div>
     </>
   )
@@ -108,22 +128,24 @@ describe('nullable ablation deltas from the real diff API through React DOM', ()
     })
     expect(controlled.get).toHaveBeenCalledExactlyOnceWith(`/evaluations/ragas/regression/runs/${TARGET_ID}/diff`, {
       params: diffParams,
+      signal: undefined,
     })
   }
 
-  it('shows an unavailable metric delta as waiting instead of a measured zero', async () => {
-    await load(fixture({ metric_diffs: [{ key: 'retrieval_recall', before: 0.8, after: null, delta: null }] }))
-    expect(statistics().textContent).toContain('等待 metric diff')
+  it('shows an unavailable statistical delta as missing', async () => {
+    await load(fixture({ significance: [significance('retrieval_recall', 0, null)] }))
+    expect(statistics().textContent).toContain('未提供')
     expect(statistics().textContent).not.toContain('0.0000')
   })
 
-  it('keeps an omitted optional delta unavailable through the significance fallback', async () => {
-    await load(fixture({ metric_diffs: [{ key: 'retrieval_mrr', before: 0.8, after: null }] }))
-    expect(statistics().textContent).toContain('等待 metric diff')
-    expect(statistics().textContent).not.toContain('0.0000')
+  it('rejects a response that omits a required nullable delta', async () => {
+    controlled.get.mockResolvedValue({
+      data: { ...fixture(), metric_diffs: [{ key: 'retrieval_mrr', before: 0.8, after: null }] },
+    })
+    await expect(evaluationApi.diffRegressionRuns(TARGET_ID, diffParams)).rejects.toThrow('RegressionRunDiff')
   })
 
-  it('uses the next measured slice metric when the preferred metric is unavailable', async () => {
+  it('keeps the selected slice metric missing while showing other measured deltas', async () => {
     await load(
       fixture({
         slice_diffs: {
@@ -145,7 +167,8 @@ describe('nullable ablation deltas from the real diff API through React DOM', ()
         },
       }),
     )
-    expect(primarySliceDelta()).toBe('-0.2000')
+    expect(primarySliceDelta()).toBe('-')
+    expect(slices().textContent).toContain('-0.2000')
   })
 
   it('shows a dash when a slice has no comparable metric', async () => {
@@ -170,11 +193,10 @@ describe('nullable ablation deltas from the real diff API through React DOM', ()
     expect(primarySliceDelta()).toBe('-')
   })
 
-  it('preserves a measured zero delta in the statistics fallback', async () => {
-    await load(fixture({ metric_diffs: [{ key: 'retrieval_recall', before: 0.8, after: 0.8, delta: 0 }] }))
+  it('preserves a measured zero delta in the statistical result', async () => {
+    await load(fixture({ significance: [{ ...significance('retrieval_recall', 2, 0), p_value_bh: 0.8 }] }))
     expect(statistics().textContent).toContain('0.0000')
-    expect(statistics().textContent).toContain('无明显变化')
-    expect(statistics().textContent).not.toContain('等待 metric diff')
+    expect(statistics().textContent).toContain('未达显著')
   })
 
   it('keeps a genuine zero as the preferred slice metric', async () => {
@@ -200,14 +222,14 @@ describe('nullable ablation deltas from the real diff API through React DOM', ()
     await load(
       fixture({
         significance: [
-          { key: 'retrieval_recall', compared: 10, delta_mean: 0.3, significant: false },
-          { key: 'retrieval_mrr', compared: 10, delta_mean: -0.3, significant: false },
+          { ...significance('retrieval_recall', 10, 0.3), p_value_bh: 0.01, significant: true },
+          { ...significance('retrieval_mrr', 10, -0.3), p_value_bh: 0.2 },
         ],
       }),
     )
     expect(statistics().textContent).toContain('0.3000')
     expect(statistics().textContent).toContain('-0.3000')
-    expect(statistics().textContent).toContain('显著候选')
-    expect(statistics().textContent).toContain('退化风险')
+    const verdicts = Array.from(statistics().querySelectorAll('tbody tr'), (row) => row.lastElementChild?.textContent)
+    expect(verdicts).toEqual(['显著', '未达显著'])
   })
 })

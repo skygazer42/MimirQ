@@ -1,7 +1,8 @@
 // @vitest-environment happy-dom
 
-import type { InternalAxiosRequestConfig } from 'axios'
+import { AxiosError, type InternalAxiosRequestConfig } from 'axios'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { HTML_API_ERROR_MESSAGE, toApiErrorInfo } from '@/lib/api-errors'
 import { clearAuthSession, getAccessToken, getStoredUser, setAuthSession } from '@/lib/auth-storage'
 import { __resetOidcRefreshForTests } from '@/lib/oidc-session'
 import type { AuthToken, UserProfile } from '@/types/backend'
@@ -30,7 +31,13 @@ function deferred<T>() {
 }
 
 function unauthorized(config: InternalAxiosRequestConfig) {
-  return Object.assign(new Error('unauthorized'), { config, response: { status: 401, data: {}, headers: {} } })
+  return new AxiosError('unauthorized', AxiosError.ERR_BAD_REQUEST, config, undefined, {
+    config,
+    status: 401,
+    statusText: 'Unauthorized',
+    data: {},
+    headers: {},
+  })
 }
 
 function refreshResponse(ok = true) {
@@ -245,9 +252,12 @@ describe('apiClient OIDC retry', () => {
   it('preserves the current session and exact server error on a 500 response', async () => {
     let failure!: Error
     apiClient.defaults.adapter = vi.fn(async (config) => {
-      failure = Object.assign(new Error('backend failed'), {
+      failure = new AxiosError('backend failed', AxiosError.ERR_BAD_RESPONSE, config, undefined, {
         config,
-        response: { status: 500, data: { detail: 'backend failed' }, headers: {} },
+        status: 500,
+        statusText: 'Internal Server Error',
+        data: { detail: 'backend failed' },
+        headers: {},
       })
       throw failure
     })
@@ -293,4 +303,31 @@ describe('apiClient OIDC retry', () => {
     expect(sessionSnapshot()).toEqual({ token: 'old-token', userId: 'user-a', path: '/auth' })
     expect(localStorage.getItem('mimirq_tenant_id')).toBe('tenant-b')
   })
+
+  it.each([200, 502])(
+    'preserves API address guidance and request ID for an HTML response with status %d',
+    async (status) => {
+      const error = await apiClient
+        .get('/documents', {
+          adapter: async (config) => {
+            const response = {
+              config,
+              data: '<head><title>Proxy landing page</title></head>',
+              headers: { 'content-type': 'text/html; charset=utf-8', 'x-request-id': 'proxy-html' },
+              status,
+              statusText: status === 200 ? 'OK' : 'Bad Gateway',
+            }
+            if (status === 200) return response
+            throw new AxiosError('Bad Gateway', AxiosError.ERR_BAD_RESPONSE, config, undefined, response)
+          },
+        })
+        .catch((failure: unknown) => failure)
+
+      expect(toApiErrorInfo(error, '读取文档失败')).toMatchObject({
+        message: HTML_API_ERROR_MESSAGE,
+        requestId: 'proxy-html',
+        status,
+      })
+    },
+  )
 })

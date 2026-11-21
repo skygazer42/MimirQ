@@ -18,6 +18,8 @@ API 只保留 singleflight 的 key 和 leader 布尔值，没有持有实际 Fut
 
 快捷结果和缓存命中调用原 enforce_tenant_qps_quota_async，普通检索保留实际入口的一次计数。corpus token 使用主范围与 metadata 范围并集；原 token 所有者继续对每个 Dataset.id 和 updated_at 排序、去重、哈希，响应证据范围不随缓存键扩大。
 
+缓存键和设置签名统一由 `app.services.dify.response_cache` 生成，API 请求使用该实现。签名直接读取已验证的设置，包括显式的零值。九组覆盖默认配置、零值、metadata 条件和重排模型的对照结果与原 API 缓存键一致。
+
 请求上下文保存实际取得的 Future，所有 Dify publish/reject 显式交回该句柄。共享缓存的 resolve_inflight_chat_response 和 reject_inflight_chat_response 在任何任务、租约或 pop 副作用前同步比较对象身份；失去归属就结束该操作。原匹配句柄的主体保持，六个现存聊天调用点仍使用原 key 协议，因此 expected_future 默认 None 有实际调用依据。共享文件只完成这两个函数的必要增量，其他聊天归属路径仍待全文复核。
 
 实际 HTTP 编排继续由现有 API 持有。未被生产、配置、任务或启动入口使用的 retrieval、warmup、evidence_adapter 三个旧服务模块退出，warmup_state 和 API 使用的三个 turn-source ID 函数保留。record helpers 与镜像 finalize 中的无根分支退出，重复纯算法复用现有实际所有者，不以新的注入层替代旧重复。冻结测试仍引用部分退役路径，不能声称全仓零引用；本决定部分更新[纯规则归属](../simplification/2026-11-04-dify-helper-ownership.md)和[API 执行契约](2026-11-11-api-v1-execution-contracts.md)，其他事务与取消责任继续成立。

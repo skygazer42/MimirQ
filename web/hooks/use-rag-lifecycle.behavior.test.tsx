@@ -6,6 +6,7 @@ import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { ConnectorRunOut } from '@/types/connectors'
+import type { IndexAuditReconcileResponse } from '@/types/observability'
 import { waitForAssertion } from '@/test/hook-harness'
 
 const authStorage = vi.hoisted(() => ({
@@ -19,13 +20,6 @@ const authStorage = vi.hoisted(() => ({
 const documentApiMock = vi.hoisted(() => ({
   get: vi.fn(),
   getStatus: vi.fn(),
-}))
-
-const miniSearchMock = vi.hoisted(() => ({
-  addAll: vi.fn(),
-  instances: 0,
-  removeAll: vi.fn(),
-  search: vi.fn((_term: string) => []),
 }))
 
 const indexAuditApi = vi.hoisted(() => ({
@@ -48,30 +42,9 @@ vi.mock('@/lib/client-logging', () => ({ reportClientError: vi.fn(), reportClien
 vi.mock('@/lib/api/observability', () => ({ observabilityApi: indexAuditApi }))
 vi.mock('@/lib/api/connectors', () => ({ connectorApi }))
 vi.mock('sonner', () => ({ toast: notifications }))
-vi.mock('minisearch', () => ({
-  default: class MiniSearchMock {
-    constructor() {
-      miniSearchMock.instances += 1
-    }
-
-    addAll(data: unknown[]) {
-      miniSearchMock.addAll(data)
-    }
-
-    removeAll() {
-      miniSearchMock.removeAll()
-    }
-
-    search(term: string) {
-      return miniSearchMock.search(term)
-    }
-  },
-}))
-
 import { useAuth } from './use-auth'
 import { useConnectorRuns } from './use-connector-runs'
 import { useDocumentPolling } from './use-document-polling'
-import { useLocalSearch } from './use-local-search'
 import { useIndexAudit } from './use-index-audit'
 
 type HookHarness<T> = {
@@ -125,12 +98,26 @@ function renderIndexAudit(selectedDocumentIds = ['doc-a']) {
   )
 }
 
+function reconcileResponse(overrides: Partial<IndexAuditReconcileResponse> = {}): IndexAuditReconcileResponse {
+  return {
+    schema: 'mimirq.index_audit_reconcile.v1',
+    tenant_id: 'tenant-a',
+    dataset_id: 'dataset-a',
+    document_id: 'doc-a',
+    scope: 'document',
+    status: 'enqueued',
+    reason: null,
+    task_id: 'task-a',
+    current_index_readiness: null,
+    ...overrides,
+  }
+}
+
 beforeEach(() => {
   ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
   vi.clearAllMocks()
-  miniSearchMock.instances = 0
   authStorage.getAccessToken.mockReturnValue(null)
-  indexAuditApi.reconcileIndexAudit.mockResolvedValue({ task_id: 'task-a' })
+  indexAuditApi.reconcileIndexAudit.mockResolvedValue(reconcileResponse())
   indexAuditApi.getIndexAuditReconcileStatus.mockResolvedValue({ status: 'ready' })
   vi.stubGlobal(
     'fetch',
@@ -145,6 +132,90 @@ afterEach(() => {
 })
 
 describe('RAG hook lifecycle behavior', () => {
+  it.each([
+    { status: 'not_enqueued', reason: 'task_queue_disabled', message: '后台任务队列未启用' },
+    {
+      status: 'unsupported',
+      reason: 'dataset_scoped_reconcile_not_supported_by_current_worker',
+      message: '当前范围不支持索引修复',
+    },
+  ])('reports $status without claiming success or polling', async ({ status, reason, message }) => {
+    indexAuditApi.reconcileIndexAudit.mockResolvedValueOnce(reconcileResponse({ status, reason, task_id: null }))
+    const harness = renderIndexAudit()
+    await act(async () => harness.current().reconcileIndexAudit())
+
+    expect(harness.current().indexAuditReconcileState.status).toBe('error')
+    expect(harness.current().indexAuditReconcileState.message).toContain(message)
+    expect(notifications.error).toHaveBeenCalledWith(expect.stringContaining(message))
+    expect(notifications.success).not.toHaveBeenCalled()
+    expect(indexAuditApi.getIndexAuditReconcileStatus).not.toHaveBeenCalled()
+    harness.unmount()
+  })
+
+  it('finishes an already-ready document without starting a task or polling', async () => {
+    indexAuditApi.reconcileIndexAudit.mockResolvedValueOnce(
+      reconcileResponse({ status: 'noop_ready', reason: 'document_index_channels_already_ready', task_id: null }),
+    )
+    const harness = renderIndexAudit()
+    await act(async () => harness.current().reconcileIndexAudit())
+
+    expect(harness.current().indexAuditReconcileState).toMatchObject({
+      status: 'success',
+      taskId: null,
+      backendStatus: 'ready',
+    })
+    expect(notifications.success).toHaveBeenCalledWith('文档索引已就绪，无需修复')
+    expect(indexAuditApi.getIndexAuditReconcileStatus).not.toHaveBeenCalled()
+    harness.unmount()
+  })
+
+  it('polls an existing queued task using the document scope', async () => {
+    indexAuditApi.reconcileIndexAudit.mockResolvedValueOnce(
+      reconcileResponse({ status: 'already_queued', reason: 'duplicate_job', task_id: null }),
+    )
+    const harness = renderIndexAudit()
+    await act(async () => harness.current().reconcileIndexAudit())
+
+    expect(indexAuditApi.getIndexAuditReconcileStatus).toHaveBeenCalledWith(
+      { dataset_id: 'dataset-a', document_id: 'doc-a' },
+      { signal: expect.any(AbortSignal) },
+    )
+    expect(harness.current().indexAuditReconcileState.status).toBe('success')
+    expect(notifications.success).toHaveBeenCalledWith('索引修复任务已在队列中，正在读取状态…')
+    harness.unmount()
+  })
+
+  it('keeps the accepted task when its status cannot be read', async () => {
+    indexAuditApi.getIndexAuditReconcileStatus.mockRejectedValueOnce(new Error('状态接口暂不可用'))
+    const harness = renderIndexAudit()
+
+    await act(async () => harness.current().reconcileIndexAudit())
+
+    expect(harness.current().indexAuditReconcileState).toMatchObject({
+      status: 'error',
+      taskId: 'task-a',
+      message: expect.stringContaining('修复任务已提交，读取状态失败'),
+    })
+    harness.unmount()
+  })
+
+  it('distinguishes connector request failures from a successful empty list', async () => {
+    connectorApi.listRuns.mockRejectedValue(new Error('Connector unavailable'))
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const harness = renderHook(
+      () => useConnectorRuns({ selectedDatasetId: 'dataset-a' }),
+      (children) => <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>,
+    )
+
+    await act(async () => harness.current().loadConnectorRuns())
+    await waitForAssertion(() => expect(harness.current().connectorRunsError).toContain('Connector unavailable'))
+    connectorApi.listRuns.mockResolvedValue({ total: 0, items: [] })
+    await act(async () => harness.current().loadConnectorRuns())
+    await waitForAssertion(() => expect(harness.current().connectorRunsError).toBeNull())
+    expect(harness.current().connectorRuns).toEqual([])
+    harness.unmount()
+  })
+
   it('clears every cached query when logging out', () => {
     const queryClient = new QueryClient()
     queryClient.setQueryData(['private', 'documents'], { secret: true })
@@ -190,19 +261,8 @@ describe('RAG hook lifecycle behavior', () => {
     expect(setTimeoutSpy).not.toHaveBeenCalled()
   })
 
-  it('does not rebuild MiniSearch for equal field arrays', () => {
-    const data = [{ id: '1', title: 'Alpha' }]
-    const harness = renderHook(() => useLocalSearch(data, { fields: ['title'], storeFields: ['title'] }))
-
-    harness.render(() => useLocalSearch(data, { fields: ['title'], storeFields: ['title'] }))
-
-    expect(miniSearchMock.instances).toBe(1)
-    expect(miniSearchMock.addAll).toHaveBeenCalledOnce()
-    harness.unmount()
-  })
-
   it('discards a reconciliation submission after selecting another document in the same dataset', async () => {
-    const submission = deferred<{ task_id: string }>()
+    const submission = deferred<IndexAuditReconcileResponse>()
     indexAuditApi.reconcileIndexAudit.mockReturnValue(submission.promise)
     const harness = renderIndexAudit()
     let completion!: Promise<void>
@@ -212,7 +272,7 @@ describe('RAG hook lifecycle behavior', () => {
     harness.render(() => useIndexAudit({ selectedDatasetId: 'dataset-a', selectedDocumentIds: ['doc-b'] }))
 
     await act(async () => {
-      submission.resolve({ task_id: 'task-a' })
+      submission.resolve(reconcileResponse())
       await completion
     })
 
@@ -249,8 +309,8 @@ describe('RAG hook lifecycle behavior', () => {
   )
 
   it('keeps the newer reconciliation when an earlier submission completes last', async () => {
-    const earlier = deferred<{ task_id: string }>()
-    const latest = deferred<{ task_id: string }>()
+    const earlier = deferred<IndexAuditReconcileResponse>()
+    const latest = deferred<IndexAuditReconcileResponse>()
     indexAuditApi.reconcileIndexAudit.mockReturnValueOnce(earlier.promise).mockReturnValueOnce(latest.promise)
     const harness = renderIndexAudit()
     let earlierCompletion!: Promise<void>
@@ -260,11 +320,11 @@ describe('RAG hook lifecycle behavior', () => {
       latestCompletion = harness.current().reconcileIndexAudit()
     })
     await act(async () => {
-      latest.resolve({ task_id: 'task-latest' })
+      latest.resolve(reconcileResponse({ task_id: 'task-latest' }))
       await latestCompletion
     })
     await act(async () => {
-      earlier.resolve({ task_id: 'task-earlier' })
+      earlier.resolve(reconcileResponse({ task_id: 'task-earlier' }))
       await earlierCompletion
     })
 
@@ -274,7 +334,7 @@ describe('RAG hook lifecycle behavior', () => {
   })
 
   it.each(['resolve', 'reject'] as const)('does not publish a submission %s after unmount', async (settlement) => {
-    const submission = deferred<{ task_id: string }>()
+    const submission = deferred<IndexAuditReconcileResponse>()
     indexAuditApi.reconcileIndexAudit.mockReturnValue(submission.promise)
     const harness = renderIndexAudit()
     let completion!: Promise<void>
@@ -284,7 +344,7 @@ describe('RAG hook lifecycle behavior', () => {
     harness.unmount()
 
     await act(async () => {
-      if (settlement === 'resolve') submission.resolve({ task_id: 'task-a' })
+      if (settlement === 'resolve') submission.resolve(reconcileResponse())
       else submission.reject(new Error('old submission failed'))
       await completion
     })
@@ -351,7 +411,7 @@ describe('RAG hook lifecycle behavior', () => {
       await act(async () => harness.current().loadConnectorRuns())
       await waitForAssertion(() => expect(harness.current().connectorRuns).toEqual([runB]))
       const originalQueryKey = ['connectors', 'runs', { datasetId: 'dataset-a', limit: 20 }]
-      queryClient.setQueryData(originalQueryKey, [runA], { updatedAt: Date.now() - 10_001 })
+      queryClient.setQueryData(originalQueryKey, [runA])
       serverRunsA = [nextRun]
 
       await act(async () => {

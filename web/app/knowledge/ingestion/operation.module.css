@@ -354,12 +354,6 @@
   width: 15px;
   height: 15px;
 }
-.fileNote {
-  margin-top: 16px;
-  color: hsl(var(--muted-foreground));
-  font-size: 12px;
-  line-height: 22px;
-}
 .emptyQueue {
   display: flex;
   min-height: 240px;
@@ -387,9 +381,6 @@
   color: hsl(var(--muted-foreground));
   font-size: 13px;
   line-height: 24px;
-}
-.emptyQueue button {
-  margin-top: 10px;
 }
 .settingsPane {
   min-width: 0;
@@ -425,8 +416,7 @@
   gap: 10px;
   margin-bottom: 8px;
 }
-.fieldHeading > label,
-.groupLabel {
+.fieldHeading > label {
   color: hsl(var(--muted-foreground));
   font-size: 12px;
   font-weight: 500;
@@ -545,21 +535,6 @@
   font-size: 12px;
   font-weight: 400;
   line-height: 20px;
-}
-.executionOutcome {
-  display: flex;
-  align-items: flex-start;
-  gap: 7px;
-  margin: 11px 0 0;
-  color: hsl(var(--muted-foreground));
-  font-size: 12px;
-  line-height: 21px;
-}
-.executionOutcome svg {
-  width: 14px;
-  height: 14px;
-  flex-shrink: 0;
-  margin-top: 4px;
 }
 .processFields {
   display: grid;
@@ -705,6 +680,8 @@
   line-height: 23px;
 }
 .submitBar {
+  --task-center-dock-min-height: 76px;
+
   display: flex;
   min-height: 76px;
   flex-shrink: 0;
@@ -719,9 +696,6 @@
   display: grid;
   min-width: 0;
   gap: 2px;
-}
-.submitBar {
-  --task-center-dock-min-height: 76px;
 }
 .submitSummary strong {
   font-size: 13px;
@@ -755,25 +729,6 @@
   background: hsl(var(--muted));
   color: hsl(var(--muted-foreground));
   opacity: 1;
-}
-.submissionError {
-  display: flex;
-  flex-shrink: 0;
-  align-items: flex-start;
-  gap: 9px;
-  border-top: 1px solid hsl(var(--destructive) / 0.2);
-  padding: 12px 28px;
-  background: hsl(var(--destructive) / 0.045);
-  color: hsl(var(--destructive));
-  font-size: 13px;
-  line-height: 23px;
-  overflow-wrap: anywhere;
-}
-.submissionError svg {
-  width: 17px;
-  height: 17px;
-  flex-shrink: 0;
-  margin-top: 3px;
 }
 .datasetError {
   margin-top: 8px;
@@ -823,6 +778,7 @@
 .page a:focus-visible,
 .page input:focus-visible,
 .page summary:focus-visible,
+.configSheet .quietButton:focus-visible,
 .configSheet input:focus-visible,
 .configSheet summary:focus-visible {
   outline: 2px solid hsl(var(--ring));
@@ -917,13 +873,9 @@
     gap: 0;
   }
   .viewSwitch {
-    order: 3;
     width: 100%;
     min-height: 48px;
     margin-top: 6px;
-  }
-  .refreshButton {
-    display: none;
   }
   .configTrigger {
     min-height: 44px;
@@ -942,14 +894,10 @@
   }
   .dropArea {
     flex-wrap: wrap;
-    gap: 12px;
     padding: 16px;
   }
   .dropCopy {
     flex: 1;
-  }
-  .dropCopy strong {
-    font-size: 14px;
   }
   .addFiles {
     min-height: 44px;
@@ -1023,17 +971,11 @@
   .submitSummary strong {
     font-size: 12px;
   }
-  .submitSummary > span {
-    font-size: 12px;
-  }
   .submitButton {
     min-width: 120px;
     height: 44px;
     padding-inline: 12px;
     font-size: 12px;
-  }
-  .submissionError {
-    padding-inline: 16px;
   }
 }
 @media (max-width: 768px) {

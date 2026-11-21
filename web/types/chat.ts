@@ -2,10 +2,37 @@
  * Chat, feedback, quota, auth, and audit types re-exported by `@/types`.
  */
 
-import type { JsonObject, LooseString } from './common'
+import type { JsonObject } from './common'
+import type { OpenApiSchema } from './backend'
 import type { Citation } from './processing'
 
 // ==================== 对话相关类型 ====================
+
+export type ClaimEvidenceReference = {
+  document_id: string | null
+  chunk_id: string | null
+  start_char: number | null
+  end_char: number | null
+  quote: string
+  score: number
+}
+
+export type ClaimEvidenceItem = {
+  claim: string
+  evidence: ClaimEvidenceReference[]
+}
+
+export type ChatMessageMetadata = Record<string, unknown> & {
+  request_id?: string | null
+  confidence_score?: number | null
+  claim_evidence?: ClaimEvidenceItem[] | null
+  sentence_citations?: ClaimEvidenceItem[] | null
+  retrieved_docs?: unknown[] | null
+  docs_returned?: number | null
+  followup_questions?: string[] | null
+  dataset_id?: string | null
+  send_state?: 'sending' | 'accepted' | 'unconfirmed'
+}
 
 export type Message = {
   id: string
@@ -13,15 +40,15 @@ export type Message = {
   content: string
   citations?: Citation[]
   steps?: string[]
-  message_metadata?: Record<string, unknown> | null
+  message_metadata?: ChatMessageMetadata | null
   created_at: string
 }
 
 export type Conversation = {
   id: string
-  title?: string
-  last_message?: string
-  last_message_at?: string
+  title?: string | null
+  last_message?: string | null
+  last_message_at?: string | null
   message_count: number
   created_at: string
   updated_at: string
@@ -29,16 +56,16 @@ export type Conversation = {
 
 export type ConversationListResponse = {
   total: number
-  returned?: number
-  has_more?: boolean
-  next_skip?: number | null
+  returned: number
+  has_more: boolean
+  next_skip: number | null
   items: Conversation[]
 }
 
 export type ConversationDetail = {
   conversation_id: string
-  returned?: number
-  has_more?: boolean
+  returned: number
+  has_more: boolean
   messages: Message[]
 }
 
@@ -71,8 +98,6 @@ export type RagTraceCitation = {
   vector_score?: number | null
   bm25_score?: number | null
   lexical_score?: number | null
-  sparse_score?: number | null
-  colbert_score?: number | null
   keyword_score?: number | null
   rerank_score?: number | null
   retrieval_score?: number | null
@@ -88,7 +113,7 @@ export type RagTraceCitation = {
 
   has_image?: boolean
 
-  kg_path?: Array<{ entity_id: string; type?: string }> | null
+  kg_path?: Array<Record<string, unknown>> | null
   kg_path_provenance?: Record<string, unknown> | null
 }
 
@@ -97,7 +122,7 @@ export type RagTraceRetrievalQuery = {
   query_chars?: number | null
   elapsed_sec?: number | null
   ok?: boolean | null
-  retriever_debug?: JsonObject | null
+  retriever_debug?: Record<string, unknown> | null
 }
 
 export type RagTraceRetrieval = {
@@ -150,54 +175,17 @@ export type RagTraceListResponse = {
   items: RagTrace[]
 }
 
-export type StreamEvent = {
-  type: 'citations' | 'token' | 'done' | 'error' | 'route' | 'rewrite' | 'graph' | 'event'
-  data: unknown
-  request_id?: string
-}
+export type StreamEvent = import('@ag-ui/core').Event
 
-export type ChatHistoryMessage = {
-  role: LooseString<'user' | 'assistant'>
-  content: string
-}
+export type ChatHistoryMessage = OpenApiSchema<'HistoryMessage'>
 
-export type ChatRequest = {
-  conversation_id?: string
-  message: string
-  history?: ChatHistoryMessage[]
-  document_ids?: string[]
-  dataset_id?: string | null
-  stream: boolean
-  structured_output?: boolean
-  structured_preset?: LooseString<'faq' | 'summary' | 'action_items' | 'custom'> | null
-  enable_long_term_memory?: boolean
-  enable_summary_memory?: boolean
-  prompt_template_id?: string
-  prompt_template_key?: string
-  prompt_ab_experiment_key?: string
-  rag_config?: {
-    retrieval_profile?: string
-    top_k?: number
-    score_threshold?: number
-    max_tokens?: number
-    retrieval_mode?: LooseString<'auto' | 'hybrid' | 'vector' | 'keyword' | 'mmr'>
-    alpha?: number
-    enable_weight_rerank?: boolean
-    vector_weight?: number
-    keyword_weight?: number
-    mmr_lambda?: number
-    enable_reranker?: boolean
-    reranker_provider?: string
-    reranker_top_n?: number
-    enable_multi_query?: boolean
-    multi_query_count?: number | null
-    multi_query_temperature?: number | null
-    multi_query_max_chars?: number | null
-    enable_hyde?: boolean | null
-    use_graph?: boolean
-    metadata_filter?: JsonObject
+type GeneratedChatRequest = OpenApiSchema<'ChatRequest'>
+
+// The request schema requires only message; omitted options inherit server defaults.
+export type ChatRequest = Pick<GeneratedChatRequest, 'message'> &
+  Partial<Omit<GeneratedChatRequest, 'message' | 'rag_config'>> & {
+    rag_config?: Partial<OpenApiSchema<'ChatRAGConfig'>>
   }
-}
 
 export type ConversationSummaryResponse = {
   available: boolean
@@ -208,124 +196,6 @@ export type ConversationSummaryUpdateResponse = {
   summary: string
 }
 
-// ==================== Usage / Quotas ====================
-
-export type ChatTokenUsageRow = {
-  dataset_id?: string | null
-  assistant_messages: number
-  assistant_tokens: number
-}
-
-export type ChatTokenUsageSummary = {
-  window_start: string
-  window_end: string
-  total_assistant_messages: number
-  total_assistant_tokens: number
-  by_dataset: ChatTokenUsageRow[]
-}
-
-export type ChatCostUsageRow = {
-  dataset_id?: string | null
-  assistant_messages: number
-  llm_prompt_tokens: number
-  llm_completion_tokens: number
-  llm_total_tokens: number
-  embedding_query_tokens: number
-  embedding_query_chars: number
-  retrieval_elapsed_sec_sum: number
-  rerank_elapsed_sec_sum: number
-}
-
-export type ChatCostUsageSummary = {
-  window_start: string
-  window_end: string
-  total_assistant_messages: number
-  total_llm_prompt_tokens: number
-  total_llm_completion_tokens: number
-  total_llm_total_tokens: number
-  total_embedding_query_tokens: number
-  total_embedding_query_chars: number
-  total_retrieval_elapsed_sec: number
-  total_rerank_elapsed_sec: number
-  by_dataset: ChatCostUsageRow[]
-}
-
-export type ChatTokenQuotaStatus = {
-  enabled: boolean
-  mode: string
-  limit: number
-  used: number
-  remaining: number
-  exceeded: boolean
-  window_hours: number
-  window_start: string
-  window_end: string
-}
-
-export type TenantDocumentQuotaStatus = {
-  enabled: boolean
-  limit: number
-  used: number
-  remaining: number
-  exceeded: boolean
-}
-
-export type TenantStorageQuotaStatus = {
-  enabled: boolean
-  limit_bytes: number
-  used_bytes: number
-  remaining_bytes: number
-  exceeded: boolean
-}
-
-export type TenantEmbeddingCharQuotaStatus = {
-  enabled: boolean
-  mode: string
-  limit_chars: number
-  used_chars: number
-  remaining_chars: number
-  exceeded: boolean
-  window_hours: number
-  window_start: string
-  window_end: string
-}
-
-export type TenantQpsQuotaConfig = {
-  enabled: boolean
-  mode: string
-  rps: number
-  burst: number
-  scopes?: string[]
-}
-
-export type TenantQuotaSummary = {
-  documents: TenantDocumentQuotaStatus
-  storage: TenantStorageQuotaStatus
-  embedding_chars: TenantEmbeddingCharQuotaStatus
-  qps: TenantQpsQuotaConfig
-}
-
-// ==================== Audit Logs ====================
-
-export type AuditLogItem = {
-  id: string
-  tenant_id: string
-  actor_id?: string | null
-  action: string
-  resource_type?: string | null
-  resource_id?: string | null
-  request_id?: string | null
-  ip?: string | null
-  user_agent?: string | null
-  details: JsonObject
-  created_at: string
-}
-
-export type AuditLogListResponse = {
-  total: number
-  items: AuditLogItem[]
-}
-
 export type ChatResponse = {
   conversation_id: string
   assistant_message_id: string
@@ -334,6 +204,7 @@ export type ChatResponse = {
   citations: Citation[]
   total_tokens: number
   total_chars: number
+  usage?: OpenApiSchema<'TokenUsage'> | null
   retrieval_mode?: string | null
   vector_backend?: string | null
   confidence_score?: number | null
@@ -348,8 +219,8 @@ export type CheckpointItem = {
   checkpoint_ns?: string
   created_at?: string | null
   next?: unknown
-  metadata?: JsonObject | null
-  values?: JsonObject | null
+  metadata?: Record<string, unknown> | null
+  values?: Record<string, unknown> | null
 }
 
 export type CheckpointListResponse = {
@@ -363,20 +234,18 @@ export type CheckpointDetailResponse = {
   checkpoint_ns?: string
   created_at?: string | null
   next?: unknown
-  metadata?: JsonObject | null
-  values?: JsonObject | null
+  metadata?: Record<string, unknown> | null
+  values?: Record<string, unknown> | null
 }
 
 export type {
   FeedbackCategory,
   FeedbackCategorySource,
   FeedbackLoopCandidatesResponse,
-  FeedbackLoopHardNegativeExportResponse,
   MessageFeedback,
   MessageFeedbackCreate,
   MessageFeedbackEnriched,
   MessageFeedbackEnrichedListResponse,
-  MessageFeedbackListResponse,
 } from './feedback'
 
 // ==================== Auth ====================

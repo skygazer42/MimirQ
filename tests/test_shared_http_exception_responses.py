@@ -1,7 +1,10 @@
 from fastapi import FastAPI
 
 from app.api.utils.http_exception_responses import DEFAULT_HTTP_EXCEPTION_RESPONSES
-from app.api.v1 import document_stats, health, rbac, reports, rtbf
+from app.api.v1.datasets import reports
+from app.api.v1.documents import stats as document_stats
+from app.api.v1.identity import rbac
+from app.api.v1.system import health, rtbf
 
 EXPECTED_DESCRIPTIONS = {
     "400": "Bad Request",

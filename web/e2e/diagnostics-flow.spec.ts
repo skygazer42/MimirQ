@@ -134,6 +134,12 @@ test('drift validates bounded inputs and keeps no-comparison samples distinct fr
   await page.getByRole('button', { name: '运行漂移检查', exact: true }).click()
   await expect(page.getByRole('region', { name: '向量漂移检查' })).toContainText('无可比样本')
   await expect(page.getByRole('region', { name: '向量漂移检查' })).toContainText('未评估')
+
+  state.driftOverride = { ok: false, error: 'vector_fetch_failed:MilvusException', vector_backend: 'milvus' }
+  await page.getByRole('button', { name: '运行漂移检查', exact: true }).click()
+  const probe = page.getByRole('region', { name: '向量漂移检查' })
+  await expect(probe).toContainText('检查失败')
+  await expect(probe.getByText('缺失向量', { exact: true }).locator('..')).toContainText('未返回')
   expect(state.errors).toEqual([])
 })
 

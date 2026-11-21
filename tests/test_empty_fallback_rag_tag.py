@@ -3,7 +3,7 @@ import json
 import pytest
 from langchain_core.documents import Document
 
-from app.rag.core.citations import build_citations_from_docs
+from app.rag.retrieval.evidence.citations import build_citations_from_docs
 
 
 @pytest.mark.parametrize("missing", ["table_id", "sql"])

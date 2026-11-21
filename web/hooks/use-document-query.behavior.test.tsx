@@ -14,7 +14,6 @@ const api = vi.hoisted(() => ({
   getStatus: vi.fn(),
   cancel: vi.fn(),
   delete: vi.fn(),
-  upload: vi.fn(),
   uploadBatch: vi.fn(),
   uploadFromUrl: vi.fn(),
 }))
@@ -26,7 +25,6 @@ import { useDocumentActions } from './use-document-actions'
 import { useDocumentList } from './use-document-list'
 import { useDocumentPolling } from './use-document-polling'
 import { useDocumentUpload } from './use-document-upload'
-import { useLocalSearch } from './use-local-search'
 import type { DocumentListParams } from './use-document-shared'
 
 const cleanup: Array<() => void> = []
@@ -145,6 +143,7 @@ describe('document query ownership', () => {
     const { client, key, hook } = mountPolling(documentRow('doc-a'))
     act(() => hook.result.current.pollDocumentStatus('doc-a'))
     act(() => hook.result.current.cancelDocumentPolling('doc-a'))
+    expect(api.getStatus.mock.calls[0]?.[1]?.signal?.aborted).toBe(true)
 
     await act(async () => {
       status.resolve(statusRow('doc-a', 80))
@@ -152,6 +151,24 @@ describe('document query ownership', () => {
     })
 
     expect(client.getQueryData<DocumentList>(key)?.items[0]?.processing_progress).toBe(0)
+  })
+
+  it('keeps polling when document cancellation fails', async () => {
+    const status = deferred<DocumentStatus>()
+    api.getStatus.mockReturnValue(status.promise)
+    api.cancel.mockRejectedValueOnce(new Error('取消失败'))
+    api.list.mockResolvedValue({ items: [documentRow('doc-a')], total: 1 })
+    const hook = mount(() => useDocumentControls({}))
+    await waitForAssertion(() => expect(hook.result.current.documents).toHaveLength(1))
+
+    act(() => hook.result.current.pollDocumentStatus('doc-a'))
+    await act(async () => {
+      await expect(hook.result.current.cancelDocument('doc-a')).rejects.toThrow('取消失败')
+    })
+
+    expect(api.getStatus.mock.calls[0]?.[1]?.signal?.aborted).toBe(false)
+    await act(async () => status.resolve(statusRow('doc-a', 35)))
+    expect(hook.result.current.documents[0].processing_progress).toBe(35)
   })
 
   it('keeps the newer polling result when the previous request completes last', async () => {
@@ -180,6 +197,7 @@ describe('document query ownership', () => {
       api.getStatus.mockResolvedValue(statusRow('doc-a', 20))
       hook.result.current.pollDocumentStatus('doc-a')
     })
+    expect(api.get.mock.calls[0]?.[2]?.signal?.aborted).toBe(true)
 
     await act(async () => {
       fullDocument.resolve(documentRow('doc-a', { status: 'completed', processing_progress: 100 }))
@@ -246,7 +264,7 @@ describe('document query ownership', () => {
     const remaining = documentRow('remaining')
     const params: DocumentListParams = { dataset_id: 'dataset-a' }
     api.list.mockResolvedValue({ items: [removed, remaining], total: 2 })
-    api.delete.mockReturnValue(deletion.promise)
+    api.delete.mockReturnValueOnce(deletion.promise).mockResolvedValue(undefined)
     const client = createClient()
     const hook = mount(() => useDocumentControls(params), client)
     await waitForAssertion(() => expect(hook.result.current.documents).toEqual([removed, remaining]))
@@ -254,6 +272,11 @@ describe('document query ownership', () => {
     act(() => {
       completion = hook.result.current.deleteDocument(removed.id)
     })
+    await act(async () => {
+      const duplicate = await hook.result.current.deleteDocument(removed.id).catch((error) => error)
+      expect(isCancelledError(duplicate)).toBe(true)
+    })
+    expect(api.delete).toHaveBeenCalledOnce()
     act(() => client.setQueryData(queryKeys.documents.list(params), { items: [remaining], total: 1 }))
 
     await act(async () => {
@@ -377,14 +400,14 @@ describe('document query ownership', () => {
     const oldDocument = documentRow('old-document')
     const replacement = documentRow('replacement-document')
     api.list.mockResolvedValue({ items: [], total: 0 })
-    api.upload.mockReturnValue(upload.promise)
+    api.uploadFromUrl.mockReturnValue(upload.promise)
     const client = createClient()
     const params: DocumentListParams = {}
     const hook = mount(() => useDocumentControls(params), client)
     await waitForAssertion(() => expect(hook.result.current.isListLoading).toBe(false))
     let completion!: Promise<string>
     act(() => {
-      completion = hook.result.current.uploadDocument(new File(['test'], 'old.txt')).then(
+      completion = hook.result.current.uploadDocumentFromUrl({ url: 'https://example.com/old.txt' }).then(
         () => 'completed',
         (error: unknown) => {
           if (!isCancelledError(error)) throw error
@@ -392,7 +415,7 @@ describe('document query ownership', () => {
         },
       )
     })
-    await waitForAssertion(() => expect(api.upload).toHaveBeenCalledOnce())
+    await waitForAssertion(() => expect(api.uploadFromUrl).toHaveBeenCalledOnce())
     api.list.mockResolvedValue({ items: [replacement], total: 1 })
     act(() => client.clear())
     hook.rerender()
@@ -517,7 +540,7 @@ describe('document query ownership', () => {
 
   it('uses the dataset selected when the upload was requested', async () => {
     api.list.mockResolvedValue({ items: [], total: 0 })
-    api.upload.mockImplementation(async (_file: File, options: { dataset_id?: string }) =>
+    api.uploadFromUrl.mockImplementation(async (options: { dataset_id?: string }) =>
       documentRow('new-document', { dataset_id: options.dataset_id }),
     )
     let params: DocumentListParams = { dataset_id: 'dataset-a' }
@@ -525,7 +548,10 @@ describe('document query ownership', () => {
     await waitForAssertion(() => expect(hook.result.current.isListLoading).toBe(false))
     let completion!: Promise<Document>
     act(() => {
-      completion = hook.result.current.uploadDocument(new File(['test'], 'new.txt'))
+      completion = hook.result.current.uploadDocumentFromUrl({
+        url: 'https://example.com/new.txt',
+        dataset_id: 'dataset-a',
+      })
     })
     params = { dataset_id: 'dataset-b' }
     hook.rerender()
@@ -534,64 +560,121 @@ describe('document query ownership', () => {
       expect((await completion).dataset_id).toBe('dataset-a')
     })
 
-    expect(api.upload.mock.calls[0]?.[1]).toMatchObject({ dataset_id: 'dataset-a' })
+    expect(api.uploadFromUrl.mock.calls[0]?.[0]).toMatchObject({ dataset_id: 'dataset-a' })
     expect(hook.result.current.lastListParamsRef.current.dataset_id).toBe('dataset-b')
   })
 
-  it('retries only failed files with the existing upload concurrency bound', async () => {
-    const first = new File(['first'], 'first.txt')
-    const second = new File(['second'], 'second.txt')
-    let serverDocuments: Document[] = []
-    api.list.mockImplementation(async () => ({ items: serverDocuments, total: serverDocuments.length }))
+  it.each([
+    { maxRetries: 1, maxConcurrent: 99, expectedConcurrent: 10 },
+    { maxRetries: Number.NaN, maxConcurrent: 5.5, expectedConcurrent: 5 },
+  ])(
+    'retries matched failures with $expectedConcurrent concurrent uploads',
+    async ({ maxRetries, maxConcurrent, expectedConcurrent }) => {
+      const first = new File(['first'], 'first.txt')
+      const second = new File(['second'], 'second.txt')
+      const duplicateFirst = new File(['third'], 'duplicate.txt')
+      const duplicateSecond = new File(['fourth'], 'duplicate.txt')
+      Object.defineProperty(duplicateFirst, 'webkitRelativePath', { value: ' manual /duplicate.txt' })
+      Object.defineProperty(duplicateSecond, 'webkitRelativePath', { value: 'manual/duplicate.txt' })
+      const ambiguousFailure = {
+        filename: duplicateSecond.name,
+        source_path: 'manual/duplicate.txt',
+        error: 'cannot retry by source path',
+      }
+      let serverDocuments: Document[] = []
+      api.list.mockImplementation(async () => ({ items: serverDocuments, total: serverDocuments.length }))
+      api.uploadBatch
+        .mockResolvedValueOnce({
+          total: 4,
+          successful_count: 2,
+          failed_count: 2,
+          successful: [
+            { document_id: 'doc-first', filename: first.name, status: 'pending' },
+            { document_id: 'doc-duplicate', filename: duplicateFirst.name, status: 'pending' },
+          ],
+          failed: [{ filename: second.name, error: 'temporary failure' }, ambiguousFailure],
+        })
+        .mockImplementationOnce(async () => {
+          serverDocuments = [documentRow('doc-first'), documentRow('doc-second'), documentRow('doc-duplicate')]
+          return {
+            total: 1,
+            successful_count: 1,
+            failed_count: 0,
+            successful: [{ document_id: 'doc-second', filename: second.name, status: 'pending' }],
+            failed: [],
+          }
+        })
+      const client = createClient()
+      const params: DocumentListParams = { dataset_id: 'dataset-a' }
+      const hook = mount(() => useDocumentControls(params), client)
+      await waitForAssertion(() => expect(hook.result.current.isListLoading).toBe(false))
+      client.setQueryData(queryKeys.documents.list(params), { items: [], total: 0 }, { updatedAt: 1 })
+
+      await act(async () => {
+        const result = await hook.result.current.uploadDocuments([first, second, duplicateFirst, duplicateSecond], {
+          maxRetries,
+          maxConcurrent,
+        })
+        expect(result).toMatchObject({ total: 4, successful_count: 3, failed_count: 1, failed: [ambiguousFailure] })
+      })
+
+      expect(api.uploadBatch.mock.calls.map(([files]) => files)).toEqual([
+        [first, second, duplicateFirst, duplicateSecond],
+        [second],
+      ])
+      expect(api.uploadBatch.mock.calls[0]?.[1]).toEqual({
+        parser_backend: 'auto',
+        chunk_strategy: 'langchain_recursive',
+        dataset_id: 'dataset-a',
+        pipeline: undefined,
+        max_concurrent: expectedConcurrent,
+      })
+      expect(client.getQueryData<DocumentList>(queryKeys.documents.list(params))?.items.map((doc) => doc.id)).toEqual([
+        'doc-first',
+        'doc-second',
+        'doc-duplicate',
+      ])
+    },
+  )
+
+  it('keeps confirmed file results when the next batch request fails', async () => {
+    const files = Array.from({ length: 51 }, (_, index) => new File(['test'], `file-${index}.txt`))
+    const failed = { filename: files[49].name, error: 'file rejected' }
+    api.list.mockResolvedValue({ items: [], total: 0 })
     api.uploadBatch
       .mockResolvedValueOnce({
-        total: 2,
-        successful_count: 1,
+        total: 50,
+        successful_count: 49,
         failed_count: 1,
-        successful: [{ document_id: 'doc-first', filename: first.name, status: 'pending' }],
-        failed: [{ filename: second.name, error: 'temporary failure' }],
+        successful: files.slice(0, 49).map((file, index) => ({
+          document_id: `doc-${index}`,
+          filename: file.name,
+          status: 'pending',
+        })),
+        failed: [failed],
       })
-      .mockImplementationOnce(async () => {
-        serverDocuments = [documentRow('doc-first'), documentRow('doc-second')]
-        return {
-          total: 1,
-          successful_count: 1,
-          failed_count: 0,
-          successful: [{ document_id: 'doc-second', filename: second.name, status: 'pending' }],
-          failed: [],
-        }
-      })
-    const client = createClient()
-    const params: DocumentListParams = { dataset_id: 'dataset-a' }
-    const hook = mount(() => useDocumentControls(params), client)
+      .mockRejectedValueOnce(new Error('connection lost'))
+    const hook = mount(() => useDocumentControls({ dataset_id: 'dataset-a' }))
     await waitForAssertion(() => expect(hook.result.current.isListLoading).toBe(false))
-    client.setQueryData(queryKeys.documents.list(params), { items: [], total: 0 }, { updatedAt: 1 })
 
     await act(async () => {
-      const result = await hook.result.current.uploadDocuments([first, second], {
-        maxRetries: 1,
-        maxConcurrent: 99,
+      const result = await hook.result.current.uploadDocuments(files)
+      expect(result).toMatchObject({
+        total: 51,
+        successful_count: 49,
+        failed_count: 1,
+        failed: [failed],
+        interruption: 'connection lost',
       })
-      expect(result).toMatchObject({ total: 2, successful_count: 2, failed_count: 0, failed: [] })
     })
 
-    expect(api.uploadBatch.mock.calls.map(([files]) => files)).toEqual([[first, second], [second]])
-    expect(api.uploadBatch.mock.calls[0]?.[1]).toEqual({
-      parser_backend: 'auto',
-      chunk_strategy: 'langchain_recursive',
-      dataset_id: 'dataset-a',
-      pipeline: undefined,
-      max_concurrent: 10,
-    })
-    expect(client.getQueryData<DocumentList>(queryKeys.documents.list(params))?.items.map((doc) => doc.id)).toEqual([
-      'doc-first',
-      'doc-second',
-    ])
+    expect(api.uploadBatch).toHaveBeenCalledTimes(2)
   })
 
   it('returns an empty batch result without starting an upload', async () => {
     api.list.mockResolvedValue({ items: [], total: 0 })
-    const hook = mount(() => useDocumentControls({ dataset_id: 'dataset-a' }))
+    const client = createClient()
+    const hook = mount(() => useDocumentControls({ dataset_id: 'dataset-a' }), client)
     await waitForAssertion(() => expect(hook.result.current.isListLoading).toBe(false))
 
     await act(async () => {
@@ -605,9 +688,10 @@ describe('document query ownership', () => {
     })
 
     expect(api.uploadBatch).not.toHaveBeenCalled()
+    expect(client.getMutationCache().getAll()).toHaveLength(0)
   })
 
-  it.each(['cancel', 'delete', 'upload', 'uploadFromUrl'] as const)(
+  it.each(['cancel', 'delete', 'uploadFromUrl'] as const)(
     'retains the visible failure from the current %s operation',
     async (action) => {
       const failure = new Error('current request failed')
@@ -622,7 +706,6 @@ describe('document query ownership', () => {
         try {
           if (action === 'cancel') await hook.result.current.cancelDocument('doc-a')
           else if (action === 'delete') await hook.result.current.deleteDocument('doc-a')
-          else if (action === 'upload') await hook.result.current.uploadDocument(new File(['test'], 'new.txt'))
           else await hook.result.current.uploadDocumentFromUrl({ url: 'https://example.com/new.txt' })
         } catch (error) {
           received = error
@@ -633,28 +716,4 @@ describe('document query ownership', () => {
       await waitForAssertion(() => expect(hook.result.current.error).toBe('current request failed'))
     },
   )
-
-  it('searches replacement documents with the current term', () => {
-    let documents = [documentRow('old', { filename: 'alpha.txt' })]
-    const hook = mount(() => useLocalSearch(documents, { fields: ['filename'] }))
-    act(() => hook.result.current.setTerm('beta'))
-    expect(hook.result.current.results).toEqual([])
-
-    documents = [documentRow('new', { filename: 'beta.txt' })]
-    hook.rerender()
-
-    expect(hook.result.current.results).toEqual(documents)
-  })
-
-  it('removes a search match when the document keeps its id but changes its text', () => {
-    let documents = [documentRow('doc-a', { filename: 'alpha.txt' })]
-    const hook = mount(() => useLocalSearch(documents, { fields: ['filename'] }))
-    act(() => hook.result.current.setTerm('alpha'))
-    expect(hook.result.current.results).toEqual(documents)
-
-    documents = [documentRow('doc-a', { filename: 'beta.txt' })]
-    hook.rerender()
-
-    expect(hook.result.current.results).toEqual([])
-  })
 })

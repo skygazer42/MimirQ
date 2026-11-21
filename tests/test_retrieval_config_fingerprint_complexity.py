@@ -1,4 +1,4 @@
-from app.rag.core.retrieval_config_fingerprint import build_retrieval_config_fingerprint
+from app.rag.retrieval.configuration.fingerprint import build_retrieval_config_fingerprint
 
 
 def test_retrieval_config_fingerprint_removes_sensitive_values_recursively() -> None:

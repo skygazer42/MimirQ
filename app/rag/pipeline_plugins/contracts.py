@@ -2,21 +2,19 @@ import json
 import re
 from collections.abc import Iterable
 from dataclasses import dataclass
+from math import isfinite
 from typing import Any
 
 from langchain_core.documents import Document
 
-RETRIEVAL_TEXT_METADATA_KEY = "_retrieval_text"
-RETRIEVAL_DISPLAY_CONTENT_METADATA_KEY = "_retrieval_display_content"
-INDEXED_METADATA_KEY = "_indexed_metadata"
-DISPLAY_METADATA_KEY = "_display_metadata"
-EVALUABLE_METADATA_KEY = "_evaluable_metadata"
-RECORD_IDENTITY_METADATA_KEY = "_record_identity"
-METADATA_SCHEMA_VIEW_KEYS = (
-    INDEXED_METADATA_KEY,
+from app.types.indexing import (
     DISPLAY_METADATA_KEY,
     EVALUABLE_METADATA_KEY,
+    INDEXED_METADATA_KEY,
+    METADATA_SCHEMA_VIEW_KEYS,
     RECORD_IDENTITY_METADATA_KEY,
+    RETRIEVAL_DISPLAY_CONTENT_METADATA_KEY,
+    RETRIEVAL_TEXT_METADATA_KEY,
 )
 
 _FIELD_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_.-]{0,119}$")
@@ -131,7 +129,6 @@ RESERVED_PLATFORM_METADATA_VIEW_KEYS = (
     RETRIEVAL_TEXT_METADATA_KEY,
     RETRIEVAL_DISPLAY_CONTENT_METADATA_KEY,
 )
-_RESERVED_PLATFORM_METADATA_VIEW_KEYS = RESERVED_PLATFORM_METADATA_VIEW_KEYS
 
 
 class PipelinePluginContractError(ValueError):
@@ -156,7 +153,11 @@ def _as_dict(value: Any) -> dict[str, Any]:
 
 
 def _as_string_list(value: Any, *, field_label: str | None = None) -> tuple[str, ...]:
+    if value is None:
+        return ()
     if not isinstance(value, list):
+        if field_label is not None:
+            raise PipelinePluginContractError(f"{field_label} must be a list")
         return ()
     out: list[str] = []
     seen: set[str] = set()
@@ -174,7 +175,9 @@ def _as_string_list(value: Any, *, field_label: str | None = None) -> tuple[str,
 
 
 def _unknown_keys(value: dict[str, Any], supported: set[str]) -> list[str]:
-    return sorted(key.strip() or "<empty>" for key in value if key.strip() not in supported)
+    if any(not isinstance(key, str) for key in value):
+        raise PipelinePluginContractError("contract field names must be strings")
+    return sorted(key.strip() or "<empty>" for key in value if key not in supported)
 
 
 def _uses_reserved_metadata_namespace(name: str) -> bool:
@@ -351,7 +354,11 @@ def _type_ok(value: Any, field_type: str) -> bool:
     if field_type == "integer":
         return isinstance(value, int) and not isinstance(value, bool)
     if field_type == "number":
-        return isinstance(value, (int, float)) and not isinstance(value, bool)
+        return (
+            isinstance(value, (int, float))
+            and not isinstance(value, bool)
+            and (not isinstance(value, float) or isfinite(value))
+        )
     if field_type == "boolean":
         return isinstance(value, bool)
     if field_type == "array":
@@ -359,6 +366,18 @@ def _type_ok(value: Any, field_type: str) -> bool:
     if field_type == "object":
         return isinstance(value, dict)
     return False
+
+
+def _metadata_value_error(value: Any, field: MetadataField) -> str | None:
+    if not _is_present(value):
+        return "required" if field.required else None
+    if not _type_ok(value, field.type):
+        return f"expected_{field.type}"
+    if field.max_length is not None and isinstance(value, str) and len(value) > field.max_length:
+        return "max_length"
+    if field.enum is not None and value not in field.enum:
+        return "enum"
+    return None
 
 
 def validate_documents_metadata(
@@ -378,21 +397,9 @@ def validate_documents_metadata(
         for field in fields:
             if not _stage_applies(field, stage):
                 continue
-            value = _value_from_metadata(meta, field.name)
-            missing = value is None or value == "" or value == []
-            if field.required and missing:
-                errors.append({"index": doc_index, "field": field.name, "reason": "required"})
-                continue
-            if missing:
-                continue
-            if not _type_ok(value, field.type):
-                errors.append({"index": doc_index, "field": field.name, "reason": f"expected_{field.type}"})
-                continue
-            if field.max_length is not None and isinstance(value, str) and len(value) > field.max_length:
-                errors.append({"index": doc_index, "field": field.name, "reason": "max_length"})
-                continue
-            if field.enum is not None and value not in field.enum:
-                errors.append({"index": doc_index, "field": field.name, "reason": "enum"})
+            reason = _metadata_value_error(_value_from_metadata(meta, field.name), field)
+            if reason is not None:
+                errors.append({"index": doc_index, "field": field.name, "reason": reason})
 
     return {"ok": not errors, "checked": len(docs), "errors": errors}
 
@@ -422,21 +429,9 @@ def validate_kg_events_metadata(
     for event_index, event in enumerate(items):
         meta = _kg_event_contract_metadata(event)
         for field in fields:
-            value = _value_from_metadata(meta, field.name)
-            missing = value is None or value == "" or value == []
-            if field.required and missing:
-                errors.append({"index": event_index, "field": field.name, "reason": "required"})
-                continue
-            if missing:
-                continue
-            if not _type_ok(value, field.type):
-                errors.append({"index": event_index, "field": field.name, "reason": f"expected_{field.type}"})
-                continue
-            if field.max_length is not None and isinstance(value, str) and len(value) > field.max_length:
-                errors.append({"index": event_index, "field": field.name, "reason": "max_length"})
-                continue
-            if field.enum is not None and value not in field.enum:
-                errors.append({"index": event_index, "field": field.name, "reason": "enum"})
+            reason = _metadata_value_error(_value_from_metadata(meta, field.name), field)
+            if reason is not None:
+                errors.append({"index": event_index, "field": field.name, "reason": reason})
 
     return {"ok": not errors, "checked": len(items), "errors": errors}
 
@@ -447,7 +442,7 @@ def validate_no_reserved_platform_metadata_views(
     field_label: str = "metadata",
 ) -> None:
     meta = _as_dict(metadata)
-    for key in _RESERVED_PLATFORM_METADATA_VIEW_KEYS:
+    for key in RESERVED_PLATFORM_METADATA_VIEW_KEYS:
         if key in meta:
             raise PipelinePluginContractError(
                 f"{field_label} must not contain reserved platform metadata field '{key}'"
@@ -458,7 +453,7 @@ def strip_reserved_platform_metadata_views(documents: Iterable[Document]) -> lis
     out: list[Document] = []
     for doc in documents or []:
         meta = dict(doc.metadata or {})
-        for key in _RESERVED_PLATFORM_METADATA_VIEW_KEYS:
+        for key in RESERVED_PLATFORM_METADATA_VIEW_KEYS:
             meta.pop(key, None)
         out.append(Document(page_content=doc.page_content, metadata=meta, id=getattr(doc, "id", None)))
     return out
@@ -663,7 +658,7 @@ def _validated_retrieval_text_stages(raw_stages: Any) -> dict[str, Any]:
     unsupported_stages = [
         stage_name.strip() or "<empty>"
         for stage_name in raw_stages
-        if stage_name.strip() not in _SUPPORTED_RETRIEVAL_TEXT_STAGES
+        if stage_name not in _SUPPORTED_RETRIEVAL_TEXT_STAGES
     ]
     if unsupported_stages:
         missing_text = ", ".join(unsupported_stages[:20])
@@ -688,6 +683,10 @@ def _validate_retrieval_text_stage_field(raw_field: Any, *, stage_text: str, fie
             f"retrieval_text_schema.stages.{stage_text}.fields[{field_index}].content must be a boolean"
         )
     raw_field_name = item.get("metadata")
+    if item.get("label") is not None and not isinstance(item["label"], str):
+        raise PipelinePluginContractError(
+            f"retrieval_text_schema.stages.{stage_text}.fields[{field_index}].label must be a string"
+        )
     if raw_field_name is not None and not isinstance(raw_field_name, str):
         raise PipelinePluginContractError(
             f"retrieval_text_schema.stages.{stage_text}.fields[{field_index}].metadata must be a string"
@@ -822,7 +821,13 @@ def _validate_query_expansion_value_mapping(raw: Any, *, index: int) -> str:
             f"retrieval_policy.query_expansion_values[{index}] must not declare both value and values"
         )
     if "values" in raw:
-        _as_string_list(raw.get("values"), field_label=f"retrieval_policy.query_expansion_values[{index}].values")
+        if not isinstance(raw["values"], list):
+            raise PipelinePluginContractError(f"retrieval_policy.query_expansion_values[{index}].values must be a list")
+        values = _as_string_list(raw["values"], field_label=f"retrieval_policy.query_expansion_values[{index}].values")
+        if not values:
+            raise PipelinePluginContractError(
+                f"retrieval_policy.query_expansion_values[{index}].values must declare at least one value"
+            )
     elif not isinstance(raw.get("value"), str):
         raise PipelinePluginContractError(f"retrieval_policy.query_expansion_values[{index}].value must be a string")
     terms = _as_string_list(raw.get("terms"), field_label=f"retrieval_policy.query_expansion_values[{index}].terms")
@@ -1229,7 +1234,13 @@ def _validate_retrieval_policy_anchor_binding(
         value = raw_binding.get(key)
         if value is None:
             continue
-        if not isinstance(value, int | float) or isinstance(value, bool) or value < 0 or value > 2:
+        if (
+            not isinstance(value, int | float)
+            or isinstance(value, bool)
+            or value < 0
+            or value > 2
+            or not isfinite(value)
+        ):
             raise PipelinePluginContractError(f"retrieval_policy.anchor_binding.{key} is out of range")
     referenced_fields = (*anchor_fields, *slot_fields)
     _validate_declared_policy_fields(
@@ -1287,6 +1298,7 @@ def _validate_policy_question_anchor_bonus(retrieval_policy: dict[str, Any]) -> 
         or isinstance(question_anchor_bonus, bool)
         or question_anchor_bonus < 0
         or question_anchor_bonus > 2
+        or not isfinite(question_anchor_bonus)
     ):
         raise PipelinePluginContractError("retrieval_policy.question_anchor_bonus is out of range")
 
@@ -1317,7 +1329,13 @@ def _validate_policy_boost_field(raw: Any, *, index: int, declared_fields: dict[
     _validate_declared_policy_fields((field_name,), declared_fields=declared_fields, key="boost_fields")
     _validate_policy_chunk_stage_fields((field_name,), declared_fields=declared_fields, key="boost_fields")
     weight = raw.get("weight", 1.0)
-    if not isinstance(weight, (int, float)) or isinstance(weight, bool) or weight <= 0 or weight > 10:
+    if (
+        not isinstance(weight, (int, float))
+        or isinstance(weight, bool)
+        or weight <= 0
+        or weight > 10
+        or not isfinite(weight)
+    ):
         raise PipelinePluginContractError(f"retrieval_policy.boost_fields[{index}].weight is out of range")
     match_mode = str(raw.get("match") or "contains").strip()
     if match_mode not in _SUPPORTED_RETRIEVAL_POLICY_MATCHES:
@@ -1357,7 +1375,13 @@ def _validate_policy_anchor_field(raw: Any, *, index: int, declared_fields: dict
     if role and role != "administrative_area":
         raise PipelinePluginContractError(f"retrieval_policy.anchor_fields[{index}].role is unsupported")
     weight = raw.get("weight", 1.0)
-    if not isinstance(weight, (int, float)) or isinstance(weight, bool) or weight <= 0 or weight > 10:
+    if (
+        not isinstance(weight, (int, float))
+        or isinstance(weight, bool)
+        or weight <= 0
+        or weight > 10
+        or not isfinite(weight)
+    ):
         raise PipelinePluginContractError(f"retrieval_policy.anchor_fields[{index}].weight is out of range")
     _validate_policy_anchor_aliases(raw.get("aliases"), index=index)
     return field_name
@@ -1427,7 +1451,11 @@ def _validate_policy_response_compaction(response_compaction: Any) -> None:
 
 def _validate_response_compaction_number(value: Any, *, key: str, upper_bound: int) -> None:
     if value is not None and (
-        not isinstance(value, (int, float)) or isinstance(value, bool) or value < 0 or value > upper_bound
+        not isinstance(value, (int, float))
+        or isinstance(value, bool)
+        or value < 0
+        or value > upper_bound
+        or not isfinite(value)
     ):
         raise PipelinePluginContractError(f"retrieval_policy.response_compaction.{key} is out of range")
 
@@ -1488,8 +1516,10 @@ def _is_present(value: Any) -> bool:
 
 def _stable_identity_value(value: Any) -> str:
     if isinstance(value, (dict, list, tuple)):
-        return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
-    return str(value)
+        text = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False)
+    else:
+        text = str(value)
+    return text.replace("\\", "\\\\").replace("|", "\\|").replace("=", "\\=")
 
 
 def _record_identity_payload(meta: dict[str, Any], schema: dict[str, Any] | None) -> dict[str, Any] | None:
@@ -1503,10 +1533,10 @@ def _record_identity_payload(meta: dict[str, Any], schema: dict[str, Any] | None
             values[field_name] = value
     if not values:
         return None
-    key = "|".join(f"{name}={_stable_identity_value(values[name])}" for name in values)
+    key = "|".join(f"{_stable_identity_value(name)}={_stable_identity_value(values[name])}" for name in values)
     return {
         "schema": "mimirq.record_identity.v1",
-        "key": key[:1000],
+        "key": key,
         "fields": values,
     }
 
@@ -1661,15 +1691,8 @@ def apply_retrieval_text_schema(
 
 
 __all__ = [
-    "DISPLAY_METADATA_KEY",
-    "EVALUABLE_METADATA_KEY",
-    "INDEXED_METADATA_KEY",
-    "METADATA_SCHEMA_VIEW_KEYS",
     "PipelinePluginContractError",
-    "RECORD_IDENTITY_METADATA_KEY",
     "RESERVED_PLATFORM_METADATA_VIEW_KEYS",
-    "RETRIEVAL_DISPLAY_CONTENT_METADATA_KEY",
-    "RETRIEVAL_TEXT_METADATA_KEY",
     "apply_metadata_schema_views",
     "apply_retrieval_text_schema",
     "build_metadata_schema_views",

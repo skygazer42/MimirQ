@@ -35,7 +35,7 @@ stateDiagram-v2
 
 | 组件 | 职责 |
 |------|------|
-| `ManualUploadDialog` | 文件选择、拖拽上传、进度条 |
+| `OperationPageClient` | 在 `/knowledge/ingestion` 选择文件、提交入库和查看回执 |
 | `KnowledgeDocumentsPanel` | 文档列表实时状态刷新 |
 
 ## 状态轮询策略

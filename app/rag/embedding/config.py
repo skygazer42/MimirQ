@@ -32,11 +32,11 @@ class EmbedModelInfo(BaseModel):
 
     model_config = ConfigDict(protected_namespaces=())
 
-    name: str = Field(..., description="Model name")
-    dimension: int = Field(..., description="Vector dimension")
-    base_url: str = Field(..., description="API base URL")
-    api_key: str = Field(..., description="API Key or environment variable name")
-    model_id: str | None = Field(None, description="Optional model ID")
+    name: str = Field(min_length=1)
+    dimension: int = Field(ge=1)
+    base_url: str
+    api_key: str
+    model_id: str | None = None
 
 
 # ============================================================

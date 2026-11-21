@@ -1,5 +1,4 @@
 import asyncio
-from dataclasses import fields
 from io import BytesIO
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
@@ -32,7 +31,7 @@ class Dataset(Base):
 
 @pytest.fixture
 def batch_context(tmp_path, monkeypatch):
-    from app.services import document_batch_ingestion as module
+    from app.services.documents import batch_ingestion as module
 
     engine = create_engine("sqlite:///" + str(tmp_path / "state.db"))
     Base.metadata.create_all(engine)
@@ -77,9 +76,7 @@ def batch_context(tmp_path, monkeypatch):
             user_metadata_map=None,
             max_concurrent=1,
         )
-        overrides = module.PipelineOverridesFormFields(
-            **{f.name: None for f in fields(module.PipelineOverridesFormFields)}
-        )
+        overrides = {}
 
         def invoke():
             return asyncio.run(

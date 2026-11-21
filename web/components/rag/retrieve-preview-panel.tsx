@@ -11,8 +11,6 @@ import {
   ChevronRight,
   Copy,
   File,
-  FileMarkdown,
-  FilePdf,
   Fingerprint,
   History,
   Loader2,
@@ -21,6 +19,7 @@ import {
 import { AuthImage } from '@/components/auth-image'
 import { KnowledgeRetrievalPanel } from '@/components/knowledge/knowledge-retrieval-panel'
 import { Button } from '@/components/ui/button'
+import { FileTypeIcon } from '@/components/ui/file-type-icon'
 import { IconButton } from '@/components/ui/icon-button'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
 import { resolveSafeCitationImageUrl } from '@/lib/citation-images'
@@ -28,7 +27,8 @@ import { getDocumentPreviewAnchorFromCitation } from '@/lib/document-preview-anc
 import { prefetchDocumentView } from '@/lib/document-view-prefetch'
 import { cn, detachPromise } from '@/lib/utils'
 import { useDocumentView } from '@/store/document-view'
-import { useRetrievalPreview, type RetrievePreviewCitation, type RetrievalRun } from './use-retrieval-preview'
+import { getCitationRange, type RetrievePreviewCitation } from '@/lib/citations'
+import { useRetrievalPreview, type RetrievalRun } from './use-retrieval-preview'
 import styles from './retrieve-preview-panel.module.css'
 
 type RetrievePreviewPanelProps = {
@@ -44,17 +44,11 @@ type RetrievePreviewPanelProps = {
 
 function getHitScore(hit: RetrievePreviewCitation): string {
   const score = hit.score ?? hit.relevance_score ?? hit.retrieval_score
-  return typeof score === 'number' && Number.isFinite(score) ? score.toFixed(3) : '—'
+  return score === undefined ? '—' : score.toFixed(3)
 }
 
 function matchedTerms(hit: RetrievePreviewCitation): string[] {
-  return Array.isArray(hit.matched_terms)
-    ? [
-        ...new Set(
-          hit.matched_terms.filter((term): term is string => typeof term === 'string' && Boolean(term.trim())),
-        ),
-      ].slice(0, 24)
-    : []
+  return [...new Set(hit.matched_terms?.filter((term) => term.trim() !== ''))].slice(0, 24)
 }
 
 function HighlightedText({ text, terms }: Readonly<{ text: string; terms: string[] }>) {
@@ -67,11 +61,6 @@ function HighlightedText({ text, terms }: Readonly<{ text: string; terms: string
   return text
     .split(pattern)
     .map((part, index) => (matches.has(part.toLocaleLowerCase()) ? <mark key={index}>{part}</mark> : part))
-}
-
-function DocumentMark({ name }: Readonly<{ name: string }>) {
-  const Icon = /\.pdf$/i.test(name) ? FilePdf : /\.(md|mdx|markdown)$/i.test(name) ? FileMarkdown : File
-  return <Icon appearance="color" aria-hidden="true" className={styles.documentIcon} />
 }
 
 function HistoryList({
@@ -155,7 +144,7 @@ export function RetrievePreviewPanel({
   availableDatasetIds,
   scopeLabel = '全部数据集',
   aggregateDocuments,
-  aggregateChunks = 0,
+  aggregateChunks,
   scopeLoading = false,
   onGoToDocuments,
   className,
@@ -179,7 +168,13 @@ export function RetrievePreviewPanel({
   const imageUrl = activeHit ? resolveSafeCitationImageUrl(activeHit.img_url) : null
   const showingDetail = Boolean(mobileDetail && activeHit && !isSearching)
   const scopeIsEmpty = !scopeLoading && aggregateDocuments === 0
-  const canSearch = Boolean(preview.draft.trim() && preview.hasScope && !isSearching && !scopeLoading && !scopeIsEmpty)
+  const canSearch =
+    preview.draft.trim() !== '' &&
+    preview.hasScope &&
+    preview.scopeError === null &&
+    !isSearching &&
+    !scopeLoading &&
+    !scopeIsEmpty
 
   function submitQuestion() {
     if (!canSearch) return
@@ -206,22 +201,15 @@ export function RetrievePreviewPanel({
     if (!hit.document_id) return
     prefetchDocumentView({
       documentId: hit.document_id,
-      chunkId: hit.chunk_id || null,
-      rawFileUrl: hit.file_url || null,
+      chunkId: hit.chunk_id,
     })
   }
 
   function openHit(hit: RetrievePreviewCitation) {
     if (!hit.document_id) return
-    const range = hit.text_range
-    openDocument(
-      hit.document_id,
-      hit.chunk_id || undefined,
-      range && typeof range.start === 'number' && typeof range.end === 'number'
-        ? { start: range.start, end: range.end }
-        : undefined,
-      { previewAnchor: getDocumentPreviewAnchorFromCitation(hit) },
-    )
+    openDocument(hit.document_id, hit.chunk_id, getCitationRange(hit), {
+      previewAnchor: getDocumentPreviewAnchorFromCitation(hit),
+    })
   }
 
   async function copyHit() {
@@ -342,6 +330,8 @@ export function RetrievePreviewPanel({
               title="正在加载文档范围"
               description="正在读取当前范围的文档信息。"
             />
+          ) : preview.scopeError !== null ? (
+            <EmptyState icon={<File className="size-6" />} title="数据集范围过大" description={preview.scopeError} />
           ) : !preview.hasScope ? (
             <EmptyState
               icon={<File className="size-6" />}
@@ -417,7 +407,7 @@ export function RetrievePreviewPanel({
                     <span className={styles.rank}>{String(index + 1).padStart(2, '0')}</span>
                     <span className={styles.hitBody}>
                       <span className={styles.hitTitle}>
-                        <DocumentMark name={hit.document_name || ''} />
+                        <FileTypeIcon filename={hit.document_name} className={styles.documentIcon} />
                         <strong>{hit.document_name || '未命名文档'}</strong>
                         <span className={styles.hitScore}>{getHitScore(hit)}</span>
                       </span>
@@ -494,7 +484,7 @@ export function RetrievePreviewPanel({
             <article key={`${run?.id}-${selectedIndex}`} className={styles.fragment}>
               <div className={styles.fragmentHeading}>
                 <h3>
-                  <DocumentMark name={activeName} />
+                  <FileTypeIcon filename={activeHit.document_name} className={styles.documentIcon} />
                   <span>{activeName}</span>
                 </h3>
                 <div className={styles.relevance}>
@@ -587,13 +577,13 @@ export function RetrievePreviewPanel({
             <EmptyState
               icon={<File className="size-7" />}
               title="查看片段详情"
-              description="检索后，选择一条命中查看完整内容和来源。"
+              description="检索后，选择一条命中查看内容和来源。"
             />
           )}
         </div>
         <footer className={styles.detailFooter} data-task-center-dock="true">
           <span>
-            {aggregateDocuments ?? '—'} 份文档 · {aggregateChunks} 个分片
+            {aggregateDocuments ?? '—'} 份文档 · {aggregateChunks ?? '—'} 个分片
           </span>
           <button
             type="button"
@@ -622,7 +612,8 @@ export function RetrievePreviewPanel({
           <div className={styles.auditBody}>
             {auditOpen ? (
               <KnowledgeRetrievalPanel
-                selectedDatasetId={selectedDatasetId || undefined}
+                key={selectedDatasetId}
+                selectedDatasetId={selectedDatasetId ?? undefined}
                 aggregateDocuments={aggregateDocuments}
                 aggregateChunks={aggregateChunks}
                 compact

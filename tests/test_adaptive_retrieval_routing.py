@@ -6,6 +6,21 @@ from langchain_core.documents import Document
 from langchain_core.language_models.fake_chat_models import FakeListChatModel
 
 
+@pytest.fixture(autouse=True)
+def _offline_stream_models(monkeypatch):
+    from types import SimpleNamespace
+
+    from app.infrastructure import tokens
+    from app.rag.runtime import engine
+
+    pool = SimpleNamespace(get_external_sync_client=lambda: None, get_external_async_client=lambda: None)
+    monkeypatch.setattr(engine, "get_http_client_pool", lambda: pool)
+    monkeypatch.setattr(
+        engine.RAGEngine, "_build_llm", lambda *_args, **_kwargs: FakeListChatModel(responses=["fixture"])
+    )
+    monkeypatch.setattr(tokens, "_get_encoder", lambda: False)
+
+
 class _CapturingRetriever:
     def __init__(self, *, main_docs: list[Document], mq_docs: dict[str, list[Document]]) -> None:
         self._main_docs = list(main_docs)
@@ -40,8 +55,8 @@ def _mk_doc(*, doc_id: str, chunk_index: int) -> Document:
 
 
 def test_engine_routes_retrieval_params_by_complexity_thresholds(monkeypatch: pytest.MonkeyPatch) -> None:
-    from app.core.config import settings
-    from app.rag.engine import RAGEngine
+    from app.infrastructure.config import settings
+    from app.rag.runtime.engine import RAGEngine
 
     monkeypatch.setattr(settings, "ADAPTIVE_RETRIEVAL_ROUTING_ENABLED", True, raising=False)
     monkeypatch.setattr(settings, "ADAPTIVE_RETRIEVAL_SIMPLE_THRESHOLD", 80.0, raising=False)
@@ -69,9 +84,8 @@ def test_engine_routes_retrieval_params_by_complexity_thresholds(monkeypatch: py
 async def test_engine_applies_adaptive_retrieval_overrides_to_streaming_path(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.rag.engine as engine_mod
-    from app.core.config import settings
-    from app.rag.engine import RAGEngine
+    from app.infrastructure.config import settings
+    from app.rag.runtime.engine import RAGEngine
 
     monkeypatch.setattr(settings, "ENABLE_QUERY_REWRITE", False, raising=False)
     monkeypatch.setattr(settings, "ENABLE_HYDE", False, raising=False)
@@ -109,7 +123,8 @@ async def test_engine_applies_adaptive_retrieval_overrides_to_streaming_path(
     main_docs = [_mk_doc(doc_id="z-main", chunk_index=i) for i in range(0, 6)]
     mq_docs = {"ALT-1": [_mk_doc(doc_id="mq-doc", chunk_index=0)]}
     fake_retriever = _CapturingRetriever(main_docs=main_docs, mq_docs=mq_docs)
-    monkeypatch.setattr(engine_mod, "hybrid_retriever", fake_retriever, raising=True)
+    monkeypatch.setattr("app.rag.runtime.streaming.retrieval.hybrid_retriever", fake_retriever, raising=True)
+    monkeypatch.setattr("app.rag.runtime.streaming.corrective.hybrid_retriever", fake_retriever, raising=True)
 
     complex_question = "Analyze and compare BASE versus ALT step-by-step with code examples and tradeoffs."
 

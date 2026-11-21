@@ -5,7 +5,8 @@ from types import SimpleNamespace
 import pytest
 from fastapi import BackgroundTasks, HTTPException
 
-from app.api.schemas.document import (
+from app.api.schemas.documents import DocumentRetryQuery, DocumentVersionDiffQuery
+from app.api.schemas.documents.document import (
     DocumentAccessUpdateRequest,
     DocumentBatchMoveRequest,
     DocumentBatchUserMetadataPatchRequest,
@@ -14,15 +15,15 @@ from app.api.schemas.document import (
     DocumentPipelinePatchRequest,
     DocumentUserMetadataPatchRequest,
 )
-from app.api.schemas.qa import DocumentQAGenerateRequest
-from app.api.v1 import document_mutations, document_processing, document_versions
-from app.services import (
-    document_access_service,
-    document_batch_operations,
-    document_metadata_operations,
-    document_processing_operations,
-    document_qa_service,
-)
+from app.api.schemas.documents.qa import DocumentQAGenerateRequest
+from app.api.v1.documents import mutations as document_mutations
+from app.api.v1.documents import processing as document_processing
+from app.api.v1.documents import versions as document_versions
+from app.services.documents import access as document_access_service
+from app.services.documents import batch_operations as document_batch_operations
+from app.services.documents import metadata_operations as document_metadata_operations
+from app.services.documents import processing as document_processing_operations
+from app.services.documents import qa as document_qa_service
 
 
 class _Query:
@@ -36,6 +37,9 @@ class _Query:
         return self._document
 
     def limit(self, _value):  # noqa: ANN001, ANN201
+        return self
+
+    def group_by(self, *_columns):  # noqa: ANN002, ANN201
         return self
 
     def scalar(self):  # noqa: ANN201
@@ -59,6 +63,9 @@ class _DB:
     def query(self, *_models):  # noqa: ANN001, ANN201
         return _Query(self.document)
 
+    def get_bind(self):  # noqa: ANN201
+        return SimpleNamespace(dialect=SimpleNamespace(name="postgresql"))
+
     def commit(self) -> None:
         self.commits += 1
 
@@ -66,6 +73,12 @@ class _DB:
         return None
 
     def rollback(self) -> None:
+        return None
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_args):
         return None
 
 
@@ -265,6 +278,7 @@ async def test_unassigned_document_processing_and_mutation_writes_require_edit_r
 ) -> None:
     document = _unassigned_document(access_mode="all_team_members", status="processing")
     db = _DB(document)
+    monkeypatch.setattr(document_processing_operations, "SessionLocal", lambda: db)
 
     monkeypatch.setattr(
         document_access_service.dataset_service,
@@ -363,12 +377,18 @@ async def test_document_processing_endpoints_use_shared_unassigned_acl(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    documents_module = document_processing
+    documents_module = document_processing.document_processing_operations
     document = _unassigned_document(
         access_mode="all_team_members", status="processing", file_path=str(tmp_path / "retry.txt")
     )
     Path(document.file_path).write_text("hello", encoding="utf-8")
     db = _DB(document)
+    monkeypatch.setattr(documents_module, "SessionLocal", lambda: db)
+
+    async def prepare(callback, *, recover_cancelled):
+        return callback(db)
+
+    monkeypatch.setattr(documents_module, "prepare_managed_handoff", prepare)
     sentinel = HTTPException(status_code=403, detail="shared-write-policy")
 
     monkeypatch.setattr(documents_module.dataset_service, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
@@ -411,6 +431,7 @@ async def test_document_processing_endpoints_use_shared_unassigned_acl(
             tenant_id=document.tenant_id,
             account_id="acct-1",
             db=db,
+            params=DocumentRetryQuery(),
         )
     assert retry_exc.value is sentinel
 
@@ -471,7 +492,7 @@ def test_document_mutation_endpoints_use_shared_unassigned_acl(monkeypatch: pyte
 
 
 def test_document_access_put_uses_shared_acl_management_policy(monkeypatch: pytest.MonkeyPatch) -> None:
-    from app.api.v1 import document_access
+    from app.api.v1.documents import access as document_access
 
     document = _unassigned_document(access_mode="all_team_members")
     db = _DB(document)
@@ -539,8 +560,7 @@ def test_document_access_management_preserves_dataset_write_authority(monkeypatc
 
 
 def test_documents_chunk_write_helper_delegates_to_shared_policy(monkeypatch: pytest.MonkeyPatch) -> None:
-    from app.api.v1 import document_chunks_write
-    from app.services import document_chunk_operations
+    from app.services.documents import chunks as document_chunk_operations
 
     document = _unassigned_document(access_mode="all_team_members")
     sentinel = HTTPException(status_code=403, detail="shared-write-policy")
@@ -553,7 +573,7 @@ def test_documents_chunk_write_helper_delegates_to_shared_policy(monkeypatch: py
     )
 
     with pytest.raises(HTTPException) as exc_info:
-        document_chunks_write._assert_document_writable_for_chunk_ops(
+        document_access_service.assert_document_writable_for_lifecycle(
             _DB(document),
             tenant_id=document.tenant_id,
             account_id="acct-1",
@@ -564,8 +584,8 @@ def test_documents_chunk_write_helper_delegates_to_shared_policy(monkeypatch: py
 
 
 def test_document_chunk_write_endpoints_use_shared_unassigned_acl(monkeypatch: pytest.MonkeyPatch) -> None:
-    from app.api.v1 import document_chunks_write
-    from app.services import document_chunk_operations
+    from app.api.v1.documents import chunks_write as document_chunks_write
+    from app.services.documents import chunks as document_chunk_operations
 
     document = _unassigned_document(access_mode="all_team_members")
     db = _DB(document)
@@ -578,8 +598,8 @@ def test_document_chunk_write_endpoints_use_shared_unassigned_acl(monkeypatch: p
         raising=True,
     )
     monkeypatch.setattr(
-        document_chunk_operations,
-        "_assert_document_writable_for_chunk_ops",
+        document_access_service,
+        "assert_document_writable_for_lifecycle",
         lambda *_args, **_kwargs: (_ for _ in ()).throw(sentinel),
         raising=True,
     )
@@ -621,7 +641,7 @@ def test_document_chunk_write_endpoints_use_shared_unassigned_acl(monkeypatch: p
 
 
 def test_document_batch_mutations_use_shared_unassigned_acl(monkeypatch: pytest.MonkeyPatch) -> None:
-    from app.api.v1 import document_batches
+    from app.api.v1.documents import batches as document_batches
 
     document = _unassigned_document(access_mode="all_team_members")
     db = _BatchDB([document])
@@ -660,7 +680,7 @@ def test_document_batch_mutations_use_shared_unassigned_acl(monkeypatch: pytest.
 
 
 def test_batch_move_to_unassigned_denies_non_owner_editor(monkeypatch: pytest.MonkeyPatch) -> None:
-    from app.api.v1 import document_batches
+    from app.api.v1.documents import batches as document_batches
 
     document = _unassigned_document(owner_id="other-owner", access_mode="all_team_members")
     document.dataset_id = uuid.uuid4()
@@ -692,7 +712,7 @@ def test_batch_move_to_unassigned_denies_non_owner_editor(monkeypatch: pytest.Mo
 
 
 def test_batch_move_to_unassigned_allows_owner_editor(monkeypatch: pytest.MonkeyPatch) -> None:
-    from app.api.v1 import document_batches
+    from app.api.v1.documents import batches as document_batches
 
     document = _unassigned_document(owner_id="editor-account", access_mode="all_team_members")
     original_dataset_id = uuid.uuid4()
@@ -725,7 +745,7 @@ def test_batch_move_to_unassigned_allows_owner_editor(monkeypatch: pytest.Monkey
 
 
 def test_batch_move_to_unassigned_allows_admin_override(monkeypatch: pytest.MonkeyPatch) -> None:
-    from app.api.v1 import document_batches
+    from app.api.v1.documents import batches as document_batches
 
     document = _unassigned_document(owner_id="other-owner", access_mode="only_me")
     original_dataset_id = uuid.uuid4()
@@ -791,11 +811,10 @@ def test_document_version_endpoints_use_shared_unassigned_acl(monkeypatch: pytes
     with pytest.raises(HTTPException) as diff_exc:
         document_versions.diff_document_versions(
             document_id=document.id,
-            from_pipeline_hash="v1",
-            to_pipeline_hash="v2",
             tenant_id=document.tenant_id,
             account_id="acct-1",
             db=db,
+            params=DocumentVersionDiffQuery.model_validate({"from": "v1", "to": "v2"}),
         )
     assert diff_exc.value is read_exc
 

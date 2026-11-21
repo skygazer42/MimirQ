@@ -10,7 +10,7 @@ listFrontendSourceFiles 返回 Node path.relative 的本机路径。Windows 返�
 
 文件扫描器在返回仓库相对路径时，将本机分隔符转换为正斜杠。实际读取仍通过 path.join 处理该路径；Node 在 Windows 和其他平台都接受这一仓库路径形式。所有消费方因此共享同一份路径约定，不增加独立路径工具或兼容分支。
 
-后端路由、前端调用和 OpenAPI 的解析表达式、扫描目录与扩展名、忽略集合、去重顺序、服务专用路由豁免、严格基线以及现有不可读文件处理保持。生产代理的转发身份清理、CSP、Sentry、构建和包体预算、开发／生产入口及资产同步也保持原文。
+正斜杠路径合同与模块解析独立；实际注册模块归属和声明输入不可读的处理由[注册模块扫描](../process/2026-11-15-api-contract-registered-module-resolution.md)接管。其他前端调用/OpenAPI解析、扫描目录与扩展名、忽略集合、去重顺序、服务专用路由豁免及严格基线保持。生产代理的转发身份清理、CSP、Sentry、构建和包体预算、开发／生产入口及资产同步也保持原文。
 
 ## Alternatives considered
 

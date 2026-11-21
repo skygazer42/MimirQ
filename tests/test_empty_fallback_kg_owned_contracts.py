@@ -5,11 +5,11 @@ from uuid import UUID
 import pytest
 from pydantic import ValidationError
 
-from app.models.document import DocumentChunk
-from app.rag.kg.api.routes_support.projection import _kg_event_node, _kg_relation_link
+from app.api.v1.knowledge_graph.routes_support.projection import _kg_event_node, _kg_relation_link
+from app.models.documents.records import DocumentChunk
+from app.models.knowledge_graph.entities import KgRelation, KgSourceEvent
 from app.rag.kg.extraction.extractor import _document_from_chunk, _populate_chunk_content_maps
 from app.rag.kg.extraction.processor import EventProcessor, _collect_event_entities
-from app.rag.kg.models import KgRelation, KgSourceEvent
 from app.rag.kg.repository import _format_lexical_event
 from app.rag.kg.search.ranking.features import event_document_id, event_search_text
 from app.rag.kg.search.tracker import build_event_node
@@ -17,9 +17,7 @@ from app.rag.kg.search.tracker import build_event_node
 
 def test_kg_chunk_identity_keeps_a_zero_chunk_index():
     chunk = DocumentChunk(id=UUID(int=2), document_id=UUID(int=1), chunk_index=0, content="first", doc_metadata={})
-    state = SimpleNamespace(
-        resolved_chunks=[chunk], chunk_hash_by_id={}, chunk_len_by_id={}, chunk_key_by_id={}
-    )
+    state = SimpleNamespace(resolved_chunks=[chunk], chunk_hash_by_id={}, chunk_len_by_id={}, chunk_key_by_id={})
 
     _populate_chunk_content_maps(state)
 
@@ -49,8 +47,13 @@ def test_kg_ranking_rejects_null_required_event_text(field):
 
 def test_kg_relation_projection_keeps_absent_optional_provenance():
     relation = KgRelation(
-        subject_entity_id=UUID(int=1), object_entity_id=UUID(int=2), predicate="uses", confidence=0.7,
-        document_id=None, chunk_id=None, event_id=None,
+        subject_entity_id=UUID(int=1),
+        object_entity_id=UUID(int=2),
+        predicate="uses",
+        confidence=0.7,
+        document_id=None,
+        chunk_id=None,
+        event_id=None,
     )
 
     link = _kg_relation_link(relation)
@@ -82,7 +85,9 @@ def test_kg_ranking_keeps_a_missing_optional_document_identity():
     assert event_document_id(event) is None
 
 
-@pytest.mark.parametrize("payload", [{"summary": "summary"}, {"title": "title", "summary": None}, {"title": "title", "summary": False}])
+@pytest.mark.parametrize(
+    "payload", [{"summary": "summary"}, {"title": "title", "summary": None}, {"title": "title", "summary": False}]
+)
 @pytest.mark.asyncio
 async def test_kg_event_extraction_rejects_invalid_external_response_text(payload):
     class Client:
@@ -97,8 +102,12 @@ async def test_kg_event_extraction_rejects_invalid_external_response_text(payloa
 @pytest.mark.parametrize("provenance, expected", [(None, None), (UUID(int=2), "00000000-0000-0000-0000-000000000002")])
 def test_kg_lexical_event_preserves_optional_provenance(provenance, expected):
     event = KgSourceEvent(
-        id=UUID(int=1), title="Policy", summary="summary", content="body",
-        document_id=provenance, chunk_id=provenance,
+        id=UUID(int=1),
+        title="Policy",
+        summary="summary",
+        content="body",
+        document_id=provenance,
+        chunk_id=provenance,
     )
 
     item = _format_lexical_event(event, terms=["policy"], tenant_id=UUID(int=3))
@@ -108,7 +117,7 @@ def test_kg_lexical_event_preserves_optional_provenance(provenance, expected):
 
 
 def test_kg_trace_node_passes_scalar_text_to_its_serializer(monkeypatch):
-    from app.core.config import settings
+    from app.infrastructure.config import settings
 
     monkeypatch.setattr(settings, "KG_SEARCH_NODE_TEXT_MAX_CHARS", 1000)
 

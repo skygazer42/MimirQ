@@ -4,8 +4,8 @@ function installPdfJsCompatPolyfills() {
       configurable: true,
       writable: true,
       value() {
-        let resolve = () => {}
-        let reject = () => {}
+        let resolve
+        let reject
         const promise = new Promise((innerResolve, innerReject) => {
           resolve = innerResolve
           reject = innerReject

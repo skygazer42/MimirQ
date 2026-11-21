@@ -1,6 +1,10 @@
 from typing import Any
 
 
+def _normalize_ids(values: list[str]) -> list[str]:
+    return [str(item).strip() for item in values or [] if item.strip()]
+
+
 def evaluate_retrieval_metrics(
     *,
     gold_chunk_ids: list[str],
@@ -8,9 +12,9 @@ def evaluate_retrieval_metrics(
     cited_chunk_ids: list[str],
     recall_k: int,
 ) -> dict[str, Any]:
-    gold = [str(item).strip() for item in gold_chunk_ids or [] if item.strip()]
-    retrieved = [str(item).strip() for item in retrieved_chunk_ids or [] if item.strip()][: max(1, int(recall_k or 1))]
-    cited = [str(item).strip() for item in cited_chunk_ids or [] if item.strip()]
+    gold = _normalize_ids(gold_chunk_ids)
+    retrieved = _normalize_ids(retrieved_chunk_ids)[: max(1, int(recall_k or 1))]
+    cited = _normalize_ids(cited_chunk_ids)
 
     if not gold:
         return {"recall_at_k": 0.0, "citation_coverage": 0.0}

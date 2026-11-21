@@ -1,5 +1,5 @@
 import { NavigationVisibilityGate } from '@/components/auth/navigation-visibility-gate'
-import { KGSnapshotsPage } from '@/components/graph/kg-snapshots-page'
+import { KGSnapshotsPage } from '@/components/graph/kg-snapshots/kg-snapshots-page'
 
 export default function GraphSnapshotsRoute() {
   return (

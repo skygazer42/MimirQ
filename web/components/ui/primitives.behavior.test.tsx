@@ -7,7 +7,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import commonMessages from '@/i18n/messages/zh-CN/common'
 import { IconButton } from './icon-button'
-import { Progress } from './progress'
 import { SearchInput } from './search-input'
 import { Switch } from './switch'
 import { TagInput } from './tag-input'
@@ -141,45 +140,120 @@ describe('TagInput shared add paths', () => {
     )
     expect(change).toHaveBeenLastCalledWith(['one', 'two', 'three'])
   })
-})
 
-describe('Progress native value semantics', () => {
-  it.each([
-    { value: 0, max: 100, state: 'loading', transform: 'translateX(-100%)' },
-    { value: 25, max: 50, state: 'loading', transform: 'translateX(-50%)' },
-    { value: 50, max: 50, state: 'complete', transform: 'translateX(-0%)' },
-  ])('exposes value $value of max $max with the same visual fraction', ({ value, max, state, transform }) => {
-    const ref = createRef<HTMLDivElement>()
-    render(<Progress ref={ref} value={value} max={max} aria-label="upload" />)
-    const progress = container.querySelector('[role="progressbar"]')!
-    expect(progress.getAttribute('aria-valuenow')).toBe(String(value))
-    expect(progress.getAttribute('aria-valuemax')).toBe(String(max))
-    expect(progress.getAttribute('data-state')).toBe(state)
-    expect((progress.firstElementChild as HTMLElement).style.transform).toBe(transform)
-    expect(ref.current).toBe(progress)
+  it('keeps a rejected tag available for correction instead of clearing the draft', () => {
+    const change = vi.fn()
+    render(<TagInput value={['one', 'two']} onValueChange={change} maxTags={2} />)
+    const input = container.querySelector('input')!
+    typeText(input, 'three')
+    act(() => input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })))
+    expect(input.value).toBe('three')
+    expect(container.querySelector('[role="alert"]')).not.toBeNull()
   })
 
-  it.each([null, undefined])('retains indeterminate semantics for %s', (value) => {
-    render(<Progress value={value} aria-label="upload" />)
-    const progress = container.querySelector('[role="progressbar"]')!
-    expect(progress.hasAttribute('aria-valuenow')).toBe(false)
-    expect(progress.getAttribute('data-state')).toBe('indeterminate')
-    expect((progress.firstElementChild as HTMLElement).style.transform).toBe('translateX(-100%)')
+  it('does not commit an IME confirmation key as a new tag', () => {
+    const change = vi.fn()
+    render(<TagInput value={[]} onValueChange={change} />)
+    const input = container.querySelector('input')!
+    typeText(input, '中文')
+    act(() =>
+      input.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Enter', isComposing: true, bubbles: true, cancelable: true }),
+      ),
+    )
+    expect(change).not.toHaveBeenCalled()
+    expect(input.value).toBe('中文')
   })
 
-  it('keeps Radix invalid-range diagnostics and the same indicator fraction after its fallback', () => {
-    const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined)
-    render(<Progress value={20} max={0} />)
-    let progress = container.querySelector('[role="progressbar"]')!
-    expect(progress.getAttribute('aria-valuemax')).toBe('100')
-    expect(progress.getAttribute('aria-valuenow')).toBe('20')
-    expect((progress.firstElementChild as HTMLElement).style.transform).toBe('translateX(-80%)')
-    render(<Progress value={60} max={50} />)
-    progress = container.querySelector('[role="progressbar"]')!
-    expect(progress.hasAttribute('aria-valuenow')).toBe(false)
-    expect(progress.getAttribute('data-state')).toBe('indeterminate')
-    expect((progress.firstElementChild as HTMLElement).style.transform).toBe('translateX(-100%)')
-    expect(errors).toHaveBeenCalledTimes(2)
+  it('accepts a tag within the server Unicode character limit', () => {
+    const change = vi.fn()
+    const tag = '😀'.repeat(64)
+    render(<TagInput value={[]} onValueChange={change} />)
+    typeText(container.querySelector('input')!, tag)
+    act(() =>
+      container
+        .querySelector('input')!
+        .dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })),
+    )
+    expect(change).toHaveBeenLastCalledWith([tag])
+  })
+
+  it('retains the rejected part of a mixed batch and prevents its form from saving over that text', () => {
+    const save = vi.fn((event: FormEvent<HTMLFormElement>) => event.preventDefault())
+    function Tags() {
+      const [tags, setTags] = useState(['one'])
+      return (
+        <form onSubmit={save}>
+          <TagInput value={tags} onValueChange={setTags} maxTags={2} />
+          <button type="submit">Save tags</button>
+          <output>{JSON.stringify(tags)}</output>
+        </form>
+      )
+    }
+    render(<Tags />)
+    const input = container.querySelector('input')!
+    typeText(input, 'TWO, three, four')
+    act(() => input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })))
+    expect(container.querySelector('output')!.textContent).toBe('["one","TWO"]')
+    expect(input.value.split(',').map((tag) => tag.trim())).toEqual(['three', 'four'])
+    expect(input.checkValidity()).toBe(false)
+    act(() => container.querySelector<HTMLButtonElement>('button[type="submit"]')!.click())
+    expect(save).not.toHaveBeenCalled()
+    typeText(input, '')
+    expect(input.checkValidity()).toBe(true)
+    act(() => container.querySelector<HTMLButtonElement>('button[type="submit"]')!.click())
+    expect(save).toHaveBeenCalledOnce()
+  })
+
+  it('preserves an uncommitted draft and rejected pasted tokens while accepting only the available slot', () => {
+    function Tags() {
+      const [tags, setTags] = useState(['one'])
+      return (
+        <>
+          <TagInput value={tags} onValueChange={setTags} maxTags={2} />
+          <output>{JSON.stringify(tags)}</output>
+        </>
+      )
+    }
+    render(<Tags />)
+    const input = container.querySelector('input')!
+    typeText(input, 'draft')
+    act(() => {
+      const event = new Event('paste', { bubbles: true, cancelable: true })
+      Object.defineProperty(event, 'clipboardData', { value: { getData: () => 'two,three,four' } })
+      input.dispatchEvent(event)
+    })
+    expect(container.querySelector('output')!.textContent).toBe('["one","two"]')
+    expect(input.value).toBe('draft, three, four')
+  })
+
+  it('keeps an uncommitted rejected tag after removing another tag makes room for it', () => {
+    const save = vi.fn((event: FormEvent<HTMLFormElement>) => event.preventDefault())
+    function Tags() {
+      const [tags, setTags] = useState(['one', 'two'])
+      return (
+        <form onSubmit={save}>
+          <TagInput value={tags} onValueChange={setTags} maxTags={2} />
+          <button type="submit">Save tags</button>
+        </form>
+      )
+    }
+    render(<Tags />)
+    const input = container.querySelector('input')!
+    typeText(input, 'three')
+    act(() => input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })))
+    act(() => input.dispatchEvent(new FocusEvent('focusout', { bubbles: true })))
+    act(() => container.querySelector<HTMLButtonElement>('button[aria-label="移除标签 one"]')!.click())
+    expect(input.value).toBe('three')
+    act(() => container.querySelector<HTMLButtonElement>('button[type="submit"]')!.click())
+    expect(save).not.toHaveBeenCalled()
+    const add = Array.from(container.querySelectorAll<HTMLButtonElement>('button')).find(
+      (button) => button.textContent === '添加',
+    )!
+    act(() => add.click())
+    expect(input.value).toBe('')
+    act(() => container.querySelector<HTMLButtonElement>('button[type="submit"]')!.click())
+    expect(save).toHaveBeenCalledOnce()
   })
 })
 

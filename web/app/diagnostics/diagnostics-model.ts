@@ -4,7 +4,14 @@ import { buildRagPreviewDiagnosticsSummary } from '@/lib/rag-preview-diagnostics
 export type JsonRecord = Record<string, unknown>
 export type Tone = 'neutral' | 'success' | 'warning' | 'danger' | 'info'
 export type Verdict = { label: string; tone: Tone }
+export type ProbeStatus = 'idle' | 'running' | 'success' | 'error'
 export type Metric = { key: string; label: string; value: string; unit: string; source: string; raw: number | null }
+
+export function currentProbeVerdict(status: ProbeStatus, runningLabel: string, result: Verdict): Verdict {
+  if (status === 'running') return { label: runningLabel, tone: 'info' }
+  if (status === 'error') return { label: '请求失败', tone: 'danger' }
+  return result
+}
 export function record(value: unknown): JsonRecord {
   return value !== null && typeof value === 'object' && !Array.isArray(value) ? (value as JsonRecord) : {}
 }
@@ -16,7 +23,7 @@ export function readNumber(value: unknown): number | null {
   const n = Number(value)
   return Number.isFinite(n) ? n : null
 }
-export function firstNumber(source: unknown, keys: string[]) {
+function firstNumber(source: unknown, keys: string[]) {
   const obj = record(source)
   for (const key of keys) {
     const value = readNumber(obj[key])
@@ -41,69 +48,72 @@ export function timestamp(value?: string | number | null) {
 }
 
 export function metricRows(preview: PromptPreviewResponse | null): Metric[] {
-  const metrics = record(preview?.metrics),
-    pending = preview === null
-  const metric = (key: string, label: string, keys: string[], unit = '', seconds = false): Metric => {
-    let picked = firstNumber(metrics, keys),
-      value = picked?.value ?? null,
-      source = picked ? `metrics.${picked.key}` : 'metrics'
-    if (key === 'latency' && value === null) {
-      picked = firstNumber(metrics, ['elapsed_sec', 'duration_sec', 'latency_sec', 'retrieval_elapsed_sec'])
-      value = picked ? picked.value * 1000 : null
-      source = picked ? `metrics.${picked.key}` : 'metrics'
-    }
-    if (seconds && value !== null) value *= 1000
-    return {
-      key,
-      label,
-      raw: value,
-      value: value === null ? (pending ? '待执行' : '未返回') : numeric(value),
-      unit,
-      source,
-    }
-  }
+  const metrics = record(preview?.metrics)
+  const missingValue = preview === null ? '待执行' : '未返回'
+  const metric = (key: string, label: string, reading: ReturnType<typeof firstNumber>, unit = ''): Metric => ({
+    key,
+    label,
+    raw: reading?.value ?? null,
+    value: reading === null ? missingValue : numeric(reading.value),
+    unit,
+    source: reading === null ? 'metrics' : `metrics.${reading.key}`,
+  })
+
+  const elapsedSeconds = readNumber(metrics.elapsed_sec)
+  const latency = elapsedSeconds === null ? null : { key: 'elapsed_sec', value: elapsedSeconds * 1000 }
+
   const citations = Array.isArray(preview?.citations) ? preview.citations.length : null
   return [
     {
       key: 'citations',
       label: '召回引用',
       raw: citations,
-      value: citations === null ? (pending ? '待执行' : '未返回') : String(citations),
+      value: citations === null ? missingValue : String(citations),
       unit: '条',
       source: 'citations',
     },
-    metric('tokens', '提示词 token', ['prompt_tokens', 'total_prompt_tokens', 'input_tokens', 'tokens_prompt']),
-    metric('contexts', '上下文 token', ['context_tokens', 'context_token_count']),
-    metric('history', '历史 token', ['history_tokens', 'history_token_count']),
-    metric('latency', '执行耗时', ['latency_ms', 'duration_ms', 'elapsed_ms', 'total_ms', 'retrieval_ms'], 'ms'),
-    metric('relevance', '检索相关性', [
-      'retrieval_score',
-      'retrieval_relevance',
-      'retrieval_relevance_score',
+    metric('tokens', '提示词 token', firstNumber(metrics, ['prompt_tokens'])),
+    metric('contexts', '上下文 token', firstNumber(metrics, ['context_tokens'])),
+    metric('history', '历史 token', firstNumber(metrics, ['history_tokens'])),
+    metric('latency', '执行耗时', latency, 'ms'),
+    metric(
       'relevance',
-      'similarity_score',
-      'similarity',
-    ]),
-    metric('context', '上下文相关性', [
-      'context_relevance',
-      'context_relevancy',
-      'context_score',
-      'context_precision',
-      'context_precision_score',
-    ]),
-    metric('generation', '生成质量', [
-      'generation_quality',
-      'answer_quality',
-      'response_relevancy',
-      'response_relevance',
-    ]),
-    metric('faithfulness', '事实一致性', [
+      '检索相关性',
+      firstNumber(metrics, [
+        'retrieval_score',
+        'retrieval_relevance',
+        'retrieval_relevance_score',
+        'relevance',
+        'similarity_score',
+        'similarity',
+      ]),
+    ),
+    metric(
+      'context',
+      '上下文相关性',
+      firstNumber(metrics, [
+        'context_relevance',
+        'context_relevancy',
+        'context_score',
+        'context_precision',
+        'context_precision_score',
+      ]),
+    ),
+    metric(
+      'generation',
+      '生成质量',
+      firstNumber(metrics, ['generation_quality', 'answer_quality', 'response_relevancy', 'response_relevance']),
+    ),
+    metric(
       'faithfulness',
-      'faithfulness_score',
-      'factual_consistency',
-      'fact_consistency',
-    ]),
-    metric('safety', '安全评分', ['safety_score', 'safety', 'policy_compliance', 'compliance_score']),
+      '事实一致性',
+      firstNumber(metrics, ['faithfulness', 'faithfulness_score', 'factual_consistency', 'fact_consistency']),
+    ),
+    metric(
+      'safety',
+      '安全评分',
+      firstNumber(metrics, ['safety_score', 'safety', 'policy_compliance', 'compliance_score']),
+    ),
   ]
 }
 export type Channel = {
@@ -143,9 +153,9 @@ export function buildChannels(explain: unknown): Channel[] {
             )),
       )
   return entries.map(([key, value]) => {
-    const kind = /vector|dense|semantic|colbert|colpali/i.test(key)
+    const kind = /vector|dense|semantic/i.test(key)
       ? 'vector'
-      : /keyword|lexical|sparse|bm25|fulltext/i.test(key)
+      : /keyword|lexical|bm25|fulltext/i.test(key)
         ? 'keyword'
         : /graph|^kg(?:_|$)/i.test(key)
           ? 'graph'
@@ -157,17 +167,14 @@ export function buildChannels(explain: unknown): Channel[] {
       keyword: '关键词召回',
       bm25: '关键词召回',
       lexical: '词法召回',
-      sparse: '稀疏召回',
       graph: '图谱召回',
       kg: '图谱召回',
-      colbert: 'ColBERT 召回',
-      colpali: 'ColPali 召回',
     }
     const count =
       firstNumber(value, ['candidate_count', 'candidates', 'returned_count', 'hits'])?.value ?? readNumber(value)
     return {
       key,
-      label: names[slug] ?? slug,
+      label: Object.hasOwn(names, slug) ? names[slug] : slug,
       kind,
       count: count !== null && count >= 0 ? count : null,
       evidence: { field: nested.length ? `channels.counts.${key}` : `channels.${key}`, value },
@@ -175,8 +182,8 @@ export function buildChannels(explain: unknown): Channel[] {
   })
 }
 export function rerankState(explain: unknown, config: unknown): Verdict {
-  const used = record(record(explain).rerank).used,
-    enabled = record(config).enable_reranker
+  const used = record(record(explain).rerank).used
+  const enabled = record(config).enable_reranker
   if (used === true) return { label: '已执行', tone: 'success' }
   if (used === false) return { label: enabled === false ? '未启用' : '未执行', tone: 'neutral' }
   if (enabled === false) return { label: '未启用', tone: 'neutral' }
@@ -184,20 +191,20 @@ export function rerankState(explain: unknown, config: unknown): Verdict {
   return { label: '未返回', tone: 'neutral' }
 }
 export function dependencyState(primary: unknown, secondary?: unknown): Verdict {
-  const p = record(primary),
-    obj = Object.keys(p).length ? p : record(secondary),
-    status = String(obj.status ?? obj.state ?? '').toLowerCase()
+  const primaryDetails = record(primary)
+  const details = Object.keys(primaryDetails).length > 0 ? primaryDetails : record(secondary)
+  const status = String(details.status ?? details.state ?? '').toLowerCase()
   if (
-    obj.backend === 'memory' &&
-    obj.ok !== false &&
+    details.backend === 'memory' &&
+    details.ok !== false &&
     !['error', 'failed', 'unhealthy', 'unavailable', 'disconnected'].includes(status)
   )
     return { label: '内存模式', tone: 'neutral' }
-  if (obj.enabled === false || ['disabled', 'skipped', 'not_configured', 'not-enabled'].includes(status))
+  if (details.enabled === false || ['disabled', 'skipped', 'not_configured', 'not-enabled'].includes(status))
     return { label: '未启用', tone: 'neutral' }
-  if (obj.ok === false || ['error', 'failed', 'disconnected', 'unhealthy', 'unavailable'].includes(status))
+  if (details.ok === false || ['error', 'failed', 'disconnected', 'unhealthy', 'unavailable'].includes(status))
     return { label: '异常', tone: 'danger' }
-  if (obj.ok === true || ['ready', 'connected', 'ok', 'healthy', 'online', 'enabled', 'success'].includes(status))
+  if (details.ok === true || ['ready', 'connected', 'ok', 'healthy', 'online', 'enabled', 'success'].includes(status))
     return { label: '已连接', tone: 'success' }
   if (status === 'degraded') return { label: '降级', tone: 'warning' }
   return { label: '未知', tone: 'neutral' }
@@ -234,9 +241,7 @@ export function driftVerdict(payload: unknown): Verdict & {
 export function perfVerdict(payload: unknown): Verdict {
   const p = record(payload)
   if (!Object.keys(p).length) return { label: '待执行', tone: 'neutral' }
-  const diff = record(p.diff),
-    gate = record(diff.strict_gate),
-    passed = typeof gate.passed === 'boolean' ? gate.passed : typeof diff.ok === 'boolean' ? diff.ok : null
+  const passed = record(record(p.diff).strict_gate).passed
   if (passed === true) return { label: '通过', tone: 'success' }
   if (passed === false) return { label: '未通过', tone: 'warning' }
   return { label: '结论未返回', tone: 'neutral' }
@@ -257,7 +262,6 @@ export function performanceRows(payload: unknown) {
       path: text(c.path),
       iterations: readNumber(c.iterations),
       okCount: readNumber(c.ok_count),
-      okRatio: readNumber(c.ok_ratio),
       p50: readNumber(latency.p50),
       p95: readNumber(latency.p95),
       p99: readNumber(latency.p99),
@@ -287,8 +291,6 @@ export function previewSummary(result: PreviewResult | null) {
     promptPreview: result?.preview ?? null,
     explain: result?.explain ?? null,
     configHash: result?.configHash ?? null,
-    explainEnabled: Boolean(result && !result.contractReason),
-    contractReason: result?.contractReason ?? null,
   })
   const truthyFlag = (s: string) => !/^\w+: false$/.test(s)
   const envelope = channelEnvelope(result?.explain),
@@ -315,15 +317,18 @@ export function previewSummary(result: PreviewResult | null) {
   }
 }
 export function validateParams(kind: 'drift' | 'perf', first: string, second: string): Record<string, string> {
-  const a = readNumber(first),
-    b = readNumber(second),
-    errors: Record<string, string> = {}
+  const count = readNumber(first)
+  const errors: Record<string, string> = {}
   if (kind === 'drift') {
-    if (a === null || !Number.isInteger(a) || a < 1 || a > 2000) errors.first = '采样数量需为 1–2,000 的整数。'
-    if (b === null || b < 0 || b > 1) errors.second = '相似度阈值需为 0–1。'
+    const threshold = readNumber(second)
+    if (count === null || !Number.isInteger(count) || count < 1 || count > 2000)
+      errors.first = '采样数量需为 1–2,000 的整数。'
+    if (threshold === null || threshold < 0 || threshold > 1) errors.second = '距离阈值需为 0–1。'
   } else {
-    if (a === null || !Number.isInteger(a) || a < 1 || a > 200) errors.first = '迭代次数需为 1–200 的整数。'
-    if (b === null || b < 0.05 || b > 10) errors.second = '超时需为 0.05–10 秒。'
+    const timeoutSeconds = readNumber(second)
+    if (count === null || !Number.isInteger(count) || count < 1 || count > 200)
+      errors.first = '迭代次数需为 1–200 的整数。'
+    if (timeoutSeconds === null || timeoutSeconds < 0.05 || timeoutSeconds > 10) errors.second = '超时需为 0.05–10 秒。'
   }
   return errors
 }

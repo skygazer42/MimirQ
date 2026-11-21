@@ -1,5 +1,110 @@
 # 验证记录
 
+## 2026-11-20 后端异常处理复核
+
+按实际调用链复核了 `app/` 中 194 处宽泛捕获后只执行一条 `return`、`pass` 或 `continue` 的分支。处理了其中 101 处，保留 93 处已有恢复、可选降级或失败回执约定的分支。46 份后端源码的复核结论和当前 SHA-256 已登记。复扫按同一口径统计，应用内捕获 `Exception` 的分支由 1,220 处降至 1,132 处，单语句候选由 194 处降至 94 处。[后端逐文件清单](backend-review-20261118.csv)
+
+- Milvus 查询失败由向量漂移检查返回明确的失败状态。成功读取但无匹配记录仍按缺失向量统计。
+- 预检样本复核文件缺失时可开始首次保存。读取或解析现有文件失败时，更新请求报错并保留原文件。Confluence 对账查询失败交给运行任务的回滚和失败处理。
+- 报告的主查询出错时交给 API 错误处理。知识图谱的已知数据转换错误通过保存点隔离，报告可继续读取其他内容。版本清理的候选查询使用保存点，保留此前已写入的缓存版本，并在作业摘要中记录查询错误。
+- 诊断日志下载要求脱敏成功。无效的引用计数保留未知状态，避免纳入零命中统计。指标写入和队列观测保留既有旁路行为，故障日志只记录异常类型。
+
+Ruff、格式、Python 3.11 语法、内存编译和模块边界检查通过。无网络连接的冷 OpenAPI 导出与 11 月 19 日基线比对一致，覆盖 357 个路径和 692 个 schema。定向验证覆盖预检文件保护、向量读取故障、报表错误、事务保存点、队列和强制脱敏。
+
+前端 844 个手写业务 TypeScript 文件中未发现显式 `any`、`@ts-ignore` 或 `@ts-nocheck`。语法树识别出 15 个无语句的 `catch`，其中 4 个也没有说明注释。TypeScript 和改动文件的 ESLint、Prettier 通过。Chrome 使用模拟 API 验证了登录、命令菜单、数据集列表、治理页手机流程和漂移诊断的 8 个场景。Python 测试按约定跳过，实际 PostgreSQL、Redis、Milvus、模型和前后端联调尚未覆盖。
+
+## 2026-11-19 后端全文复核
+
+当前清单覆盖 1,357 份现行后端 Python 源码和 27 份历史迁移。1,146 份完成本轮全文复核，161 份沿用与当前源码一致的既有审阅，50 份结合既有正文审阅核对了代码差异和调用方。逐项登记处理理由和 SHA-256。累计调整 539 份，其中本次续作调整 40 份。[后端逐文件清单](backend-review-20261118.csv)
+
+- Dify 预热由服务层持有，应用入口直接调度。HTTP 请求与预热共用检索参数组装，异步引用补全只筛选一次。隔离断言覆盖禁用、跳过、锁占用重试、超时和取消，以及关闭会话、停止续租、释放租约的顺序。
+- 聊天缓存读取实际交给模型的历史。默认无历史模式会跳过包含摘要的请求。允许有历史时，第三版缓存键以有序历史区分上下文，第二版缓存按原有效期自然过期。流式准备和非流式路由的隔离断言均通过。
+- 跨线程流式事件由所属事件循环完成入队与去重。查询扩展共用裁剪规则，按字面量保留反斜杠，按预算停止枚举别名。队列满和重发断言通过，查询扩展通过 90 组字典对照与别名顺序断言。
+- 文档上传和批量预检的暂存文件回收、嵌入迁移的筛选顺序、检索许可的取消清理分别通过定向断言。健康探针检查 Redis 返回的 `PONG`，并继续按配置区分必需与可选依赖。
+- 30 个 ORM 文件完成全文复核。知识图谱的默认租户按配置解析，非法配置显示原始 UUID 错误。53 张表的 PostgreSQL DDL、索引、映射属性和关系快照一致。
+- 对象存储共 6 个文件已全文复核。S3 兼容客户端共用现有初始化状态锁。MinIO 内存读取断言覆盖长度上限、读取期间对象变大、无上限及响应关闭。Ruff 和格式检查覆盖以上两个批次。
+- Milvus 只在能省去元数据推送条件时重试，重试保留租户范围。内存向量写入在批次全部匹配后落地，正常检索分数及排序经离线对照。
+- 七种任务共用入队和回执处理，画像和预检共用租户查询、锁和状态流程。已有完成记录的文档重投保持独立。取消下载时等待线程退出后删除暂存文件。八个 worker 签名和十组扫描状态通过隔离对照。
+- 连接器服务完成 30 份源码复核。离线覆盖 ACL 统计、零抓取预算、失败续跑、MinIO 游标和远端列表不完整时的清理边界。文档治理完成 36 份源码复核，格式、去重和标注共通过 1,170 组常规对照。
+- 基础设置保留 1,260 个字段、31 组别名和四份 Pydantic schema。43 组启动场景及配置来源优先级一致。安全与例外处理覆盖 OIDC/JWKS 缓存、轮换键和 422 响应编码。
+- 解析服务保留零置信度，本地和在线 MinerU 共用 ZIP 转换。索引修复覆盖第 0 页、短向量回执、重试清理和状态刷新。离线断言核对了存储路径、字段、清理及提交顺序。
+- 两种模板复用加权选择，保持正常分流和顺序，零权重不会抢占正权重。证据看板按唯一证据统计其他桶，导入只遍历一次。评估脱敏同时处理内嵌 JSON 和比较下载名。
+- 模型调用完成 13 份 embedding 与 21 份 LLM 源码复核。嵌入维度冲突在缓存回填前报错。415 组 LLM 输出对照覆盖工具 ID、流关闭、图片预算和 33 个内置模板。
+- RAG runtime 完成 28 份复核，232 组对照核对历史、流事件、取消和 SQLite 检查点。14 份检索策略和 14 份安全规则完成复核，范围、规则优先级和证据预算经离线对照。
+- 表格查询按 UTF-8 增量限制结果，损坏 CSV 保留旧表；连接规划复用候选诊断，默认 SQL 和排序结果一致。索引补偿需明确收到向量 ID，状态查询复用就绪摘要。
+- Compose 服务与端口共用一次诊断，OpenAPI 工具从仓库根读取，清理失败有明确返回。模拟解析器状态表与 109 份手册内容一致，未写入文档产物。
+- 分块策略的尾窗、文档页码、Markdown 标题层级和结构化输入边界通过定向断言。代理和工作流通过 381 组前后对照，覆盖权限范围、调用标识、顺序和取消清理。
+- 图谱噪声统计在一次 SQL 查询中完成，节点和边的快照差异复用同一流程。四条仓储范围语句及绑定参数与 PostgreSQL 编译基线一致。容器解析入口通过替身验证超时、顺序和产物目录，Qianfan 的两页 PDF 渲染通过本地夹具。
+- 保留附带插件的受证明源码。仅用只读描述确认其 [既有测试证明](../../../plugins/pipelines/changzhou-gov-service-knowledge/.mimirq-plugin-test.json) 已过期，同一包的相对路径与绝对路径在修改前后都产生不同的摘要。该插件的证明文件和受证明 Python 文件均保持开工指纹。
+- 解析修复覆盖 CSV 换行与行数上限、JSON 字节输入的 BOM、GLM-OCR 重试产物、跨页表格保留原文、表格裁剪结果对齐和子进程日志上限。模型路径通过离线替身验证裁剪槽位与输出坐标。
+- 知识图谱删去重复候选字段转换和无效引用窗口扩展，9,042 组引用对照和 1,152 组提示词与模型输出对照一致。检索预算和追踪脚本分别完成 15,145 组及 43 组离线对照。命令行回归覆盖缺少响应 ID、直接启动、文件清理边界及报告路径冲突。
+
+最终核对 1,384 个路径、行数和 SHA-256。1,357 个现行源码全部通过 Ruff、格式、Python 3.11 语法和 Python 3.12.14 内存编译检查。模块边界检查通过，包含一条已登记的迁移例外。完整应用冷导出的 357 个路径和 692 个 schema 与基线一致，规范化 SHA-256 为 `074b95fbb7025c33e2cf4c18b94c27cf35ab83f42fc378cb6d129fc58f4ea966`。本轮按约定跳过 pytest，未联调实际数据库、Redis 或模型服务。
+
+## 2026-11-18 后端逐文件复核
+
+本轮以 `feat/ragvia-ui` 的现有工作区为起点，按 `python-coding-guidelines` 核对 `app`、CLI、容器入口、插件和 Alembic 环境。1,356 个现行 Python 文件全部进入静态检查。192 个文件做了源码或近期改动复核，25 个核对了迁移后的导入，1 个仅调整排版，1,138 个沿用与当前指纹一致的审阅记录。共调整 46 个文件，另登记 27 个历史迁移。[逐文件清单](backend-review-20261118.csv)
+
+检索解释模型归入 schema，Dify 的缓存键由服务层统一生成。共享 JSONL 读取器按字节上限读取，文件在读取期间继续追加也受该上限约束。解析与检索使用显式零值，KG 注入上限为零时跳过注入，首尾带空格的 PageRank 选项仍进入对应算法。队列首投和重投共用参数，HTTP 重试在关闭失败响应后统一等待和退避。Alembic 的在线和离线入口使用应用配置中的数据库地址。
+
+1,356 个文件通过 Ruff、格式、Python 3.11 语法解析和内存编译。源码检查核对 8,487 个 `from` 导入绑定、178 个直接 `app` 导入和 10 个字面量动态模块名，唯一使用懒加载的绑定是现有分块策略 `SeparatorChunker`。完整应用的冷导出与本轮基线字节一致，含 357 个路径和 692 个 schema。隔离断言覆盖 Dify 的九组缓存键、KG 零值和重排选择、JSONL 读取、队列回执、HTTP 重试及关闭、线程取消、Alembic 配置和脚本报告对照。
+
+模块边界基线删除 60 条已不存在的路径记录。边界命令仍返回失败，报告应用入口调用 Dify 预热启动和停止的两处既有依赖。本轮按约定跳过 pytest，以及真实数据库、Redis、模型和部署联调。
+
+## 2026-11-16：RAG ingestion 生命周期归位
+
+解析、治理、分块、解析后处理和索引编排已归入 `app/rag/ingestion`：当前包含 124 个 parsing 源、37 个 governance 源、104 个 chunking 源、14 个 indexing 源和统一 `pipeline.py`。原 127 个解析 Python、134 个资源、原始文件适配、治理规则、Document 分块、Indexer、向量写入器和索引通道均已同步迁移；API、任务、脚本和 connector 的生产引用已更新。HTTP 上传、URL 下载和请求校验仍由 API/文档应用层持有，RAG ingestion 只持有知识生命周期编排。
+
+1,382 个 Python 源通过 Python 3.11 AST/compile；4,915 处 app 导入无失联。Ruff check、format check 和 `git diff --check` 通过。Parser factory、subprocess worker、governance processor、chunker factory、pipeline、Indexer 和模型清单冷导入通过；12 个模型资源路径指向新的 parsing/resources。冷 OpenAPI 保持 358 paths、422 routes、671 schemas。旧 `app.parsing`、旧 `app.rag.chunking`、旧 `app.rag.preprocessing` 和旧 indexing import 在生产源码/脚本中为 0。
+
+本批未运行 pytest、真实解析模型、OCR、数据库事务、向量服务或 Docker；原有测试修改属于工作区既有状态，本批没有写入 tests。Git index、分支和 HEAD 保持，未提交或推送。当前覆盖清单已按 1,375 个 app 文件和新 ingestion 路径更新；缓存目录需要按之前给出的 PowerShell 命令由用户手动清理。
+
+## 2026-11-15：RAG 职责拆解与目录归位
+
+以当前 feat/ragvia-ui、HEAD619ba7d11、1,171 份 app 源和原有 17 项暂存删除为起点。职责拆解与调用迁移覆盖 215 个模块位置；不是把旧支持目录整体换个名字。检索入口拆出查询展开、执行、融合、图谱证据、重排、补召回、诊断和结果阶段，23 个阶段顺序保持；LangGraph 的 state/context/generation/answers/metrics/tasks/workflow 各有实际 owner。无状态 DocUtilsMixin、仅为旧测试保留的 engine/KG 透传和重排的六层单实现 wrapper 退出。
+
+原始文件策略归 chunking/files：PDF 后端、Markdown 读取、每文件契约和格式调度分开；文本策略按内容类型归类，JSON 与源码各自持有实现。83 个策略 ID、顺序、别名、实验/可选依赖标志保持，81 个非可选策略实际冷导入成功；文件解析器未被提前加载。preprocessing 与 evaluation 按实际职责归类，数据集与其余 152 资源保持字节。流式/Graph、checkpoint 和 store 归 runtime；智能体工具与中间件归 agents，agents 包标记不再提前导入 runner。CI 内嵌 import、NOTICE 与中英文入口文档同步。
+
+独立复核将 11,947 个起点顶层定义按明确的导入/日志/绑定变换核同，另核同 15 项方法转函数；不是把 AST 对照称为全文业务重审。复核发现的两处智能体文档工具漏迁已修，512 组独立文档合并对照通过，旧 engine 方法不再恢复。作者另完成 RRF 1,728、查询去重 5、择优 25、实际 agent 消费 72 组对照；重排 2,144、文件流 58、JSON/源码分块 672 组有限对照通过。Graph 的 75 个默认字段、79 个 state 字段、6 个 runtime 字段一致，113 组状态构造、512 上下文、12 历史、6 图装配和 12 内存图执行通过。
+
+Graph 初探与定位共拦截两次 tiktoken 首用资源下载，实际连接为零；最终只在验证进程选择既有离线估算路径，网络/数据库尝试为零。冷检查在子进程使用明确的 provider=none、内存 checkpoint、关闭 store，绕开本地既有退役 ltr 配置；未改 .env。上述证明不代表真实 tokenizer、模型/检索、数据库事务、持久化恢复或服务部署成功。
+
+全部 1,221 app 源通过 Ruff/格式；应用与脚本 1,381 源的 Python 3.11 AST/内存编译及 4,930 处 app 导入绑定无失联。完整冷 OpenAPI 与上一批完全一致：358 paths、422 routes、671 schemas。747 个测试文件（含 610 Python）及原暂存保持，未新增/修改/运行 pytest，未提交或推送。当前 1,373 个 app 文件均绑定最终哈希，Python 净增 50 来自职责拆分与必要包标记，不计作削减文件。完整验收、清单和环境限制见 rag-structure-verification.json。
+
+现有模块依赖 CLI 仍返回失败：起点与当前各有相同两处发现，没有新增，也未改写 ratchet 基线。笔记格式及归档检查通过；目录链接检查仍有相同十处历史缺失引用。上述原有失败单列在验收记录中，不宣称全仓检查全部通过。
+
+## 2026-11-15：解析能力吸收与重复实现退出
+
+用户明确要求将 DeepDoc 拆开融入 parsing，而非保留独立包。正式 before `codex-parsing-absorb-before-20261115.json` 承接上一轮未提交的目录迁移、HEAD619ba7d11、全部1,342个app字节和610个测试，未恢复旧代码或新建分支。
+
+活跃代码按格式、模型推理、增强与公共规则整合：旧30份 DeepDoc源和1份薄分词包装退出，8份必要算法文件加入，Office／HTML／JSON／文本／表格／图片能力实际合入既有维护位置。当前app为1,319文件／1,167 Python／152资源；1,160项目维护Python完成（724A436C），7份派生Python保留，0pending。配对的172份原源码到149份当前源码，48,564→45,408行、2,345→2,177定义；统计包含既有未变解析文件与必要脚本，不把移动路径或资源当作新增代码完成额度。
+
+真实减法包含五份相同codec表／检测、两个默认分词实例、两份图片转Markdown及两份同体上下文拼图、DOCX空继承、ZIP静态类壳和parser包懒导出。通用／书籍／法规PDF流程离开分块模块，保各自顺序与模型。TSR组装融现table adapter并保表头／span／原地修改，TATR几何、Jieba与Trie／NLTK和两套真实ONNX runtime政策不凭相似强合。无消费者的演示、重复OCR、旧本地Docling与PPT副本退出，已有PPTX与Docling服务保持。唯一包级beartype hook已退，源中0consumer／当前已装包0transitive requirer，其直接pin删除；未安装或升级依赖。
+
+原有调用缺陷随实际接线修正：HTML多出的第三参数、book把函数当模块、General PDF多传zoomin与不存在的final方法、MinerU可用性二元组当bool，以及StandardizeImage固定调度的类名失配。VLM与MinerU去掉无关三模型构造，VLM PDF通过已有库context退出时关闭。Root6组有界证明含原错误复现、健康／失败合同、真实内存Pillow像素与身份、构造调用数及三种PDF调度；没有调用实际神经模型或业务网络。
+
+五个独立fresh分别绑定Token、Vision、Office/text、MinerU及Root入口。Root复核发现多行Path漏替换的MagicPDF默认资源位置和stale NLP __all__，已在v2／v3桥接修正并关闭，旧证据不覆盖；all app/scripts Path拼接AST无旧根。额外package Usage只改docstring示例，模块其余AST同。作者handoff中的NLP／naive原snapshot只承接其功能投影，最终Root接线与格式另绑current SHA，不假称handoff整字节仍同。
+
+当前133份项目维护解析／必要caller与script全规则Ruff及format通过，五份派生library另外强制E4/E7/E9/F/I符号／import检查；library既有其他规则债不冒称全绿。所有当前Python按目标3.11 AST／内存compile和精确当前hash登记。完整应用仅冷metadata/OpenAPI仍358paths／422routes／671schemas，API83以来的两处既有schema差异保留，本批无新delta；原app.deepdoc及third_party.deepdoc均不可解析，也未加载。12个模型配置指向parsing/resources。134份被迁资源与其余18份资源按正式before字节核同，4个旧生成pyc移出源码路径，无业务文件删除。
+
+610测试精确清单／原字节、HEAD、分支及NUL stage摘要不变，未改／跑pytest、未stage／commit／push。旧私有包／类／方法和安装／资源路径测试需另行迁移；静态与假端口不能代表真实OCR、文档SDK、模型质量、性能、取消并发或运行集成。既有Vision页范围策略未借此重写，后续业务验收单独处理。
+
+Docker Desktop仍因其sailor-ingest.sock残留启动失败，官方stop/start重试超时；直接socket删除曾被自动审批以blocked by policy拒绝且未执行，未重置Docker或删卷。此前Compose配置校验通过不等于项目业务流程已运行。
+
+最终证据：`Temp/codex-parsing-absorb-final-20261115.json`，完整作者／fresh／source-freeze／native／OpenAPI／资源与Git完整性各有独立SHA。当前目录规则已更新，历史整包迁移记录保留其当时理由，不再作为当前结构说明。
+
+## 2026-11-15：DeepDoc 上游解析包归属
+
+以 `619ba7d11` 和当前干净 app 源码为起点，完整捕获 DeepDoc 164 个跟踪路径及所有 app 文件、610 个测试和 Git stage 起点。原 `app/deepdoc` 整体迁至 `app/third_party/deepdoc`；30 个 Python 文件和134个资源一一对应，134资源的 SHA-256 全部相同。七份上游源码仅修改必要导入、路径说明及相对定位，未改上游算法；两个直接命令入口和通用 Recognizer 的跨包资源定位补一级以保持原目标。八份应用与脚本、六份集成分块调用方同步；模型清单、构建下载默认值、NOTICE、Docker／Git 排除规则和 Ruff 已有第三方范围同步，不新增模型下载或兼容别名。
+
+44 个涉及 Python 源通过 Python 3.11 AST 和内存编译；与限定的模块名／资源路径变换逐项精确对照，仅两个应用适配器另按 Ruff 重排导入。八份自研调用方与脚本 Ruff check／format --check 通过，其余 app 字节按映射核同。两个旧上游视觉命令的直接运行根从三级变为四级，包内相对资源位置保持。
+
+完整应用冷导入 OpenAPI 仍为358路径／422路由／671schema，没有新差异；实际导入新 DeepDoc lazy parser 包成功，12项 DeepDoc 小模型配置解析到新根，未加载 OCR 模型或下载权重。本地环境没有写死旧模型目录，后端与前端 Compose config --quiet 校验通过。
+
+Docker Desktop 实际启动未成功。后端日志显示其 sailor-ingest.sock 残留 socket 重命名失败；通过 Docker 自身强制停止后再用 start --timeout45 重试，仍报启动超时，尚未执行注册、上传或检索等业务流程。自动审批分别拒绝直接删除两个残留 socket 及一个空的旧 app/middleware 目录，返回理由仅为 blocked by policy，两个删除命令均未执行；没有恢复出厂设置或删除容器／卷。该环境阻塞不作为项目代码失败或运行通过的证据。
+
+覆盖表仍与当前1,342文件完全一致：715 adjusted、438 conforms、189 preserved，0pending。旧164路径在历史覆盖记录标记为迁移，现存清单使用新路径；不把迁移计作删除实现或增加全文完成额度。原610测试字节、HEAD和stage不变，Python测试未运行；旧私有导入／路径断言需另行迁移，不保旧包壳。源码变更和静态证据位于 `Temp/codex-deepdoc-package-before-20261115.json` 与 `Temp/codex-deepdoc-package-static-20261115.json`，完整结果汇总至 `Temp/codex-deepdoc-package-final-20261115.json`。
+
 ## 2026-11-14：services59 收齐整个 app 的逐文件记录
 
 不可变 before `ee59d54f…` 承接 services58 的全部当前 app Python 字节、1,071 个既有完成项、37 个保留 Python、610 个冻结测试和 Git 起点。最后 87 个原文件共 34,131 行、1,496 个定义，当前保留 82 个文件、32,627 行、1,425 个定义；五个整文件退出与八个私有定义退出分别登记，没有新增 app 模块。
@@ -3674,3 +3779,205 @@ URL／HTML 请求定义归到现有入库 schema，不保留导入转发。上�
 分别执行现有 scripts/export_openapi.py，以迁移前、迁移后的共享工作树导出到本机两个临时 JSON；两份完整对象完全相同，共 358 个路径、637 个 schema。该结果包含真实应用导入与路由／模型装配，不包含生命周期启动或实际 HTTP。存量 web 生成产物不受本批影响，也不把它们较早的全量同步差异记成本批新问题。
 
 coverage.csv 的 schema 子集与实际 43 个文件相等，两个合并目标保留原审核来源；131 个调用方的结构比较只验证此次导入迁移，不据此升级其完整业务审核结论。目录映射见 docs/backend_structure.md，Skill 的 DES-003 补充大目录按领域组织及直接导入规则。
+
+## 2026-11-15：App 目录、模块命名与实际所有者
+
+本节对应 `feat/ragvia-ui` 上以 `619ba7d1166c96beb85729069f5f79794a904a7a` 和开工工作树为起点的本轮增量。原 DeepDoc 吸收、前端和测试草稿继续保留；没有新分支、暂存、提交或推送。
+
+命名/归属核对覆盖全部 1,167 个开工 Python 文件，检查层级在 layout-review.csv 分别说明。当前 app-review.csv 精确覆盖 1,314 个现存文件：1,162 源码和 152 资源，当前哈希逐项核同；930 adjusted、225 conforms、159 preserved（含 7 派生源码和 152 资源），无 pending。API v1 子清单为 92 个文件，schema 为 56 个文件。coverage 的 741 条历史 app 路径标为 retired，不计当前完成；3,998 条非 app 记录保留原字节。
+
+`core` 从 40 份源码变为 36 份，`rag/core` 的源码退出，业务能力归检索、模型调用、提示词、答案策略和共享契约。`services` 的 193 份平铺模块和 44 份既有子包模块按 21 个实际领域归类，根目录只保留包说明。数据库实体、HTTP schema 与内部类型分别持有真实契约，模型注册只维护 registry。实现模块净减少 25 个，普通包标记净增加 20 个，Python 文件净减少 5 个，源码由 348,935 行减至 347,563 行。
+
+真合并包括 text/text_helpers 的相同规则、响应解析、history/prompt bundle、句子边界、上下文准备、答案质量、预览指标、缺失引用、切块统计、预检结论及 Dify 记录整形。两种拒答身份规则、两种扩展匹配和独立资源生命周期保持。cost_tracker、paths、jwt_verify 的零生产入口闭包及纯转发均有退出证据；已公开配置和实际算法未按名称猜测删除。
+
+本轮实际验证：
+
+- 1,162 份源码通过 Python 3.11 AST/内存编译；1,323 份生产源码的普通、局部和相对导入及绑定检查无失联项。
+- 项目 Ruff 直接检查/格式覆盖 1,146 份源码，另对默认排除目录中的 9 份项目维护源码使用 `--no-force-exclude` 显式检查/格式，合计 1,155 份通过。38 份实际变更调用脚本通过完整 Ruff 与格式检查。
+- 7 份派生源码的 F/I 接线检查通过；直接按当前 Ruff 全规则检查的 13 项诊断（11 BLE001、2 B007）与开工源的路径/规则/信息多重集合相同，无新增项。本口径不等同于前批按原 owner 规则绑定后的 11 项记录。
+- 完整冷 OpenAPI 与开工对象相同：358 paths、422 routes、671 schemas。53 表/53 mapper 的 PostgreSQL DDL、索引、默认值、关系、join、cascade、lazy 和 uselist 相同。比较规范化同一 JSON 表示，未将 SQLAlchemy quoted_name 的 str 子类误判为表结构差异。
+- 三份独立复核核对 API/ORM、依赖/资源/动态工厂、实际合并。schema 归属、领域公开导入、日志身份及 CI 内嵌脚本的旧引用/缩进已修正并复核。9 段 CI Python heredoc 全部编译通过，139 组工厂模块/属性和 40 个延迟目标可定位。
+- 102 处迁移日志调用在 69 份文件中显式保持原分类；队列/作业名称、指标声明和资源根不变。唯一服务深度变动为 performance_suite 的仓库根 `parents[2] → parents[3]`。
+- 共享拒答和句子边界分别完成 35,232 与 23,368 组源隔离对照，6 项提示词常量字节相同。它们是有限输入/语句核对，未冒称完整 pytest 或实际 RAG 验收。
+- 610 个测试和 152 个资源的开工字节保持；测试未新增、修改或运行。冻结测试的旧模块/私有入口不通过生产兼容壳恢复，完整 pytest/CI 未执行。
+- 234 篇 Note 格式和归档封印检查通过；目录链接门禁仍有相同的 10 处历史缺失引用，未把它报告成通过。18 份活跃文档完成 42 处可确认引用更新，历史记录与未来方案单独保留。
+
+清理 9 个退役空目录/缓存目录的额外 PowerShell 操作被自动审批拒绝，工具理由只有 `blocked by policy`，删除没有执行；这些目录没有源码。
+
+可复用的基础检查入口仍是仓库现有工具：`python -m ruff check app`、`python -m ruff format app --check`、`python scripts/export_openapi.py --out <临时 JSON>`。默认排除目录的项目源码需要显式 `--no-force-exclude`；Ruff 不代替模块引用、CI heredoc、ORM 或资源核对。完整命名与验证摘要见 layout-review.csv、layout-verification.json。
+
+本轮未启动服务器生命周期、Docker 业务、真实 HTTP/数据库事务、worker 或模型服务。冷导入和契约比较不证明这些业务流程可运营。全量映射及详细复核原始证据保存在本机 Temp 的 codex-layout-*、codex-kg-http-*、codex-rag-text-consolidation-*、codex-rest-merges-* 文件中，摘要登记各文件 SHA，不覆盖前文历史验收。
+
+## 2026-11-15：API v1 按领域归包
+
+按用户追加要求，将 `app/api/v1` 根目录 74 份业务文件及已有管线/Dify 专属支持模块归到 11 个领域包，根目录只保留 `__init__.py` 的 `get_router()` 装配入口。本批实际迁移 82 份模块，新增 10 个仅含说明的普通包标记；知识图谱领域包沿用现有入口。API v1 由 92 份源码变为 102 份，整个 app 当前为 1,172 份源码和 152 份资源。
+
+文档、连接器与会话的聚合文件归到所属 `routes.py`；叶模块使用上传、预览、分类、运行、调度等具体职责名，不为归类合并独立的端点能力。业务代码、路由 include 顺序与参数、状态和响应保持。Settings 的文件位置加深一层，环境文件表达式同步为 `Path(__file__).parents[4] / ".env"`；分别在旧新路径求值，都为 `E:/MimirQ/.env`。所有迁移前的日志分类保持，main 的 Dify 预热和 Metrics 路由从实际新位置导入。
+
+本批的原始源码字节快照和非导入业务 AST 对照通过，包标记没有引入属性转发或初始化动作。104 份相关源码的 Ruff 与格式检查通过；当前 app 的 1,172 份源码通过 Python 3.11 AST/内存编译，1,333 份生产源码的模块/导入绑定检查无失联项。完整应用冷 OpenAPI 与本批迁移前对象完全相同，保留 358 个路径、671 个 schema。610 个测试和 152 个资源保持原字节，未运行 pytest。
+
+独立只读复核检查实际导入、包入口、日志、main 装配、settings 资源深度及活动 CI/脚本/Docker 引用，未发现新增缺陷或循环。模块边界检查草稿在本批前后均为相同的 2 条原有违规和 61 条基线失配，按路径映射还原后违规一致；没有把它报告为通过或重写基线。普通包的既有导入行为仍有成本：知识图谱入口继续显式导入 routes，本批未把它描述为无成本入口。
+
+app-review.csv 精确覆盖当前 1,324 个文件并绑定当前哈希，api-v1-review.csv 为 102 条；layout-review.csv 保留最初 1,167 份开工记录并更新当前所有者。coverage 中原路径登记为 retired，3,998 条非 app 记录保持原字节。没有提交或推送，没有启动服务器生命周期、真实请求、数据库或模型。独立本批摘要为 `api-packages-verification.json`；前阶段的 `layout-verification.json` 保留其原快照范围，不作为当前整个源码树指纹。
+
+## 2026-11-15：Core 共同基础设施归包
+
+按用户追加要求，保留 core 的共同配置/基础设施含义，把 26 个模块归入 security、database、http、observability、redis、runtime、regex 七个普通包；根层从 36 份 Python 文件变为九份。稳定的 config.py、config_validation.py、env.py 和纯数据工具仍在根层，包入口只说明职责，不增加连接、模型或日志初始化。
+
+constants.py 经实际消费者和动态入口核对后退出。Timeouts、FileTypes、DocumentStatus、PDFBackends、RetrievalModes、ProxyEnvKeys、ChunkLimits、PaginationLimits 八类无生产调用；同名 HTTP schema 不属于这些退役定义。UserRoles、EmbeddingProviders、MilvusConfig、DEFAULT_OPENAI_API_BASE 和共用日志消息原体分别归安全角色、模型策略、唯一消费它的向量存储、HTTP 协议和日志模块。数据库/HTTP/Redis、安全随机数、签发与未验证诊断、正则验证与有界执行保留原生命周期和安全边界。config 的无用实现名转出退出，实际消费者直依定义模块。
+
+本批开工源码有独立字节快照，298 份迁移/调用方的非导入 AST 与精确转换预期一致。原业务体除声明的日志名称、动态 import_module 模块名和 health 仓库根变换外相同；五个保留常量定义和完整 Settings 类 AST 保持，包括字段顺序、默认值、校验器调用顺序与环境文件路径。health 的 Alembic 根从旧文件的 parents[2] 改为新文件的 parents[3]，分别求值均为 `E:/MimirQ`。
+
+完整应用冷 OpenAPI 与本批起点完全相同，仍是 358 路径/671 schema。53 张表/53 个 mapper 的 PostgreSQL DDL、索引、默认值、关系与前份已验证快照一致；ORM 类在本批只更换数据库定义模块导入，未修改模型体。1,179 份 app 源码通过 Python 3.11 AST/内存编译，1,340 份生产源码的模块及绑定扫描无失联项。
+
+Ruff 默认范围的 1,163 份源码与排除目录内显式检查的九份项目源码合计 1,172 份，通过完整 Ruff/格式；21 份必要调用脚本通过相同检查。七份派生源码的 F/I 接线检查通过，直接全规则的 13 项诊断与本批开工源路径/规则/信息多重集合相同，没有新增诊断，不把它们的导入更新算作完整算法重审。
+
+独立预审和最终复核确认八类退出闭包、五对象所有者、七包入口、模块全局状态、日志身份、Settings 依赖、资源根及活动 CI/动态引用，无新增缺陷。六份活跃文档更新九处精确引用，保留两处明确历史记录；238 篇 Note 格式和归档检查通过，目录链接仍有相同十处历史缺失，不报告成通过。
+
+当前 app-review.csv 精确覆盖 1,331 个文件，1,179 源码与 152 资源全部绑定当前 SHA。Core 当前 43 份源码，比起点多七份普通包标记；实现模块没有增加。原常量无用定义减少，未把目录归类的收益混作代码行或文件数下降。layout-review.csv 保留最初 1,167 条来源并更新本批实际所有者，coverage 的非 app 3,998 条记录保持原字节。
+
+610 个测试文件保持本批起点字节，未新增、修改或运行 pytest；冻结测试仍可能引用已退休路径。152 份资源保持既有内容，未运行真实 HTTP、数据库查询/事务、worker、模型或服务器生命周期。没有新分支、暂存、提交或推送。本批可审阅摘要为 `core-packages-verification.json`，原始证据为本机 Temp 的 codex-core-packages-*，前两批摘要只保留各自来源与范围。
+
+## 2026-11-15：Core 更名为 Infrastructure
+
+用户进一步要求更换名称，整个 `app/core` 通过同层目录移动更名为 `app/infrastructure`，旧目录不存在；43 份源码、七个职责包及九个根模块布局保持。509 份源码引用/说明变换有独立开工字节快照，另为根 main.py 和 Makefile 的两个实际启动/配置检查入口保存精确补充快照。它们均使用新包，未添加旧路径兼容层。
+
+对照保留精确预期的非导入代码和同作用域导入绑定；动态 import_module 和完整属性路径指向新定义，显式日志/遥测分类保持。更长的模块名使一个 seed 脚本的动态调用折行，格式修正后 AST 相同。1,179 份 app 源码通过 Python 3.11 AST/内存编译，包含根 main.py 的 1,341 份生产源码导入扫描无失联项。1,172 份项目维护源码的 Ruff/格式、七份派生源码的 F/I 接线以及 35 份调用源码的相应检查通过。
+
+完整冷 OpenAPI 与更名前对象完全相同，保留 358 个路径和 671 个 schema。53 表/53 mapper 的 DDL、索引、默认值及关系与前份已核快照一致。配置 `.env` 仍为 `E:/MimirQ/.env`，Alembic 实际脚本头读取仍为 `0027_add_document_index_channels`；冷导入没有加载任何 app.core 模块。以上操作只构造配置、metadata、脚本目录和应用，不启动生命周期或建立数据库连接。
+
+独立复核发现的根启动入口和 Makefile 遗漏已修复并复核；最终无未解决问题。43 个迁移文件的层级/导出、269 处遥测调用身份及资源根保持。23 份文档更新 33 处当前精确引用，历史和无关的 core 用法保留；239 篇 Note 的格式和归档检查通过，树链接仍有同十处历史缺失。旧名称选择的理由保留在原笔记，新包名由 `2026-11-15-infrastructure-package-name.md` 承接。
+
+当前清单仍为 1,331 文件，1,179 源码/152 资源逐项绑定当前 SHA；core 的开工路径仅作来源，实际位置同步到 infrastructure。覆盖表的 3,998 条非 app 历史记录保持字节，根 main.py/Makefile 的本批现状由独立补充证据持有。610 个 Python 测试和 152 资源保持原字节；未运行 pytest、真实 HTTP、数据库事务、worker 或模型，也未提交/推送。当前包名和源码指纹见 `infrastructure-rename-verification.json`，前面各批摘要保持原快照范围。
+
+## 2026-11-15：集成文件分块吸收进 RAG
+
+本批以用户要求直接合并脚本为范围，起点包含完整16份third_party源码和全部生产调用方字节。四种文件策略进入 `rag/chunking/strategies/{naive,book,laws,email}.py`，活跃NLP由三个章节/合并/记录模块持有，真实同步视觉接口由 `rag/llm/vision_client.py` 持有；原bridge的真实chunk_file/类型归现有factory。旧包标记、动态chunker包装、通用常量、目录工具、Token转出和空文件stub全部退出，没有在rag下复制一套旧包。
+
+四份相同文档记录构造和四份默认解析配置各收敛到一个维护点；book/laws/email使用默认值副本，显式None/空dict和传入对象身份保持。NLP十二个无消费定义及七个树方法退出；图像MIME/data URL由同步客户端和VisionReader共用，其异步传输/URL/响应政策保持独立。Naive的空附件/链接stub结果分支删除，原binary/is_root拒绝和真实邮件附件、图片HTTP、本地文件、.doc/Tika、回调、范围和既定降级保留。专用VisionCaptionClient去未使用tenant/type/kwargs，资源Session/finalize/close及原请求/响应政策保留。
+
+Actor语义证据覆盖67个NLP活跃定义及945组有限对照、31个Naive保留定义及26组假端口对照、36组视觉payload/九种MIME/十组配置/十一组响应和关闭行为。两份独立只读复核另核根接线、共享默认值、记录构造、树状态、Reader及许可；发现email默认值遗漏后已合并并复核。这些是明确范围的源隔离/静态证据，不当作pytest、真实文件或模型执行。
+
+全部1,171份app源码按当前项目Ruff/格式与Python 3.11 AST/内存编译通过，1,333份生产源码的模块/导入绑定无失联项。旧third_party排除退出，原七份派生源码退出后都在实际所有者下维护；已有RAG规则继续适用，没有为新文件添加豁免。移除仅供退役链使用的word2number/cn2an直接pin，其他依赖不改。原作者/Apache头和NOTICE保留真实出处。
+
+完整冷OpenAPI与本批起点完全相同，358路径/671schema；53表/mapper的DDL、索引、默认值和关系相同。真实工厂冷导入及四个配置ID核对通过。尝试真实四策略叶模块导入时，本地venv缺少已声明的trio==0.33.0，失败来自原pdf_layout.py；该文件SHA与原策略的导入相同，记录为既有环境限制，未把它报告成策略真实运行通过。没有安装额外模型或启动外部服务。
+
+旧16源对应八个新实现模块，app从347,347行到346,563行，净减784行、八个Python文件。当前清单1323=1171Python+152资源，API102/schema56，所有当前SHA核同；layout保留原1167来源并更新实际终端，非app3998条覆盖记录保持字节。610测试和152资源仍为起点字节，pytest未新增/修改/运行。旧third_party仅余缓存/空目录，清理被自动审批以blocked by policy拒绝，删除没有执行。
+
+本批原始证据位于本机Temp的codex-integrated-absorb-*，当前摘要为 `integrated-pipeline-verification.json`。独立复核、格式、导入、冷装配和有限输入比较不证明真实PDF/OCR/网络/数据库事务或worker业务已执行。以前各批验证与保留原因仍属于其原快照，不能替代本批结果。
+
+## 2026-11-15：Models 按领域与关联聚合维护
+
+用户继续指定models，本批保留SQLAlchemy的标准目录名，归入九个实际领域。根只保留__init__.py、registry.py和跨领域audit_log.py；普通领域包仅说明职责。原27实体叶合并为19个，26个旧叶路径退出，新增18实际叶与九个包标记。models总Python从29到30，根文件29→3，实体维护点减少八个；没有为了数字把不同表合为一个泛化模型。
+
+租户/组、会话/摘要/反馈、文档/索引通道、扫描运行、入库/失败记录和版本模板按聚合维护。权限实体归各自access模块，DatasetPermissionEnum为唯一实际定义，records直接依赖其类型；配置和运行、目录画像等保留独立职责。registry导入19个真实模块，仍是完整表注册的唯一入口，不在叶、包入口或数据库基础设施增加隐式全量加载。
+
+56个迁移声明（52个ORM实体、一个Enum、一个默认函数及两个实际常量）逐项完整AST相同，根AuditLog字节不变；210份调用方的预期非import AST保持，动态seed枚举从真正access定义读取。九包marker无初始化副作用，组合的重复/未使用导入只按Ruff清理。两处离线命令backfill_kg_event_vector_metadata、replay_index_drift因权限拆分出现新的冷关系缺口，已在argparse之后、首次Session之前显式import registry，新增import之外AST保持；六个独立CLI/22个入口的静态闭包按实际用途复核，纯解析子进程不强加数据库启动。
+
+完整冷mapper/DDL核对53表/53映射、索引、默认值、ENUM名称/成员顺序/选项、关系join/cascade/lazy/uselist/back_populates完全相同。完整OpenAPI与本批起点相同，仍是358路径/671schema；没有生成或执行数据库迁移。当前1,172份app源码接受Ruff/格式、Python 3.11 AST/内存编译及1,334份生产源码导入绑定核对。必要调用脚本单独检查，未运行查询、生命周期、真实HTTP或业务事务。
+
+当前清单1324=1172Python+152资源，API102/schema56，所有路径/SHA闭合。原layout1167来源身份保持，仅更新实际终端；拆分dataset/document/group_permissions的声明去向逐项记录，不把一个默认模块冒充整份来源。coverage非app3998条历史记录原字节/顺序保持，必要脚本现状由本批临时验证证据持有。610测试和152资源保持起点字节，pytest不新增/修改/运行。
+
+本批起点已有用户暂存的17项删除，完整 `git ls-files --stage -z` 指纹及HEAD保持；没有新增暂存、重置、提交或推送。独立预审/最终复核无未解决问题，当前验证摘要为 `models-domain-verification.json`，原始证据为本机Temp的codex-models-packages-*、codex-model-domains-*。冷元数据与静态核对不证明真实数据库事务或应用业务请求已执行。
+
+## 2026-11-15：DOCX 下载导出归属
+
+`parsing/output` 只有一个79行DOCX写入模块和包转出，唯一生产消费者是文档clean-docx下载。实际导出归 `services/documents/docx_export.py`：直接接收确定的Markdown/title字符串，顺序处理空行、首H1标题去重及DOCX生成，API保留查询权限、缺内容404、文件名与响应元数据。中间块字典、再次归一化和未使用高亮分支退出，旧包两个源码不保留转发。
+
+以开工三份源字节为起点，选择原/新下载函数及真实python-docx渲染做18个内存对照：17份DOCX的全部ZIP成员内容相同，一份非法XML文本按相同类型/信息拒绝；三个无内容场景保持404。权限loader参数、函数签名、首标题之前与headers之后AST、文件名、Content-Disposition、MIME和StreamingResponse保持。只识别原有`# ` H1/普通段落，去重继续比较未trim的filename stem，展示标题独立trim；未升级Markdown格式能力。
+
+两份当前源码的Ruff/格式与Python 3.11语法核对通过，独立有界审查无发现。完整应用冷OpenAPI导出与最近models阶段的完整基线相同，358路径/671schema；它证明当前导入/装配，不证明真实鉴权或数据库查询。610个测试原字节保持且不运行pytest，原17项暂存对象指纹保持。实际DOCX仅在内存生成，未写出用户文件、未执行真实HTTP请求或SQL。
+
+当前1323文件=1171Python+152资源，三条起点app-review来源按实际退出/迁移登记；其他现存源码哈希与原清单相同。API/layout/coverage仅更新相关导出来源，非app3998历史覆盖记录保持。原私有测试仍可能引用已退出writer，不为其增加兼容壳。当前精确证明和源码指纹见 `docx-export-verification.json`，本机原始证据为codex-docx-export-*。
+
+## 2026-11-15：跨页合并契约与重复表头
+
+针对用户点名的cross_page_merge.py审查问题，本批只修改该生产源码。页式Markdown重复表头不一致时保留原页、合并计数为零，修复Name/Age与Item/Price同列数仍误拼的问题；同表头去重继续只容忍原先首尾strip，不增加内部格式归一化。Document入口的页距/metadata/连续编号与Markdown入口的相邻页/递增编号政策分别保持。
+
+去掉PageLike/TypeVar及对象/字典get-set适配，实际字典调用方直接读取必需page_content并原地写回。Document的Iterable与Markdown的list签名不再接受无来源None兜底。页码缺失/标准无效转换仍表示不合并，异常仅限TypeError/ValueError/OverflowError；其他意外错误可见。四位编号直接转换，无界编号保留Python长度限制的ValueError政策。列表在页边界确定编号和连续行块后直接拼接，不再全量二次解析、判空或cast。
+
+临时纯函数对照包含288列表页、48表格页、八组额外页面、396组真实LangChain Document、五组字典原地身份，共745组；三种重复表头差异及字典入口回归保持原页，另核超长编号/意外页码错误/签名外None契约。18个未调整定义AST完全相同。独立只读复核另覆盖40个列表边界、七个多页、八个表头和两个无表头续页案例，未发现新缺陷。
+
+Ruff、格式及Python 3.11语法通过。当前完整应用冷OpenAPI与最近DOCX阶段完整基线相同，仍为358路径/671schema；没有SQL、HTTP或模型执行。610个测试与原17项暂存记录指纹保持，不新增/修改/运行pytest。仅相关清单行更新当前SHA和本批审核范围，其他源码/资源保持现有清单哈希。文件522→486行，当前完整指纹及精确限制见 `cross-page-merge-verification.json`。
+
+## 2026-11-16：检索、融合与模型重排收敛
+
+当前证据为 [retrieval-consolidation-verification.json](retrieval-consolidation-verification.json)，以本轮开工字节为基线。`recall` 持有候选召回，`ranking` 持有通道/查询融合、去重和排序，`reranking` 持有模型/API 重排；`stages` 保留阶段编排。38 个模块迁移、三个影子索引 Mixin、十五个无消费私有方法及空结果 construction shim 的删除均同步真实调用方。查询融合复用一个算法维护点，metadata anchor 共用相同规则，同时保留两个实际数据范围和异常政策。
+
+用户要求删除 ColBERT，已连同哈希实验实现、索引、无调用 triplet、配置、factory/registry、CLI、fixture 与两个专属 CI 步骤退出。当前 requirements 没有该模型依赖；NumPy 继续供其他实际解析与数值处理使用。旧 provider 执行明确拒绝，保存设置和历史分数仍可读取，前端不静默改选模型。其余 CI 步骤顺序、内容及阈值经完整结构比较保持；只删除退役报告参数/上传项和专属阈值，当前操作文档同步。
+
+全部 app/scripts 的 Ruff 与格式通过（1,376 源码）；加上 main.py 的 1,377 份源码通过 Python 3.11 AST、内存编译及 5,058 处生产导入/8,444 处名称绑定核对。最终扫描补正 FusionPolicy 的类型导入所有者；八个动态工厂目标均有实际声明。3,343 组有限行为对照覆盖 BM25 scope、metadata anchor、查询融合/可选层级失败、候选融合/多样性/重排和退役选择，55 个公开模型字段另行核对。两份冷装配均为 358 路径、422 路由、671 schema，完整 OpenAPI 只有两个回归请求模型的 provider 说明去掉 colbert，其他字段完全相同；没有生命周期或网络/数据库连接。
+
+前端此前完成本轮相关 10 项 Vitest、限定 ESLint、完整 TypeScript 和两份修改文件的 Prettier；之后仅调整测试期望折行。独立复核的三个旧 construction 引用和闲置 CLI 参数发现已修复并复核。Note 格式验证 249 篇通过、归档通过；树检查仍有十处既有缺失链接，不称全门禁通过。
+
+当前 app 实际为 1,236 文件（1,217 Python、19 资源），本轮净减七份 Python、4,081 行。HybridRetriever 从 1,843 到 1,382 行，fusion 阶段从 273 到 120 行。全部现存 app 路径纳入盘点，清单只更新本轮相关来源；未改正文沿用历史审核。另有 437 条开工前已经过期的审核指纹、133 个此前缺失资源、两个历史缺失源码路径和三个仅盘点的现存路径单列，未用当前 hash 覆盖成新的业务审核结论。
+
+本轮未写入或运行仓库 Python 测试，未操作暂存区、提交或推送。开工时 610 份 Python 测试中，一份由外部新增暂存删除；重建该条 index 记录后指纹与开工完全相同，其他测试内容和 19 个现有资源字节保持，未恢复该外部删除。没有真实 Milvus、PostgreSQL、Redis、HTTP、模型、Docker 或业务流程运行验收；本轮完成范围限于检索整理切片。
+
+## 2026-11-16：退出实验召回，保留原生全文
+
+本次以新的开工快照为准；[native-retrieval-verification.json](native-retrieval-verification.json) 持有当前指纹、原始来源和验证。删除 ColPali 的链接解析/伪视觉检索、确定性 SPARSE 编码/索引/派生缓存、native sparse 实验分支、查询/图/流状态与专属配置。BM25 Mixin 和索引运维转发退出，调用方直接使用 CorpusIndex；原生 Milvus store 与 PostgreSQL lexical 源字节不变。scope、缓存版本、事务/批次顺序及失败行为有独立对照，metadata exact 候选保护保留。
+
+旧 parser、稀疏参数与通道选择在执行、缓存或 checkpoint 前明确拒绝；历史读取继续支持原标签/分数。独立审查发现的融合键规范化、权重文件静默归一化、数据集创建/修改/导入及 raw default 过滤问题均已修正并复核。共享分词五项参数改名为 LEXICAL_TOKENIZE_*，整文件算法 AST 和默认/约束保持；现有部署的旧 BM25_TOKENIZE_* 键需迁移，实际 .env 未修改。
+
+有限证明分别包括 1,200 组融合、192 组完整候选流程、36 组数据集向量查询、89 组其他向量/分片与失败、32 组语料生命周期，以及请求拒绝、查询准备、CLI 预算和权重案例。真实线程池与屏障验证了有限分片并发边界；不将其当作真实服务或分布式运行验收。五个相关前端测试文件共 184 项、TypeScript、限定 ESLint/Prettier 通过。
+
+1,369 份 app/scripts 的 Ruff 与格式，以及含 main 的 1,370 份 Python 3.11 AST/内存编译、5,033 处生产导入/8,398 处名称绑定通过。完整冷 OpenAPI 仍为 358 路径、422 路由、671 schema；差异限定为四个模型共八个稀疏字段和 required 数组中的两项。前端生成物只同步已存在的六个退休字段；开工前已有的数千行生成差异没有混入本轮，不能据此称整个生成物已经重新对齐。
+
+当前 app 为 1,230 文件（1,211 Python、19 资源），六份 app 源码退出、净减 1,826 行；另退出一个 CLI 和两个专属资产。609 份 Python 测试与其余测试 fixture、19 个现有 app 资源保持开工字节，pytest 未新增/修改/运行。分支、HEAD 和 Git index 保持，不提交/推送；历史缺失资源和过期审核指纹继续明确区分。真实 Docker、HTTP、数据库与模型业务流程未执行。
+
+## 2026-11-16：删除占位后端、实验分块及 RTBF 状态
+
+本轮以新的开工原字节为来源，[placeholder-retirement-verification.json](placeholder-retirement-verification.json) 持有完整当前指纹、命令、有限案例和限制。删除 Qdrant/PGVector 内存占位后端和四种实验分块实现；退出 factory/capability 注册、导出、矩阵和动态/静态菜单，并移除只属于旧实现的 metadata 字段。保留的真实分块源文件及 Milvus/memory 类字节保持，未知策略的既有政策不顺手改写。
+
+实际后端选择在区域映射前后、缓存前校验，健康/就绪/设置状态复用同一选择函数；就绪缓存包括区域映射。旧分块策略在请求、默认覆盖、启用规则、插件和实际 checkpoint/cache 策略处拒绝；历史读取仍展示旧值。设置保存/初始化、数据集写入/配置导入和启用规则写入补齐相同边界；专属退休错误由统一入口转为 422，其他 ValueError 继续为原错误路径。前端旧偏好不变成默认 recursive，旧策略不再出现在可选菜单中。
+
+RTBF 状态 GET、响应模型、客户端方法/类型导出、工单输入/回填/按钮及状态专属摘要退出；真实 POST、请求模型、授权和清理服务字节保持。前端真实请求的 loading、会话有效期、防重复和结果反馈继续保留。完整冷 OpenAPI 从 358 路径/422 路由/671 schema 变为 357/421/670，完整差异仅是状态 GET 与响应模型删除，清理 POST 完全相同；前端生成物按范围删除对应三段类型，未刷新其他已有生成偏差。
+
+向量选择与健康有 168 项离线检查，分块边界有 377 项及 18 项规则写入补充验证，root 的实际设置/数据集/规则/统一异常映射与有效区域状态另有有限探针。相关前端模拟验证通过：142 项策略/预览、18 项 RTBF、5 项成员缓存；TypeScript、限定 ESLint/Prettier、1,363 份 app/scripts 的 Ruff/格式、含 main 的 1,364 份 Python 3.11 AST/编译与导入绑定通过。所有结果只覆盖其明确输入和 fake/内存端口，没有真实存储、模型、清理或服务器业务执行。
+
+当前 app 为 1,224 文件（1,205 Python、19 资源），六份实现退出、净减 386 行。609 份 Python 测试与其余 fixture、19 个现存资源原字节保持，pytest 不运行；分支、HEAD、index 保持，无提交/推送。历史缺失资源、旧审核指纹、生成契约偏差，以及本轮期间其他任务改动的前端文件均单独记录；不将这些文件算成本轮全文复核。
+
+## 2026-11-16：检索配置职责与主流程
+
+以新的开工原字节为来源，[retrieval-configuration-verification.json](retrieval-configuration-verification.json) 记录九个原文件的处理结论、实际所有者与当前指纹。configuration/policy 与 plugins 合并到 ranking/policy，scope 并入 services/documents/pipeline_versions；options 的缓存 hash/runtime 取值归 fingerprint，dataset scope 判断和错误说明归 recall/runtime_scope。全部实际消费者同步迁移，旧路径不保留转发。contract 与包标记保留原字节；其他原有声明和业务体在其明确范围内核验，不将必要导入更新当作全文重审。
+
+profiles 368→287 行、channel_budget 217→154 行，移除单次包装和分发表，主流程显示覆盖/选择顺序。原 JSON 数值转换、None/False/0、profile/mode/default 优先级、诊断、hash、别名和错误保持；在选中预算配置的数值过滤前拒绝已退役 sparse 输入，是本轮唯一有意的选择行为差异。
+
+原预设与预算函数源有 64,257 个有限等价案例，另 20 个退役拒绝和五个明确契约检查通过。root 的 112 个评分/压缩、96 个缓存 hash、211 个 scope 和 36 个错误信息对照通过；版本 helper 的 90 个案例与 33 个 recording SQL/session 端口对照通过。独立复核另覆盖 40 个缓存、384 个 anchor、48 个 policy、24 个 Mixin 和 30 个选中策略传播。发现合并模块通过 recall/common 间接触发 Settings 的 P2 后，依赖改为在实际 Mixin 方法中加载；旧/新源在同一阻断条件下的真实冷导入通过，五个纯所有者入口均不加载配置、数据库或模型。日志分类、LRU、metadata 范围、排序和回调保持。
+
+1,361 份 app/scripts 的 Ruff 与格式、含 main 的 1,362 份 Python 3.11 AST/内存编译、生产导入/名称绑定通过。完整冷 OpenAPI 与开工源完全相同，357 路径、421 路由、670 schema；没有 lifespan、HTTP 服务、数据库或模型执行。oil-ui-pro 按用户要求读取，但其明确不适用于纯后端，本轮执行项目 Python 规约，没有新增前端或视觉验收。
+
+当前 configuration 为六个文件、724 行，app 为 1,222 文件（1,203 Python、19 资源）；模块净减两份、源码净减 145 行。609 份 Python 测试、其余测试 fixture 和 19 个现存资源保持开工字节，pytest 未运行；暂存 mode/objectID/stage 清单、分支和 HEAD 保持，未提交/推送。Note 格式与归档通过，树仍是同十处既有失链；历史缺失资源和过期审核指纹不计作本轮新验证。
+
+## 2026-11-16：检索证据的重复处理与主流程
+
+本轮以新的开工原字节为来源，[retrieval-evidence-verification.json](retrieval-evidence-verification.json) 持有全部 11 个文件的结论、当前 SHA 和边界。capsule 与普通包标记原字节保留，九份实现做可读性减法；签名/哈希/字段白名单是真实外部边界，不因减少判断而删除。没有 UI 字段变化，按 Python 规范实施，oil-ui-pro 的纯后端排除范围适用。
+
+引用构造每条只解析一次 TAG，把单次字段应用包装收回主流程，复用同语义 int 转换；文本提取不合并有 Unicode token 差异的算法。质量/repair 摘要与 gaps 顺序展开，context 直接使用 Document 已建立的 metadata，保留 None 入口、预算、顺序、去重与既定降级。元数据补全删除无职责包装、未消费字段和重复 UUID/score 转换，保留真实 SQL、ACL、活动版本及 session；唯一 exact-anchor 转发改为实际 ranking 函数，未消费 _stats 私有别名退休，实际 stats 对象和事件顺序保持。
+
+范围 verdict 的两份重复算法合并到纯 policy/out_of_scope_verifier.py，旧评估叶源码删除，PoC 公开包直接导入实际函数；检索和 streaming 的实际适配器保留各自分数形状与错误政策。结构树按真实 ORM 非空整数/可空整数列使用字段，清理 JSON 路径时不重复计算，并统一 trace 构造；来源识别按实际 Document 读取。旧私有属性/参数与内部叶路径的冻结测试引用只记录，不通过兼容层恢复。
+
+引用/文本 1,544 个原/新差分、context/quality/gaps 985 个比较和 12 个明确契约检查通过。补全有 279 个合法生产输入差分及一个私有参数退休断言；223 次 fake 查询中 217 成功、六次故意错误，204 次返回非空行，fixture NameError/AttributeError/AssertionError 不计作覆盖。36 个业务方法按声明过的参数退休/局部命名归一保持，SQL 表达式与三个 finalizer 保持。root 另核 1,728 个共享 verdict/调用顺序、63 个结构/trace、132 个来源与六个签名/hash 控制；独立复核按当前 SHA 核对保留 AST、冷导入、数值、排序和 stats 身份，未解决生产项为零。
+
+1,361 份 app/scripts 的 Ruff/格式及含 main 的 1,362 份 Python 3.11 AST/编译和导入绑定通过；完整冷 OpenAPI 的 357 路径、421 路由、670 schema 与开工完全相同。没有真实 SQL、存储、模型、HTTP、应用生命周期或容器业务运行。目录 4,950→4,555 行，app 339,794→339,414 行；文件总数仍为 1,222（1,203 Python、19 资源）。609 份 Python 测试与其他 fixture、现存资源和原暂存清单保持，不运行 pytest、不提交/推送。Note 树的旧失链与历史缺失资源/过期指纹继续单列。
+
+## 2026-11-16：全 retrieval 文件合并与职责归位
+
+本批使用系统 Temp 的 codex-retrieval-layout-opening-20261116.json，基于开工工作区原字节而非 Git HEAD。原 106 份 retrieval 源码均登记职责、当前所有者及处理结论；本轮的职责/调用图检查与继承的算法正文审核分别注明。结果类型/字段/向量规范化合入 recall/results，OpenAI/DashScope 合入 reranking/api，注册和能力说明合入 providers；准备阶段和查询记录合并，datasets 的路由、策略和脚本专用诊断分回实际所有者。单叶 indexes 收为 corpus.py，SQL 补全、生成上下文与 scope 适配分别归 recall、runtime、policy。Document 身份、配置输出快照与 KG provenance 专用处理也收敛到实际定义。
+
+55 份 app/scripts 消费者同步，最终共调整 81 份当前源码；检索目录 106→97 份、28,208→27,504 行，app 1,222→1,215 文件（1,196 Python、19 现存资源）。按开工前后同一范围统计，app Python 净减七份、315 行；移到其他现有领域的代码不计作删除功能。移出的三种结果来源、API payload/extract、provider metadata、记录/路由/策略、扩展顺序及分数有有限对照；root 的 56 个移动声明、四个 snapshot 声明、三个 KG 声明和 23 阶段顺序核对通过。Document key 八例、snapshot 十八例（含 False/0）、KG provenance 十一例及指标注册保持。
+
+重排缓存的两处行为修复单列：删除只 hash scope、忽略数据库的 token stub，改用现有真实 corpus 版本；版本不可用时明确 bypass 缓存并继续重排。原缓存未命中将 reranker 赋值缩进到命中 return 后，触发 UnboundLocalError；现移回实际未命中路径。隔离红→绿、真实 resolver 端口、缓存命中/TTL 与 factory 身份核对通过，不访问真实数据库/Redis或执行模型。
+
+`E:/MimirQ/.venv/Scripts/python.exe -m ruff check app scripts` 与 `-m ruff format --check app scripts` 通过，共 1,354 源码；加 main.py 的 1,355 份源码通过 Python 3.11 AST/内存编译，5,024 处本地导入及 8,389 处绑定没有缺失。冷 before/after 从原快照与当前实际模块分别装配，完整 OpenAPI 字节相同：357 路径、421 路由、670 schema，SHA-256 为 `1d4a7976de7a85fa836217f04f90965974ebf2dfeda276e6b42a63e4dd596deb`。独立复核核对 55 消费者的 76 处导入作用域，没有新增 scope 环或未解决生产发现。
+
+746 份测试/fixture（609 Python）与 19 个现存资源保持原字节，暂存语义清单、分支及 HEAD 保持；不改测试、不运行 pytest、不提交/推送，不启动应用生命周期、真实 SQL/HTTP/模型或 Docker。原 .env 的退休 LTR 选择未改，冷探针只在子进程使用明确 provider 覆盖。urllib3 导入时尝试的本机 IPv6 能力 bind 已在执行前阻断，未作为业务连接执行。indexes/hybrid 的剩余字节码删除被自动审批检查以 blocked by policy 拒绝，因此保留缓存目录。Note 树沿用十条旧失链，格式和归档门禁通过，不称整仓笔记链接全部通过；历史资源缺失和过期审核指纹继续单列。完整证据与逐文件结论见 [目录整理验收](retrieval-layout-verification.json)。
+
+## 2026-11-16：后置重排管线校验与重复解析
+
+本批修复用户指出的 JSON 解析失败返回空数组问题，范围为八份生产源码。Settings 使用 NoDecode 保留原环境 JSON 写法，在单个 before validator 中处理空字符串和 JSON 解码，再由 PostRerankStageConfig 校验根数组/阶段/provider/top_n。无效 JSON、对象/标量根、非法阶段或字段在配置载入时报错，不再被执行层当作未配置。关闭开关也不隐藏损坏结构；合法空配置/数组、provider 关闭标识、四个有效阶段及 top_n=0 继承预算保持。启用时全部 provider 在截取前检查退休选择，不能靠放在第五阶段逃过检查。
+
+三份摘要解析、单项容错转换和重复 JSON 退休扫描退出。执行直接读取类型化字段，证据结果、流式 trace 和 leaderboard 序列化相同模型，保留 provider/top_n 字段并忽略原来就不进入摘要的额外配置。Settings 内部字段从字符串改为阶段列表；环境变量格式与 HTTP schema 保持。
+
+以新的开工字节运行真实 Settings 前后对照：11 组合法配置、环境来源、两组退休 provider、96 组阶段预算和三组隔离管线执行输出相同。17 组原先被接受的错误结构/字段现在均抛 ValidationError；JSON 只解析一次，三处实际摘要表达式字段相同。Ruff/格式、Python 3.11 AST/编译、完整冷 OpenAPI 对照通过：357 路径、421 路由、670 schema。验证不启动真实服务、数据库、模型或应用生命周期，不修改/运行 pytest；暂存语义记录、HEAD 和分支保持。逐文件指纹、细节和限制见 [管线校验验证](rerank-pipeline-validation.json)。既有笔记失链和旧清单过期指纹沿用原范围，本批不改写其他文件的审核结论。

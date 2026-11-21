@@ -8,7 +8,9 @@ Status: implemented
 
 ## Decision
 
-现行 `Indexer` 继续持有会话、向量客户端、写入与清理流程；移除没有调用入口的并行模块、类和独占辅助函数，以及主模块中两个无调用或注册的旧私有辅助函数。`indexing/vector_writer.py` 继续持有实际使用的运行配置错误、Milvus 判断、shadow 配置、缓存和双写函数。其现有函数体及缓存签名保持。
+现行 `Indexer` 继续持有会话、向量客户端、写入与清理流程；移除没有调用入口的并行模块、类和独占辅助函数，以及主模块中两个无调用或注册的旧私有辅助函数。`app/rag/ingestion/indexing/vector_writer.py` 继续持有实际使用的运行配置错误、Milvus 判断、shadow 配置、缓存和双写函数。其现有函数体及缓存签名保持。
+
+默认批次与 SQL flush 失败的实际补偿由[索引补偿与可选 KG 的失败归属](../bug-fix/2026-11-17-indexing-and-kg-failure-boundaries.md)补齐，主写入继续使用当前 `Indexer`；不恢复当时退出的并行类。该项补偿是后续明确修正，不将本篇原阶段的“策略保持”视为这些失败路径已经验收。
 
 活动代码直接读取已声明的 Settings 与 ORM 字段。`EventEntityInput`、SQLAlchemy Query 和事件／实体向量回调使用实际类型；禁用的异步写入明确返回 NoReturn。回调仍接收原来的列表和绑定方法，资源初始化、操作顺序、参数、事务、重试、部分写入清理、配额与 channel 状态政策保持。
 

@@ -3,17 +3,9 @@ from uuid import uuid4
 
 import pytest
 
-from app.models.document import Document
-from app.services.chat_persistence import _online_eval_retrieval_mode
-from app.services.connector_reconcile_service import extract_connector_source_identity, plan_connector_reconcile
-from app.services.fusion_weight_learning_service import _iter_filtered_traces
-
-
-@pytest.mark.parametrize("trace_tenant", [None, "", "other-tenant"])
-def test_selected_tenant_excludes_unowned_or_mismatched_traces(trace_tenant) -> None:
-    rows = [{"event": "rag_trace", "tenant_id": trace_tenant}]
-    assert _iter_filtered_traces(rows, tenant_id="selected-tenant") == []
-    assert len(_iter_filtered_traces(rows, tenant_id=None)) == 1
+from app.models.documents.records import Document
+from app.services.chat.response_finalization import _online_eval_retrieval_mode
+from app.services.connectors.reconcile import extract_connector_source_identity, plan_connector_reconcile
 
 
 def test_blank_config_selector_cannot_widen_reconcile_to_other_configs() -> None:

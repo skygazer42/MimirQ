@@ -9,27 +9,50 @@
 
 'use client'
 
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
+import { skipToken, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useSearchParams } from 'next/navigation'
 import { datasetApi, evaluationApi } from '@/lib/api'
-import type { RegressionRunCreate } from '@/types'
+import type { RegressionRun, RegressionRunCreate } from '@/types'
 import { Button } from '@/components/ui/button'
+import { WorkspaceNotice } from '@/components/ui/operational-workspace'
 import { TestCaseManager } from '@/components/test-case-manager'
 import { TestGenerationDialog } from '@/components/test-generation-dialog'
-import { Sparkles, Loader2, BarChart3, Clock3, ChevronDown, ChevronRight } from '@/components/icons'
+import { Sparkles, Clock3, ChevronDown } from '@/components/icons'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
-import { formatApiError } from '@/lib/api-errors'
+import { formatApiError, toApiErrorInfo } from '@/lib/api-errors'
+import { getAuthSessionKey, subscribeAuthSession } from '@/lib/auth-storage'
 import { reportClientError } from '@/lib/client-logging'
+import { RegressionItemMetadata } from '@/components/evaluation/regression-item-metadata'
+import {
+  buildRegressionSummaryModel,
+  formatRegressionCount,
+  formatRegressionMetric,
+  formatRegressionValue,
+} from '@/lib/regression-result-model'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
-import { RAGAS_METRIC_OPTIONS, ragasMetricLabel } from '@/components/evaluation/ragas-metric-selector'
+import { getRagasMetricOptions, ragasMetricLabel, type RagasMetricOption } from './ragas-metrics'
 import { queryKeys } from '@/lib/query-keys'
-import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog'
 import evaluationStyles from './evaluation-panels.module.css'
+
+const REGRESSION_STAT_STYLES = {
+  neutral: { container: 'border-border/60 bg-card/90', value: 'text-foreground' },
+  success: { container: 'border-success/30 bg-success/5', value: 'text-success' },
+  warning: { container: 'border-warning/30 bg-warning/5', value: 'text-warning' },
+  info: { container: 'border-info/30 bg-info/5', value: 'text-info' },
+}
 
 function RegressionInlineStat({
   label,
@@ -38,30 +61,14 @@ function RegressionInlineStat({
 }: Readonly<{
   label: string
   value: ReactNode
-  tone?: 'neutral' | 'success' | 'warning' | 'info'
+  tone?: keyof typeof REGRESSION_STAT_STYLES
 }>) {
-  const toneClass =
-    tone === 'success'
-      ? 'border-success/30 bg-success/5'
-      : tone === 'warning'
-        ? 'border-warning/30 bg-warning/5'
-        : tone === 'info'
-          ? 'border-info/30 bg-info/5'
-          : 'border-border/60 bg-card/90'
-
-  const valueClass =
-    tone === 'success'
-      ? 'text-success'
-      : tone === 'warning'
-        ? 'text-warning'
-        : tone === 'info'
-          ? 'text-info'
-          : 'text-foreground'
+  const styles = REGRESSION_STAT_STYLES[tone]
 
   return (
-    <div className={cn('inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1', toneClass)}>
+    <div className={cn('inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1', styles.container)}>
       <span className="text-[13px] font-medium leading-none text-muted-foreground">{label}</span>
-      <span className={cn('text-[14px] font-semibold leading-6', valueClass)}>{value}</span>
+      <span className={cn('text-[14px] font-semibold leading-6', styles.value)}>{value}</span>
     </div>
   )
 }
@@ -75,9 +82,9 @@ function RegressionMetricCompactGrid({
     <section className="rounded-2xl border border-border/60 bg-muted/40 p-2">
       <div className="mb-2 flex items-center justify-between gap-2">
         <div className="min-w-0">
-          <div className="text-[12px] font-semibold text-foreground">评分指标</div>
+          <div className="text-[12px] font-semibold text-foreground">数值统计</div>
           <div className="mt-0.5 text-[12px] leading-4 text-muted-foreground">
-            Golden 标尺对比后的汇总分；低分项再去看下方样本明细。
+            当前运行的分数、计数和其他数值；缺失项不按零计算。
           </div>
         </div>
         <span className="shrink-0 rounded-full border border-border bg-card px-2 py-0.5 text-[12px] font-medium text-muted-foreground">
@@ -89,13 +96,13 @@ function RegressionMetricCompactGrid({
           <div
             key={metric.key}
             className="min-w-0 rounded-lg border border-border/60 bg-card px-2 py-1.5"
-            title={`${ragasMetricLabel(metric.key)}: ${metric.value.toFixed(3)}`}
+            title={`${ragasMetricLabel(metric.key)}: ${metric.value}`}
           >
             <div className="truncate text-[12px] font-medium leading-4 text-muted-foreground">
               {ragasMetricLabel(metric.key)}
             </div>
             <div className="mt-0.5 font-mono text-[14px] font-semibold leading-6 tabular-nums text-foreground">
-              {metric.value.toFixed(3)}
+              {metric.value}
             </div>
           </div>
         ))}
@@ -104,74 +111,7 @@ function RegressionMetricCompactGrid({
   )
 }
 
-function safeRecord(value: unknown): Record<string, unknown> {
-  return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {}
-}
-
-function primitiveText(value: unknown, fallback = ''): string {
-  if (typeof value === 'string') return value
-  if (typeof value === 'number' || typeof value === 'boolean') return String(value)
-  return fallback
-}
-
-function safeNumber(value: unknown): number {
-  const numeric = Number(value)
-  return Number.isFinite(numeric) ? numeric : 0
-}
-
-function EmbeddedSection({
-  title,
-  description,
-  children,
-  className,
-}: Readonly<{
-  title: string
-  description?: string
-  children: ReactNode
-  className?: string
-}>) {
-  return (
-    <section className={cn('border-t border-border bg-transparent py-4', className)}>
-      <div className="text-[13px] font-medium uppercase tracking-[0.12em] text-muted-foreground">{title}</div>
-      {description ? <p className="mt-1 text-[13px] leading-4 text-muted-foreground">{description}</p> : null}
-      <div className="mt-3">{children}</div>
-    </section>
-  )
-}
-
-function EmbeddedCollapsibleSection({
-  summary,
-  description,
-  badge,
-  children,
-  className,
-}: Readonly<{
-  summary: string
-  description?: string
-  badge?: ReactNode
-  children: ReactNode
-  className?: string
-}>) {
-  return (
-    <details className={cn('group overflow-hidden border-t border-border bg-transparent', className)}>
-      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-2.5 py-2.5 [&::-webkit-details-marker]:hidden">
-        <div className="min-w-0">
-          <div className="text-[13px] font-medium uppercase tracking-[0.12em] text-muted-foreground">{summary}</div>
-          {description ? (
-            <p className="mt-1 line-clamp-2 text-[13px] leading-4 text-muted-foreground">{description}</p>
-          ) : null}
-        </div>
-        <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-border bg-card px-2 py-1 text-[12px] font-medium text-muted-foreground">
-          {badge}
-          <ChevronDown className="h-3 w-3 transition-transform group-open:rotate-180" />
-        </span>
-      </summary>
-      <div className="border-t border-border/60 bg-card/80 p-2.5">{children}</div>
-    </details>
-  )
-}
-
-function EmbeddedToggleCard({
+function RegressionConfigToggle({
   title,
   description,
   checked,
@@ -191,7 +131,7 @@ function EmbeddedToggleCard({
           <div className="text-sm font-medium text-foreground">{title}</div>
           <div className="mt-1 text-[13px] leading-4 text-muted-foreground">{description}</div>
         </div>
-        <Switch checked={checked} disabled={disabled} onCheckedChange={onCheckedChange} />
+        <Switch aria-label={title} checked={checked} disabled={disabled} onCheckedChange={onCheckedChange} />
       </div>
     </div>
   )
@@ -199,16 +139,10 @@ function EmbeddedToggleCard({
 
 const REGRESSION_CORE_METRIC_KEYS = new Set(['faithfulness', 'response_relevancy', 'context_precision'])
 
-const REGRESSION_SUMMARY_INLINE_KEYS = new Set([
-  'items',
-  'total_tokens',
-  'total_cost',
-  'expected_metadata_hit_rate',
-  'expected_metadata_recall',
-  'expected_metadata_cases_total',
-  'expected_metadata_fields_total',
-  'expected_metadata_fields_matched',
-])
+type RegressionRunSubmission = Readonly<{
+  status: 'accepted' | 'rejected' | 'unconfirmed'
+  message: string
+}>
 
 function RegressionMetricPicker({
   disabled = false,
@@ -219,7 +153,7 @@ function RegressionMetricPicker({
   metricKeys: string[]
   onMetricKeysChange: (nextKeys: string[]) => void
 }>) {
-  const regressionMetrics = RAGAS_METRIC_OPTIONS.filter((metric) => metric.scopes.includes('regression'))
+  const regressionMetrics = getRagasMetricOptions('regression')
   const coreMetrics = regressionMetrics.filter((metric) => REGRESSION_CORE_METRIC_KEYS.has(metric.key))
   const advancedMetrics = regressionMetrics.filter((metric) => !REGRESSION_CORE_METRIC_KEYS.has(metric.key))
   const selectedAdvancedMetrics = advancedMetrics.filter((metric) => metricKeys.includes(metric.key))
@@ -240,7 +174,6 @@ function RegressionMetricPicker({
           {coreMetrics.map((metric) => (
             <RegressionMetricOption
               key={metric.key}
-              compact
               checked={metricKeys.includes(metric.key)}
               disabled={disabled}
               metric={metric}
@@ -285,7 +218,6 @@ function RegressionMetricPicker({
             {advancedMetrics.map((metric) => (
               <RegressionMetricOption
                 key={metric.key}
-                compact
                 checked={metricKeys.includes(metric.key)}
                 disabled={disabled}
                 metric={metric}
@@ -301,97 +233,64 @@ function RegressionMetricPicker({
 
 function RegressionMetricOption({
   checked,
-  compact = false,
   disabled,
   metric,
   onCheckedChange,
 }: Readonly<{
   checked: boolean
-  compact?: boolean
   disabled: boolean
-  metric: (typeof RAGAS_METRIC_OPTIONS)[number]
+  metric: RagasMetricOption
   onCheckedChange: (checked: boolean) => void
 }>) {
   const detailLabel = `${metric.label}，${metric.kind}，${metric.category}，${metric.cost}。${metric.hint}`
 
-  const metricText = (
-    <>
-      <span
-        className={cn(
-          'flex flex-wrap items-center gap-1.5 font-medium text-foreground',
-          compact ? 'text-[13px]' : 'text-[12px]',
-        )}
-      >
-        <span className="truncate">{metric.label}</span>
-        <span className="rounded-full border border-border bg-muted/50 px-1.5 py-0.5 text-[12px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
-          {metric.kind}
-        </span>
-        {compact ? null : (
-          <>
-            <span className="rounded-full border border-border bg-muted/50 px-1.5 py-0.5 text-[12px] font-medium text-muted-foreground">
-              {metric.category}
-            </span>
-            <span className="rounded-full border border-border bg-muted/50 px-1.5 py-0.5 text-[12px] font-medium text-muted-foreground">
-              {metric.cost}
-            </span>
-          </>
-        )}
-      </span>
-      <span
-        className={cn(
-          'block text-muted-foreground',
-          compact ? 'mt-0.5 line-clamp-1 text-[12px] leading-3' : 'mt-1 text-[13px] leading-4',
-        )}
-      >
-        {metric.hint}
-      </span>
-    </>
-  )
-
   return (
     <label
       className={cn(
-        'flex items-start gap-2 rounded-xl border border-border/60 bg-card/95 shadow-sm',
-        compact ? 'px-2 py-1.5' : 'px-2.5 py-2',
+        'flex items-start gap-2 rounded-xl border border-border/60 bg-card/95 px-2 py-1.5 shadow-sm',
         disabled && 'cursor-not-allowed',
       )}
     >
       <Checkbox checked={checked} disabled={disabled} onCheckedChange={(value) => onCheckedChange(value === true)} />
       <span className="min-w-0 flex-1">
-        {compact ? (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <span
-                aria-label={detailLabel}
-                className="block cursor-help outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
-                tabIndex={disabled ? -1 : 0}
-              >
-                {metricText}
-              </span>
-            </TooltipTrigger>
-            <TooltipContent
-              align="start"
-              className="max-w-[320px] rounded-xl border border-border bg-card px-3 py-2 text-left text-foreground/85 shadow-strong"
-              side="right"
-              sideOffset={8}
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span
+              aria-label={detailLabel}
+              className="block cursor-help outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+              tabIndex={disabled ? -1 : 0}
             >
-              <div className="text-[12px] font-semibold leading-5 text-foreground">{metric.label}</div>
-              <div className="mt-1 flex flex-wrap gap-1">
-                {[metric.kind, metric.category, metric.cost].map((item) => (
-                  <span
-                    key={item}
-                    className="rounded-full border border-border bg-muted/50 px-1.5 py-0.5 text-[12px] font-medium text-muted-foreground"
-                  >
-                    {item}
-                  </span>
-                ))}
-              </div>
-              <div className="mt-2 text-[13px] leading-5 text-muted-foreground">{metric.hint}</div>
-            </TooltipContent>
-          </Tooltip>
-        ) : (
-          metricText
-        )}
+              <span className="flex flex-wrap items-center gap-1.5 text-[13px] font-medium text-foreground">
+                <span className="truncate">{metric.label}</span>
+                <span className="rounded-full border border-border bg-muted/50 px-1.5 py-0.5 text-[12px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
+                  {metric.kind}
+                </span>
+              </span>
+              <span className="mt-0.5 block line-clamp-1 text-[12px] leading-3 text-muted-foreground">
+                {metric.hint}
+              </span>
+            </span>
+          </TooltipTrigger>
+          <TooltipContent
+            align="start"
+            className="max-w-[320px] rounded-xl border border-border bg-card px-3 py-2 text-left text-foreground/85 shadow-strong"
+            side="right"
+            sideOffset={8}
+          >
+            <div className="text-[12px] font-semibold leading-5 text-foreground">{metric.label}</div>
+            <div className="mt-1 flex flex-wrap gap-1">
+              {[metric.kind, metric.category, metric.cost].map((item) => (
+                <span
+                  key={item}
+                  className="rounded-full border border-border bg-muted/50 px-1.5 py-0.5 text-[12px] font-medium text-muted-foreground"
+                >
+                  {item}
+                </span>
+              ))}
+            </div>
+            <div className="mt-2 text-[13px] leading-5 text-muted-foreground">{metric.hint}</div>
+          </TooltipContent>
+        </Tooltip>
       </span>
     </label>
   )
@@ -440,538 +339,504 @@ function RegressionMetricGuideCard() {
   )
 }
 
-function finiteNumber(value: unknown): number | null {
-  return typeof value === 'number' && Number.isFinite(value) ? value : null
+export function RegressionTestTab() {
+  const sessionKey = useSyncExternalStore(subscribeAuthSession, getAuthSessionKey, getAuthSessionKey)
+  return <RegressionWorkspace key={sessionKey} sessionKey={sessionKey} />
 }
 
-function formatMetricNumber(value: unknown): string {
-  const numeric = finiteNumber(value)
-  return numeric === null ? '待返回' : numeric.toFixed(3)
-}
-
-function formatInteger(value: unknown): string {
-  const numeric = finiteNumber(value)
-  return numeric === null ? '待返回' : String(Math.trunc(numeric))
-}
-
-export function RegressionTestTab({ embedded = false }: Readonly<{ embedded?: boolean }>) {
+function RegressionWorkspace({ sessionKey }: Readonly<{ sessionKey: string }>) {
+  const queryClient = useQueryClient()
   const searchParams = useSearchParams()
-  const deepLinkDatasetId = searchParams.get('dataset_id') || ''
-  const deepLinkRunId = searchParams.get('run_id') || ''
+  const deepLinkDatasetId = searchParams.get('dataset_id') ?? ''
+  const deepLinkRunId = searchParams.get('run_id') ?? ''
   const [showGenerationDialog, setShowGenerationDialog] = useState(false)
 
   // Dataset scope (required by backend for cases and runs)
-  const [selectedDatasetId, setSelectedDatasetId] = useState<string>('')
+  const [selectedDatasetId, setSelectedDatasetId] = useState(deepLinkDatasetId)
   const datasetsQuery = useQuery({
-    queryKey: queryKeys.datasets.exhaustive({ purpose: 'regression-tests' }),
-    queryFn: () => datasetApi.listAll(),
+    queryKey: queryKeys.datasets.exhaustive(),
+    queryFn: ({ signal }) => datasetApi.listAll(undefined, { signal }),
     staleTime: 30_000,
   })
-  const datasets = useMemo(() => {
-    return datasetsQuery.data ?? []
-  }, [datasetsQuery.data])
+  const datasets = datasetsQuery.data
   const isLoadingDatasets = datasetsQuery.isLoading || datasetsQuery.isFetching
+  const selectedDataset = datasets?.find((dataset) => dataset.id === selectedDatasetId)
+  const selectedDatasetLabel =
+    selectedDatasetId === ''
+      ? '选择数据集'
+      : selectedDataset === undefined
+        ? selectedDatasetId
+        : `${selectedDataset.name}（${selectedDataset.id}）`
   const latestRegressionCaseQuery = useQuery({
     queryKey: queryKeys.evaluations.regressionCases({ limit: 1 }),
-    queryFn: () => evaluationApi.listRegressionCases({ limit: 1 }),
+    queryFn: ({ signal }) => evaluationApi.listRegressionCases({ limit: 1 }, { signal }),
     staleTime: 30_000,
   })
-  const latestRegressionCaseDatasetId = useMemo(() => {
-    const first = latestRegressionCaseQuery.data?.items?.[0]
-    return typeof first?.dataset_id === 'string' ? first.dataset_id : ''
-  }, [latestRegressionCaseQuery.data])
+  const latestRegressionCaseDatasetId = latestRegressionCaseQuery.data?.items[0]?.dataset_id
   const isLoadingLatestRegressionCase = latestRegressionCaseQuery.isLoading || latestRegressionCaseQuery.isFetching
 
   // 运行配置
   const [metricKeys, setMetricKeys] = useState<string[]>(['faithfulness', 'response_relevancy'])
   const [retrievalOnly, setRetrievalOnly] = useState(false)
   const [useLlmJudge, setUseLlmJudge] = useState(false)
+  const missingScoringMetrics = !retrievalOnly && metricKeys.length === 0
+  const runMetricKeys = retrievalOnly ? [] : metricKeys
+  const runUsesLlmJudge = !retrievalOnly && useLlmJudge
 
   // 运行历史
-  const [selectedRunId, setSelectedRunId] = useState<string>('')
-  const [isConfigPanelCollapsed, setIsConfigPanelCollapsed] = useState(true)
+  const [runSelection, setRunSelection] = useState<Readonly<{ datasetId: string; runId: string }> | null>(() =>
+    deepLinkRunId === '' ? null : { datasetId: deepLinkDatasetId, runId: deepLinkRunId },
+  )
+  const selectedRunId =
+    runSelection !== null && runSelection.datasetId === selectedDatasetId ? runSelection.runId : null
+  const ownerRef = useRef({ active: true })
+  const runScopeRef = useRef<{ datasetId: string; active: boolean } | null>(null)
+  const currentRunSelectionRef = useRef(runSelection)
+  const runRequestsRef = useRef(new Map<string, Promise<RegressionRun>>())
+  const [pendingDatasetIds, setPendingDatasetIds] = useState<ReadonlySet<string>>(() => new Set())
+  const [runSubmissions, setRunSubmissions] = useState<ReadonlyMap<string, RegressionRunSubmission>>(() => new Map())
 
+  useLayoutEffect(() => {
+    const owner = { active: true }
+    ownerRef.current = owner
+    return () => {
+      owner.active = false
+    }
+  }, [])
+  useLayoutEffect(() => {
+    const scope = { datasetId: selectedDatasetId, active: true }
+    runScopeRef.current = scope
+    return () => {
+      scope.active = false
+    }
+  }, [selectedDatasetId])
+  useLayoutEffect(() => {
+    currentRunSelectionRef.current = runSelection
+  }, [runSelection])
+
+  const runListDatasetId = selectedDatasetId === '' ? undefined : selectedDatasetId
+  const runListParams = { limit: 50, dataset_id: runListDatasetId }
   const runsQuery = useQuery({
-    queryKey: queryKeys.evaluations.regressionRuns({ limit: 50 }),
-    queryFn: () => evaluationApi.listRegressionRuns({ limit: 50 }),
+    queryKey: queryKeys.evaluations.regressionRuns(runListParams),
+    queryFn: ({ signal }) => evaluationApi.listRegressionRuns(runListParams, { signal }),
   })
   const runDetailQuery = useQuery({
     queryKey: queryKeys.evaluations.regressionRunDetail(selectedRunId, {
       include_items: true,
       include_contexts: false,
     }),
-    enabled: Boolean(selectedRunId),
-    queryFn: () =>
-      evaluationApi.getRegressionRun(selectedRunId, {
-        include_items: true,
-        include_contexts: false,
-      }),
+    queryFn:
+      selectedRunId === null
+        ? skipToken
+        : ({ signal }) =>
+            evaluationApi.getRegressionRun(selectedRunId, { include_items: true, include_contexts: false }, { signal }),
     refetchInterval: (query) => {
       const detail = query.state.data
-      const status = detail?.run?.status
+      if (detail === undefined || (selectedDatasetId !== '' && detail.run.dataset_id !== selectedDatasetId))
+        return false
+      const status = detail.run.status
       return status === 'pending' || status === 'running' ? 2000 : false
     },
   })
-  const runs = useMemo(() => {
-    const items = runsQuery.data?.items
-    return Array.isArray(items) ? items : []
-  }, [runsQuery.data])
-  const runDetail = runDetailQuery.data || null
-  const isLoadingRuns = runsQuery.isLoading || runsQuery.isFetching
-
-  const visibleRuns = useMemo(() => {
-    if (!selectedDatasetId) return runs
-    return (runs || []).filter((r) => String(r?.dataset_id || '') === selectedDatasetId)
-  }, [runs, selectedDatasetId])
-
+  const visibleRuns = runsQuery.data?.items
+  const receivedRunDetail = runDetailQuery.data
+  const runScopeMismatch =
+    receivedRunDetail !== undefined &&
+    selectedDatasetId !== '' &&
+    receivedRunDetail.run.dataset_id !== selectedDatasetId
+  const runDetail = runScopeMismatch ? undefined : receivedRunDetail
+  const loadedRunId = runDetail?.run.id
+  const loadedRunStatus = runDetail?.run.status
   useEffect(() => {
-    if (deepLinkDatasetId) setSelectedDatasetId(deepLinkDatasetId)
-    if (deepLinkRunId) setSelectedRunId(deepLinkRunId)
+    if (loadedRunId === undefined || (loadedRunStatus !== 'completed' && loadedRunStatus !== 'failed')) return
+    void queryClient.invalidateQueries({
+      queryKey: queryKeys.evaluations.regressionRuns({ limit: 50, dataset_id: runListDatasetId }),
+      exact: true,
+    })
+  }, [queryClient, runListDatasetId, loadedRunId, loadedRunStatus])
+  const isLoadingRuns = runsQuery.isPending
+  const creatingRun = pendingDatasetIds.has(selectedDatasetId)
+  const runSubmission = runSubmissions.get(selectedDatasetId)
+
+  useLayoutEffect(() => {
+    setSelectedDatasetId(deepLinkDatasetId)
+    setRunSelection(deepLinkRunId === '' ? null : { datasetId: deepLinkDatasetId, runId: deepLinkRunId })
   }, [deepLinkDatasetId, deepLinkRunId])
 
-  // Keep selected run in sync with dataset filtering.
   useEffect(() => {
-    if (!selectedDatasetId) return
-    if (selectedRunId && (visibleRuns.some((r) => r?.id === selectedRunId) || selectedRunId === deepLinkRunId)) return
-    setSelectedRunId(visibleRuns?.[0]?.id || '')
-  }, [deepLinkRunId, selectedDatasetId, selectedRunId, visibleRuns])
+    if (creatingRun || selectedDatasetId === '') return
+    if (runSelection !== null && runSelection.datasetId === selectedDatasetId) return
+    const firstRun = visibleRuns?.[0]
+    if (firstRun !== undefined) setRunSelection({ datasetId: selectedDatasetId, runId: firstRun.id })
+  }, [creatingRun, runSelection, selectedDatasetId, visibleRuns])
 
   useEffect(() => {
-    if (!datasets.length) return
-    if (!deepLinkDatasetId && isLoadingLatestRegressionCase) return
-    const knownDatasetIds = new Set(datasets.map((dataset) => dataset.id))
+    if (selectedDatasetId !== '') return
+    if (selectedRunId !== null) {
+      if (runDetail === undefined || runDetailQuery.error !== null || runDetail.run.dataset_id === null) return
+      setSelectedDatasetId(runDetail.run.dataset_id)
+      setRunSelection({ datasetId: runDetail.run.dataset_id, runId: runDetail.run.id })
+      return
+    }
+    if (datasets === undefined || datasetsQuery.error !== null || datasets.length === 0) return
+    if (deepLinkDatasetId === '' && (isLoadingLatestRegressionCase || latestRegressionCaseQuery.error !== null)) return
     setSelectedDatasetId((prev) => {
-      if (prev && knownDatasetIds.has(prev)) return prev
-      if (deepLinkDatasetId && knownDatasetIds.has(deepLinkDatasetId)) {
+      if (prev !== '') return prev
+      if (deepLinkDatasetId !== '') {
         return deepLinkDatasetId
       }
-      if (latestRegressionCaseDatasetId && knownDatasetIds.has(latestRegressionCaseDatasetId)) {
-        return latestRegressionCaseDatasetId
-      }
-      return datasets[0]?.id || ''
+      const latestCaseDataset = datasets.find((dataset) => dataset.id === latestRegressionCaseDatasetId)
+      return (latestCaseDataset ?? datasets[0]).id
     })
-  }, [datasets, deepLinkDatasetId, isLoadingLatestRegressionCase, latestRegressionCaseDatasetId])
+  }, [
+    datasets,
+    datasetsQuery.error,
+    deepLinkDatasetId,
+    deepLinkRunId,
+    isLoadingLatestRegressionCase,
+    latestRegressionCaseDatasetId,
+    latestRegressionCaseQuery.error,
+    runDetail,
+    runDetailQuery.error,
+    selectedDatasetId,
+    selectedRunId,
+  ])
 
   useEffect(() => {
-    const firstRunId = runs[0]?.id
-    if (!firstRunId) return
-    setSelectedRunId((prev) => prev || firstRunId)
-  }, [runs])
-
-  useEffect(() => {
-    if (!runsQuery.error) return
+    if (runsQuery.error === null) return
     reportClientError('Failed to load regression run history', runsQuery.error)
-    toast.error(formatApiError(runsQuery.error, '加载运行历史失败'))
   }, [runsQuery.error])
 
   // 运行选中的测试
   const handleRunTests = async (caseIds: string[]) => {
-    if (!selectedDatasetId) {
+    const scope = runScopeRef.current
+    const owner = ownerRef.current
+    if (!owner.active || getAuthSessionKey() !== sessionKey || scope === null || !scope.active) return
+    if (selectedDatasetId === '' || scope.datasetId !== selectedDatasetId) {
       toast.error('请先选择数据集')
       return
     }
-    if (caseIds.length === 0) {
+    if (missingScoringMetrics) {
+      toast.error('请在运行配置中选择至少一个评分指标，或开启仅检索评测')
+      return
+    }
+    const ids = [...new Set(caseIds)]
+    if (ids.length === 0) {
       toast.error('请至少选择一个评测样本')
       return
     }
+    if (ids.length > 500) {
+      toast.error('一次最多运行 500 个评测样本，请减少选择后提交')
+      return
+    }
+    const datasetId = scope.datasetId
+    if (runRequestsRef.current.has(datasetId)) return
+    const selectedAtStart = currentRunSelectionRef.current
+    const params: RegressionRunCreate = {
+      case_ids: ids,
+      dataset_id: datasetId,
+      metrics: runMetricKeys,
+      use_llm_judge: runUsesLlmJudge,
+      skip_empty_contexts: true,
+      max_cases: ids.length,
+    }
+    const request = evaluationApi.createRegressionRun(params)
+    runRequestsRef.current.set(datasetId, request)
+    setPendingDatasetIds(new Set(runRequestsRef.current.keys()))
+    setRunSubmissions((current) => {
+      const next = new Map(current)
+      next.delete(datasetId)
+      return next
+    })
 
     try {
-      const params: RegressionRunCreate = {
-        case_ids: caseIds,
-        dataset_id: selectedDatasetId,
-        metrics: retrievalOnly ? [] : metricKeys,
-        use_llm_judge: Boolean(!retrievalOnly && useLlmJudge),
-        skip_empty_contexts: true,
-        max_cases: Math.min(Math.max(caseIds.length, 1), 500),
+      const run = await request
+      if (!owner.active || getAuthSessionKey() !== sessionKey) return
+      const message = `数据集 ${datasetId} 已提交评测运行 ${run.id}`
+      setRunSubmissions((current) => new Map(current).set(datasetId, { status: 'accepted', message }))
+      if (scope.active) {
+        toast.success(message)
+        if (currentRunSelectionRef.current === selectedAtStart) setRunSelection({ datasetId, runId: run.id })
       }
-
-      const run = await evaluationApi.createRegressionRun(params)
-      toast.success('开始运行 Golden 评测')
-      await runsQuery.refetch()
-      setSelectedRunId(run.id)
     } catch (error) {
+      if (!owner.active || getAuthSessionKey() !== sessionKey) return
       reportClientError('Failed to run Golden regression evaluation', error)
-      toast.error(formatApiError(error, '运行 Golden 评测失败'))
+      const { status } = toApiErrorInfo(error, '评测运行提交失败')
+      const rejected = status !== undefined && status >= 400 && status < 500 && status !== 408
+      const message = formatApiError(
+        error,
+        rejected ? '评测提交被拒绝' : '评测提交结果未确认，请先重新读取运行记录核对',
+      )
+      setRunSubmissions((current) =>
+        new Map(current).set(datasetId, { status: rejected ? 'rejected' : 'unconfirmed', message }),
+      )
+      if (scope.active) toast.error(message)
+    } finally {
+      if (runRequestsRef.current.get(datasetId) === request) runRequestsRef.current.delete(datasetId)
+      if (owner.active && getAuthSessionKey() === sessionKey)
+        setPendingDatasetIds(new Set(runRequestsRef.current.keys()))
+    }
+    if (owner.active && getAuthSessionKey() === sessionKey) {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.evaluations.regressionRunLists })
     }
   }
 
-  // 生成完成回调
-  const handleGenerated = () => {
-    toast.success('问题生成完成')
-    // 刷新用例列表会由 TestCaseManager 组件自动处理
-  }
-
-  const summary = runDetail?.run?.summary || {}
-  const summaryItems = typeof summary.items === 'number' ? summary.items : '-'
-  const summaryTokens = typeof summary.total_tokens === 'number' ? summary.total_tokens : '-'
-  const summaryCost =
-    typeof summary.total_cost === 'number' || typeof summary.total_cost === 'string' ? summary.total_cost : '-'
-  const displayMetrics = Object.entries(summary)
-    .filter(([k, v]) => !REGRESSION_SUMMARY_INLINE_KEYS.has(k) && finiteNumber(v) !== null)
-    .map(([k, v]) => ({ key: k, value: Number(v) }))
-  const answerComparisonStatus = displayMetrics.some((m) =>
-    ['answer_correctness', 'factual_correctness'].includes(m.key),
+  const summaryResult = useMemo(
+    () => (runDetail === undefined ? undefined : buildRegressionSummaryModel(runDetail.run.summary)),
+    [runDetail],
   )
-    ? '有'
-    : '待返回'
-  const evidenceRecall =
-    typeof summary.retrieval_recall === 'number' ? Number(summary.retrieval_recall).toFixed(3) : '待返回'
-  const expectedMetadataHitRate = formatMetricNumber(summary.expected_metadata_hit_rate)
-  const expectedMetadataRecall = formatMetricNumber(summary.expected_metadata_recall)
-  const expectedMetadataFieldsMatched = finiteNumber(summary.expected_metadata_fields_matched)
-  const expectedMetadataFieldsTotal = finiteNumber(summary.expected_metadata_fields_total)
-  const expectedMetadataFieldsText =
-    expectedMetadataFieldsMatched !== null || expectedMetadataFieldsTotal !== null
-      ? `${Math.trunc(expectedMetadataFieldsMatched || 0)}/${Math.trunc(expectedMetadataFieldsTotal || 0)}`
-      : '待返回'
-  const hasExpectedMetadataSummary = [
-    summary.expected_metadata_hit_rate,
-    summary.expected_metadata_recall,
-    summary.expected_metadata_cases_total,
-    summary.expected_metadata_fields_total,
-    summary.expected_metadata_fields_matched,
-  ].some((value) => finiteNumber(value) !== null)
-  const multimodalSlices = safeRecord(summary.multimodal_slices)
-  const multimodalSliceCounts = safeRecord(multimodalSlices.counts)
-  const multimodalSliceEvaluatable = safeRecord(multimodalSlices.evaluatable)
-  const multimodalSliceCoverage = safeRecord(multimodalSlices.coverage)
-  const multimodalSliceRows = [
-    { key: 'chart', label: 'Chart' },
-    { key: 'formula', label: 'Formula' },
-    { key: 'table_math', label: 'Table-Math' },
-    { key: 'image', label: 'Image' },
-    { key: 'text', label: 'Text' },
-  ]
-    .map((slice) => ({
-      ...slice,
-      count: safeNumber(multimodalSliceCounts[slice.key]),
-      evaluatable: safeNumber(multimodalSliceEvaluatable[slice.key]),
-      coverage: safeNumber(multimodalSliceCoverage[slice.key]),
-    }))
-    .filter((slice) => slice.count > 0 || slice.evaluatable > 0 || slice.coverage > 0)
-  const multimodalTextOnlyFullCoverage =
-    multimodalSliceRows.length === 1 &&
-    multimodalSliceRows[0]?.key === 'text' &&
-    multimodalSliceRows[0].count > 0 &&
-    multimodalSliceRows[0].evaluatable === multimodalSliceRows[0].count &&
-    multimodalSliceRows[0].coverage >= 0.999
-  const shouldShowMultimodalSlicePanel = multimodalSliceRows.length > 0 && !multimodalTextOnlyFullCoverage
-  const multimodalSliceMinCoverage = multimodalSliceRows.length
-    ? Math.min(...multimodalSliceRows.map((slice) => slice.coverage))
-    : null
-  const multimodalSliceSummaryText = (() => {
-    if (!multimodalSliceRows.length) return ''
-    if (multimodalSliceRows.length === 1) {
-      const slice = multimodalSliceRows[0]
-      return `${slice.label} ${slice.evaluatable}/${slice.count}`
-    }
-    return `${multimodalSliceRows.length} 类 · 最低 ${Math.round((multimodalSliceMinCoverage || 0) * 100)}%`
-  })()
+  const summaryModel = summaryResult?.status === 'ready' ? summaryResult : undefined
 
   return (
-    <div className={cn('flex-1 flex flex-col min-h-0 overflow-hidden', embedded && evaluationStyles.golden)}>
-      {embedded && (
+    <div className={cn('flex-1 flex flex-col min-h-0 overflow-hidden', evaluationStyles.golden)}>
+      {datasetsQuery.error !== null ? (
+        <WorkspaceNotice
+          retry={() => void datasetsQuery.refetch()}
+          retryLabel="重新读取数据集目录"
+          pending={datasetsQuery.isFetching}
+        >
+          {datasets === undefined ? null : '更新失败，保留上次目录和当前选择。'}
+          {formatApiError(datasetsQuery.error, '数据集目录读取失败')}
+        </WorkspaceNotice>
+      ) : null}
+      {datasetsQuery.isFetching && datasets !== undefined ? (
+        <p role="status" className="text-sm text-muted-foreground">
+          正在更新数据集目录，保留当前选择。
+        </p>
+      ) : null}
+      {deepLinkDatasetId === '' &&
+      selectedDatasetId === '' &&
+      selectedRunId === null &&
+      latestRegressionCaseQuery.error !== null ? (
+        <WorkspaceNotice
+          retry={() => void latestRegressionCaseQuery.refetch()}
+          retryLabel="重新读取最近评测范围"
+          pending={latestRegressionCaseQuery.isFetching}
+        >
+          {formatApiError(latestRegressionCaseQuery.error, '最近评测范围读取失败，请手动选择数据集')}
+        </WorkspaceNotice>
+      ) : null}
+      <Dialog>
         <div className={evaluationStyles.goldenToolbar}>
           <div>
-            <h2>{datasets.find((dataset) => dataset.id === selectedDatasetId)?.name || '选择数据集'}</h2>
-            <span>标准问答与证据</span>
+            <h2>{selectedDatasetLabel}</h2>
+            <span className={evaluationStyles.goldenToolbarCaption}>标准问答与证据</span>
           </div>
           <div>
             <Button variant="outline" onClick={() => setShowGenerationDialog(true)}>
               <Sparkles className="size-4" />
               生成候选
             </Button>
-            <Button variant="outline" onClick={() => setIsConfigPanelCollapsed(false)}>
-              Golden 评测配置
-            </Button>
+            <DialogTrigger asChild>
+              <Button variant="outline">Golden 评测配置</Button>
+            </DialogTrigger>
           </div>
         </div>
-      )}
-      {/* Inline header (when embedded in a parent PageScaffold) */}
-      {embedded ? null : (
-        <header className="px-8 py-6 border-b border-border bg-card">
-          <div className="flex items-center justify-between mb-3">
-            <div>
-              <h2 className="text-xl font-semibold text-foreground">Golden 评测集</h2>
-              <p className="text-sm text-muted-foreground mt-1">
-                维护数据集级标准问答和标准证据，批量运行当前 RAG pipeline 并跟踪差距。
-              </p>
-            </div>
-            <div className="flex items-center gap-2">
-              <Button variant="outline" className="gap-2" onClick={() => setShowGenerationDialog(true)}>
-                <Sparkles className="w-4 h-4" />
-                AI 生成问题
-              </Button>
-            </div>
-          </div>
+        <DialogContent className={evaluationStyles.goldenConfigDialog}>
+          <DialogTitle className="sr-only">Golden 评测参数</DialogTitle>
+          <DialogDescription className="sr-only">配置数据集、运行方式和评分指标。</DialogDescription>
+          <div className={evaluationStyles.goldenConfigBody}>
+            <div className="shrink-0 border-b border-border bg-info/[0.025] px-3 py-3">
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <div className="text-[13px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+                    运行参数
+                  </div>
+                  <div className="mt-1 text-sm font-semibold text-foreground">Golden 评测配置</div>
+                  <p className="mt-1 text-[13px] leading-4 text-muted-foreground">
+                    先锁定数据集，再维护 Golden 评测集并运行当前 RAG pipeline。
+                  </p>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <DialogClose asChild>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 rounded-md px-2 text-[13px] text-muted-foreground hover:bg-muted hover:text-foreground"
+                    >
+                      完成
+                    </Button>
+                  </DialogClose>
+                </div>
+              </div>
 
-          {/* 指标选择 */}
-          <div className="bg-muted/40 rounded-xl p-4">
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-              <div className="lg:col-span-5">
-                <div className="text-xs font-medium text-muted-foreground mb-2">数据集</div>
+              <div className="mt-3 rounded-2xl border border-border bg-background/70 p-2.5 shadow-none">
+                <div className="mb-1.5 flex items-center justify-between gap-2">
+                  <span className="text-[13px] font-medium text-muted-foreground">数据集</span>
+                  <span
+                    className={cn(
+                      'rounded-full border px-1.5 py-0.5 text-[12px] font-medium',
+                      selectedDatasetId
+                        ? 'border-success/30 bg-success/10 text-success'
+                        : 'border-warning/30 bg-warning/10 text-warning',
+                    )}
+                  >
+                    {selectedDatasetId ? '已绑定' : '未绑定'}
+                  </span>
+                </div>
                 <Select
                   value={selectedDatasetId}
                   onValueChange={setSelectedDatasetId}
-                  disabled={isLoadingDatasets || !datasets.length}
+                  disabled={isLoadingDatasets || datasets === undefined || datasets.length === 0}
                 >
-                  <SelectTrigger className="h-9">
+                  <SelectTrigger
+                    aria-label="评测配置数据集"
+                    className="h-9 rounded-xl border-info/20 bg-info/[0.025] text-[13px]"
+                  >
                     <SelectValue placeholder={isLoadingDatasets ? '加载中...' : '选择数据集'} />
                   </SelectTrigger>
                   <SelectContent>
-                    {(datasets || []).map((d) => (
-                      <SelectItem key={d.id} value={d.id}>
-                        {d.name || d.id}
+                    {selectedDatasetId !== '' && selectedDataset === undefined ? (
+                      <SelectItem value={selectedDatasetId} disabled>
+                        已选数据集：{selectedDatasetId}
+                      </SelectItem>
+                    ) : null}
+                    {datasets?.map((dataset) => (
+                      <SelectItem key={dataset.id} value={dataset.id}>
+                        {dataset.name} <span className="font-mono text-xs text-muted-foreground">({dataset.id})</span>
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
+                {datasets !== undefined && datasets.length === 0 ? (
+                  <div className="mt-2 text-[13px] leading-4 text-muted-foreground">
+                    当前目录没有可选数据集，已有运行历史仍可查看。
+                  </div>
+                ) : null}
               </div>
-              <div className="lg:col-span-7">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <div className="text-xs font-medium text-muted-foreground">仅检索评测（无 LLM / 无 RAGAS）</div>
-                    <div className="text-[13px] text-muted-foreground mt-1">
-                      开启后将使用 `metrics=[]`，只计算 recall/hit@k/MRR/NDCG/abstain_rate。
-                    </div>
-                  </div>
-                  <Switch
-                    checked={retrievalOnly}
-                    onCheckedChange={(checked) => {
-                      setRetrievalOnly(checked)
-                      if (checked) {
-                        setUseLlmJudge(false)
-                        setMetricKeys([])
-                      } else if (!metricKeys.length) {
-                        setMetricKeys(['faithfulness', 'response_relevancy'])
-                      }
-                    }}
-                  />
-                </div>
 
-                <div className="flex items-start justify-between gap-3 mt-4">
-                  <div>
-                    <div className="text-xs font-medium text-muted-foreground">LLM-as-Judge（可选）</div>
-                    <div className="text-[13px] text-muted-foreground mt-1">
-                      为每个 case 生成 llm_judge（score / reason / evidence_quotes；额外成本；检索-only 模式下不可用）。
-                    </div>
-                  </div>
-                  <Switch
-                    checked={useLlmJudge}
-                    disabled={retrievalOnly}
-                    onCheckedChange={(v) => setUseLlmJudge(Boolean(v))}
-                  />
-                </div>
-
-                <div className="text-xs font-medium text-muted-foreground mt-4 mb-2">评测指标</div>
-                <div className="flex flex-wrap gap-2">
-                  {RAGAS_METRIC_OPTIONS.map((m) => (
-                    <label key={m.key} className={cn('flex items-center gap-2 text-sm', retrievalOnly && 'opacity-50')}>
-                      <input
-                        type="checkbox"
-                        className="h-4 w-4 rounded border-border"
-                        checked={metricKeys.includes(m.key)}
-                        disabled={retrievalOnly}
-                        onChange={(e) => {
-                          setMetricKeys((prev) =>
-                            e.target.checked ? [...prev, m.key] : prev.filter((x) => x !== m.key),
-                          )
-                        }}
-                      />
-                      <span className="text-foreground/80">{m.label}</span>
-                    </label>
-                  ))}
-                  {retrievalOnly && <span className="text-[13px] text-muted-foreground">（metrics 为空）</span>}
-                </div>
+              <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                <RegressionInlineStat label="runs" value={visibleRuns === undefined ? '未取得' : visibleRuns.length} />
+                <RegressionInlineStat
+                  label="metrics"
+                  value={retrievalOnly ? '检索-only' : metricKeys.length}
+                  tone={retrievalOnly ? 'info' : 'neutral'}
+                />
+                <RegressionInlineStat
+                  label="judge"
+                  value={runUsesLlmJudge ? 'ON' : 'OFF'}
+                  tone={runUsesLlmJudge ? 'success' : 'neutral'}
+                />
               </div>
             </div>
+
+            <div className="min-h-0 flex-1 space-y-2.5 overflow-y-auto overscroll-contain p-2.5 pb-6 custom-scrollbar">
+              <section className="border-t border-border bg-success/[0.04] py-4">
+                <h3 className="text-[13px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
+                  运行当前 RAG
+                </h3>
+                <p className="mt-1 text-[13px] leading-4 text-muted-foreground">
+                  当前数据集的标准问答会作为固定标尺，问题重新走 RAG 后再和标准答案、标准证据比较。
+                </p>
+                <div className="mt-3 space-y-2">
+                  <RegressionConfigToggle
+                    title="仅检索评测"
+                    description="开启后 `metrics=[]`，只看标准证据命中：recall、hit@k、MRR、NDCG 与 abstain_rate。"
+                    checked={retrievalOnly}
+                    onCheckedChange={setRetrievalOnly}
+                  />
+                  <RegressionConfigToggle
+                    title="LLM-as-Judge"
+                    description="为每个样本额外生成 score、reason 和 evidence quotes；检索-only 模式不可用。"
+                    checked={runUsesLlmJudge}
+                    disabled={retrievalOnly}
+                    onCheckedChange={setUseLlmJudge}
+                  />
+                </div>
+              </section>
+
+              <details className="group overflow-hidden border-t border-border bg-info/[0.025]">
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-2.5 py-2.5 [&::-webkit-details-marker]:hidden">
+                  <div className="min-w-0">
+                    <div className="text-[13px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
+                      评分维度
+                    </div>
+                    <p className="mt-1 line-clamp-2 text-[13px] leading-4 text-muted-foreground">
+                      {missingScoringMetrics ? '评分评测至少需要一个指标。' : '展开后选择 RAGAS 与程序化指标。'}
+                    </p>
+                  </div>
+                  <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-border bg-card px-2 py-1 text-[12px] font-medium text-muted-foreground">
+                    {retrievalOnly ? '检索-only' : `${metricKeys.length} 已选`}
+                    <ChevronDown className="h-3 w-3 transition-transform group-open:rotate-180 motion-reduce:transition-none" />
+                  </span>
+                </summary>
+                <div className="border-t border-border/60 bg-card/80 p-2.5">
+                  <RegressionMetricPicker
+                    metricKeys={runMetricKeys}
+                    onMetricKeysChange={setMetricKeys}
+                    disabled={retrievalOnly}
+                  />
+                </div>
+              </details>
+            </div>
           </div>
-        </header>
-      )}
+        </DialogContent>
+      </Dialog>
 
-      {/* 主内容区 */}
-      <div className={embedded ? evaluationStyles.goldenGrid : 'flex-1 overflow-hidden flex gap-6 p-6'}>
-        {embedded && (
-          <Dialog open={!isConfigPanelCollapsed} onOpenChange={(open) => setIsConfigPanelCollapsed(!open)}>
-            <DialogContent className={evaluationStyles.goldenConfigDialog}>
-              <DialogTitle className="sr-only">Golden 评测参数</DialogTitle>
-              <DialogDescription className="sr-only">配置数据集、运行方式和评分指标。</DialogDescription>{' '}
-              <div className={evaluationStyles.goldenConfigBody}>
-                <div className="shrink-0 border-b border-border bg-info/[0.025] px-3 py-3">
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <div className="text-[13px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
-                        运行参数
-                      </div>
-                      <div className="mt-1 text-sm font-semibold text-foreground">Golden 评测配置</div>
-                      <p className="mt-1 text-[13px] leading-4 text-muted-foreground">
-                        先锁定数据集，再维护 Golden 评测集并运行当前 RAG pipeline。
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="h-7 rounded-md px-2 text-[13px] text-muted-foreground hover:bg-muted hover:text-foreground"
-                        onClick={() => setIsConfigPanelCollapsed(true)}
-                      >
-                        完成
-                      </Button>
-                    </div>
-                  </div>
-
-                  <div className="mt-3 rounded-2xl border border-border bg-background/70 p-2.5 shadow-none">
-                    <div className="mb-1.5 flex items-center justify-between gap-2">
-                      <span className="text-[13px] font-medium text-muted-foreground">数据集</span>
-                      <span
-                        className={cn(
-                          'rounded-full border px-1.5 py-0.5 text-[12px] font-medium',
-                          selectedDatasetId
-                            ? 'border-success/30 bg-success/10 text-success'
-                            : 'border-warning/30 bg-warning/10 text-warning',
-                        )}
-                      >
-                        {selectedDatasetId ? '已绑定' : '未绑定'}
-                      </span>
-                    </div>
-                    <Select
-                      value={selectedDatasetId}
-                      onValueChange={setSelectedDatasetId}
-                      disabled={isLoadingDatasets || !datasets.length}
-                    >
-                      <SelectTrigger className="h-9 rounded-xl border-info/20 bg-info/[0.025] text-[13px]">
-                        <SelectValue placeholder={isLoadingDatasets ? '加载中...' : '选择数据集'} />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {(datasets || []).map((dataset) => (
-                          <SelectItem key={dataset.id} value={dataset.id}>
-                            {dataset.name || dataset.id}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    {datasets.length ? null : (
-                      <div className="mt-2 text-[13px] leading-4 text-muted-foreground">
-                        未加载到数据集。可查看历史 runs，创建 Golden 样本前需先选择数据集。
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                    <RegressionInlineStat label="runs" value={visibleRuns.length} />
-                    <RegressionInlineStat
-                      label="metrics"
-                      value={retrievalOnly ? '检索-only' : metricKeys.length}
-                      tone={retrievalOnly ? 'info' : 'neutral'}
-                    />
-                    <RegressionInlineStat
-                      label="judge"
-                      value={useLlmJudge && !retrievalOnly ? 'ON' : 'OFF'}
-                      tone={useLlmJudge && !retrievalOnly ? 'success' : 'neutral'}
-                    />
-                  </div>
-                </div>
-
-                <div className="min-h-0 flex-1 space-y-2.5 overflow-y-auto overscroll-contain p-2.5 pb-6 custom-scrollbar">
-                  <EmbeddedSection
-                    title="运行当前 RAG"
-                    description="当前数据集的标准问答会作为固定标尺，问题重新走 RAG 后再和标准答案、标准证据比较。"
-                    className="bg-success/[0.04]"
-                  >
-                    <div className="space-y-2">
-                      <EmbeddedToggleCard
-                        title="仅检索评测"
-                        description="开启后 `metrics=[]`，只看标准证据命中：recall、hit@k、MRR、NDCG 与 abstain_rate。"
-                        checked={retrievalOnly}
-                        onCheckedChange={(checked) => {
-                          setRetrievalOnly(checked)
-                          if (checked) {
-                            setUseLlmJudge(false)
-                            setMetricKeys([])
-                          } else if (!metricKeys.length) {
-                            setMetricKeys(['faithfulness', 'response_relevancy'])
-                          }
-                        }}
-                      />
-                      <EmbeddedToggleCard
-                        title="LLM-as-Judge"
-                        description="为每个样本额外生成 score、reason 和 evidence quotes；检索-only 模式不可用。"
-                        checked={useLlmJudge}
-                        disabled={retrievalOnly}
-                        onCheckedChange={(checked) => setUseLlmJudge(Boolean(checked))}
-                      />
-                    </div>
-                  </EmbeddedSection>
-
-                  <EmbeddedCollapsibleSection
-                    summary="评分维度"
-                    description="默认收起，展开后选择 RAGAS 与程序化指标。"
-                    badge={retrievalOnly ? '检索-only' : `${metricKeys.length} 已选`}
-                    className="bg-info/[0.025]"
-                  >
-                    <RegressionMetricPicker
-                      metricKeys={metricKeys}
-                      onMetricKeysChange={setMetricKeys}
-                      disabled={retrievalOnly}
-                    />
-                  </EmbeddedCollapsibleSection>
-                </div>
-              </div>
-            </DialogContent>
-          </Dialog>
-        )}
-
+      <div className={evaluationStyles.goldenGrid}>
         {/* 左侧：测试用例管理 */}
-        <div
-          className={cn(
-            'flex flex-col bg-background rounded-2xl border border-border',
-            embedded ? evaluationStyles.casePane : 'w-1/3',
-          )}
-        >
+        <div className={cn('flex flex-col bg-background rounded-2xl border border-border', evaluationStyles.casePane)}>
+          {creatingRun ? (
+            <p role="status" className="text-sm text-muted-foreground">
+              正在提交当前数据集的评测运行…
+            </p>
+          ) : null}
           <TestCaseManager
-            datasetId={selectedDatasetId || null}
-            dense={embedded}
+            key={selectedDatasetId}
+            datasetId={selectedDatasetId === '' ? null : selectedDatasetId}
+            dense
+            isRunning={creatingRun}
             onRunTests={handleRunTests}
-            onCaseSelected={(caseId) => {
-              // 可以在这里处理用例选中事件
-            }}
           />
         </div>
 
         {/* 右侧：运行结果 */}
-        <div className={cn('flex-1 flex flex-col gap-2.5', embedded && evaluationStyles.goldenResults)}>
+        <div className={cn('flex-1 flex flex-col gap-2.5', evaluationStyles.goldenResults)}>
           {/* 运行历史列表 */}
           <div
             className={cn(
               'shrink-0 bg-background border border-border rounded-2xl overflow-hidden',
-              embedded && evaluationStyles.goldenSection,
+              evaluationStyles.goldenSection,
             )}
           >
-            <div
-              className={cn(
-                'p-3 border-b border-border flex items-center justify-between',
-                embedded && 'border-border bg-info/[0.025]',
-              )}
-            >
+            <div className="p-3 border-b border-border flex items-center justify-between bg-info/[0.025]">
               <div>
                 <div className="mt-1 text-sm font-semibold text-foreground">运行历史</div>
               </div>
               <div className="text-[13px] text-muted-foreground">
-                {visibleRuns.length} 次{selectedDatasetId ? '（按数据集过滤）' : ''}
+                最近已读取 {visibleRuns === undefined ? '未取得' : visibleRuns.length} 条
+                {selectedDatasetId === '' ? null : '（当前数据集）'}
               </div>
             </div>
-            <div
-              className={cn(
-                'overflow-y-auto overscroll-contain custom-scrollbar',
-                embedded ? 'max-h-[190px]' : 'max-h-40',
-              )}
-            >
+            <div className="overflow-y-auto overscroll-contain custom-scrollbar max-h-[190px]">
+              {runsQuery.error !== null ? (
+                <WorkspaceNotice
+                  retry={() => void runsQuery.refetch()}
+                  retryLabel="重新读取运行历史"
+                  pending={runsQuery.isFetching}
+                >
+                  {visibleRuns === undefined ? null : '更新失败，保留上次历史。'}
+                  {formatApiError(runsQuery.error, '运行历史读取失败')}
+                </WorkspaceNotice>
+              ) : null}
+              {runsQuery.isFetching && visibleRuns !== undefined ? (
+                <p role="status" className="text-sm text-muted-foreground">
+                  正在更新运行历史，保留当前选择。
+                </p>
+              ) : null}
+              {selectedRunId !== null &&
+              visibleRuns !== undefined &&
+              !visibleRuns.some((run) => run.id === selectedRunId) ? (
+                <p role="status" className="text-sm text-muted-foreground">
+                  已选运行 {selectedRunId} 不在本次最近记录中。
+                </p>
+              ) : null}
               {(() => {
-                if (isLoadingRuns) {
+                if (visibleRuns === undefined) {
                   return (
-                    <div className="flex items-center justify-center py-8">
-                      <Loader2 className="w-6 h-6 animate-spin motion-reduce:animate-none text-muted-foreground" />
+                    <div role="status" className="flex items-center justify-center py-8">
+                      {isLoadingRuns ? '正在读取运行历史…' : '运行历史暂不可用。'}
                     </div>
                   )
                 } else if (visibleRuns.length === 0) {
@@ -985,13 +850,19 @@ export function RegressionTestTab({ embedded = false }: Readonly<{ embedded?: bo
                   return visibleRuns.map((run) => (
                     <button
                       key={run.id}
-                      onClick={() => setSelectedRunId(run.id)}
+                      type="button"
+                      aria-pressed={selectedRunId === run.id}
+                      onClick={() => {
+                        const datasetId =
+                          selectedDatasetId === '' && run.dataset_id !== null ? run.dataset_id : selectedDatasetId
+                        const selection = { datasetId, runId: run.id }
+                        currentRunSelectionRef.current = selection
+                        if (selectedDatasetId === '') setSelectedDatasetId(datasetId)
+                        setRunSelection(selection)
+                      }}
                       className={cn(
-                        'w-full text-left border-b transition-colors motion-reduce:transition-none',
-                        embedded
-                          ? 'border-border/60 px-2.5 py-2 hover:bg-muted/40'
-                          : 'border-border p-4 hover:bg-muted/50',
-                        selectedRunId === run.id && (embedded ? 'bg-info/5' : 'bg-primary/10'),
+                        'w-full text-left border-b border-border/60 px-2.5 py-2 hover:bg-muted/40 transition-colors motion-reduce:transition-none',
+                        selectedRunId === run.id && 'bg-info/5',
                       )}
                     >
                       <div className="flex items-center justify-between gap-2">
@@ -1014,7 +885,7 @@ export function RegressionTestTab({ embedded = false }: Readonly<{ embedded?: bo
                         </span>
                       </div>
                       <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
-                        {embedded ? <Clock3 className="h-3.5 w-3.5" /> : null}
+                        <Clock3 className="h-3.5 w-3.5" />
                         <span>{new Date(run.created_at).toLocaleString()}</span>
                       </div>
                     </button>
@@ -1028,7 +899,7 @@ export function RegressionTestTab({ embedded = false }: Readonly<{ embedded?: bo
           <div
             className={cn(
               'flex-1 bg-background border border-border rounded-2xl p-2.5 overflow-y-auto overscroll-contain custom-scrollbar',
-              embedded && evaluationStyles.goldenSection,
+              evaluationStyles.goldenSection,
             )}
           >
             <div className="mb-3">
@@ -1038,78 +909,137 @@ export function RegressionTestTab({ embedded = false }: Readonly<{ embedded?: bo
               </div>
             </div>
 
+            {runSubmission !== undefined ? (
+              runSubmission.status === 'accepted' ? (
+                <p role="status" className="text-sm text-muted-foreground">
+                  {runSubmission.message}
+                </p>
+              ) : (
+                <WorkspaceNotice
+                  retry={() => void runsQuery.refetch()}
+                  retryLabel="重新读取运行记录"
+                  pending={runsQuery.isFetching}
+                >
+                  {runSubmission.message}
+                  {runSubmission.status === 'unconfirmed' ? ' 后端可能已经创建运行；再次提交会创建新记录。' : null}
+                </WorkspaceNotice>
+              )
+            ) : null}
+            {runDetailQuery.error !== null ? (
+              <WorkspaceNotice
+                retry={() => void runDetailQuery.refetch()}
+                retryLabel="重新读取运行详情"
+                pending={runDetailQuery.isFetching}
+              >
+                {runDetail === undefined ? null : '更新失败，保留上次详情。'}
+                {formatApiError(runDetailQuery.error, '运行详情读取失败')}
+              </WorkspaceNotice>
+            ) : null}
+            {runScopeMismatch ? (
+              <WorkspaceNotice>所选运行不属于当前数据集，请更改数据集范围或重新选择运行。</WorkspaceNotice>
+            ) : null}
             {runDetail?.run?.error_message && (
               <div className="mt-3 text-sm text-destructive p-3 bg-destructive/10 border border-destructive/20 rounded-lg">
                 {runDetail.run.error_message}
               </div>
             )}
 
-            {displayMetrics.length > 0 || multimodalSliceRows.length > 0 || hasExpectedMetadataSummary ? (
+            {summaryResult?.status === 'invalid' ? (
+              <WorkspaceNotice
+                retry={() => void runDetailQuery.refetch()}
+                retryLabel="重新读取运行统计"
+                pending={runDetailQuery.isFetching}
+              >
+                {summaryResult.message}
+              </WorkspaceNotice>
+            ) : null}
+            {summaryModel !== undefined && summaryModel.hasSummary ? (
               <div className="mt-4">
-                {displayMetrics.length > 0 ? <RegressionMetricCompactGrid metrics={displayMetrics} /> : null}
+                {summaryModel.metrics.length > 0 ? (
+                  <RegressionMetricCompactGrid metrics={summaryModel.metrics} />
+                ) : null}
                 <div className="mt-3 flex flex-wrap items-center gap-2">
-                  <RegressionInlineStat label="样本" value={summaryItems} />
-                  <RegressionInlineStat label="标准答案对比" value={answerComparisonStatus} tone="info" />
-                  <RegressionInlineStat label="标准证据命中" value={evidenceRecall} tone="success" />
-                  <RegressionInlineStat label="业务元数据命中" value={expectedMetadataHitRate} tone="success" />
-                  <RegressionInlineStat label="Token" value={summaryTokens} />
-                  <RegressionInlineStat label="费用" value={summaryCost} />
-                  {multimodalSliceRows.length ? (
+                  <RegressionInlineStat label="样本" value={formatRegressionCount(summaryModel.summary.items)} />
+                  <RegressionInlineStat
+                    label="标准答案对比"
+                    value={
+                      summaryModel.metrics.some((metric) =>
+                        ['answer_correctness', 'factual_correctness'].includes(metric.key),
+                      )
+                        ? '已返回分数'
+                        : '未提供分数'
+                    }
+                    tone="info"
+                  />
+                  <RegressionInlineStat
+                    label="标准证据命中"
+                    value={formatRegressionMetric(summaryModel.summary.retrieval_recall)}
+                    tone="success"
+                  />
+                  <RegressionInlineStat
+                    label="业务元数据命中"
+                    value={formatRegressionMetric(summaryModel.summary.expected_metadata_hit_rate)}
+                    tone="success"
+                  />
+                  <RegressionInlineStat
+                    label="Token"
+                    value={formatRegressionCount(summaryModel.summary.total_tokens)}
+                  />
+                  <RegressionInlineStat label="费用" value={formatRegressionValue(summaryModel.summary.total_cost)} />
+                  {summaryModel.slices.length > 0 ? (
                     <RegressionInlineStat
                       label="切片覆盖"
-                      value={multimodalSliceSummaryText}
-                      tone={multimodalTextOnlyFullCoverage ? 'neutral' : 'warning'}
+                      value={summaryModel.sliceSummary}
+                      tone={summaryModel.textOnlyFullCoverage ? 'neutral' : 'warning'}
                     />
                   ) : null}
                 </div>
-                {hasExpectedMetadataSummary ? (
+                {summaryModel.hasExpectedMetadata ? (
                   <div className="mt-3 rounded-2xl border border-success/25 bg-success/[0.04] p-3">
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div>
                         <div className="text-sm font-semibold text-foreground">业务元数据召回</div>
                         <div className="mt-0.5 max-w-2xl text-[13px] leading-5 text-muted-foreground">
-                          由插件 Golden 的 expected_metadata 校验召回结果是否带回
-                          插件声明的期望元数据字段；字段定义来自插件规范，平台只负责统计与展示。
+                          对照样本声明的 expected_metadata，展示实际返回的字段命中和召回统计。
                         </div>
                       </div>
                       <span className="rounded-full border border-success/30 bg-success/10 px-2 py-1 text-[12px] font-medium text-success">
-                        {formatInteger(summary.expected_metadata_cases_total)} cases
+                        {formatRegressionCount(summaryModel.summary.expected_metadata_cases_total)} cases
                       </span>
                     </div>
                     <div className="mt-3 flex flex-wrap gap-2">
                       <RegressionInlineStat
                         label="expected_metadata_hit_rate"
-                        value={expectedMetadataHitRate}
+                        value={formatRegressionMetric(summaryModel.summary.expected_metadata_hit_rate)}
                         tone="success"
                       />
                       <RegressionInlineStat
                         label="expected_metadata_recall"
-                        value={expectedMetadataRecall}
+                        value={formatRegressionMetric(summaryModel.summary.expected_metadata_recall)}
                         tone="info"
                       />
                       <RegressionInlineStat
                         label="expected_metadata_fields_matched"
-                        value={expectedMetadataFieldsText}
-                        tone="neutral"
+                        value={`${formatRegressionCount(summaryModel.summary.expected_metadata_fields_matched)}/${formatRegressionCount(summaryModel.summary.expected_metadata_fields_total)}`}
                       />
                     </div>
                   </div>
                 ) : null}
-                {shouldShowMultimodalSlicePanel ? (
+                {summaryModel.slices.length > 0 && !summaryModel.textOnlyFullCoverage ? (
                   <div className="mt-3 rounded-2xl border border-border bg-info/[0.025] p-3">
                     <div className="flex items-center justify-between gap-3">
                       <div>
-                        <div className="text-sm font-semibold text-foreground">切片覆盖异常</div>
+                        <div className="text-sm font-semibold text-foreground">切片覆盖统计</div>
                         <div className="mt-0.5 text-[13px] text-muted-foreground">
-                          只有出现图表/公式/table-math/image，或任一类型覆盖不足时才展开；纯文本 100% 会收进上方摘要。
+                          仅展示实际返回的非零记录；纯文本完整覆盖保留在上方摘要。
                         </div>
                       </div>
                       <span className="rounded-full border border-border bg-card px-2 py-1 text-[12px] font-medium text-muted-foreground">
-                        {safeNumber(multimodalSlices.items)} items
+                        {formatRegressionCount(summaryModel.summary.multimodal_slices?.items)} items
                       </span>
                     </div>
                     <div className="mt-3 grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-5">
-                      {multimodalSliceRows.map((slice) => (
+                      {summaryModel.slices.map((slice) => (
                         <div
                           key={slice.key}
                           className="rounded-xl border border-border/60 bg-card/90 px-2.5 py-2 shadow-sm"
@@ -1119,264 +1049,121 @@ export function RegressionTestTab({ embedded = false }: Readonly<{ embedded?: bo
                             {slice.evaluatable}/{slice.count}
                           </div>
                           <div className="mt-1 text-[12px] text-muted-foreground">
-                            覆盖率 {(slice.coverage * 100).toFixed(0)}%
+                            覆盖率 {(slice.coverage * 100).toFixed(2)}%
                           </div>
                         </div>
                       ))}
                     </div>
                   </div>
                 ) : null}
-                {(() => {
-                  const slices = safeRecord(summary?.retrieval_slices)
-                  const parseQuality = safeRecord(slices.parse_quality)
-                  const chunkQuality = safeRecord(slices.chunk_quality)
-                  const pq = Array.isArray(parseQuality.buckets) ? parseQuality.buckets : []
-                  const cq = Array.isArray(chunkQuality.buckets) ? chunkQuality.buckets : []
-                  const hasPq = pq.length
-                  const hasCq = cq.length
-                  if (!hasPq && !hasCq) return null
-
-                  const renderTable = (title: string, rows: unknown[]) => {
-                    const top = (rows || []).slice(0, 8)
-                    return (
-                      <div className="rounded-xl border border-border bg-muted/20 p-3">
-                        <div className="text-xs font-semibold text-foreground mb-2">{title}</div>
-                        <div className="overflow-auto">
-                          <table aria-label={`${title} 分桶统计`} className="w-full text-xs">
-                            <thead>
-                              <tr className="text-muted-foreground border-b border-border/60">
-                                <th className="text-left py-1 pr-2">bucket</th>
-                                <th className="text-right py-1 pr-2">items</th>
-                                <th className="text-right py-1 pr-2">recall</th>
-                                <th className="text-right py-1 pr-2">mrr</th>
-                                <th className="text-right py-1 pr-2">ndcg@10</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {top.map((r, index) => {
-                                const row = safeRecord(r)
-                                const bucketKey = primitiveText(row.key)
-                                return (
-                                  <tr key={bucketKey || `bucket-${index}`} className="border-b border-border/40">
-                                    <td className="py-1 pr-2 font-mono text-muted-foreground">{bucketKey}</td>
+                {summaryModel.qualityGroups.length > 0 ? (
+                  <div className="mt-4">
+                    <div className="text-sm font-semibold text-foreground mb-3">质量归因</div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      {summaryModel.qualityGroups.map((group) => (
+                        <div key={group.title} className="rounded-xl border border-border bg-muted/20 p-3">
+                          <div className="text-xs font-semibold text-foreground mb-2">{group.title}</div>
+                          {group.truncated ? (
+                            <p className="text-xs text-muted-foreground">本次结果仅包含部分分桶。</p>
+                          ) : null}
+                          {group.buckets.length === 0 ? (
+                            <p role="status" className="text-xs text-muted-foreground">
+                              本次没有分桶记录。
+                            </p>
+                          ) : null}
+                          <div className="overflow-auto">
+                            <table aria-label={`${group.title} 分桶统计`} className="w-full text-xs">
+                              <thead>
+                                <tr className="text-muted-foreground border-b border-border/60">
+                                  <th className="text-left py-1 pr-2">bucket</th>
+                                  <th className="text-right py-1 pr-2">items</th>
+                                  <th className="text-right py-1 pr-2">recall</th>
+                                  <th className="text-right py-1 pr-2">mrr</th>
+                                  <th className="text-right py-1 pr-2">ndcg@10</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {group.buckets.map((bucket) => (
+                                  <tr key={bucket.key} className="border-b border-border/40">
+                                    <td className="py-1 pr-2 font-mono text-muted-foreground">{bucket.key}</td>
+                                    <td className="py-1 pr-2 text-right tabular-nums">{bucket.items}</td>
                                     <td className="py-1 pr-2 text-right tabular-nums">
-                                      {primitiveText(row.items, '—')}
+                                      {formatRegressionMetric(bucket.retrieval_recall)}
                                     </td>
                                     <td className="py-1 pr-2 text-right tabular-nums">
-                                      {typeof row.retrieval_recall === 'number' ? row.retrieval_recall.toFixed(3) : '—'}
+                                      {formatRegressionMetric(bucket.retrieval_mrr)}
                                     </td>
                                     <td className="py-1 pr-2 text-right tabular-nums">
-                                      {typeof row.retrieval_mrr === 'number' ? row.retrieval_mrr.toFixed(3) : '—'}
-                                    </td>
-                                    <td className="py-1 pr-2 text-right tabular-nums">
-                                      {typeof row.retrieval_ndcg_at_10 === 'number'
-                                        ? row.retrieval_ndcg_at_10.toFixed(3)
-                                        : '—'}
+                                      {formatRegressionMetric(bucket.retrieval_ndcg_at_10)}
                                     </td>
                                   </tr>
-                                )
-                              })}
-                            </tbody>
-                          </table>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
                         </div>
-                      </div>
-                    )
-                  }
-
-                  return (
-                    <div className="mt-4">
-                      <div className="text-sm font-semibold text-foreground mb-3">质量归因（Slices）</div>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        {hasPq ? renderTable('parse_quality → retrieval', pq) : null}
-                        {hasCq ? renderTable('chunk_quality → retrieval', cq) : null}
-                      </div>
+                      ))}
                     </div>
-                  )
-                })()}
+                  </div>
+                ) : null}
               </div>
             ) : (
-              <div className="mt-3 rounded-2xl border border-dashed border-border bg-muted/20 px-3 py-5 text-center">
-                <div className="text-sm font-medium text-foreground">
-                  {selectedRunId ? '当前还没有可展示分数' : '先选一个运行记录'}
-                </div>
-                <div className="mt-1.5 text-[13px] leading-5 text-muted-foreground">
-                  {selectedRunId
-                    ? '这条 run 可能仍在处理中，或后端尚未返回 summary 指标。'
-                    : '选择运行记录，查看逐项对比。'}
-                </div>
+              <div
+                className="mt-3 rounded-2xl border border-dashed border-border bg-muted/20 px-3 py-5 text-center"
+                role="status"
+              >
+                {selectedRunId === null
+                  ? '先选择一个运行记录。'
+                  : runDetailQuery.isFetching && runDetail === undefined
+                    ? '正在读取运行统计…'
+                    : '当前运行没有可展示的统计。'}
               </div>
             )}
+            {runDetail !== undefined ? (
+              <details className="mt-3 rounded-xl border border-border p-3">
+                <summary className="cursor-pointer text-sm">原始运行统计</summary>
+                <pre className="mt-2 overflow-auto whitespace-pre-wrap break-words text-xs">
+                  {JSON.stringify(runDetail.run.summary, null, 2)}
+                </pre>
+              </details>
+            ) : null}
 
             {/* 明细列表 */}
-            {runDetail?.items && runDetail.items.length > 0 && (
+            {runDetail !== undefined && runDetail.items.length > 0 && (
               <div className="mt-6">
                 <div className="text-sm font-semibold text-foreground mb-3">样本明细 ({runDetail.items.length})</div>
                 <div className="space-y-2">
                   {runDetail.items.map((item, index: number) => (
-                    <div
-                      key={item.id}
-                      className={cn(
-                        'p-3 rounded-lg border',
-                        embedded ? 'border-border/60 bg-muted/20' : 'border-border bg-muted/40',
-                      )}
-                    >
+                    <div key={item.id} className="p-3 rounded-lg border border-border/60 bg-muted/20">
                       <div className="text-sm font-medium text-foreground mb-1">
                         {index + 1}. {item.question}
                       </div>
-                      <div className="text-xs text-muted-foreground mt-2">
-                        <span className="font-medium">实际回答:</span> {item.response?.slice(0, 100)}...
+                      <div className="text-xs text-muted-foreground mt-2 whitespace-pre-wrap break-words line-clamp-2">
+                        <span className="font-medium">实际回答:</span> {item.response}
                       </div>
-                      {item.scores && Object.keys(item.scores).length > 0 && (
+                      {Object.keys(item.scores).length > 0 && (
                         <div className="flex gap-2 mt-2">
                           {Object.entries(item.scores).map(([k, v]) => (
                             <span
                               key={k}
                               className="text-[13px] px-2 py-0.5 rounded-full bg-info/10 text-info border border-info/20"
                             >
-                              {k}: {typeof v === 'number' ? v.toFixed(2) : String(v)}
+                              {k}: {formatRegressionValue(v)}
                             </span>
                           ))}
                         </div>
                       )}
-                      {(() => {
-                        const meta = safeRecord(item.meta)
-                        const missingKeys = Array.isArray(meta.expected_metadata_missing_keys)
-                          ? meta.expected_metadata_missing_keys.filter(
-                              (key): key is string => typeof key === 'string' && Boolean(key),
-                            )
-                          : []
-                        const fieldsMatched = finiteNumber(meta.expected_metadata_fields_matched)
-                        const fieldsTotal = finiteNumber(meta.expected_metadata_fields_total)
-                        const hasExpectedMetadata =
-                          typeof meta.expected_metadata_hit === 'boolean' ||
-                          finiteNumber(meta.expected_metadata_recall) !== null ||
-                          fieldsMatched !== null ||
-                          fieldsTotal !== null ||
-                          missingKeys.length > 0
-
-                        if (!hasExpectedMetadata) return null
-
-                        const fieldsText =
-                          fieldsMatched !== null || fieldsTotal !== null
-                            ? `${Math.trunc(fieldsMatched || 0)}/${Math.trunc(fieldsTotal || 0)}`
-                            : '待返回'
-
-                        return (
-                          <details className="mt-2 rounded-md border border-success/30 bg-success/5 p-2">
-                            <summary className="cursor-pointer select-none text-[13px] font-medium text-success">
-                              业务元数据
-                              {typeof meta.expected_metadata_hit === 'boolean'
-                                ? ` · ${meta.expected_metadata_hit ? '命中' : '未命中'}`
-                                : ''}
-                            </summary>
-                            <div className="mt-2 flex flex-wrap gap-2 text-[13px] text-muted-foreground">
-                              <span className="rounded-full border border-success/30 bg-card px-2 py-0.5">
-                                expected_metadata_recall: {formatMetricNumber(meta.expected_metadata_recall)}
-                              </span>
-                              <span className="rounded-full border border-success/30 bg-card px-2 py-0.5">
-                                expected_metadata_fields_matched: {fieldsText}
-                              </span>
-                            </div>
-                            {missingKeys.length ? (
-                              <div className="mt-2 text-[13px] leading-5 text-muted-foreground">
-                                <span className="font-medium text-foreground/80">缺失字段:</span>{' '}
-                                {missingKeys.slice(0, 8).join(', ')}
-                              </div>
-                            ) : null}
-                          </details>
-                        )
-                      })()}
-                      {(() => {
-                        const exps = item.meta?.explanations
-                        if (!exps || typeof exps !== 'object') return null
-                        const entries = Object.entries(safeRecord(exps)).filter(([, v]) => typeof v === 'string' && v)
-                        if (!entries.length) return null
-                        return (
-                          <details className="mt-2">
-                            <summary className="text-[13px] text-muted-foreground cursor-pointer select-none">
-                              解释
-                            </summary>
-                            <div className="mt-2 space-y-1 text-[13px] text-muted-foreground">
-                              {entries.map(([k, v]) => (
-                                <div key={k} className="flex gap-2">
-                                  <span className="font-medium text-foreground/80">{k}:</span>
-                                  <span className="break-words">{String(v)}</span>
-                                </div>
-                              ))}
-                            </div>
-                          </details>
-                        )
-                      })()}
-                      {(() => {
-                        const judge = safeRecord(item.meta?.llm_judge)
-                        if (!judge.enabled) return null
-                        const overall = judge.overall_score
-                        const modelUsed = judge.model_used
-                        const parts: Array<{ key: string; obj: Record<string, unknown> }> = [
-                          { key: 'retrieval', obj: safeRecord(judge.retrieval) },
-                          {
-                            key: 'generation',
-                            obj: safeRecord(judge.generation),
-                          },
-                        ]
-                        return (
-                          <details className="mt-2">
-                            <summary className="text-[13px] text-muted-foreground cursor-pointer select-none">
-                              LLM Judge
-                              {typeof overall === 'number' ? ` (overall=${overall.toFixed(3)})` : ''}
-                            </summary>
-                            <div className="mt-2 space-y-2 text-[13px] text-muted-foreground">
-                              {modelUsed ? (
-                                <div className="font-mono text-[13px] text-muted-foreground">
-                                  model: {primitiveText(modelUsed)}
-                                </div>
-                              ) : null}
-                              {parts.map(({ key, obj }) => {
-                                if (!Object.keys(obj).length) return null
-                                const score = obj.score
-                                const reason = obj.reason
-                                const quotes = Array.isArray(obj.evidence_quotes)
-                                  ? obj.evidence_quotes.filter((x): x is string => typeof x === 'string' && Boolean(x))
-                                  : []
-                                return (
-                                  <div key={key} className="rounded-md border border-border/60 bg-muted/30 p-2">
-                                    <div className="flex items-center justify-between gap-2">
-                                      <span className="font-medium text-foreground/80">{key}</span>
-                                      <span className="tabular-nums">
-                                        {typeof score === 'number' ? score.toFixed(3) : '—'}
-                                      </span>
-                                    </div>
-                                    {typeof reason === 'string' && reason ? (
-                                      <div className="mt-1 text-muted-foreground">{reason}</div>
-                                    ) : null}
-                                    {quotes.length ? (
-                                      <div className="mt-2 space-y-1">
-                                        {quotes.slice(0, 3).map((q) => (
-                                          <div key={q} className="font-mono text-[13px] text-muted-foreground">
-                                            “{q}”
-                                          </div>
-                                        ))}
-                                      </div>
-                                    ) : null}
-                                  </div>
-                                )
-                              })}
-                            </div>
-                          </details>
-                        )
-                      })()}
+                      <RegressionItemMetadata metadata={item.meta} />
                     </div>
                   ))}
                 </div>
               </div>
             )}
           </div>
-          {embedded ? (
-            <details className={evaluationStyles.guide}>
-              <summary>指标说明</summary>
-              <RegressionMetricGuideCard />
-            </details>
-          ) : null}
+          <details className={evaluationStyles.guide}>
+            <summary>指标说明</summary>
+            <RegressionMetricGuideCard />
+          </details>
         </div>
       </div>
 
@@ -1384,7 +1171,7 @@ export function RegressionTestTab({ embedded = false }: Readonly<{ embedded?: bo
       <TestGenerationDialog
         open={showGenerationDialog}
         onClose={() => setShowGenerationDialog(false)}
-        onGenerated={handleGenerated}
+        initialDatasetId={selectedDatasetId}
       />
     </div>
   )

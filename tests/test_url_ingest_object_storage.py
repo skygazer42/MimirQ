@@ -2,19 +2,20 @@ import hashlib
 import uuid
 from pathlib import Path
 from types import SimpleNamespace
+from urllib.parse import urlsplit
 
 import pytest
 from fastapi import BackgroundTasks, HTTPException
 
-import app.services.document_ingestion as upload_owner
-import app.services.document_ingestion_policy as ingestion_policy_owner
-import app.services.document_ingestion_sources as source_files_owner
-import app.services.document_processing_dispatch as dispatch_owner
-import app.services.document_processing_dispatch as document_dispatch
-import app.services.document_source_persistence as source_owner
-from app.api.utils.url_ingest import DownloadedURL
+import app.services.documents.ingestion as upload_owner
+import app.services.documents.ingestion_policy as ingestion_policy_owner
+import app.services.documents.processing_dispatch as dispatch_owner
+import app.services.documents.processing_dispatch as document_dispatch
+import app.services.documents.source_acquisition as source_files_owner
+import app.services.documents.source_persistence as source_owner
+from app.api.utils.url_ingest import DownloadedURL, ValidatedFetchTarget
 from app.storage.object.runtime import minio_service
-from app.types.pipeline import PipelineOptions
+from app.types.pipeline_options import PipelineOptions
 
 
 class _DB:
@@ -304,13 +305,13 @@ async def test_ingest_url_request_persists_minio_uri_and_cleans_temp_after_queue
     monkeypatch.setattr(source_files_owner.settings, "MINIO_DOCUMENTS_ENABLED", True, raising=False)
     monkeypatch.setattr(source_files_owner.settings, "UPLOAD_DIR", str(tmp_path), raising=False)
 
-    async def _validate(url: str) -> str:
-        return url
+    async def _validate(url: str) -> ValidatedFetchTarget:
+        return _validated_target(url)
 
-    async def _download(url: str, destination: Path, **_kwargs):  # noqa: ANN202
+    async def _download(target: ValidatedFetchTarget, destination: Path, **_kwargs):
         payload = b"hello from url"
         destination.write_bytes(payload)
-        return DownloadedURL(size_bytes=len(payload), content_type="text/plain", final_url=url)
+        return DownloadedURL(size_bytes=len(payload), content_type="text/plain", final_url=target.raw)
 
     async def _queued(**_kwargs):  # noqa: ANN003, ANN202
         return "task-123"
@@ -319,7 +320,7 @@ async def test_ingest_url_request_persists_minio_uri_and_cleans_temp_after_queue
         upload_calls.append(kwargs)
         return f"minio://documents/documents/{kwargs['tenant_id']}/{kwargs['dataset_id']}/{kwargs['document_id']}.txt"
 
-    monkeypatch.setattr(upload_owner, "validate_url_for_ingest", _validate, raising=True)
+    monkeypatch.setattr(upload_owner, "validate_fetch_target", _validate, raising=True)
     monkeypatch.setattr(source_files_owner, "download_url_to_path", _download, raising=True)
     monkeypatch.setattr(
         upload_owner.dataset_service,
@@ -412,7 +413,7 @@ async def test_ingest_local_html_request_enforces_upload_quota_before_object_sto
     monkeypatch,
     tmp_path: Path,
 ) -> None:
-    import app.services.tenant_quota_service as quota_service
+    import app.services.identity.tenant_quotas as quota_service
 
     tenant_id = uuid.uuid4()
     dataset_id = uuid.uuid4()
@@ -545,10 +546,10 @@ async def test_ingest_url_request_reuses_existing_document_when_audit_metadata_d
     monkeypatch.setattr(upload_owner, "_prepare_document_ingestion", lambda **_kwargs: _prepared(), raising=True)
     monkeypatch.setattr(upload_owner, "_create_url_ingestion_run", lambda **_kwargs: None, raising=True)
 
-    async def _validate(url: str) -> str:
-        return url
+    async def _validate(url: str) -> ValidatedFetchTarget:
+        return _validated_target(url)
 
-    monkeypatch.setattr(upload_owner, "validate_url_for_ingest", _validate, raising=True)
+    monkeypatch.setattr(upload_owner, "validate_fetch_target", _validate, raising=True)
 
     async def _download(**_kwargs):  # noqa: ANN202
         return source_files_owner.UrlIngestFile(
@@ -950,6 +951,16 @@ async def test_persist_and_process_ingested_document_commit_failure_keeps_local_
         )
 
     assert source.exists()
+
+
+def _validated_target(url: str) -> ValidatedFetchTarget:
+    parsed = urlsplit(url)
+    return ValidatedFetchTarget(
+        raw=url,
+        connect_url=parsed._replace(netloc="93.184.216.34").geturl(),
+        host=parsed.hostname,
+        host_header=parsed.netloc,
+    )
 
 
 @pytest.mark.asyncio

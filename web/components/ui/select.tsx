@@ -70,7 +70,6 @@ const SelectContent = React.forwardRef<
       ref={ref}
       className={cn(
         'relative z-50 max-h-[min(24rem,var(--radix-select-content-available-height))] min-w-[8rem] origin-[var(--radix-select-content-transform-origin)] overflow-hidden rounded-lg border border-border/60 bg-popover text-popover-foreground shadow-strong transform-gpu will-change-[opacity,transform] [--select-enter-x:0px] [--select-enter-y:-3px] [--select-exit-x:0px] [--select-exit-y:-2px] data-[state=open]:animate-select-content-in data-[state=closed]:animate-select-content-out data-[side=bottom]:[--select-enter-y:-3px] data-[side=bottom]:[--select-exit-y:-2px] data-[side=top]:[--select-enter-y:3px] data-[side=top]:[--select-exit-y:2px] data-[side=left]:[--select-enter-x:4px] data-[side=left]:[--select-exit-x:3px] data-[side=right]:[--select-enter-x:-4px] data-[side=right]:[--select-exit-x:-3px] motion-reduce:animate-none motion-reduce:transition-none',
-        position === 'popper' && '',
         className,
       )}
       position={position}
@@ -122,23 +121,4 @@ const SelectItem = React.forwardRef<
 ))
 SelectItem.displayName = SelectPrimitive.Item.displayName
 
-const SelectSeparator = React.forwardRef<
-  RadixRef<typeof SelectPrimitive.Separator>,
-  React.ComponentPropsWithoutRef<typeof SelectPrimitive.Separator>
->(({ className, ...props }, ref) => (
-  <SelectPrimitive.Separator ref={ref} className={cn('-mx-1 my-1 h-px bg-border', className)} {...props} />
-))
-SelectSeparator.displayName = SelectPrimitive.Separator.displayName
-
-export {
-  Select,
-  SelectGroup,
-  SelectValue,
-  SelectTrigger,
-  SelectContent,
-  SelectLabel,
-  SelectItem,
-  SelectSeparator,
-  SelectScrollUpButton,
-  SelectScrollDownButton,
-}
+export { Select, SelectGroup, SelectValue, SelectTrigger, SelectContent, SelectLabel, SelectItem }

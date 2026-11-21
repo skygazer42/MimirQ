@@ -2,27 +2,31 @@
 LangSmith tracing for active RAG workflows.
 
 Usage:
-    from app.rag.tracing import get_tracing_client, setup_tracing
+    from app.rag.tracing.langsmith import get_tracing_client, setup_tracing
 
     setup_tracing()
     with get_tracing_client().trace(name="rag_query") as span:
         span.outputs = {"answer": "Example answer"}
 """
 
+import logging
 import os
+import threading
 import time
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
-from app.core.config import settings
-from app.core.optional_deps import require_dependency
-from app.rag.core.logging import get_logger
+from app.infrastructure.config import settings
+from app.infrastructure.runtime.dependencies import require_dependency
 
-logger = get_logger("rag.tracing.langsmith")
+if TYPE_CHECKING:
+    from langsmith import Client
+
+logger = logging.getLogger("rag.tracing.langsmith")
 
 
 # Configuration
@@ -30,14 +34,6 @@ LANGSMITH_API_KEY = settings.LANGSMITH_API_KEY
 LANGSMITH_PROJECT = settings.LANGSMITH_PROJECT
 LANGSMITH_ENDPOINT = settings.LANGSMITH_ENDPOINT
 LANGSMITH_TRACING_ENABLED = settings.LANGSMITH_TRACING_ENABLED
-
-# Import langsmith if tracing is enabled
-LangSmithClient = None  # type: ignore
-if LANGSMITH_TRACING_ENABLED:
-    langsmith_module = require_dependency("langsmith", feature="langsmith_tracing", pip_name="langsmith")
-    LangSmithClient = getattr(langsmith_module, "Client", None)  # type: ignore[assignment]
-    if LangSmithClient is None:
-        raise RuntimeError("langsmith.Client missing (unsupported langsmith version)")
 
 
 @dataclass
@@ -85,11 +81,12 @@ class TracingClient:
             project: Project name
             endpoint: API endpoint
         """
-        self.api_key = api_key or LANGSMITH_API_KEY
-        self.project = project or LANGSMITH_PROJECT
-        self.endpoint = endpoint or LANGSMITH_ENDPOINT
-        self._enabled = bool(self.api_key) and LANGSMITH_TRACING_ENABLED and LangSmithClient is not None
-        self._client = None
+        self.api_key = LANGSMITH_API_KEY if api_key is None else api_key
+        self.project = LANGSMITH_PROJECT if project is None else project
+        self.endpoint = LANGSMITH_ENDPOINT if endpoint is None else endpoint
+        self._enabled = bool(self.api_key) and LANGSMITH_TRACING_ENABLED
+        self._client: Client | None = None
+        self._client_lock = threading.Lock()
         self._current_spans: dict[str, SpanContext] = {}
 
     @property
@@ -97,17 +94,29 @@ class TracingClient:
         """Check if tracing is enabled."""
         return self._enabled
 
-    def _get_client(self) -> Any:
+    def _get_client(self) -> "Client":
         """Get or create LangSmith client."""
-        if self._client is not None:
+        with self._client_lock:
+            if not self._enabled:
+                raise RuntimeError("LangSmith tracing is disabled or closed")
+            if self._client is None:
+                langsmith = require_dependency("langsmith", feature="langsmith_tracing", pip_name="langsmith")
+                self._client = langsmith.Client(api_key=self.api_key, api_url=self.endpoint)
+                logger.info("LangSmith client initialized")
             return self._client
 
-        self._client = LangSmithClient(
-            api_key=self.api_key,
-            api_url=self.endpoint,
-        )
-        logger.info("LangSmith client initialized")
-        return self._client
+    def close(self) -> None:
+        """Drain the owned SDK queue with a finite budget and release its session."""
+        with self._client_lock:
+            client = self._client
+            self._client = None
+            self._enabled = False
+            self._current_spans.clear()
+        if client is not None:
+            try:
+                client.close(timeout=5.0)
+            except Exception:  # Tracing is optional; shutdown must still release other application resources.
+                logger.warning("Failed to close LangSmith client", exc_info=True)
 
     def start_span(
         self,
@@ -135,16 +144,20 @@ class TracingClient:
         span = SpanContext(
             name=name,
             run_type=run_type,
-            inputs=inputs or {},
+            inputs={} if inputs is None else dict(inputs),
             parent_id=parent_id,
-            metadata=metadata or {},
-            tags=tags or [],
+            metadata={} if metadata is None else dict(metadata),
+            tags=[] if tags is None else list(tags),
         )
 
         self._current_spans[span.run_id] = span
 
         if self._enabled:
-            self._submit_start(span)
+            try:
+                self._submit_start(span)
+            except BaseException:
+                self._current_spans.pop(span.run_id, None)
+                raise
 
         return span
 
@@ -163,13 +176,15 @@ class TracingClient:
             error: Error message if failed
         """
         span.end_time = time.time()
-        span.outputs = outputs or {}
+        if outputs is not None:
+            span.outputs = dict(outputs)
         span.error = error
 
-        if self._enabled:
-            self._submit_end(span)
-
-        self._current_spans.pop(span.run_id, None)
+        try:
+            if self._enabled:
+                self._submit_end(span)
+        finally:
+            self._current_spans.pop(span.run_id, None)
 
     def _submit_start(self, span: SpanContext) -> None:
         """Submit span start to LangSmith."""
@@ -185,8 +200,8 @@ class TracingClient:
                 tags=span.tags,
                 extra={"metadata": span.metadata},
             )
-        except Exception as e:
-            logger.debug("Failed to submit span start: %s", e)
+        except Exception:
+            logger.warning("Failed to submit LangSmith span start", exc_info=True)
 
     def _submit_end(self, span: SpanContext) -> None:
         """Submit span end to LangSmith."""
@@ -196,10 +211,10 @@ class TracingClient:
                 run_id=span.run_id,
                 outputs=span.outputs,
                 error=span.error,
-                end_time=datetime.now(UTC).replace(tzinfo=None),
+                end_time=datetime.fromtimestamp(span.end_time, UTC),
             )
-        except Exception as e:
-            logger.debug("Failed to submit span end: %s", e)
+        except Exception:
+            logger.warning("Failed to submit LangSmith span end", exc_info=True)
 
     @contextmanager
     def trace(
@@ -260,6 +275,15 @@ def get_tracing_client() -> TracingClient:
     return _tracing_client
 
 
+def close_tracing() -> None:
+    """Release the process-owned tracing client without creating one during shutdown."""
+    global _tracing_client
+    client = _tracing_client
+    _tracing_client = None
+    if client is not None:
+        client.close()
+
+
 def setup_tracing(
     api_key: str | None = None,
     project: str | None = None,
@@ -275,25 +299,14 @@ def setup_tracing(
     """
     global _tracing_client
 
+    close_tracing()
+    _tracing_client = TracingClient(api_key=api_key, project=project)
+
     # Set environment variables for LangChain auto-tracing
-    if api_key:
-        os.environ["LANGCHAIN_API_KEY"] = api_key
-    elif LANGSMITH_API_KEY:
-        os.environ["LANGCHAIN_API_KEY"] = LANGSMITH_API_KEY
-
-    if project:
-        os.environ["LANGCHAIN_PROJECT"] = project
-    elif LANGSMITH_PROJECT:
-        os.environ["LANGCHAIN_PROJECT"] = LANGSMITH_PROJECT
-
-    if LANGSMITH_TRACING_ENABLED:
-        os.environ["LANGCHAIN_TRACING_V2"] = "true"
-        os.environ["LANGCHAIN_ENDPOINT"] = LANGSMITH_ENDPOINT
-
-    _tracing_client = TracingClient(
-        api_key=api_key,
-        project=project,
-    )
+    os.environ["LANGCHAIN_API_KEY"] = _tracing_client.api_key
+    os.environ["LANGCHAIN_PROJECT"] = _tracing_client.project
+    os.environ["LANGCHAIN_TRACING_V2"] = str(_tracing_client.enabled).lower()
+    os.environ["LANGCHAIN_ENDPOINT"] = _tracing_client.endpoint
 
     if _tracing_client.enabled:
         logger.info("LangSmith tracing enabled for project: %s", _tracing_client.project)

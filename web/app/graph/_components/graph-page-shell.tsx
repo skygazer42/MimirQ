@@ -1,15 +1,16 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 
 import { BarChart3, GitBranch, Route, Share2 } from '@/components/icons'
 
 import { AppFrame } from '@/components/app-frame'
 import { Button } from '@/components/ui/button'
+import { WorkspaceNotice } from '@/components/ui/operational-workspace'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { PageScaffold } from '@/components/ui/page-scaffold'
+import { formatApiError } from '@/lib/api-errors'
 import { detachPromise } from '@/lib/utils'
-import type { KGEntityDetailResponse } from '@/types'
 
 import type { UseGraphDataLoadingResult } from '../use-graph-data-loading'
 import type { UseGraphDisplayFiltersResult } from '../use-graph-display-filters'
@@ -30,7 +31,6 @@ import styles from './graph-workspace.module.css'
 import { GraphScopePickerDialog } from './graph-scope-picker-dialog'
 
 type GraphPageShellProps = Readonly<{
-  isDark: boolean
   state: UseGraphPageStateResult
   dataLoading: UseGraphDataLoadingResult
   entityResolution: UseGraphEntityResolutionResult
@@ -41,7 +41,6 @@ type GraphPageShellProps = Readonly<{
 }>
 
 export function GraphPageShell({
-  isDark,
   state,
   dataLoading,
   entityResolution,
@@ -58,20 +57,30 @@ export function GraphPageShell({
   const [detailsExpanded, setDetailsExpanded] = useState(false)
   const [analysisOpen, setAnalysisOpen] = useState(false)
   const detailsButtonRef = useRef<HTMLButtonElement>(null)
-  const { getActiveGraph, isLoading, searchInputRef } = state
+  const mobileTabsRef = useRef<HTMLDivElement>(null)
+  const focusGraphAfterSelection = useRef(false)
+  const { graphViewportRef, searchInputRef } = state
+  const isLoading = state.isLoading || (state.dataSource === 'live' && state.scopedDatasetDocIdsLoading)
+  const scopeError = state.dataSource === 'live' ? state.scopedDocumentsError : null
+  const graphReadError =
+    scopeError === null ? dataLoading.liveGraphError : formatApiError(scopeError, '读取图谱范围内的文档失败')
+  const detail = nodeOperations.nodeDetail
+  const splitEvents = detail !== null && 'entity' in detail ? detail.events : []
   const directoryIndex = useMemo(
     () => buildDirectoryIndex(displayFilters.graphRenderData),
     [displayFilters.graphRenderData],
   )
-  const selected = state.selectedNode ? directoryIndex.nodes.get(state.selectedNode.id) || null : null
+  const selected = state.selectedNode === null ? null : (directoryIndex.nodes.get(state.selectedNode.id) ?? null)
   const specialMode = state.isPathMode || state.isConnectMode || state.isExplainMode
-  const isFocused = focused && Boolean(selected) && !specialMode
+  const focusedNode = focused && !specialMode ? selected : null
+  const focusedNodeId = focusedNode?.id ?? null
+  const isFocused = focusedNode !== null
   const visibleGraph = useMemo(
     () =>
-      isFocused
-        ? getNeighborhood(displayFilters.graphRenderData, directoryIndex, selected?.id || null, depth)
-        : displayFilters.graphRenderData,
-    [depth, directoryIndex, displayFilters.graphRenderData, isFocused, selected?.id],
+      focusedNodeId === null
+        ? displayFilters.graphRenderData
+        : getNeighborhood(displayFilters.graphRenderData, directoryIndex, focusedNodeId, depth),
+    [depth, directoryIndex, displayFilters.graphRenderData, focusedNodeId],
   )
   const visibleTypeCount = useMemo(() => {
     const visibleIds = new Set(visibleGraph.nodes.map((node) => node.id))
@@ -81,22 +90,34 @@ export function GraphPageShell({
     interactionModes.handleNodeClick(node)
     setDetailsExpanded(false)
     if (!specialMode) setFocused(true)
+    focusGraphAfterSelection.current = mobileView === 'directory'
     setMobileView('graph')
   }
+  function refreshLiveGraph() {
+    detachPromise(dataLoading.loadLiveGraph({ refreshDocuments: true }))
+  }
+  useLayoutEffect(() => {
+    if (mobileView !== 'graph' || !focusGraphAfterSelection.current) return
+    focusGraphAfterSelection.current = false
+    if (mobileTabsRef.current?.getClientRects().length) graphViewportRef.current?.focus()
+  }, [graphViewportRef, mobileView])
   useEffect(() => {
-    if (specialMode || isLoading) return
-    const frame = requestAnimationFrame(() => getActiveGraph()?.zoomToFit?.())
-    return () => cancelAnimationFrame(frame)
-  }, [visibleGraph, specialMode, isLoading, getActiveGraph])
-  useEffect(() => {
+    let focusFrameId: number | undefined
     const onSearch = (event: KeyboardEvent) => {
+      if (event.defaultPrevented) return
+      if (event.target instanceof Element && event.target.closest('[role="dialog"], [role="alertdialog"]')) return
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'f') {
+        event.preventDefault()
         setMobileView('directory')
-        requestAnimationFrame(() => searchInputRef.current?.focus())
+        if (focusFrameId !== undefined) cancelAnimationFrame(focusFrameId)
+        focusFrameId = requestAnimationFrame(() => searchInputRef.current?.focus())
       }
     }
     window.addEventListener('keydown', onSearch)
-    return () => window.removeEventListener('keydown', onSearch)
+    return () => {
+      window.removeEventListener('keydown', onSearch)
+      if (focusFrameId !== undefined) cancelAnimationFrame(focusFrameId)
+    }
   }, [searchInputRef])
 
   return (
@@ -116,7 +137,8 @@ export function GraphPageShell({
             fileName={state.fileName}
             dataSource={state.dataSource}
             graphNodeCount={displayFilters.displayGraphData.nodes.length}
-            isLoading={state.isLoading}
+            isLoading={isLoading}
+            isExportingGraphML={pageActions.isExportingGraphML}
             includeEntityLinks={state.includeEntityLinks}
             includeRelationLinks={state.includeRelationLinks}
             minSharedEvents={state.minSharedEvents}
@@ -124,7 +146,7 @@ export function GraphPageShell({
             onToggleRelationLinks={interactionModes.toggleRelationLinks}
             onCycleMinSharedEvents={interactionModes.cycleMinSharedEvents}
             onExportGraphML={pageActions.handleExportGraphML}
-            onRefreshLiveData={() => detachPromise(dataLoading.loadInitialData('live'))}
+            onRefreshLiveData={refreshLiveGraph}
             onOpenGraphPicker={() => setGraphScopePickerOpen(true)}
             onTriggerTraceUpload={dataLoading.triggerTraceUpload}
             traceFileInputRef={state.traceFileInputRef}
@@ -134,7 +156,13 @@ export function GraphPageShell({
             onManualKgFileUpload={dataLoading.handleManualKgFileUpload}
           />
 
-          <div className={styles.mobileTabs} aria-label="图谱工作区视图">
+          {graphReadError !== null ? (
+            <WorkspaceNotice retry={refreshLiveGraph} pending={isLoading}>
+              {graphReadError}
+            </WorkspaceNotice>
+          ) : null}
+
+          <div ref={mobileTabsRef} className={styles.mobileTabs} aria-label="图谱工作区视图">
             <button type="button" aria-pressed={mobileView === 'directory'} onClick={() => setMobileView('directory')}>
               实体目录
             </button>
@@ -146,10 +174,11 @@ export function GraphPageShell({
             <GraphNodeDirectory
               groups={directoryIndex.groups}
               neighbors={directoryIndex.neighbors}
-              selectedId={selected?.id || null}
+              selectedId={selected?.id ?? null}
               query={state.searchTerm}
               inputRef={state.searchInputRef}
-              loading={state.isLoading}
+              loading={isLoading}
+              hasLoadError={graphReadError !== null}
               onQueryChange={state.setSearchTerm}
               onSelect={selectNode}
               onOpenScope={() => setGraphScopePickerOpen(true)}
@@ -186,6 +215,7 @@ export function GraphPageShell({
                 <div className={styles.toolbarEnd}>
                   <Button
                     variant="ghost"
+                    aria-label="路径发现"
                     aria-pressed={state.isPathMode}
                     onClick={interactionModes.togglePathMode}
                     disabled={!directoryIndex.nodes.size}
@@ -205,7 +235,7 @@ export function GraphPageShell({
                     <Button
                       className={styles.expandAction}
                       onClick={nodeOperations.handleExpandNode}
-                      disabled={state.isLoading}
+                      disabled={isLoading}
                     >
                       <GitBranch />
                       展开邻居
@@ -219,7 +249,7 @@ export function GraphPageShell({
                   hasPathStart={Boolean(state.pathStartNode)}
                   hasPathEnd={Boolean(state.pathEndNode)}
                   isConnectMode={state.isConnectMode}
-                  connectSourceLabel={state.connectSourceNode?.label || null}
+                  connectSourceLabel={state.connectSourceNode?.label ?? null}
                   isExplainMode={state.isExplainMode}
                   currentStepIndex={state.currentStepIndex}
                   explainStepCount={state.explainSteps.length}
@@ -234,14 +264,14 @@ export function GraphPageShell({
                 canvasLabel={
                   directoryIndex.nodes.size ? (
                     <div className={styles.canvasLabel}>
-                      <strong>{isFocused ? `${selected?.label}的周边` : '全部图谱'}</strong>
-                      {isFocused ? (
+                      <strong>{focusedNode === null ? '全部图谱' : `${focusedNode.label}的周边`}</strong>
+                      {focusedNode !== null ? (
                         <>
                           <button type="button" className="focus-ring" onClick={() => setFocused(false)}>
                             返回完整图谱
                           </button>
                           <p>
-                            {directoryIndex.neighbors.get(selected!.id)?.size || 0} 个直接关联 · 当前显示{' '}
+                            {directoryIndex.neighbors.get(focusedNode.id)?.size ?? 0} 个直接关联 · 当前显示{' '}
                             {visibleGraph.nodes.length} 个节点
                           </p>
                         </>
@@ -261,9 +291,10 @@ export function GraphPageShell({
                     <GraphSelectionSummary
                       detailsButtonRef={detailsButtonRef}
                       node={selected}
-                      count={directoryIndex.neighbors.get(selected.id)?.size || 0}
-                      detail={state.kgNodeDetail}
-                      loading={state.kgNodeDetailLoading}
+                      count={directoryIndex.neighbors.get(selected.id)?.size ?? 0}
+                      detail={detail}
+                      loading={nodeOperations.nodeDetailLoading}
+                      detailError={nodeOperations.nodeDetailError}
                       onDetails={() => setDetailsExpanded(true)}
                       onExpand={nodeOperations.handleExpandNode}
                       onSource={pageActions.handleViewSource}
@@ -278,9 +309,7 @@ export function GraphPageShell({
                   viewportRef: state.graphViewportRef,
                   graph2dRef: state.graph2dRef,
                   graph3dRef: state.graph3dRef,
-                  isDark,
                   graphRenderData: visibleGraph,
-                  paletteSeed: null,
                   viewMode: state.viewMode,
                   graphViewportWidth: state.graphViewportWidth,
                   graphViewportHeight: state.graphViewportHeight,
@@ -289,7 +318,8 @@ export function GraphPageShell({
                   highlightedLinkIds: state.highlightedLinkIds,
                   showEdgeLabels: state.showEdgeLabels,
                   layoutMode: state.layoutMode,
-                  isLoading: state.isLoading,
+                  isLoading,
+                  hasLoadError: graphReadError !== null,
                   hasActiveScope: state.scope.hasScope,
                   onNodeClick: selectNode,
                   onNodeRightClick: pageActions.handleNodeRightClick,
@@ -353,17 +383,21 @@ export function GraphPageShell({
                   selectedNode: state.selectedNode,
                   detailScrollRef: state.detailScrollRef,
                   dataSource: state.dataSource,
-                  kgNodeDetailLoading: state.kgNodeDetailLoading,
-                  kgNodeDetail: state.kgNodeDetail,
+                  kgNodeDetailLoading: nodeOperations.nodeDetailLoading,
+                  kgNodeDetail: detail,
+                  kgNodeDetailError: nodeOperations.nodeDetailError,
+                  onRetryNodeDetail: () => void nodeOperations.retryNodeDetail(),
                   entityAliasesLoading: entityResolution.entityAliasesLoading,
+                  entityAliasesError: entityResolution.entityAliasesError,
                   entityAliases: entityResolution.entityAliases,
                   aliasDraft: entityResolution.aliasDraft,
                   aliasSaving: entityResolution.aliasSaving,
                   aliasSuggestionsLoading: entityResolution.aliasSuggestionsLoading,
+                  aliasSuggestionsError: entityResolution.aliasSuggestionsError,
                   aliasSuggestions: entityResolution.aliasSuggestions,
                   lastResolutionActionId: entityResolution.lastResolutionActionId,
                   undoSubmitting: entityResolution.undoSubmitting,
-                  isLoading: state.isLoading,
+                  isLoading,
                   onClose: () => {
                     setDetailsExpanded(false)
                     requestAnimationFrame(() => detailsButtonRef.current?.focus())
@@ -374,7 +408,7 @@ export function GraphPageShell({
                   onStartConnectMode: interactionModes.startConnectMode,
                   onDeleteNode: () => nodeOperations.handleDeleteNode(),
                   onOpenMerge: entityResolution.openMergeDialog,
-                  onOpenSplit: entityResolution.openSplitDialog,
+                  onOpenSplit: splitEvents.length > 0 ? entityResolution.openSplitDialog : undefined,
                   onUndoLastResolution: entityResolution.undoLastResolution,
                   onAliasDraftChange: entityResolution.setAliasDraft,
                   onSaveAlias: entityResolution.handleSaveAlias,
@@ -416,7 +450,6 @@ export function GraphPageShell({
           deleteNodeTarget={state.deleteNodeTarget}
           onDeleteNodeOpenChange={pageActions.handleDeleteNodeOpenChange}
           onConfirmDeleteNode={nodeOperations.confirmDeleteNode}
-          aliasDeleteOpen={entityResolution.aliasDeleteOpen}
           aliasDeleteTarget={entityResolution.aliasDeleteTarget}
           aliasSaving={entityResolution.aliasSaving}
           onAliasDeleteOpenChange={entityResolution.handleAliasDeleteOpenChange}
@@ -426,6 +459,7 @@ export function GraphPageShell({
           mergeSearch={entityResolution.mergeSearch}
           onMergeSearchChange={entityResolution.setMergeSearch}
           mergeSearchLoading={entityResolution.mergeSearchLoading}
+          mergeSearchError={entityResolution.mergeSearchError}
           mergeSearchResults={entityResolution.mergeSearchResults}
           mergeTarget={entityResolution.mergeTarget}
           mergePreview={entityResolution.mergePreview}
@@ -444,7 +478,7 @@ export function GraphPageShell({
           splitSelectedEventIds={entityResolution.splitSelectedEventIds}
           splitSubmitting={entityResolution.splitSubmitting}
           splitError={entityResolution.splitError}
-          splitEvents={(state.kgNodeDetail as KGEntityDetailResponse | null)?.events ?? []}
+          splitEvents={splitEvents}
           onToggleSplitEvent={entityResolution.toggleSplitEvent}
           onSubmitSplit={entityResolution.submitSplit}
           connectLabelOpen={state.connectLabelOpen}

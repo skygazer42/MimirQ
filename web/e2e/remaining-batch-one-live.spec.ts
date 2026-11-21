@@ -3,7 +3,7 @@ import path from 'node:path'
 import { test, expect } from '@playwright/test'
 import { openRemaining, realDatasetFixture, remainingEvidence, remainingShot } from './remaining-pages.helpers'
 
-test('all seven migrated dataset routes read the dedicated data through the real API', async ({ page }) => {
+test('migrated dataset routes read the dedicated data through the real API', async ({ page }) => {
   test.setTimeout(300000)
   const state = await realDatasetFixture(page)
   await page.setViewportSize({ width: 1600, height: 1000 })
@@ -15,7 +15,6 @@ test('all seven migrated dataset routes read the dedicated data through the real
   for (const [route, title] of [
     ['profile', '数据画像'],
     ['health', '健康概览'],
-    ['workflow', '工作流配置'],
     ['tables', '表格资产'],
     ['db-catalog', '数据库目录'],
     ['evidence', '证据库'],
@@ -25,7 +24,6 @@ test('all seven migrated dataset routes read the dedicated data through the real
       {
         profile: '/profile/summary',
         health: '/health',
-        workflow: '/config/export',
         tables: '/tables',
         'db-catalog': '/db-catalog/tables',
         evidence: '/evidence/suites',
@@ -41,7 +39,6 @@ test('all seven migrated dataset routes read the dedicated data through the real
     await expect(page.getByText(state.name, { exact: true }).first()).toBeVisible({ timeout: 60000 })
     if (route === 'profile') await expect(page.getByText('正在读取数据画像…', { exact: true })).toHaveCount(0)
     if (route === 'health') await expect(page.locator('[data-health-document-count]')).toHaveText('0')
-    if (route === 'workflow') await expect(page.getByText('已同步', { exact: true }).first()).toBeVisible()
     if (route === 'tables')
       await expect(page.getByRole('heading', { name: '还没有表格资产', exact: true }).first()).toBeVisible()
     if (route === 'db-catalog')
@@ -52,46 +49,6 @@ test('all seven migrated dataset routes read the dedicated data through the real
   }
   fs.writeFileSync(path.join(remainingEvidence, 'batch-one-real-reads.json'), JSON.stringify(reads, null, 2))
   expect(reads.filter((read) => read.url.includes(state.dataset_id) && read.status >= 400)).toEqual([])
-})
-
-test('dragging and saving workflow changes only the stored layout and survives reload', async ({ page, request }) => {
-  const state = await realDatasetFixture(page)
-  const api = `http://127.0.0.1:8000/api/v1/datasets/${state.dataset_id}/config/export`
-  const headers = { 'X-User-ID': state.user_id, 'X-Tenant-ID': state.tenant_id }
-  const original = (await (await request.get(api, { headers })).json()).config
-  await openRemaining(page, `/datasets/${state.dataset_id}/workflow`, '工作流配置')
-  const node = page.locator('.react-flow__node[data-id="bundle"]')
-  await expect(node).toBeVisible({ timeout: 60000 })
-  await expect(page.getByText('已同步', { exact: true }).first()).toBeVisible()
-  await expect(page.getByRole('button', { name: '保存布局', exact: true })).toBeDisabled()
-  const box = await node.boundingBox()
-  await page.mouse.move(box!.x + 60, box!.y + 25)
-  await page.mouse.down()
-  await page.mouse.move(box!.x + 95, box!.y + 65, { steps: 8 })
-  await page.mouse.up()
-  const saving = page.waitForRequest(
-    (req) => req.method() === 'POST' && req.url().includes(`/datasets/${state.dataset_id}/config/import`),
-  )
-  await page.getByRole('button', { name: '保存布局', exact: true }).click()
-  const submitted = (await saving).postDataJSON().config
-  await expect(page.getByText('已保存工作流布局', { exact: true })).toBeVisible()
-  const persisted = (await (await request.get(api, { headers })).json()).config
-  expect(persisted.workflow_layout).toEqual(submitted.workflow_layout)
-  const { workflow_layout: beforeLayout, ...beforeRest } = original
-  const { workflow_layout: afterLayout, ...afterRest } = persisted
-  expect(afterRest).toEqual(beforeRest)
-  expect(afterLayout).not.toEqual(beforeLayout)
-  await page.reload({ waitUntil: 'domcontentloaded' })
-  await expect(page.getByRole('heading', { name: '工作流配置', exact: true })).toBeVisible({ timeout: 60000 })
-  await expect(page.locator('.react-flow__node[data-id="bundle"]')).toBeVisible()
-  fs.writeFileSync(
-    path.join(remainingEvidence, 'workflow-real-save.json'),
-    JSON.stringify(
-      { changedOnlyLayout: true, persisted: true, nodeCount: persisted.workflow_layout.nodes.length },
-      null,
-      2,
-    ),
-  )
 })
 
 test('a new evidence suite is saved by the real API and readable after reload', async ({ page, request }) => {

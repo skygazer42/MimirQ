@@ -5,7 +5,7 @@ from scripts.run_sample_retrieval_benchmark import run_benchmark
 
 
 def test_sample_benchmark_disables_external_reranking(monkeypatch, tmp_path: Path) -> None:  # noqa: ANN001
-    from app.rag import retriever as retriever_module
+    from app.rag.retrieval.recall import retriever as retriever_module
 
     class _Retriever:
         def __init__(self, **kwargs) -> None:  # noqa: ANN003

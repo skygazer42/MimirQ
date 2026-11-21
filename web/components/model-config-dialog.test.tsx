@@ -110,10 +110,10 @@ describe('ModelConfigDialog custom model IDs', () => {
       )
     })
 
-    const customTab = Array.from(container.querySelectorAll('[role="tab"]')).find((tab) =>
-      tab.textContent?.includes('自定义模型 ID'),
+    const customModeButton = Array.from(container.querySelectorAll('button[aria-pressed]')).find((button) =>
+      button.textContent?.includes('自定义模型 ID'),
     )
-    expect(customTab?.getAttribute('aria-selected')).toBe('true')
+    expect(customModeButton?.getAttribute('aria-pressed')).toBe('true')
     expect((container.querySelector('input[id$="-model-custom"]') as HTMLInputElement | null)?.value).toBe(
       'ep-account-specific',
     )

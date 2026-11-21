@@ -1,6 +1,7 @@
 import pytest
 
-from app.services import report_html, report_service
+from app.services.reports import aggregation as report_service
+from app.services.reports import html as report_html
 
 
 @pytest.mark.parametrize("status", [None, 0, False])

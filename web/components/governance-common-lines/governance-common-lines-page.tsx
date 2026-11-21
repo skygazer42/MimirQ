@@ -3,23 +3,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import {
-  ArrowRight,
-  ChevronsLeft,
-  Database,
-  FileSearch,
-  FileText,
-  Hash,
-  Loader2,
-  RefreshCw,
-  Search,
-  ShieldCheck,
-  Sliders,
-  Sparkles,
-  Upload,
-  UsersRound,
-  Wand2,
-} from '@/components/icons'
+import { z } from 'zod'
+import { Loader2, RefreshCw, Search, Sparkles, Upload } from '@/components/icons'
 
 import { useRouter } from '@/i18n/navigation'
 import {
@@ -45,11 +30,14 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Badge } from '@/components/ui/badge'
+import { profileRef as governanceProfileRef } from '@/components/governance-profiles/profile-presentation'
 
 import { datasetApi } from '@/lib/api/datasets'
 import { pipelineApi, type BuiltinProcessingScript } from '@/lib/api/pipeline'
 import { formatApiError } from '@/lib/api-errors'
+import { boundedNumberDraft } from '@/lib/number-draft-schema'
 import { queryKeys } from '@/lib/query-keys'
+import { getAuthSessionKey } from '@/lib/auth-storage'
 import { cn, detachPromise } from '@/lib/utils'
 
 import type {
@@ -57,7 +45,6 @@ import type {
   GovernanceCommonLinesLearnResponse,
   GovernanceProfileCreate,
   GovernanceProfileOut,
-  GovernanceProfileSummary,
   GovernanceProcessingScript,
   RegexRuleModel,
 } from '@/types/processing'
@@ -66,14 +53,14 @@ function escapeRegex(text: string): string {
   return text.replaceAll(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`)
 }
 
-function buildLineRegexRule(sample: string): RegexRuleModel | null {
-  const raw = String(sample || '').trim()
-  if (!raw) return null
-  const tokens = raw.split(/\s+/).filter(Boolean)
-  if (!tokens.length) return null
-  const body = tokens.map(escapeRegex).join(String.raw`\s+`)
+function buildLineRegexRule(candidate: GovernanceCommonLineCandidate): RegexRuleModel | null {
+  const sample = candidate.sample.trim()
+  const raw = sample === '' ? candidate.signature.trim() : sample
+  if (raw === '') return null
+  const tokens = raw.split(/\s+/)
+  const body = tokens.map(escapeRegex).join('[ \\t]+')
   // (?m): line anchors, (?i): case-insensitive to tolerate casing changes from different parsers.
-  const pattern = String.raw`(?mi)^\s*${body}\s*$`
+  const pattern = String.raw`(?mi)^[ \t]*${body}[ \t]*\r?$`
   return { pattern, repl: '', flags: 0 }
 }
 
@@ -106,6 +93,14 @@ const COMMON_LINES_PROFILE_PARAMS = {
   limit: 200,
 } as const
 
+const scanSettingsSchema = z.object({
+  limit_docs: boundedNumberDraft('扫描文档数', 2, 50).refine(Number.isInteger, '扫描文档数必须是整数'),
+  min_docs: boundedNumberDraft('最少命中文档', 2, 50).refine(Number.isInteger, '最少命中文档必须是整数'),
+  min_ratio: boundedNumberDraft('最小命中比例', 0, 1),
+  max_line_length: boundedNumberDraft('最大行长度', 20, 400).refine(Number.isInteger, '最大行长度必须是整数'),
+  max_candidates: boundedNumberDraft('最多候选数', 1, 200).refine(Number.isInteger, '最多候选数必须是整数'),
+})
+
 function detectScriptLanguage(filename: string): GovernanceProcessingScript['language'] | null {
   const ext = filename.trim().toLowerCase().split('.').pop()
   if (ext === 'js') return 'javascript'
@@ -120,11 +115,6 @@ function mergeProcessingScripts(existing: GovernanceProcessingScript[], drafts: 
   for (const item of existing) byKey.set(`${item.language}:${item.name}`, item)
   for (const item of drafts) byKey.set(`${item.language}:${item.name}`, item)
   return Array.from(byKey.values())
-}
-
-async function listWritableCommonLineProfiles(): Promise<GovernanceProfileSummary[]> {
-  const response = await pipelineApi.listGovernanceProfiles(COMMON_LINES_PROFILE_PARAMS)
-  return response.items.filter((profile) => !profile.is_system)
 }
 
 export function GovernanceCommonLinesPage() {
@@ -142,34 +132,35 @@ export function GovernanceCommonLinesPage() {
   const [datasetId, setDatasetId] = useState<string>('')
   const [profileRef, setProfileRef] = useState<string>('')
 
-  const [limitDocs, setLimitDocs] = useState(20)
+  const [limitDocs, setLimitDocs] = useState('20')
   const [useOriginal, setUseOriginal] = useState(true)
-  const [minDocs, setMinDocs] = useState(3)
-  const [minRatio, setMinRatio] = useState(0.5)
-  const [maxLineLength, setMaxLineLength] = useState(120)
-  const [maxCandidates, setMaxCandidates] = useState(50)
+  const [minDocs, setMinDocs] = useState('3')
+  const [minRatio, setMinRatio] = useState('0.5')
+  const [maxLineLength, setMaxLineLength] = useState('120')
+  const [maxCandidates, setMaxCandidates] = useState('50')
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [pane, setPane] = useState<'directory' | 'detail'>('directory')
   const [activeTab, setActiveTab] = useState('candidates')
   const [previewSignature, setPreviewSignature] = useState<string | null>(null)
-  const [editedPatterns, setEditedPatterns] = useState<Record<string, string>>({})
+  const [editedPatterns, setEditedPatterns] = useState<ReadonlyMap<string, string>>(() => new Map())
   const [operationError, setOperationError] = useState<string | null>(null)
 
   const [loading, setLoading] = useState(false)
   const [importingScript, setImportingScript] = useState(false)
+  const profileWriteRef = useRef(false)
   const [resp, setResp] = useState<GovernanceCommonLinesLearnResponse | null>(null)
-  const [selected, setSelected] = useState<Record<string, boolean>>({})
+  const [selectedSignatures, setSelectedSignatures] = useState<ReadonlySet<string>>(() => new Set())
   const [templateLibraryOpen, setTemplateLibraryOpen] = useState(false)
   const [selectedTemplateKeys, setSelectedTemplateKeys] = useState<Set<string>>(() => new Set())
   const [templateSearch, setTemplateSearch] = useState('')
 
   const datasetsQuery = useQuery({
-    queryKey: queryKeys.datasets.exhaustive({ purpose: 'governance-common-lines' }),
-    queryFn: () => datasetApi.listAll(),
+    queryKey: queryKeys.datasets.exhaustive(),
+    queryFn: ({ signal }) => datasetApi.listAll(undefined, { signal }),
   })
   const profilesQuery = useQuery({
     queryKey: queryKeys.governance.profiles(COMMON_LINES_PROFILE_PARAMS),
-    queryFn: listWritableCommonLineProfiles,
+    queryFn: ({ signal }) => pipelineApi.listGovernanceProfiles(COMMON_LINES_PROFILE_PARAMS, { signal }),
   })
   const templateLibraryQuery = useQuery({
     queryKey: ['governance-processing-scripts', 'builtins'] as const,
@@ -177,14 +168,17 @@ export function GovernanceCommonLinesPage() {
     staleTime: 30 * 60 * 1000,
   })
 
-  const datasets = useMemo(() => datasetsQuery.data || [], [datasetsQuery.data])
-  const profiles = useMemo(() => profilesQuery.data || [], [profilesQuery.data])
+  const datasets = useMemo(() => datasetsQuery.data ?? [], [datasetsQuery.data])
+  const profiles = useMemo(
+    () => profilesQuery.data?.items.filter((profile) => !profile.is_system) ?? [],
+    [profilesQuery.data],
+  )
   const loadingMeta = datasetsQuery.isFetching || profilesQuery.isFetching
-  const metaError = datasetsQuery.error || profilesQuery.error
+  const metaError = datasetsQuery.error ?? profilesQuery.error
 
   const refreshMeta = useCallback(() => {
     queryClient.invalidateQueries({
-      queryKey: queryKeys.datasets.exhaustive({ purpose: 'governance-common-lines' }),
+      queryKey: queryKeys.datasets.exhaustive(),
     })
     queryClient.invalidateQueries({
       queryKey: queryKeys.governance.profiles(COMMON_LINES_PROFILE_PARAMS),
@@ -192,65 +186,64 @@ export function GovernanceCommonLinesPage() {
   }, [queryClient])
 
   useEffect(() => {
-    if (!datasetId && datasets.length) setDatasetId(String(datasets[0].id || ''))
-  }, [datasetId, datasets])
+    if (datasetId === '' && datasetsQuery.isSuccess && datasets.length > 0) setDatasetId(datasets[0].id)
+  }, [datasetId, datasets, datasetsQuery.isSuccess])
 
   useEffect(() => {
-    const profileStillExists = profiles.some((p) => {
-      const id = String(p.id || '').trim()
-      return profileRef === p.key || (!!id && profileRef === id)
-    })
-    if ((!profileRef || !profileStillExists) && profiles.length)
-      setProfileRef(String(profiles[0].id || profiles[0].key || ''))
-  }, [profileRef, profiles])
+    if (profileRef === '' && profilesQuery.isSuccess && profiles.length > 0) {
+      setProfileRef(governanceProfileRef(profiles[0]))
+    }
+  }, [profileRef, profiles, profilesQuery.isSuccess])
 
-  const candidates: GovernanceCommonLineCandidate[] = useMemo(() => resp?.candidates || [], [resp?.candidates])
+  const candidates: GovernanceCommonLineCandidate[] = useMemo(() => resp?.candidates ?? [], [resp?.candidates])
   const sortedCandidates = useMemo(
     () =>
       [...candidates].sort((a, b) => {
-        const docsDelta = Number(b.docs || 0) - Number(a.docs || 0)
+        const docsDelta = b.docs - a.docs
         if (docsDelta !== 0) return docsDelta
-        return Number(b.ratio || 0) - Number(a.ratio || 0)
+        return b.ratio - a.ratio
       }),
     [candidates],
   )
   const selectedCandidates = useMemo(
-    () => candidates.filter((c) => selected[String(c.signature || '')]),
-    [candidates, selected],
+    () => candidates.filter((candidate) => selectedSignatures.has(candidate.signature)),
+    [candidates, selectedSignatures],
   )
 
   const toggleAll = useCallback(
     (on: boolean) => {
-      const next: Record<string, boolean> = {}
-      for (const c of candidates) {
-        const sig = String(c.signature || '')
-        if (!sig) continue
-        next[sig] = on
-      }
-      setSelected(next)
+      const signatures = on ? candidates.map((candidate) => candidate.signature) : []
+      setSelectedSignatures(new Set(signatures))
     },
     [candidates],
   )
 
-  const runLearn = useCallback(async () => {
-    const dsId = datasetId.trim()
-    if (!dsId) {
+  const scanSettings = scanSettingsSchema.safeParse({
+    limit_docs: limitDocs,
+    min_docs: minDocs,
+    min_ratio: minRatio,
+    max_line_length: maxLineLength,
+    max_candidates: maxCandidates,
+  })
+
+  async function runLearn() {
+    if (datasetId === '') {
       toast.error('请先选择数据集')
+      return
+    }
+    if (!scanSettings.success) {
+      setSettingsOpen(true)
       return
     }
     setLoading(true)
     setOperationError(null)
     setResp(null)
-    setSelected({})
+    setSelectedSignatures(new Set())
     try {
       const out = await pipelineApi.learnCommonLines({
-        dataset_id: dsId,
-        limit_docs: Math.max(2, Math.min(50, Number(limitDocs || 20))),
-        use_original: Boolean(useOriginal),
-        min_docs: Math.max(2, Math.min(50, Number(minDocs || 3))),
-        min_ratio: Math.max(0, Math.min(1, minRatio)),
-        max_line_length: Math.max(20, Math.min(400, Number(maxLineLength || 120))),
-        max_candidates: Math.max(1, Math.min(200, Number(maxCandidates || 50))),
+        dataset_id: datasetId,
+        use_original: useOriginal,
+        ...scanSettings.data,
       })
       setResp(out)
       setPane('detail')
@@ -260,7 +253,7 @@ export function GovernanceCommonLinesPage() {
     } finally {
       setLoading(false)
     }
-  }, [datasetId, limitDocs, maxCandidates, maxLineLength, minDocs, minRatio, useOriginal])
+  }
 
   const importProcessingScripts = useCallback(
     async (files: File[]) => {
@@ -270,6 +263,9 @@ export function GovernanceCommonLinesPage() {
         return
       }
       if (!files.length) return
+      if (profileWriteRef.current) return
+      const sessionKey = getAuthSessionKey()
+      profileWriteRef.current = true
 
       setImportingScript(true)
       setOperationError(null)
@@ -314,17 +310,20 @@ export function GovernanceCommonLinesPage() {
           return
         }
 
+        if (getAuthSessionKey() !== sessionKey) return
         const updated = await pipelineApi.updateGovernanceProfile(ref, {
           payload: {
             ...prof.payload,
             processing_scripts: nextScripts,
           },
         })
+        if (getAuthSessionKey() !== sessionKey) return
         cacheUpdatedProfile(ref, updated)
         toast.success(`已导入 ${drafts.length} 个处理脚本草案`)
       } catch (err: unknown) {
-        setOperationError(formatApiError(err, '导入处理脚本失败'))
+        if (getAuthSessionKey() === sessionKey) setOperationError(formatApiError(err, '导入处理脚本失败'))
       } finally {
+        profileWriteRef.current = false
         setImportingScript(false)
       }
     },
@@ -342,6 +341,9 @@ export function GovernanceCommonLinesPage() {
         toast.error('请先选择至少一个模板')
         return
       }
+      if (profileWriteRef.current) return
+      const sessionKey = getAuthSessionKey()
+      profileWriteRef.current = true
 
       setImportingScript(true)
       setOperationError(null)
@@ -368,19 +370,22 @@ export function GovernanceCommonLinesPage() {
           return
         }
 
+        if (getAuthSessionKey() !== sessionKey) return
         const updated = await pipelineApi.updateGovernanceProfile(ref, {
           payload: {
             ...prof.payload,
             processing_scripts: nextScripts,
           },
         })
+        if (getAuthSessionKey() !== sessionKey) return
         cacheUpdatedProfile(ref, updated)
         toast.success(`已从模板库添加 ${drafts.length} 个处理脚本`)
         setTemplateLibraryOpen(false)
         setSelectedTemplateKeys(new Set())
       } catch (err: unknown) {
-        setOperationError(formatApiError(err, '从模板库添加处理脚本失败'))
+        if (getAuthSessionKey() === sessionKey) setOperationError(formatApiError(err, '从模板库添加处理脚本失败'))
       } finally {
+        profileWriteRef.current = false
         setImportingScript(false)
       }
     },
@@ -394,7 +399,7 @@ export function GovernanceCommonLinesPage() {
     return all.filter((tpl) =>
       [tpl.name, tpl.description, tpl.key, ...(tpl.tags ?? [])]
         .filter(Boolean)
-        .some((field) => String(field).toLowerCase().includes(q)),
+        .some((field) => field.toLowerCase().includes(q)),
     )
   }, [templateLibraryQuery.data?.items, templateSearch])
 
@@ -423,6 +428,9 @@ export function GovernanceCommonLinesPage() {
       toast.error('请先勾选要写入的行')
       return
     }
+    if (profileWriteRef.current) return
+    const sessionKey = getAuthSessionKey()
+    profileWriteRef.current = true
 
     setLoading(true)
     setOperationError(null)
@@ -433,16 +441,16 @@ export function GovernanceCommonLinesPage() {
         return
       }
 
-      const existingRules: RegexRuleModel[] = Array.isArray(prof.payload?.regex_rules) ? prof.payload.regex_rules : []
-      const patterns = new Set(existingRules.map((r) => String(r?.pattern || '')))
+      const existingRules = prof.payload.regex_rules
+      const patterns = new Set(existingRules.map((rule) => rule.pattern))
       const nextRules = [...existingRules]
 
       let added = 0
-      for (const c of selectedCandidates) {
-        const rule = buildLineRegexRule(String(c.sample || '')) || buildLineRegexRule(String(c.signature || ''))
-        if (!rule) continue
-        rule.pattern = editedPatterns[c.signature] ?? rule.pattern
-        if (!rule.pattern.trim()) throw new Error('正则表达式不能为空')
+      for (const candidate of selectedCandidates) {
+        const rule = buildLineRegexRule(candidate)
+        if (rule === null) continue
+        rule.pattern = editedPatterns.get(candidate.signature) ?? rule.pattern
+        if (rule.pattern.trim() === '') throw new Error('正则表达式不能为空')
         if (patterns.has(rule.pattern)) continue
         patterns.add(rule.pattern)
         nextRules.push(rule)
@@ -454,43 +462,44 @@ export function GovernanceCommonLinesPage() {
         return
       }
 
+      if (getAuthSessionKey() !== sessionKey) return
       const updated = await pipelineApi.updateGovernanceProfile(ref, {
         payload: {
           ...prof.payload,
           regex_rules: nextRules,
         },
       })
+      if (getAuthSessionKey() !== sessionKey) return
       cacheUpdatedProfile(ref, updated)
       setActiveTab('saved')
       setPane('detail')
       toast.success(`已写入治理配置：新增 ${added} 条规则`)
     } catch (err: unknown) {
-      setOperationError(formatApiError(err, '写入治理配置失败'))
+      if (getAuthSessionKey() === sessionKey) setOperationError(formatApiError(err, '写入治理配置失败'))
     } finally {
+      profileWriteRef.current = false
       setLoading(false)
     }
   }, [profileRef, selectedCandidates, editedPatterns, cacheUpdatedProfile])
 
   const profileDetail = useQuery({
     queryKey: queryKeys.governance.profile(profileRef),
-    enabled: Boolean(profileRef),
-    queryFn: () => pipelineApi.getGovernanceProfile(profileRef),
+    enabled: profileRef !== '',
+    queryFn: ({ signal }) => pipelineApi.getGovernanceProfile(profileRef, { signal }),
   })
   const targetProfileLabel =
     profileDetail.data?.name ??
-    profiles.find((item) => item.id === profileRef || item.key === profileRef)?.name ??
-    (profileRef || '未选择配置')
+    profiles.find((item) => governanceProfileRef(item) === profileRef)?.name ??
+    (profileRef === '' ? '未选择配置' : profileRef)
   const savedRules = profileDetail.data?.payload?.regex_rules ?? []
   const previewCandidate = candidates.find((item) => item.signature === previewSignature)
-  const previewRule = previewCandidate
-    ? buildLineRegexRule(previewCandidate.sample || previewCandidate.signature)
-    : null
+  const previewRule = previewCandidate === undefined ? null : buildLineRegexRule(previewCandidate)
   const createTargetProfile = async () => {
     setLoading(true)
     setOperationError(null)
     try {
       const created = await pipelineApi.createGovernanceProfile(DEFAULT_COMMON_LINES_PROFILE)
-      setProfileRef(created.id || created.key)
+      setProfileRef(governanceProfileRef(created))
       await profilesQuery.refetch()
       toast.success('已创建治理配置')
     } catch (error) {
@@ -528,8 +537,8 @@ export function GovernanceCommonLinesPage() {
             onValueChange={(value) => {
               setDatasetId(value)
               setResp(null)
-              setSelected({})
-              setEditedPatterns({})
+              setSelectedSignatures(new Set())
+              setEditedPatterns(new Map())
             }}
             disabled={loading || importingScript}
           >
@@ -581,11 +590,11 @@ export function GovernanceCommonLinesPage() {
               <h2 className={ws.sectionTitle}>目标治理配置</h2>
               <p className={ws.sectionDescription}>选择候选规则的写入位置</p>
             </div>
-            {loadingMeta ? (
+            {profilesQuery.isPending ? (
               <p className="p-4 text-sm text-muted-foreground">正在读取…</p>
-            ) : profiles.length ? (
+            ) : profiles.length > 0 ? (
               profiles.map((item) => {
-                const ref = item.id || item.key
+                const ref = governanceProfileRef(item)
                 return (
                   <button
                     type="button"
@@ -604,7 +613,7 @@ export function GovernanceCommonLinesPage() {
                   </button>
                 )
               })
-            ) : (
+            ) : profilesQuery.isError ? null : (
               <div className="space-y-3 p-4 text-sm">
                 <p className="text-muted-foreground">暂无自定义治理配置</p>
                 <Button
@@ -705,10 +714,15 @@ export function GovernanceCommonLinesPage() {
                             <td>
                               <Checkbox
                                 aria-label={`选择重复行 ${candidate.sample || candidate.signature}`}
-                                checked={Boolean(selected[candidate.signature])}
+                                checked={selectedSignatures.has(candidate.signature)}
                                 disabled={loading}
                                 onCheckedChange={(value) =>
-                                  setSelected((prev) => ({ ...prev, [candidate.signature]: Boolean(value) }))
+                                  setSelectedSignatures((current) => {
+                                    const next = new Set(current)
+                                    if (value === true) next.add(candidate.signature)
+                                    else next.delete(candidate.signature)
+                                    return next
+                                  })
                                 }
                               />
                             </td>
@@ -822,7 +836,7 @@ export function GovernanceCommonLinesPage() {
                     max={field.max}
                     step={field.step ?? 1}
                     disabled={loading}
-                    onChange={(event) => field.setter(Number(event.target.value))}
+                    onChange={(event) => field.setter(event.target.value)}
                   />
                 </label>
               ))}
@@ -832,10 +846,11 @@ export function GovernanceCommonLinesPage() {
               <Checkbox
                 checked={useOriginal}
                 disabled={loading}
-                onCheckedChange={(value) => setUseOriginal(Boolean(value))}
+                onCheckedChange={(value) => setUseOriginal(value === true)}
               />
             </label>
             <p className={ws.sectionDescription}>需要文档在入库时保留解析正文。</p>
+            {!scanSettings.success && <WorkspaceNotice>{scanSettings.error.issues[0].message}</WorkspaceNotice>}
           </div>
           <DialogFooter className={ws.dialogFooter}>
             <Button variant="outline" onClick={() => setSettingsOpen(false)}>
@@ -864,9 +879,13 @@ export function GovernanceCommonLinesPage() {
             <Input
               id="common-line-pattern"
               className="mt-2 font-mono"
-              value={previewSignature ? (editedPatterns[previewSignature] ?? previewRule?.pattern ?? '') : ''}
+              value={
+                previewSignature === null ? '' : (editedPatterns.get(previewSignature) ?? previewRule?.pattern ?? '')
+              }
               onChange={(event) => {
-                if (previewSignature) setEditedPatterns((prev) => ({ ...prev, [previewSignature]: event.target.value }))
+                if (previewSignature === null) return
+                const pattern = event.target.value
+                setEditedPatterns((current) => new Map(current).set(previewSignature, pattern))
               }}
             />
           </div>
@@ -985,7 +1004,7 @@ export function GovernanceCommonLinesPage() {
             </Button>
             <Button
               onClick={confirmAddFromTemplateLibrary}
-              disabled={importingScript || selectedTemplateKeys.size === 0}
+              disabled={loading || importingScript || selectedTemplateKeys.size === 0}
               className="gap-2"
             >
               {importingScript ? (

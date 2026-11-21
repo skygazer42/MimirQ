@@ -8,7 +8,7 @@ import pytest
 
 
 def test_confluence_metadata_commit_failure_propagates(monkeypatch):
-    from app.services.connector_execution import confluence
+    from app.services.connectors.execution import confluence
 
     db = MagicMock()
     failure = RuntimeError("connector metadata commit failed")
@@ -31,7 +31,7 @@ def test_confluence_metadata_commit_failure_propagates(monkeypatch):
 
 
 def test_regression_progress_commit_failure_is_observable(caplog):
-    from app.rag.evaluation.ragas import _commit_regression_progress
+    from app.rag.evaluation.regression.ragas import _commit_regression_progress
 
     db = MagicMock()
     failure = RuntimeError("progress commit failed")
@@ -79,18 +79,20 @@ def test_extraction_sidecar_commit_failure_is_observable(operation, monkeypatch,
     assert any(r.exc_info and r.exc_info[1] is failure for r in caplog.records)
 
 
-def test_retry_cleanup_commit_failure_is_deferred_with_traceback(caplog):
-    from app.parsing.processors.support.recovery import apply_pending_retry_cleanup
+def test_retry_cleanup_commit_failure_is_deferred_with_traceback(caplog, monkeypatch):
+    from app.rag.ingestion.indexing import indexer
+    from app.rag.ingestion.indexing.support.recovery import apply_pending_retry_cleanup
+
+    monkeypatch.setattr(indexer, "Indexer", MagicMock())
 
     db = MagicMock()
     failure = RuntimeError("retry cleanup commit failed")
     db.commit.side_effect = failure
     metadata = {"pipeline_hash": "p", "retry_cleanup": {"version": "1", "pipeline_hash": "p", "scope": "document"}}
     doc = SimpleNamespace(doc_metadata=metadata, chunk_count=2, total_characters=20)
+    db.refresh.side_effect = lambda refreshed: setattr(refreshed, "doc_metadata", metadata)
     with caplog.at_level(logging.WARNING):
-        result = apply_pending_retry_cleanup(
-            db, db_document=doc, tenant_id=uuid4(), document_id=uuid4(), indexer_factory=MagicMock()
-        )
+        result = apply_pending_retry_cleanup(db, db_document=doc, tenant_id=uuid4(), document_id=uuid4())
     assert result == "deferred"
     assert doc.doc_metadata == metadata
     db.rollback.assert_called_once()
@@ -100,7 +102,7 @@ def test_retry_cleanup_commit_failure_is_deferred_with_traceback(caplog):
 @pytest.mark.parametrize("precheck_only", [False, True])
 @pytest.mark.parametrize("failure_stage", ["commit", "worker"])
 def test_batch_precheck_failure_never_returns_success(failure_stage, precheck_only, tmp_path, monkeypatch, caplog):
-    from app.services import document_batch_ingestion as module
+    from app.services.documents import batch_ingestion as module
 
     db = MagicMock()
     failure = RuntimeError("precheck run commit failed")
@@ -133,7 +135,7 @@ def test_batch_precheck_failure_never_returns_success(failure_stage, precheck_on
 
 
 def test_batch_precheck_compensation_preserves_original_failure(monkeypatch, caplog):
-    from app.services import document_batch_ingestion as module
+    from app.services.documents import batch_ingestion as module
 
     db = MagicMock()
     db.query.return_value.filter.return_value.first.return_value = SimpleNamespace(id=uuid4())

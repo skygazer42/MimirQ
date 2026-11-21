@@ -1,8 +1,8 @@
 import pytest
 
-from app.services.dify_integration.common import _diagnostic_value_hash
-from app.services.dify_integration.records import _record_dedupe_key
-from app.services.dify_integration.tracing import _dify_trace_retrieval_queries
+from app.services.dify.common import _diagnostic_value_hash
+from app.services.dify.records import _record_dedupe_key
+from app.services.dify.tracing import _dify_trace_retrieval_queries
 
 
 @pytest.mark.parametrize("value", [0, False])

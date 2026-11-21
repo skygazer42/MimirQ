@@ -84,11 +84,11 @@ flowchart LR
 
 | 文件 | 职责 |
 |------|------|
-| `app/parsing/factory.py` | 解析器工厂 |
-| `app/parsing/routing.py` | 自动路由决策 |
-| `app/parsing/quality/` | PDF 质量评估 |
-| `app/parsing/processors/` | 解析工作流编排 |
-| `app/parsing/parsers/` | 各引擎实现 |
+| `app/rag/ingestion/parsing/factory.py` | 解析器工厂 |
+| `app/rag/ingestion/parsing/routing.py` | 自动路由决策 |
+| `app/rag/ingestion/parsing/quality/` | PDF 质量评估 |
+| `app/rag/ingestion/indexing/` | 解析工作流编排 |
+| `app/rag/ingestion/parsing/parsers/` | 各引擎实现 |
 
 ---
 

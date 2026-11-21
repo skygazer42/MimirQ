@@ -39,7 +39,7 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
         "--llm-mock",
         action=argparse.BooleanOptionalAction,
         default=True,
-        help="Enable LLM mock mode for this run (sets LLM_MOCK_ENABLED=1).",
+        help="Set LLM_MOCK_ENABLED for the harness process and record it in the report.",
     )
     parser.add_argument(
         "--iterations",
@@ -112,16 +112,16 @@ def _run_case(
     timeout_sec: float,
     headers: dict[str, str],
 ) -> dict[str, Any]:
-    from app.rag.evaluation.perf_bench import bounded_top_counts, summarize_latencies_ms
+    from app.rag.evaluation.benchmarks.perf_bench import bounded_top_counts, summarize_latencies_ms
 
     latencies_ms: list[float] = []
     status_codes: Counter[str] = Counter()
     errors: Counter[str] = Counter()
     ok_count = 0
 
+    url = f"{base_url}{case.path}"
     started = time.perf_counter()
     for _ in range(max(0, iterations)):
-        url = f"{base_url}{case.path}"
         t0 = time.perf_counter()
         try:
             resp = client.request(

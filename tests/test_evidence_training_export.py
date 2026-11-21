@@ -37,7 +37,7 @@ class _DB:
 
 
 def test_feedback_training_export_loads_preceding_users_without_n_plus_one(monkeypatch) -> None:  # noqa: ANN001
-    from app.api.v1 import evidence
+    from app.api.v1.evaluation import evidence
 
     now = datetime.now(UTC)
     tenant_id = uuid4()

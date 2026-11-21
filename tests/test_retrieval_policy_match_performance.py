@@ -39,14 +39,16 @@ def test_policy_fuzzy_overlap_semantics(
     value_text: str,
     expected: bool,
 ) -> None:
-    from app.rag.retrieval import planner, plugin_policy
+    from app.rag.retrieval.ranking import policy as plugin_policy
+    from app.rag.retrieval.ranking import policy_rules
 
-    assert planner._policy_value_fuzzy_overlaps_query(query_text, value_text) is expected
+    assert policy_rules._policy_value_fuzzy_overlaps_query(query_text, value_text) is expected
     assert plugin_policy._policy_value_fuzzy_overlaps_query(query_text, value_text) is expected
 
 
 def test_policy_fuzzy_overlap_does_not_scan_both_strings_in_python() -> None:
-    from app.rag.retrieval import planner, plugin_policy
+    from app.rag.retrieval.ranking import policy as plugin_policy
+    from app.rag.retrieval.ranking import policy_rules
 
     class IterationCountingText(str):
         iteration_count = 0
@@ -58,20 +60,20 @@ def test_policy_fuzzy_overlap_does_not_scan_both_strings_in_python() -> None:
     query_text = IterationCountingText("abcdefghij")
     value_text = IterationCountingText("zzabcdefghxx")
 
-    assert planner._policy_value_fuzzy_overlaps_query(query_text, value_text) is True
+    assert policy_rules._policy_value_fuzzy_overlaps_query(query_text, value_text) is True
     assert plugin_policy._policy_value_fuzzy_overlaps_query(query_text, value_text) is True
     assert IterationCountingText.iteration_count == 0
 
 
 def test_policy_fuzzy_overlap_matches_previous_algorithm() -> None:
-    from app.rag.retrieval import planner
+    from app.rag.retrieval.ranking import policy_rules
 
     rng = random.Random(20260723)
     alphabet = "abcdef常州市人才政策办理材料"
     for _ in range(200):
         query_text = "".join(rng.choice(alphabet) for _ in range(rng.randint(1, 32)))
         value_text = "".join(rng.choice(alphabet) for _ in range(rng.randint(1, 48)))
-        assert planner._policy_value_fuzzy_overlaps_query(
+        assert policy_rules._policy_value_fuzzy_overlaps_query(
             query_text,
             value_text,
         ) is _dynamic_programming_overlap(query_text, value_text)

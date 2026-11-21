@@ -50,7 +50,9 @@ XGBoost、unstructured 和腾讯云 SDK 的默认依赖已删除。相关本地 
 | `EMBEDDING_PROVIDER=local` 或数据集的 `provider=local` | 在独立服务部署原模型，显式改为受支持的 Embedding API 配置              |
 | `cross_encoder`、`local_bge_v2_m3` 及其别名            | 配置 Rerank API，或显式选择现有轻量重排/关闭重排                       |
 | `hanlp`                                                | 选择 jieba、jieba_textrank 或 simple；auto 固定使用 jieba              |
-| `splade`、ColBERT `hf`、`sparse_splade` 配置           | 已退出，不能自动改成测试用的确定性向量                                 |
+| `splade`、`sparse_splade`、确定性 SPARSE 配置                         | 已退出，实验编码器/索引同样删除，旧执行需移除稀疏参数                                 |
+| `colbert`、`late_interaction` 和 ColBERT 实验开关      | 神经模型和确定性哈希占位均已退出；执行选择明确报退役，不能自动切换模型   |
+| `colpali`、`colqwen` 及别名 | 视觉实验壳已退出；历史标签保留，执行时明确拒绝，不自动改选解析器 |
 | KG 的 `gliner`、`hybrid`                               | 显式选择 llm 或 heuristic；自动标注保留 CPU、LLM API 和合规规则        |
 | `IMAGE_EMBEDDING_ENABLED=true`、非空 `query_image`     | 已退出；图片向量索引/搜索旧接口返回 HTTP 410，query_image 返回校验错误 |
 
@@ -64,9 +66,9 @@ XGBoost、unstructured 和腾讯云 SDK 的默认依赖已删除。相关本地 
 
 `requirements-chroma.txt`、Chroma 适配器及其元数据编码、持久化路径与安装入口已删除。旧 `VECTOR_BACKEND=chroma` 或地域映射会明确失败，不自动选择另一个索引空间。请在旧版本导出数据，再显式迁移或重建到受支持的后端。现有目录、Docker 卷和环境包不会自动删除或卸载。
 
-生产默认使用 Milvus；memory 仅提供进程内测试/开发索引，不能替代 API/Worker 的共享持久化存储。Qdrant、pgvector 保留现有实现及其依赖要求。
+生产默认使用 Milvus；memory 仅提供进程内测试/开发索引，不能替代 API/Worker 的共享持久化存储。Qdrant、pgvector 的进程内占位后端已删除，旧选择明确拒绝。
 
-`requirements-faiss.txt`、FAISS 向量存储和 ColBERT 的 FAISS 加速已删除。旧 `VECTOR_BACKEND=faiss` 或地域后端映射会明确失败，需要显式选择受支持的后端，并单独导出/重建旧索引。现有 FAISS 文件和环境包不会自动删除或卸载。ColBERT 确定性 scaffold 的余弦排序使用已有 NumPy，不再按安装环境选择加速实现。
+`requirements-faiss.txt`、FAISS 向量存储和 ColBERT 的 FAISS 加速已删除。旧 `VECTOR_BACKEND=faiss` 或地域后端映射会明确失败，需要显式选择受支持的后端，并单独导出/重建旧索引。现有 FAISS 文件和环境包不会自动删除或卸载。ColBERT 确定性占位也已退出；NumPy 继续供真实解析和数值处理使用。
 
 `rank-bm25` 已移除：知识库 BM25 使用 Milvus 内置 function 和全文索引，聊天记忆在 PostgreSQL 的最近有界会话消息上进行关键词排序。API 不再构建本地 BM25 或缓存整份语料。原生 BM25 需要 Milvus，不能通过安装 rank-bm25 恢复本地实现。jieba 继续服务轻量关键词、查询处理和聊天记忆。
 

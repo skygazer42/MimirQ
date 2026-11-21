@@ -1,0 +1,246 @@
+{
+  "schema": "ragvia.rag_structure_verification.v1",
+  "date": "2026-11-15",
+  "branch": "feat/ragvia-ui",
+  "head": "619ba7d1166c96beb85729069f5f79794a904a7a",
+  "scope": {
+    "app_python_before": 1171,
+    "app_python_after": 1221,
+    "current_app_files": 1373,
+    "resources_unchanged": 152,
+    "moved_modules": 215,
+    "rag_python_before": 509,
+    "rag_python_after": 559,
+    "retrieval_entry_lines_before": 3854,
+    "retrieval_entry_lines_after": 88,
+    "original_LangGraph_module_lines": 1852,
+    "LangGraph_responsibility_modules": 7,
+    "net_python_file_delta": 50,
+    "new_files_are_responsibility_splits_or_package_markers_not_a_file_count_reduction": true
+  },
+  "ownership": {
+    "runtime": "engine / streaming / graph / checkpoints / store",
+    "retrieval": "planning / stages / indexes / ranking / expansion / evidence / configuration / cache / hybrid",
+    "raw_files": "chunking/files with contracts, PDF, Markdown and per-format flows",
+    "parsed_documents": "seven strategy categories; JSON and source code have separate implementations",
+    "agents": "runners and their middleware/tools; parent package imports no runners",
+    "evaluations": "regression/judging/generation/benchmarks/agents/scanning with unchanged dataset locations",
+    "no_old_import_forwarders_added": true,
+    "DocUtilsMixin_replaced_by_functions": true,
+    "single_implementation_rerank_callbacks_removed": true
+  },
+  "checks": {
+    "app_Ruff_check": {
+      "exit_code": 0,
+      "output": "All checks passed!"
+    },
+    "app_Ruff_format_check": {
+      "exit_code": 0,
+      "output": "1221 files already formatted"
+    },
+    "all_current_app_python311_AST_compile": true,
+    "static_binding_check": {
+      "sources": 1381,
+      "python311_AST_compile": true,
+      "app_import_statements": 4930,
+      "missing_bindings": []
+    },
+    "cold_registration_and_OpenAPI": {
+      "cold_OpenAPI_equal": true,
+      "paths": 358,
+      "routes": 422,
+      "schemas": 671,
+      "registered_strategies": 83,
+      "aliases_preserved": true,
+      "optional_dependency_flags_preserved": true,
+      "required_strategy_real_imports": 81,
+      "file_parsers_eager_loaded": false,
+      "environment_overrides_for_verification_only": [
+        "ENV=test",
+        "RERANKER_PROVIDER=none",
+        "EVIDENCE_POST_RERANK_PROVIDER=none",
+        "CHECKPOINT_BACKEND=memory",
+        "LANGGRAPH_STORE_ENABLED=false"
+      ],
+      "network_database_model_or_pytest_run": false
+    },
+    "fusion_and_agent_behavior": {
+      "RRF_comparisons": 1728,
+      "query_dedup_comparisons": 5,
+      "prefer_document_comparisons": 25,
+      "actual_agent_consumer_comparisons": 72,
+      "no_removed_engine_method_required": true
+    },
+    "reranking_bounded_comparisons": 2144,
+    "file_flow_bounded_comparisons": 58,
+    "JSON_source_bounded_comparisons": 672,
+    "graph_behavior": {
+      "option_defaults": 75,
+      "state_fields": 79,
+      "runtime_fields": 6,
+      "state_construction_cases": 113,
+      "context_cases": 512,
+      "history_cases": 12,
+      "graph_assembly_cases": 6,
+      "in_memory_graph_execution_cases": 12,
+      "final_network_or_DB_attempts": 0,
+      "tokenizer_download_attempts_blocked_during_probing": 2,
+      "real_connections": 0
+    },
+    "independent_review": {
+      "open_findings": 0,
+      "baseline_top_level_definitions_normalized_equal": 11947,
+      "method_to_function_conversions_verified": 15,
+      "agent_consumer_cases": 512,
+      "retrieval_stages_unchanged": 23,
+      "stream_operation_tuples_unchanged": 7
+    },
+    "boundary_comparison": {
+      "existing_boundary_findings_before": 2,
+      "existing_boundary_findings_after": 2,
+      "new_boundary_findings": 0,
+      "CI_Python_heredocs_compiled": 12,
+      "baseline_file_modified": false
+    },
+    "boundary_cli_exit": 1,
+    "notes": {
+      "format": {
+        "exit_code": 0,
+        "output": "ok: 244 note(s) verified\n"
+      },
+      "tree": {
+        "exit_code": 1,
+        "output": "link: implemented/architecture/2026-11-05-milvus-native-bm25.md -> \"../simplification/2026-11-06-retire-faiss.md\" target file does not exist\nlink: implemented/architecture/2026-11-05-retire-in-process-models.md -> \"../simplification/2026-11-06-retire-faiss.md\" target file does not exist\nlink: implemented/architecture/2026-11-05-retire-in-process-models.md -> \"../simplification/2026-11-06-retire-faiss.md\" target file does not exist\nlink: implemented/architecture/2026-11-05-retire-in-process-models.md -> \"../simplification/2026-11-06-retire-chroma.md\" target file does not exist\nlink: implemented/process/2026-11-05-optional-model-vector-dependencies.md -> \"../simplification/2026-11-06-retire-faiss.md\" target file does not exist\nlink: implemented/process/2026-11-05-optional-model-vector-dependencies.md -> \"../simplification/2026-11-06-retire-chroma.md\" target file does not exist\nlink: implemented/process/2026-11-05-optional-model-vector-dependencies.md -> \"../simplification/2026-11-06-retire-faiss.md\" target file does not exist\nlink: implemented/simplification/2026-11-05-offline-retrieval-ltr-owned-rules.md -> \"2026-11-06-retire-parser-ml.md\" target file does not exist\nlink: implemented/simplification/2026-11-05-parser-adapter-helper-ownership.md -> \"2026-11-06-retire-parser-ml.md\" target file does not exist\nlink: implemented/simplification/2026-11-08-retrieval-settings-default-owner.md -> \"2026-11-07-direct-value-contracts.md\" target file does not exist\n"
+      },
+      "archive": {
+        "exit_code": 0,
+        "output": "ok: 0 archived note(s) verified, 0 seal(s) in manifest\n"
+      }
+    }
+  },
+  "coverage": {
+    "app_review_statuses": {
+      "adjusted": 1084,
+      "conforms": 137,
+      "preserved": 152
+    },
+    "coverage_rows": 6539,
+    "layout_rows": 1241,
+    "all_current_file_hashes_verified": true,
+    "all_app_sources_represented": true,
+    "retired_paths_not_counted_as_current": true
+  },
+  "integrity": {
+    "tests_frozen": 747,
+    "Python_test_files": 610,
+    "pytest_run": false,
+    "tests_changed": 0,
+    "original_resources_frozen": 152,
+    "original_index_sha256": "3344adf2ed01b9993130a621f2f78a4fe9c03ca7dfd838fc002e781419d23afc",
+    "current_index_sha256": "3344adf2ed01b9993130a621f2f78a4fe9c03ca7dfd838fc002e781419d23afc",
+    "staging_unchanged": true,
+    "new_staging": false,
+    "committed": false,
+    "pushed": false
+  },
+  "app_tree_sha256": "5353fde4c1c98e59970bf26eedca5a21cc6a742e67a07ef3636b99642688003e",
+  "test_tree_sha256": "228c27b8fc6b41dd85880b139d9169bde47a94e6d711a68fc7e264fd9224e3c3",
+  "current_csv_sha256": {
+    "api-v1-review.csv": "e85ad43f2f4f20a05411ed12bf78c11f870da601722860dc78e100e416fe2843",
+    "app-review.csv": "250bd3e29bc3df3b11c4a168fc10ea7711cee41554ea27ecfd393e2b4e86db17",
+    "coverage.csv": "64e51e896fbd0922ffe51eaba38df4f0370fb883efe96fdd1d20deff57740dd1",
+    "layout-review.csv": "3547cd277dc3dbb96cc36361c845f44fafa51e16bb4e2d7fdc71193687d64c5f"
+  },
+  "commands": [
+    {
+      "args": [
+        "E:/MimirQ/.venv/Scripts/python.exe",
+        "-m",
+        "ruff",
+        "check",
+        "scripts/backfill_milvus_bm25.py",
+        "scripts/capture_retrieval_replay.py",
+        "scripts/changzhou_gov_golden_eval.py",
+        "scripts/check_retrieval_profile_compat.py",
+        "scripts/eval_retrieval_fusion_offline.py",
+        "scripts/learn_fusion_weights_offline.py",
+        "scripts/llm_judge_calibration_gate.py",
+        "scripts/mine_hard_negatives_from_traces.py",
+        "scripts/must_recall_provenance_gate.py",
+        "scripts/perf/run_perf_suite.py",
+        "scripts/replay_from_evidence_capsule.py",
+        "scripts/replay_retrieval_replay.py",
+        "scripts/run_nightly_ablations.py",
+        "scripts/run_sample_retrieval_benchmark.py"
+      ],
+      "exit_code": 0,
+      "output": "All checks passed!\n"
+    },
+    {
+      "args": [
+        "E:/MimirQ/.venv/Scripts/python.exe",
+        "-m",
+        "ruff",
+        "format",
+        "--check",
+        "scripts/backfill_milvus_bm25.py",
+        "scripts/capture_retrieval_replay.py",
+        "scripts/changzhou_gov_golden_eval.py",
+        "scripts/check_retrieval_profile_compat.py",
+        "scripts/eval_retrieval_fusion_offline.py",
+        "scripts/learn_fusion_weights_offline.py",
+        "scripts/llm_judge_calibration_gate.py",
+        "scripts/mine_hard_negatives_from_traces.py",
+        "scripts/must_recall_provenance_gate.py",
+        "scripts/perf/run_perf_suite.py",
+        "scripts/replay_from_evidence_capsule.py",
+        "scripts/replay_retrieval_replay.py",
+        "scripts/run_nightly_ablations.py",
+        "scripts/run_sample_retrieval_benchmark.py"
+      ],
+      "exit_code": 0,
+      "output": "14 files already formatted\n"
+    },
+    {
+      "args": [
+        "git",
+        "diff",
+        "--check"
+      ],
+      "exit_code": 0,
+      "output": "warning: in the working copy of 'app/api/schemas/documents/ingestion.py', CRLF will be replaced by LF the next time Git touches it\nwarning: in the working copy of 'web/scripts/trusted-forwarding.d.mts', LF will be replaced by CRLF the next time Git touches it\n"
+    },
+    {
+      "args": [
+        "E:/MimirQ/.venv/Scripts/python.exe",
+        "scripts/check_module_boundaries.py"
+      ],
+      "exit_code": 1,
+      "output": "stale: app/api/v1/connectors.py [api-assembler] <module> -> app.api.v1.connectors_validation (0, baseline 1)\nstale: app/api/v1/datasets.py [api-assembler] _delete_dataset_document_ids -> app.api.v1.documents (0, baseline 1)\nstale: app/api/v1/datasets.py [api-assembler] _reconcile_stale_dataset_scan_runs -> app.api.v1.dataset_precheck (0, baseline 1)\nstale: app/api/v1/documents.py [api-assembler] <module> -> app.api.v1.document_access (0, baseline 2)\nstale: app/api/v1/documents.py [api-assembler] <module> -> app.api.v1.document_assets (0, baseline 3)\nstale: app/api/v1/documents.py [api-assembler] <module> -> app.api.v1.document_batches (0, baseline 5)\nstale: app/api/v1/documents.py [api-assembler] <module> -> app.api.v1.document_batches_lifecycle (0, baseline 5)\nstale: app/api/v1/documents.py [api-assembler] <module> -> app.api.v1.document_chunk_preview (0, baseline 1)\nstale: app/api/v1/documents.py [api-assembler] <module> -> app.api.v1.document_chunks_read (0, baseline 3)\nstale: app/api/v1/documents.py [api-assembler] <module> -> app.api.v1.document_chunks_write (0, baseline 1)\nstale: app/api/v1/documents.py [api-assembler] <module> -> app.api.v1.document_content (0, baseline 2)\nstale: app/api/v1/documents.py [api-assembler] <module> -> app.api.v1.document_detail (0, baseline 1)\nstale: app/api/v1/documents.py [api-assembler] <module> -> app.api.v1.document_health (0, baseline 1)\nstale: app/api/v1/documents.py [api-assembler] <module> -> app.api.v1.document_listing (0, baseline 3)\nstale: app/api/v1/documents.py [api-assembler] <module> -> app.api.v1.document_manual (0, baseline 1)\nstale: app/api/v1/documents.py [api-assembler] <module> -> app.api.v1.document_mutations (0, baseline 3)\nstale: app/api/v1/documents.py [api-assembler] <module> -> app.api.v1.document_preview (0, baseline 1)\nstale: app/api/v1/documents.py [api-assembler] <module> -> app.api.v1.document_processing (0, baseline 4)\nstale: app/api/v1/documents.py [api-assembler] <module> -> app.api.v1.document_timeline (0, baseline 1)\nstale: app/api/v1/documents.py [api-assembler] <module> -> app.api.v1.document_upload (0, baseline 1)\nstale: app/api/v1/documents.py [api-assembler] <module> -> app.api.v1.document_versions (0, baseline 4)\nstale: app/api/v1/evidence.py [api-assembler] _apply_evidence_item_patch_fields -> app.api.v1.evaluations (0, baseline 1)\nstale: app/api/v1/evidence.py [api-assembler] create_evidence_item -> app.api.v1.evaluations (0, baseline 1)\nstale: app/api/v1/evidence.py [api-assembler] sync_suite_to_regression_cases -> app.api.v1.evaluations (0, baseline 1)\nstale: app/api/v1/feedback.py [api-assembler] _finalize_feedback_reference_sources_or_keep_original -> app.api.v1.evaluations (0, baseline 1)\nstale: app/api/v1/pipeline.py [api-assembler] _import_plugin_golden_draft_bundle -> app.api.v1.evaluations (0, baseline 1)\nstale: app/api/v1/settings.py [api-assembler] _apply_storage_runtime_settings -> app.api.v1.health (0, baseline 1)\nnew: app/main.py:282 [api-assembler] _schedule_dify_external_knowledge_warmup -> app.api.v1.integrations.dify (1, baseline 0)\nstale: app/parsing/processors/support/process_document_flow.py [opaque-owner] _apply_chunk_asset_stage_and_metadata -> service (0, baseline 1)\nstale: app/parsing/processors/support/process_document_flow.py [opaque-owner] _apply_common_chunk_postprocess -> service (0, baseline 1)\nstale: app/parsing/processors/support/process_document_flow.py [opaque-owner] _chunk_governed_documents -> service (0, baseline 1)\nstale: app/parsing/processors/support/process_document_flow.py [opaque-owner] _finalize_indexed_document -> service (0, baseline 1)\nstale: app/parsing/processors/support/process_document_flow.py [opaque-owner] _initialize_prepared_process_document_state -> service (0, baseline 1)\nstale: app/parsing/processors/support/process_document_flow.py [opaque-owner] _maybe_apply_llm_auto_tagging_audit -> service (0, baseline 1)\nstale: app/parsing/processors/support/process_document_flow.py [opaque-owner] _maybe_apply_parse_quality_gate -> service (0, baseline 1)\nstale: app/parsing/processors/support/process_document_flow.py [opaque-owner] _maybe_build_governance_audit_patch -> service (0, baseline 1)\nstale: app/parsing/processors/support/process_document_flow.py [opaque-owner] _maybe_import_pdf_table_sidecars -> service (0, baseline 1)\nstale: app/parsing/processors/support/process_document_flow.py [opaque-owner] _maybe_import_tabular_document -> service (0, baseline 1)\nstale: app/parsing/processors/support/process_document_flow.py [opaque-owner] _maybe_persist_parsed_content -> service (0, baseline 1)\nstale: app/parsing/processors/support/process_document_flow.py [opaque-owner] _maybe_record_governance_enrichment -> service (0, baseline 1)\nstale: app/parsing/processors/support/process_document_flow.py [opaque-owner] _maybe_record_governance_metadata -> service (0, baseline 1)\nstale: app/parsing/processors/support/process_document_flow.py [opaque-owner] _maybe_return_governance_drop_result -> service (0, baseline 1)\nstale: app/parsing/processors/support/process_document_flow.py [opaque-owner] _maybe_return_no_chunks_result -> service (0, baseline 1)\nstale: app/parsing/processors/support/process_document_flow.py [opaque-owner] _prepare_parsed_documents_for_continuation -> service (0, baseline 1)\nstale: app/parsing/processors/support/process_document_flow.py [opaque-owner] _record_chunk_postprocess_metadata_if_needed -> service (0, baseline 1)\nstale: app/parsing/processors/support/process_document_flow.py [opaque-owner] _record_chunking_stats_metadata_with_guard -> service (0, baseline 1)\nstale: app/parsing/processors/support/process_document_flow.py [opaque-owner] _resume_from_indexed_checkpoint -> service (0, baseline 1)\nstale: app/parsing/processors/support/process_document_flow.py [opaque-owner] _run_chunk_governance_flow -> service (0, baseline 1)\nstale: app/parsing/processors/support/process_document_flow.py [opaque-owner] _run_document_governance_flow -> service (0, baseline 1)\nstale: app/parsing/processors/support/process_document_flow.py [opaque-owner] _run_pre_poc_quality_gate -> service (0, baseline 1)\nstale: app/parsing/processors/support/process_document_flow.py [opaque-owner] begin_process_document -> service (0, baseline 1)\nstale: app/parsing/processors/support/process_document_flow.py [opaque-owner] continue_process_document_flow -> service (0, baseline 1)\nstale: app/parsing/processors/support/process_document_flow.py [opaque-owner] execute_parse_pipeline -> service (0, baseline 1)\nstale: app/parsing/processors/support/process_document_flow.py [opaque-owner] handle_asyncio_cancelled -> service (0, baseline 1)\nstale: app/parsing/processors/support/process_document_flow.py [opaque-owner] handle_document_cancelled -> service (0, baseline 1)\nstale: app/parsing/processors/support/process_document_flow.py [opaque-owner] handle_process_document_failure -> service (0, baseline 1)\nstale: app/parsing/processors/support/process_document_flow.py [opaque-owner] handle_tenant_quota_exceeded -> service (0, baseline 1)\nstale: app/parsing/processors/support/process_document_flow.py [opaque-owner] prepare_process_document_pipeline -> service (0, baseline 1)\nstale: app/parsing/processors/support/process_document_flow.py [opaque-owner] run_process_document_body -> service (0, baseline 1)\nstale: app/rag/engine_support/standard_stream.py [opaque-owner] StandardStreamExecutor.__init__ -> module (0, baseline 1)\nstale: app/rag/engine_support/standard_stream_state.py [opaque-owner] StandardStreamState.__init__ -> module (0, baseline 1)\n"
+    }
+  ],
+  "local_evidence_sha256": {
+    "codex-rag-structure-opening-20261115.json": "11777d019e56107bc57cf703627eebadaf0f62cb3b16985e53c63ca5121dae85",
+    "codex-rag-migration-edits-20261115.json": "0c9eb3eaf853a79adb9a72c37e0402cd98aab7b656cc0f98cb644500540c0b7e",
+    "codex-rag-layout-splits-20261115.json": "f65d8cd103a1d94f59241b0cea4a2cdcebd47a963ecfaf231a9c7bdb0def2cb4",
+    "codex-rag-files-proof-20261115.json": "8acbe07e7a998db9ae5fb7808dfb2aa18c59605b0162ee5f932446e3a9980679",
+    "codex-reranking-verification-20261115.json": "4ed362be7bfa1e9008d0280db8018ab237c05fe2fb97624eaa746ed99ea629db",
+    "codex-rag-code-split-proof-20261115.json": "7703778c36424d73506973fb89b81aac453da88f53cf2b8a7c4e85ecf75d2743",
+    "codex-rag-fusion-proof-20261115.json": "bf4dcd942e474a151227800d4b93f123396aaedee5a8295b9823f4250a98447c",
+    "codex-rag-graph-proof-20261115.json": "e22e5376260735e8c1593b0b5563a17c6d860adb1c52e095d289badcc736ad0c",
+    "codex-rag-layout-independent-review-20261115.json": "ecac667f6c3d1c45e7d7b30828f9ce66f2ae5ff5ce3b389ce9afa03e3ce6d2ae",
+    "codex-rag-static-bindings-20261115.json": "bf052cf50615640c922f4aacb75d53eb4c30d141b9070506d2de7b97818ba3c7",
+    "codex-rag-cold-proof-20261115.json": "f00c25439f478155e02c6763cb47b01326dce7d3afa495d30890f4cb0b120fa2",
+    "codex-rag-boundaries-ci-20261115.json": "18e348b7298a609c56f998dcd6e79499f11e179bc0684179a0f8e1e4bc87743e",
+    "codex-rag-notes-checks-20261115.json": "7dfdcaf414fb8dd749f0772ceeab2b56e928c3dc27f95cbfadff03ca62cff11f"
+  },
+  "limits": [
+    "Finite comparisons and normalized AST checks cover the stated inputs and transformations; they are not a new full semantic audit of every retained function.",
+    "Cold validation used verification-only provider=none, in-memory checkpoints and disabled store; the existing local retired ltr setting was not changed.",
+    "Graph probing blocked two tiktoken resource downloads before any connection; final graph comparisons used the existing offline token estimation path only.",
+    "Real models, tokenizer resources, retrieval/network services, database transactions, persistent checkpoint restoration and deployment were not executed.",
+    "747 repository test files, including 610 Python files, remain frozen; old private imports in those tests were not migrated or run.",
+    "The note tree retains the same ten historical missing links; format and archive checks pass.",
+    "The existing dependency checker has two findings before and after this task; no baseline file was rewritten to conceal them."
+  ]
+}

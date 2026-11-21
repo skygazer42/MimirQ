@@ -111,7 +111,7 @@ Ragvia 通过 `pipeline_hash` 实现文档版本化：
 
 | 级别 | 设置方式 | 说明 |
 |------|----------|------|
-| 全局 | `app/core/config.py` | 系统默认值 |
+| 全局 | `app/infrastructure/config.py` | 系统默认值 |
 | 数据集 | `dataset_metadata.pipeline` | 数据集级覆盖 |
 | 文档 | `doc_metadata.pipeline` | 文档级覆盖 |
 | 上传时 | upload 表单字段 | 单次上传覆盖 |

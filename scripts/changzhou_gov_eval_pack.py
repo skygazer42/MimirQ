@@ -33,9 +33,9 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from app.core.database import SessionLocal  # noqa: E402
-from app.models.document import Document, DocumentChunk  # noqa: E402
-from app.services.regression_case_bundle import REGRESSION_CASE_BUNDLE_SCHEMA_V1  # noqa: E402
+from app.infrastructure.database.connection import SessionLocal  # noqa: E402
+from app.models.documents.records import Document, DocumentChunk  # noqa: E402
+from app.services.evaluation.case_bundle import REGRESSION_CASE_BUNDLE_SCHEMA_V1  # noqa: E402
 
 DEFAULT_CORPUS_ROOT = "/path/to/gov-service-knowledge"
 DEFAULT_OUT_DIR = "artifacts/changzhou_eval_pack_1000"
@@ -914,6 +914,8 @@ def load_regression_bundle(path: str | Path) -> dict[str, Any]:
 
 def _detect_local_dataset_id(corpus_root: Path, *, tenant_id: UUID) -> str:
     corpus_filenames = {path.name for path in corpus_root.rglob("*") if path.is_file()}
+    import app.models.registry  # noqa: F401
+
     db = SessionLocal()
     try:
         docs = db.query(Document).filter(Document.tenant_id == tenant_id, Document.disabled_at.is_(None)).all()
@@ -1101,7 +1103,7 @@ def _resolve_case_reference_sources(
 def _build_reference_target(case: dict[str, Any], refs: list[dict[str, Any]]) -> dict[str, Any]:
     return {
         "question": _text(case.get("question")),
-        "expected_answer": (case.get("expected_answer")),
+        "expected_answer": _text(case.get("expected_answer")) or None,
         "reference_sources": refs,
         "tags": [
             _text(case.get("case_type")),
@@ -1135,6 +1137,8 @@ def resolve_reference_sources(
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     dataset_uuid = UUID(str(dataset_id))
     tenant_uuid = UUID(str(tenant_id))
+    import app.models.registry  # noqa: F401
+
     db = SessionLocal()
     resolved_items: list[dict[str, Any]] = []
     unresolved_items: list[dict[str, Any]] = []
@@ -1474,7 +1478,7 @@ def main(argv: list[str] | None = None) -> int:
         "service_records": len(records["service_records"]) if records is not None else None,
         "qa_records": len(records["qa_records"]) if records is not None else None,
         "one_thing_records": len(records["one_thing_records"]) if records is not None else None,
-        "dataset_id": (dataset_id),
+        "dataset_id": dataset_id or None,
         "resolved_bundle_items": len((resolved_bundle or {}).get("items") or []) if resolved_bundle else 0,
         "imported_created": (import_result or {}).get("created") if import_result else None,
         "imported_updated": (import_result or {}).get("updated") if import_result else None,

@@ -1,5 +1,11 @@
 """Public pipeline preview and governance API contracts."""
 
+from app.api.schemas.pipelines.chunk_presets import (
+    ChunkPresetCreateRequest,
+    ChunkPresetListResponse,
+    ChunkPresetResponse,
+    ChunkPresetUpdateRequest,
+)
 from app.api.schemas.pipelines.governance import (
     BuiltinProcessingScriptListResponse,
     BuiltinProcessingScriptOut,
@@ -30,12 +36,6 @@ from app.api.schemas.pipelines.industry_rules import (
     IndustryRulesRewritePreviewRequest,
     IndustryRulesRewritePreviewResponse,
     IndustryRulesUpdateResponse,
-)
-from app.api.schemas.pipelines.presets import (
-    ChunkPresetCreateRequest,
-    ChunkPresetListResponse,
-    ChunkPresetResponse,
-    ChunkPresetUpdateRequest,
 )
 from app.api.schemas.pipelines.preview import (
     AutoAnnotationItem,

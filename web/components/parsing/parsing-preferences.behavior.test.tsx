@@ -4,8 +4,9 @@ import React, { act, StrictMode, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+const preference = vi.hoisted(() => ({ setParserBackend: vi.fn() }))
 vi.mock('@/contexts/parser-backend-context', () => ({
-  useParserBackendPreference: () => ({ parserBackend: 'auto', setParserBackend: vi.fn() }),
+  useParserBackendPreference: () => ({ parserBackend: 'auto', setParserBackend: preference.setParserBackend }),
 }))
 
 import { useParsingPageState } from './use-parsing-page-state'
@@ -13,7 +14,7 @@ import type { ParsedFile } from './parsing-types'
 
 const cleanups: Array<() => void> = []
 
-function mount(strict = false) {
+function mount(strict = false, initialFiles: ParsedFile[] = []) {
   const container = document.createElement('div')
   document.body.appendChild(container)
   const root = createRoot(container)
@@ -23,7 +24,7 @@ function mount(strict = false) {
     container.remove()
   })
   function Probe() {
-    const [files, setFiles] = useState<ParsedFile[]>([])
+    const [files, setFiles] = useState(initialFiles)
     const state = useParsingPageState({ files, setFiles })
     React.useImperativeHandle(result, () => state, [state])
     return null
@@ -45,6 +46,7 @@ function mount(strict = false) {
 beforeEach(() => {
   ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
   localStorage.clear()
+  vi.clearAllMocks()
 })
 
 afterEach(() => {
@@ -59,6 +61,35 @@ const preferences = [
 ] as const
 
 describe('parsing preferences', () => {
+  it.each(preferences)('reads saved %s without writing a default during mounting', async (field, key) => {
+    const storage = await import('@/lib/client-storage')
+    const write = vi.spyOn(storage, 'writeClientStorage')
+    localStorage.setItem(key, 'true')
+    const state = mount(true)
+    expect(state.current[field]).toBe(true)
+    expect(write).not.toHaveBeenCalled()
+  })
+
+  it('changes one queue parser without rewriting the default for future uploads', () => {
+    const file = new File(['Source'], 'report.pdf')
+    const state = mount(false, [
+      {
+        id: 'queue-a',
+        file,
+        name: file.name,
+        size: file.size,
+        folderId: 'root',
+        status: 'pending',
+        markdownContent: null,
+        parserBackend: 'auto',
+        parserLabel: 'Auto',
+      },
+    ])
+    act(() => state.current.setQueueFileParserBackend({ fileId: 'queue-a', filename: file.name, backend: 'marker' }))
+    expect(state.current.filesRef.current[0].parserBackend).toBe('marker')
+    expect(preference.setParserBackend).not.toHaveBeenCalled()
+    expect(state.current.parserBackend).toBe('auto')
+  })
   it.each(preferences)('restores %s before StrictMode can persist its initial default', (field, key) => {
     localStorage.setItem(key, 'true')
     const state = mount(true)
@@ -80,7 +111,7 @@ describe('parsing preferences', () => {
 
     for (const [field, key] of preferences) {
       expect(state.current[field]).toBe(false)
-      expect(localStorage.getItem(key)).toBe('false')
+      expect(localStorage.getItem(key)).toBeNull()
     }
   })
 

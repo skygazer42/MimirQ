@@ -28,7 +28,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.goldenToolbar span {
+.goldenToolbarCaption {
   font-size: 13px;
   color: hsl(var(--muted-foreground));
   white-space: nowrap;
@@ -180,7 +180,7 @@
   .goldenGrid {
     grid-template-columns: minmax(0, 1fr) 320px;
   }
-  .goldenToolbar span {
+  .goldenToolbarCaption {
     display: none;
   }
 }

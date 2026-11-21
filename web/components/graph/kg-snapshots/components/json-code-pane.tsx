@@ -8,44 +8,25 @@ import { cn } from '@/lib/utils'
 
 import {
   cellSurfaceClass,
-  jsonLineSurfaceClass,
   lineNumberClassForStatus,
   splitCodeLines,
   tokenClassName,
   tokenizeJsonLine,
 } from '../json-diff'
-import type { DiffCell, DiffCellStatus } from '../types'
+import type { DiffCell } from '../types'
 
-export function JsonLine({
-  lineNumber,
-  text,
-  status,
-  side = 'single',
-}: Readonly<{
-  lineNumber: number | null
-  text: string
-  status: DiffCellStatus | 'single'
-  side?: 'left' | 'right' | 'single'
-}>) {
+function JsonLine({ lineNumber, text }: Readonly<{ lineNumber: number; text: string }>) {
   const tokens = useMemo(() => tokenizeJsonLine(text), [text])
-  const lineNumberClass = lineNumberClassForStatus(status)
 
   return (
-    <div
-      className={cn(
-        'grid min-w-0 grid-cols-[52px_minmax(0,1fr)] border-b border-border/60 text-[12px] leading-6',
-        jsonLineSurfaceClass(status, side),
-      )}
-    >
-      <div
-        className={cn('select-none border-r border-border/70 px-3 text-right font-mono tabular-nums', lineNumberClass)}
-      >
-        {lineNumber ?? ''}
+    <div className="grid min-w-0 grid-cols-[52px_minmax(0,1fr)] border-b border-border/60 text-[12px] leading-6">
+      <div className="select-none border-r border-border/70 px-3 text-right font-mono tabular-nums text-muted-foreground">
+        {lineNumber}
       </div>
       <div className="px-3 font-mono">
         <span className="inline-block min-w-full whitespace-pre">
           {tokens.map((token, index) => (
-            <span key={`${lineNumber ?? 'x'}:${index}:${token.kind}`} className={tokenClassName(token.kind)}>
+            <span key={`${index}:${token.kind}`} className={tokenClassName(token.kind)}>
               {token.text}
             </span>
           ))}
@@ -74,7 +55,7 @@ export function JsonDiffCell({
           lineNumberClass,
         )}
       >
-        {cell.lineNumber ?? ''}
+        {cell.lineNumber}
       </div>
       <div className={cn('px-3 py-0.5 font-mono text-[12px] leading-6', cellSurfaceClass(cell.status, side))}>
         <span className="inline-block min-w-full whitespace-pre">
@@ -123,20 +104,24 @@ export function JsonCodePane({
         </div>
         <div className="ml-4 flex shrink-0 items-center gap-1 rounded-md border border-border/70 bg-card p-0.5">
           <Button
+            type="button"
             variant="ghost"
             size="icon"
             className="h-8 w-8 rounded-lg"
             title="复制 JSON"
+            aria-label="复制 JSON"
             onClick={onCopy}
             disabled={isEmpty}
           >
             <Copy className="h-4 w-4" aria-hidden="true" />
           </Button>
           <Button
+            type="button"
             variant="ghost"
             size="icon"
             className="h-8 w-8 rounded-lg"
             title="导出 JSON"
+            aria-label="导出 JSON"
             onClick={onDownload}
             disabled={isEmpty}
           >
@@ -151,7 +136,7 @@ export function JsonCodePane({
         ) : (
           <div className="min-w-max">
             {lines.map((line, index) => (
-              <JsonLine key={`${title}:${index + 1}`} lineNumber={index + 1} text={line} status="single" />
+              <JsonLine key={`${title}:${index + 1}`} lineNumber={index + 1} text={line} />
             ))}
           </div>
         )}

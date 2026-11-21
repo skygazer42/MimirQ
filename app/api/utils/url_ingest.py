@@ -18,7 +18,8 @@ import httpx
 from fastapi import HTTPException
 
 from app.api.utils.file_io import _close_transfer_resources, cleanup_partial_file
-from app.core.config import settings
+from app.infrastructure.config import settings
+from app.infrastructure.env import parse_csv
 
 _BLOCKED_HOSTS = frozenset({"localhost", "localhost.localdomain", "0.0.0.0", "127.0.0.1", "::1"})
 _HEADER_NAME_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9-]{0,49}")
@@ -94,7 +95,7 @@ async def validate_fetch_target(url: str, *, enforce_allowlists: bool = True) ->
     if host in _BLOCKED_HOSTS or host.endswith(".local"):
         raise HTTPException(status_code=400, detail=_URL_HOST_NOT_ALLOWED_DETAIL)
     if enforce_allowlists:
-        allowed_hosts = _parse_csv(settings.URL_INGEST_ALLOWED_HOSTS)
+        allowed_hosts = parse_csv(settings.URL_INGEST_ALLOWED_HOSTS)
         if allowed_hosts and not _host_in_allowlist(host, allowed_hosts):
             raise HTTPException(status_code=400, detail=_URL_HOST_NOT_ALLOWED_DETAIL)
         _validate_port_allowlist(port)
@@ -271,10 +272,6 @@ def _build_request_headers(user_agent: str | None, extra: dict[str, str] | None)
     return headers
 
 
-def _parse_csv(raw: str) -> list[str]:
-    return [item.strip() for item in raw.split(",") if item.strip()]
-
-
 def _normalize_host(host: str) -> str:
     """域名遵循 HTTPX 的 IDNA 规则；ASCII 和 IP 保留原有匹配语义。"""
     host = host.lower()
@@ -304,7 +301,7 @@ def _validate_port_allowlist(port: int) -> None:
     if not configured_ports.strip():
         return
     try:
-        allowed_ports = {int(item) for item in _parse_csv(configured_ports)}
+        allowed_ports = {int(item) for item in parse_csv(configured_ports)}
     except ValueError as exc:
         raise HTTPException(status_code=500, detail="url ingest port allowlist misconfigured") from exc
     if any(value < 1 or value > 65535 for value in allowed_ports):

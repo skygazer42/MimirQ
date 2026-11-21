@@ -1,7 +1,7 @@
 """
 Industry rules API schemas.
 
-These mirror the response payloads of :mod:`app.api.v1.industry_rules` so the
+These mirror the response payloads of :mod:`app.api.v1.pipelines.industry_rules` so the
 endpoints can declare ``response_model`` and the frontend can consume generated
 types instead of hand-written ones.
 

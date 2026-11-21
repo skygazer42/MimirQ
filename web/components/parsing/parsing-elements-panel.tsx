@@ -1,127 +1,84 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 
 import { AuthImage } from '@/components/auth-image'
 import type { ParsingElement } from '@/lib/api/parsing'
 import { cn } from '@/lib/utils'
+import {
+  formatParsingPages,
+  getParsingElementImageSource,
+  getParsingElementVisualKind,
+  getParsingPages,
+} from '@/lib/parsing-elements'
+import { getParsingLayoutMeta } from '@/lib/parsing-layout'
 
 type ParsingElementsPanelProps = {
   elements: ParsingElement[]
-  onSelectElement?: (element: ParsingElement) => void
+  onSelectElement: (element: ParsingElement) => void
   className?: string
 }
 
-function kindLabel(kind: string): string {
-  if (kind === 'seal') return '印章'
-  if (kind === 'equation') return '公式'
-  if (kind === 'table') return '表格'
-  if (kind === 'image') return '图片'
-  if (kind === 'heading') return '标题'
-  if (kind === 'list') return '列表'
-  return '正文'
+function kindLabel(kind: ParsingElement['kind']): string {
+  return kind === 'unknown' ? '未知类型' : getParsingLayoutMeta(kind).label
 }
 
-function primitiveText(value: unknown, fallback = ''): string {
-  if (typeof value === 'string') return value
-  if (typeof value === 'number' || typeof value === 'boolean') return String(value)
-  return fallback
-}
-
-function formatBbox(value: ParsingElement['bbox']): string {
-  if (!value) return ''
+function formatBbox(value: NonNullable<ParsingElement['bbox']>): string {
   return `${value.x0},${value.y0},${value.x1},${value.y1}`
 }
 
-function formatPageLabel(element: ParsingElement): string {
-  const pages = Array.isArray(element.pages)
-    ? element.pages.filter((value) => Number.isInteger(value) && value > 0)
-    : []
-  if (pages.length >= 2) {
-    if (pages.length === 2 && pages[1] === pages[0] + 1) {
-      return `页 ${pages[0]}-${pages[1]}`
-    }
-    return `页 ${pages.join(',')}`
+function formatCrossPageMergePages(attributes: ParsingElement['attributes']): string | null {
+  const raw = attributes?.cross_page_merge_pages
+  if (!Array.isArray(raw)) return null
+  const numericPages: number[] = []
+  for (const value of raw) {
+    if (typeof value === 'number') numericPages.push(value)
+    else if (typeof value === 'string' && value.trim().length > 0) numericPages.push(Number(value))
   }
-  if (typeof element.page === 'number') {
-    return `页 ${element.page}`
-  }
-  return ''
-}
-
-function formatCrossPageMergePages(attributes: ParsingElement['attributes']): string {
-  const raw = (attributes as Record<string, unknown> | null)?.cross_page_merge_pages
-  if (!Array.isArray(raw)) return ''
-  const pages = raw
-    .map((value) => (typeof value === 'number' ? value : Number(value)))
-    .filter((value) => Number.isInteger(value) && value > 0)
-  if (pages.length < 2) return ''
-  if (pages.length === 2 && pages[1] === pages[0] + 1) {
-    return `跨页 ${pages[0]}-${pages[1]}`
-  }
-  return `跨页 ${pages.join(',')}`
-}
-
-function formatPageSpan(element: ParsingElement): string {
-  const pages = Array.isArray(element.pages)
-    ? element.pages.filter((value) => Number.isInteger(value) && value > 0)
-    : []
-  if (pages.length >= 2) {
-    if (pages.length === 2 && pages[1] === pages[0] + 1) {
-      return `跨页 ${pages[0]}-${pages[1]}`
-    }
-    return `跨页 ${pages.join(',')}`
-  }
-  return formatCrossPageMergePages(element.attributes)
-}
-
-function getElementImageSrc(element: ParsingElement): string {
-  if (element.kind !== 'image') return ''
-  const attributes = element.attributes as Record<string, unknown> | null
-  const raw = attributes?.src || attributes?.image_src || attributes?.url
-  return typeof raw === 'string' ? raw.trim() : ''
+  const pages = getParsingPages({ pages: numericPages })
+  return pages.length < 2 ? null : formatParsingPages(pages)
 }
 
 export function ParsingElementsPanel({ elements, onSelectElement, className }: Readonly<ParsingElementsPanelProps>) {
-  const [isCollapsed, setIsCollapsed] = useState(true)
-  const [filterKind, setFilterKind] = useState<string>('all')
-  const [filterVisualKind, setFilterVisualKind] = useState<string>('all')
-  const hasImageElements = useMemo(() => (elements || []).some((element) => element.kind === 'image'), [elements])
-  useEffect(() => {
-    if (!hasImageElements) return
-    setIsCollapsed(false)
-    setFilterKind((current) => (current === 'all' ? 'image' : current))
-  }, [hasImageElements])
+  const [collapsed, setCollapsed] = useState<boolean>()
+  const [selectedKind, setSelectedKind] = useState<ParsingElement['kind'] | 'all'>()
+  const [selectedVisualKind, setSelectedVisualKind] = useState<string | null>(null)
   const filterKinds = useMemo(() => {
-    const kinds = new Set<string>(['all'])
-    for (const element of elements || []) {
-      const kind = String(element.kind || '').trim()
-      if (kind) kinds.add(kind)
+    const kinds = new Set<ParsingElement['kind'] | 'all'>(['all'])
+    for (const element of elements) {
+      kinds.add(element.kind)
     }
     return Array.from(kinds)
   }, [elements])
-  const filterVisualKinds = useMemo(() => {
-    const visualKinds = new Set<string>(['all'])
-    for (const element of elements || []) {
-      const visualKind = primitiveText(
-        element.visual_kind || (element.attributes as Record<string, unknown> | null)?.visual_kind,
-      ).trim()
-      if (visualKind) visualKinds.add(visualKind)
+  const hasImageElements = filterKinds.includes('image')
+  const isCollapsed = collapsed ?? !hasImageElements
+  const filterKind =
+    selectedKind !== undefined && filterKinds.includes(selectedKind) ? selectedKind : hasImageElements ? 'image' : 'all'
+
+  const visualKindOptions = useMemo<Array<{ value: string | null; label: string }>>(() => {
+    const visualKinds = new Set<string>()
+    for (const element of elements) {
+      const visualKind = getParsingElementVisualKind(element)
+      if (visualKind !== null && visualKind.length > 0) visualKinds.add(visualKind)
     }
-    return Array.from(visualKinds)
+    return [
+      { value: null, label: '全部图片子类' },
+      ...Array.from(visualKinds).map((kind) => ({ value: kind, label: kind })),
+    ]
   }, [elements])
+  const filterVisualKind = visualKindOptions.some((option) => option.value === selectedVisualKind)
+    ? selectedVisualKind
+    : null
   const visibleElements = useMemo(() => {
-    return (elements || []).filter((element) => {
+    return elements.filter((element) => {
       if (filterKind !== 'all' && element.kind !== filterKind) return false
-      if (filterVisualKind === 'all') return true
-      const visualKind = primitiveText(
-        element.visual_kind || (element.attributes as Record<string, unknown> | null)?.visual_kind,
-      ).trim()
+      if (filterVisualKind === null) return true
+      const visualKind = getParsingElementVisualKind(element)
       return visualKind === filterVisualKind
     })
   }, [elements, filterKind, filterVisualKind])
 
-  if (!elements.length) return null
+  if (elements.length === 0) return null
 
   return (
     <div className={cn('border-b border-border/60 bg-card px-5 py-2.5', className)}>
@@ -148,9 +105,10 @@ export function ParsingElementsPanel({ elements, onSelectElement, className }: R
                 <button
                   key={kind}
                   type="button"
+                  aria-pressed={filterKind === kind}
                   onClick={() => {
-                    setFilterKind(kind)
-                    if (kind !== 'image') setFilterVisualKind('all')
+                    setSelectedKind(kind)
+                    if (kind !== 'image') setSelectedVisualKind(null)
                   }}
                   className={cn(
                     'rounded-full border px-2.5 py-1 text-[11px] transition-colors',
@@ -164,7 +122,8 @@ export function ParsingElementsPanel({ elements, onSelectElement, className }: R
               ))}
           <button
             type="button"
-            onClick={() => setIsCollapsed((current) => !current)}
+            aria-expanded={!isCollapsed}
+            onClick={() => setCollapsed(!isCollapsed)}
             className="rounded-full border border-border/60 bg-card px-2.5 py-1 text-[11px] text-muted-foreground transition-colors hover:text-foreground/80"
           >
             {isCollapsed ? '展开' : '收起'}
@@ -172,21 +131,22 @@ export function ParsingElementsPanel({ elements, onSelectElement, className }: R
         </div>
       </div>
 
-      {!isCollapsed && (filterKind === 'all' || filterKind === 'image') && filterVisualKinds.length > 1 ? (
+      {!isCollapsed && (filterKind === 'all' || filterKind === 'image') && visualKindOptions.length > 1 ? (
         <div className="mt-3 flex flex-wrap gap-1.5">
-          {filterVisualKinds.map((visualKind) => (
+          {visualKindOptions.map((option) => (
             <button
-              key={visualKind}
+              key={JSON.stringify(option.value)}
               type="button"
-              onClick={() => setFilterVisualKind(visualKind)}
+              aria-pressed={filterVisualKind === option.value}
+              onClick={() => setSelectedVisualKind(option.value)}
               className={cn(
                 'rounded-full border px-2.5 py-1 text-[11px] transition-colors',
-                filterVisualKind === visualKind
+                filterVisualKind === option.value
                   ? 'border-primary/40 bg-primary/10 text-foreground'
                   : 'border-border/60 bg-card text-muted-foreground hover:text-foreground/80',
               )}
             >
-              {visualKind === 'all' ? '全部图片子类' : visualKind}
+              {option.label}
             </button>
           ))}
         </div>
@@ -195,29 +155,25 @@ export function ParsingElementsPanel({ elements, onSelectElement, className }: R
       {isCollapsed ? null : (
         <div className="mt-3 grid gap-2 md:grid-cols-2">
           {visibleElements.map((element) => {
-            const attributes = (element.attributes as Record<string, unknown> | null) ?? null
-            const pageLabel = formatPageLabel(element)
-            const crossPageLabel = formatPageSpan(element)
-            const visualKind =
-              typeof element.visual_kind === 'string' && element.visual_kind
-                ? element.visual_kind
-                : typeof attributes?.visual_kind === 'string'
-                  ? attributes.visual_kind
-                  : ''
-            const imageSrc = getElementImageSrc(element)
+            const attributes = element.attributes
+            const pages = getParsingPages(element)
+            const pageLabel = formatParsingPages(pages)
+            const crossPageLabel = pages.length < 2 ? formatCrossPageMergePages(attributes) : null
+            const visualKind = getParsingElementVisualKind(element)
+            const imageSrc = getParsingElementImageSource(element)
 
             return (
               <button
-                key={String(element.id)}
+                key={element.id}
                 type="button"
-                onClick={() => onSelectElement?.(element)}
+                onClick={() => onSelectElement(element)}
                 className="rounded-xl border border-border/60 bg-card px-3 py-2 text-left transition-colors hover:border-primary/35 hover:bg-primary/5"
               >
-                {imageSrc ? (
+                {imageSrc !== null ? (
                   <div className="mb-2 overflow-hidden rounded-lg border border-border/60 bg-muted/35">
                     <AuthImage
                       src={imageSrc}
-                      alt={String(element.text || element.id || 'image')}
+                      alt={element.text ?? element.id}
                       width={360}
                       height={240}
                       unoptimized
@@ -226,9 +182,7 @@ export function ParsingElementsPanel({ elements, onSelectElement, className }: R
                   </div>
                 ) : null}
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-[11px] font-medium text-foreground">
-                    {kindLabel(String(element.kind || 'paragraph'))}
-                  </span>
+                  <span className="text-[11px] font-medium text-foreground">{kindLabel(element.kind)}</span>
                   {pageLabel ? <span className="font-mono text-[11px] text-muted-foreground">{pageLabel}</span> : null}
                   <span className="font-mono text-[11px] text-muted-foreground">{element.id}</span>
                   {typeof attributes?.source_content_type === 'string' ? (

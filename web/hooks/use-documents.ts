@@ -1,6 +1,3 @@
-/**
- * 文档管理 Hook
- */
 'use client'
 
 import { useState } from 'react'
@@ -15,19 +12,7 @@ import { useDocumentPolling } from './use-document-polling'
 import { useDocumentUpload } from './use-document-upload'
 import type { DocumentListParams } from './use-document-shared'
 
-export type { DocumentListParams } from './use-document-shared'
-export {
-  clampUploadOption,
-  collectRetryFiles,
-  isTerminalDocumentStatus,
-  matchesDocumentListParams,
-  matchesLifecycleFilter,
-  matchesStatusFilter,
-  mergePolledDocument,
-  replacePolledDocument,
-} from './use-document-shared'
-
-export function useDocuments(initialParams?: DocumentListParams) {
+export function useDocuments(initialParams: DocumentListParams) {
   const [actionError, setActionError] = useState<string | null>(null)
   const { parserBackend } = useParserBackendPreference()
   const { chunkStrategy } = useChunkStrategyPreference()
@@ -54,21 +39,21 @@ export function useDocuments(initialParams?: DocumentListParams) {
     captureDocumentListOperation: listState.captureDocumentListOperation,
   })
 
-  const isLoading = listState.isListLoading || listState.isFetching || uploadState.isUploading || actionState.isActing
+  const { isPlaceholderData } = listState
+  const isLoading = listState.isFetching || isPlaceholderData || uploadState.isUploading || actionState.isActing
   const error =
-    actionError || (listState.listError ? formatApiError(listState.listError, 'Failed to load documents') : null)
+    actionError ??
+    (listState.listError === null ? null : formatApiError(listState.listError, 'Failed to load documents'))
 
   return {
     documents: listState.documents,
     total: listState.total,
     isLoading,
+    isPlaceholderData,
     error,
     loadDocuments: listState.loadDocuments,
-    refreshDocuments: listState.loadDocuments,
-    uploadDocument: uploadState.uploadDocument,
     uploadDocuments: uploadState.uploadDocuments,
     uploadDocumentFromUrl: uploadState.uploadDocumentFromUrl,
-    cancelDocument: actionState.cancelDocument,
     deleteDocument: actionState.deleteDocument,
   }
 }

@@ -167,6 +167,10 @@
   font-size: 14px;
   color: hsl(var(--muted-foreground));
 }
+.reportTabList button:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 2px;
+}
 .reportTabList button[data-state='active'] {
   border-bottom-color: hsl(var(--primary));
   color: hsl(var(--foreground));

@@ -419,7 +419,7 @@ AI 回答: 根据员工手册第3章...
 
 ### 修改 RAG 参数
 
-编辑 `app/core/config.py`:
+编辑 `app/infrastructure/config.py`:
 
 ```python
 # 文本切片大小
@@ -434,7 +434,7 @@ SIMILARITY_THRESHOLD: float = 0.7  # 提高可过滤低质量结果
 
 ### 切换 LLM 模型
 
-编辑 `app/core/config.py`:
+编辑 `app/infrastructure/config.py`:
 
 ```python
 # 使用轻量模型（更便宜）
@@ -505,7 +505,7 @@ docker compose restart
 
 **检查 CORS 配置**:
 
-编辑 `app/core/config.py`:
+编辑 `app/infrastructure/config.py`:
 ```python
 CORS_ORIGINS: str = "http://localhost:3000,http://localhost:3001"
 ```
@@ -531,7 +531,7 @@ pnpm start
 
 **使用 HNSW 索引（更高精度）**:
 
-编辑 `app/core/constants.py`（Milvus 索引/搜索参数集中于此）:
+编辑 `app/storage/vector/milvus.py`（Milvus 索引/搜索参数集中于此）:
 
 ```python
 index_params = {

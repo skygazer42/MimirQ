@@ -2,12 +2,11 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.rag.chunking.recommendations import decorate_chunk_strategy_note
-from app.rag.core.metadata import ensure_hierarchy_overlay_metadata
 from app.rag.embedding import factory
 from app.rag.embedding.adapter import LangChainEmbeddingsAdapter, create_langchain_embeddings_from_config
-from app.rag.embedding.matryoshka import resolve_matryoshka_dimension
-from app.rag.engine_support.llm_routing import LlmRoutingMixin
+from app.rag.ingestion.chunking.recommendations import decorate_chunk_strategy_note
+from app.rag.runtime.model_routing import LlmRoutingMixin
+from app.types.document_metadata import ensure_hierarchy_overlay_metadata
 
 
 @pytest.mark.parametrize("notes", [False, 0])
@@ -35,12 +34,6 @@ def test_metadata_overlay_preserves_supplied_falsy_identifiers():
 def test_optional_route_alias_rejects_a_supplied_non_string(model):
     with pytest.raises((AttributeError, TypeError)):
         LlmRoutingMixin._is_route_model_compatible(route_model_name=model, default_model_name="openai/base")
-
-
-@pytest.mark.parametrize("label", [False, 0])
-def test_optional_dimension_label_rejects_a_supplied_non_string(label):
-    with pytest.raises((AttributeError, TypeError)):
-        resolve_matryoshka_dimension(query_complexity_label=label, source_dim=1024)
 
 
 def test_embedding_adapter_preserves_a_real_optional_url_for_the_test_provider():

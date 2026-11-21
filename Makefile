@@ -244,7 +244,7 @@ up-dev-web:
 
 .PHONY: prod-preflight
 prod-preflight: init
-	@ENV=production $(PY) -c "from app.core.config import settings"
+	@ENV=production $(PY) -c "from app.infrastructure.config import settings"
 
 up-prod: prod-preflight
 	ENV=production $(COMPOSE) up -d --build

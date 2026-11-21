@@ -23,24 +23,26 @@ const Command = React.forwardRef<
 ))
 Command.displayName = CommandPrimitive.displayName
 
-type CommandDialogProps = DialogProps
+type CommandDialogProps = DialogProps & { shouldFilter?: boolean; id?: string }
 
-export function CommandDialog({ children, ...props }: CommandDialogProps) {
+export function CommandDialog({ children, shouldFilter, id, ...props }: CommandDialogProps) {
   const t = useTranslations('CommonUi')
   const returnFocusRef = React.useRef<HTMLElement | null>(null)
 
   return (
     <Dialog {...props}>
       <DialogContent
+        id={id}
+        showCloseButton={false}
         data-command-dialog="true"
         className={cn(
           styles.dialog,
-          'flex max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] flex-col gap-0 overflow-hidden rounded-xl border border-foreground/15 bg-background p-0 shadow-none sm:max-w-[600px] [&>button]:right-2 [&>button]:top-1.5 [&>button]:flex [&>button]:size-11 [&>button]:items-center [&>button]:justify-center',
+          'left-1/2 top-[18dvh] translate-y-0 flex max-h-[calc(82dvh-1rem)] w-[calc(100%-2rem)] flex-col gap-0 overflow-hidden rounded-xl border border-foreground/15 bg-background p-0 shadow-strong data-[state=open]:animate-none data-[state=closed]:animate-none sm:max-w-[600px]',
         )}
         onOpenAutoFocus={(event) => {
           const content = event.currentTarget instanceof HTMLElement ? event.currentTarget : null
           const opener = document.activeElement
-          if (opener instanceof HTMLElement && !content?.contains(opener)) {
+          if (opener instanceof HTMLElement && opener !== document.body && !content?.contains(opener)) {
             returnFocusRef.current = opener
           }
           const input = content?.querySelector<HTMLInputElement>('[cmdk-input]')
@@ -65,15 +67,22 @@ export function CommandDialog({ children, ...props }: CommandDialogProps) {
             event.preventDefault()
             return
           }
-          if (opener?.isConnected) {
+          const target =
+            opener?.isConnected && !opener.matches(':disabled') && opener.closest('[inert]') === null
+              ? opener
+              : document.getElementById('main-content')
+          if (target !== null && target.closest('[inert]') === null) {
             event.preventDefault()
-            opener.focus({ preventScroll: true })
+            target.focus({ preventScroll: true })
           }
         }}
       >
         <DialogTitle className="sr-only">{t('command.title')}</DialogTitle>
         <DialogDescription className="sr-only">{t('command.description')}</DialogDescription>
-        <Command className="h-auto min-h-0 [&_[cmdk-group-heading]]:px-3 [&_[cmdk-group]]:px-0 [&_[data-cmdk-input-wrapper]]:shrink-0 [&_[data-cmdk-input-wrapper]]:px-5 [&_[cmdk-item]]:min-h-11 [&_[cmdk-item]]:cursor-pointer [&_[cmdk-item]]:items-start [&_[cmdk-item]]:gap-3 [&_[cmdk-item]]:rounded-lg [&_[cmdk-item]]:px-3 [&_[cmdk-item]]:py-2 [&_[cmdk-item]]:text-[15px] [&_[cmdk-item]]:leading-[22px] [&_[cmdk-item]>svg]:mt-[3px] [&_[cmdk-item]_svg]:mr-0 [&_[cmdk-item]_svg]:shrink-0 [&_[cmdk-item]_svg]:text-muted-foreground">
+        <Command
+          shouldFilter={shouldFilter}
+          className="h-auto min-h-0 [&_[cmdk-group-heading]]:px-3 [&_[cmdk-group]]:px-0 [&_[data-cmdk-input-wrapper]]:shrink-0 [&_[data-cmdk-input-wrapper]]:px-4 [&_[cmdk-item]]:min-h-10 [&_[cmdk-item]]:cursor-pointer [&_[cmdk-item]]:items-center [&_[cmdk-item]]:gap-2.5 [&_[cmdk-item]]:rounded-lg [&_[cmdk-item]]:px-3 [&_[cmdk-item]]:py-2 [&_[cmdk-item]]:text-sm [&_[cmdk-item]]:leading-5 [&_[cmdk-item]_svg]:mr-0 [&_[cmdk-item]_svg]:shrink-0 [&_[cmdk-item]_svg]:text-muted-foreground"
+        >
           {children}
         </Command>
       </DialogContent>
@@ -89,7 +98,7 @@ const CommandInput = React.forwardRef<
     className="flex items-center border-b border-foreground/10 px-4 [&:has(input:focus)_svg]:text-foreground"
     data-cmdk-input-wrapper=""
   >
-    <Search className="mr-2 h-4 w-4 shrink-0 text-muted-foreground transition-colors" />
+    <Search className="mr-2 h-4 w-4 shrink-0 text-muted-foreground transition-colors" aria-hidden="true" />
     <CommandPrimitive.Input
       ref={ref}
       className={cn(
@@ -122,7 +131,9 @@ CommandList.displayName = CommandPrimitive.List.displayName
 const CommandEmpty = React.forwardRef<
   RadixRef<typeof CommandPrimitive.Empty>,
   React.ComponentPropsWithoutRef<typeof CommandPrimitive.Empty>
->((props, ref) => <CommandPrimitive.Empty ref={ref} className="py-6 text-center text-sm" {...props} />)
+>(({ className, ...props }, ref) => (
+  <CommandPrimitive.Empty ref={ref} className={cn('py-6 text-center text-sm', className)} {...props} />
+))
 
 CommandEmpty.displayName = CommandPrimitive.Empty.displayName
 

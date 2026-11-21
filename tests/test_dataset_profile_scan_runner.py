@@ -8,7 +8,7 @@ from uuid import uuid4
 
 import pytest
 
-from app.services import dataset_profile_scan_runner as runner
+from app.services.datasets import profile_scan as runner
 
 if not hasattr(dt, "UTC"):
     dt.UTC = dt.timezone.utc
@@ -258,9 +258,9 @@ def test_run_dataset_profile_deep_scan_backfills_enabled_fields_in_current_phase
         events.append("safe_hash_file")
         return "abc123"
 
-    stats_utils = importlib.import_module("app.services.chunking_stats_utils")
-    coverage_utils = importlib.import_module("app.services.chunk_coverage_utils")
-    quality_gate_module = importlib.import_module("app.services.chunk_quality_gate")
+    stats_utils = importlib.import_module("app.services.chunking.statistics")
+    coverage_utils = importlib.import_module("app.services.chunking.statistics")
+    quality_gate_module = importlib.import_module("app.services.chunking.quality_gate")
 
     monkeypatch.setattr(runner, "_now_utc", lambda: now)
     monotonic_values = iter([0.0, 1.0])
@@ -863,9 +863,9 @@ def test_run_dataset_profile_deep_scan_skips_all_disabled_option_work(
         unexpected_calls.append("expensive helper")
         pytest.fail("disabled scan option invoked an expensive helper")
 
-    stats_utils = importlib.import_module("app.services.chunking_stats_utils")
-    coverage_utils = importlib.import_module("app.services.chunk_coverage_utils")
-    quality_gate_module = importlib.import_module("app.services.chunk_quality_gate")
+    stats_utils = importlib.import_module("app.services.chunking.statistics")
+    coverage_utils = importlib.import_module("app.services.chunking.statistics")
+    quality_gate_module = importlib.import_module("app.services.chunking.quality_gate")
 
     monkeypatch.setattr(runner, "_now_utc", lambda: now)
     monkeypatch.setattr(runner.time, "monotonic", lambda: 0.0)

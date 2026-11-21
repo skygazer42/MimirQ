@@ -1,12 +1,5 @@
 'use client'
 
-/**
- * 知识图谱可视化页面
- * 功能：查看后端 KG，并导入 KG JSON/JSONL
- * 优化：主流视觉设计、交互侧边栏、玻璃拟态控件、搜索与高级筛选、后端集成、路径分析、布局切换、图编辑、RAG可解释性、3D可视化
- */
-import { useTheme } from 'next-themes'
-
 import { NavigationVisibilityGate } from '@/components/auth/navigation-visibility-gate'
 import { GraphPageShell } from './_components/graph-page-shell'
 import { useGraphDataLoading } from './use-graph-data-loading'
@@ -26,14 +19,13 @@ export default function GraphPage() {
 }
 
 function GraphPageContent() {
-  const { resolvedTheme } = useTheme()
   const state = useGraphPageState()
-  const isDark = resolvedTheme === 'dark'
 
   const dataLoading = useGraphDataLoading({
     scope: state.scope,
     scopedDocumentIds: state.scopedDocumentIds,
     scopedDatasetDocIdsLoading: state.scopedDatasetDocIdsLoading,
+    refetchScopedDocuments: state.refetchScopedDocuments,
     scopeParams: state.scopeParams,
     includeEntityLinks: state.includeEntityLinks,
     includeRelationLinks: state.includeRelationLinks,
@@ -43,17 +35,11 @@ function GraphPageContent() {
     setFileName: state.setFileName,
     setDataSource: state.setDataSource,
     setTraceReplay: state.setTraceReplay,
-    setKgStats: state.setKgStats,
-    setKgNodeDetail: state.setKgNodeDetail,
     setIsLoading: state.setIsLoading,
-    setIsDetailOpen: state.setIsDetailOpen,
-    setSelectedNode: state.setSelectedNode,
     setViewMode: state.setViewMode,
     traceFileInputRef: state.traceFileInputRef,
     manualKgFileInputRef: state.manualKgFileInputRef,
-    resetPathMode: state.resetPathMode,
-    resetConnectMode: state.resetConnectMode,
-    resetExplainMode: state.resetExplainMode,
+    resetGraphSurface: state.resetGraphSurface,
   })
 
   const entityResolution = useGraphEntityResolution({
@@ -61,7 +47,7 @@ function GraphPageContent() {
     isDetailOpen: state.isDetailOpen,
     selectedNode: state.selectedNode,
     scopeParams: state.scopeParams,
-    loadInitialData: dataLoading.loadInitialData,
+    loadLiveGraph: dataLoading.loadLiveGraph,
   })
 
   const displayFilters = useGraphDisplayFilters({
@@ -104,13 +90,10 @@ function GraphPageContent() {
     pipelineHash: state.scope.pipelineHash,
     deleteNodeTarget: state.deleteNodeTarget,
     setGraphData: state.setGraphData,
-    setIsLoading: state.setIsLoading,
     setDeleteNodeOpen: state.setDeleteNodeOpen,
     setDeleteNodeTarget: state.setDeleteNodeTarget,
     setSelectedNode: state.setSelectedNode,
     setIsDetailOpen: state.setIsDetailOpen,
-    setKgNodeDetail: state.setKgNodeDetail,
-    setKgNodeDetailLoading: state.setKgNodeDetailLoading,
   })
 
   const pageActions = useGraphPageActions({
@@ -126,7 +109,6 @@ function GraphPageContent() {
     includeRelationLinks: state.includeRelationLinks,
     minSharedEvents: state.minSharedEvents,
     maxEntityLinks: state.maxEntityLinks,
-    setIsLoading: state.setIsLoading,
     setIsDetailOpen: state.setIsDetailOpen,
     setIsLinkDetailOpen: state.setIsLinkDetailOpen,
     setSelectedNode: state.setSelectedNode,
@@ -141,13 +123,14 @@ function GraphPageContent() {
     handleExpandNode: nodeOperations.handleExpandNode,
     handleDeleteNode: nodeOperations.handleDeleteNode,
     getActiveGraph: state.getActiveGraph,
-    loadInitialData: dataLoading.loadInitialData,
+    loadLiveGraph: dataLoading.loadLiveGraph,
     selectedNode: state.selectedNode,
     isDetailOpen: state.isDetailOpen,
     isLinkDetailOpen: state.isLinkDetailOpen,
     isPathMode: state.isPathMode,
     isConnectMode: state.isConnectMode,
     isExplainMode: state.isExplainMode,
+    explainSteps: state.explainSteps,
     pathStartNode: state.pathStartNode,
     pathEndNode: state.pathEndNode,
     connectSourceNode: state.connectSourceNode,
@@ -183,8 +166,6 @@ function GraphPageContent() {
     setViewMode: state.setViewMode,
     setGraphData: state.setGraphData,
     setDataSource: state.setDataSource,
-    setKgStats: state.setKgStats,
-    setKgNodeDetail: state.setKgNodeDetail,
     setFileName: state.setFileName,
     setLayoutMode: state.setLayoutMode,
     setIncludeEntityLinks: state.setIncludeEntityLinks,
@@ -197,8 +178,7 @@ function GraphPageContent() {
 
   return (
     <GraphPageShell
-      isDark={isDark}
-      state={state}
+      state={{ ...state, isLoading: state.isLoading || nodeOperations.isExpanding }}
       dataLoading={dataLoading}
       entityResolution={entityResolution}
       displayFilters={displayFilters}

@@ -10,6 +10,12 @@ type ModelProviderCardProps = {
 }
 
 export function ModelProviderCard({ provider, onConfigure }: Readonly<ModelProviderCardProps>) {
+  const modelName = provider.config?.model
+  const modelSummary =
+    provider.isConfigured && modelName !== undefined && modelName !== ''
+      ? modelName
+      : `${provider.models.length} 个可选模型`
+
   return (
     <button
       type="button"
@@ -20,11 +26,7 @@ export function ModelProviderCard({ provider, onConfigure }: Readonly<ModelProvi
       <span className="min-w-0 flex-1">
         <span className="block text-sm font-medium leading-5 text-foreground">{provider.name}</span>
         <span className="mt-1 block text-[13px] leading-5 text-muted-foreground">{provider.description}</span>
-        <span className="mt-1 block break-all text-xs leading-5 text-muted-foreground">
-          {provider.isConfigured && provider.config?.model
-            ? provider.config.model
-            : `${provider.models.length} 个可选模型`}
-        </span>
+        <span className="mt-1 block break-all text-xs leading-5 text-muted-foreground">{modelSummary}</span>
       </span>
       <span className="flex shrink-0 items-center gap-1.5 whitespace-nowrap text-xs text-muted-foreground">
         {provider.isConfigured ? (

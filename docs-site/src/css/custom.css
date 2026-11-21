@@ -29,7 +29,7 @@
   --mimirq-ink: #17211c;
   --mimirq-ink-soft: #34413a;
   --mimirq-muted: #627068;
-  --mimirq-faint: #8a958f;
+  --mimirq-faint: #66746b;
 }
 
 [data-theme='dark'] {
@@ -55,7 +55,7 @@
   --mimirq-ink: #edf3ef;
   --mimirq-ink-soft: #cbd5cf;
   --mimirq-muted: #9eaaa3;
-  --mimirq-faint: #77837c;
+  --mimirq-faint: #839087;
 }
 
 html {
@@ -170,7 +170,7 @@ a {
 
 /* Documentation shell */
 .theme-doc-sidebar-container {
-  border-right: 1px solid var(--mimirq-line) !important;
+  --ifm-toc-border-color: var(--mimirq-line);
   background: var(--mimirq-canvas);
 }
 
@@ -368,16 +368,18 @@ a {
   box-shadow: none;
 }
 
-.alert--info {
+.alert--info,
+.alert--success {
   --ifm-alert-background-color: var(--mimirq-surface);
-  --ifm-alert-border-color: #4086b8;
   --ifm-alert-foreground-color: var(--mimirq-ink-soft);
 }
 
+.alert--info {
+  --ifm-alert-border-color: #4086b8;
+}
+
 .alert--success {
-  --ifm-alert-background-color: var(--mimirq-surface);
   --ifm-alert-border-color: var(--mimirq-accent);
-  --ifm-alert-foreground-color: var(--mimirq-ink-soft);
 }
 
 .theme-doc-toc-desktop {
@@ -389,7 +391,7 @@ a {
   font-size: 0.79rem;
 }
 
-.table-of-contents::before {
+.theme-doc-toc-desktop .table-of-contents::before {
   display: block;
   margin-bottom: 0.8rem;
   color: var(--mimirq-faint);
@@ -399,12 +401,11 @@ a {
   content: '在此页面';
 }
 
-html[lang='en'] .table-of-contents::before {
+html[lang='en'] .theme-doc-toc-desktop .table-of-contents::before {
   content: 'ON THIS PAGE';
 }
 
 .table-of-contents__link {
-  display: block;
   padding: 0.2rem 0;
   color: var(--mimirq-faint);
   line-height: 1.5;
@@ -413,7 +414,6 @@ html[lang='en'] .table-of-contents::before {
 .table-of-contents__link:hover,
 .table-of-contents__link--active {
   color: var(--mimirq-accent-strong);
-  text-decoration: none;
 }
 
 .breadcrumbs {
@@ -519,10 +519,6 @@ html[lang='en'] .table-of-contents::before {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  html {
-    scroll-behavior: auto;
-  }
-
   *,
   *::before,
   *::after {

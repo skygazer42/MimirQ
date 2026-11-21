@@ -1,10 +1,12 @@
 'use client'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { AuthCallbackState } from '@/components/auth-callback-state'
 import { useRouter } from '@/i18n/navigation'
 import { completeOidcLogin } from '@/lib/oidc'
 import { getAuthSessionRevision, setAuthSession } from '@/lib/auth-storage'
+
+type CallbackResult = { status: 'working' | 'success'; error: null } | { status: 'error'; error: string }
 
 export default function OidcCallbackPage() {
   const router = useRouter()
@@ -12,10 +14,9 @@ export default function OidcCallbackPage() {
   const ranRef = useRef(false)
   const mountedRef = useRef(false)
 
-  const [status, setStatus] = useState<'working' | 'success' | 'error'>('working')
-  const [error, setError] = useState<string | null>(null)
+  const [result, setResult] = useState<CallbackResult>({ status: 'working', error: null })
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     mountedRef.current = true
     return () => {
       mountedRef.current = false
@@ -27,37 +28,38 @@ export default function OidcCallbackPage() {
     ranRef.current = true
 
     const errorCode = searchParams.get('error')
-    const errorDesc = searchParams.get('error_description')
+    const errorDescription = searchParams.get('error_description')
     if (errorCode) {
-      setStatus('error')
-      setError([errorCode, errorDesc].filter(Boolean).join(': ') || '单点登录失败，请重新登录。')
+      setResult({ status: 'error', error: errorDescription ? `${errorCode}: ${errorDescription}` : errorCode })
       return
     }
 
     const code = searchParams.get('code')
     const state = searchParams.get('state')
     if (!code || !state) {
-      setStatus('error')
-      setError('登录信息不完整，请返回登录页重新发起登录。')
+      setResult({ status: 'error', error: '登录信息不完整，请返回登录页重新发起登录。' })
       return
     }
 
     const sessionRevision = getAuthSessionRevision()
     const canPublish = () => mountedRef.current && getAuthSessionRevision() === sessionRevision
-    ;(async () => {
+    async function finishLogin(code: string, state: string) {
       try {
         const { session, returnTo } = await completeOidcLogin({ code, state })
         if (!canPublish()) return
         setAuthSession(session)
-        setStatus('success')
-        router.replace(returnTo || '/')
-      } catch (e: unknown) {
+        setResult({ status: 'success', error: null })
+        router.replace(returnTo)
+      } catch (error) {
         if (!canPublish()) return
-        setStatus('error')
-        setError(e instanceof Error ? e.message : '单点登录失败，请重新登录。')
+        setResult({
+          status: 'error',
+          error: error instanceof Error ? error.message : '单点登录失败，请重新登录。',
+        })
       }
-    })()
+    }
+    void finishLogin(code, state)
   }, [router, searchParams])
 
-  return <AuthCallbackState status={status} error={error} onBack={() => router.replace('/auth')} />
+  return <AuthCallbackState {...result} onBack={() => router.replace('/auth')} />
 }

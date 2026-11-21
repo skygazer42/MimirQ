@@ -37,9 +37,19 @@ QueryProvider 明确禁用 focus refetch，并启用 reconnect refetch。缓慢�
 
 ## Consequences
 
+首页入口按 Next.js 实际类型读取查询参数。重复的会话和文档定位参数取首值。提示词和触发标记只接受单值，自动发送仍经由现有的提问器提交条件。源码与依据见[首页参数记录](../../../../.frontend-structure/20261118-workbench-home/home-page-params-evidence.json)。
+
+首页后续整理了 ChatPageClient 的地址更新。自动发送和检索面板只移除当前地址中已经匹配并使用的参数。会话回写先核对页面路径和原会话，保留文档定位及其余参数。当前实现与依据见[首页地址更新记录](../../../../.frontend-structure/20261118-workbench-home/chat-page-url-evidence.json)。本次做了源码检查，下面的运行结果属于此前的改动。
+
 五个 UI 所有者完整审查，ChatPageClient 与 SlashMenu 保持原文，三个行为所有者调整。公开 props、API 方法与载荷、检索候选完整读取、路由、检索／记忆预算、消息展示数量和样式方向保持。无效筛选的发送、IME、草稿、autorun、语音和摘要生命周期是明确修正的行为。
 
 已发出的摘要后端操作不会回滚；关闭或导航仅撤销当前视图提示，原有效查询仍可接收结果。语音继续使用既有 webkitSpeechRecognition 接口，没有引入录音上传或外部语音服务。自然结束保留已识别文字，但只在明确 stop 请求后提交。
+
+摘要弹窗打开清空确认时就绑定会话和查询实例。换会话后旧确认即刻失效，已提交的操作仅能更新原查询。刷新失败时保留上次读到的摘要并显示失败；清空成功后的 `summary: null` 与服务端读取一致。源码和静态检查见[摘要弹窗证据](../../../../.frontend-structure/20261112-full-frontend-guidelines/chat-data-contracts/summary-dialog-state-evidence.json)。现有测试和浏览器检查留到验证阶段。
+
+斜杠菜单用一份有序列表维护六个命令 ID 和图标。cmdk 通过 ID 识别命令，词典中的名称、说明和别名用于匹配。弹出层定位使用 Radix Anchor。按 Esc 关闭后，焦点会回到仍在页面上的提问框。点到菜单外或执行命令时由相应交互接管焦点。见[斜杠菜单证据](../../../../.frontend-structure/20261118-workbench-popovers/slash-menu-evidence.json)。
+
+语音浮层以一个状态驱动麦克风按钮。点关闭时立即撤销发送，视图关闭或卸载时同步解绑当前识别实例。圆环直接使用主题色与 CSS 动效，转写文字在固定区域内换行和滚动。源码与静态检查见[语音浮层证据](../../../../.frontend-structure/20261112-full-frontend-guidelines/chat-data-contracts/voice-mode-overlay-evidence.json)。
 
 验证使用实际 React、QueryClient、Radix 控件及本分支已有聊天 Hook，在 API 和浏览器语音边界提供替身；canvas 绘制与视觉叶子不作为浏览器验收。原五个源文件上的最终用例复现失败，修复后验证与数量记录在本批报告。浏览器／服务器启动仍被既有自动审核阻止，本批没有重试，没有 Python 或保护范围源文件修改。
 

@@ -12,11 +12,11 @@ process_document 位于 support/process_document_flow.py，拥有原来的借用
 
 解析、内联资源和分块资源分别使用 parse_document、enrich_inline_assets、process_chunk_assets；已有治理／归一化／分块／去重函数保持其职责。preview 使用 parser_service.parse_for_preview。后台任务、HTTP 调度和 worker 在同一批迁移到这些实际入口，参数、await、线程与资源时点保持。
 
-processor 的 chunk_integrated_file 直接导入 app/third_party/integrated_pipeline 的实际桥接入口，继续持有原始 chunk 字典到 Document 的转换职责；[集成分块实际所有者](2026-11-13-integrated-pipeline-canonical-owner.md)解释生成转发退出的调用边界。
+processor 的 chunk_integrated_file 直接导入 app/rag/chunking/factory.py 的实际桥接入口，继续持有原始 chunk 字典到 Document 的转换职责；[集成分块实际所有者](2026-11-13-integrated-pipeline-canonical-owner.md)解释生成转发退出的调用边界。
 
 恢复模块在原验证成功位置创建实际 Indexer，直接使用实际 ORM 模型；Root 的一次性转发和固定模型注入退出。真实租户谓词、索引／数据库操作、commit／rollback／refresh 和可空计数恢复保持。nullable 数据库列与异常发生前未发布的运行状态仍可为 None，不将类型注解当作它们已经存在的依据。
 
-ZIP 实现使用模块函数。保留的 ZipImageProcessor 只提供 DeepDoc 上游正在调用的 _safe_extract 与 _sanitize_zip_member 两个静态绑定，指向同一实现；没有旧 singleton、重复实现或推测性历史入口。app/deepdoc 按贡献指南与原计划保持字节不变，这是真实的上游协议边界。自研 ZIP 调用方直接使用函数，Markdown 文件选择由现有 artifact_normalizer 持有。
+ZIP 实现使用模块函数。当时为上游字节保留约定提供的 ZipImageProcessor 只含两个同函数静态绑定；[解析单一实现](2026-11-15-parsing-single-implementations.md)吸收调用方后直接使用原安全函数，类壳退出。现有安全解包、成员清理与资源策略保持，Markdown 文件选择仍由 artifact_normalizer 持有。[目录迁移](2026-11-15-parsing-upstream-package-ownership.md)保留来源与初次路径处理的历史理由。
 
 本篇部分替代[阶段与结果边界](../simplification/2026-11-05-parsing-stage-function-ownership.md)中的 service／三 Stage 接口保留决定；该篇原始数据、事务与资源原则继续成立。[辅助生产者](../simplification/2026-11-05-parsing-auxiliary-producer-boundaries.md)和[未接入工具退出](../simplification/2026-11-13-retire-unwired-parsing-utilities.md)属于相邻范围，保留并互链，没有同题提案需要归档。
 

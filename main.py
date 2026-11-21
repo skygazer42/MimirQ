@@ -1,5 +1,6 @@
 import os
 import warnings
+from functools import partial
 from pathlib import Path
 
 import uvicorn
@@ -8,15 +9,15 @@ import uvicorn
 def _is_truthy(value: str | None, *, default: bool = False) -> bool:
     if value is None:
         return default
-    s = value.strip().lower()
-    if not s:
+    normalized = value.strip().lower()
+    if not normalized:
         return default
-    return s in {"1", "true", "yes", "y", "on"}
+    return normalized in {"1", "true", "yes", "y", "on"}
 
 
 def _is_watch_limit_error(exc: BaseException) -> bool:
-    msg = str(exc)
-    return ("MaxFilesWatch" in msg) or ("file watch limit reached" in msg.lower())
+    message = str(exc)
+    return "MaxFilesWatch" in message or "file watch limit reached" in message.lower()
 
 
 def main() -> None:
@@ -46,7 +47,7 @@ def main() -> None:
         category=UserWarning,
     )
 
-    from app.core.config import settings
+    from app.infrastructure.config import settings
 
     reload_dirs = [
         str(project_root / "app"),
@@ -60,41 +61,29 @@ def main() -> None:
     ]
 
     reload_enabled = _is_truthy(os.getenv("UVICORN_RELOAD"), default=True)
+    run_server = partial(
+        uvicorn.run,
+        "app.main:app",
+        host=settings.HOST,
+        port=settings.PORT,
+        reload=reload_enabled,
+        reload_dirs=reload_dirs,
+        reload_excludes=reload_excludes,
+    )
 
     try:
-        uvicorn.run(
-            "app.main:app",
-            host=settings.HOST,
-            port=settings.PORT,
-            reload=reload_enabled,
-            reload_dirs=reload_dirs,
-            reload_excludes=reload_excludes,
-        )
+        run_server()
     except OSError as exc:
-        # Uvicorn reload uses watchfiles+inotify by default. Some environments (containers/CI)
-        # have low watch limits; fallback to polling to keep dev workflow usable.
-        if (
-            reload_enabled
-            and not _is_truthy(os.getenv("WATCHFILES_FORCE_POLLING"), default=False)
-            and _is_watch_limit_error(exc)
-        ):
-            warnings.warn(
-                "OS file watch limit reached; falling back to polling reloader. "
-                "To avoid reload, set UVICORN_RELOAD=false. To force polling, set WATCHFILES_FORCE_POLLING=1.",
-                UserWarning,
-                stacklevel=2,
-            )
-            os.environ["WATCHFILES_FORCE_POLLING"] = "1"
-            uvicorn.run(
-                "app.main:app",
-                host=settings.HOST,
-                port=settings.PORT,
-                reload=reload_enabled,
-                reload_dirs=reload_dirs,
-                reload_excludes=reload_excludes,
-            )
-        else:
+        if not reload_enabled or _is_truthy(os.getenv("WATCHFILES_FORCE_POLLING")) or not _is_watch_limit_error(exc):
             raise
+        warnings.warn(
+            "OS file watch limit reached; falling back to polling reloader. "
+            "To avoid reload, set UVICORN_RELOAD=false. To force polling, set WATCHFILES_FORCE_POLLING=1.",
+            UserWarning,
+            stacklevel=2,
+        )
+        os.environ["WATCHFILES_FORCE_POLLING"] = "1"
+        run_server()
 
 
 if __name__ == "__main__":

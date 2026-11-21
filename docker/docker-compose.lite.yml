@@ -52,6 +52,8 @@ services:
     image: redis:7
     restart: unless-stopped
     logging: *docker_logging
+    command:
+      ["redis-server", "--maxmemory", "${REDIS_MAXMEMORY:-512mb}", "--maxmemory-policy", "${REDIS_MAXMEMORY_POLICY:-noeviction}"]
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s

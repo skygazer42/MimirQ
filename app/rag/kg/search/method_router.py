@@ -17,7 +17,6 @@ def route_kg_search_method(query: str) -> dict[str, Any]:
         method = "pprank"
         reason_codes.append("structured_pprank")
     elif complexity["label"] == "multi_hop":
-        method = "hybrid"
         reason_codes.append("multi_hop_hybrid")
     else:
         reason_codes.append("default_hybrid")

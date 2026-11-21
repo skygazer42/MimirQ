@@ -1,5 +1,6 @@
 'use client'
 
+import { useRef } from 'react'
 import { AppFrame } from '@/components/app-frame'
 import { Button } from '@/components/ui/button'
 import { PageTitleIcon } from '@/components/ui/page-title-icon'
@@ -26,7 +27,7 @@ import {
   UserPlus,
   Users,
 } from '@/components/icons'
-import { formatApiError } from '@/lib/api-errors'
+import { extractHttpStatus, formatApiError } from '@/lib/api-errors'
 import { cn } from '@/lib/utils'
 import { formatGroupDate, memberIdentity } from './groups-model'
 import { useGroupDirectory, type GroupDirectoryController } from './use-group-directory'
@@ -65,7 +66,10 @@ function GroupDirectory({ controller: c }: { controller: GroupDirectoryControlle
         />
         <Select
           value={c.scope.external}
-          onValueChange={(external) => c.updateScope({ external: external as 'all' | 'filled' | 'empty', page: 1 })}
+          onValueChange={(external) => {
+            if (external === 'all' || external === 'filled' || external === 'empty')
+              c.updateScope({ external, page: 1 })
+          }}
         >
           <SelectTrigger aria-label="筛选外部组 ID" className={styles.externalFilter}>
             <SelectValue />
@@ -83,7 +87,7 @@ function GroupDirectory({ controller: c }: { controller: GroupDirectoryControlle
         ) : null}
         {c.directoryQuery.isPending ? (
           <p className={styles.directoryState} role="status">
-            正在读取组目录…
+            {c.directoryQuery.isPaused ? '等待网络连接' : '正在读取组目录…'}
           </p>
         ) : c.directoryPage.items.length ? (
           <nav aria-label="选择组">
@@ -107,8 +111,8 @@ function GroupDirectory({ controller: c }: { controller: GroupDirectoryControlle
           </nav>
         ) : !c.directoryQuery.isError ? (
           <div className={styles.directoryState}>
-            <p>{c.scope.query || c.scope.external !== 'all' ? '没有匹配的组。' : '还没有组。'}</p>
-            {c.scope.query || c.scope.external !== 'all' ? (
+            <p>{c.scope.query.trim() || c.scope.external !== 'all' ? '没有匹配的组。' : '还没有组。'}</p>
+            {c.scope.query.trim() || c.scope.external !== 'all' ? (
               <Button variant="ghost" onClick={() => c.updateScope({ query: '', external: 'all', page: 1 })}>
                 清除筛选
               </Button>
@@ -121,8 +125,9 @@ function GroupDirectory({ controller: c }: { controller: GroupDirectoryControlle
 }
 
 function GroupDetails({ controller: c }: { controller: GroupDirectoryController }) {
+  const groupMenuRef = useRef<HTMLButtonElement>(null)
   const group = c.group
-  const missing = (c.groupQuery.error as { response?: { status?: number } } | null)?.response?.status === 404
+  const missing = extractHttpStatus(c.groupQuery.error) === 404
   if (!c.selectedId)
     return (
       <section className={styles.emptyDetail} aria-label="组详情">
@@ -158,8 +163,16 @@ function GroupDetails({ controller: c }: { controller: GroupDirectoryController 
     )
   if (!group)
     return (
-      <section className={styles.emptyDetail} role="status">
-        正在读取组信息…
+      <section className={styles.emptyDetail}>
+        <Button
+          variant="ghost"
+          className={styles.returnToDirectory}
+          onClick={() => c.updateScope({ view: 'directory' })}
+        >
+          <ArrowLeft />
+          返回组目录
+        </Button>
+        <p role="status">{c.groupQuery.isPaused ? '等待网络连接' : '正在读取组信息…'}</p>
       </section>
     )
   return (
@@ -186,7 +199,13 @@ function GroupDetails({ controller: c }: { controller: GroupDirectoryController 
             </Button>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" disabled={Boolean(c.busy)} aria-label={`组操作 ${group.name}`}>
+                <Button
+                  ref={groupMenuRef}
+                  variant="ghost"
+                  size="icon"
+                  disabled={Boolean(c.busy)}
+                  aria-label={`组操作 ${group.name}`}
+                >
                   <MoreHorizontal />
                 </Button>
               </DropdownMenuTrigger>
@@ -208,8 +227,8 @@ function GroupDetails({ controller: c }: { controller: GroupDirectoryController 
                 <DropdownMenuItem
                   className="text-destructive"
                   onSelect={() => {
-                    const element = document.querySelector<HTMLElement>('[data-groups-edit]')
-                    if (element) c.openDeletion(element)
+                    const trigger = groupMenuRef.current
+                    if (trigger !== null) c.openDeletion(trigger)
                   }}
                 >
                   <Trash2 />
@@ -237,7 +256,7 @@ function GroupDetails({ controller: c }: { controller: GroupDirectoryController 
         <div className={styles.contextNotice}>
           当前组未显示在目录中。
           <button onClick={c.revealGroup}>
-            {c.scope.query || c.scope.external !== 'all' ? '清除筛选并定位' : '定位组'}
+            {c.scope.query.trim() || c.scope.external !== 'all' ? '清除筛选并定位' : '定位组'}
           </button>
         </div>
       ) : null}
@@ -264,11 +283,11 @@ function GroupDetails({ controller: c }: { controller: GroupDirectoryController 
           </div>
           <div>
             <dt>创建时间</dt>
-            <dd>{group.created_at ? formatGroupDate(group.created_at) : '未记录'}</dd>
+            <dd>{formatGroupDate(group.created_at)}</dd>
           </div>
           <div>
             <dt>最近更新</dt>
-            <dd>{group.updated_at ? formatGroupDate(group.updated_at) : '未记录'}</dd>
+            <dd>{formatGroupDate(group.updated_at)}</dd>
           </div>
         </dl>
       </section>
@@ -279,9 +298,7 @@ function GroupDetails({ controller: c }: { controller: GroupDirectoryController 
           {c.canManage ? (
             <Button
               variant="outline"
-              disabled={
-                Boolean(c.busy) || c.membersQuery.isPending || Boolean(c.membersQuery.isError && !c.membersQuery.data)
-              }
+              disabled={Boolean(c.busy) || c.membersQuery.data === undefined}
               data-groups-add
               onClick={(event) => c.openAddition(event.currentTarget)}
             >
@@ -334,7 +351,8 @@ function GroupDetails({ controller: c }: { controller: GroupDirectoryController 
               </thead>
               <tbody>
                 {c.membersPage.items.map((member) => {
-                  const who = memberIdentity(member.user_id, c.identities)
+                  const who = memberIdentity(member.user_id, c.identitiesByUserId.get(member.user_id))
+                  const joinedAt = formatGroupDate(member.created_at)
                   return (
                     <tr key={member.user_id}>
                       <th scope="row">
@@ -360,9 +378,9 @@ function GroupDetails({ controller: c }: { controller: GroupDirectoryController 
                         </button>
                       </td>
                       <td className={styles.joined}>
-                        <time dateTime={member.created_at} title={formatGroupDate(member.created_at)}>
-                          <span>{formatGroupDate(member.created_at)}</span>
-                          <span>{formatGroupDate(member.created_at).split(' ')[0]}</span>
+                        <time dateTime={member.created_at} title={joinedAt}>
+                          <span>{joinedAt}</span>
+                          <span>{formatGroupDate(member.created_at, true)}</span>
                         </time>
                       </td>
                       <td>
@@ -412,8 +430,8 @@ function GroupDetails({ controller: c }: { controller: GroupDirectoryController 
           </div>
         ) : !c.membersQuery.isError ? (
           <div className={styles.inlineState}>
-            <p>{c.scope.memberQuery ? '没有匹配的成员。' : '该组还没有成员。'}</p>
-            {c.scope.memberQuery ? (
+            <p>{c.scope.memberQuery.trim() ? '没有匹配的成员。' : '该组还没有成员。'}</p>
+            {c.scope.memberQuery.trim() ? (
               <Button variant="ghost" onClick={() => c.updateScope({ memberQuery: '', memberPage: 1 })}>
                 清除成员搜索
               </Button>
@@ -497,7 +515,7 @@ export default function GroupWorkspace() {
               ? '组目录读取失败'
               : c.directoryQuery.isPending
                 ? '正在读取组目录'
-                : c.scope.query || c.scope.external !== 'all'
+                : c.scope.query.trim() || c.scope.external !== 'all'
                   ? `组目录 · ${c.directoryPage.total} / ${c.groups.length} 个组`
                   : `共 ${c.groups.length} 个组`}
           </span>

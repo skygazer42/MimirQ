@@ -6,13 +6,11 @@ import { AlertCircle, CheckCircle2, Info, Loader2 } from '@/components/icons'
 import { FEEDBACK_DURATION } from '@/components/feedback-toast'
 
 export function SonnerToaster() {
-  const { theme, systemTheme } = useTheme()
-  const resolvedTheme = theme === 'system' ? systemTheme : theme
-  const sonnerTheme = resolvedTheme === 'dark' ? 'dark' : 'light'
+  const { resolvedTheme } = useTheme()
 
   return (
     <Toaster
-      theme={sonnerTheme}
+      theme={resolvedTheme === 'dark' ? 'dark' : 'light'}
       position="top-center"
       offset={16}
       mobileOffset={{ top: 72, right: 16, left: 16 }}

@@ -8,6 +8,7 @@ dependencies.
 
 import argparse
 import json
+import math
 import os
 import re
 import sys
@@ -283,10 +284,20 @@ def _validate_expected_metadata_summary(
     if missing:
         raise RuntimeError(f"regression summary missing expected_metadata metrics: {', '.join(missing)}")
 
-    cases_total = float(summary.get("expected_metadata_cases_total") or 0)
-    fields_total = float(summary.get("expected_metadata_fields_total") or 0)
-    hit_rate = float(summary.get("expected_metadata_hit_rate") or 0)
-    recall = float(summary.get("expected_metadata_recall") or 0)
+    metrics: dict[str, float] = {}
+    for key in required:
+        try:
+            value = float(summary[key])
+        except (TypeError, ValueError, OverflowError) as exc:
+            raise RuntimeError(f"regression summary metric {key} must be a finite number") from exc
+        if not math.isfinite(value):
+            raise RuntimeError(f"regression summary metric {key} must be a finite number")
+        metrics[key] = value
+
+    cases_total = metrics["expected_metadata_cases_total"]
+    fields_total = metrics["expected_metadata_fields_total"]
+    hit_rate = metrics["expected_metadata_hit_rate"]
+    recall = metrics["expected_metadata_recall"]
     if cases_total <= 0 or fields_total <= 0:
         raise RuntimeError(f"expected_metadata summary has no evaluated cases/fields: {_snippet(summary)}")
     if hit_rate < min_hit_rate:
@@ -347,6 +358,11 @@ def run_closed_loop_smoke(
     regression_reranker_top_n: int | None = None,
     regression_score_threshold: float = 0.0,
 ) -> ClosedLoopResult:
+    min_hit_rate = float(min_expected_metadata_hit_rate)
+    min_recall = float(min_expected_metadata_recall)
+    if not math.isfinite(min_hit_rate) or not math.isfinite(min_recall):
+        raise ValueError("expected_metadata thresholds must be finite")
+
     selected_ref = str(plugin_ref or "").strip()
     if not selected_ref:
         selected_ref = select_plugin_ref(client.json("GET", "/api/v1/pipeline/plugins"))
@@ -369,7 +385,9 @@ def run_closed_loop_smoke(
     if not _draft_has_expected_metadata(import_response):
         raise RuntimeError("plugin Golden draft did not produce any extra.expected_metadata fields")
     plugin_source = _plugin_source_from_import_response(import_response)
-    plugin_source["plugin_ref"] = str(plugin_source.get("plugin_ref") or selected_ref)
+    if plugin_source.get("plugin_ref", selected_ref) != selected_ref:
+        raise RuntimeError("golden-draft/import plugin_ref does not match the selected plugin")
+    plugin_source["plugin_ref"] = selected_ref
 
     run_payload = {
         "dataset_id": dataset_id,
@@ -400,13 +418,16 @@ def run_closed_loop_smoke(
         poll_interval_sec=poll_interval_sec,
     )
     run = _extract_run(detail)
+    status = str(run.get("status") or "").strip().lower()
+    if status != "completed":
+        raise RuntimeError(f"regression run {run_id} final detail has status={status or 'unknown'}")
     summary = run.get("summary")
     if not isinstance(summary, dict):
         raise RuntimeError(f"completed regression run {run_id} missing summary: {_snippet(run)}")
     _validate_expected_metadata_summary(
         summary,
-        min_hit_rate=float(min_expected_metadata_hit_rate),
-        min_recall=float(min_expected_metadata_recall),
+        min_hit_rate=min_hit_rate,
+        min_recall=min_recall,
     )
 
     return ClosedLoopResult(

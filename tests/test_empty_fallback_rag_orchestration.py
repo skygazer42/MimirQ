@@ -1,10 +1,11 @@
 import pytest
 from langchain_core.documents import Document
 
-from app.rag.retrieval.hybrid.text_preparation import normalize_document_questions
-from app.rag.retrieval.orchestration.citation_quality import _citation_coverage_lists, _parse_quality_low_sample
-from app.rag.retrieval.orchestration.finalize_trace import _per_query_trace, _retrieval_variant_counts
-from app.rag.retrieval.orchestration.hierarchy import _resolve_hierarchy_parent_key
+from app.rag.retrieval.evidence.quality import _citation_coverage_lists, _parse_quality_low_sample
+from app.rag.retrieval.ranking.hierarchy import _resolve_hierarchy_parent_key
+from app.rag.retrieval.recall.text_preparation import normalize_document_questions
+from app.rag.tracing.retrieval import _retrieval_variant_counts
+from app.rag.tracing.retrieval import _trace_per_query_item as _per_query_trace
 
 
 def test_question_metadata_preserves_provided_falsy_scalars_and_valid_siblings():

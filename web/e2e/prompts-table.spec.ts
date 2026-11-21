@@ -81,6 +81,7 @@ test('saving keeps a failed draft and raw comma input, then persists create and 
     state.saveGate = null
   }
   await expect(form).toBeHidden()
+  expect(state.writes.at(-1)?.body).toMatchObject({ description: null, category: null })
   const created = state.items.find((t) => t.name === '保存流程核对')!
   expect(created.variables).toEqual(['context', 'question', 'history'])
   expect(created.tags).toEqual(['技术', '中文'])
@@ -94,6 +95,8 @@ test('saving keeps a failed draft and raw comma input, then persists create and 
   await edit.getByRole('switch', { name: '启用模板', exact: true }).click()
   await edit.getByRole('button', { name: '保存模板', exact: true }).click()
   await expect(edit).toBeHidden()
+  expect(state.writes.at(-1)?.body).toMatchObject({ description: '更新后的用途' })
+  expect(state.writes.at(-1)?.body).not.toHaveProperty('category')
   await reloadPrompts(page)
   const row = page.getByRole('row').filter({ hasText: '保存流程核对' })
   await expect(row).toContainText('更新后的用途')

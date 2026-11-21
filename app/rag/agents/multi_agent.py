@@ -1,4 +1,6 @@
 import asyncio
+import logging
+import math
 import threading
 import time
 from collections.abc import AsyncIterator
@@ -10,20 +12,27 @@ from langchain_core.documents import Document
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 
-from app.core.config import settings
-from app.core.token_utils import num_tokens_from_string
-from app.rag.agents.rag_agent import AgenticStreamRequest, build_agentic_rag_state, resolve_agentic_stream_request
-from app.rag.core.citations import build_citations_from_docs
-from app.rag.core.logging import get_logger
-from app.rag.core.text import heuristic_decompose_query, parse_json_from_text
-from app.rag.pipelines.langgraph import _build_context, _build_history_text
+from app.infrastructure.config import settings
+from app.infrastructure.tokens import num_tokens_from_string
+from app.query.expand import heuristic_decompose_query
+from app.rag.agents.rag_agent import (
+    AgenticStreamRequest,
+    _normalized_plan_queries,
+    build_agentic_rag_state,
+    resolve_agentic_stream_request,
+)
+from app.rag.llm.prompts.templates import format_history_text
+from app.rag.llm.response_parsing import parse_json_from_text
+from app.rag.retrieval.evidence.citations import build_citations_from_docs
 from app.rag.retrieval.orchestrator import run_retrieval
-from app.services.rag_runtime_limiter import run_blocking_retrieval_call_with_managed_session
+from app.rag.runtime.graph.context import _build_context
+from app.rag.workflows.base import cancel_and_drain_tasks
+from app.services.runtime.retrieval_limiter import run_blocking_retrieval_call_with_managed_session
 
 if TYPE_CHECKING:
-    from app.rag.engine import RAGEngine
+    from app.rag.runtime.engine import RAGEngine
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 _UNABLE_TO_ANSWER_MESSAGE = "Unable to answer this question based on the available materials."
 
@@ -64,23 +73,9 @@ class MultiAgentRAGRunner:
             raw = await plan_chain.ainvoke({"query": question, "n": max_sub_questions})
             data, _meta = parse_json_from_text(raw, expected="array")
             if isinstance(data, list):
-                steps: list[MultiAgentPlanStep] = []
-                seen: set[str] = set()
-                for item in data:
-                    if not isinstance(item, str):
-                        continue
-                    query = " ".join(item.split()).strip()
-                    if not query:
-                        continue
-                    key = query.casefold()
-                    if key in seen:
-                        continue
-                    seen.add(key)
-                    steps.append(MultiAgentPlanStep(query=query, rationale="llm_decomposition"))
-                    if len(steps) >= max_sub_questions:
-                        break
-                if steps:
-                    return steps
+                queries = _normalized_plan_queries(data, limit=max_sub_questions)
+                if queries:
+                    return [MultiAgentPlanStep(query=query, rationale="llm_decomposition") for query in queries]
         except Exception as exc:
             logger.debug("Ignoring multi-agent LLM decomposition failure: %s", exc)
 
@@ -102,9 +97,13 @@ class MultiAgentRAGRunner:
 
     @staticmethod
     def _citation_score(citation: dict[str, Any]) -> float:
+        score = citation.get("relevance_score")
+        if score is None:
+            score = citation.get("retrieval_score")
         try:
-            return float(citation.get("relevance_score") or citation.get("retrieval_score") or 0.0)
-        except Exception:
+            value = float(score) if score is not None else 0.0
+            return value if math.isfinite(value) else 0.0
+        except (OverflowError, TypeError, ValueError):
             return 0.0
 
     async def _run_sub_agent(self, *, index: int, query: str, base_state: dict[str, Any]) -> _SubAgentResult:
@@ -175,11 +174,10 @@ class MultiAgentRAGRunner:
             },
         }
 
-    async def _cleanup_retrieval_tasks(self, tasks: list[asyncio.Task[_SubAgentResult]]) -> None:
-        for task in tasks:
-            if not task.done() and not task.cancelling():
-                task.cancel()
-        await asyncio.gather(*tasks, return_exceptions=True)
+    async def _cleanup_retrieval_tasks(
+        self, tasks: list[asyncio.Task[_SubAgentResult]], *, pending_error: BaseException | None = None
+    ) -> None:
+        await cancel_and_drain_tasks(tasks, pending_error=pending_error)
 
     async def _stream_retrieval_rounds(
         self,
@@ -191,6 +189,7 @@ class MultiAgentRAGRunner:
         results: list[_SubAgentResult],
     ) -> AsyncIterator[dict[str, Any]]:
         tasks: list[asyncio.Task[_SubAgentResult]] = []
+        pending_error: BaseException | None = None
         try:
             for idx, step in enumerate(plan_steps[:max_sub_questions], 1):
                 query = self._normalized_plan_query(step, fallback_question=question)
@@ -206,8 +205,11 @@ class MultiAgentRAGRunner:
                 sub_result = await task
                 results.append(sub_result)
                 yield self._retrieval_completed_event(sub_result)
+        except BaseException as operation_error:
+            pending_error = operation_error
+            raise
         finally:
-            await self._cleanup_retrieval_tasks(tasks)
+            await self._cleanup_retrieval_tasks(tasks, pending_error=pending_error)
 
     def _collect_retrieval_outputs(
         self,
@@ -283,7 +285,7 @@ class MultiAgentRAGRunner:
         )
         generation_inputs = {
             "context": _build_context(collected_docs, query=question),
-            "history": _build_history_text(history),
+            "history": format_history_text(history, window=settings.CHAT_HISTORY_WINDOW),
             "question": question,
             "format_instructions": base_state["format_instructions"],
         }
@@ -458,7 +460,7 @@ def get_multi_agent_runner(*, engine: "RAGEngine | None" = None) -> MultiAgentRA
     if _MULTI_AGENT_RUNNER is None:
         with _MULTI_AGENT_LOCK:
             if _MULTI_AGENT_RUNNER is None:
-                from app.rag.engine import get_rag_engine
+                from app.rag.runtime.engine import get_rag_engine
 
                 _MULTI_AGENT_RUNNER = MultiAgentRAGRunner(engine=get_rag_engine())
     return _MULTI_AGENT_RUNNER

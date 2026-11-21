@@ -1,4 +1,3 @@
-import datetime as dt
 from pathlib import Path
 from types import SimpleNamespace
 from uuid import uuid4
@@ -6,17 +5,9 @@ from uuid import uuid4
 import pytest
 from langchain_core.documents import Document
 
-if not hasattr(dt, "UTC"):
-    dt.UTC = dt.timezone.utc
-
-from app.parsing.processors.support import stages as stages_mod
-from app.parsing.processors.support.results import ChunkAssetOptions
-from app.parsing.processors.support.stages import (
-    ChunkAssetStage,
-    InlineAssetStage,
-    ParsingStage,
-    chunk_documents,
-)
+from app.rag.ingestion.indexing.support import stages as stages_mod
+from app.rag.ingestion.indexing.support.results import ChunkAssetOptions
+from app.rag.ingestion.indexing.support.stages import chunk_documents
 
 
 class _FakeDB:
@@ -24,29 +15,6 @@ class _FakeDB:
         return None
 
     def refresh(self, _document) -> None:
-        return None
-
-
-class _FakeParsingService:
-    INTEGRATED_PIPELINE_STRATEGIES: set[str] = set()
-
-    def __init__(self) -> None:
-        self.recorded: list[dict[str, str]] = []
-
-    def _record_processing_metadata(
-        self, _db, _tenant_id, _document_id, *, parser_backend: str, chunk_strategy: str
-    ) -> None:
-        self.recorded.append({"parser_backend": parser_backend, "chunk_strategy": chunk_strategy})
-
-
-class _FakeAssetService:
-    def _upload_inline_images_to_minio(self, **_kwargs):
-        return _kwargs["markdown_text"], [], _kwargs["start_index"]
-
-    def _extract_and_upload_image_to_minio(self, _metadata, **_kwargs):
-        return None
-
-    def _extract_img_id_from_content(self, _content: str) -> str | None:
         return None
 
 
@@ -80,21 +48,24 @@ async def test_parsing_stage_uses_parse_cache_without_subprocess(monkeypatch: py
         raising=True,
     )
 
-    stage = ParsingStage(_FakeParsingService())
+    monkeypatch.setattr(stages_mod, "_record_processing_metadata", lambda *_args, **_kwargs: None)
+    document_id = uuid4()
     db_document = SimpleNamespace(
+        id=document_id,
         doc_metadata={"file_sha256": "abc123", "pipeline_hash": "pipe-1"},
         filename="cached.pdf",
     )
 
-    result = await stage.run(
+    result = await stages_mod.parse_document(
         db=_FakeDB(),
         db_document=db_document,
         file_path=Path("/tmp/cached.pdf"),
-        document_id=uuid4(),
+        document_id=document_id,
         tenant_id=uuid4(),
         dataset_id="dataset-1",
         parser_backend="basic",
         chunk_strategy="separator",
+        artifact_dirs=set(),
     )
 
     assert result.documents is not None
@@ -126,8 +97,7 @@ def test_inline_asset_stage_prefers_asset_base_dir_and_preserves_derived_element
 
     monkeypatch.setattr(stages_mod, "add_image_code_blocks", _fake_add_image_code_blocks, raising=True)
 
-    stage = InlineAssetStage(_FakeAssetService())
-    result = stage.run(
+    result = stages_mod.enrich_inline_assets(
         documents=[
             Document(
                 page_content="inline body",
@@ -259,11 +229,12 @@ def test_chunk_asset_stage_emits_redacted_ocr_child_with_sequence_metadata(
         },
     )
 
-    stage = ChunkAssetStage(_FakeAssetService())
-    monkeypatch.setattr(stage, "_load_deps", lambda: deps, raising=True)
+    monkeypatch.setattr(stages_mod, "_load_deps", lambda: deps)
+    monkeypatch.setattr(stages_mod, "_extract_and_upload_image_to_minio", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(stages_mod, "_extract_img_id_from_content", lambda _content: None)
 
     document_id = uuid4()
-    result = stage.run(
+    result = stages_mod.process_chunk_assets(
         chunks=[
             Document(page_content="image body", metadata={"doc_type_kwd": "image"}),
             Document(page_content="plain text", metadata={}),

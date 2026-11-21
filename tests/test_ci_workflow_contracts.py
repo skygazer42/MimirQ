@@ -8,6 +8,16 @@ def _read(relative_path: str) -> str:
     return (REPO_ROOT / relative_path).read_text(encoding="utf-8")
 
 
+def test_active_development_and_historical_branches_receive_push_checks() -> None:
+    import yaml
+
+    for name in ("ci", "lint-fast", "security", "api-docs"):
+        workflow = yaml.safe_load(_read(f".github/workflows/{name}.yml"))
+        events = workflow.get("on", workflow.get(True))
+        assert {"main", "feat/ragvia-ui"} <= set(events["push"]["branches"])
+        assert "pull_request" in events
+
+
 def _assert_uses_self_hosted_bootstrap(workflow: str, command: str, *, count: int) -> None:
     assert workflow.count(command) == count
     assert "python3.11/python3 not found on self-hosted runner" not in workflow

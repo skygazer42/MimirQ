@@ -2,18 +2,9 @@ import { getAuthHeaders } from '@/lib/auth-headers'
 import { API_V1_BASE_URL } from '@/lib/env'
 import { withPreferredLanguageHeader } from '@/lib/preferred-language'
 import { generateRequestId } from '@/lib/request-id'
+import type { OpenApiSchema } from '@/types/backend'
 
-export type FrontendTracePayload = Readonly<{
-  event: string
-  duration_ms: number
-  component?: string
-  page?: string
-  input_node_count?: number
-  input_link_count?: number
-  output_node_count?: number
-  output_link_count?: number
-  active_filter_count?: number
-}>
+export type FrontendTracePayload = Readonly<OpenApiSchema<'FrontendTraceReportRequest'>>
 
 export type FrontendTraceReportOptions = Readonly<{
   keepalive?: boolean
@@ -35,7 +26,7 @@ export async function reportFrontendTrace(
       'X-Request-ID': generateRequestId(),
     }),
     body: JSON.stringify(payload),
-    keepalive: options.keepalive === true,
+    keepalive: options.keepalive,
     signal: options.signal,
   })
 

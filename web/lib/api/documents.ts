@@ -10,7 +10,6 @@ import type {
   DocumentBatchReingestRequest,
   DocumentBatchRetryRequest,
   DocumentBatchRetryResponse,
-  DocumentBatchUploadResponse,
   DocumentBatchUserMetadataPatchRequest,
   DocumentBatchUserMetadataPatchResponse,
   DocumentChunk,
@@ -39,7 +38,7 @@ import type {
   OpenApiSchema,
 } from '@/types/backend'
 import type { JsonObject } from '@/types/common'
-import type { DocumentHealthCard } from '@/types/documents'
+import type { OpenApiQueryParams } from '@/types/openapi-helpers'
 import type {
   ChunkPreviewResponse,
   DocumentLifecycleMetadata,
@@ -50,28 +49,40 @@ import type {
 import { z } from 'zod'
 
 import { API_LONG_TIMEOUT_MS } from '@/lib/env'
-import { appendPipelineOptionsToFormData } from '@/lib/form-data'
+import { documentAccessInfoSchema } from '@/lib/document-access-schema'
+import {
+  createDocumentBatchRetryResponseSchema,
+  createDocumentBatchUploadResponseSchema,
+} from '@/lib/document-batch-schema'
+import { parseApiResponse } from '@/lib/openapi-request'
 import { resolveParserBackendForFilename, resolveParserBackendForFiles } from '@/lib/parser-compat'
-import { apiClient, openapiRequest } from '@/lib/api/core'
-import type { ApiRequestOptions } from '@/lib/api/core'
-import { appendChunkPreviewFormFields, buildChunkPreviewQueryParams } from '@/lib/api/document-helpers'
-import type { ChunkPreviewRequestParams, DocumentLifecycleFilter } from '@/lib/api/document-helpers'
-
-type FileWithRelativePath = File & {
-  webkitRelativePath?: string
-}
+import { integerSchema } from '@/lib/response-schema'
+import { apiClient, openapiRequest, type ApiRequestOptions } from '@/lib/api/core'
+import {
+  appendChunkPreviewSettings,
+  appendPipelineOptionsToForm,
+  buildChunkPreviewQueryParams,
+  DOCUMENT_UPLOAD_BATCH_LIMIT,
+  getUploadFilename,
+  type ChunkPreviewRequestParams,
+  type DocumentLifecycleFilter,
+} from '@/lib/api/document-helpers'
 
 type BatchFileInfo = OpenApiSchema<'BatchFileInfo'>
 type BatchTaskStatus = OpenApiSchema<'BatchTaskStatus'>
 type BatchUploadResponse = OpenApiSchema<'BatchUploadResponse'>
 
-function uploadFilename(file: File): string {
-  return String((file as FileWithRelativePath).webkitRelativePath || file.name)
-}
-
-function resolveChunkPreviewStrategy(chunkStrategy?: string): string {
-  return chunkStrategy || 'langchain_recursive'
-}
+const documentChunkMatchListSchema = z.looseObject({
+  total: integerSchema.nonnegative(),
+  truncated: z.boolean(),
+  items: z.array(
+    z.looseObject({
+      id: z.string(),
+      chunk_index: integerSchema,
+      page_number: integerSchema.nullish(),
+    }),
+  ),
+}) satisfies z.ZodType<Required<DocumentChunkMatchList>>
 
 const documentParsedContentResponseSchema: z.ZodType<DocumentParsedContentResponse> = z.looseObject({
   document_id: z.string(),
@@ -90,24 +101,26 @@ export const documentApi = {
     options: {
       parser_backend?: string
       chunk_strategy?: string
-      dataset_id?: string
+      dataset_id?: string | null
       pipeline?: DocumentPipelineOptions
       user_metadata?: JsonObject
     } = {},
   ): Promise<Document> {
     const resolvedParser = resolveParserBackendForFilename(file.name, options.parser_backend)
     const formData = new FormData()
-    const uploadName = uploadFilename(file)
+    const uploadName = getUploadFilename(file)
     formData.append('file', file, uploadName)
-    formData.append('parser_backend', resolvedParser.backend || 'auto')
-    formData.append('chunk_strategy', options.chunk_strategy || 'langchain_recursive')
+    formData.append('parser_backend', resolvedParser.backend)
+    if (options.chunk_strategy !== undefined) {
+      formData.append('chunk_strategy', options.chunk_strategy)
+    }
     if (options.dataset_id) {
       formData.append('dataset_id', options.dataset_id)
     }
     if (options.user_metadata) {
       formData.append('user_metadata', JSON.stringify(options.user_metadata))
     }
-    appendPipelineOptionsToFormData(formData, options.pipeline)
+    appendPipelineOptionsToForm(formData, options.pipeline)
 
     const { data } = await apiClient.post('/documents/upload', formData)
     return data
@@ -117,16 +130,16 @@ export const documentApi = {
     url: string
     dataset_id?: string
     filename?: string
-    parser_backend?: string
-    chunk_strategy?: string
+    parser_backend: string
+    chunk_strategy: string
     pipeline?: DocumentPipelineOptions
   }): Promise<Document> {
     const body = {
       url: params.url,
       dataset_id: params.dataset_id,
       filename: params.filename,
-      parser_backend: params.parser_backend || 'auto',
-      chunk_strategy: params.chunk_strategy || 'langchain_recursive',
+      parser_backend: params.parser_backend,
+      chunk_strategy: params.chunk_strategy,
       pipeline: params.pipeline,
     }
     return openapiRequest({
@@ -141,22 +154,27 @@ export const documentApi = {
     options: {
       parser_backend?: string
       chunk_strategy?: string
-      dataset_id?: string
+      dataset_id?: string | null
       precheck_only?: boolean
       upload_only?: boolean
       pipeline?: DocumentPipelineOptions
       max_concurrent?: number
       user_metadata_map?: Record<string, JsonObject>
     } = {},
-  ): Promise<DocumentBatchUploadResponse> {
+  ) {
+    if (files.length > DOCUMENT_UPLOAD_BATCH_LIMIT) {
+      throw new RangeError(`一次最多提交 ${DOCUMENT_UPLOAD_BATCH_LIMIT} 个文件，请分批提交`)
+    }
     const resolvedParser = resolveParserBackendForFiles(files, options.parser_backend)
     const formData = new FormData()
     for (const file of files) {
-      const uploadName = uploadFilename(file)
+      const uploadName = getUploadFilename(file)
       formData.append('files', file, uploadName)
     }
-    formData.append('parser_backend', resolvedParser.backend || 'auto')
-    formData.append('chunk_strategy', options.chunk_strategy || 'langchain_recursive')
+    formData.append('parser_backend', resolvedParser.backend)
+    if (options.chunk_strategy !== undefined) {
+      formData.append('chunk_strategy', options.chunk_strategy)
+    }
     if (options.dataset_id) {
       formData.append('dataset_id', options.dataset_id)
     }
@@ -172,29 +190,21 @@ export const documentApi = {
     if (options.user_metadata_map) {
       formData.append('user_metadata_map', JSON.stringify(options.user_metadata_map))
     }
-    appendPipelineOptionsToFormData(formData, options.pipeline)
+    appendPipelineOptionsToForm(formData, options.pipeline)
 
-    const { data } = await apiClient.post('/documents/upload-batch', formData)
-    return data
+    const response = await apiClient.post<unknown>('/documents/upload-batch', formData)
+    return parseApiResponse(
+      response,
+      createDocumentBatchUploadResponseSchema(files.length, options.precheck_only === true),
+      'DocumentBatchUpload',
+    )
   },
 
   async list(
-    params?: {
-      skip?: number
-      limit?: number
-      status?: string | null
-      lifecycle?: DocumentLifecycleFilter
-      dataset_id?: string | null
-      file_type?: string | null
-      owner_id?: string | null
-      q?: string | null
-      source_path_prefix?: string | null
-      order_by?: 'created_at' | 'filename' | 'file_size'
-      order_dir?: 'asc' | 'desc'
-    },
+    params?: OpenApiQueryParams<'/api/v1/documents/', 'get'>,
     options?: ApiRequestOptions,
   ): Promise<DocumentList> {
-    const { data } = await apiClient.get('/documents', {
+    const { data } = await apiClient.get<DocumentList>('/documents', {
       params,
       signal: options?.signal,
     })
@@ -229,15 +239,15 @@ export const documentApi = {
     })
   },
 
-  async folders(params: {
-    dataset_id: string
-    lifecycle?: DocumentLifecycleFilter
-    max_depth?: number
-  }): Promise<DocumentFolderTreeResponse> {
+  async folders(
+    params: { dataset_id: string; lifecycle?: DocumentLifecycleFilter; max_depth?: number },
+    options?: ApiRequestOptions,
+  ): Promise<DocumentFolderTreeResponse> {
     return openapiRequest({
       path: '/api/v1/documents/folders',
       method: 'get',
       query: params,
+      signal: options?.signal,
     })
   },
 
@@ -277,47 +287,67 @@ export const documentApi = {
     })
   },
 
-  async health(
+  health(
     documentId: string,
-    params?: { window_minutes?: number; max_bytes?: number; max_chunks_scored?: number },
-  ): Promise<DocumentHealthCard> {
-    const encoded = encodeURIComponent(String(documentId))
-    const { data } = await apiClient.get(`/documents/${encoded}/health`, { params })
-    return data
+    params?: OpenApiQueryParams<'/api/v1/documents/{document_id}/health', 'get'>,
+    options: ApiRequestOptions = {},
+  ) {
+    return openapiRequest({
+      path: '/api/v1/documents/{document_id}/health',
+      method: 'get',
+      pathParams: { document_id: documentId },
+      query: params,
+      signal: options.signal,
+    })
   },
 
-  async getTimeline(documentId: string, params?: { limit?: number }): Promise<DocumentTimelineResponse> {
+  getTimeline(
+    documentId: string,
+    params?: OpenApiQueryParams<'/api/v1/documents/{document_id}/timeline', 'get'>,
+    options?: ApiRequestOptions,
+  ): Promise<DocumentTimelineResponse> {
     return openapiRequest({
       path: '/api/v1/documents/{document_id}/timeline',
       method: 'get',
       pathParams: { document_id: documentId },
       query: params,
+      signal: options?.signal,
     })
   },
 
-  async getAccess(documentId: string): Promise<DocumentAccessInfo> {
+  getAccess(documentId: string, options?: ApiRequestOptions): Promise<DocumentAccessInfo> {
     return openapiRequest({
       path: '/api/v1/documents/{document_id}/access',
       method: 'get',
       pathParams: { document_id: documentId },
+      signal: options?.signal,
+      responseSchema: documentAccessInfoSchema,
+      responseSchemaName: 'DocumentAccessInfo',
     })
   },
 
-  async updateAccess(documentId: string, payload: DocumentAccessUpdateRequest): Promise<DocumentAccessInfo> {
+  updateAccess(documentId: string, payload: DocumentAccessUpdateRequest): Promise<DocumentAccessInfo> {
     return openapiRequest({
       path: '/api/v1/documents/{document_id}/access',
       method: 'put',
       pathParams: { document_id: documentId },
       body: payload,
+      responseSchema: documentAccessInfoSchema,
+      responseSchemaName: 'DocumentAccessInfo',
     })
   },
 
-  async getParsedContent(documentId: string, params?: { max_chars?: number }): Promise<DocumentParsedContentResponse> {
+  async getParsedContent(
+    documentId: string,
+    params?: { max_chars?: number },
+    options?: ApiRequestOptions,
+  ): Promise<DocumentParsedContentResponse> {
     return openapiRequest({
       path: '/api/v1/documents/{document_id}/parsed-content',
       method: 'get',
       pathParams: { document_id: documentId },
       query: params,
+      signal: options?.signal,
       responseSchema: documentParsedContentResponseSchema,
       responseSchemaName: 'DocumentParsedContentResponse',
     })
@@ -326,32 +356,35 @@ export const documentApi = {
   async listChunks(
     documentId: string,
     params?: { skip?: number; limit?: number; q?: string; pipeline_hash?: string; all_versions?: boolean },
+    options?: ApiRequestOptions,
   ): Promise<DocumentChunkList> {
     return openapiRequest({
       path: '/api/v1/documents/{document_id}/chunks',
       method: 'get',
       pathParams: { document_id: documentId },
       query: params,
+      signal: options?.signal,
     })
   },
 
   async getChunkMatches(
     documentId: string,
     params: { q: string; limit?: number; pipeline_hash?: string; all_versions?: boolean },
-  ): Promise<DocumentChunkMatchList> {
-    return openapiRequest({
-      path: '/api/v1/documents/{document_id}/chunks/matches',
-      method: 'get',
-      pathParams: { document_id: documentId },
-      query: params,
+    options?: ApiRequestOptions,
+  ): Promise<Required<DocumentChunkMatchList>> {
+    const response = await apiClient.get<unknown>(`/documents/${encodeURIComponent(documentId)}/chunks/matches`, {
+      params,
+      signal: options?.signal,
     })
+    return parseApiResponse(response, documentChunkMatchListSchema, 'DocumentChunkMatchList')
   },
 
-  async getChunk(documentId: string, chunkId: string): Promise<DocumentChunk> {
+  async getChunk(documentId: string, chunkId: string, options?: ApiRequestOptions): Promise<DocumentChunk> {
     return openapiRequest({
       path: '/api/v1/documents/{document_id}/chunks/{chunk_id}',
       method: 'get',
       pathParams: { document_id: documentId, chunk_id: chunkId },
+      signal: options?.signal,
     })
   },
 
@@ -415,26 +448,28 @@ export const documentApi = {
     })
   },
 
-  async download(documentId: string, params?: { inline?: boolean }): Promise<Blob> {
-    const { data } = await apiClient.get(`/documents/${documentId}/download`, {
+  async download(documentId: string, params?: { inline?: boolean }, options?: ApiRequestOptions): Promise<Blob> {
+    const { data } = await apiClient.get<Blob>(`/documents/${documentId}/download`, {
       params,
+      signal: options?.signal,
       responseType: 'blob',
     })
     return data
   },
 
   async cleanDocx(documentId: string): Promise<Blob> {
-    const { data } = await apiClient.get(`/documents/${documentId}/clean-docx`, {
+    const { data } = await apiClient.get<Blob>(`/documents/${documentId}/clean-docx`, {
       responseType: 'blob',
     })
-    return data as Blob
+    return data
   },
 
-  async getStatus(documentId: string): Promise<DocumentStatus> {
+  async getStatus(documentId: string, options?: ApiRequestOptions): Promise<DocumentStatus> {
     return openapiRequest({
       path: '/api/v1/documents/{document_id}/status',
       method: 'get',
       pathParams: { document_id: documentId },
+      signal: options?.signal,
     })
   },
 
@@ -507,19 +542,21 @@ export const documentApi = {
   },
 
   async batchRetry(payload: DocumentBatchRetryRequest): Promise<DocumentBatchRetryResponse> {
-    return openapiRequest({
-      path: '/api/v1/documents/batch/retry',
-      method: 'post',
-      body: payload,
-    })
+    const response = await apiClient.post<unknown>('/documents/batch/retry', payload)
+    return parseApiResponse(
+      response,
+      createDocumentBatchRetryResponseSchema(payload.document_ids.length),
+      'DocumentBatchRetry',
+    )
   },
 
   async batchReingest(payload: DocumentBatchReingestRequest): Promise<DocumentBatchRetryResponse> {
-    return openapiRequest({
-      path: '/api/v1/documents/batch/reingest',
-      method: 'post',
-      body: payload,
-    })
+    const response = await apiClient.post<unknown>('/documents/batch/reingest', payload)
+    return parseApiResponse(
+      response,
+      createDocumentBatchRetryResponseSchema(payload.document_ids.length),
+      'DocumentBatchReingest',
+    )
   },
 
   async batchUpdateAccess(payload: DocumentBatchAccessUpdateRequest): Promise<DocumentBatchAccessUpdateResponse> {
@@ -569,8 +606,11 @@ export const documentApi = {
     })
   },
 
-  async getLifecycleMetadata(documentId: string): Promise<DocumentLifecycleMetadata> {
-    const { data } = await apiClient.get(`/documents/${encodeURIComponent(documentId)}/lifecycle-metadata`)
+  async getLifecycleMetadata(documentId: string, options?: ApiRequestOptions): Promise<DocumentLifecycleMetadata> {
+    const { data } = await apiClient.get<DocumentLifecycleMetadata>(
+      `/documents/${encodeURIComponent(documentId)}/lifecycle-metadata`,
+      { signal: options?.signal },
+    )
     return data
   },
 
@@ -640,9 +680,9 @@ export const documentApi = {
     const resolvedParser = resolveParserBackendForFilename(file.name, parserBackend)
     const formData = new FormData()
     formData.append('file', file)
-    formData.append('parser_backend', resolvedParser.backend || 'auto')
+    formData.append('parser_backend', resolvedParser.backend)
     if (options?.dataset_id) formData.append('dataset_id', options.dataset_id)
-    appendPipelineOptionsToFormData(formData, pipeline)
+    appendPipelineOptionsToForm(formData, pipeline)
 
     const { data } = await apiClient.post('/documents/preview', formData, {
       timeout: API_LONG_TIMEOUT_MS,
@@ -672,15 +712,11 @@ export const documentApi = {
   async chunkPreview(
     file: File,
     params: ChunkPreviewRequestParams = {},
-    options?: { signal?: AbortSignal },
+    options?: ApiRequestOptions,
   ): Promise<ChunkPreviewResponse> {
-    const resolvedParser = resolveParserBackendForFilename(file.name, params.parser_backend || 'auto')
-    const effectiveStrategy = resolveChunkPreviewStrategy(params.chunk_strategy)
     const formData = new FormData()
     formData.append('file', file)
-    formData.append('parser_backend', resolvedParser.backend || 'auto')
-    formData.append('chunk_strategy', effectiveStrategy)
-    appendChunkPreviewFormFields(formData, params, effectiveStrategy)
+    appendChunkPreviewSettings(formData, file.name, params)
 
     const { data } = await apiClient.post('/documents/chunk-preview', formData, {
       timeout: API_LONG_TIMEOUT_MS,
@@ -698,22 +734,18 @@ export const documentApi = {
       filename?: string
       file_size?: number
     },
-    options?: { signal?: AbortSignal },
+    options?: ApiRequestOptions,
   ): Promise<ChunkPreviewResponse> {
-    const name = params.filename || `doc.${String(params.file_type || 'txt').replace(/^\\.+/, '')}`
-    const resolvedParser = resolveParserBackendForFilename(name, params.parser_backend || 'auto')
-    const effectiveStrategy = resolveChunkPreviewStrategy(params.chunk_strategy)
+    const extension = params.file_type ? params.file_type.replace(/^\.+/, '') : 'txt'
+    const filename = params.filename ? params.filename : `doc.${extension}`
 
-    const formData = new FormData()
-    formData.append('file_sha256', String(params.file_sha256 || ''))
-    if (params.file_type) formData.append('file_type', params.file_type)
-    if (params.filename) formData.append('filename', params.filename)
-    if (typeof params.file_size === 'number') formData.append('file_size', String(params.file_size))
-    formData.append('parser_backend', resolvedParser.backend || 'auto')
-    formData.append('chunk_strategy', effectiveStrategy)
-    appendChunkPreviewFormFields(formData, params, effectiveStrategy)
+    const form = new URLSearchParams({ file_sha256: params.file_sha256 })
+    if (params.file_type) form.append('file_type', params.file_type)
+    if (params.filename) form.append('filename', params.filename)
+    if (typeof params.file_size === 'number') form.append('file_size', String(params.file_size))
+    appendChunkPreviewSettings(form, filename, params)
 
-    const { data } = await apiClient.post('/documents/chunk-preview/by-sha', formData, {
+    const { data } = await apiClient.post('/documents/chunk-preview/by-sha', form, {
       timeout: API_LONG_TIMEOUT_MS,
       signal: options?.signal,
       params: buildChunkPreviewQueryParams(params),
@@ -739,12 +771,16 @@ export const documentApi = {
   },
 
   async fetchImage(imageId: string): Promise<Blob> {
-    const { data } = await apiClient.get(`/documents/image/${imageId}`, { responseType: 'blob' })
-    return data as Blob
+    const { data } = await apiClient.get<Blob>(`/documents/image/${encodeURIComponent(imageId)}`, {
+      responseType: 'blob',
+    })
+    return data
   },
 
   async fetchImageByImgId(imgId: string): Promise<Blob> {
-    const { data } = await apiClient.get(`/documents/image-url/${encodeURIComponent(imgId)}`, { responseType: 'blob' })
-    return data as Blob
+    const { data } = await apiClient.get<Blob>(`/documents/image-url/${encodeURIComponent(imgId)}`, {
+      responseType: 'blob',
+    })
+    return data
   },
 }

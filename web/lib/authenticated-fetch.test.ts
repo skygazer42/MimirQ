@@ -6,6 +6,8 @@ import { clearAuthSession, getAccessToken, getStoredUser, setAuthSession } from 
 import { __resetOidcRefreshForTests } from './oidc-session'
 import type { AuthToken, UserProfile } from '@/types/backend'
 
+vi.hoisted(() => vi.stubGlobal('BroadcastChannel', undefined))
+
 const token: AuthToken = { access_token: 'session-token', token_type: 'bearer', expires_in: 3600 }
 const user: UserProfile = {
   id: 'user-a',

@@ -1,9 +1,11 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { motion, useReducedMotion } from 'framer-motion'
+import { useLayoutEffect, useRef, useState } from 'react'
+
 import { X, Mic, MicOff } from '@/components/icons'
-import { motion, AnimatePresence, useReducedMotion } from 'framer-motion'
 import { Button } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
 
 type VoiceModeOverlayProps = {
   isOpen: boolean
@@ -21,7 +23,6 @@ type SpeechRecognitionResultLike = {
 }
 
 type SpeechRecognitionEventLike = {
-  readonly resultIndex: number
   readonly results: {
     readonly length: number
     readonly [index: number]: SpeechRecognitionResultLike
@@ -43,212 +44,105 @@ type WindowWithSpeechRecognition = Window & {
   webkitSpeechRecognition?: new () => SpeechRecognitionLike
 }
 
+type RecognitionStatus = 'checking' | 'unavailable' | 'ready' | 'listening' | 'stopping'
+
 export function VoiceModeOverlay({ isOpen, onClose, onSend }: Readonly<VoiceModeOverlayProps>) {
-  const [isListening, setIsListening] = useState(false)
-  const [isStopping, setIsStopping] = useState(false)
-  const [recognitionAvailable, setRecognitionAvailable] = useState<boolean | null>(null)
+  const [recognitionStatus, setRecognitionStatus] = useState<RecognitionStatus>('checking')
   const [recognitionError, setRecognitionError] = useState<string | null>(null)
   const [transcript, setTranscript] = useState('')
+  const recognitionRef = useRef<SpeechRecognitionLike | null>(null)
   const transcriptRef = useRef('')
   const sendRequestedRef = useRef(false)
   const onSendRef = useRef(onSend)
-  const canvasRef = useRef<HTMLCanvasElement>(null)
   const reduceMotion = useReducedMotion()
+  const isStopping = recognitionStatus === 'stopping'
+  const isListening = recognitionStatus === 'listening' || isStopping
+  const canToggle = recognitionStatus === 'ready' || recognitionStatus === 'listening'
 
-  // Speech Recognition Setup
-  const recognitionRef = useRef<SpeechRecognitionLike | null>(null)
-
-  useEffect(() => {
+  useLayoutEffect(() => {
     onSendRef.current = onSend
   }, [onSend])
 
-  useEffect(() => {
-    setIsListening(false)
-    setIsStopping(false)
+  useLayoutEffect(() => {
+    if (!isOpen) return
+
     setTranscript('')
     setRecognitionError(null)
-    transcriptRef.current = ''
-    sendRequestedRef.current = false
-    if (!isOpen) {
-      setRecognitionAvailable(null)
+    const { webkitSpeechRecognition: SpeechRecognition } = globalThis.window as WindowWithSpeechRecognition
+    if (SpeechRecognition === undefined) {
+      setRecognitionStatus('unavailable')
       return
     }
 
-    const windowWithSpeech = globalThis.window as WindowWithSpeechRecognition
-    if (windowWithSpeech.webkitSpeechRecognition) {
-      const SpeechRecognition = windowWithSpeech.webkitSpeechRecognition
-      const recognition = new SpeechRecognition()
-      recognition.continuous = true
-      recognition.interimResults = true
-      recognition.lang = 'zh-CN'
+    const recognition = new SpeechRecognition()
+    recognition.continuous = true
+    recognition.interimResults = true
+    recognition.lang = 'zh-CN'
 
-      recognition.onresult = (event) => {
-        if (recognitionRef.current !== recognition) return
-        let finalTranscript = ''
-        for (let i = 0; i < event.results.length; ++i) {
-          if (event.results[i].isFinal) {
-            finalTranscript += event.results[i][0].transcript
-          }
+    recognition.onresult = (event) => {
+      if (recognitionRef.current !== recognition) return
+      let finalTranscript = ''
+      for (let index = 0; index < event.results.length; index += 1) {
+        const result = event.results[index]
+        if (result.isFinal) {
+          finalTranscript += result[0].transcript
         }
-        transcriptRef.current = finalTranscript
-        setTranscript(finalTranscript)
       }
-
-      recognition.onend = () => {
-        if (recognitionRef.current !== recognition) return
-        setIsListening(false)
-        setIsStopping(false)
-        const shouldSend = sendRequestedRef.current
-        sendRequestedRef.current = false
-        const text = transcriptRef.current.trim()
-        if (shouldSend && text) onSendRef.current(text)
-      }
-      recognition.onerror = () => {
-        if (recognitionRef.current !== recognition) return
-        sendRequestedRef.current = false
-        setIsListening(false)
-        setIsStopping(false)
-        setRecognitionError('语音输入失败，请重试')
-      }
-      recognitionRef.current = recognition
-      setRecognitionAvailable(true)
-      return () => {
-        recognitionRef.current = null
-        sendRequestedRef.current = false
-        recognition.onresult = null
-        recognition.onend = null
-        recognition.onerror = null
-        recognition.stop()
-      }
+      transcriptRef.current = finalTranscript
+      setTranscript(finalTranscript)
     }
-    setRecognitionAvailable(false)
+
+    recognition.onend = () => {
+      if (recognitionRef.current !== recognition) return
+      setRecognitionStatus('ready')
+      const shouldSend = sendRequestedRef.current
+      sendRequestedRef.current = false
+      const text = transcriptRef.current.trim()
+      if (shouldSend && text) onSendRef.current(text)
+    }
+    recognition.onerror = () => {
+      if (recognitionRef.current !== recognition) return
+      sendRequestedRef.current = false
+      setRecognitionStatus('ready')
+      setRecognitionError('语音输入失败，请重试')
+    }
+    recognitionRef.current = recognition
+    setRecognitionStatus('ready')
+    return () => {
+      recognitionRef.current = null
+      sendRequestedRef.current = false
+      recognition.onresult = null
+      recognition.onend = null
+      recognition.onerror = null
+      recognition.stop()
+    }
   }, [isOpen])
 
-  // Canvas Animation
-  useEffect(() => {
-    if (!isOpen || !canvasRef.current) return
-
-    const canvas = canvasRef.current
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return
-
-    let animationFrameId: number | null = null
-    let phase = 0
-    let viewport = { width: 0, height: 0 }
-
-    const root = document.documentElement
-    const styles = getComputedStyle(root)
-    const bgVar = styles.getPropertyValue('--background').trim()
-    const fgVar = styles.getPropertyValue('--foreground').trim()
-    const primaryVar = styles.getPropertyValue('--primary').trim()
-
-    const bgColor = bgVar ? `hsl(${bgVar})` : '#000'
-    const fgColor = fgVar ? `hsl(${fgVar} / 0.75)` : '#ffffff'
-    const primaryColor = primaryVar ? `hsl(${primaryVar})` : '#0ea5e9'
-    const primaryColorMuted = primaryVar ? `hsl(${primaryVar} / 0.3)` : 'rgba(14, 165, 233, 0.3)'
-
-    const syncCanvasSize = () => {
-      const dpr = Math.max(1, globalThis.window.devicePixelRatio || 1)
-      const width = globalThis.window.innerWidth
-      const height = globalThis.window.innerHeight
-      viewport = { width, height }
-
-      // Render in CSS pixels, but keep the backing store crisp on HiDPI.
-      canvas.width = Math.round(width * dpr)
-      canvas.height = Math.round(height * dpr)
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
-    }
-
-    const onResize = () => syncCanvasSize()
-
-    syncCanvasSize()
-    globalThis.window.addEventListener('resize', onResize)
-
-    const shouldAnimate = () => !reduceMotion && isListening && document.visibilityState === 'visible'
-
-    const render = () => {
-      if (shouldAnimate()) phase += 0.1
-      const { width, height } = viewport
-
-      ctx.fillStyle = bgColor
-      ctx.fillRect(0, 0, width, height)
-
-      // Draw Wave
-      ctx.beginPath()
-      ctx.lineWidth = 4
-      ctx.strokeStyle = isListening ? primaryColor : fgColor
-
-      const cy = height / 2
-      const cx = width / 2
-
-      // Simple circle wave
-      const jitter = isListening && !reduceMotion ? (Math.sin(phase * 1.7) + 1) * 10 : 0
-      const radius = 100 + Math.sin(phase) * 10 + jitter
-
-      ctx.arc(cx, cy, radius, 0, 2 * Math.PI)
-      ctx.stroke()
-
-      // Ripple
-      if (isListening) {
-        ctx.beginPath()
-        ctx.strokeStyle = primaryColorMuted
-        ctx.arc(cx, cy, radius + 30, 0, 2 * Math.PI)
-        ctx.stroke()
-      }
-
-      if (shouldAnimate()) {
-        animationFrameId = globalThis.window.requestAnimationFrame(render)
-      } else {
-        animationFrameId = null
-      }
-    }
-
-    const onVisibilityChange = () => {
-      if (shouldAnimate()) {
-        if (animationFrameId == null) {
-          render()
-        }
-        return
-      }
-
-      if (animationFrameId != null) {
-        globalThis.window.cancelAnimationFrame(animationFrameId)
-        animationFrameId = null
-      }
-
-      // Ensure we paint a final static frame on hide.
-      render()
-    }
-
-    document.addEventListener('visibilitychange', onVisibilityChange)
-    render()
-    return () => {
-      globalThis.window.removeEventListener('resize', onResize)
-      document.removeEventListener('visibilitychange', onVisibilityChange)
-      if (animationFrameId != null) {
-        globalThis.window.cancelAnimationFrame(animationFrameId)
-      }
-    }
-  }, [isOpen, isListening, reduceMotion])
-
-  const toggleListening = () => {
+  function handleMicrophoneClick() {
     const recognition = recognitionRef.current
-    if (!recognition || isStopping) return
+    if (recognition === null || !canToggle) return
+
     if (isListening) {
       sendRequestedRef.current = true
-      setIsStopping(true)
+      setRecognitionStatus('stopping')
       recognition.stop()
-    } else {
-      transcriptRef.current = ''
-      setTranscript('')
-      setRecognitionError(null)
-      try {
-        recognition.start()
-        setIsListening(true)
-      } catch {
-        setRecognitionError('无法启动语音输入，请重试')
-      }
+      return
     }
+
+    transcriptRef.current = ''
+    setTranscript('')
+    setRecognitionError(null)
+    try {
+      recognition.start()
+      setRecognitionStatus('listening')
+    } catch {
+      setRecognitionError('无法启动语音输入，请重试')
+    }
+  }
+
+  function closeVoiceMode() {
+    sendRequestedRef.current = false
+    onClose()
   }
 
   if (!isOpen) {
@@ -256,56 +150,61 @@ export function VoiceModeOverlay({ isOpen, onClose, onSend }: Readonly<VoiceMode
   }
 
   return (
-    <AnimatePresence>
-      <motion.div
-        initial={reduceMotion ? false : { opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={reduceMotion ? undefined : { opacity: 0 }}
-        className="fixed inset-0 z-100 bg-background text-foreground flex flex-col items-center justify-center"
-      >
-        <div className="absolute inset-0" aria-hidden="true">
-          <canvas ref={canvasRef} className="absolute inset-0" />
+    <motion.div
+      initial={reduceMotion ? false : { opacity: 0 }}
+      animate={{ opacity: 1 }}
+      className="fixed inset-0 z-100 flex flex-col items-center justify-center bg-background text-foreground"
+    >
+      <div className="pointer-events-none absolute inset-0 grid place-items-center" aria-hidden="true">
+        <div
+          className={cn(
+            'col-start-1 row-start-1 size-[204px] rounded-full border-4',
+            isListening ? 'border-primary motion-safe:animate-pulse' : 'border-foreground/75',
+          )}
+        />
+        {isListening && (
+          <div className="col-start-1 row-start-1 size-[264px] rounded-full border-4 border-primary/30" />
+        )}
+      </div>
+
+      <div className="relative z-10 flex w-full max-w-xl flex-col items-center gap-8 px-6">
+        <div className="flex h-20 w-full overflow-y-auto">
+          {transcript && (
+            <p className="m-auto w-full text-center text-xl font-medium text-foreground/80 [overflow-wrap:anywhere] motion-safe:animate-fade-in-up">
+              &quot;{transcript}&quot;
+            </p>
+          )}
         </div>
 
-        <div className="relative z-10 flex flex-col items-center gap-8">
-          <div className="h-20 flex items-center justify-center">
-            {transcript && (
-              <p className="text-foreground/80 text-xl font-medium text-center max-w-xl motion-safe:animate-fade-in-up">
-                &quot;{transcript}&quot;
-              </p>
+        {recognitionStatus === 'unavailable' ? <p role="status">当前浏览器不支持语音输入</p> : null}
+        {recognitionError ? <p role="alert">{recognitionError}</p> : null}
+
+        <div className="flex gap-4">
+          <Button
+            size="icon"
+            className="h-16 w-16 rounded-full glass hover:bg-accent/30 hover:border-primary/30 transition-colors duration-200 motion-reduce:transition-none"
+            onClick={handleMicrophoneClick}
+            disabled={!canToggle}
+            aria-busy={isStopping}
+            aria-label={isListening ? '停止语音输入' : '开始语音输入'}
+          >
+            {isListening ? (
+              <Mic className="h-8 w-8 text-primary" />
+            ) : (
+              <MicOff className="h-8 w-8 text-muted-foreground" />
             )}
-          </div>
-
-          {recognitionAvailable === false ? <p role="status">当前浏览器不支持语音输入</p> : null}
-          {recognitionError ? <p role="alert">{recognitionError}</p> : null}
-
-          <div className="flex gap-4">
-            <Button
-              size="icon"
-              className="h-16 w-16 rounded-full glass hover:bg-accent/30 hover:border-primary/30 transition-colors duration-200 motion-reduce:transition-none"
-              onClick={toggleListening}
-              disabled={recognitionAvailable !== true || isStopping}
-              aria-busy={isStopping}
-              aria-label={isListening ? '停止语音输入' : '开始语音输入'}
-            >
-              {isListening ? (
-                <Mic className="h-8 w-8 text-primary" />
-              ) : (
-                <MicOff className="h-8 w-8 text-muted-foreground" />
-              )}
-            </Button>
-            <Button
-              size="icon"
-              variant="ghost"
-              className="h-16 w-16 rounded-full hover:bg-accent/40 text-muted-foreground hover:text-foreground transition-colors duration-200 motion-reduce:transition-none"
-              onClick={onClose}
-              aria-label="关闭语音模式"
-            >
-              <X className="h-8 w-8" />
-            </Button>
-          </div>
+          </Button>
+          <Button
+            size="icon"
+            variant="ghost"
+            className="h-16 w-16 rounded-full hover:bg-accent/40 text-muted-foreground hover:text-foreground transition-colors duration-200 motion-reduce:transition-none"
+            onClick={closeVoiceMode}
+            aria-label="关闭语音模式"
+          >
+            <X className="h-8 w-8" />
+          </Button>
         </div>
-      </motion.div>
-    </AnimatePresence>
+      </div>
+    </motion.div>
   )
 }

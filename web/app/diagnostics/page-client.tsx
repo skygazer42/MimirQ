@@ -11,13 +11,19 @@ import { ScopeControls, QueryControl, MetricControls, ServiceDependencies, Statu
 import { RetrievalChain } from './retrieval-chain'
 import { DriftProbe, PerformanceProbe } from './diagnostic-probes'
 import { DiagnosticsDialogs } from './diagnostics-dialogs'
-import { driftVerdict, perfVerdict, record, timestamp } from './diagnostics-model'
+import { currentProbeVerdict, driftVerdict, perfVerdict, timestamp } from './diagnostics-model'
 import styles from './diagnostics.module.css'
 
 export default function DiagnosticsPageClient() {
-  const c = useDiagnostics(),
-    drift = driftVerdict(c.drift.result?.data),
-    perf = perfVerdict(c.perf.result?.data)
+  const c = useDiagnostics()
+  const drift = currentProbeVerdict(c.drift.status, '检查中', driftVerdict(c.drift.result?.data))
+  const perf = currentProbeVerdict(c.perf.status, '运行中', perfVerdict(c.perf.result?.data))
+  let readinessLabel = '就绪状态待确认'
+  if (c.ready.isError) readinessLabel = '就绪状态未取得'
+  else if (c.ready.data !== undefined) {
+    readinessLabel = c.ready.data.ok ? '必需依赖已就绪' : '必需依赖未就绪'
+  }
+  const healthUpdatedAt = Math.max(c.health.dataUpdatedAt, c.ready.dataUpdatedAt)
   const resultsRef = useRef<HTMLDivElement>(null)
   const finishedAt = c.preview.result?.finishedAt
   useEffect(() => {
@@ -71,7 +77,7 @@ export default function DiagnosticsPageClient() {
                 void c.refreshStatus()
               }}
             >
-              {c.statusRefreshing ? <Loader2 className="animate-spin" /> : <RefreshCw />}
+              {c.statusRefreshing ? <Loader2 className="animate-spin motion-reduce:animate-none" /> : <RefreshCw />}
               <span>刷新状态</span>
             </Button>
           </div>
@@ -84,13 +90,7 @@ export default function DiagnosticsPageClient() {
           >
             <Status {...c.systemState} />
           </button>
-          <span>
-            {c.ready.isError
-              ? '就绪状态未取得'
-              : record(c.ready.data).ok === true
-                ? '必需依赖已就绪'
-                : '就绪状态待确认'}
-          </span>
+          <span>{readinessLabel}</span>
           <span>
             向量后端 <strong>{c.vectorBackend ?? '未知'}</strong>
           </span>
@@ -99,7 +99,7 @@ export default function DiagnosticsPageClient() {
             在线评估 ·{' '}
             {c.online.isError ? '未取得' : c.online.isPending ? '检查中' : c.online.data?.enabled ? '已启用' : '未启用'}
           </span>
-          <time>{timestamp(Math.max(c.health.dataUpdatedAt, c.ready.dataUpdatedAt) || null)}</time>
+          <time>{timestamp(healthUpdatedAt === 0 ? null : healthUpdatedAt)}</time>
         </div>
         <Tabs value={c.tab} onValueChange={c.setTab} className={styles.tabsRoot}>
           <TabsList aria-label="诊断探针" className={styles.tabs}>
@@ -110,18 +110,12 @@ export default function DiagnosticsPageClient() {
             <TabsTrigger className={styles.tab} value="drift">
               <BarChart3 />
               向量漂移
-              <Status
-                label={c.drift.status === 'running' ? '检查中' : c.drift.status === 'error' ? '请求失败' : drift.label}
-                tone="neutral"
-              />
+              <Status label={drift.label} tone="neutral" />
             </TabsTrigger>
             <TabsTrigger className={styles.tab} value="performance">
               <ShieldCheck />
               性能门禁
-              <Status
-                label={c.perf.status === 'running' ? '运行中' : c.perf.status === 'error' ? '请求失败' : perf.label}
-                tone="neutral"
-              />
+              <Status label={perf.label} tone="neutral" />
             </TabsTrigger>
           </TabsList>
           <TabsContent value="retrieval" className={styles.workbench}>

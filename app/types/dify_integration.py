@@ -1,14 +1,7 @@
-"""Shared Dify request, response, and actor types."""
+"""Internal Dify actor identity and knowledge graph execution flags."""
 
 from dataclasses import dataclass
 from uuid import UUID
-
-from app.api.schemas.integrations import DifyConversationTurnRequest as DifyConversationTurnRequest
-from app.api.schemas.integrations import DifyConversationTurnResponse as DifyConversationTurnResponse
-from app.api.schemas.integrations import DifyExternalKnowledgeRecord as DifyExternalKnowledgeRecord
-from app.api.schemas.integrations import DifyExternalKnowledgeRequest as DifyExternalKnowledgeRequest
-from app.api.schemas.integrations import DifyExternalKnowledgeResponse as DifyExternalKnowledgeResponse
-from app.api.schemas.integrations import DifyRetrievalSetting as DifyRetrievalSetting
 
 
 @dataclass(frozen=True)
@@ -28,16 +21,10 @@ class DifyKGFlags:
 
     @property
     def enabled(self) -> bool:
-        return bool(self.enable_query_expansion or self.enable_chunk_injection or self.enable_chunk_boost)
+        return self.enable_query_expansion or self.enable_chunk_injection or self.enable_chunk_boost
 
 
 __all__ = [
     "DifyActor",
-    "DifyConversationTurnRequest",
-    "DifyConversationTurnResponse",
-    "DifyExternalKnowledgeRecord",
-    "DifyExternalKnowledgeRequest",
-    "DifyExternalKnowledgeResponse",
     "DifyKGFlags",
-    "DifyRetrievalSetting",
 ]

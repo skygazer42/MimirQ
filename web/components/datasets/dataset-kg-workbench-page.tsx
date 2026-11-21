@@ -1,22 +1,13 @@
 'use client'
 
 import { useQuery } from '@tanstack/react-query'
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import type { Remote } from 'comlink'
 import { useParams } from 'next/navigation'
 import { toast } from 'sonner'
-import {
-  ArrowLeft,
-  Loader2,
-  Network,
-  RefreshCw,
-  Search,
-  Settings2,
-  Sparkles,
-  Wrench,
-  MoreHorizontal,
-} from '@/components/icons'
+import { Loader2, Network, RefreshCw, Search, Sparkles, MoreHorizontal } from '@/components/icons'
 
+import { getGraphLinkEndpointId } from '@/app/graph/graph-page-utils'
 import { AppFrame } from '@/components/app-frame'
 import { GraphViewer, type GraphViewerRef } from '@/components/graph/graph-viewer'
 import { Badge } from '@/components/ui/badge'
@@ -35,27 +26,21 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { Panel } from '@/components/ui/panel'
 import { Skeleton } from '@/components/ui/skeleton'
-import { StepIndicator } from '@/components/ui/step-indicator'
 import { useRouter } from '@/i18n/navigation'
 
 import { datasetApi, documentApi, kgApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
+import { getAuthSessionKey, subscribeAuthSession } from '@/lib/auth-storage'
 import { reportClientError, reportClientWarning } from '@/lib/client-logging'
 import { applyClusterPalette } from '@/lib/graph-cluster-palette'
 import type { GraphClusterResult } from '@/lib/graph-clustering'
-import type { GraphData } from '@/lib/graph-parser'
+import type { GraphData } from '@/lib/graph-types'
 import { queryKeys } from '@/lib/query-keys'
 import { cn, detachPromise } from '@/lib/utils'
 import { fetchInitialGraph } from '@/lib/graph-service'
 import type { GraphClusteringWorkerApi } from '@/workers/graph-clustering.worker'
 
 import type { Document, KGExtractResponse, KGGraphNode, KGStatsResponse } from '@/types'
-
-function asDatasetId(raw: unknown): string | null {
-  if (typeof raw === 'string' && raw.trim()) return raw
-  if (Array.isArray(raw) && typeof raw[0] === 'string') return raw[0]
-  return null
-}
 
 function limitPositiveInt(raw: unknown, fallback: number, opts?: { min?: number; max?: number }): number {
   const n = Math.floor(Number(raw))
@@ -179,16 +164,19 @@ function GraphPreviewSkeleton() {
 }
 
 export default function DatasetKGWorkbenchPage() {
+  const { id: datasetId } = useParams<{ id: string }>()
+  const sessionKey = useSyncExternalStore(subscribeAuthSession, getAuthSessionKey, getAuthSessionKey)
+  return <DatasetKGWorkbench key={JSON.stringify([datasetId, sessionKey])} datasetId={datasetId} />
+}
+
+function DatasetKGWorkbench({ datasetId }: Readonly<{ datasetId: string }>) {
   const router = useRouter()
-  const params = useParams()
-  const datasetId = asDatasetId((params as Record<string, unknown>)?.id)
 
   const [pane, setPane] = useState<'directory' | 'detail'>('directory')
   const [extractOpen, setExtractOpen] = useState(false)
   const [graphOptionsOpen, setGraphOptionsOpen] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
   const graphRef = useRef<GraphViewerRef>(null)
-  const graphClusteringSeqRef = useRef(0)
   const graphClusteringWorkerRef = useRef<Worker | null>(null)
   const graphClusteringApiRef = useRef<Remote<GraphClusteringWorkerApi> | null>(null)
   const graphClusteringDisabledRef = useRef(false)
@@ -206,15 +194,25 @@ export default function DatasetKGWorkbenchPage() {
   const [bulkConcurrency, setBulkConcurrency] = useState(3)
   const [extractRunning, setExtractRunning] = useState(false)
   const [singleExtractingDocId, setSingleExtractingDocId] = useState<string | null>(null)
+  const extractionRequest = useRef<symbol | null>(null)
   const [extractProgress, setExtractProgress] = useState<{ done: number; total: number } | null>(null)
   const [extractResults, setExtractResults] = useState<
     Record<string, { ok: true; res: KGExtractResponse } | { ok: false; error: string }>
   >({})
+  const extractionBusy = extractRunning || singleExtractingDocId !== null
+
+  useLayoutEffect(
+    () => () => {
+      extractionRequest.current = null
+    },
+    [],
+  )
 
   // Step 3: Graph preview
   const [graphLoading, setGraphLoading] = useState(false)
   const [graphData, setGraphData] = useState<GraphData | null>(null)
-  const [graphClusterResult, setGraphClusterResult] = useState<GraphClusterResult | null>(null)
+  const [graphClusters, setGraphClusters] = useState<{ graph: GraphData; result: GraphClusterResult } | null>(null)
+  const graphClusterResult = graphClusters !== null && graphClusters.graph === graphData ? graphClusters.result : null
   const [selectedGraphNodeId, setSelectedGraphNodeId] = useState<string | null>(null)
   const [graphStats, setGraphStats] = useState<KGStatsResponse | null>(null)
   const [graphError, setGraphError] = useState<string | null>(null)
@@ -231,34 +229,26 @@ export default function DatasetKGWorkbenchPage() {
   const [searchResults, setSearchResults] = useState<KGGraphNode[]>([])
 
   const datasetQuery = useQuery({
-    queryKey: datasetId ? queryKeys.datasets.detail(datasetId) : queryKeys.datasets.detail(''),
-    enabled: Boolean(datasetId),
-    queryFn: () => datasetApi.get(datasetId as string),
+    queryKey: queryKeys.datasets.detail(datasetId),
+    queryFn: ({ signal }) => datasetApi.get(datasetId, { signal }),
   })
+  const documentParams = {
+    ...KG_WORKBENCH_DOCUMENT_PARAMS,
+    dataset_id: datasetId,
+    q: activeDocQuery === '' ? null : activeDocQuery,
+  }
   const docsQuery = useQuery({
-    queryKey: datasetId
-      ? queryKeys.documents.list({
-          ...KG_WORKBENCH_DOCUMENT_PARAMS,
-          dataset_id: datasetId,
-          q: activeDocQuery || null,
-        })
-      : queryKeys.documents.list(KG_WORKBENCH_DOCUMENT_PARAMS),
-    enabled: Boolean(datasetId),
-    queryFn: () =>
-      documentApi.list({
-        ...KG_WORKBENCH_DOCUMENT_PARAMS,
-        dataset_id: datasetId as string,
-        q: activeDocQuery || null,
-      }),
+    queryKey: queryKeys.documents.list(documentParams),
+    queryFn: ({ signal }) => documentApi.list(documentParams, { signal }),
   })
 
   const dataset = datasetQuery.data ?? null
   const docs = docsQuery.data?.items ?? EMPTY_DOCS
-  const docsTotal = Number(docsQuery.data?.total || 0)
   const docsLoading = docsQuery.isLoading || docsQuery.isFetching
 
   const scopedDocIds = useMemo(() => Array.from(selectedDocIds), [selectedDocIds])
-  const effectivePipelineHash = useMemo(() => pipelineHash.trim() || undefined, [pipelineHash])
+  const trimmedPipelineHash = pipelineHash.trim()
+  const effectivePipelineHash = trimmedPipelineHash === '' ? undefined : trimmedPipelineHash
   const previewScope = useMemo(
     () => ({
       datasetId,
@@ -279,7 +269,7 @@ export default function DatasetKGWorkbenchPage() {
       graphMaxDocs,
     ],
   )
-  const previewScopeRef = useRef(previewScope)
+  const previewScopeRef = useRef<typeof previewScope | null>(previewScope)
   useLayoutEffect(() => {
     previewScopeRef.current = previewScope
     setGraphData(null)
@@ -289,46 +279,43 @@ export default function DatasetKGWorkbenchPage() {
     setGraphLoading(false)
     setSearchResults([])
     setSearchLoading(false)
+    return () => {
+      previewScopeRef.current = null
+    }
   }, [previewScope])
-  const graphPaletteSeed = useMemo(() => datasetId || effectivePipelineHash || null, [datasetId, effectivePipelineHash])
 
   const graphPreviewData = useMemo(() => {
     if (!graphData) return null
     return applyClusterPalette({
       graphRenderData: graphData,
-      paletteSeed: graphPaletteSeed,
+      paletteSeed: datasetId,
       clusterResult: graphClusterResult,
     })
-  }, [graphClusterResult, graphData, graphPaletteSeed])
+  }, [datasetId, graphClusterResult, graphData])
 
   const selectedNodeDetail = useMemo(() => {
     if (!graphData || !selectedGraphNodeId) return null
 
-    const selectedNode = graphData.nodes.find((node) => String(node.id || '') === selectedGraphNodeId)
+    const selectedNode = graphData.nodes.find((node) => node.id === selectedGraphNodeId)
     if (!selectedNode) return null
 
-    const nodeRecord = selectedNode as unknown as Record<string, unknown>
-    const meta = (nodeRecord.meta ?? {}) as Record<string, unknown>
-    const label = primitiveText(nodeRecord.label ?? nodeRecord.name, selectedGraphNodeId).trim() || selectedGraphNodeId
-    const type = primitiveText(meta.type ?? nodeRecord.type, 'unknown').trim() || 'unknown'
-    const kind = primitiveText(meta.kind ?? nodeRecord.kind, 'entity').trim() || 'entity'
+    const label = selectedNode.label.trim() || selectedGraphNodeId
+    const type = primitiveText(selectedNode.meta?.type ?? selectedNode.type).trim() || 'unknown'
+    const kind = primitiveText(selectedNode.meta?.kind ?? selectedNode.kind).trim() || 'entity'
 
     let degree = 0
     for (const link of graphData.links) {
-      const source =
-        typeof link.source === 'object' && link.source
-          ? String((link.source as { id?: string }).id ?? '')
-          : String(link.source ?? '')
-      const target =
-        typeof link.target === 'object' && link.target
-          ? String((link.target as { id?: string }).id ?? '')
-          : String(link.target ?? '')
+      const source = getGraphLinkEndpointId(link.source)
+      const target = getGraphLinkEndpointId(link.target)
       if (source === selectedGraphNodeId || target === selectedGraphNodeId) {
         degree += 1
       }
     }
 
-    const cluster = Math.max(1, Math.floor(Number(graphClusterResult?.nodeToCluster?.[selectedGraphNodeId] ?? 1)))
+    const nodeId = selectedNode.id.trim()
+    const nodeToCluster = graphClusterResult?.nodeToCluster
+    const cluster =
+      nodeToCluster !== undefined && Object.hasOwn(nodeToCluster, nodeId) ? nodeToCluster[nodeId] : undefined
     return {
       id: selectedGraphNodeId,
       label,
@@ -339,23 +326,6 @@ export default function DatasetKGWorkbenchPage() {
     }
   }, [graphClusterResult, graphData, selectedGraphNodeId])
 
-  const steps = useMemo(
-    () => [
-      { label: 'Scope', description: '选文档' },
-      { label: 'Extract', description: '抽取 KG' },
-      { label: 'Preview', description: '图预览' },
-      { label: 'Search', description: '快速检索' },
-    ],
-    [],
-  )
-
-  const currentStep = useMemo(() => {
-    if (scopedDocIds.length === 0) return 0
-    if (!graphData) return 1
-    if (!searchQuery.trim()) return 2
-    return 3
-  }, [graphData, scopedDocIds.length, searchQuery])
-
   useEffect(() => {
     const error = datasetQuery.error || docsQuery.error
     if (!error) return
@@ -363,11 +333,10 @@ export default function DatasetKGWorkbenchPage() {
   }, [datasetQuery.error, docsQuery.error])
 
   useEffect(() => {
-    const seq = ++graphClusteringSeqRef.current
     let cancelled = false
 
     if (!graphData?.nodes.length) {
-      setGraphClusterResult(null)
+      setGraphClusters(null)
       return
     }
 
@@ -379,14 +348,11 @@ export default function DatasetKGWorkbenchPage() {
         const { computeConnectedComponents } = await import('@/lib/graph-clustering')
         if (cancelled) return
         const result = computeConnectedComponents({ nodes, links })
-        if (graphClusteringSeqRef.current === seq) {
-          setGraphClusterResult(result)
-        }
+        setGraphClusters({ graph: graphData, result })
       } catch (e) {
+        if (cancelled) return
         reportClientWarning('Failed to compute dataset graph clusters', e)
-        if (graphClusteringSeqRef.current === seq) {
-          setGraphClusterResult(null)
-        }
+        setGraphClusters(null)
       }
     }
 
@@ -414,11 +380,14 @@ export default function DatasetKGWorkbenchPage() {
 
           const result = await api.computeConnectedComponents({ nodes, links })
           if (cancelled) return
-          if (graphClusteringSeqRef.current !== seq) return
-          setGraphClusterResult(result)
+          setGraphClusters({ graph: graphData, result })
         } catch (e) {
+          if (cancelled) return
           reportClientWarning('Dataset graph clustering worker failed; falling back to main thread', e)
           graphClusteringDisabledRef.current = true
+          graphClusteringWorkerRef.current?.terminate()
+          graphClusteringWorkerRef.current = null
+          graphClusteringApiRef.current = null
           detachPromise(computeOnMainThread())
         }
       })(),
@@ -445,7 +414,7 @@ export default function DatasetKGWorkbenchPage() {
 
     setSelectedGraphNodeId((prev) => {
       if (!prev) return null
-      const stillExists = graphData.nodes.some((node) => String(node.id || '') === prev)
+      const stillExists = graphData.nodes.some((node) => node.id === prev)
       return stillExists ? prev : null
     })
   }, [graphData])
@@ -462,9 +431,8 @@ export default function DatasetKGWorkbenchPage() {
   const selectAllLoaded = useCallback(() => {
     setSelectedDocIds((prev) => {
       const next = new Set(prev)
-      docs.forEach((d) => {
-        const id = String(d.id || '')
-        if (id) next.add(id)
+      docs.forEach((document) => {
+        if (document.id) next.add(document.id)
       })
       return next
     })
@@ -472,35 +440,47 @@ export default function DatasetKGWorkbenchPage() {
 
   const clearSelection = useCallback(() => setSelectedDocIds(new Set()), [])
 
+  const extractDocument = useCallback(
+    (documentId: string) =>
+      kgApi.extract(documentId, {
+        async: false,
+        pipeline_hash: effectivePipelineHash,
+        replace_existing: replaceExisting,
+        prune_orphan_entities: pruneOrphans,
+      }),
+    [effectivePipelineHash, pruneOrphans, replaceExisting],
+  )
+
   const extractOneDoc = useCallback(
     async (docId: string) => {
-      const id = String(docId || '').trim()
-      if (!id) return
-      if (singleExtractingDocId) return
+      const id = docId.trim()
+      if (id === '' || extractionRequest.current !== null) return
 
+      const request = Symbol()
+      extractionRequest.current = request
       setSingleExtractingDocId(id)
       try {
-        const res = await kgApi.extract(id, {
-          async: false,
-          pipeline_hash: effectivePipelineHash,
-          replace_existing: replaceExisting,
-          prune_orphan_entities: pruneOrphans,
-        })
+        const res = await extractDocument(id)
+        if (extractionRequest.current !== request) return
         setExtractResults((prev) => ({ ...prev, [id]: { ok: true, res } }))
-        toast.success(`KG 抽取完成：events=${Number(res?.event_count || 0)}`)
+        toast.success(`KG 抽取完成：events=${res.event_count}`)
       } catch (e: unknown) {
+        if (extractionRequest.current !== request) return
         const msg = formatApiError(e, 'KG 抽取失败')
         setExtractResults((prev) => ({ ...prev, [id]: { ok: false, error: msg } }))
         toast.error(msg)
       } finally {
-        setSingleExtractingDocId(null)
+        if (extractionRequest.current === request) {
+          extractionRequest.current = null
+          setSingleExtractingDocId(null)
+        }
       }
     },
-    [effectivePipelineHash, pruneOrphans, replaceExisting, singleExtractingDocId],
+    [extractDocument],
   )
 
   const extractSelected = useCallback(async () => {
-    if (extractRunning) return
+    if (extractionRequest.current !== null) return
     if (scopedDocIds.length === 0) {
       toast.error('请先选择要抽取 KG 的文档')
       return
@@ -514,6 +494,10 @@ export default function DatasetKGWorkbenchPage() {
       toast.message(`已限制批量抽取数量：${docIds.length}/${scopedDocIds.length}`)
     }
 
+    const request = Symbol()
+    const sessionKey = getAuthSessionKey()
+    const isCurrent = () => extractionRequest.current === request && getAuthSessionKey() === sessionKey
+    extractionRequest.current = request
     setExtractRunning(true)
     setExtractProgress({ done: 0, total: docIds.length })
     setExtractResults({})
@@ -522,35 +506,36 @@ export default function DatasetKGWorkbenchPage() {
 
     try {
       await runWithConcurrency(docIds, concurrency, async (docId) => {
+        if (!isCurrent()) return
         try {
-          const res = await kgApi.extract(docId, {
-            async: false,
-            pipeline_hash: effectivePipelineHash,
-            replace_existing: replaceExisting,
-            prune_orphan_entities: pruneOrphans,
-          })
+          const res = await extractDocument(docId)
           nextResults[docId] = { ok: true, res }
         } catch (e: unknown) {
           const msg = formatApiError(e, 'KG 抽取失败')
           nextResults[docId] = { ok: false, error: msg }
         } finally {
-          setExtractProgress((prev) => (prev ? { ...prev, done: prev.done + 1 } : prev))
-          setExtractResults({ ...nextResults })
+          if (isCurrent()) {
+            setExtractProgress((prev) => (prev ? { ...prev, done: prev.done + 1 } : prev))
+            setExtractResults({ ...nextResults })
+          }
         }
       })
 
+      if (!isCurrent()) return
       const okCount = Object.values(nextResults).filter((x) => x.ok).length
       const failCount = docIds.length - okCount
       const resultLabel = `抽取完成：${okCount} 份成功，${failCount} 份失败`
       if (failCount) toast.error(resultLabel)
       else toast.success(resultLabel)
     } finally {
-      setExtractRunning(false)
+      if (extractionRequest.current === request) {
+        extractionRequest.current = null
+        setExtractRunning(false)
+      }
     }
-  }, [bulkConcurrency, bulkMaxDocs, effectivePipelineHash, extractRunning, pruneOrphans, replaceExisting, scopedDocIds])
+  }, [bulkConcurrency, bulkMaxDocs, extractDocument, scopedDocIds])
 
   const loadGraphPreview = useCallback(async () => {
-    if (!datasetId) return
     if (graphLoading) return
     if (scopedDocIds.length === 0) {
       toast.error('请先选择要预览的文档范围')
@@ -567,7 +552,7 @@ export default function DatasetKGWorkbenchPage() {
     const requestScope = previewScope
     setGraphError(null)
     setStatsError(null)
-    setGraphClusterResult(null)
+    setGraphClusters(null)
     setSelectedGraphNodeId(null)
     try {
       const [graph, stats] = await Promise.all([
@@ -593,14 +578,13 @@ export default function DatasetKGWorkbenchPage() {
       if (previewScopeRef.current !== requestScope) return
       setGraphError(formatApiError(e, '加载图预览失败'))
       setGraphData(null)
-      setGraphClusterResult(null)
+      setGraphClusters(null)
       setSelectedGraphNodeId(null)
       setGraphStats(null)
     } finally {
       if (previewScopeRef.current === requestScope) setGraphLoading(false)
     }
   }, [
-    datasetId,
     effectivePipelineHash,
     graphLoading,
     graphMaxDocs,
@@ -638,19 +622,19 @@ export default function DatasetKGWorkbenchPage() {
     try {
       const nodes = await kgApi.searchGraphNodes({
         q,
-        kind: searchKind === 'all' ? 'all' : searchKind,
+        kind: searchKind,
         limit: 20,
         document_ids: docIds,
         pipeline_hash: effectivePipelineHash,
       })
       if (previewScopeRef.current !== requestScope) return
-      setSearchResults(Array.isArray(nodes) ? nodes : [])
-      if (!nodes?.length) {
+      setSearchResults(nodes)
+      if (nodes.length === 0) {
         toast.message('未找到匹配节点')
       }
     } catch (e: unknown) {
-      reportClientError('Dataset KG quick search failed', e)
       if (previewScopeRef.current !== requestScope) return
+      reportClientError('Dataset KG quick search failed', e)
       toast.error(formatApiError(e, 'KG 搜索失败'))
       setSearchResults([])
     } finally {
@@ -685,7 +669,9 @@ export default function DatasetKGWorkbenchPage() {
                 </DropdownMenuItem>
                 <DropdownMenuItem onSelect={() => router.push('/graph/diagnostics')}>图谱诊断</DropdownMenuItem>
                 <DropdownMenuItem onSelect={() => router.push('/graph/snapshots')}>图谱快照</DropdownMenuItem>
-                <DropdownMenuItem onSelect={() => setActiveDocQuery(docQuery.trim())}>重新读取文档</DropdownMenuItem>
+                <DropdownMenuItem disabled={docsQuery.isFetching} onSelect={() => detachPromise(docsQuery.refetch())}>
+                  重新读取文档
+                </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
             <Button onClick={() => setExtractOpen(true)}>
@@ -773,48 +759,42 @@ export default function DatasetKGWorkbenchPage() {
                     </div>
                   ) : (
                     docs.map((doc) => {
-                      const id = String(doc.id || '')
-                      const filename = String(doc.filename || id || '')
-                      const status = String(doc.status || '')
+                      const { id, status } = doc
+                      const filename = doc.filename === '' ? id : doc.filename
                       const checked = selectedDocIds.has(id)
                       const isExtracting = singleExtractingDocId === id
 
                       return (
-                        <label
+                        <div
                           key={id}
                           className={cn(
-                            'flex items-start gap-2 border-b border-border/60 px-2 py-3 cursor-pointer transition-colors',
+                            'flex items-start gap-2 border-b border-border/60 px-2 py-3 transition-colors',
                             checked ? 'bg-primary/5' : 'hover:bg-muted/40',
                           )}
                         >
-                          <Checkbox
-                            aria-label={`选择文档 ${filename}`}
-                            checked={checked}
-                            onCheckedChange={(v) => toggleDoc(id, Boolean(v))}
-                            className="mt-0.5"
-                          />
-                          <div className="min-w-0 flex-1">
-                            <div className="text-sm font-medium truncate">{filename || id}</div>
-                            <div className="text-xs text-muted-foreground flex items-center gap-2">
-                              <span className="sr-only">{id}</span>
+                          <label className="flex min-w-0 flex-1 cursor-pointer items-start gap-2">
+                            <Checkbox
+                              aria-label={`选择文档 ${filename}`}
+                              checked={checked}
+                              onCheckedChange={(value) => toggleDoc(id, value === true)}
+                              className="mt-0.5"
+                            />
+                            <span className="min-w-0 flex-1">
+                              <span className="block truncate text-sm font-medium">{filename}</span>
                               {status ? (
                                 <Badge variant="outline" className="font-mono text-xs px-1.5 py-0">
                                   {status}
                                 </Badge>
                               ) : null}
-                            </div>
-                          </div>
+                            </span>
+                          </label>
                           <div className="flex-shrink-0">
                             <Button
                               variant="outline"
                               size="sm"
                               className="h-7 px-2 gap-1 text-xs"
-                              disabled={isExtracting}
-                              onClick={(e) => {
-                                e.preventDefault()
-                                e.stopPropagation()
-                                detachPromise(extractOneDoc(id))
-                              }}
+                              disabled={extractionBusy}
+                              onClick={() => detachPromise(extractOneDoc(id))}
                             >
                               {isExtracting ? (
                                 <Loader2 className="w-3.5 h-3.5 animate-spin motion-reduce:animate-none" />
@@ -824,7 +804,7 @@ export default function DatasetKGWorkbenchPage() {
                               抽取
                             </Button>
                           </div>
-                        </label>
+                        </div>
                       )
                     })
                   )}
@@ -872,9 +852,11 @@ export default function DatasetKGWorkbenchPage() {
               <Panel variant="seamless" className={ws.section}>
                 <div className="flex items-center justify-between gap-2">
                   <div className="font-semibold">选中节点</div>
-                  <Badge variant="secondary" className="font-mono text-xs">
-                    cluster={selectedNodeDetail.cluster}
-                  </Badge>
+                  {selectedNodeDetail.cluster !== undefined && (
+                    <Badge variant="secondary" className="font-mono text-xs">
+                      cluster={selectedNodeDetail.cluster}
+                    </Badge>
+                  )}
                 </div>
                 <div className="grid gap-1 text-xs text-muted-foreground md:grid-cols-2">
                   <div className="truncate">
@@ -897,7 +879,7 @@ export default function DatasetKGWorkbenchPage() {
                   ref={graphRef}
                   data={graphPreviewData}
                   onNodeClick={(node) => {
-                    const nodeId = String(node?.id || '').trim()
+                    const nodeId = node.id.trim()
                     if (!nodeId) return
                     setSelectedGraphNodeId(nodeId)
                   }}
@@ -990,7 +972,7 @@ export default function DatasetKGWorkbenchPage() {
                   <Button
                     className="gap-2"
                     onClick={() => detachPromise(extractSelected())}
-                    disabled={extractRunning || scopedDocIds.length === 0}
+                    disabled={extractionBusy || scopedDocIds.length === 0}
                   >
                     {extractRunning ? (
                       <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" />
@@ -1129,13 +1111,13 @@ export default function DatasetKGWorkbenchPage() {
                     {graphStats ? (
                       <>
                         <Badge variant="outline" className="font-mono text-xs">
-                          entities={Number(graphStats.entities || 0)}
+                          entities={graphStats.entities}
                         </Badge>
                         <Badge variant="outline" className="font-mono text-xs">
-                          events={Number(graphStats.events || 0)}
+                          events={graphStats.events}
                         </Badge>
                         <Badge variant="outline" className="font-mono text-xs">
-                          links={Number(graphStats.links || 0)}
+                          links={graphStats.links}
                         </Badge>
                       </>
                     ) : null}
@@ -1145,7 +1127,7 @@ export default function DatasetKGWorkbenchPage() {
                           clusters={graphClusterResult.clusterCount}
                         </Badge>
                         <Badge variant="secondary" className="font-mono text-xs">
-                          maxCluster={Number(graphClusterResult.clusterSizes[0] || 0)}
+                          maxCluster={graphClusterResult.clusterSizes[0] ?? 0}
                         </Badge>
                       </>
                     ) : null}
@@ -1167,6 +1149,7 @@ export default function DatasetKGWorkbenchPage() {
                 <div className="grid gap-2 grid-cols-[1fr_110px]">
                   <Input
                     value={searchQuery}
+                    aria-label="搜索图谱节点"
                     onChange={(e) => setSearchQuery(e.target.value)}
                     placeholder="搜索实体或事件"
                     className="h-9"
@@ -1223,14 +1206,18 @@ export default function DatasetKGWorkbenchPage() {
                         type="button"
                         className="w-full text-left rounded-lg border border-border/60 px-2 py-2 hover:bg-muted/40 transition-colors"
                         onClick={() => {
-                          const nodeId = String(n.id || '')
+                          const nodeId = n.id
+                          if (graphPreviewData?.nodes.some((node) => node.id === nodeId) !== true) {
+                            toast.info('当前图谱没有载入此节点。扩大预览范围后可定位。')
+                            return
+                          }
                           setSearchOpen(false)
+                          setPane('detail')
                           setSelectedGraphNodeId(nodeId)
                           graphRef.current?.focusNode(nodeId)
-                          toast.message(`聚焦节点：${String(n.label || n.id)}`)
                         }}
                       >
-                        <div className="text-xs font-medium truncate">{String(n.label || n.id)}</div>
+                        <div className="text-xs font-medium truncate">{n.label === '' ? n.id : n.label}</div>
                         <div className="text-xs text-muted-foreground font-mono truncate">{n.id}</div>
                       </button>
                     ))}

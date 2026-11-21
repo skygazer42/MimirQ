@@ -1,9 +1,10 @@
 import pytest
 
-from app.core.config import settings
-from app.rag import rerank_result_cache, retrieval_candidate_cache
-from app.rag.reranker.types import RerankResult
-from app.services import semantic_cache
+from app.infrastructure.config import settings
+from app.rag.retrieval.cache import candidates as retrieval_candidate_cache
+from app.rag.retrieval.cache import reranking as rerank_result_cache
+from app.rag.retrieval.reranking.types import RerankResult
+from app.services.retrieval import semantic_cache
 
 
 @pytest.fixture

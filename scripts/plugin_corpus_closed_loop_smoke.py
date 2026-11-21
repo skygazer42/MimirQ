@@ -172,7 +172,10 @@ def discover_corpus_files(
         if path.suffix.lower() not in allowed:
             continue
         rel = (Path(root.name) / local_rel).as_posix() if include_root_name else local_rel.as_posix()
-        size = path.stat().st_size
+        resolved_path = path.resolve()
+        if not resolved_path.is_relative_to(root):
+            raise RuntimeError(f"corpus file resolves outside source_dir: {local_rel.as_posix()}")
+        size = resolved_path.stat().st_size
         if skip_empty and size <= 0:
             skipped.append({"path": rel, "reason": "empty_file", "size": size})
             continue
@@ -184,7 +187,7 @@ def discover_corpus_files(
                 skipped.append({"path": rel, "reason": "group_sample_limit", "size": size, "group": group_key})
                 continue
             group_counts[group_key] = current_count + 1
-        files.append(CorpusFile(path=path, rel_path=rel, size=size))
+        files.append(CorpusFile(path=resolved_path, rel_path=rel, size=size))
         if max_files > 0 and len(files) >= max_files:
             break
     return files, skipped
@@ -372,15 +375,14 @@ def wait_for_uploaded_documents(
             if item.file.size > 0 and chunk_total <= 0:
                 raise RuntimeError(f"{item.file.rel_path} completed without chunks")
 
+            metadata = detail.get("doc_metadata") or detail.get("metadata") or {}
             final[doc_id] = {
-                "document_id": doc_id,
-                "source_rel_path": item.file.rel_path,
                 "filename": detail.get("filename"),
                 "status": status,
                 "chunk_total": chunk_total,
                 "file_size": detail.get("file_size"),
-                "parser_backend": (detail.get("doc_metadata") or detail.get("metadata") or {}).get("parser_backend"),
-                "pipeline_hash": (detail.get("doc_metadata") or detail.get("metadata") or {}).get("pipeline_hash"),
+                "parser_backend": metadata.get("parser_backend"),
+                "pipeline_hash": metadata.get("pipeline_hash"),
             }
             pending.pop(doc_id, None)
 
@@ -391,7 +393,10 @@ def wait_for_uploaded_documents(
         sample = [item.file.rel_path for item in list(pending.values())[:5]]
         raise RuntimeError(f"document processing timed out for {len(pending)} documents: {sample}")
 
-    return [final[item.document_id] for item in uploaded]
+    return [
+        {"document_id": item.document_id, "source_rel_path": item.file.rel_path, **final[item.document_id]}
+        for item in uploaded
+    ]
 
 
 def run_corpus_closed_loop_smoke(

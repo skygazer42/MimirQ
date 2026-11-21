@@ -19,4 +19,4 @@ pnpm run api-check
 Both commands verify:
 
 - Frontend calls must exist in backend routes.
-- Backend routes must have a corresponding entry in `web/lib/api-client.ts`.
+- Browser-facing backend routes must have a corresponding entry in `web/lib/api/`.

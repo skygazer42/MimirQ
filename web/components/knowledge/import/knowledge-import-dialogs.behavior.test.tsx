@@ -4,7 +4,7 @@ import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { ConnectorRunOut } from '@/types'
+import type { ConnectorRunOut } from '@/types/connectors'
 import { setAccessToken, setAuthSession } from '@/lib/auth-storage'
 
 const api = vi.hoisted(() => ({ createRun: vi.fn(), listRuns: vi.fn() }))
@@ -97,6 +97,26 @@ const cases = [
     label: 'Start Jira Sync',
   },
 ] as const
+
+function fillImportDraft(host: HTMLElement, testCase: (typeof cases)[number], value: string) {
+  if (testCase.name === 'Jira project') {
+    setDraftValue(host, 'input[type="url"]', 'https://jira.example.org')
+  }
+  setDraftValue(host, testCase.selector, value)
+}
+
+function setDraftValue(host: HTMLElement, selector: string, value: string) {
+  const field = host.querySelector(selector)
+  if (field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement) {
+    const prototype = field instanceof HTMLInputElement ? HTMLInputElement.prototype : HTMLTextAreaElement.prototype
+    Object.getOwnPropertyDescriptor(prototype, 'value')!.set!.call(field, value)
+    field.dispatchEvent(new Event('input', { bubbles: true }))
+    field.dispatchEvent(new Event('change', { bubbles: true }))
+    return
+  }
+  throw new Error(`draft field missing: ${selector}`)
+}
+
 const run: ConnectorRunOut = {
   id: 'accepted-run',
   tenant_id: 'tenant-1',
@@ -148,13 +168,7 @@ function setup(testCase: (typeof cases)[number]) {
     return field
   }
   async function fill(value: string) {
-    const field = input()
-    const prototype = field instanceof HTMLInputElement ? HTMLInputElement.prototype : HTMLTextAreaElement.prototype
-    await act(async () => {
-      Object.getOwnPropertyDescriptor(prototype, 'value')!.set!.call(field, value)
-      field.dispatchEvent(new Event('input', { bubbles: true }))
-      field.dispatchEvent(new Event('change', { bubbles: true }))
-    })
+    await act(async () => fillImportDraft(host, testCase, value))
   }
   function button() {
     const buttons = Array.from(host.querySelectorAll('button'))
@@ -234,7 +248,17 @@ describe.each(cases)('$name import ownership', (testCase) => {
   it('preserves current success across an ordinary token refresh and retains drafts on error', async () => {
     const view = setup(testCase)
     const pending = deferred()
+    const hasConnectorRefresh = testCase.name !== 'single URL'
     view.submit.mockReturnValueOnce(pending.promise)
+    if (testCase.name === 'single URL') {
+      view.props.onAfterImport.mockImplementationOnce(() => {
+        throw new Error('refresh failed after upload')
+      })
+    } else {
+      view.props.loadConnectorRuns.mockImplementationOnce(() => {
+        throw new Error('task refresh failed after creation')
+      })
+    }
     await view.visit()
     await view.fill(testCase.value)
     await act(async () => view.button().click())
@@ -242,6 +266,8 @@ describe.each(cases)('$name import ownership', (testCase) => {
     await act(async () => pending.resolve(run))
     expect(view.props.onOpenChange).toHaveBeenCalledWith(false)
     expect(notices.success).toHaveBeenCalledTimes(1)
+    expect(notices.error).not.toHaveBeenCalled()
+    if (hasConnectorRefresh) expect(view.props.loadDocuments).toHaveBeenCalledTimes(1)
     await view.visit(false)
     await view.visit()
     await view.fill(testCase.next)
@@ -249,6 +275,7 @@ describe.each(cases)('$name import ownership', (testCase) => {
     await act(async () => view.button().click())
     expect(view.input().value).toBe(testCase.next)
     expect(notices.error).toHaveBeenCalledWith('current import failed')
+    expect(notices.success).toHaveBeenCalledTimes(1)
     expect(view.button().disabled).toBe(false)
   })
 })
@@ -313,13 +340,7 @@ describe.each(cases.filter((testCase) => testCase.name !== 'single URL'))(
           button('load selected runs').click()
           await vi.waitFor(() => expect(host.querySelector('[data-visible-runs]')?.textContent).toBe('run-A'))
         })
-        const input = host.querySelector<HTMLInputElement | HTMLTextAreaElement>(testCase.selector)!
-        const prototype = input instanceof HTMLInputElement ? HTMLInputElement.prototype : HTMLTextAreaElement.prototype
-        await act(async () => {
-          Object.getOwnPropertyDescriptor(prototype, 'value')!.set!.call(input, testCase.value)
-          input.dispatchEvent(new Event('input', { bubbles: true }))
-          input.dispatchEvent(new Event('change', { bubbles: true }))
-        })
+        await act(async () => fillImportDraft(host, testCase, testCase.value))
         await act(async () => button(testCase.label).click())
         await visit('ds-1', false)
         await visit('ds-2', true)

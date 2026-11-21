@@ -1,7 +1,7 @@
 'use client'
 
 import type { ComponentProps, ReactNode } from 'react'
-import type { GraphData } from '@/lib/graph-parser'
+import type { GraphData } from '@/lib/graph-types'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { GraphCanvas } from './graph-canvas'
 import { GraphContextMenu } from './graph-context-menu'
@@ -58,7 +58,7 @@ export function GraphPageBody({
     <div className={styles.canvasRegion} data-graph-canvas-zone>
       {canvasLabel}
       <div className={styles.graphViewport}>
-        <GraphCanvas {...canvasProps} showSemanticPanel={false} />
+        <GraphCanvas {...canvasProps} />
       </div>
       <GraphContextMenu {...contextMenuProps} />
       <GraphExplainabilityPanel
@@ -81,7 +81,6 @@ export function GraphPageBody({
             nodes={networkAnalysisNodes}
             links={networkAnalysisLinks}
             selectedNodeId={networkAnalysisSelectedNodeId}
-            embedded
           />
         </DialogContent>
       </Dialog>

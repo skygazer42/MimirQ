@@ -2,6 +2,7 @@
 
 import type { BackendMetaDetails } from '@/lib/api/meta'
 import type { SystemStatus } from '@/types/settings'
+import { getParserLabel } from '@/lib/parser-options'
 import { cn } from '@/lib/utils'
 import { CheckCircle2, ChevronDown, XCircle } from '@/components/icons'
 import styles from '../settings.module.css'
@@ -13,9 +14,9 @@ function StatusRow({
   ready,
   message,
   configuration = false,
-}: Readonly<{ label: string; ready: boolean; message: string; configuration?: boolean }>) {
+}: Readonly<{ label: string; ready: boolean; message?: string; configuration?: boolean }>) {
   const statusLabel = configuration ? (ready ? '已配置' : '未配置') : ready ? '已连接' : '未连接'
-  const detail = message && message !== 'connected' && message !== statusLabel ? message : null
+  const detail = message === 'connected' || message === statusLabel ? undefined : message
   return (
     <div className={styles.statusRow}>
       <dt className={styles.statusName}>{label}</dt>
@@ -33,30 +34,9 @@ function StatusRow({
   )
 }
 
-function formatParserName(key: string): string {
-  const labels: Record<string, string> = {
-    basic: '基础解析',
-    markitdown: 'MarkItDown',
-    pandoc: 'Pandoc',
-    libreoffice: 'LibreOffice',
-    deepdoc: 'DeepDoc',
-    deepseek_ocr: 'DeepSeek OCR',
-    qianfan_ocr: '千帆 OCR',
-    etl4llm: 'ETL4LLM',
-    marker: 'Marker',
-    paddle_vl: 'PaddleOCR-VL',
-    textin: 'TextIn',
-    olmocr: 'OLMOCR',
-    docling: 'Docling',
-    mineru: 'MinerU',
-    magicpdf: 'MagicPDF',
-  }
-  return labels[key] || key
-}
-
 export function SystemStatusSection({ status, backendMeta }: Readonly<SystemStatusSectionProps>) {
-  const parsers = Object.entries(status.parsers || {})
-  const availableParsers = parsers.filter(([, info]) => info.available).length
+  const parsers = Object.entries(status.parsers)
+  const availableParsers = parsers.filter(([, info]) => info.enabled && info.available).length
   return (
     <div className={styles.statusGroups}>
       <section className={styles.statusGroup} aria-labelledby="status-data-title">
@@ -82,18 +62,18 @@ export function SystemStatusSection({ status, backendMeta }: Readonly<SystemStat
           <StatusRow
             label="语言模型"
             ready={status.llm.configured}
-            message={status.llm.configured ? status.llm.model : ''}
+            message={status.llm.configured ? status.llm.model : undefined}
             configuration
           />
           <StatusRow
             label="向量模型"
             ready={status.embedding.configured}
-            message={status.embedding.configured ? status.embedding.model : ''}
+            message={status.embedding.configured ? status.embedding.model : undefined}
             configuration
           />
         </dl>
       </section>
-      {backendMeta || parsers.length ? (
+      {backendMeta !== null || parsers.length > 0 ? (
         <details open className={styles.statusParsers}>
           <summary className={cn(styles.statusSummary, 'focus-ring')}>
             <span>解析器与运行环境</span>
@@ -107,19 +87,19 @@ export function SystemStatusSection({ status, backendMeta }: Readonly<SystemStat
           <div className={styles.statusParserBody}>
             {parsers.length ? (
               <ul aria-label="解析器状态" className={styles.statusParserList}>
-                {parsers.map(([key, info]) => (
-                  <li key={key} title={info.message || formatParserName(key)} className={styles.statusParserRow}>
-                    <span>{formatParserName(key)}</span>
-                    <span
-                      className={cn(
-                        styles.statusParserState,
-                        info.available ? 'text-success' : 'text-muted-foreground',
-                      )}
-                    >
-                      {info.available ? '可用' : '未启用'}
-                    </span>
-                  </li>
-                ))}
+                {parsers.map(([key, info]) => {
+                  const isAvailable = info.enabled && info.available
+                  return (
+                    <li key={key} title={info.message} className={styles.statusParserRow}>
+                      <span>{key === 'libreoffice' ? 'LibreOffice' : getParserLabel(key)}</span>
+                      <span
+                        className={cn(styles.statusParserState, isAvailable ? 'text-success' : 'text-muted-foreground')}
+                      >
+                        {isAvailable ? '可用' : info.enabled ? '不可用' : '未启用'}
+                      </span>
+                    </li>
+                  )
+                })}
               </ul>
             ) : null}
             {backendMeta ? (

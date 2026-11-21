@@ -8,25 +8,20 @@ const sentryEnabled = Boolean(
   process.env.NEXT_PUBLIC_SENTRY_DSN || process.env.SENTRY_DSN || process.env.SENTRY_AUTH_TOKEN,
 )
 const localDevHostnames = new Set(['localhost', '127.0.0.1', '0.0.0.0', 'web', 'mimirq-api'])
-const hstsDisabled =
-  String(process.env.NEXT_DISABLE_HSTS || '')
-    .trim()
-    .toLowerCase() === '1' ||
-  String(process.env.NEXT_DISABLE_HSTS || '')
-    .trim()
-    .toLowerCase() === 'true'
+const hstsSetting = process.env.NEXT_DISABLE_HSTS?.trim().toLowerCase()
+const hstsDisabled = hstsSetting === '1' || hstsSetting === 'true'
 
 function isLocalDevOrigin(value) {
   try {
     const parsed = new URL(value)
-    return parsed.protocol === 'http:' && localDevHostnames.has((parsed.hostname || '').toLowerCase())
+    return parsed.protocol === 'http:' && localDevHostnames.has(parsed.hostname.toLowerCase())
   } catch {
     return false
   }
 }
 
 const shouldSendHsts =
-  process.env.NODE_ENV === 'production' && !hstsDisabled && !isLocalDevOrigin(process.env.NEXT_PUBLIC_API_URL || '')
+  process.env.NODE_ENV === 'production' && !hstsDisabled && !isLocalDevOrigin(process.env.NEXT_PUBLIC_API_URL)
 const withNextIntl = createNextIntlPlugin('./i18n/request.ts')
 const sharedSecurityHeaders = [
   { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
@@ -43,8 +38,7 @@ if (shouldSendHsts) {
 }
 
 function isPrivateLanAddress(value) {
-  const text = String(value || '').trim()
-  if (!text) return false
+  const text = value.trim()
   if (text === '127.0.0.1' || text === '0.0.0.0') return true
   if (text.startsWith('10.')) return true
   if (text.startsWith('192.168.')) return true
@@ -53,28 +47,22 @@ function isPrivateLanAddress(value) {
   if (!match) return false
 
   const secondOctet = Number(match[1])
-  return Number.isFinite(secondOctet) && secondOctet >= 16 && secondOctet <= 31
+  return secondOctet >= 16 && secondOctet <= 31
 }
 
 function collectLanInterfaceOrigins(interfaces) {
-  const out = []
+  const origins = []
 
-  for (const items of Object.values(interfaces || {})) {
-    for (const item of items || []) {
-      if (!item || item.family !== 'IPv4') continue
+  for (const items of Object.values(interfaces)) {
+    for (const item of items ?? []) {
+      if (item.family !== 'IPv4') continue
       if (item.internal) continue
       if (!isPrivateLanAddress(item.address)) continue
-      out.push(String(item.address))
+      origins.push(item.address)
     }
   }
 
-  return out
-}
-
-function trimConfigUrl(value) {
-  return String(value || '')
-    .trim()
-    .replace(/\/+$/, '')
+  return origins
 }
 
 function safeNetworkInterfaces() {
@@ -86,23 +74,18 @@ function safeNetworkInterfaces() {
 }
 
 export function resolveAllowedDevOrigins(env = process.env, interfaces = safeNetworkInterfaces()) {
-  const extra = String(env.NEXT_ALLOWED_DEV_ORIGINS || '')
-    .split(',')
-    .map((item) => item.trim())
-    .filter(Boolean)
+  const extra =
+    env.NEXT_ALLOWED_DEV_ORIGINS?.split(',')
+      .map((item) => item.trim())
+      .filter((item) => item !== '') ?? []
 
   return Array.from(new Set(['127.0.0.1', 'localhost', '0.0.0.0', ...collectLanInterfaceOrigins(interfaces), ...extra]))
 }
 
 export function resolveBackendProxyBase(env = process.env) {
-  const candidates = [
-    trimConfigUrl(env.API_INTERNAL_URL),
-    trimConfigUrl(env.NEXT_PUBLIC_API_URL),
-    'http://127.0.0.1:8000',
-  ]
-
-  for (const candidate of candidates) {
-    if (candidate.startsWith('http://') || candidate.startsWith('https://')) {
+  for (const url of [env.API_INTERNAL_URL, env.NEXT_PUBLIC_API_URL]) {
+    const candidate = url?.trim().replace(/\/+$/, '')
+    if (candidate?.startsWith('http://') || candidate?.startsWith('https://')) {
       return candidate
     }
   }
@@ -113,6 +96,7 @@ export function resolveBackendProxyBase(env = process.env) {
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  devIndicators: false,
   poweredByHeader: false,
   skipTrailingSlashRedirect: true,
   allowedDevOrigins: resolveAllowedDevOrigins(),
@@ -193,13 +177,9 @@ const nextConfig = {
 
 const nextIntlConfig = withNextIntl(nextConfig)
 
-const sentryWrappedConfig = withSentryConfig(nextIntlConfig, {
-  silent: true,
-  webpack: {
-    treeshake: {
-      removeDebugLogging: true,
-    },
-  },
-})
-
-export default sentryEnabled ? sentryWrappedConfig : nextIntlConfig
+export default sentryEnabled
+  ? withSentryConfig(nextIntlConfig, {
+      silent: true,
+      webpack: { treeshake: { removeDebugLogging: true } },
+    })
+  : nextIntlConfig

@@ -9,7 +9,6 @@ __all__ = [
     "ExpandConfig",
     "RerankConfig",
     "SearchConfig",
-    "SearchBaseConfig",
     "search_kg",
     "recall_kg",
     "RecallResult",
@@ -32,7 +31,6 @@ def __getattr__(name: str) -> Any:  # pragma: no cover
         "ExpandConfig",
         "RerankConfig",
         "SearchConfig",
-        "SearchBaseConfig",
     }:
         from app.rag.kg.search.config import (
             ExpandConfig,
@@ -40,7 +38,6 @@ def __getattr__(name: str) -> Any:  # pragma: no cover
             RerankConfig,
             RerankStrategy,
             ReturnType,
-            SearchBaseConfig,
             SearchConfig,
         )
 
@@ -51,7 +48,6 @@ def __getattr__(name: str) -> Any:  # pragma: no cover
             "ExpandConfig": ExpandConfig,
             "RerankConfig": RerankConfig,
             "SearchConfig": SearchConfig,
-            "SearchBaseConfig": SearchBaseConfig,
         }[name]
 
     if name == "search_kg":
@@ -87,4 +83,4 @@ def __getattr__(name: str) -> Any:  # pragma: no cover
             "build_mode_aware_recall_overrides": build_mode_aware_recall_overrides,
         }[name]
 
-    raise AttributeError(f"module 'app.kg.search' has no attribute {name!r}")
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

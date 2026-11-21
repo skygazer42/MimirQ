@@ -1,6 +1,5 @@
 'use client'
 
-import { AlertCircle, CheckCircle2, CircleDashed } from '@/components/icons'
 import type { ReactNode } from 'react'
 
 import { cn } from '@/lib/utils'
@@ -8,12 +7,6 @@ import { workspaceStyles as ws } from '@/components/ui/operational-workspace'
 
 import { INLINE_STAT_TONE_CLASSES, INLINE_STAT_VALUE_TONE_CLASSES } from '../constants'
 import type { SnapshotInlineStatTone } from '../types'
-
-export function getHashPairIcon(hasA: boolean, hasB: boolean): ReactNode {
-  if (hasA && hasB) return <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />
-  if (hasA || hasB) return <AlertCircle className="h-3.5 w-3.5" aria-hidden="true" />
-  return <CircleDashed className="h-3.5 w-3.5" aria-hidden="true" />
-}
 
 export function SnapshotInlineStat({
   icon,
@@ -44,31 +37,6 @@ export function SnapshotInlineStat({
         {value}
       </span>
     </div>
-  )
-}
-
-export function WorkspaceSection({
-  icon,
-  label,
-  hint,
-  children,
-}: Readonly<{
-  icon?: ReactNode
-  label: string
-  hint?: string
-  children: ReactNode
-}>) {
-  return (
-    <section className={cn(ws.section, 'space-y-3')}>
-      <div className="flex items-center justify-between gap-2">
-        <div className="inline-flex items-center gap-2 text-sm font-semibold text-foreground">
-          {icon ? <span className="flex h-3.5 w-3.5 items-center justify-center text-primary/70">{icon}</span> : null}
-          {label}
-        </div>
-        {hint ? <span className="text-xs text-muted-foreground">{hint}</span> : null}
-      </div>
-      {children}
-    </section>
   )
 }
 

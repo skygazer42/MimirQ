@@ -19,7 +19,7 @@ def _load_json(path: Path) -> dict[str, Any]:
 
 
 def run(*, capsule_path: Path, strict: bool = True, verify_signature: bool = False) -> dict[str, Any]:
-    from app.rag.core.evidence_capsule_builder import (
+    from app.rag.retrieval.evidence.capsule import (
         EVIDENCE_CAPSULE_SCHEMA_V1,
         recompute_capsule_hash,
         validate_evidence_capsule,
@@ -41,7 +41,7 @@ def run(*, capsule_path: Path, strict: bool = True, verify_signature: bool = Fal
     actual_hash = recompute_capsule_hash(capsule)
     hash_valid = bool(expected_hash and expected_hash == actual_hash)
     signature_valid = None
-    signature_reason = ""
+    signature_reason: str | None = None
     if verify_signature:
         signature_valid, signature_reason = verify_evidence_capsule_signature(capsule)
 
@@ -83,7 +83,7 @@ def run(*, capsule_path: Path, strict: bool = True, verify_signature: bool = Fal
         "capsule_hash_recomputed": actual_hash,
         "capsule_hash_valid": hash_valid,
         "signature_valid": signature_valid,
-        "signature_reason": (signature_reason),
+        "signature_reason": signature_reason,
         "replay_request": replay_request,
         "must_recall": {
             "status": str(must_recall.get("status") or ""),

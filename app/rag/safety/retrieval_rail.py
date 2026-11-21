@@ -3,7 +3,7 @@ from typing import Any
 
 from langchain_core.documents import Document
 
-from app.rag.preprocessing.pii_anonymizer import anonymize_pii
+from app.rag.ingestion.governance.redaction.pii_anonymizer import anonymize_pii
 
 _INDIRECT_INJECTION_RE = re.compile(
     r"忽略.*规则|忽略前面|system prompt|developer message|ignore previous|act as root",
@@ -30,9 +30,9 @@ def apply_retrieval_rail(
             pii = anonymize_pii(text, enabled=True, mode="mask", mask=str(pii_mask or "[REDACTED]"))
             if pii.changed:
                 masked_docs += 1
-                metadata = dict(getattr(doc, "metadata", None) or {})
+                metadata = dict(doc.metadata)
                 metadata["retrieval_rail_pii_masked"] = True
-                new_doc = Document(page_content=pii.text, metadata=metadata, id=getattr(doc, "id", None))
+                new_doc = Document(page_content=pii.text, metadata=metadata, id=doc.id)
         kept.append(new_doc)
 
     return {

@@ -1,7 +1,7 @@
 from collections import Counter
 from typing import Any
 
-from app.rag.evaluation.datasets.schema import normalize_eval_dataset_sample
+from app.rag.evaluation.datasets.schema import EVAL_DATASET_MANIFEST_SCHEMA_V1, normalize_eval_dataset_sample
 
 
 def build_stage3_manifest(
@@ -11,17 +11,22 @@ def build_stage3_manifest(
     dataset_version: str,
     generated_at: str,
 ) -> dict[str, Any]:
-    normalized_rows = [normalize_eval_dataset_sample(row) for row in (rows or []) if isinstance(row, dict)]
-    query_counts = Counter(row["query_type"] for row in normalized_rows)
-    source_counts = Counter(row["source_type"] for row in normalized_rows)
+    query_counts: Counter[str] = Counter()
+    source_counts: Counter[str] = Counter()
+    for raw_row in rows or []:
+        if not isinstance(raw_row, dict):
+            continue
+        row = normalize_eval_dataset_sample(raw_row)
+        query_counts[row["query_type"]] += 1
+        source_counts[row["source_type"]] += 1
     return {
         "dataset_name": dataset_name.strip() or "stage3-dataset",
-        "schema_version": "mimirq.eval.dataset.manifest.v1",
+        "schema_version": EVAL_DATASET_MANIFEST_SCHEMA_V1,
         "dataset_version": dataset_version.strip() or "unknown",
-        "sample_count": len(normalized_rows),
-        "source_type_counts": dict(sorted(source_counts.items(), key=lambda kv: kv[0])),
-        "query_type_counts": dict(sorted(query_counts.items(), key=lambda kv: kv[0])),
-        "generated_at": (generated_at),
+        "sample_count": sum(query_counts.values()),
+        "source_type_counts": dict(sorted(source_counts.items())),
+        "query_type_counts": dict(sorted(query_counts.items())),
+        "generated_at": generated_at,
     }
 
 

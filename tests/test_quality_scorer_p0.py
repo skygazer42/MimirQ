@@ -8,7 +8,7 @@ Tests:
 
 import pytest
 
-from app.rag.chunking.quality_scorer import (
+from app.rag.ingestion.chunking.quality_scorer import (
     CONTEXT_CLIFF_DANGER,
     CONTEXT_CLIFF_WARNING,
     MAX_CHUNK_SIZE_TOKENS,

@@ -23,7 +23,7 @@ def _parse_bool(raw: str | bool) -> bool:
 
 
 def _build_parser() -> argparse.ArgumentParser:
-    from app.core.config import settings
+    from app.infrastructure.config import settings
 
     p = argparse.ArgumentParser(
         description="Validate retrieval_profile + reranker compatibility before runtime.",
@@ -41,8 +41,8 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 def _collect_issues(args: argparse.Namespace) -> tuple[list[str], dict[str, Any]]:
-    from app.rag.core.retrieval_profiles import apply_retrieval_profile_overrides, normalize_retrieval_profile
-    from app.rag.reranker.factory import describe_reranker_provider
+    from app.rag.retrieval.configuration.profiles import apply_retrieval_profile_overrides, normalize_retrieval_profile
+    from app.rag.retrieval.reranking.providers import describe_reranker_provider
 
     issues: list[str] = []
     profile = normalize_retrieval_profile(args.retrieval_profile)
@@ -65,18 +65,18 @@ def _collect_issues(args: argparse.Namespace) -> tuple[list[str], dict[str, Any]
     try:
         effective = apply_retrieval_profile_overrides(profile=profile, **profile_options)
     except Exception as exc:  # noqa: BLE001
-        issues.append(f"invalid retrieval profile configuration: {str(exc)}")
+        issues.append(f"invalid retrieval profile configuration: {exc}")
         effective = {
             "retrieval_profile": profile,
             **profile_options,
         }
 
     requested_provider = str(args.reranker_provider or "").strip().lower()
-    requested_enable_reranker = bool(args.enable_reranker)
-    requested_top_n = int(args.reranker_top_n or 0)
+    requested_enable_reranker = profile_options["enable_reranker"]
+    requested_top_n = profile_options["reranker_top_n"]
 
     effective_provider = str(effective.get("reranker_provider") or "").strip().lower()
-    provider_meta = describe_reranker_provider((effective_provider))
+    provider_meta = describe_reranker_provider(effective_provider)
     provider_norm = str(provider_meta.get("provider") or effective_provider or "").strip().lower()
     provider_tier = str(provider_meta.get("tier") or "").strip().lower()
     effective_enable_reranker = bool(effective.get("enable_reranker"))
@@ -107,10 +107,10 @@ def _collect_issues(args: argparse.Namespace) -> tuple[list[str], dict[str, Any]
         "requested": {
             "retrieval_profile": profile,
             "retrieval_mode": str(args.retrieval_mode or ""),
-            "top_k": int(args.top_k or 0),
-            "score_threshold": float(args.score_threshold or 0.0),
+            "top_k": profile_options["top_k"],
+            "score_threshold": profile_options["score_threshold"],
             "enable_reranker": requested_enable_reranker,
-            "reranker_provider": (requested_provider),
+            "reranker_provider": requested_provider,
             "reranker_top_n": requested_top_n,
         },
         "effective": {
@@ -119,8 +119,8 @@ def _collect_issues(args: argparse.Namespace) -> tuple[list[str], dict[str, Any]
             "top_k": int(effective.get("top_k") or 0),
             "score_threshold": float(effective.get("score_threshold") or 0.0),
             "enable_reranker": effective_enable_reranker,
-            "reranker_provider": (provider_norm),
-            "reranker_tier": (provider_tier),
+            "reranker_provider": provider_norm,
+            "reranker_tier": provider_tier,
             "reranker_top_n": effective_top_n,
             "enable_weight_rerank": bool(effective.get("enable_weight_rerank", True)),
         },

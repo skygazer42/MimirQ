@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { datasetApi } from '@/lib/api/datasets'
@@ -22,23 +22,24 @@ import {
   validateParams,
   type JsonRecord,
   type PreviewResult,
+  type ProbeStatus,
   type ScopeSnapshot,
   type Verdict,
 } from './diagnostics-model'
 
 export const ALL_DATASETS = '__all_datasets__'
-export type Probe<T> = { status: 'idle' | 'running' | 'success' | 'error'; result: T | null; error: string }
-export type ScopedSnapshot = {
+type Probe<T> = { status: ProbeStatus; result: T | null; error: string | null }
+type ScopedSnapshot = {
   data: JsonRecord
   scope: ScopeSnapshot
   params: { first: string; second: string }
   finishedAt: number
 }
-const emptyProbe = <T>(): Probe<T> => ({ status: 'idle', result: null, error: '' })
+const emptyProbe = <T>(): Probe<T> => ({ status: 'idle', result: null, error: null })
 
 export function useDiagnostics() {
-  const health = useBackendHealth(),
-    meta = useBackendMetaDetails()
+  const health = useBackendHealth()
+  const meta = useBackendMetaDetails()
   const ready = useQuery({
     queryKey: queryKeys.diagnostics.ready,
     queryFn: () => healthApi.ready(),
@@ -62,23 +63,28 @@ export function useDiagnostics() {
     retry: 1,
   })
   const datasetsQuery = useQuery({
-    queryKey: queryKeys.datasets.exhaustive({ purpose: 'diagnostics' }),
-    queryFn: () => datasetApi.listAll(),
+    queryKey: queryKeys.datasets.exhaustive(),
+    queryFn: ({ signal }) => datasetApi.listAll(undefined, { signal }),
     staleTime: 30_000,
   })
   const [datasetChoice, setDatasetChoice] = useState<string | null>(null)
+  useEffect(() => {
+    const options = datasetsQuery.data
+    if (options === undefined) return
+    setDatasetChoice((previous) => previous ?? options[0]?.id ?? ALL_DATASETS)
+  }, [datasetsQuery.data])
   const [documentIds, setDocumentIds] = useState<string[]>([])
   const [query, setQuery] = useState('')
   const [tab, setTab] = useState('retrieval')
-  const [detailsOpen, setDetailsOpen] = useState(false),
-    [servicesOpen, setServicesOpen] = useState(false)
+  const [detailsOpen, setDetailsOpen] = useState(false)
+  const [servicesOpen, setServicesOpen] = useState(false)
   const [preview, setPreview] = useState<Probe<PreviewResult>>(emptyProbe)
   const [drift, setDrift] = useState<Probe<ScopedSnapshot>>(emptyProbe)
   const [perf, setPerf] = useState<Probe<ScopedSnapshot>>(emptyProbe)
   const [driftParams, setDriftParams] = useState({ first: '200', second: '0.05' })
   const [perfParams, setPerfParams] = useState({ first: '10', second: '2' })
-  const [driftErrors, setDriftErrors] = useState<Record<string, string>>({}),
-    [perfErrors, setPerfErrors] = useState<Record<string, string>>({})
+  const [driftErrors, setDriftErrors] = useState<Record<string, string>>({})
+  const [perfErrors, setPerfErrors] = useState<Record<string, string>>({})
   const [visibleMetrics, setVisibleMetrics] = useState(() => metricRows(null).map((metric) => metric.key))
   const locks = useRef({ preview: false, drift: false, perf: false })
   const openers = useRef<{ details: HTMLElement | null; services: HTMLElement | null }>({
@@ -86,32 +92,45 @@ export function useDiagnostics() {
     services: null,
   })
   const datasets = datasetsQuery.data ?? []
-  const datasetId = datasetChoice === ALL_DATASETS ? '' : (datasetChoice ?? datasets[0]?.id ?? '')
+  const scopeSelected = datasetChoice !== null
+  const datasetId = datasetChoice === null || datasetChoice === ALL_DATASETS ? '' : datasetChoice
   const activeDataset = useQuery({
     queryKey: queryKeys.datasets.detail(datasetId),
     enabled: Boolean(datasetId),
-    queryFn: () => datasetApi.get(datasetId),
+    queryFn: ({ signal }) => datasetApi.get(datasetId, { signal }),
     staleTime: 30_000,
   })
+  const documentParams = {
+    skip: 0,
+    limit: 200,
+    dataset_id: datasetId,
+    order_by: 'created_at',
+    order_dir: 'desc',
+  } as const
   const documentsQuery = useQuery({
-    queryKey: queryKeys.documents.list({
-      dataset_id: datasetId,
-      limit: 200,
-      order_by: 'created_at',
-      order_dir: 'desc',
-    }),
+    queryKey: queryKeys.documents.list(documentParams),
     enabled: Boolean(datasetId),
-    queryFn: () =>
-      documentApi.list({ skip: 0, limit: 200, dataset_id: datasetId, order_by: 'created_at', order_dir: 'desc' }),
+    queryFn: ({ signal }) => documentApi.list(documentParams, { signal }),
     staleTime: 15_000,
   })
   const documents = documentsQuery.data?.items ?? []
   const dataset = activeDataset.data ?? datasets.find((d) => d.id === datasetId) ?? null
   const scopeBusy = preview.status === 'running' || drift.status === 'running'
-  const missingDocuments = documentIds.some((id) => !documents.some((d) => d.id === id))
+  const selectedDocumentsUnavailable = documentIds.length > 0 && documentsQuery.data === undefined
+  const missingDocuments =
+    documentsQuery.data !== undefined &&
+    documentsQuery.data.total === documents.length &&
+    documentIds.some((id) => !documents.some((d) => d.id === id))
   const missingDataset = Boolean(
     datasetId && !datasetsQuery.isPending && !datasetsQuery.isError && !datasets.some((d) => d.id === datasetId),
   )
+  const canRunPreview =
+    query.trim() !== '' &&
+    !missingDataset &&
+    !missingDocuments &&
+    !selectedDocumentsUnavailable &&
+    scopeSelected &&
+    (datasetId === '' || !activeDataset.isPending)
   const contract = activeDataset.data?.rag_defaults
   const contractReason = !datasetId
     ? '未限定数据集，不读取数据集检索配置。'
@@ -121,8 +140,8 @@ export function useDiagnostics() {
         ? '数据集未配置检索参数，链路配置暂不可用。'
         : null
   const vectorBackend =
-    text(record(record(health.data?.payload).vector).backend) ??
-    text(record(health.data?.payload).vector_backend) ??
+    text(record(health.data?.vector).backend) ??
+    text(health.data?.vector_backend) ??
     text(record(record(meta.data).features).vector_backend)
   const canDrift = vectorBackend === null || vectorBackend === 'milvus'
   const scope = (): ScopeSnapshot => ({
@@ -133,18 +152,18 @@ export function useDiagnostics() {
     query: query.trim(),
   })
   const services = useMemo(() => {
-    const h = record(health.data?.payload),
-      d = record(deps.data)
+    const healthDetails = health.data
+    const dependencyDetails = record(deps.data)
     const healthState: Verdict = health.isError
       ? { label: '获取失败', tone: 'danger' }
       : health.isPending
         ? { label: '检查中', tone: 'neutral' }
-        : record(health.data?.payload).ok === true
+        : healthDetails?.ok === true
           ? { label: '已连接', tone: 'success' }
           : { label: '异常', tone: 'danger' }
     return [
       { key: 'api', name: '服务 API', ...healthState },
-      { key: 'postgres', name: 'PostgreSQL', ...dependencyState(h.database, d.postgres) },
+      { key: 'postgres', name: 'PostgreSQL', ...dependencyState(healthDetails?.database, dependencyDetails.postgres) },
       {
         key: 'vector',
         name:
@@ -153,10 +172,10 @@ export function useDiagnostics() {
             : vectorBackend === 'memory'
               ? '向量后端'
               : (vectorBackend ?? '向量后端'),
-        ...dependencyState(h.vector, d.milvus),
+        ...dependencyState(healthDetails?.vector, dependencyDetails.milvus),
       },
-      { key: 'redis', name: 'Redis', ...dependencyState(h.redis, d.redis) },
-      { key: 'minio', name: 'MinIO', ...dependencyState(h.minio, d.minio) },
+      { key: 'redis', name: 'Redis', ...dependencyState(healthDetails?.redis, dependencyDetails.redis) },
+      { key: 'minio', name: 'MinIO', ...dependencyState(healthDetails?.minio, dependencyDetails.minio) },
     ]
   }, [health.data, health.isError, health.isPending, deps.data, vectorBackend])
   const systemState: Verdict =
@@ -164,7 +183,7 @@ export function useDiagnostics() {
       ? { label: '检查中', tone: 'neutral' }
       : health.isError || ready.isError
         ? { label: '状态获取失败', tone: 'warning' }
-        : record(health.data?.payload).ok === true && record(ready.data).ok === true
+        : health.data?.ok === true && ready.data?.ok === true
           ? { label: '服务可用', tone: 'success' }
           : { label: '服务需排查', tone: 'danger' }
   const changeDataset = (value: string) => {
@@ -186,50 +205,43 @@ export function useDiagnostics() {
     setPreview(emptyProbe())
   }
   async function runPreview() {
-    if (
-      locks.current.preview ||
-      !query.trim() ||
-      missingDataset ||
-      missingDocuments ||
-      datasetsQuery.isPending ||
-      Boolean(datasetId && activeDataset.isPending)
-    )
-      return
-    const captured = scope(),
-      configRequest = buildRetrievalConfigHashRequest(contract)
+    if (locks.current.preview || !canRunPreview) return
+    const captured = scope()
+    const configRequest = buildRetrievalConfigHashRequest(contract)
     locks.current.preview = true
-    setPreview((previous) => ({ ...previous, status: 'running', error: '' }))
+    setPreview((previous) => ({ ...previous, status: 'running', error: null }))
     try {
-      const [main, explain, hash] = await Promise.allSettled([
+      const [main, [explain, hash]] = await Promise.all([
         ragApi.promptPreview({
           query: captured.query,
-          dataset_id: captured.datasetId || undefined,
+          dataset_id: captured.datasetId === '' ? undefined : captured.datasetId,
           document_ids: captured.documentIds,
           structured_output: false,
         }),
-        !contractReason && configRequest
-          ? retrievalApi.explain({
-              query: captured.query,
-              dataset_id: captured.datasetId,
-              document_ids: captured.documentIds,
-              rag_config: configRequest.rag_config,
-              retrieval_only: true,
-              top_citations_limit: 8,
-            })
-          : Promise.resolve(null),
-        !contractReason && configRequest ? retrievalApi.configHash(configRequest) : Promise.resolve(null),
+        Promise.allSettled([
+          contractReason === null && configRequest
+            ? retrievalApi.explain({
+                query: captured.query,
+                dataset_id: captured.datasetId,
+                document_ids: captured.documentIds,
+                rag_config: configRequest.rag_config,
+                retrieval_only: true,
+                top_citations_limit: 8,
+              })
+            : null,
+          contractReason === null && configRequest ? retrievalApi.configHash(configRequest) : null,
+        ]),
       ])
-      if (main.status === 'rejected') throw main.reason
       const partialErrors = [
         explain.status === 'rejected' ? `链路详情：${formatApiError(explain.reason, '获取失败')}` : null,
         hash.status === 'rejected' ? `配置签名：${formatApiError(hash.reason, '获取失败')}` : null,
       ].filter((v): v is string => Boolean(v))
       setPreview({
         status: 'success',
-        error: '',
+        error: null,
         result: {
           scope: captured,
-          preview: main.value,
+          preview: main,
           explain: explain.status === 'fulfilled' && explain.value ? record(explain.value) : null,
           configHash: hash.status === 'fulfilled' && hash.value ? record(hash.value) : null,
           contractReason,
@@ -248,26 +260,26 @@ export function useDiagnostics() {
     }
   }
   async function runDrift() {
-    if (locks.current.drift || !canDrift || missingDataset || datasetsQuery.isPending) return
+    if (locks.current.drift || !canDrift || missingDataset || !scopeSelected) return
     const errors = validateParams('drift', driftParams.first, driftParams.second)
     setDriftErrors(errors)
     if (Object.keys(errors).length) {
       document.getElementById(errors.first ? 'drift-samples' : 'drift-threshold')?.focus()
       return
     }
-    const captured = scope(),
-      params = { ...driftParams }
+    const captured = scope()
+    const params = { ...driftParams }
     locks.current.drift = true
-    setDrift((previous) => ({ ...previous, status: 'running', error: '' }))
+    setDrift((previous) => ({ ...previous, status: 'running', error: null }))
     try {
       const data = await observabilityApi.getEmbeddingDriftSnapshot({
-        dataset_id: captured.datasetId || undefined,
+        dataset_id: captured.datasetId === '' ? undefined : captured.datasetId,
         sample_n: Number(params.first),
         drift_threshold: Number(params.second),
       })
       setDrift({
         status: 'success',
-        error: '',
+        error: null,
         result: {
           data,
           scope: { ...captured, documentIds: [], documentNames: [], query: '' },
@@ -295,7 +307,7 @@ export function useDiagnostics() {
     }
     const params = { ...perfParams }
     locks.current.perf = true
-    setPerf((previous) => ({ ...previous, status: 'running', error: '' }))
+    setPerf((previous) => ({ ...previous, status: 'running', error: null }))
     try {
       const data = await observabilityApi.runPerfSuite({
         iterations: Number(params.first),
@@ -303,7 +315,7 @@ export function useDiagnostics() {
       })
       setPerf({
         status: 'success',
-        error: '',
+        error: null,
         result: {
           data,
           scope: { datasetId: '', datasetName: '全局 API', documentIds: [], documentNames: [], query: '' },
@@ -323,21 +335,21 @@ export function useDiagnostics() {
   const refreshStatus = () =>
     Promise.allSettled([health.refetch(), meta.refetch(), ready.refetch(), deps.refetch(), online.refetch()])
   const rawSummary = {
-    dataset_id: datasetId || null,
+    dataset_id: datasetId === '' ? null : datasetId,
     document_ids: documentIds,
     display_metrics: visibleMetrics,
     rag_preview: preview.result?.preview ?? null,
     retrieval_explain: preview.result?.explain ?? null,
     retrieval_config_hash: preview.result?.configHash ?? null,
     preview_scope: preview.result?.scope ?? null,
-    preview_error: preview.error || null,
+    preview_error: preview.error,
     embedding_drift: drift.result?.data ?? null,
     drift_scope: drift.result?.scope ?? null,
     perf_suite: perf.result?.data ?? null,
     perf_scope: perf.result?.scope ?? null,
     dependencies: deps.data ?? null,
     ready: ready.data ?? null,
-    health: health.data?.payload ?? null,
+    health: health.data ?? null,
     online_quality: online.data ?? null,
   }
   const copySummary = async () => {
@@ -354,16 +366,16 @@ export function useDiagnostics() {
     query,
     changeQuery,
     datasetId,
-    dataset,
     datasetsQuery,
     datasets,
-    activeDataset,
+    scopeSelected,
     changeDataset,
     documentIds,
     changeDocuments,
     documents,
     documentsQuery,
     missingDocuments,
+    selectedDocumentsUnavailable,
     missingDataset,
     scopeBusy,
     health,
@@ -381,9 +393,9 @@ export function useDiagnostics() {
     drift,
     perf,
     runPreview,
+    canRunPreview,
     runDrift,
     runPerf,
-    contractReason,
     summary: previewSummary(preview.result),
     metrics: metricRows(preview.result?.preview ?? null),
     driftParams,

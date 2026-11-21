@@ -22,16 +22,11 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { toTrimmedPrimitiveString } from '@/lib/primitive-text'
 import { cn } from '@/lib/utils'
 import type { KGEntityAliasItem, KGEntityDetailResponse, KGEntityMergePreviewResponse, KGGraphNode } from '@/types'
 
 import type { GraphNodeLike } from '../graph-page-utils'
-
-function primitiveText(value: unknown, fallback = '—'): string {
-  if (typeof value === 'string') return value
-  if (typeof value === 'number' || typeof value === 'boolean') return String(value)
-  return fallback
-}
 
 type GraphDeleteNodeTarget = {
   id: string
@@ -44,7 +39,6 @@ type GraphActionDialogsProps = Readonly<{
   onDeleteNodeOpenChange: (open: boolean) => void
   onConfirmDeleteNode: () => void
 
-  aliasDeleteOpen: boolean
   aliasDeleteTarget: KGEntityAliasItem | null
   aliasSaving: boolean
   onAliasDeleteOpenChange: (open: boolean) => void
@@ -55,6 +49,7 @@ type GraphActionDialogsProps = Readonly<{
   mergeSearch: string
   onMergeSearchChange: (value: string) => void
   mergeSearchLoading: boolean
+  mergeSearchError: string | null
   mergeSearchResults: KGGraphNode[]
   mergeTarget: KGGraphNode | null
   mergePreview: KGEntityMergePreviewResponse | null
@@ -92,7 +87,6 @@ export function GraphActionDialogs({
   deleteNodeTarget,
   onDeleteNodeOpenChange,
   onConfirmDeleteNode,
-  aliasDeleteOpen,
   aliasDeleteTarget,
   aliasSaving,
   onAliasDeleteOpenChange,
@@ -102,6 +96,7 @@ export function GraphActionDialogs({
   mergeSearch,
   onMergeSearchChange,
   mergeSearchLoading,
+  mergeSearchError,
   mergeSearchResults,
   mergeTarget,
   mergePreview,
@@ -134,12 +129,20 @@ export function GraphActionDialogs({
   let mergeSearchContent: React.ReactNode
   if (mergeSearchLoading) {
     mergeSearchContent = <div className="text-xs text-muted-foreground">Searching…</div>
-  } else if (mergeSearchResults.length === 0) {
+  } else if (mergeSearchError !== null) {
+    mergeSearchContent = (
+      <div className="text-xs text-destructive" role="alert">
+        {mergeSearchError}
+      </div>
+    )
+  } else if (mergeSearch.trim().length < 2) {
     mergeSearchContent = <div className="text-xs text-muted-foreground">输入至少 2 个字符开始搜索</div>
+  } else if (mergeSearchResults.length === 0) {
+    mergeSearchContent = <div className="text-xs text-muted-foreground">未找到匹配实体</div>
   } else {
     mergeSearchContent = (
       <div className="space-y-1">
-        {mergeSearchResults.slice(0, 8).map((node) => (
+        {mergeSearchResults.map((node) => (
           <button
             key={node.id}
             type="button"
@@ -150,8 +153,8 @@ export function GraphActionDialogs({
             )}
           >
             <div className="flex items-center justify-between gap-2">
-              <span className="truncate">{node.label || node.id}</span>
-              <span className="text-muted-foreground font-mono">{String(node.id).slice(0, 8)}</span>
+              <span className="truncate">{node.label === '' ? node.id : node.label}</span>
+              <span className="text-muted-foreground font-mono">{node.id.slice(0, 8)}</span>
             </div>
           </button>
         ))}
@@ -161,27 +164,25 @@ export function GraphActionDialogs({
 
   let mergePreviewContent: React.ReactNode = null
   if (mergeTarget) {
-    let mergePreviewDetails: React.ReactNode
+    let mergePreviewDetails: React.ReactNode = null
     if (mergePreviewLoading) {
       mergePreviewDetails = <div className="text-xs text-muted-foreground">Loading preview…</div>
     } else if (mergePreview) {
       mergePreviewDetails = (
         <div className="grid grid-cols-2 gap-2 text-[11px] text-muted-foreground">
-          <div>source edges: {primitiveText(mergePreview.stats?.source_event_entity_edges)}</div>
-          <div>overlap: {primitiveText(mergePreview.stats?.overlap_events)}</div>
-          <div>relations: {primitiveText(mergePreview.stats?.source_relations)}</div>
-          <div>self removed: {primitiveText(mergePreview.stats?.self_relations_removed)}</div>
+          <div>source edges: {toTrimmedPrimitiveString(mergePreview.stats?.source_event_entity_edges, '—')}</div>
+          <div>overlap: {toTrimmedPrimitiveString(mergePreview.stats?.overlap_events, '—')}</div>
+          <div>relations: {toTrimmedPrimitiveString(mergePreview.stats?.source_relations, '—')}</div>
+          <div>self removed: {toTrimmedPrimitiveString(mergePreview.stats?.self_relations_removed, '—')}</div>
         </div>
       )
-    } else {
-      mergePreviewDetails = <div className="text-xs text-muted-foreground">No preview available</div>
     }
 
     mergePreviewContent = (
       <div className="rounded-xl border border-border bg-muted p-3 space-y-2">
         <div className="text-[11px] font-medium text-muted-foreground">Preview</div>
         <div className="text-xs text-foreground truncate" title={mergeTarget.label}>
-          Target: {mergeTarget.label || mergeTarget.id}
+          Target: {mergeTarget.label === '' ? mergeTarget.id : mergeTarget.label}
         </div>
         {mergePreviewDetails}
       </div>
@@ -190,13 +191,12 @@ export function GraphActionDialogs({
 
   return (
     <>
-      <AlertDialog open={deleteNodeOpen} onOpenChange={onDeleteNodeOpenChange}>
+      <AlertDialog open={deleteNodeOpen && deleteNodeTarget !== null} onOpenChange={onDeleteNodeOpenChange}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>删除节点？</AlertDialogTitle>
             <AlertDialogDescription>
-              你将删除节点 <span className="font-mono">{deleteNodeTarget?.label || '-'}</span>{' '}
-              及其所有连线。此操作不可撤销。
+              你将删除节点 <span className="font-mono">{deleteNodeTarget?.label}</span> 及其所有连线。此操作不可撤销。
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -206,18 +206,24 @@ export function GraphActionDialogs({
         </AlertDialogContent>
       </AlertDialog>
 
-      <AlertDialog open={aliasDeleteOpen} onOpenChange={onAliasDeleteOpenChange}>
+      <AlertDialog open={aliasDeleteTarget !== null} onOpenChange={onAliasDeleteOpenChange}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>删除 alias？</AlertDialogTitle>
             <AlertDialogDescription>
-              你将删除 alias <span className="font-mono">{aliasDeleteTarget?.alias || '-'}</span>
+              你将删除 alias <span className="font-mono">{aliasDeleteTarget?.alias}</span>
               。此操作可通过重新添加恢复。
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>取消</AlertDialogCancel>
-            <AlertDialogAction onClick={onConfirmDeleteAlias} disabled={aliasSaving}>
+            <AlertDialogCancel disabled={aliasSaving}>取消</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(event) => {
+                event.preventDefault()
+                onConfirmDeleteAlias()
+              }}
+              disabled={aliasSaving}
+            >
               删除
             </AlertDialogAction>
           </AlertDialogFooter>
@@ -247,7 +253,10 @@ export function GraphActionDialogs({
             {mergePreviewContent}
 
             {mergeError ? (
-              <div className="rounded-xl border border-destructive/30 bg-destructive/10 p-3 text-xs text-destructive">
+              <div
+                role="alert"
+                className="rounded-xl border border-destructive/30 bg-destructive/10 p-3 text-xs text-destructive"
+              >
                 {mergeError}
               </div>
             ) : null}
@@ -268,18 +277,30 @@ export function GraphActionDialogs({
         </DialogContent>
       </Dialog>
 
-      <AlertDialog open={mergeConfirmOpen} onOpenChange={onMergeConfirmOpenChange}>
+      <AlertDialog
+        open={mergeConfirmOpen && mergeTarget !== null}
+        onOpenChange={(open) => {
+          if (!mergeSubmitting) onMergeConfirmOpenChange(open)
+        }}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>确认合并？</AlertDialogTitle>
             <AlertDialogDescription>
-              你将把当前实体合并到 <span className="font-mono">{mergeTarget?.label || '-'}</span>
+              你将把当前实体合并到{' '}
+              <span className="font-mono">{mergeTarget?.label === '' ? mergeTarget.id : mergeTarget?.label}</span>
               。合并会重写事件边与关系边，但可通过“撤销上次变更”恢复。
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={mergeSubmitting}>取消</AlertDialogCancel>
-            <AlertDialogAction onClick={onSubmitMerge} disabled={mergeSubmitting || !mergeTarget}>
+            <AlertDialogAction
+              onClick={(event) => {
+                event.preventDefault()
+                onSubmitMerge()
+              }}
+              disabled={mergeSubmitting || !mergeTarget}
+            >
               {mergeSubmitting ? '合并中…' : '确认合并'}
             </AlertDialogAction>
           </AlertDialogFooter>
@@ -299,6 +320,7 @@ export function GraphActionDialogs({
               <Input
                 id="kg-split-name"
                 value={splitNameDraft}
+                disabled={splitSubmitting}
                 onChange={(event) => onSplitNameDraftChange(event.target.value)}
                 placeholder="例如：Python (language)"
               />
@@ -307,23 +329,25 @@ export function GraphActionDialogs({
             <div className="space-y-2">
               <div className="text-xs font-medium text-muted-foreground">选择事件（Recent Events）</div>
               <div className="max-h-48 overflow-y-auto rounded-xl border border-border bg-background/60 p-2 space-y-2">
-                {splitEvents?.slice(0, 30)?.map((event) => {
-                  const checked = splitSelectedEventIds.has(String(event.id))
+                {splitEvents.slice(0, 30).map((event) => {
+                  const checked = splitSelectedEventIds.has(event.id)
+                  const eventLabel = event.title === '' ? event.id : event.title
                   return (
                     <label key={event.id} className="flex items-start gap-2 text-xs text-foreground">
                       <Checkbox
                         checked={checked}
-                        onCheckedChange={(value) => onToggleSplitEvent(String(event.id), Boolean(value))}
-                        aria-label={`选择事件 ${event.title}`}
+                        disabled={splitSubmitting}
+                        onCheckedChange={(value) => onToggleSplitEvent(event.id, value === true)}
+                        aria-label={`选择事件 ${eventLabel}`}
                       />
-                      <span className="flex-1 truncate" title={event.title}>
-                        {event.title || event.id}
+                      <span className="flex-1 truncate" title={eventLabel}>
+                        {eventLabel}
                       </span>
                     </label>
                   )
                 })}
 
-                {splitEvents?.length ? null : (
+                {splitEvents.length > 0 ? null : (
                   <div className="text-xs text-muted-foreground p-2">No events available</div>
                 )}
               </div>
@@ -340,7 +364,7 @@ export function GraphActionDialogs({
           </div>
 
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onSplitOpenChange(false)}>
+            <Button type="button" variant="outline" onClick={() => onSplitOpenChange(false)} disabled={splitSubmitting}>
               取消
             </Button>
             <Button type="button" onClick={onSubmitSplit} disabled={splitSubmitting}>
@@ -357,8 +381,8 @@ export function GraphActionDialogs({
             <DialogDescription>
               {connectSourceNode?.label && connectTargetNode?.label ? (
                 <>
-                  将创建连线：<span className="font-mono">{String(connectSourceNode.label)}</span> →{' '}
-                  <span className="font-mono">{String(connectTargetNode.label)}</span>
+                  将创建连线：<span className="font-mono">{connectSourceNode.label}</span> →{' '}
+                  <span className="font-mono">{connectTargetNode.label}</span>
                 </>
               ) : (
                 '请输入关系名称（例如：related_to）'

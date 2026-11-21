@@ -94,20 +94,18 @@ def _build_group_summaries(
 ) -> list[_GroupSummary]:
     grouped: dict[str, list[_CaseSummary]] = {}
     for row in case_rows:
-        group_name = str(classifier(row.get("id")) or "other").strip() or "other"
+        group_name = classifier(row["id"])
         grouped.setdefault(group_name, []).append(row)
 
     summaries: list[_GroupSummary] = []
     for group_name in sorted(grouped):
         rows = grouped[group_name]
-        failed_case_ids = [
-            str(item.get("id") or "").strip() for item in rows if item["hit_at_k"] < 1.0 or item["mrr"] < 1.0
-        ]
+        failed_case_ids = [item["id"] or "" for item in rows if item["hit_at_k"] < 1.0 or item["mrr"] < 1.0]
         summaries.append(
             {
                 "name": group_name,
                 "cases_total": len(rows),
-                "case_ids": [str(item.get("id") or "").strip() for item in rows if str(item.get("id") or "").strip()],
+                "case_ids": [item["id"] for item in rows if item["id"] is not None],
                 "hit_at_k_mean": _mean(rows, "hit_at_k"),
                 "mrr_mean": _mean(rows, "mrr"),
                 "failed_case_ids": failed_case_ids,
@@ -177,7 +175,7 @@ def build_parsing_proof_summary(batch_payload: Any) -> dict[str, Any]:
         mrr = _coerce_float(case_summary.get("mrr"))
         case_id = str(case.get("id") or "").strip()
         row: _CaseSummary = {
-            "id": (case_id),
+            "id": case_id or None,
             "hit_at_k": hit,
             "mrr": mrr,
         }

@@ -42,8 +42,6 @@ _RUN_PARAM_FIELDS = (
     "query_rewrite_strategy",
     "query_rewrite_temperature",
     "query_rewrite_max_chars",
-    "sparse_retrieval_enabled",
-    "sparse_retrieval_provider",
     "top_k",
     "score_threshold",
     "retrieval_mode",

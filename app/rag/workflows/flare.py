@@ -1,6 +1,7 @@
+import math
 from typing import Any
 
-from app.rag.core.confidence import ConfidenceScore, compute_confidence_score
+from app.rag.safety.answer_quality import ConfidenceScore, compute_confidence_score
 
 FLARE_REFINEMENT_SCHEMA_V1 = "mimirq.flare_refinement.v1"
 
@@ -15,7 +16,8 @@ def _resolve_confidence(
 ) -> ConfidenceScore:
     if confidence_score is not None:
         try:
-            score = max(0.0, min(1.0, float(confidence_score)))
+            value = float(confidence_score)
+            score = max(0.0, min(1.0, value)) if math.isfinite(value) else None
         except (TypeError, ValueError):
             score = None
         if score is not None:

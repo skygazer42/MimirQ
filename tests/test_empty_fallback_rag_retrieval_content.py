@@ -1,8 +1,8 @@
 import pytest
 
-from app.rag.retrieval.hybrid.common import _apply_exact_content_bonus_to_result
-from app.rag.retrieval.hybrid.result_values import result_key
-from app.rag.retrieval.hybrid.text_preparation import rerank_text_from_result
+from app.rag.retrieval.recall.common import _apply_exact_content_bonus_to_result
+from app.rag.retrieval.recall.results import result_key
+from app.rag.retrieval.recall.text_preparation import rerank_text_from_result
 
 
 @pytest.mark.parametrize("consumer", [result_key, rerank_text_from_result])

@@ -9,7 +9,7 @@ from types import ModuleType
 import pytest
 from fastapi import HTTPException
 
-from app.rag.core.hashing import stable_json_hash
+from app.infrastructure.hashing import stable_json_hash
 
 
 def _build_capsule() -> dict:
@@ -71,15 +71,14 @@ def _rehash_capsule(payload: dict) -> dict:
 
 
 def _load_evidence_capsules_module(monkeypatch: pytest.MonkeyPatch) -> ModuleType:
-    auth_module = ModuleType("app.api.dependencies.auth")
+    auth_module = ModuleType("app.api.dependencies")
     auth_module.get_current_account_id = lambda: None
-    tenant_module = ModuleType("app.api.dependencies.tenant")
-    tenant_module.get_tenant_id = lambda: None
-    database_module = ModuleType("app.core.database")
+    auth_module.get_tenant_id = lambda: None
+    database_module = ModuleType("app.infrastructure.database.connection")
     database_module.get_db = lambda: None
-    capsule_builder_module = ModuleType("app.rag.core.evidence_capsule_builder")
+    capsule_builder_module = ModuleType("app.rag.retrieval.evidence.capsule")
     capsule_builder_module.validate_evidence_capsule = lambda capsule, strict=None, verify_signature=None: (True, "ok")
-    dataset_service_module = ModuleType("app.services.dataset_service")
+    dataset_service_module = ModuleType("app.services.datasets.management")
 
     class _DatasetService:
         @staticmethod
@@ -88,14 +87,13 @@ def _load_evidence_capsules_module(monkeypatch: pytest.MonkeyPatch) -> ModuleTyp
 
     dataset_service_module.ensure_member = _DatasetService.ensure_member
 
-    monkeypatch.setitem(sys.modules, "app.api.dependencies.auth", auth_module)
-    monkeypatch.setitem(sys.modules, "app.api.dependencies.tenant", tenant_module)
-    monkeypatch.setitem(sys.modules, "app.core.database", database_module)
-    monkeypatch.setitem(sys.modules, "app.rag.core.evidence_capsule_builder", capsule_builder_module)
-    monkeypatch.setitem(sys.modules, "app.services.dataset_service", dataset_service_module)
-    monkeypatch.setattr("app.services.dataset_service", dataset_service_module, raising=False)
+    monkeypatch.setitem(sys.modules, "app.api.dependencies", auth_module)
+    monkeypatch.setitem(sys.modules, "app.infrastructure.database.connection", database_module)
+    monkeypatch.setitem(sys.modules, "app.rag.retrieval.evidence.capsule", capsule_builder_module)
+    monkeypatch.setitem(sys.modules, "app.services.datasets.management", dataset_service_module)
+    monkeypatch.setattr("app.services.datasets.management", dataset_service_module, raising=False)
 
-    module_path = Path(__file__).resolve().parents[1] / "app/api/v1/evidence_capsules.py"
+    module_path = Path(__file__).resolve().parents[1] / "app/api/v1/evaluation/evidence_capsules.py"
     spec = importlib.util.spec_from_file_location("tests.evidence_capsules_module", module_path)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)

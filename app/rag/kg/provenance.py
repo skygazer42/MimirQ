@@ -5,8 +5,21 @@ This module is intentionally dependency-light so it can be used by both
 indexing and API layers without pulling in DB/LLM components.
 """
 
+import math
+from collections.abc import Iterable
 from typing import Any
 from uuid import UUID
+
+KG_EXTRACTION_COMPLETE_KEY = "kg_extraction_complete"
+
+
+def is_event_extraction_complete(extra_data: object) -> bool:
+    """Only an owner-confirmed generation can be reused by skip-unchanged.
+
+    Legacy None and incomplete generations remain readable facts. This marker
+    does not select an active graph or provide atomic visibility across passes.
+    """
+    return isinstance(extra_data, dict) and extra_data.get(KG_EXTRACTION_COMPLETE_KEY) is True
 
 
 def _safe_uuid_str(value: Any) -> str | None:
@@ -33,12 +46,8 @@ def _safe_str(value: Any, *, max_len: int) -> str | None:
     return s[: max(0, int(max_len or 0))]
 
 
-def _iter_items(value: Any) -> list[Any]:
-    if isinstance(value, list):
-        return value
-    if hasattr(value, "__iter__"):
-        return list(value)
-    return []
+def _iter_items(value: object) -> Iterable[Any]:
+    return value if isinstance(value, Iterable) else ()
 
 
 _ALLOWED_REF_INT_KEYS = frozenset(
@@ -161,7 +170,9 @@ def build_kg_path_provenance(
 def confidence_bucket(confidence: Any, *, low_max: float = 0.4, mid_max: float = 0.7) -> str:
     try:
         value = float(confidence or 0.0)
-    except Exception:
+    except (TypeError, ValueError, OverflowError):
+        value = 0.0
+    if not math.isfinite(value):
         value = 0.0
     low = float(low_max)
     middle = float(mid_max)
@@ -264,7 +275,6 @@ def _relation_path_entry(
     return frozenset({subject_id_text, object_id_text}), {
         "relation_id": _safe_uuid_str(relation_id),
         "predicate": _safe_str(predicate, max_len=200),
-        "confidence": confidence,
         "confidence_bucket": confidence_bucket(
             confidence,
             low_max=bucket_low_max,
@@ -314,13 +324,13 @@ def _direct_relation_provenance(
         "edges": [
             {
                 "kind": "relation",
-                "relation_id": relation.get("relation_id"),
-                "predicate": relation.get("predicate"),
-                "confidence_bucket": relation.get("confidence_bucket"),
-                "evidence_source": relation.get("evidence_source"),
-                "document_id": relation.get("document_id"),
-                "chunk_id": relation.get("chunk_id"),
-                "event_id": relation.get("event_id"),
+                "relation_id": relation["relation_id"],
+                "predicate": relation["predicate"],
+                "confidence_bucket": relation["confidence_bucket"],
+                "evidence_source": relation["evidence_source"],
+                "document_id": relation["document_id"],
+                "chunk_id": relation["chunk_id"],
+                "event_id": relation["event_id"],
             }
         ],
     }
@@ -416,6 +426,8 @@ def build_kg_shortest_path_provenance(
 
 
 __all__ = [
+    "KG_EXTRACTION_COMPLETE_KEY",
+    "is_event_extraction_complete",
     "build_event_entity_provenance",
     "build_kg_path_provenance",
     "build_kg_shortest_path_provenance",

@@ -4,8 +4,8 @@ from uuid import uuid4
 
 import pytest
 
-from app.rag.tools import mcp_tools
-from app.rag.tools.mcp_tools import _parse_pages_selector, calculate
+from app.rag.agents.tools import mcp_tools
+from app.rag.agents.tools.mcp_tools import _parse_pages_selector, calculate
 
 
 @pytest.mark.parametrize(

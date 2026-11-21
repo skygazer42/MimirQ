@@ -9,7 +9,6 @@ import { reportClientError } from '@/lib/client-logging'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import styles from './governance-inbox.module.css'
-import type { GovernanceIssue } from '@/types/processing'
 
 type QualityIssue = {
   id: string
@@ -35,7 +34,7 @@ type Translate = (key: string, values?: Record<string, string | number>) => stri
 function collectLocalQualityIssues(content: string, t: Translate): QualityIssue[] {
   const detectedIssues: QualityIssue[] = []
 
-  const emptyParagraphs = (content.match(/\n(?:[ \t]*\n){2,}/g) || []).length
+  const emptyParagraphs = content.match(/\n(?:[ \t]*\n){2,}/g)?.length ?? 0
   if (emptyParagraphs > 0) {
     detectedIssues.push({
       id: 'empty-paragraphs',
@@ -53,39 +52,37 @@ function collectLocalQualityIssues(content: string, t: Translate): QualityIssue[
     })
   }
 
-  const specialChars = content.match(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g) || []
-  if (specialChars.length > 0) {
+  const specialCharCount = content.match(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g)?.length ?? 0
+  if (specialCharCount > 0) {
     detectedIssues.push({
       id: 'special-chars',
       type: 'error',
-      message: t('localIssues.specialChars', { count: specialChars.length }),
+      message: t('localIssues.specialChars', { count: specialCharCount }),
     })
   }
 
   const paragraphs = content.split('\n').filter((paragraph) => paragraph.trim().length > 20)
-  const duplicates: string[] = []
+  const duplicates = new Set<string>()
   const seen = new Set<string>()
   for (const paragraph of paragraphs) {
     const trimmed = paragraph.trim().substring(0, 50)
-    if (seen.has(trimmed) && !duplicates.includes(trimmed)) {
-      duplicates.push(trimmed)
-    }
+    if (seen.has(trimmed)) duplicates.add(trimmed)
     seen.add(trimmed)
   }
-  if (duplicates.length > 0) {
+  if (duplicates.size > 0) {
     detectedIssues.push({
       id: 'duplicates',
       type: 'info',
-      message: t('localIssues.duplicates', { count: duplicates.length }),
+      message: t('localIssues.duplicates', { count: duplicates.size }),
     })
   }
 
-  const urls = content.match(/https?:\/\/[^\s]+/g) || []
-  if (urls.length > 0) {
+  const urlCount = content.match(/https?:\/\/[^\s]+/g)?.length ?? 0
+  if (urlCount > 0) {
     detectedIssues.push({
       id: 'urls',
       type: 'info',
-      message: t('localIssues.urls', { count: urls.length }),
+      message: t('localIssues.urls', { count: urlCount }),
     })
   }
 
@@ -114,58 +111,36 @@ function collectLocalQualityIssues(content: string, t: Translate): QualityIssue[
   return detectedIssues
 }
 
-function getBackendIssueType(severity: GovernanceIssue['severity']): QualityIssue['type'] {
-  if (severity === 'error') return 'error'
-  if (severity === 'warning') return 'warning'
-  return 'info'
-}
-
 async function getBackendQualityIssues(
   content: string,
   inputFormat: 'html' | 'markdown',
   t: Translate,
 ): Promise<QualityIssue[]> {
-  try {
-    const response = await pipelineApi.governanceAnalyze({
-      markdown: content,
-      input_format: inputFormat,
+  const response = await pipelineApi.governanceAnalyze({ markdown: content, input_format: inputFormat })
+  if (response.issues === undefined) throw new Error('Governance analysis did not return its issue list')
+
+  const detectedIssues = response.issues.slice(0, 10).map<QualityIssue>((issue) => {
+    const label = issue.code === 'pii_email' ? '邮箱地址' : issue.code === 'pii_phone' ? '电话号码' : undefined
+    const { count } = issue
+    const suffix =
+      typeof count === 'number' && count > 0
+        ? label === undefined
+          ? t('backendIssues.countSuffix', { count })
+          : ` · ${count} 处`
+        : ''
+    return { id: `backend:${issue.code}`, type: issue.severity, message: `${label ?? issue.message}${suffix}` }
+  })
+
+  const patch = response.suggested_pipeline_patch
+  const patchCount = patch == null ? 0 : Object.keys(patch).length
+  if (patchCount > 0) {
+    detectedIssues.push({
+      id: 'backend:suggested-patch',
+      type: 'info',
+      message: t('backendIssues.suggestedPatch', { count: patchCount }),
     })
-
-    const detectedIssues = (response.issues || []).slice(0, 10).map((issue) => {
-      const label = ({ pii_email: '邮箱地址', pii_phone: '电话号码' } as Record<string, string>)[issue.code]
-      const countSuffix =
-        typeof issue.count === 'number' && issue.count > 0 ? t('backendIssues.countSuffix', { count: issue.count }) : ''
-
-      return {
-        id: `backend:${issue.code}`,
-        type: getBackendIssueType(issue.severity),
-        message: label
-          ? `${label}${typeof issue.count === 'number' && issue.count > 0 ? ` · ${issue.count} 处` : ''}`
-          : `${issue.message}${countSuffix}`,
-      } satisfies QualityIssue
-    })
-
-    if (response.suggested_pipeline_patch && Object.keys(response.suggested_pipeline_patch).length > 0) {
-      detectedIssues.push({
-        id: 'backend:suggested-patch',
-        type: 'info',
-        message: t('backendIssues.suggestedPatch', {
-          count: Object.keys(response.suggested_pipeline_patch).length,
-        }),
-      })
-    }
-
-    return detectedIssues
-  } catch (error) {
-    reportClientError('Backend governance analyze failed', error)
-    return [
-      {
-        id: 'backend:failed',
-        type: 'info',
-        message: t('backendIssues.failed'),
-      },
-    ]
   }
+  return detectedIssues
 }
 
 function calculateQualityScore(issues: QualityIssue[]): number {
@@ -210,7 +185,7 @@ export function QualityChecker({
     }
   }, [content, resetRevision])
   const handleScan = useCallback(async () => {
-    if (!content.trim() || isScanning || disabled) return
+    if (content.trim() === '' || activeScanRef.current !== null || disabled) return
     const scan = Symbol()
     activeScanRef.current = scan
     setIsScanning(true)
@@ -218,13 +193,15 @@ export function QualityChecker({
     try {
       const issues = collectLocalQualityIssues(content, t)
       if (backendScanEnabled) {
-        const backend = await getBackendQualityIssues(content, content.includes('<html') ? 'html' : 'markdown', t)
-        if (activeScanRef.current !== scan) return
-        if (backend.some((issue) => issue.id === 'backend:failed')) {
-          setError('完整检测未完成，检测服务暂时不可用。可重试，或关闭完整检测后运行基础检查。')
+        try {
+          issues.push(...(await getBackendQualityIssues(content, content.includes('<html') ? 'html' : 'markdown', t)))
+        } catch (error) {
+          if (activeScanRef.current === scan) {
+            reportClientError('Backend governance analyze failed', error)
+            setError('完整检测未完成，检测服务暂时不可用。可重试，或关闭完整检测后运行基础检查。')
+          }
           return
         }
-        issues.push(...backend)
       }
       if (activeScanRef.current !== scan) return
       onCompleteRef.current({ score: calculateQualityScore(issues), issues })
@@ -234,7 +211,7 @@ export function QualityChecker({
         setIsScanning(false)
       }
     }
-  }, [backendScanEnabled, content, disabled, isScanning, t])
+  }, [backendScanEnabled, content, disabled, t])
   const stats = useMemo(
     () => ({
       chars: content.length,

@@ -1,9 +1,9 @@
 import pytest
 
-from app.core.config import settings
-from app.models.document import Document
-from app.rag.kg.api.routes_support.extraction import _effective_kg_extraction_options
-from app.rag.kg.api.routes_support.schemas import KGExtractionOptions
+from app.api.v1.knowledge_graph.routes_support.extraction import _effective_kg_extraction_options
+from app.api.v1.knowledge_graph.routes_support.types import KGExtractionOptions
+from app.infrastructure.config import settings
+from app.models.documents.records import Document
 
 
 @pytest.mark.parametrize("field", ["prompt_template_key", "prompt_ab_experiment_key"])

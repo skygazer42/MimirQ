@@ -12,7 +12,7 @@ import type { Metric, Verdict } from './diagnostics-model'
 import { cn } from '@/lib/utils'
 import styles from './diagnostics.module.css'
 
-export function Status({ label, tone = 'neutral' }: Verdict) {
+export function Status({ label, tone }: Verdict) {
   return (
     <span className={cn(styles.status, styles[tone])}>
       <i aria-hidden="true" />
@@ -36,7 +36,6 @@ export function ScopeControls({
   stacked?: boolean
 }) {
   const [search, setSearch] = useState('')
-  const visible = c.documents.filter((d) => d.filename.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()))
   if (c.tab === 'performance')
     return (
       <div className={styles.scopeBar}>
@@ -45,12 +44,15 @@ export function ScopeControls({
         <span className={styles.scopeHint}>health、ready 与 meta 接口</span>
       </div>
     )
+
+  const searchTerm = search.trim().toLocaleLowerCase()
+  const visible = c.documents.filter((document) => document.filename.toLocaleLowerCase().includes(searchTerm))
   return (
     <div className={cn(styles.scopeBar, stacked && styles.scopeStack)}>
       <div className={styles.scopeField}>
         <span>数据集</span>
         <Select
-          value={c.datasetId || ALL_DATASETS}
+          value={c.scopeSelected && c.datasetId === '' ? ALL_DATASETS : c.datasetId}
           disabled={c.scopeBusy || c.datasetsQuery.isPending}
           onValueChange={c.changeDataset}
         >
@@ -144,7 +146,9 @@ export function ScopeControls({
           ? c.documentsQuery.data
             ? `${c.documentsQuery.data.total} 个文档`
             : ''
-          : `全部 ${c.datasets.length} 个数据集`}
+          : c.datasetsQuery.data === undefined
+            ? null
+            : `全部 ${c.datasets.length} 个数据集`}
       </span>
       {c.datasetsQuery.isError ? (
         <span className={styles.fieldError} role="alert">
@@ -166,6 +170,11 @@ export function ScopeControls({
       {c.missingDocuments ? (
         <span className={styles.fieldError} role="alert">
           已选文档中有不可用项，请重新选择范围。
+        </span>
+      ) : null}
+      {c.selectedDocumentsUnavailable && c.documentsQuery.isError ? (
+        <span className={styles.fieldError} role="alert">
+          文档目录获取失败，所选范围已保留。
         </span>
       ) : null}
     </div>
@@ -194,25 +203,14 @@ export function QueryControl({ controller: c }: { controller: DiagnosticsControl
           onKeyDown={(event) => {
             if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
               event.preventDefault()
-              void c.runPreview()
+              event.currentTarget.form?.requestSubmit()
             }
           }}
         />
       </div>
       <div className={styles.queryActions}>
-        <Button
-          type="submit"
-          className={styles.primary}
-          disabled={
-            !c.query.trim() ||
-            c.preview.status === 'running' ||
-            c.datasetsQuery.isPending ||
-            c.missingDataset ||
-            c.missingDocuments ||
-            Boolean(c.datasetId && c.activeDataset.isPending)
-          }
-        >
-          {c.preview.status === 'running' ? <Loader2 className="animate-spin" /> : <Play />}
+        <Button type="submit" className={styles.primary} disabled={!c.canRunPreview || c.preview.status === 'running'}>
+          {c.preview.status === 'running' ? <Loader2 className="animate-spin motion-reduce:animate-none" /> : <Play />}
           {c.preview.status === 'running' ? '预览中' : '运行预览'}
         </Button>
         <Button

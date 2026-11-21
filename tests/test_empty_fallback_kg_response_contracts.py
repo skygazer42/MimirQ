@@ -2,7 +2,7 @@ from uuid import UUID
 
 import pytest
 
-from app.rag.kg.api.routes_support.undo import _restored_relation_row_payload
+from app.api.v1.knowledge_graph.routes_support.undo import _restored_relation_row_payload
 from app.rag.kg.extraction.entity_verifier import EntityCandidate, EntityVerifier
 from app.rag.kg.extraction.processor import _collect_event_entities
 from app.rag.kg.extraction.relation_processor import CandidateEntity, RelationProcessor
@@ -41,10 +41,13 @@ async def test_entity_verification_keeps_absent_optional_text():
 async def test_relation_extraction_rejects_a_missing_external_predicate():
     processor = RelationProcessor(StructuredClient({"relations": [{"subject_id": "E1", "object_id": "E2"}]}))
 
-    assert await processor.extract_relations(
-        text="MimirQ uses a database",
-        candidates=[CandidateEntity(cid="E1", name="MimirQ"), CandidateEntity(cid="E2", name="database")],
-    ) == []
+    assert (
+        await processor.extract_relations(
+            text="MimirQ uses a database",
+            candidates=[CandidateEntity(cid="E1", name="MimirQ"), CandidateEntity(cid="E2", name="database")],
+        )
+        == []
+    )
 
 
 @pytest.mark.asyncio

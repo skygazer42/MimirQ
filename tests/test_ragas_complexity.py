@@ -9,7 +9,7 @@ import pytest
 if not hasattr(_datetime, "UTC"):
     _datetime.UTC = timezone.utc
 
-import app.rag.evaluation.ragas as ragas_module
+import app.rag.evaluation.regression.ragas as ragas_module
 from app.rag.pipeline_plugins.contracts import DISPLAY_METADATA_KEY
 
 
@@ -179,6 +179,7 @@ def test_enrich_citations_with_chunk_metadata_uses_dataset_scope_and_preserves_e
     enriched = ragas_module._enrich_citations_with_chunk_metadata(
         db=db,
         tenant_id=tenant_id,
+        account_id="reader",
         citations=[
             {
                 "chunk_id": str(allowed_chunk_id),
@@ -189,7 +190,7 @@ def test_enrich_citations_with_chunk_metadata_uses_dataset_scope_and_preserves_e
                 "metadata": {"filtered": True},
             },
         ],
-        allowed_document_ids=[],
+        allowed_document_ids=[allowed_document_id, filtered_document_id],
         dataset_id=dataset_id,
     )
 
@@ -200,6 +201,18 @@ def test_enrich_citations_with_chunk_metadata_uses_dataset_scope_and_preserves_e
         "chunk_id": str(filtered_chunk_id),
         "metadata": {"filtered": True},
     }
+    original = [{"chunk_id": str(allowed_chunk_id), "metadata": {"keep": True}}]
+    assert (
+        ragas_module._enrich_citations_with_chunk_metadata(
+            db=db,
+            tenant_id=tenant_id,
+            account_id="reader",
+            citations=original,
+            allowed_document_ids=[],
+            dataset_id=dataset_id,
+        )
+        == original
+    )
 
 
 def test_resolve_metrics_uses_aliases_defaults_and_rejects_unknown(

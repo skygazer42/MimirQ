@@ -50,7 +50,7 @@ def _to_float(value: Any, default: float = 0.0) -> float:
         if math.isnan(number) or math.isinf(number):
             return float(default)
         return number
-    except Exception:
+    except (OverflowError, TypeError, ValueError):
         return float(default)
 
 

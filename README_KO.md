@@ -239,7 +239,7 @@ Dify 표준 외부 지식베이스 엔드포인트는 `POST /api/v1/integrations
 | 기능 영역 | **Ragvia** | [Dify](https://github.com/langgenius/dify) | [RAGFlow](https://github.com/infiniflow/ragflow) | [FastGPT](https://github.com/labring/FastGPT) | [AnythingLLM](https://github.com/Mintplex-Labs/anything-llm) | [LangChain](https://github.com/langchain-ai/langchain) |
 |:---|:---|:---|:---|:---|:---|:---|
 | **문서 파싱** | **30 파싱 백엔드**: PDF, OCR, 레이아웃, 표, 수식, VLM | Knowledge Pipeline; PDF, PPT 등 일반 형식 | **DeepDoc**; 복잡한 레이아웃과 스캔; MinerU / Docling | PDF·스캔·표·수식을 Markdown으로 변환 | PDF, TXT, DOCX 등 문서 파이프라인 | Document Loaders와 서드파티 파서 연동 |
-| **청킹** | **86종 전략**: 재귀, 시맨틱, 부모-자식, RAPTOR, Late Chunking; 시각화 미리보기 | 범용, 부모-자식, Q&A, 파이프라인 정의 처리 | 템플릿 기반 청킹; 시각화된 수작업 개입 | 자동, 수동, Q&A, 강화 처리 | 문서 파이프라인 자동 청킹 | Text Splitters; 애플리케이션 코드로 조합 |
+| **청킹** | 재귀, 시맨틱, 부모-자식 등의 전략; 시각화 미리보기 | 범용, 부모-자식, Q&A, 파이프라인 정의 처리 | 템플릿 기반 청킹; 시각화된 수작업 개입 | 자동, 수동, Q&A, 강화 처리 | 문서 파이프라인 자동 청킹 | Text Splitters; 애플리케이션 코드로 조합 |
 | **검색 / 리랭크** | Milvus + BM25 / SPLADE / ColBERT / RRF | 시맨틱·전문·하이브리드 검색; 리랭크 설정 가능 | 다중 리콜 + 융합 리랭크 | 시맨틱·전문·하이브리드 검색 + RRF + 리랭크 | 여러 벡터 DB 검색 + 출처 인용 | Retriever / reranker 컴포넌트; 직접 구성 |
 | **지식 그래프** | 엔티티·관계·이벤트 추출; 엔티티 해소, 커뮤니티 탐지, 멀티홉 검색 | 워크플로·플러그인·외부 서비스로 연결 | GraphRAG 내장 | 워크플로나 외부 서비스로 연결 | 에이전트 / 툴로 연결 | 그래프 연동과 커스텀 체인 |
 | **에이전트 / MCP** | LangGraph 에이전트, Self-RAG / CRAG / FLARE; MCP 클라이언트 / 서버 | Function Calling / ReAct 에이전트, 툴, MCP | Agentic Workflow, MCP, 코드 실행기 | Agent V2, 툴, MCP, VM 실행 | 노코드 Agent Builder, MCP, 예약 작업 | Agents / LangGraph / MCP; 코드 우선 |

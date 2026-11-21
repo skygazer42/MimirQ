@@ -2,10 +2,11 @@ from uuid import uuid4
 
 import pytest
 
-from app.api.schemas.document import DocumentPipelinePatchRequest, DocumentUserMetadataPatchRequest
-from app.api.schemas.qa import DocumentQAGenerateRequest
-from app.api.v1 import document_mutations
-from app.services import document_metadata_operations, document_qa_service
+from app.api.schemas.documents.document import DocumentPipelinePatchRequest, DocumentUserMetadataPatchRequest
+from app.api.schemas.documents.qa import DocumentQAGenerateRequest
+from app.api.v1.documents import mutations as document_mutations
+from app.services.documents import metadata_operations as document_metadata_operations
+from app.services.documents import qa as document_qa_service
 
 
 def test_document_mutation_routes_delegate_to_business_services(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -26,12 +27,6 @@ def test_document_mutation_routes_delegate_to_business_services(monkeypatch: pyt
 
         return operation
 
-    monkeypatch.setattr(
-        document_mutations,
-        "_documents_module",
-        lambda: pytest.fail("mutation route reached the documents facade"),
-        raising=False,
-    )
     monkeypatch.setattr(document_metadata_operations, "patch_pipeline", record("pipeline"))
     monkeypatch.setattr(document_metadata_operations, "patch_user_metadata", record("metadata"))
     monkeypatch.setattr(document_qa_service, "generate_document_qa", record("qa"), raising=False)

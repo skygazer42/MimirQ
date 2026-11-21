@@ -43,9 +43,9 @@ def _render_markdown(diff: dict[str, Any]) -> str:
     lines.append(f"- Baseline Suite: `{diff.get('baseline_suite')}`")
     lines.append(f"- Current Suite: `{diff.get('current_suite')}`")
     lines.append("")
+    lines.append("## Regressions")
+    lines.append("")
     if regressions:
-        lines.append("## Regressions")
-        lines.append("")
         for row in regressions[:20]:
             name = row["name"]
             p95 = row["p95"]
@@ -54,12 +54,8 @@ def _render_markdown(diff: dict[str, Any]) -> str:
                 f"- `{name}`: p95 `{p95.get('baseline_ms')}` → `{p95.get('current_ms')}`; "
                 f"p99 `{p99.get('baseline_ms')}` → `{p99.get('current_ms')}`"
             )
-        lines.append("")
     else:
-        lines.append("## Regressions")
-        lines.append("")
         lines.append("- (none)")
-        lines.append("")
     return "\n".join(lines).rstrip() + "\n"
 
 
@@ -79,7 +75,7 @@ def main(argv: list[str] | None = None) -> int:
         current = _load_json(Path(args.current))
         policy = _load_json(Path(args.policy)) if args.policy.strip() else None
 
-        from app.services.perf_suite_diff_service import diff_perf_suite_reports
+        from app.services.observability.performance_diff import diff_perf_suite_reports
 
         diff = diff_perf_suite_reports(baseline=baseline, current=current, policy=policy)
 

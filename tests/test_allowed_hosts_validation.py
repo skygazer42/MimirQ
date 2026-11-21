@@ -1,6 +1,6 @@
 import pytest
 
-from app.core.config import Settings
+from app.infrastructure.config import Settings
 
 
 def test_auth_mode_defaults_to_jwt(monkeypatch: pytest.MonkeyPatch):

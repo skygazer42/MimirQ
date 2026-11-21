@@ -4,13 +4,13 @@ import pytest
 from fastapi import HTTPException
 from langchain_core.documents import Document
 
-from app.models.document import Document as StoredDocument
-from app.models.evaluation import RagasRegressionCase
-from app.parsing.processors.support.chunk_postprocess import _chunk_record_identity_key
-from app.parsing.processors.support.stages import _dedup_record_identity_key
-from app.rag.evaluation import ragas
-from app.services import document_access
-from app.services.document_index_channel_service import _pipeline_hash_from_document
+from app.models.documents.records import Document as StoredDocument
+from app.models.evaluation.results import RagasRegressionCase
+from app.rag.evaluation.regression import ragas
+from app.rag.ingestion.indexing.index_channels import _pipeline_hash_from_document
+from app.rag.ingestion.indexing.support.chunk_postprocess import _record_identity_key as _chunk_record_identity_key
+from app.rag.ingestion.indexing.support.chunk_postprocess import _record_identity_key as _dedup_record_identity_key
+from app.services.documents import read_scope as document_access
 
 
 def test_inaccessible_explicit_regression_documents_cannot_become_open_scope(monkeypatch: pytest.MonkeyPatch) -> None:

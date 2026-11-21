@@ -1,7 +1,6 @@
 from langchain_core.documents import Document
 
-from app.rag.chunking.strategies.log_events import LogEventsChunker, _iter_entries
-from app.rag.chunking.utils.splitters.fixed_text_splitter import FixedRecursiveCharacterTextSplitter
+from app.rag.ingestion.chunking.strategies.records.log_events import LogEventsChunker, _iter_entries
 
 
 def test_log_event_chunker_preserves_entry_overlap_levels_and_offsets() -> None:
@@ -21,6 +20,8 @@ def test_log_event_chunker_preserves_entry_overlap_levels_and_offsets() -> None:
     ]
 
     chunks = LogEventsChunker(95, 20).split_documents([Document(page_content=text, metadata={"source": "fixture"})])
+    assert chunks[0].page_content == "preamble"
+    assert chunks[0].metadata["log_fallback"] is True
     assert [
         (
             chunk.metadata["start_char"],
@@ -31,50 +32,9 @@ def test_log_event_chunker_preserves_entry_overlap_levels_and_offsets() -> None:
             chunk.metadata["last_timestamp"],
             chunk.metadata["chunk_index"],
         )
-        for chunk in chunks
+        for chunk in chunks[1:]
     ] == [
-        (9, 92, 2, ["INFO", "ERROR"], "2026-01-01 10:00:00", "2026-01-01 10:00:01", 0),
-        (54, 128, 2, ["ERROR", "WARN"], "2026-01-01 10:00:01", "2026-01-01 10:00:02", 1),
-        (92, 165, 2, ["WARN", "INFO"], "2026-01-01 10:00:02", "2026-01-01 10:00:03", 2),
-        (128, 165, 1, ["INFO"], "2026-01-01 10:00:03", "2026-01-01 10:00:03", 3),
-    ]
-
-
-def test_fixed_recursive_splitter_preserves_separator_and_character_overlap() -> None:
-    word_splitter = FixedRecursiveCharacterTextSplitter(
-        chunk_size=12,
-        chunk_overlap=3,
-        fixed_separator="",
-        keep_separator=False,
-    )
-    kept_word_splitter = FixedRecursiveCharacterTextSplitter(
-        chunk_size=12,
-        chunk_overlap=3,
-        fixed_separator="",
-        keep_separator=True,
-    )
-    character_splitter = FixedRecursiveCharacterTextSplitter(
-        chunk_size=7,
-        chunk_overlap=2,
-        fixed_separator="",
-    )
-
-    assert word_splitter.recursive_split_text("alpha beta gamma delta epsilon") == [
-        "alphabeta",
-        "gammadelta",
-        "epsilon",
-    ]
-    assert kept_word_splitter.recursive_split_text("alpha beta gamma delta epsilon") == [
-        "alpha beta",
-        "gamma delta",
-        "epsilon",
-    ]
-    assert character_splitter.recursive_split_text("abcdefghijklmno") == [
-        "abcdefg",
-        "fghijkl",
-        "klmno",
-    ]
-    assert character_splitter.recursive_split_text("aa\nbb\ncc\ndd") == [
-        "aa\n\nbb",
-        "cc\n\ndd",
+        (9, 92, 2, ["INFO", "ERROR"], "2026-01-01 10:00:00", "2026-01-01 10:00:01", 1),
+        (54, 128, 2, ["ERROR", "WARN"], "2026-01-01 10:00:01", "2026-01-01 10:00:02", 2),
+        (92, 165, 2, ["WARN", "INFO"], "2026-01-01 10:00:02", "2026-01-01 10:00:03", 3),
     ]

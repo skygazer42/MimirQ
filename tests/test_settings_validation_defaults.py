@@ -5,8 +5,8 @@ import pytest
     "field", ["RETRIEVAL_OVERFETCH_MULTIPLIER", "RETRIEVAL_COMPACT_MIN_RECORDS", "HIERARCHY_RECALL_OVERFETCH_FACTOR"]
 )
 def test_invalid_zero_is_validated_instead_of_substituted(field):
-    from app.core.config import settings
-    from app.core.config_validation import validate_chunk_llm_and_retrieval
+    from app.infrastructure.config import settings
+    from app.infrastructure.config_validation import validate_chunk_llm_and_retrieval
 
     config = settings.model_copy(update={field: 0})
     with pytest.raises(ValueError, match=field):
@@ -14,8 +14,8 @@ def test_invalid_zero_is_validated_instead_of_substituted(field):
 
 
 def test_empty_bootstrap_fields_still_mean_not_configured():
-    from app.core.config import settings
-    from app.core.config_validation import validate_initial_admin_bootstrap
+    from app.infrastructure.config import settings
+    from app.infrastructure.config_validation import validate_initial_admin_bootstrap
 
     config = settings.model_copy(
         update={
@@ -29,8 +29,8 @@ def test_empty_bootstrap_fields_still_mean_not_configured():
 
 
 def test_empty_secret_is_still_rejected():
-    from app.core.config import settings
-    from app.core.config_validation import validate_secret_key_and_jwt_key_source
+    from app.infrastructure.config import settings
+    from app.infrastructure.config_validation import validate_secret_key_and_jwt_key_source
 
     with pytest.raises(ValueError):
         validate_secret_key_and_jwt_key_source(settings.model_copy(update={"SECRET_KEY": ""}))
@@ -38,7 +38,7 @@ def test_empty_secret_is_still_rejected():
 
 @pytest.mark.parametrize("minimum", [1, 7])
 def test_configured_short_password_minimum_remains_supported(minimum):
-    from app.core.config import settings
-    from app.core.config_validation import _validate_initial_admin_password
+    from app.infrastructure.config import settings
+    from app.infrastructure.config_validation import _validate_initial_admin_password
 
     _validate_initial_admin_password(settings.model_copy(update={"PASSWORD_MIN_LENGTH": minimum}), "x" * minimum)

@@ -3,11 +3,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.services import chat_cache_runtime
-from app.services.chunking_stats_utils import (
-    compute_chunking_stats_from_texts,
-    compute_chunking_stats_from_texts_tokens,
-)
+from app.services.chat import cache_flow as chat_cache_runtime
+from app.services.chunking.statistics import compute_chunking_stats_from_texts, compute_chunking_stats_from_texts_tokens
 
 
 def test_cache_hit_requires_the_content_written_by_the_cache_producer(monkeypatch):

@@ -7,7 +7,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const transport = vi.hoisted(() => ({ fetch: vi.fn(), createObjectURL: vi.fn(), revokeObjectURL: vi.fn() }))
 vi.mock('next/image', () => ({
-  default: ({ src, alt }: { src: string; alt: string }) => React.createElement('img', { src, alt }),
+  default: ({ src, alt, onError }: { src: string; alt: string; onError?: React.ReactEventHandler<HTMLImageElement> }) =>
+    React.createElement('img', { src, alt, onError }),
 }))
 
 const cleanup: Array<() => void> = []
@@ -35,7 +36,7 @@ async function load(mode: 'development' | 'production', base = 'http://localhost
   const citation = await import('@/lib/citation-images')
   const assets = await import('@/lib/image-auth-proxy')
   const { AuthImage } = await import('@/components/auth-image')
-  return { ...env, ...citation, ...assets, AuthImage }
+  return { ...env, ...citation, ...assets, AuthImage, auth }
 }
 
 async function mountImage(AuthImage: Awaited<ReturnType<typeof load>>['AuthImage'], src: string | null) {
@@ -73,6 +74,34 @@ afterEach(() => {
 })
 
 describe('citation image authenticated consumer', () => {
+  it('invalidates an already displayed asset on a same-user explicit login without clearing the document view', async () => {
+    const { AuthImage, auth } = await load('development')
+    transport.createObjectURL.mockReturnValueOnce('blob:first-session').mockReturnValueOnce('blob:second-session')
+    const container = await mountImage(AuthImage, '/api/v1/documents/image/same-user')
+    const scopeChanged = vi.fn()
+    window.addEventListener(auth.AUTH_SCOPE_CHANGED_EVENT, scopeChanged)
+    cleanup.push(() => window.removeEventListener(auth.AUTH_SCOPE_CHANGED_EVENT, scopeChanged))
+    localStorage.setItem(auth.DOCUMENT_VIEW_STORAGE_KEY, 'view-to-retain')
+
+    await act(async () =>
+      auth.setAuthSession({
+        token: { access_token: 'new-session-token', token_type: 'bearer', expires_in: 3600 },
+        user: {
+          id: 'image-review-user',
+          username: 'image-review-user',
+          email: 'image@example.com',
+          is_active: true,
+          created_at: '2026-11-05T00:00:00Z',
+        },
+      }),
+    )
+
+    expect(scopeChanged).not.toHaveBeenCalled()
+    expect(localStorage.getItem(auth.DOCUMENT_VIEW_STORAGE_KEY)).toBe('view-to-retain')
+    expect(container.querySelector('img')?.getAttribute('src')).toBe('blob:second-session')
+    expect(transport.revokeObjectURL).toHaveBeenCalledWith('blob:first-session')
+  })
+
   it.each([
     ['development', 'http://localhost:8000'],
     ['production', 'https://api.example.com'],
@@ -80,17 +109,17 @@ describe('citation image authenticated consumer', () => {
   ] as const)(
     'renders %s / %s citations only after the actual authenticated transport returns a blob',
     async (mode, base) => {
-      const { API_BASE_URL, resolveSafeCitationImageUrl, needsAuthAssetProxy, AuthImage } = await load(mode, base)
+      const { API_BASE_URL, resolveSafeCitationImageUrl, AuthImage } = await load(mode, base)
       const src = resolveSafeCitationImageUrl('/api/v1/documents/image/image-a')
       if (mode === 'development') {
         expect(API_BASE_URL).toBe('')
         expect(src).toBe(`${window.location.origin}/api/v1/documents/image/image-a`)
       }
-      expect.soft(needsAuthAssetProxy(src)).toBe(true)
       const container = await mountImage(AuthImage, src)
 
       expect.soft(transport.fetch).toHaveBeenCalledWith(src, {
         headers: { Authorization: 'Bearer image-review-token', 'X-Tenant-ID': 'image-test-tenant' },
+        signal: expect.any(AbortSignal),
       })
       expect(container.querySelector('img')?.getAttribute('src')).toBe('blob:authenticated-image')
       expect(transport.createObjectURL).toHaveBeenCalledOnce()
@@ -113,12 +142,12 @@ describe('citation image authenticated consumer', () => {
     'api/v1/documents/image-url/image-a',
     '/api/v1/documents/document-a/download',
   ])('authenticates the internal relative asset %s in browser development', async (src) => {
-    const { fetchAuthAssetUrl, needsAuthAssetProxy } = await load('development')
+    const { fetchAuthAssetUrl } = await load('development')
 
-    expect(needsAuthAssetProxy(src)).toBe(true)
     expect(await fetchAuthAssetUrl(src)).toBe('blob:authenticated-image')
     expect(transport.fetch).toHaveBeenCalledWith(src.startsWith('/') ? src : `/${src}`, {
       headers: { Authorization: 'Bearer image-review-token', 'X-Tenant-ID': 'image-test-tenant' },
+      signal: expect.any(AbortSignal),
     })
   })
 
@@ -126,10 +155,9 @@ describe('citation image authenticated consumer', () => {
     transport.fetch.mockResolvedValue(
       new Response(JSON.stringify({ src: '/api/markdown-image?token=opaque' }), { status: 200 }),
     )
-    const { fetchAuthAssetUrl, needsAuthAssetProxy } = await load('development')
+    const { fetchAuthAssetUrl } = await load('development')
     const external = 'https://external.example/api/v1/documents/image/image-a?signature=private'
 
-    expect(needsAuthAssetProxy(external)).toBe(true)
     expect(await fetchAuthAssetUrl(external)).toBe('/api/markdown-image?token=opaque')
     expect(transport.fetch).toHaveBeenCalledExactlyOnceWith('/api/markdown-image', {
       method: 'POST',
@@ -139,6 +167,7 @@ describe('citation image authenticated consumer', () => {
         'X-Tenant-ID': 'image-test-tenant',
       },
       body: JSON.stringify({ src: external }),
+      signal: expect.any(AbortSignal),
     })
   })
 
@@ -156,9 +185,8 @@ describe('citation image authenticated consumer', () => {
   it.each(['/public.png?next=/api/v1/documents/image/image-a', '/api/v1/documents/document-a/download/extra'])(
     'keeps unrelated path-only assets outside auth fetching: %s',
     async (src) => {
-      const { fetchAuthAssetUrl, needsAuthAssetProxy } = await load('development')
+      const { fetchAuthAssetUrl } = await load('development')
 
-      expect(needsAuthAssetProxy(src)).toBe(false)
       expect(await fetchAuthAssetUrl(src)).toBe(src)
       expect(transport.fetch).not.toHaveBeenCalled()
     },
@@ -179,7 +207,7 @@ describe('citation image authenticated consumer', () => {
       <browser.AuthImage src="/api/v1/documents/image/image-a" alt="citation" width={100} height={100} />,
     )
 
-    expect(serverMarkup).toBe('')
+    expect(serverMarkup).not.toContain('<img')
     expect(browserMarkup).toBe(serverMarkup)
     expect(transport.fetch).not.toHaveBeenCalled()
   })

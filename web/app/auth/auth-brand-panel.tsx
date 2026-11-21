@@ -14,25 +14,26 @@ export function AuthBrandPanel() {
 
     const reduce = window.matchMedia('(prefers-reduced-motion: reduce)')
     const finePointer = window.matchMedia('(hover: hover) and (pointer: fine)')
-    let frame = 0
-    let x = 0
-    let y = 0
+    let frame: number | undefined
+    let offsetX = 0
+    let offsetY = 0
 
     const paint = () => {
-      frame = 0
-      backdrop.style.setProperty('--auth-px', `${x.toFixed(2)}px`)
-      backdrop.style.setProperty('--auth-py', `${y.toFixed(2)}px`)
+      frame = undefined
+      backdrop.style.setProperty('--auth-px', `${offsetX.toFixed(2)}px`)
+      backdrop.style.setProperty('--auth-py', `${offsetY.toFixed(2)}px`)
     }
     const reset = () => {
-      x = y = 0
-      if (frame) cancelAnimationFrame(frame)
+      offsetX = 0
+      offsetY = 0
+      if (frame !== undefined) cancelAnimationFrame(frame)
       paint()
     }
     const move = (event: PointerEvent) => {
-      if (reduce.matches || !finePointer.matches || document.hidden || backdrop.dataset.settled) return
-      x = (event.clientX / window.innerWidth - 0.5) * 16
-      y = (event.clientY / window.innerHeight - 0.5) * 12
-      if (!frame) frame = requestAnimationFrame(paint)
+      if (reduce.matches || !finePointer.matches || document.hidden || backdrop.dataset.settled === 'true') return
+      offsetX = (event.clientX / window.innerWidth - 0.5) * 16
+      offsetY = (event.clientY / window.innerHeight - 0.5) * 12
+      if (frame === undefined) frame = requestAnimationFrame(paint)
     }
     const visibility = () => {
       backdrop.dataset.paused = String(document.hidden)
@@ -47,14 +48,16 @@ export function AuthBrandPanel() {
     scene.addEventListener('pointermove', move, { passive: true })
     scene.addEventListener('pointerleave', reset)
     reduce.addEventListener('change', reset)
+    finePointer.addEventListener('change', reset)
     document.addEventListener('visibilitychange', visibility)
     document.addEventListener('keydown', settle)
     window.addEventListener('pagehide', reset)
     return () => {
-      if (frame) cancelAnimationFrame(frame)
+      if (frame !== undefined) cancelAnimationFrame(frame)
       scene.removeEventListener('pointermove', move)
       scene.removeEventListener('pointerleave', reset)
       reduce.removeEventListener('change', reset)
+      finePointer.removeEventListener('change', reset)
       document.removeEventListener('visibilitychange', visibility)
       document.removeEventListener('keydown', settle)
       window.removeEventListener('pagehide', reset)

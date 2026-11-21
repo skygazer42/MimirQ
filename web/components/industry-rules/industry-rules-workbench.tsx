@@ -1,21 +1,8 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import {
-  Check,
-  Database,
-  ExternalLink,
-  Loader2,
-  Plus,
-  RefreshCw,
-  Save,
-  Search,
-  ShieldCheck,
-  Sparkles,
-  Trash2,
-  X,
-} from '@/components/icons'
+import { ExternalLink, Loader2, Plus, RefreshCw, Save, Trash2 } from '@/components/icons'
 import { toast } from 'sonner'
 
 import { Badge } from '@/components/ui/badge'
@@ -42,156 +29,35 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { formatApiError } from '@/lib/api-errors'
 import { datasetApi } from '@/lib/api/datasets'
 import { industryRulesApi } from '@/lib/api/industry-rules'
+import { getAuthSessionKey, subscribeAuthSession } from '@/lib/auth-storage'
+import { downloadBlob } from '@/lib/download'
 import { queryKeys } from '@/lib/query-keys'
 import { randomBase36Id } from '@/lib/secure-random'
-import { cn, detachPromise } from '@/lib/utils'
-import type { IndustryRulesetDetail } from '@/types/backend'
+import { cn } from '@/lib/utils'
+import type { IndustryRulesRewritePreviewResponse } from '@/types/backend'
+import {
+  createRuleRow,
+  isRuleSection,
+  rowsFromValue,
+  serializeRows,
+  type RuleRow,
+  type RuleSection,
+} from './rule-editor-model'
 
-type GlossaryEntry = {
-  id: string
-  term: string
-  aliasesText: string
-}
+type RuleRows = Record<RuleSection, readonly RuleRow[]>
 
-type PatternEntry = {
-  id: string
-  markersText: string
-  followup: string
-  enabled: boolean
-}
-
-type IntentEntry = {
-  id: string
-  name: string
-  keywordsText: string
-  route: string
-}
-
-type GlossarySuggestion = {
-  token: string
-  count: number
-  source: string
-}
-
-type RewritePreviewState = {
-  originalQuery: string
-  expandedQuery: string
-  changed: boolean
-}
-
-function makeLocalId(prefix: string, seed?: string): string {
-  const suffix = seed?.trim() || `${Date.now()}-${randomBase36Id(6)}`
-  return `${prefix}-${suffix}`
-}
-
-function asRecord(value: unknown): Record<string, unknown> {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
-  return value as Record<string, unknown>
-}
-
-function textValue(value: unknown): string {
-  return typeof value === 'string' ? value.trim() : ''
-}
-
-function textList(value: unknown): string[] {
-  if (!Array.isArray(value)) return []
-  return value.map((item) => textValue(item)).filter(Boolean)
-}
-
-function splitCommaText(value: string): string[] {
-  return value
-    .split(/[,\n]/)
-    .map((item) => item.trim())
-    .filter(Boolean)
-}
-
-function glossaryEntriesFromDetail(detail: IndustryRulesetDetail): GlossaryEntry[] {
-  return Object.entries(detail.glossary || {})
-    .sort((a, b) => a[0].localeCompare(b[0], 'zh-CN'))
-    .map(([term, aliases]) => ({
-      id: makeLocalId('glossary', term),
-      term,
-      aliasesText: Array.isArray(aliases) ? aliases.join(', ') : '',
-    }))
-}
-
-function patternEntriesFromDetail(detail: IndustryRulesetDetail): PatternEntry[] {
-  return (detail.patterns || []).map((item, index) => {
-    const record = asRecord(item)
-    const markers = textList(record.markers ?? record.keywords)
-    return {
-      id: makeLocalId('pattern', `${index}`),
-      markersText: markers.join(', '),
-      followup: textValue(record.followup ?? record.followup_template),
-      enabled: record.enabled !== false,
-    }
-  })
-}
-
-function intentEntriesFromDetail(detail: IndustryRulesetDetail): IntentEntry[] {
-  return (detail.intents || []).map((item, index) => {
-    const record = asRecord(item)
-    return {
-      id: makeLocalId('intent', `${index}`),
-      name: textValue(record.name),
-      keywordsText: textList(record.keywords).join(', '),
-      route: textValue(record.route) || 'default',
-    }
-  })
-}
-
-function buildGlossaryPayload(entries: GlossaryEntry[]): Record<string, string[]> {
-  const out: Record<string, string[]> = {}
-  for (const entry of entries) {
-    const term = entry.term.trim()
-    if (!term) continue
-    out[term] = splitCommaText(entry.aliasesText)
-  }
-  return out
-}
-
-function buildPatternsPayload(entries: PatternEntry[]) {
-  return entries
-    .map((entry) => ({
-      markers: splitCommaText(entry.markersText),
-      followup: entry.followup.trim(),
-      enabled: entry.enabled,
-    }))
-    .filter((entry) => entry.markers.length > 0)
-}
-
-function buildIntentsPayload(entries: IntentEntry[]) {
-  return entries
-    .map((entry) => ({
-      name: entry.name.trim(),
-      keywords: splitCommaText(entry.keywordsText),
-      route: entry.route.trim() || 'default',
-    }))
-    .filter((entry) => entry.name)
-}
-
-function suggestionRowsFromPayload(payload: unknown): GlossarySuggestion[] {
-  const record = asRecord(payload)
-  const rows = Array.isArray(record.glossary_suggestions) ? record.glossary_suggestions : []
-  return rows
-    .map((row) => {
-      const item = asRecord(row)
-      return {
-        token: textValue(item.token),
-        count: Number(item.count || 0),
-        source: textValue(item.source) || 'mining',
-      }
-    })
-    .filter((row) => row.token)
-}
-
-function selectedMapValues(selected: Record<string, boolean>): string[] {
-  return Object.entries(selected)
-    .filter(([, enabled]) => enabled)
-    .map(([key]) => key)
+const RULE_LABELS = {
+  glossary: { name: '术语', add: '新增术语', save: '保存术语', saved: '术语已保存' },
+  patterns: { name: '问题模式', add: '新增模式', save: '保存模式', saved: '问题模式已保存' },
+  intents: { name: '意图分类', add: '新增意图', save: '保存意图', saved: '意图分类已保存' },
 }
 
 export function IndustryRulesWorkbench() {
+  const sessionKey = useSyncExternalStore(subscribeAuthSession, getAuthSessionKey, getAuthSessionKey)
+  return <IndustryRulesWorkspace key={sessionKey} sessionKey={sessionKey} />
+}
+
+function IndustryRulesWorkspace({ sessionKey }: Readonly<{ sessionKey: string }>) {
   const [selectedRuleset, setSelectedRuleset] = useState('')
   const [selectedDatasetId, setSelectedDatasetId] = useState('')
   const [searchValue, setSearchValue] = useState('')
@@ -199,88 +65,66 @@ export function IndustryRulesWorkbench() {
   const [tool, setTool] = useState<'preview' | 'suggestions' | null>(null)
   const [previewError, setPreviewError] = useState<string | null>(null)
   const [operationError, setOperationError] = useState<string | null>(null)
-  const [activeTab, setActiveTab] = useState('glossary')
-  const previewSequence = useRef(0)
-  const [editor, setEditor] = useState<
-    | { kind: 'glossary'; value: GlossaryEntry }
-    | { kind: 'patterns'; value: PatternEntry }
-    | { kind: 'intents'; value: IntentEntry }
-    | null
-  >(null)
+  const [activeTab, setActiveTab] = useState<RuleSection>('glossary')
+  const [editor, setEditor] = useState<{ kind: RuleSection; value: RuleRow; rows: readonly RuleRow[] } | null>(null)
 
   const [previewing, setPreviewing] = useState(false)
-  const [savingGlossary, setSavingGlossary] = useState(false)
-  const [savingPatterns, setSavingPatterns] = useState(false)
-  const [savingIntents, setSavingIntents] = useState(false)
-
-  const [glossaryEntries, setGlossaryEntries] = useState<GlossaryEntry[]>([])
-  const [patternEntries, setPatternEntries] = useState<PatternEntry[]>([])
-  const [intentEntries, setIntentEntries] = useState<IntentEntry[]>([])
-  const [glossarySuggestions, setGlossarySuggestions] = useState<GlossarySuggestion[]>([])
+  const [busy, setBusy] = useState(false)
+  const saveRef = useRef<symbol | null>(null)
+  const [drafts, setDrafts] = useState(() => new Map<string, Partial<RuleRows>>())
   const [selectedSuggestionTokens, setSelectedSuggestionTokens] = useState<Record<string, boolean>>({})
   const [dismissedSuggestionTokens, setDismissedSuggestionTokens] = useState<Record<string, boolean>>({})
-  const [preview, setPreview] = useState<RewritePreviewState | null>(null)
+  const [preview, setPreview] = useState<IndustryRulesRewritePreviewResponse | null>(null)
 
   const rulesetsQuery = useQuery({
     queryKey: queryKeys.industryRules.rulesets,
     queryFn: industryRulesApi.listRulesets,
   })
   const datasetsQuery = useQuery({
-    queryKey: queryKeys.datasets.exhaustive({ purpose: 'industry-rules' }),
-    queryFn: () => datasetApi.listAll(),
+    queryKey: queryKeys.datasets.exhaustive(),
+    queryFn: ({ signal }) => datasetApi.listAll(undefined, { signal }),
   })
   const rulesetDetailQuery = useQuery({
     queryKey: queryKeys.industryRules.ruleset(selectedRuleset),
     enabled: Boolean(selectedRuleset.trim()),
-    queryFn: () => industryRulesApi.getRuleset(selectedRuleset.trim()),
+    queryFn: ({ signal }) => industryRulesApi.getRuleset(selectedRuleset, { signal }),
   })
   const glossarySuggestionsQuery = useQuery({
     queryKey: queryKeys.industryRules.glossarySuggestions(selectedDatasetId, selectedRuleset, { limit: 20 }),
-    enabled: Boolean(selectedDatasetId.trim() && selectedRuleset.trim()),
-    queryFn: () =>
-      datasetApi.getAnalysisRuleSuggestions(selectedDatasetId.trim(), {
-        ruleset: selectedRuleset.trim(),
-        limit: 20,
-      }),
+    enabled: tool === 'suggestions' && selectedDatasetId !== '' && selectedRuleset !== '',
+    queryFn: ({ signal }) =>
+      datasetApi.getAnalysisRuleSuggestions(selectedDatasetId, { ruleset: selectedRuleset, limit: 20 }, { signal }),
   })
 
   const rulesets = useMemo(() => rulesetsQuery.data?.rulesets || [], [rulesetsQuery.data?.rulesets])
   const datasets = useMemo(() => datasetsQuery.data || [], [datasetsQuery.data])
   const loadingMeta = rulesetsQuery.isFetching || datasetsQuery.isFetching
   const metaError = rulesetsQuery.error || datasetsQuery.error
-  const loadingRuleset = rulesetDetailQuery.isFetching
+  const loadingRuleset = selectedRuleset !== '' && rulesetDetailQuery.isPending
   const loadingSuggestions = glossarySuggestionsQuery.isFetching
+  const glossarySuggestions = glossarySuggestionsQuery.data?.glossary_suggestions
+
+  const savedRows = useMemo<RuleRows | undefined>(() => {
+    const ruleset = rulesetDetailQuery.data?.ruleset
+    if (ruleset === undefined) return undefined
+    return {
+      glossary: rowsFromValue('glossary', ruleset.glossary).sort((a, b) => a.term.localeCompare(b.term, 'zh-CN')),
+      patterns: rowsFromValue('patterns', ruleset.patterns),
+      intents: rowsFromValue('intents', ruleset.intents),
+    }
+  }, [rulesetDetailQuery.data])
+  const draft = drafts.get(selectedRuleset)
+  const currentRows = savedRows === undefined ? undefined : { ...savedRows, ...draft }
+
+  useLayoutEffect(() => {
+    return () => {
+      saveRef.current = null
+    }
+  }, [])
 
   const refreshMeta = () => {
     rulesetsQuery.refetch()
     datasetsQuery.refetch()
-  }
-
-  const runPreview = async (query: string, rulesetName: string, sequence: number) => {
-    const q = query.trim()
-    const ruleset = rulesetName.trim()
-    if (!q || !ruleset) {
-      setPreview(null)
-      return
-    }
-    setPreviewing(true)
-    setPreviewError(null)
-    try {
-      const payload = await industryRulesApi.previewRewrite({
-        ruleset,
-        query: q,
-      })
-      if (previewSequence.current !== sequence) return
-      setPreview({
-        originalQuery: payload.original_query,
-        expandedQuery: payload.expanded_query,
-        changed: payload.changed,
-      })
-    } catch (error) {
-      if (previewSequence.current === sequence) setPreviewError(formatApiError(error, '改写预览失败'))
-    } finally {
-      if (previewSequence.current === sequence) setPreviewing(false)
-    }
   }
 
   useEffect(() => {
@@ -288,189 +132,188 @@ export function IndustryRulesWorkbench() {
   }, [rulesets, selectedRuleset])
 
   useEffect(() => {
-    if (!selectedDatasetId && datasets[0]?.id) setSelectedDatasetId(String(datasets[0].id))
+    if (!selectedDatasetId && datasets[0]?.id) setSelectedDatasetId(datasets[0].id)
   }, [datasets, selectedDatasetId])
 
   useEffect(() => {
-    if (!rulesetDetailQuery.data?.ruleset) return
-    setGlossaryEntries(glossaryEntriesFromDetail(rulesetDetailQuery.data.ruleset))
-    setPatternEntries(patternEntriesFromDetail(rulesetDetailQuery.data.ruleset))
-    setIntentEntries(intentEntriesFromDetail(rulesetDetailQuery.data.ruleset))
-  }, [rulesetDetailQuery.data])
-
-  useEffect(() => {
-    if (!glossarySuggestionsQuery.data) return
-    setGlossarySuggestions(suggestionRowsFromPayload(glossarySuggestionsQuery.data))
-    setSelectedSuggestionTokens({})
-    setDismissedSuggestionTokens({})
-  }, [glossarySuggestionsQuery.data])
-
-  useEffect(() => {
-    const sequence = ++previewSequence.current
     setPreview(null)
     setPreviewError(null)
     setPreviewing(false)
-    if (tool !== 'preview' || !selectedRuleset.trim() || !previewQuery.trim()) return
-    const timer = window.setTimeout(() => {
-      detachPromise(runPreview(previewQuery, selectedRuleset, sequence))
-    }, 280)
-    return () => window.clearTimeout(timer)
+    const query = previewQuery.trim()
+    if (tool !== 'preview' || selectedRuleset === '' || query === '') return
+
+    const controller = new AbortController()
+    const { signal } = controller
+    async function loadPreview() {
+      setPreviewing(true)
+      try {
+        const response = await industryRulesApi.previewRewrite({ ruleset: selectedRuleset, query }, { signal })
+        if (!signal.aborted) setPreview(response)
+      } catch (error) {
+        if (!signal.aborted) setPreviewError(formatApiError(error, '改写预览失败'))
+      } finally {
+        if (!signal.aborted) setPreviewing(false)
+      }
+    }
+
+    const timer = window.setTimeout(() => void loadPreview(), 280)
+    return () => {
+      window.clearTimeout(timer)
+      controller.abort()
+    }
   }, [previewQuery, selectedRuleset, tool])
 
-  const visibleGlossaryEntries = useMemo(() => {
-    const keyword = searchValue.trim().toLowerCase()
-    if (!keyword) return glossaryEntries
-    return glossaryEntries.filter((entry) => {
-      const haystack = `${entry.term} ${entry.aliasesText}`.toLowerCase()
-      return haystack.includes(keyword)
-    })
-  }, [glossaryEntries, searchValue])
+  const keyword = searchValue.trim().toLowerCase()
+  const visibleRows =
+    currentRows === undefined
+      ? undefined
+      : {
+          glossary: currentRows.glossary.filter((row) => `${row.term} ${row.words}`.toLowerCase().includes(keyword)),
+          patterns: currentRows.patterns.filter((row) =>
+            `${row.words} ${row.followup}`.toLowerCase().includes(keyword),
+          ),
+          intents: currentRows.intents.filter((row) =>
+            `${row.name} ${row.words} ${row.route}`.toLowerCase().includes(keyword),
+          ),
+        }
+  const glossaryEntries = currentRows?.glossary
   const visibleGlossarySuggestions = useMemo(() => {
-    const existingTerms = new Set(glossaryEntries.map((entry) => entry.term.trim()).filter(Boolean))
+    if (glossarySuggestions === undefined) return []
+    const existingTerms = new Set(glossaryEntries?.map((row) => row.term.trim()))
     return glossarySuggestions.filter(
-      (entry) => !dismissedSuggestionTokens[entry.token] && !existingTerms.has(entry.token),
+      (entry) => dismissedSuggestionTokens[entry.token] !== true && !existingTerms.has(entry.token),
     )
   }, [dismissedSuggestionTokens, glossaryEntries, glossarySuggestions])
-  const selectedSuggestionCount = selectedMapValues(selectedSuggestionTokens).length
+  const selectedSuggestions = visibleGlossarySuggestions.filter(
+    (entry) => selectedSuggestionTokens[entry.token] === true,
+  )
+
+  function updateRows(
+    section: RuleSection,
+    rows: readonly RuleRow[],
+    update: (rows: readonly RuleRow[]) => readonly RuleRow[],
+  ) {
+    if (saveRef.current !== null) return
+    setDrafts((previous) => {
+      const rulesetDraft = previous.get(selectedRuleset)
+      const previousRows = rulesetDraft?.[section] ?? rows
+      const nextRows = update(previousRows)
+      if (nextRows === previousRows) return previous
+      const next = new Map(previous)
+      next.set(selectedRuleset, { ...rulesetDraft, [section]: nextRows })
+      return next
+    })
+    setOperationError(null)
+  }
+
+  function removeRow(section: RuleSection, id: string) {
+    if (currentRows === undefined) return
+    updateRows(section, currentRows[section], (rows) => rows.filter((row) => row.id !== id))
+  }
 
   const addGlossarySuggestion = (token: string) => {
+    if (glossaryEntries === undefined || saveRef.current !== null) return
     const term = token.trim()
-    if (!term) return
-    setGlossaryEntries((prev) => {
-      if (prev.some((entry) => entry.term.trim() === term)) return prev
-      return [...prev, { id: makeLocalId('glossary', term), term, aliasesText: '' }]
-    })
+    if (term === '') return
+    const row = { ...createRuleRow(randomBase36Id(10)), term }
+    updateRows('glossary', glossaryEntries, (rows) =>
+      rows.some((entry) => entry.term.trim() === term) ? rows : [...rows, row],
+    )
     setDismissedSuggestionTokens((prev) => ({ ...prev, [term]: true }))
   }
 
   const acceptSelectedSuggestions = () => {
-    for (const token of selectedMapValues(selectedSuggestionTokens)) {
-      addGlossarySuggestion(token)
+    for (const suggestion of selectedSuggestions) {
+      addGlossarySuggestion(suggestion.token)
     }
     setSelectedSuggestionTokens({})
   }
 
-  const saveGlossary = async () => {
-    const ruleset = selectedRuleset.trim()
-    if (!ruleset) return
-    setSavingGlossary(true)
+  async function saveCurrent() {
+    if (currentRows === undefined || saveRef.current !== null || getAuthSessionKey() !== sessionKey) return
+    const ruleset = selectedRuleset
+    const section = activeTab
+    const operation = Symbol()
+    const isCurrent = () => saveRef.current === operation && getAuthSessionKey() === sessionKey
+    saveRef.current = operation
+    setBusy(true)
     setOperationError(null)
     try {
-      await industryRulesApi.updateGlossary(ruleset, {
-        glossary: buildGlossaryPayload(glossaryEntries),
+      if (section === 'glossary') {
+        await industryRulesApi.updateGlossary(ruleset, { glossary: serializeRows(section, currentRows.glossary) })
+      } else if (section === 'patterns') {
+        await industryRulesApi.updatePatterns(ruleset, { patterns: serializeRows(section, currentRows.patterns) })
+      } else {
+        await industryRulesApi.updateIntents(ruleset, { intents: serializeRows(section, currentRows.intents) })
+      }
+      if (!isCurrent()) return
+
+      try {
+        await rulesetDetailQuery.refetch({ throwOnError: true })
+      } catch {
+        if (isCurrent()) setOperationError('修改已提交，但暂时无法读回结果。草稿已保留。')
+        return
+      }
+      if (!isCurrent()) return
+      setDrafts((previous) => {
+        const rulesetDraft = previous.get(ruleset)
+        if (rulesetDraft === undefined) return previous
+        const remaining = { ...rulesetDraft }
+        delete remaining[section]
+        const next = new Map(previous)
+        if (Object.keys(remaining).length === 0) next.delete(ruleset)
+        else next.set(ruleset, remaining)
+        return next
       })
-      toast.success('术语已保存')
-      await rulesetDetailQuery.refetch()
+      toast.success(RULE_LABELS[section].saved)
     } catch (error) {
-      setOperationError(formatApiError(error, '保存术语失败'))
+      if (isCurrent()) setOperationError(formatApiError(error, `保存${RULE_LABELS[section].name}失败`))
     } finally {
-      setSavingGlossary(false)
+      if (saveRef.current === operation) {
+        saveRef.current = null
+        if (getAuthSessionKey() === sessionKey) setBusy(false)
+      }
     }
   }
 
-  const savePatterns = async () => {
-    const ruleset = selectedRuleset.trim()
-    if (!ruleset) return
-    setSavingPatterns(true)
+  function exportCurrentRuleset() {
+    if (currentRows === undefined) return
     setOperationError(null)
     try {
-      await industryRulesApi.updatePatterns(ruleset, {
-        patterns: buildPatternsPayload(patternEntries),
-      })
-      toast.success('问题模式已保存')
-      await rulesetDetailQuery.refetch()
+      const payload = {
+        ruleset: selectedRuleset,
+        glossary: serializeRows('glossary', currentRows.glossary),
+        patterns: serializeRows('patterns', currentRows.patterns),
+        intents: serializeRows('intents', currentRows.intents),
+      }
+      downloadBlob(
+        `${selectedRuleset}.json`,
+        new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8' }),
+      )
     } catch (error) {
-      setOperationError(formatApiError(error, '保存问题模式失败'))
-    } finally {
-      setSavingPatterns(false)
+      setOperationError(formatApiError(error, '导出行业规则失败'))
     }
   }
 
-  const saveIntents = async () => {
-    const ruleset = selectedRuleset.trim()
-    if (!ruleset) return
-    setSavingIntents(true)
-    setOperationError(null)
-    try {
-      await industryRulesApi.updateIntents(ruleset, {
-        intents: buildIntentsPayload(intentEntries),
-      })
-      toast.success('意图分类已保存')
-      await rulesetDetailQuery.refetch()
-    } catch (error) {
-      setOperationError(formatApiError(error, '保存意图分类失败'))
-    } finally {
-      setSavingIntents(false)
-    }
+  function openEditor(section: RuleSection, row?: RuleRow) {
+    if (currentRows === undefined || saveRef.current !== null) return
+    setEditor({ kind: section, rows: currentRows[section], value: row ?? createRuleRow(randomBase36Id(10)) })
   }
 
-  const exportCurrentRuleset = () => {
-    const payload = {
-      ruleset: selectedRuleset,
-      glossary: buildGlossaryPayload(glossaryEntries),
-      patterns: buildPatternsPayload(patternEntries),
-      intents: buildIntentsPayload(intentEntries),
-    }
-    const blob = new Blob([JSON.stringify(payload, null, 2)], {
-      type: 'application/json;charset=utf-8',
-    })
-    const url = URL.createObjectURL(blob)
-    const anchor = document.createElement('a')
-    anchor.href = url
-    anchor.download = `${selectedRuleset || 'industry-rules'}.json`
-    anchor.click()
-    globalThis.window.setTimeout(() => URL.revokeObjectURL(url), 1000)
-  }
-
-  const busy = savingGlossary || savingPatterns || savingIntents
-  const commitEditor = () => {
-    if (!editor) return
-    if (editor.kind === 'glossary') {
-      const value = editor.value
-      setGlossaryEntries((prev) =>
-        prev.some((item) => item.id === value.id)
-          ? prev.map((item) => (item.id === value.id ? value : item))
-          : [...prev, value],
-      )
-    }
-    if (editor.kind === 'patterns') {
-      const value = editor.value
-      setPatternEntries((prev) =>
-        prev.some((item) => item.id === value.id)
-          ? prev.map((item) => (item.id === value.id ? value : item))
-          : [...prev, value],
-      )
-    }
-    if (editor.kind === 'intents') {
-      const value = editor.value
-      setIntentEntries((prev) =>
-        prev.some((item) => item.id === value.id)
-          ? prev.map((item) => (item.id === value.id ? value : item))
-          : [...prev, value],
-      )
-    }
+  function commitEditor() {
+    if (editor === null || saveRef.current !== null) return
+    const { kind, value, rows } = editor
+    updateRows(kind, rows, (previous) =>
+      previous.some((row) => row.id === value.id)
+        ? previous.map((row) => (row.id === value.id ? value : row))
+        : [...previous, value],
+    )
     setEditor(null)
-  }
-  const addEntry = () => {
-    if (activeTab === 'glossary')
-      setEditor({ kind: 'glossary', value: { id: makeLocalId('glossary'), term: '', aliasesText: '' } })
-    else if (activeTab === 'patterns')
-      setEditor({
-        kind: 'patterns',
-        value: { id: makeLocalId('pattern'), markersText: '', followup: '', enabled: true },
-      })
-    else
-      setEditor({ kind: 'intents', value: { id: makeLocalId('intent'), name: '', keywordsText: '', route: 'default' } })
-  }
-  const saveCurrent = () => {
-    if (activeTab === 'glossary') void saveGlossary()
-    else if (activeTab === 'patterns') void savePatterns()
-    else void saveIntents()
   }
   const emptyRow = (
     <tr>
       <td colSpan={4}>
-        <div className={ws.empty}>{searchValue ? '没有匹配的规则' : '当前规则集暂无此类规则'}</div>
+        <div className={ws.empty}>{keyword ? '没有匹配的规则' : '当前规则集暂无此类规则'}</div>
       </td>
     </tr>
   )
@@ -484,13 +327,13 @@ export function IndustryRulesWorkbench() {
           <Button variant="outline" disabled={!selectedRuleset} onClick={() => setTool('preview')}>
             查询预览
           </Button>
-          <Button variant="outline" onClick={() => setTool('suggestions')}>
+          <Button variant="outline" disabled={busy} onClick={() => setTool('suggestions')}>
             规则候选
           </Button>
           <Button
             variant="ghost"
             aria-label="导出当前规则集"
-            disabled={!selectedRuleset}
+            disabled={currentRows === undefined || busy}
             onClick={exportCurrentRuleset}
           >
             <ExternalLink />
@@ -502,14 +345,12 @@ export function IndustryRulesWorkbench() {
           <Label htmlFor="industry-rules-ruleset">规则集</Label>
           <Select
             value={selectedRuleset}
-            disabled={loadingMeta || busy || !!editor}
+            disabled={loadingMeta || busy || editor !== null}
             onValueChange={(value) => {
+              if (saveRef.current !== null) return
               setSelectedRuleset(value)
-              setGlossaryEntries([])
-              setPatternEntries([])
-              setIntentEntries([])
-              setGlossarySuggestions([])
               setSelectedSuggestionTokens({})
+              setDismissedSuggestionTokens({})
               setOperationError(null)
             }}
           >
@@ -535,6 +376,7 @@ export function IndustryRulesWorkbench() {
       ) : null}
       {rulesetDetailQuery.isError ? (
         <WorkspaceNotice
+          pending={busy || rulesetDetailQuery.isFetching}
           retry={() => {
             void rulesetDetailQuery.refetch()
           }}
@@ -543,11 +385,16 @@ export function IndustryRulesWorkbench() {
         </WorkspaceNotice>
       ) : null}
       {operationError ? <WorkspaceNotice>{operationError}</WorkspaceNotice> : null}
-      <Tabs value={activeTab} onValueChange={setActiveTab}>
+      <Tabs
+        value={activeTab}
+        onValueChange={(value) => {
+          if (isRuleSection(value)) setActiveTab(value)
+        }}
+      >
         <TabsList className={ws.tabList}>
-          <TabsTrigger value="glossary">术语 {glossaryEntries.length}</TabsTrigger>
-          <TabsTrigger value="patterns">问题模式 {patternEntries.length}</TabsTrigger>
-          <TabsTrigger value="intents">意图分类 {intentEntries.length}</TabsTrigger>
+          <TabsTrigger value="glossary">术语 {currentRows?.glossary.length}</TabsTrigger>
+          <TabsTrigger value="patterns">问题模式 {currentRows?.patterns.length}</TabsTrigger>
+          <TabsTrigger value="intents">意图分类 {currentRows?.intents.length}</TabsTrigger>
         </TabsList>
         <div className="my-5 flex flex-wrap items-center justify-between gap-3">
           <Input
@@ -555,19 +402,20 @@ export function IndustryRulesWorkbench() {
             aria-label="搜索行业规则"
             placeholder="搜索规则内容"
             value={searchValue}
-            onChange={(event) => setSearchValue(event.target.value)}
+            onChange={(event) => setSearchValue(event.currentTarget.value)}
           />
           <div className="flex gap-2">
-            <Button variant="outline" onClick={addEntry} disabled={!selectedRuleset || loadingRuleset || busy}>
-              <Plus />
-              {activeTab === 'glossary' ? '新增术语' : activeTab === 'patterns' ? '新增模式' : '新增意图'}
-            </Button>
             <Button
-              disabled={!selectedRuleset || loadingRuleset || busy || rulesetDetailQuery.isError}
-              onClick={saveCurrent}
+              variant="outline"
+              onClick={() => openEditor(activeTab)}
+              disabled={currentRows === undefined || busy}
             >
+              <Plus />
+              {RULE_LABELS[activeTab].add}
+            </Button>
+            <Button disabled={currentRows === undefined || busy} onClick={() => void saveCurrent()}>
               {busy ? <Loader2 className="animate-spin motion-reduce:animate-none" /> : <Save />}
-              {activeTab === 'glossary' ? '保存术语' : activeTab === 'patterns' ? '保存模式' : '保存意图'}
+              {RULE_LABELS[activeTab].save}
             </Button>
           </div>
         </div>
@@ -575,7 +423,7 @@ export function IndustryRulesWorkbench() {
           <p role="status" className={ws.empty}>
             正在读取规则…
           </p>
-        ) : (
+        ) : visibleRows !== undefined ? (
           <>
             <TabsContent value="glossary" className={ws.tabContent}>
               <WorkspaceTableScroll label="术语管理表格" stickyActions>
@@ -589,24 +437,21 @@ export function IndustryRulesWorkbench() {
                     </tr>
                   </thead>
                   <tbody>
-                    {visibleGlossaryEntries.map((entry) => (
+                    {visibleRows.glossary.map((entry) => (
                       <tr key={entry.id}>
                         <td className="font-medium">{entry.term || '未填写术语'}</td>
-                        <td>{entry.aliasesText || '—'}</td>
+                        <td>{entry.words || '—'}</td>
                         <td>规则库</td>
                         <td>
                           <div className="flex gap-2">
-                            <Button
-                              variant="ghost"
-                              onClick={() => setEditor({ kind: 'glossary', value: { ...entry } })}
-                            >
+                            <Button variant="ghost" disabled={busy} onClick={() => openEditor('glossary', entry)}>
                               编辑
                             </Button>
                             <Button
                               variant="ghost"
                               aria-label={`删除术语 ${entry.term}`}
                               disabled={busy}
-                              onClick={() => setGlossaryEntries((prev) => prev.filter((item) => item.id !== entry.id))}
+                              onClick={() => removeRow('glossary', entry.id)}
                             >
                               <Trash2 />
                             </Button>
@@ -614,7 +459,7 @@ export function IndustryRulesWorkbench() {
                         </td>
                       </tr>
                     ))}
-                    {!visibleGlossaryEntries.length ? emptyRow : null}
+                    {visibleRows.glossary.length === 0 ? emptyRow : null}
                   </tbody>
                 </table>
               </WorkspaceTableScroll>
@@ -631,40 +476,31 @@ export function IndustryRulesWorkbench() {
                     </tr>
                   </thead>
                   <tbody>
-                    {patternEntries
-                      .filter((entry) =>
-                        `${entry.markersText} ${entry.followup}`.toLowerCase().includes(searchValue.toLowerCase()),
-                      )
-                      .map((entry) => (
-                        <tr key={entry.id}>
-                          <td className="font-medium">{entry.markersText || '未填写触发词'}</td>
-                          <td>{entry.followup || '—'}</td>
-                          <td>
-                            <Badge variant={entry.enabled ? 'soft' : 'outline'}>
-                              {entry.enabled ? '启用' : '停用'}
-                            </Badge>
-                          </td>
-                          <td>
-                            <div className="flex gap-2">
-                              <Button
-                                variant="ghost"
-                                onClick={() => setEditor({ kind: 'patterns', value: { ...entry } })}
-                              >
-                                编辑
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                aria-label="删除问题模式"
-                                disabled={busy}
-                                onClick={() => setPatternEntries((prev) => prev.filter((item) => item.id !== entry.id))}
-                              >
-                                <Trash2 />
-                              </Button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    {!patternEntries.length ? emptyRow : null}
+                    {visibleRows.patterns.map((entry) => (
+                      <tr key={entry.id}>
+                        <td className="font-medium">{entry.words || '未填写触发词'}</td>
+                        <td>{entry.followup || '—'}</td>
+                        <td>
+                          <Badge variant={entry.enabled ? 'soft' : 'outline'}>{entry.enabled ? '启用' : '停用'}</Badge>
+                        </td>
+                        <td>
+                          <div className="flex gap-2">
+                            <Button variant="ghost" disabled={busy} onClick={() => openEditor('patterns', entry)}>
+                              编辑
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              aria-label="删除问题模式"
+                              disabled={busy}
+                              onClick={() => removeRow('patterns', entry.id)}
+                            >
+                              <Trash2 />
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                    {visibleRows.patterns.length === 0 ? emptyRow : null}
                   </tbody>
                 </table>
               </WorkspaceTableScroll>
@@ -681,44 +517,35 @@ export function IndustryRulesWorkbench() {
                     </tr>
                   </thead>
                   <tbody>
-                    {intentEntries
-                      .filter((entry) =>
-                        `${entry.name} ${entry.keywordsText} ${entry.route}`
-                          .toLowerCase()
-                          .includes(searchValue.toLowerCase()),
-                      )
-                      .map((entry) => (
-                        <tr key={entry.id}>
-                          <td className="font-medium">{entry.name || '未填写意图'}</td>
-                          <td>{entry.keywordsText || '—'}</td>
-                          <td>{entry.route}</td>
-                          <td>
-                            <div className="flex gap-2">
-                              <Button
-                                variant="ghost"
-                                onClick={() => setEditor({ kind: 'intents', value: { ...entry } })}
-                              >
-                                编辑
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                aria-label={`删除意图 ${entry.name}`}
-                                disabled={busy}
-                                onClick={() => setIntentEntries((prev) => prev.filter((item) => item.id !== entry.id))}
-                              >
-                                <Trash2 />
-                              </Button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    {!intentEntries.length ? emptyRow : null}
+                    {visibleRows.intents.map((entry) => (
+                      <tr key={entry.id}>
+                        <td className="font-medium">{entry.name || '未填写意图'}</td>
+                        <td>{entry.words || '—'}</td>
+                        <td>{entry.route}</td>
+                        <td>
+                          <div className="flex gap-2">
+                            <Button variant="ghost" disabled={busy} onClick={() => openEditor('intents', entry)}>
+                              编辑
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              aria-label={`删除意图 ${entry.name}`}
+                              disabled={busy}
+                              onClick={() => removeRow('intents', entry.id)}
+                            >
+                              <Trash2 />
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                    {visibleRows.intents.length === 0 ? emptyRow : null}
                   </tbody>
                 </table>
               </WorkspaceTableScroll>
             </TabsContent>
           </>
-        )}
+        ) : null}
       </Tabs>
       <Dialog
         open={editor !== null}
@@ -746,9 +573,9 @@ export function IndustryRulesWorkbench() {
                 <label className="block space-y-2 text-sm">
                   <span>别名，逗号分隔</span>
                   <Input
-                    value={editor.value.aliasesText}
+                    value={editor.value.words}
                     onChange={(event) =>
-                      setEditor({ ...editor, value: { ...editor.value, aliasesText: event.target.value } })
+                      setEditor({ ...editor, value: { ...editor.value, words: event.currentTarget.value } })
                     }
                   />
                 </label>
@@ -758,9 +585,9 @@ export function IndustryRulesWorkbench() {
                 <label className="block space-y-2 text-sm">
                   <span>触发词，逗号分隔</span>
                   <Input
-                    value={editor.value.markersText}
+                    value={editor.value.words}
                     onChange={(event) =>
-                      setEditor({ ...editor, value: { ...editor.value, markersText: event.target.value } })
+                      setEditor({ ...editor, value: { ...editor.value, words: event.currentTarget.value } })
                     }
                   />
                 </label>
@@ -785,17 +612,19 @@ export function IndustryRulesWorkbench() {
               </>
             ) : editor?.kind === 'intents' ? (
               <>
-                {[
-                  ['name', '意图名称'],
-                  ['keywordsText', '关键词，逗号分隔'],
-                  ['route', '检索路由'],
-                ].map(([field, label]) => (
+                {(
+                  [
+                    ['name', '意图名称'],
+                    ['words', '关键词，逗号分隔'],
+                    ['route', '检索路由'],
+                  ] as const
+                ).map(([field, label]) => (
                   <label className="block space-y-2 text-sm" key={field}>
                     <span>{label}</span>
                     <Input
-                      value={editor.value[field as 'name' | 'keywordsText' | 'route']}
+                      value={editor.value[field]}
                       onChange={(event) =>
-                        setEditor({ ...editor, value: { ...editor.value, [field]: event.target.value } })
+                        setEditor({ ...editor, value: { ...editor.value, [field]: event.currentTarget.value } })
                       }
                     />
                   </label>
@@ -843,16 +672,16 @@ export function IndustryRulesWorkbench() {
                   <p role="status" className={ws.empty}>
                     正在计算改写预览…
                   </p>
-                ) : preview ? (
+                ) : preview?.ruleset === selectedRuleset && preview.original_query === previewQuery.trim() ? (
                   <section className={ws.section}>
                     <dl className="space-y-5 text-sm leading-6">
                       <div>
                         <dt className="text-muted-foreground">原问题</dt>
-                        <dd>{preview.originalQuery}</dd>
+                        <dd>{preview.original_query}</dd>
                       </div>
                       <div>
                         <dt className="text-muted-foreground">改写后</dt>
-                        <dd>{preview.expandedQuery}</dd>
+                        <dd>{preview.expanded_query}</dd>
                       </div>
                     </dl>
                     <Badge className="mt-5" variant="outline">
@@ -870,8 +699,8 @@ export function IndustryRulesWorkbench() {
                   value={selectedDatasetId}
                   onValueChange={(value) => {
                     setSelectedDatasetId(value)
-                    setGlossarySuggestions([])
                     setSelectedSuggestionTokens({})
+                    setDismissedSuggestionTokens({})
                   }}
                   disabled={loadingMeta}
                 >
@@ -887,8 +716,18 @@ export function IndustryRulesWorkbench() {
                   </SelectContent>
                 </Select>
                 <div className="my-4 flex items-center justify-between gap-3">
-                  <span className={ws.muted}>已选 {selectedSuggestionCount} 条</span>
-                  <Button variant="outline" disabled={!selectedSuggestionCount} onClick={acceptSelectedSuggestions}>
+                  <span className={ws.muted}>已选 {selectedSuggestions.length} 条</span>
+                  <Button
+                    variant="outline"
+                    disabled={
+                      busy ||
+                      loadingSuggestions ||
+                      glossarySuggestionsQuery.isError ||
+                      glossaryEntries === undefined ||
+                      selectedSuggestions.length === 0
+                    }
+                    onClick={acceptSelectedSuggestions}
+                  >
                     批量接受
                   </Button>
                 </div>
@@ -931,7 +770,11 @@ export function IndustryRulesWorkbench() {
                             <td>{entry.source}</td>
                             <td>
                               <div className="flex gap-2">
-                                <Button variant="ghost" onClick={() => addGlossarySuggestion(entry.token)}>
+                                <Button
+                                  variant="ghost"
+                                  disabled={glossaryEntries === undefined}
+                                  onClick={() => addGlossarySuggestion(entry.token)}
+                                >
                                   接受
                                 </Button>
                                 <Button

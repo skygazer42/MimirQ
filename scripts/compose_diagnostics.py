@@ -58,9 +58,7 @@ def _run_command(cmd: list[str], *, cwd: Path) -> tuple[int, str, str]:
     except FileNotFoundError as exc:
         return 127, "", f"{type(exc).__name__}: {exc}"
 
-    stdout = proc.stdout or ""
-    stderr = proc.stderr or ""
-    return int(proc.returncode), stdout, stderr
+    return proc.returncode, proc.stdout, proc.stderr
 
 
 def _parse_ps_output(output: str) -> list[dict[str, Any]]:
@@ -108,15 +106,7 @@ def _collect_compose_ps(
     return _parse_ps_output(stdout), None
 
 
-def _collect_services_from_compose(
-    *,
-    repo_root: Path,
-    compose_file: str,
-) -> tuple[dict[str, Any], dict[str, Any] | None]:
-    compose_rows, error = _collect_compose_ps(repo_root=repo_root, compose_file=compose_file)
-    if error:
-        return {}, error
-
+def _services_from_rows(compose_rows: list[dict[str, Any]]) -> dict[str, Any]:
     services: dict[str, Any] = {}
     for item in compose_rows:
         service = str(item.get("Service") or "").strip()
@@ -130,18 +120,10 @@ def _collect_services_from_compose(
             "container": item.get("Name") or "",
             "image": item.get("Image") or "",
         }
-    return services, None
+    return services
 
 
-def _collect_ports_from_compose(
-    *,
-    repo_root: Path,
-    compose_file: str,
-) -> tuple[dict[str, Any], dict[str, Any] | None]:
-    compose_rows, error = _collect_compose_ps(repo_root=repo_root, compose_file=compose_file)
-    if error:
-        return {}, error
-
+def _ports_from_rows(compose_rows: list[dict[str, Any]]) -> dict[str, Any]:
     ports: dict[str, Any] = {}
     for item in compose_rows:
         service = str(item.get("Service") or "").strip()
@@ -174,7 +156,7 @@ def _collect_ports_from_compose(
 
         if published:
             ports[service] = published
-    return ports, None
+    return ports
 
 
 def _check_backend_ready(*, url: str, timeout_sec: float) -> dict[str, Any]:
@@ -252,17 +234,14 @@ def main(argv: list[str] | None = None) -> int:
         "errors": [],
     }
 
-    if not bool(args.skip_docker):
-        services, service_error = _collect_services_from_compose(repo_root=repo_root, compose_file=compose_file)
-        ports, ports_error = _collect_ports_from_compose(repo_root=repo_root, compose_file=compose_file)
-        report["services"] = services
-        report["ports"] = ports
-        if service_error:
-            report["errors"].append({"kind": "docker_ps_services", **service_error})
-        if ports_error:
-            report["errors"].append({"kind": "docker_ps_ports", **ports_error})
+    if not args.skip_docker:
+        compose_rows, error = _collect_compose_ps(repo_root=repo_root, compose_file=compose_file)
+        report["services"] = _services_from_rows(compose_rows)
+        report["ports"] = _ports_from_rows(compose_rows)
+        if error:
+            report["errors"].extend({"kind": kind, **error} for kind in ("docker_ps_services", "docker_ps_ports"))
 
-    if not bool(args.skip_health):
+    if not args.skip_health:
         env = _read_env_file(repo_root / ".env")
         backend_port = _coerce_int(env.get("BACKEND_PORT"), default=8000)
         base_url = str(args.base_url).strip() or f"http://localhost:{backend_port}"

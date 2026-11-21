@@ -4,15 +4,15 @@ from uuid import uuid4
 
 import pytest
 
-from app.rag.kg.api.routes_support.merge_alias import _vector_alias_suggestions
-from app.rag.kg.models import KgEntity
+from app.api.v1.knowledge_graph.routes_support.merge_alias import _vector_alias_suggestions
+from app.models.knowledge_graph.entities import KgEntity
 
 
 @pytest.mark.parametrize("user,password", [("", ""), ("milvus-user", "milvus-password")])
 def test_milvus_status_passes_configured_credentials_to_sdk(
     monkeypatch: pytest.MonkeyPatch, user: str, password: str
 ) -> None:
-    from app.api.v1 import settings as settings_api
+    from app.api.v1.system import settings as settings_api
 
     calls = []
 

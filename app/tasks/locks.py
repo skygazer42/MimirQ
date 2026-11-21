@@ -1,17 +1,17 @@
 import asyncio
+import logging
 import threading
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
-from app.core.config import settings
-from app.core.optional_deps import require_dependency
-from app.rag.core.logging import get_logger
+from app.infrastructure.config import settings
+from app.infrastructure.runtime.dependencies import require_dependency
 
 if TYPE_CHECKING:
     from arq import Retry
 
-logger = get_logger("tasks.locks")
+logger = logging.getLogger("tasks.locks")
 
 _COMPARE_DELETE_LUA = """
 if redis.call("GET", KEYS[1]) == ARGV[1] then
@@ -87,10 +87,11 @@ async def _semaphore_acquire(
     token = uuid4().hex
     loop = asyncio.get_running_loop()
     deadline = loop.time() + max(0.0, wait_timeout_sec)
+    lease_ttl = max(1, ttl_sec)
     while True:
         for slot in range(1, limit + 1):
             key = f"{key_prefix}:{slot}"
-            if await redis.set(key, token, ex=max(1, ttl_sec), nx=True):
+            if await redis.set(key, token, ex=lease_ttl, nx=True):
                 return f"{key}{_SEMAPHORE_LEASE_SEPARATOR}{token}"
         remaining_sec = deadline - loop.time()
         if remaining_sec <= 0:
@@ -132,8 +133,6 @@ async def _run_semaphore_heartbeat(
                 if refreshed is False:
                     logger.warning("Semaphore lease heartbeat stopped after ownership loss: %s", key)
                     break
-    except asyncio.CancelledError:
-        raise
     finally:
         with _SEMAPHORE_HEARTBEATS_LOCK:
             controller = _SEMAPHORE_HEARTBEATS.get(lease)
@@ -188,7 +187,7 @@ async def _acquire_semaphore_lease(
 ) -> str:
     retry_cls = get_retry_exc()
     if redis is None:
-        logger.warning(f"{scope} semaphore acquire failed (retry): Redis client unavailable")
+        logger.warning("%s semaphore acquire failed (retry): Redis client unavailable", scope)
         raise retry_cls(defer=retry_defer_sec)
     try:
         lease = await _semaphore_acquire(
@@ -206,7 +205,7 @@ async def _acquire_semaphore_lease(
     except Exception as exc:  # noqa: BLE001
         if isinstance(exc, retry_cls):
             raise
-        logger.warning(f"{scope} semaphore acquire failed (retry): %s", str(exc)[:200])
+        logger.warning("%s semaphore acquire failed (retry): %s", scope, str(exc)[:200])
         raise retry_cls(defer=retry_defer_sec) from exc
 
 

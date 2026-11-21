@@ -8,7 +8,7 @@ import pytest
 
 
 def test_metadata_anchor_empty_scope_does_not_query_the_database(monkeypatch: pytest.MonkeyPatch) -> None:
-    from app.services.dify_integration import metadata_anchor
+    from app.services.dify import metadata_anchor
 
     class Database:
         def query(self, *_args):
@@ -17,7 +17,7 @@ def test_metadata_anchor_empty_scope_does_not_query_the_database(monkeypatch: py
     monkeypatch.setattr(metadata_anchor.settings, "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_ENABLED", True)
     assert (
         metadata_anchor.find_anchor_records(
-            db=Database(), tenant_id=uuid4(), dataset_ids=[], query="neutral query", top_k=2
+            db=Database(), tenant_id=uuid4(), account_id="actor", dataset_ids=[], query="neutral query", top_k=2
         )
         == []
     )
@@ -25,7 +25,7 @@ def test_metadata_anchor_empty_scope_does_not_query_the_database(monkeypatch: py
 
 @pytest.mark.asyncio
 async def test_metadata_anchor_offload_creates_and_closes_its_worker_session(monkeypatch: pytest.MonkeyPatch) -> None:
-    from app.services.dify_integration import metadata_anchor
+    from app.services.dify import metadata_anchor
 
     calls: list[tuple[str, int]] = []
 
@@ -42,7 +42,8 @@ async def test_metadata_anchor_offload_creates_and_closes_its_worker_session(mon
     monkeypatch.setattr(metadata_anchor.settings, "RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_ENABLED", False)
     assert (
         await metadata_anchor.run_with_deadline(
-            {"tenant_id": uuid4(), "dataset_ids": [], "query": "neutral query", "top_k": 2}, budget_deadline=None
+            {"tenant_id": uuid4(), "account_id": "actor", "dataset_ids": [], "query": "neutral query", "top_k": 2},
+            budget_deadline=None,
         )
         == []
     )
@@ -55,7 +56,7 @@ async def test_metadata_anchor_offload_creates_and_closes_its_worker_session(mon
 async def test_expired_metadata_anchor_deadline_does_not_create_a_worker_session(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from app.services.dify_integration import metadata_anchor
+    from app.services.dify import metadata_anchor
 
     def unexpected_session():
         pytest.fail("expired budget must not create a worker session")
@@ -63,7 +64,8 @@ async def test_expired_metadata_anchor_deadline_does_not_create_a_worker_session
     monkeypatch.setattr(metadata_anchor, "SessionLocal", unexpected_session)
     assert (
         await metadata_anchor.run_with_deadline(
-            {"tenant_id": uuid4(), "dataset_ids": [], "query": "neutral query", "top_k": 2}, budget_deadline=0.0
+            {"tenant_id": uuid4(), "account_id": "actor", "dataset_ids": [], "query": "neutral query", "top_k": 2},
+            budget_deadline=0.0,
         )
         == []
     )
@@ -84,11 +86,11 @@ class NoApi(importlib.abc.MetaPathFinder):
             raise AssertionError(fullname)
 
 sys.meta_path.insert(0, NoApi())
-from app.services.dify_integration import metadata_anchor
+from app.services.dify import metadata_anchor
 metadata_anchor.settings.DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_ENABLED = True
 metadata_anchor.settings.RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_ENABLED = False
 result = asyncio.run(metadata_anchor.run_with_deadline(
-    {'tenant_id': uuid4(), 'dataset_ids': [], 'query': 'neutral query', 'top_k': 2}, budget_deadline=None,
+    {'tenant_id': uuid4(), 'account_id': 'actor', 'dataset_ids': [], 'query': 'neutral query', 'top_k': 2}, budget_deadline=None,
 ))
 assert result == []
 assert not attempts, attempts

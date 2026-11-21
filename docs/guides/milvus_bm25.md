@@ -16,7 +16,7 @@ MILVUS_BM25_TIMEOUT_SEC=10
 MILVUS_BM25_MAX_CANDIDATES=2048
 ```
 
-Milvus 的连接参数继续使用已有 `MILVUS_HOST`、`MILVUS_PORT`、`MILVUS_USER` 和 `MILVUS_PASSWORD`。Qdrant、pgvector 等受支持后端保留向量能力，BM25 通道显示需要 Milvus，不回退到进程内索引。Chroma 与 FAISS 后端已退出。
+Milvus 的连接参数继续使用已有 `MILVUS_HOST`、`MILVUS_PORT`、`MILVUS_USER` 和 `MILVUS_PASSWORD`。生产向量与全文使用 Milvus；memory 只供开发/测试，BM25 不回退到进程内索引。Qdrant、pgvector 占位后端及 Chroma、FAISS 后端均已退出。
 
 ## 已有文档回填
 
@@ -46,7 +46,7 @@ python scripts/backfill_milvus_bm25.py --tenant-id TENANT_UUID --dataset-id DATA
 
 - 移除 `rank-bm25` 和生产代码中的 BM25Retriever。
 - 移除本地缓存、懒构建、启动重建相关的 `BM25_LAZY_BUILD_*`、`BM25_STARTUP_BUILD_*`、`BM25_EAGER_UPSERT_MAX_CHUNKS`、`BM25_CACHE_MAX_TENANTS`。
-- 保留的 `BM25_TOKENIZE_*` 是轻量查询匹配、融合及聊天记忆的历史配置名；Milvus BM25 由集合 analyzer 分词。
+- 共享分词配置现名为 `LEXICAL_TOKENIZE_*`，用于轻量查询匹配、融合及聊天记忆；旧环境里的 `BM25_TOKENIZE_*` 需迁移到同后缀新名称，算法、默认值和约束保持。Milvus BM25 仍由集合 analyzer 分词。
 - 聊天记忆只检索当前租户、当前会话的最近消息，由数据库关键词计分；无匹配不会补入无关历史，`LONG_TERM_MEMORY_MAX_MESSAGES` 必须大于零。
 
 Milvus 的统计范围和 analyzer 与原进程内 BM25 不同，排序不保证逐项一致，应使用项目现有评测查询验证召回。当前虚拟环境里已安装的包不会因 requirements 变化自动卸载；使用新环境或重建镜像核对依赖和占用。

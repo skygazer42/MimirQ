@@ -1,4 +1,5 @@
 from app.rag.industry_rules.loaders.yaml_loader import (
+    RulesetFormatError,
     list_rulesets,
     load_ruleset,
     replace_ruleset_glossary,
@@ -9,6 +10,7 @@ from app.rag.industry_rules.loaders.yaml_loader import (
 )
 
 __all__ = [
+    "RulesetFormatError",
     "load_ruleset",
     "list_rulesets",
     "replace_ruleset_glossary",

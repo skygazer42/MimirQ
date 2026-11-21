@@ -20,7 +20,8 @@ class AuditSession:
 
 @pytest.mark.parametrize("operation", ["catalog_redaction", "table_query", "table_redaction"])
 def test_audit_commit_failure_rolls_back_and_warns(operation, caplog):
-    from app.api.v1 import dataset_tables, db_catalog
+    from app.api.v1.datasets import db_catalog
+    from app.api.v1.datasets import tables as dataset_tables
 
     db = AuditSession()
     args = dict(db=db, tenant_id=uuid4(), account_id="account", dataset_id=uuid4())

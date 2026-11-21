@@ -243,8 +243,8 @@ Dify 标准外部知识库端点为 `POST /api/v1/integrations/dify/retrieval`�
 | 功能维度 | **Ragvia** | [Dify](https://github.com/langgenius/dify) | [RAGFlow](https://github.com/infiniflow/ragflow) | [FastGPT](https://github.com/labring/FastGPT) | [AnythingLLM](https://github.com/Mintplex-Labs/anything-llm) | [LangChain](https://github.com/langchain-ai/langchain) |
 |:---|:---|:---|:---|:---|:---|:---|
 | **文档解析** | **30 种解析后端**：PDF、OCR、版式、表格、公式、VLM | Knowledge Pipeline；PDF、PPT 等常见格式 | **DeepDoc**；复杂版式、扫描件、MinerU / Docling | PDF、扫描件、表格、公式转 Markdown | PDF、TXT、DOCX 等文档管道 | Document Loaders 与第三方解析器集成 |
-| **切块能力** | **86 种策略**：递归、语义、父子、RAPTOR、Late Chunking；可视化预览 | 通用、父子、Q&A 与可编排处理 | 模板化切块；支持可视化人工干预 | 自动、手工、Q&A 与增强处理 | 文档管道自动分块 | Text Splitters；由应用代码组合 |
-| **检索 / 重排** | Milvus + BM25 / SPLADE / ColBERT / RRF | 语义、全文、混合检索；可配置 rerank | 多路召回 + 融合重排 | 语义、全文、混合检索 + RRF + rerank | 多种向量库检索 + 来源引用 | Retriever / reranker 组件；自行编排 |
+| **切块能力** | 递归、语义、父子等策略；可视化预览 | 通用、父子、Q&A 与可编排处理 | 模板化切块；支持可视化人工干预 | 自动、手工、Q&A 与增强处理 | 文档管道自动分块 | Text Splitters；由应用代码组合 |
+| **检索 / 重排** | Milvus + BM25 / 稀疏召回 / RRF | 语义、全文、混合检索；可配置 rerank | 多路召回 + 融合重排 | 语义、全文、混合检索 + RRF + rerank | 多种向量库检索 + 来源引用 | Retriever / reranker 组件；自行编排 |
 | **知识图谱** | 实体、关系、事件抽取；实体消解、社区发现与多跳检索 | 通过工作流、插件或外部服务接入 | 内建 GraphRAG | 通过工作流或外部服务接入 | 通过 Agent / Tool 外接 | 图数据库集成与自定义链路 |
 | **Agent / MCP** | LangGraph Agent、Self-RAG / CRAG / FLARE；MCP client / server | Function Calling / ReAct Agent、工具与 MCP | Agentic Workflow、MCP、代码执行器 | Agent V2、工具、MCP 与 VM 执行 | No-code Agent Builder、MCP、定时任务 | Agents / LangGraph / MCP；代码优先 |
 | **可视化工作流** | **无通用节点画布**；专注 RAG 调试、治理页面与 API | **核心能力**：应用 / Agent 节点编排 | Agent 与入库 Pipeline 编排 | **核心能力**：Flow 节点编排 | No-code Agent Builder | 无内建产品 UI；由应用实现 |
@@ -301,8 +301,8 @@ Ragvia 已用于**市级政务智能问答助手**，覆盖 7 个区域级 + 1 �
 | [文档 ACL](./docs/guides/document_acl.md) | 文档级访问控制与 Security Trimming |
 | [URL 导入](./docs/guides/url_ingest.md) | 远程 URL 抓取与批量导入 |
 | [文档版本](./docs/guides/document_versions.md) | Pipeline 版本管理与回滚 |
-| [稀疏检索](./docs/guides/sparse_retrieval.md) | SPLADE 稀疏检索通道 |
-| [ColBERT 重排](./docs/guides/reranking_colbert.md) | ColBERT 晚交互重排序 |
+| [Milvus 全文检索](./docs/guides/milvus_bm25.md) | 原生 BM25 索引、范围约束与回填 |
+| [检索与重排结构](./docs/development/rag_structure.md) | 召回、融合排序、模型重排与阶段编排 |
 | [RAG 优化](./docs/guides/rag_optimization.md) | 检索效果与回答质量优化 |
 | [检索排障](./docs/guides/retrieval_debugging.md) | 检索问题诊断 |
 | [SAML SSO](./docs/guides/saml_sso.md) | SAML 单点登录集成 |

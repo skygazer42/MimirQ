@@ -23,8 +23,8 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
-from app.rag.core.hashing import stable_hash
-from app.rag.evaluation.hard_negative_mining import (
+from app.infrastructure.hashing import stable_hash
+from app.rag.evaluation.generation.hard_negative_mining import (
     merge_hard_negative_records,
     mine_hard_negatives_for_case_from_trace,
 )

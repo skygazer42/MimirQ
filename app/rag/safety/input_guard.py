@@ -1,11 +1,11 @@
 import asyncio
 import base64
+import logging
 from dataclasses import dataclass
 from typing import Any
 
-from app.core.config import settings
-from app.rag.core.hashing import stable_hash
-from app.rag.core.logging import get_logger
+from app.infrastructure.config import settings
+from app.infrastructure.hashing import stable_hash
 from app.rag.safety.metrics import observe_input_guard
 from app.rag.safety.rules import (
     BASE64_BLOCK_RE,
@@ -17,9 +17,9 @@ from app.rag.safety.rules import (
     ZERO_WIDTH_CHARS,
     GuardRule,
 )
-from app.services.metrics_logger import log_metrics
+from app.services.observability.metrics_log import log_metrics
 
-logger = get_logger("rag.safety.input_guard")
+logger = logging.getLogger("rag.safety.input_guard")
 
 
 @dataclass(frozen=True)
@@ -132,13 +132,13 @@ class InputGuard:
 
     @staticmethod
     def _log_result(*, query: str, result: GuardResult) -> None:
-        query_hash = stable_hash(query)
         matched_rules = list(result.matched_rules)
         observe_input_guard(action=result.action, matched_rules=matched_rules)
 
         if result.action == "allow":
             return
 
+        query_hash = stable_hash(query)
         payload = {
             "event": "rag_input_guard",
             "action": result.action,

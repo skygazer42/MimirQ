@@ -16,6 +16,6 @@ export type TenantPermission = (typeof TENANT_PERMISSIONS)[keyof typeof TENANT_P
 export type TenantAccess = OpenApiSchema<'TenantAccessOut'>
 
 export function tenantAccessAllows(access: TenantAccess | null | undefined, permission: TenantPermission): boolean {
-  if (!access?.is_active) return false
-  return new Set(access.permissions || []).has(permission)
+  if (access?.is_active !== true) return false
+  return Array.isArray(access.permissions) && access.permissions.includes(permission)
 }

@@ -1,11 +1,15 @@
 import importlib
 import inspect
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Iterator
+from contextlib import contextmanager
+from dataclasses import replace
+from math import isfinite
 from typing import Any
 from uuid import UUID
 
 from langchain_core.documents import Document
 
+from app.rag.embedding.utils import validate_embedding_vectors
 from app.rag.pipeline_plugins.contracts import (
     PipelinePluginContractError,
     apply_metadata_schema_views,
@@ -58,8 +62,6 @@ def _split_plugin_ref(plugin_ref: str, *, default_function: str) -> tuple[str, s
 def _context_plugin_directories(context: dict[str, Any] | None) -> list[Any] | None:
     raw = (context or {}).get("plugin_directories")
     if raw is None:
-        raw = (context or {}).get("plugin_dirs")
-    if raw is None:
         return None
     if isinstance(raw, (list, tuple)):
         return list(raw)
@@ -71,7 +73,9 @@ def _context_require_test_report(context: dict[str, Any] | None) -> bool | None:
         return None
     raw = context.get("require_test_report")
     if raw is not None:
-        return bool(raw)
+        if not isinstance(raw, bool):
+            raise PythonPipelinePluginError("require_test_report must be a boolean or null")
+        return raw
     # Local contract tests pass explicit plugin directories before a report exists.
     # Production ingestion does not pass this context and keeps the settings default.
     if _context_plugin_directories(context):
@@ -143,13 +147,8 @@ def _apply_registered_plugin_contracts(
     except Exception as exc:  # noqa: BLE001
         raise PythonPipelinePluginError(f"failed to validate plugin contract: {exc}") from exc
     if not validation["ok"]:
-        errors = validation["errors"]
-        first = errors[0] if errors else {}
-        field = first.get("field")
-        reason = first.get("reason")
-        raise PythonPipelinePluginError(
-            f"plugin metadata contract failed for {field or 'metadata'}: {reason or 'invalid'}"
-        )
+        first = validation["errors"][0]
+        raise PythonPipelinePluginError(f"plugin metadata contract failed for {first['field']}: {first['reason']}")
     try:
         documents = apply_metadata_schema_views(
             documents,
@@ -185,13 +184,8 @@ def _apply_registered_kg_plugin_contracts(
     except Exception as exc:  # noqa: BLE001
         raise PythonPipelinePluginError(f"failed to validate plugin KG contract: {exc}") from exc
     if not validation["ok"]:
-        errors = validation["errors"]
-        first = errors[0] if errors else {}
-        field = first.get("field")
-        reason = first.get("reason")
-        raise PythonPipelinePluginError(
-            f"plugin KG metadata contract failed for {field or 'metadata'}: {reason or 'invalid'}"
-        )
+        first = validation["errors"][0]
+        raise PythonPipelinePluginError(f"plugin KG metadata contract failed for {first['field']}: {first['reason']}")
     return events
 
 
@@ -202,18 +196,25 @@ def _invoke_plugin(
     params: dict[str, Any],
     context: dict[str, Any],
 ) -> Any:
+    if inspect.iscoroutinefunction(func) or inspect.isasyncgenfunction(func):
+        raise PythonPipelinePluginError("python pipeline plugins must be synchronous callables")
     try:
         sig = inspect.signature(func)
     except (TypeError, ValueError):
-        return func(documents, params, context)
-
-    positional, kwargs = _plugin_call_arguments(
-        sig,
-        documents=documents,
-        params=params,
-        context=context,
-    )
-    return func(*positional, **kwargs)
+        result = func(documents, params, context)
+    else:
+        positional, kwargs = _plugin_call_arguments(
+            sig,
+            documents=documents,
+            params=params,
+            context=context,
+        )
+        result = func(*positional, **kwargs)
+    if inspect.isawaitable(result) or inspect.isasyncgen(result):
+        if inspect.iscoroutine(result) or inspect.isgenerator(result):
+            result.close()
+        raise PythonPipelinePluginError("python pipeline plugins must return synchronous results")
+    return result
 
 
 def _plugin_call_arguments(
@@ -229,10 +230,10 @@ def _plugin_call_arguments(
         "docs": documents,
         "params": params,
         "context": context,
-        "chunk_size": context.get("chunk_size"),
-        "chunk_overlap": context.get("chunk_overlap"),
-        "stage": context.get("stage"),
     }
+    for name in ("chunk_size", "chunk_overlap", "stage"):
+        if name in context:
+            named_values[name] = context[name]
     kwargs: dict[str, Any] = {}
     positional: list[Any] = []
     for index, (name, param) in enumerate(signature.parameters.items()):
@@ -245,7 +246,10 @@ def _plugin_call_arguments(
                 positional.append(documents)
             else:
                 break
-        elif name in named_values:
+        elif name in named_values and param.kind in (
+            inspect.Parameter.POSITIONAL_OR_KEYWORD,
+            inspect.Parameter.KEYWORD_ONLY,
+        ):
             kwargs[name] = named_values[name]
         elif (
             index == 0
@@ -256,14 +260,28 @@ def _plugin_call_arguments(
     return positional, kwargs
 
 
-def _coerce_metadata(value: Any) -> dict[str, Any]:
-    return dict(value) if isinstance(value, dict) else {}
+def _coerce_metadata(value: Any, *, field_name: str = "metadata") -> dict[str, Any]:
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        raise PythonPipelinePluginError(f"python plugin {field_name} must be an object or null")
+    return dict(value)
+
+
+def _coerce_text(value: Any, *, field_name: str) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, (str, int, float, bool)):
+        raise PythonPipelinePluginError(f"python plugin {field_name} must be scalar text or null")
+    if isinstance(value, float) and not isfinite(value):
+        raise PythonPipelinePluginError(f"python plugin {field_name} must be finite")
+    return str(value)
 
 
 def _coerce_document(item: Any, *, stage: str, plugin_ref: str, index: int) -> Document:
     if isinstance(item, Document):
         meta = dict(item.metadata or {})
-        meta.setdefault(f"{stage}_python_plugin", plugin_ref)
+        meta[f"{stage}_python_plugin"] = plugin_ref
         return Document(page_content=item.page_content, metadata=meta, id=getattr(item, "id", None))
 
     if isinstance(item, str):
@@ -280,29 +298,40 @@ def _coerce_document(item: Any, *, stage: str, plugin_ref: str, index: int) -> D
                 f"python plugin document at index {index} must provide page_content, content or text"
             )
         meta = _coerce_metadata(item.get("metadata"))
-        meta.setdefault(f"{stage}_python_plugin", plugin_ref)
+        meta[f"{stage}_python_plugin"] = plugin_ref
         doc_id = item.get("id")
-        return Document(page_content=str(content), metadata=meta, id=doc_id)
+        return Document(page_content=_coerce_text(content, field_name="document content"), metadata=meta, id=doc_id)
 
     raise PythonPipelinePluginError(f"python plugin returned unsupported item at index {index}: {type(item).__name__}")
 
 
+@contextmanager
+def _result_iterator(result: Iterable[Any]) -> Iterator[Iterator[Any]]:
+    iterator = iter(result)
+    try:
+        yield iterator
+    finally:
+        close = getattr(iterator, "close", None)
+        if close is not None:
+            close()
+
+
 def _coerce_documents(result: Any, *, stage: str, plugin_ref: str) -> list[Document]:
     if result is None:
-        return []
-    if isinstance(result, Document):
-        return [_coerce_document(result, stage=stage, plugin_ref=plugin_ref, index=0)]
-    if isinstance(result, (str, bytes)):
-        text = result.decode("utf-8", "replace") if isinstance(result, bytes) else result
-        return [_coerce_document(text, stage=stage, plugin_ref=plugin_ref, index=0)]
+        raise PythonPipelinePluginError("python plugin must return documents; use an empty list for no output")
+    if isinstance(result, bytes):
+        result = result.decode("utf-8")
+    if isinstance(result, (Document, dict, str)):
+        result = [result]
     if not isinstance(result, Iterable):
         raise PythonPipelinePluginError(f"python plugin returned unsupported result: {type(result).__name__}")
 
     out: list[Document] = []
-    for idx, item in enumerate(result):
-        doc = _coerce_document(item, stage=stage, plugin_ref=plugin_ref, index=idx)
-        if (doc.page_content).strip():
-            out.append(doc)
+    with _result_iterator(result) as iterator:
+        for idx, item in enumerate(iterator):
+            doc = _coerce_document(item, stage=stage, plugin_ref=plugin_ref, index=idx)
+            if doc.page_content.strip():
+                out.append(doc)
     return out
 
 
@@ -316,29 +345,40 @@ def _coerce_uuid(value: Any) -> UUID | None:
         return None
     try:
         return UUID(text)
-    except Exception:
+    except ValueError:
         return None
 
 
 def _coerce_int(value: Any) -> int | None:
     if value is None:
         return None
+    if isinstance(value, bool) or (isinstance(value, float) and not value.is_integer()):
+        return None
     try:
         return int(value)
-    except Exception:
+    except (OverflowError, TypeError, ValueError):
         return None
 
 
 def _coerce_vector(value: Any) -> list[float] | None:
+    if value is None:
+        return None
     if not isinstance(value, list):
+        raise PythonPipelinePluginError("python plugin vector must be a list or null")
+    if not value:
         return None
     out: list[float] = []
     for item in value:
+        if isinstance(item, bool):
+            raise PythonPipelinePluginError("python plugin vector values must be finite numbers")
         try:
             out.append(float(item))
-        except Exception:
-            return None
-    return out or None
+        except (OverflowError, TypeError, ValueError) as exc:
+            raise PythonPipelinePluginError("python plugin vector values must be finite numbers") from exc
+    try:
+        return validate_embedding_vectors([out], count=1)[0]
+    except ValueError as exc:
+        raise PythonPipelinePluginError("python plugin vector values must be finite numbers") from exc
 
 
 def _coerce_event_entity(item: Any, *, event_index: int, entity_index: int) -> EventEntityInput | None:
@@ -347,11 +387,17 @@ def _coerce_event_entity(item: Any, *, event_index: int, entity_index: int) -> E
             f"kg plugin returned unsupported entity at event {event_index}, index {entity_index}: {type(item).__name__}"
         )
     raw_name = item.get("name")
-    name = str(raw_name).strip() if raw_name is not None else None
+    name = _coerce_text(raw_name, field_name="entity name")
+    name = name.strip() if name is not None else None
     if not name:
         return None
-    normalized = str(item.get("normalized_name") or item.get("normalized") or name).strip() or name
-    ent_type = str(item.get("type") or "unknown").strip() or "unknown"
+    raw_normalized = item.get("normalized_name")
+    if raw_normalized is None:
+        raw_normalized = item.get("normalized")
+    normalized = _coerce_text(raw_normalized, field_name="entity normalized_name")
+    normalized = normalized.strip() if normalized is not None else ""
+    ent_type = _coerce_text(item.get("type"), field_name="entity type")
+    ent_type = ent_type.strip() if ent_type is not None else ""
     optional_text: dict[str, str | None] = {}
     for key in ("description", "role", "evidence_quote", "evidence_source"):
         value = item.get(key)
@@ -360,58 +406,63 @@ def _coerce_event_entity(item: Any, *, event_index: int, entity_index: int) -> E
                 f"kg plugin entity {key} must be a string or null at event {event_index}, index {entity_index}"
             )
         optional_text[key] = value.strip() if value is not None else None
+    coordinates: dict[str, int | None] = {}
+    for key in ("evidence_start_char", "evidence_end_char"):
+        raw = item.get(key)
+        coordinate = _coerce_int(raw)
+        if raw is not None and (coordinate is None or coordinate < 0):
+            raise PythonPipelinePluginError(f"kg plugin entity {key} must be a nonnegative integer")
+        coordinates[key] = coordinate
     return EventEntityInput(
         name=name,
-        normalized_name=normalized,
-        type=ent_type,
+        normalized_name=normalized or name,
+        type=ent_type or "unknown",
         description=optional_text["description"],
         vector=_coerce_vector(item.get("vector")),
         role=optional_text["role"],
         evidence_quote=optional_text["evidence_quote"],
         evidence_source=optional_text["evidence_source"],
-        evidence_start_char=_coerce_int(item.get("evidence_start_char")),
-        evidence_end_char=_coerce_int(item.get("evidence_end_char")),
+        evidence_start_char=coordinates["evidence_start_char"],
+        evidence_end_char=coordinates["evidence_end_char"],
     )
-
-
-def _source_metadata(documents: list[Document], index: int) -> dict[str, Any]:
-    if not documents:
-        return {}
-    if index < len(documents):
-        return dict(documents[index].metadata or {})
-    return dict(documents[-1].metadata or {})
 
 
 def _source_document(documents: list[Document], index: int) -> Document | None:
     if not documents:
         return None
-    if index < len(documents):
-        return documents[index]
-    return documents[-1]
+    if not 0 <= index < len(documents):
+        raise PythonPipelinePluginError("kg plugin source_index is outside the source document batch")
+    return documents[index]
 
 
 def _iter_kg_result(result: Any) -> list[Any]:
     if result is None:
-        return []
+        raise PythonPipelinePluginError("kg plugin must return events; use an empty list for no output")
     if isinstance(result, (dict, IndexRecord)):
         return [result]
     if isinstance(result, (str, bytes)):
         raise PythonPipelinePluginError("kg plugin must return event objects, not raw text")
     if not isinstance(result, Iterable):
         raise PythonPipelinePluginError(f"kg plugin returned unsupported result: {type(result).__name__}")
-    return list(result)
+    with _result_iterator(result) as iterator:
+        return list(iterator)
 
 
 def _kg_event_text_fields(item: dict[str, Any]) -> tuple[str, str, str]:
     raw_title, raw_summary, raw_content = item.get("title"), item.get("summary"), item.get("content")
-    title = str(raw_title).strip() if raw_title is not None else None
-    summary = str(raw_summary).strip() if raw_summary is not None else None
-    content = str(raw_content).strip() if raw_content is not None else None
+    title = _coerce_text(raw_title, field_name="event title")
+    summary = _coerce_text(raw_summary, field_name="event summary")
+    content = _coerce_text(raw_content, field_name="event content")
+    title = title.strip() if title is not None else ""
+    summary = summary.strip() if summary is not None else ""
+    content = content.strip() if content is not None else ""
+    if not (title or summary or content):
+        raise PythonPipelinePluginError("kg plugin event must provide title, summary, or content")
     if not title:
-        title = (summary[:80] if summary else content[:80] if content else "KG Event").strip() or "KG Event"
+        title = (summary or content)[:80].strip()
     if not summary:
-        summary = (content[:240] if content else title).strip() or title
-    return title, summary, content or summary or title
+        summary = (content or title)[:240].strip()
+    return title, summary, content or summary
 
 
 def _kg_event_references(
@@ -420,7 +471,7 @@ def _kg_event_references(
     source_metadata: dict[str, Any],
     plugin_ref: str,
 ) -> dict[str, Any]:
-    references = _coerce_metadata(item.get("references"))
+    references = _coerce_metadata(item.get("references"), field_name="references")
     for key in (
         "source",
         "source_file",
@@ -433,13 +484,20 @@ def _kg_event_references(
     ):
         value = source_metadata.get(key)
         if value is not None:
-            references.setdefault(key, value)
-    references.setdefault("kg_python_plugin", plugin_ref)
+            if key in {"source", "source_file", "source_path"}:
+                references.setdefault(key, value)
+            else:
+                references[key] = value
+    references["kg_python_plugin"] = plugin_ref
     return references
 
 
 def _kg_event_entities(item: dict[str, Any], *, event_index: int) -> list[EventEntityInput]:
-    raw_entities = item.get("entities") if isinstance(item.get("entities"), list) else []
+    raw_entities = item.get("entities")
+    if raw_entities is None:
+        return []
+    if not isinstance(raw_entities, list):
+        raise PythonPipelinePluginError(f"kg plugin entities must be a list at event {event_index}")
     entities: list[EventEntityInput] = []
     for entity_index, raw_entity in enumerate(raw_entities):
         entity = _coerce_event_entity(
@@ -458,19 +516,53 @@ def _kg_event_scope_ids(
     source_metadata: dict[str, Any],
     source_document: Document | None,
 ) -> tuple[UUID | None, UUID | None]:
-    document_id = (
-        _coerce_uuid(item.get("document_id"))
-        or _coerce_uuid(source_metadata.get("document_id"))
-        or _coerce_uuid(source_metadata.get("doc_id"))
-    )
-    chunk_id = (
-        _coerce_uuid(item.get("chunk_id"))
-        or _coerce_uuid(source_metadata.get("chunk_id"))
-        or _coerce_uuid(source_metadata.get("id"))
-    )
-    if chunk_id is None and source_document is not None:
-        chunk_id = _coerce_uuid(getattr(source_document, "id", None))
-    return document_id, chunk_id
+    source_ids = {
+        "document_id": _coerce_uuid(source_metadata.get("document_id")),
+        "chunk_id": _coerce_uuid(source_metadata.get("chunk_id")),
+    }
+    for key, value in source_ids.items():
+        if source_metadata.get(key) is not None and value is None:
+            raise PythonPipelinePluginError(f"kg plugin source {key} must be a UUID")
+    if source_ids["document_id"] is None:
+        source_ids["document_id"] = _coerce_uuid(source_metadata.get("doc_id"))
+    if source_ids["chunk_id"] is None:
+        source_ids["chunk_id"] = _coerce_uuid(source_metadata.get("id"))
+    if source_ids["chunk_id"] is None and source_document is not None:
+        source_ids["chunk_id"] = _coerce_uuid(source_document.id)
+    for key in ("document_id", "chunk_id"):
+        raw = item.get(key)
+        supplied = _coerce_uuid(raw)
+        if raw is not None and supplied is None:
+            raise PythonPipelinePluginError(f"kg plugin event {key} must be a UUID")
+        canonical = source_ids[key]
+        if canonical is not None and supplied is not None and canonical != supplied:
+            raise PythonPipelinePluginError(f"kg plugin event {key} does not match its source document")
+        if canonical is None:
+            source_ids[key] = supplied
+    return source_ids["document_id"], source_ids["chunk_id"]
+
+
+def _kg_event_source_index(item: dict[str, Any], *, documents: list[Document], index: int) -> int:
+    raw_index = item.get("source_index")
+    if raw_index is not None:
+        source_index = _coerce_int(raw_index)
+        if source_index is None or source_index < 0:
+            raise PythonPipelinePluginError("kg plugin source_index must be a nonnegative integer")
+        return source_index
+    if len(documents) == 1:
+        return 0
+    requested_chunk = _coerce_uuid(item.get("chunk_id"))
+    if requested_chunk is not None:
+        sources = [
+            _kg_event_scope_ids({}, source_metadata=dict(document.metadata), source_document=document)[1]
+            for document in documents
+        ]
+        matches = [position for position, chunk_id in enumerate(sources) if chunk_id == requested_chunk]
+        if len(matches) == 1:
+            return matches[0]
+        if any(chunk_id is not None for chunk_id in sources):
+            raise PythonPipelinePluginError("kg plugin chunk_id does not identify exactly one source document")
+    return index
 
 
 def _coerce_kg_event(
@@ -483,15 +575,25 @@ def _coerce_kg_event(
     if isinstance(item, IndexRecord):
         if item.kind != IndexKind.EVENT:
             raise PythonPipelinePluginError(f"kg plugin returned non-event IndexRecord at index {index}")
-        return item
-    if not isinstance(item, dict):
+        scope = {"document_id": item.document_id, "chunk_id": item.chunk_id}
+    elif isinstance(item, dict):
+        scope = item
+    else:
         raise PythonPipelinePluginError(f"kg plugin returned unsupported event at index {index}: {type(item).__name__}")
 
-    source_index = _coerce_int(item.get("source_index"))
-    if source_index is None:
-        source_index = index
-    meta = _source_metadata(documents, source_index)
+    source_index = _kg_event_source_index(scope, documents=documents, index=index)
     source_doc = _source_document(documents, source_index)
+    meta = dict(source_doc.metadata) if source_doc is not None else {}
+    document_id, chunk_id = _kg_event_scope_ids(
+        scope,
+        source_metadata=meta,
+        source_document=source_doc,
+    )
+    if isinstance(item, IndexRecord):
+        references = _kg_event_references({"references": item.references}, source_metadata=meta, plugin_ref=plugin_ref)
+        extra_data = _coerce_metadata(item.extra_data, field_name="extra_data")
+        extra_data["kg_python_plugin"] = plugin_ref
+        return replace(item, document_id=document_id, chunk_id=chunk_id, references=references, extra_data=extra_data)
 
     title, summary, content = _kg_event_text_fields(item)
     references = _kg_event_references(
@@ -499,13 +601,8 @@ def _coerce_kg_event(
         source_metadata=meta,
         plugin_ref=plugin_ref,
     )
-    extra_data = _coerce_metadata(item.get("extra_data"))
-    extra_data.setdefault("kg_python_plugin", plugin_ref)
-    document_id, chunk_id = _kg_event_scope_ids(
-        item,
-        source_metadata=meta,
-        source_document=source_doc,
-    )
+    extra_data = _coerce_metadata(item.get("extra_data"), field_name="extra_data")
+    extra_data["kg_python_plugin"] = plugin_ref
 
     return IndexRecord(
         kind=IndexKind.EVENT,
@@ -596,7 +693,9 @@ def apply_kg_python_plugin(
     )
     docs = strip_reserved_platform_metadata_views(list(documents or []))
     result = _invoke_plugin(func, documents=docs, params=dict(params or {}), context=ctx)
-    events = _coerce_kg_events(result, documents=docs, plugin_ref=plugin_ref)
+    events = _coerce_kg_events(result, documents=documents, plugin_ref=plugin_ref)
+    if events and not documents:
+        raise PythonPipelinePluginError("kg plugin events require source documents")
     return _apply_registered_kg_plugin_contracts(events, plugin_ref=plugin_ref, context=ctx)
 
 

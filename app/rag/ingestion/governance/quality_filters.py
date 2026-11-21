@@ -1,0 +1,200 @@
+"""
+Quality filters for governance.
+
+These heuristics are optional and meant to guard against indexing low-value
+documents (e.g., outline-only exports, garbled/noisy OCR output).
+"""
+
+import re
+from dataclasses import dataclass, field
+
+from app.rag.ingestion.governance.text.stopwords import STOPWORDS
+
+
+@dataclass(frozen=True)
+class QualityDecision:
+    dropped: bool
+    reason: str | None = None
+    metrics: dict[str, float | int] = field(default_factory=dict)
+
+
+_CODE_FENCE_RE = re.compile(r"^\s*```")
+_MD_HEADING_RE = re.compile(r"^\s*#{1,6}\s+\S")
+_LIST_RE = re.compile(r"^\s*(?:[-*+]|\d{1,3}[.)])\s+")
+_SENT_PUNCT_RE = re.compile(r"[.!?\u3002\uff01\uff1f\uff1b;:\uff1a]")
+_ALNUM_CJK_RE = re.compile(r"[A-Za-z0-9\u4e00-\u9fff]")
+_ALLCAPS_RE = re.compile(r"^[A-Z0-9][A-Z0-9 \-_/]{6,}$")
+_TOKEN_RE = re.compile(r"[A-Za-z][A-Za-z0-9_-]*|\d+[A-Za-z0-9_-]*|[\u4e00-\u9fff]{1,4}")
+_VOWEL_RE = re.compile(r"[aeiou]")
+
+
+def _is_outline_line(line: str) -> bool:
+    stripped = line.strip()
+    if not stripped:
+        return False
+    if _MD_HEADING_RE.match(stripped):
+        return True
+    if _LIST_RE.match(stripped):
+        body = _LIST_RE.sub("", stripped, count=1).strip()
+        if not body:
+            return True
+        if len(body) <= 60 and not _SENT_PUNCT_RE.search(body):
+            return True
+    if len(stripped) <= 60 and _ALLCAPS_RE.match(stripped):
+        return True
+    # Short title-like lines ending with ":" often indicate outline headings.
+    if len(stripped) <= 50 and stripped.endswith((":", "\uff1a")) and not _SENT_PUNCT_RE.search(stripped[:-1]):
+        return True
+    return False
+
+
+def _outline_only_metrics(raw: str) -> tuple[int, int, int]:
+    total = 0
+    outline = 0
+    content_chars = 0
+    in_code = False
+
+    for line in raw.splitlines():
+        if _CODE_FENCE_RE.match(line):
+            in_code = not in_code
+            continue
+        if in_code:
+            continue
+        stripped = line.strip()
+        if not stripped:
+            continue
+        total += 1
+        content_chars += len(_ALNUM_CJK_RE.findall(stripped))
+        if _is_outline_line(stripped):
+            outline += 1
+
+    return total, outline, content_chars
+
+
+def drop_if_outline_only(
+    text: str,
+    *,
+    min_content_chars: int = 200,
+    max_heading_ratio: float = 0.85,
+) -> QualityDecision:
+    raw = text
+    if not raw.strip():
+        return QualityDecision(dropped=True, reason="empty_document", metrics={"content_chars": 0})
+
+    total, outline, content_chars = _outline_only_metrics(raw)
+
+    if total <= 0:
+        return QualityDecision(dropped=False, reason="no_prose_lines", metrics={"content_chars": content_chars})
+
+    heading_ratio = outline / total
+    metrics: dict[str, float | int] = {
+        "lines_total": total,
+        "lines_outline": outline,
+        "heading_ratio": heading_ratio,
+        "content_chars": content_chars,
+    }
+
+    if content_chars < max(0, min_content_chars) and heading_ratio >= max_heading_ratio:
+        return QualityDecision(dropped=True, reason="outline_only", metrics=metrics)
+
+    return QualityDecision(dropped=False, reason=None, metrics=metrics)
+
+
+def _density_metrics(text: str) -> dict[str, float | int]:
+    non_space = sum(1 for character in text if not character.isspace())
+    alnum = len(_ALNUM_CJK_RE.findall(text))
+    return {
+        "chars_non_space": non_space,
+        "chars_alnum_cjk": alnum,
+        "density": alnum / non_space if non_space else 0.0,
+    }
+
+
+def drop_if_low_density(text: str, *, threshold: float = 0.12) -> QualityDecision:
+    """
+    Drop documents where the ratio of [A-Za-z0-9/CJK] characters is too low.
+
+    This is useful for garbled OCR or corrupted encodings that produce mostly
+    symbols. It is intentionally simple and should be opt-in.
+    """
+    raw = text
+    if not raw.strip():
+        return QualityDecision(dropped=True, reason="empty_document", metrics={"density": 0.0})
+
+    metrics = _density_metrics(raw)
+    if metrics["density"] < threshold:
+        return QualityDecision(dropped=True, reason="low_density", metrics=metrics)
+    return QualityDecision(dropped=False, reason=None, metrics=metrics)
+
+
+def _perplexity_metrics(text: str) -> dict[str, float | int]:
+    raw = text
+    if not raw.strip():
+        return {"perplexity_proxy": 0.0, "token_count": 0}
+
+    tokens = [tok.casefold() for tok in _TOKEN_RE.findall(raw)]
+    token_count = len(tokens)
+    unique_ratio = (len(set(tokens)) / token_count) if token_count else 0.0
+    stopword_ratio = (sum(1 for tok in tokens if tok in STOPWORDS) / token_count) if token_count else 0.0
+    long_token_ratio = (sum(1 for tok in tokens if len(tok) >= 12) / token_count) if token_count else 0.0
+    digit_token_ratio = (
+        (sum(1 for tok in tokens if any(ch.isdigit() for ch in tok)) / token_count) if token_count else 0.0
+    )
+
+    ascii_alpha_tokens = [tok for tok in tokens if tok.isascii() and any(ch.isalpha() for ch in tok)]
+    ascii_letters = "".join(ch for tok in ascii_alpha_tokens for ch in tok if ch.isalpha())
+    vowel_ratio = len(_VOWEL_RE.findall(ascii_letters)) / len(ascii_letters) if ascii_letters else 0.0
+
+    proxy = 0.0
+    proxy += max(0.0, unique_ratio - 0.72) * 1.6
+    proxy += max(0.0, 0.12 - stopword_ratio) * 1.8
+    proxy += max(0.0, long_token_ratio - 0.18) * 1.4
+    proxy += max(0.0, digit_token_ratio - 0.15) * 1.2
+    if ascii_letters:
+        proxy += max(0.0, 0.24 - vowel_ratio) * 1.3
+    proxy = max(0.0, min(1.0, proxy))
+
+    return {
+        "token_count": token_count,
+        "unique_ratio": unique_ratio,
+        "stopword_ratio": stopword_ratio,
+        "long_token_ratio": long_token_ratio,
+        "digit_token_ratio": digit_token_ratio,
+        "vowel_ratio": vowel_ratio,
+        "perplexity_proxy": proxy,
+    }
+
+
+def drop_if_high_perplexity_proxy(
+    text: str,
+    *,
+    threshold: float = 0.55,
+    min_tokens: int = 20,
+) -> QualityDecision:
+    """Apply the existing model-free token-noise heuristic; this is not measured LM perplexity."""
+    if not text.strip():
+        return QualityDecision(
+            dropped=True, reason="empty_document", metrics={"perplexity_proxy": 0.0, "token_count": 0}
+        )
+    metrics = _perplexity_metrics(text)
+    if metrics["token_count"] < max(0, min_tokens):
+        return QualityDecision(dropped=False, reason=None, metrics=metrics)
+    if metrics["perplexity_proxy"] > threshold:
+        return QualityDecision(dropped=True, reason="perplexity_proxy_high", metrics=metrics)
+    return QualityDecision(dropped=False, reason=None, metrics=metrics)
+
+
+def measure_governance_quality(text: str) -> dict[str, float | int]:
+    """Measure the existing quality signals without applying document-drop policies."""
+    density = _density_metrics(text)
+    total, outline, content_chars = _outline_only_metrics(text)
+    perplexity = _perplexity_metrics(text)
+    return {
+        **density,
+        "heading_ratio": outline / total if total else 0.0,
+        "lines_total": total,
+        "lines_outline": outline,
+        "content_chars": content_chars,
+        "perplexity_proxy": perplexity["perplexity_proxy"],
+        "token_count": perplexity["token_count"],
+    }

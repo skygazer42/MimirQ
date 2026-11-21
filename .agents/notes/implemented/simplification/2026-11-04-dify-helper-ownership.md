@@ -24,11 +24,13 @@ external_api的17个重复函数或单次包装退出，三个turn source-ID纯�
 
 会话写入只在本地新建metadata字典设置turn_persisted与trace_seed，复用既有citation归一化／去重，不展开三次相同的字典。锁、source绑定、幂等、seed复用、事务及可选trace降级的执行边界保持，见[API执行契约](../bug-fix/2026-11-11-api-v1-execution-contracts.md)。
 
-实际 HTTP 检索仍使用 conversations schema 的 ChatRAGConfig／EvidenceRetrieveRequest，并在原惰性调用点进入 app.services.retrieval_requests.retrieve_evidence。无生产根的独立 retrieval／warmup 及其专属 evidence_adapter 已退出，不恢复旧服务参数契约或不存在的导入路径。范围、缓存权限与真实 Future 归属的后续修正见[Dify 缓存与任务归属](../bug-fix/2026-11-14-dify-cache-access-and-flight-ownership.md)。
+实际 HTTP 检索仍使用 conversations schema 的 ChatRAGConfig／EvidenceRetrieveRequest，并在原惰性调用点进入 app.services.retrieval.requests.retrieve_evidence。无生产根的独立 retrieval／warmup 及其专属 evidence_adapter 已退出，不恢复旧服务参数契约或不存在的导入路径。范围、缓存权限与真实 Future 归属的后续修正见[Dify 缓存与任务归属](../bug-fix/2026-11-14-dify-cache-access-and-flight-ownership.md)。
 
 知识范围服务显式传入 policy_helpers 的既有映射与策略生产者，filter 和 fallback 回调用标准 partial 绑定其已有 leaf 及 planner 的倍率解析。候选倍率上限按原 API 的 INTERNAL_TOP_K_MAX、整数解析与原异常回退传入。没有给纯 helper 添加默认回调，也没有在服务中反向依赖 API、复制通用包装或改变原 API 的回调绑定。
 
 HTTP 路由继续调用 API 自身的检索入口和 warmup；warmup_state 仍被实际启动／健康调用方使用。conversation_turns 仅保留 API 实际使用的三个 source-ID 函数，未被调用的另一套会话调度退出。冻结测试的旧服务／私有符号引用留待测试维护，不作为生产根。
+
+2026-11-19 后，路由只负责 HTTP 编排。应用入口直接调用服务层调度预热，路由与预热共享引用检索。具体调用和退出顺序见 [Dify 预热归属](../architecture/2026-11-19-dify-warmup-service-owner.md)。
 
 服务只在具体生产者建立保证后直接消费内部值。策略工厂的正常结果始终是新建字典；其具体消费端保留 schema 与原始字段规则，省去重复的字典类型探测。引用记录的 content 始终由现有答案提示函数构造为字符串；预检和响应压缩标志、压缩阈值也来自实际布尔／浮点构造。通用回调 helper 和原始 metadata、JSON、数据库行、模型及配置入口仍保留各自校验、转换和值回退。
 

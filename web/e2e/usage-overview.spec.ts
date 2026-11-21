@@ -183,3 +183,29 @@ test('authenticated users without usage permission never mount the usage request
   expect(state.requests.filter((r) => r.path.includes('/usage/'))).toHaveLength(0)
   await expect(page.getByRole('button', { name: '查看原始配额', exact: true })).toHaveCount(0)
 })
+
+test('reports a missing resource window when only assistant usage is still pending', async ({ page }) => {
+  const { state } = await usageFixture(page)
+  state.fail.add('cost')
+  let releaseSummary!: () => void
+  const pendingSummary = new Promise<void>((resolve) => {
+    releaseSummary = resolve
+  })
+  await page.route(
+    (url) => url.pathname.endsWith('/chat/tokens/summary'),
+    async (route) => {
+      await pendingSummary
+      await route.fallback()
+    },
+  )
+
+  try {
+    await page.goto('/usage?view=resources', { waitUntil: 'domcontentloaded' })
+    await expect(page.getByRole('region', { name: '链路资源状态', exact: true })).toContainText('未取得完整用量数据')
+    await expect(page.getByText('统计窗口未取得', { exact: true })).toBeVisible()
+    await expect(page.getByText('正在读取统计窗口…', { exact: true })).toHaveCount(0)
+  } finally {
+    releaseSummary()
+  }
+  await waitUsage(page)
+})

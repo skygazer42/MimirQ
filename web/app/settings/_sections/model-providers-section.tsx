@@ -6,6 +6,8 @@ import type { PlatformIcon } from '@/components/icons'
 import { Cpu, Layers, Server } from '@/components/icons'
 import { settingsTextTokens } from '@/components/ui/system-page-tokens'
 
+const PROVIDER_CATEGORIES: readonly ProviderCategory[] = ['model', 'embedding', 'reranker']
+
 const CATEGORY_INFO: Record<ProviderCategory, { title: string; description: string; icon: PlatformIcon }> = {
   model: {
     title: '语言模型',
@@ -25,9 +27,9 @@ const CATEGORY_INFO: Record<ProviderCategory, { title: string; description: stri
 }
 
 type ModelProvidersSectionProps = {
-  groupedProviders: Record<ProviderCategory, ModelProvider[]>
+  groupedProviders: Readonly<Record<ProviderCategory, readonly ModelProvider[]>>
   onConfigure: (provider: ModelProvider) => void
-  retiredEmbeddingModel?: string | null
+  retiredEmbeddingModel: string | null
 }
 
 export function ModelProvidersSection({
@@ -37,13 +39,14 @@ export function ModelProvidersSection({
 }: Readonly<ModelProvidersSectionProps>) {
   return (
     <section>
-      {retiredEmbeddingModel ? (
+      {retiredEmbeddingModel !== null ? (
         <p role="alert" className="mb-3 rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-sm">
-          当前嵌入模型 {retiredEmbeddingModel} 使用已停用的本地推理。请配置向量模型服务后保存；已有索引不会自动迁移。
+          {retiredEmbeddingModel === '' ? '当前嵌入配置' : `当前嵌入模型 ${retiredEmbeddingModel}`}{' '}
+          使用已停用的本地推理。请配置向量模型服务后保存，已有索引需要重新入库。
         </p>
       ) : null}
       <div className="space-y-7">
-        {(['model', 'embedding', 'reranker'] as ProviderCategory[]).map((category) => {
+        {PROVIDER_CATEGORIES.map((category) => {
           const info = CATEGORY_INFO[category]
           const InfoIcon = info.icon
 

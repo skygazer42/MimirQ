@@ -1,17 +1,17 @@
 /**
  * Backend API response type aliases (generated OpenAPI types).
  */
-import type { components, paths } from './openapi'
+import type { components } from './openapi'
+import type { OpenApiOkResponse } from './openapi-helpers'
 
-export type OpenApiSchemas = components['schemas']
+type OpenApiSchemas = components['schemas']
 export type OpenApiSchema<K extends keyof OpenApiSchemas> = OpenApiSchemas[K]
 
-export type HealthResponse = paths['/api/v1/health']['get']['responses'][200]['content']['application/json']
-export type ReadyResponse = paths['/api/v1/health/ready']['get']['responses'][200]['content']['application/json']
-export type HealthDetailsResponse =
-  paths['/api/v1/health/details']['get']['responses'][200]['content']['application/json']
-export type MetaResponse = paths['/api/v1/meta']['get']['responses'][200]['content']['application/json']
-export type MetaDetailsResponse = paths['/api/v1/meta/details']['get']['responses'][200]['content']['application/json']
+export type HealthResponse = OpenApiOkResponse<'/api/v1/health', 'get'>
+export type ReadyResponse = OpenApiOkResponse<'/api/v1/health/ready', 'get'>
+export type HealthDetailsResponse = OpenApiOkResponse<'/api/v1/health/details', 'get'>
+export type MetaResponse = OpenApiOkResponse<'/api/v1/meta', 'get'>
+export type MetaDetailsResponse = OpenApiOkResponse<'/api/v1/meta/details', 'get'>
 
 // ==================== Auth ====================
 
@@ -52,6 +52,9 @@ export type DocumentStats = OpenApiSchema<'DocumentStats'>
 
 export type DocumentAccessInfo = OpenApiSchema<'DocumentAccessInfo'>
 export type DocumentAccessUpdateRequest = OpenApiSchema<'DocumentAccessUpdateRequest'>
+export type DocumentLifecycleMetadata = OpenApiSchema<'DocumentLifecycleMetadata'>
+// PATCH applies only model_fields_set; the published default is not an instruction to overwrite it.
+export type DocumentLifecycleMetadataUpdateRequest = Partial<OpenApiSchema<'DocumentLifecycleMetadataUpdateRequest'>>
 
 export type DocumentChunk = OpenApiSchema<'DocumentChunkSchema'>
 export type DocumentChunkList = OpenApiSchema<'DocumentChunkList'>
@@ -71,7 +74,7 @@ export type DocumentBatchUploadFailure = OpenApiSchema<'DocumentBatchUploadFailu
 export type DocumentBatchLifecycleRequest = OpenApiSchema<'DocumentBatchLifecycleRequest'>
 export type DocumentBatchLifecycleResponse = OpenApiSchema<'DocumentBatchLifecycleResponse'>
 export type DocumentBatchRetryRequest = OpenApiSchema<'DocumentBatchRetryRequest'>
-export type DocumentBatchRetryResponse = OpenApiSchema<'DocumentBatchRetryResponse'>
+export type DocumentBatchRetryResponse = import('@/lib/document-batch-schema').DocumentBatchRetryResponse
 export type DocumentBatchReingestRequest = OpenApiSchema<'DocumentBatchReingestRequest'>
 export type DocumentBatchMoveRequest = OpenApiSchema<'DocumentBatchMoveRequest'>
 export type DocumentBatchMoveResponse = OpenApiSchema<'DocumentBatchMoveResponse'>
@@ -108,7 +111,7 @@ export type DatasetCreate = OpenApiSchema<'DatasetCreate'>
 export type DatasetUpdate = OpenApiSchema<'DatasetUpdate'>
 export type DatasetListResponse = OpenApiSchema<'DatasetListResponse'>
 export type DatasetIngestionStats = OpenApiSchema<'DatasetIngestionStats'>
-export type DatasetHealthResponse = OpenApiSchema<'DatasetHealthResponse'>
+export type DatasetHealthResponse = import('@/lib/dataset-profile-schema').DatasetHealthResponse
 
 export type DatasetConfigExport = OpenApiSchema<'DatasetConfigExport'>
 export type DatasetConfigImportRequest = OpenApiSchema<'DatasetConfigImportRequest'>
@@ -133,12 +136,13 @@ export type DatasetCategoryAssignmentRequest = OpenApiSchema<'DatasetCategoryAss
 export type DatasetCategoryAssignmentResponse = OpenApiSchema<'DatasetCategoryAssignmentResponse'>
 
 // Dataset Profile / Precheck (used by knowledge workbench)
-export type DatasetProfileSummary = OpenApiSchema<'DatasetProfileSummary'>
-export type DatasetProfileDocumentListResponse = OpenApiSchema<'DatasetProfileDocumentListResponse'>
-export type DatasetProfileFindingListResponse = OpenApiSchema<'DatasetProfileFindingListResponse'>
-export type DatasetProfileScanRunCreateRequest = OpenApiSchema<'DatasetProfileScanRunCreateRequest'>
-export type DatasetProfileScanRunListResponse = OpenApiSchema<'DatasetProfileScanRunListResponse'>
-export type DatasetProfileScanRunOut = OpenApiSchema<'DatasetProfileScanRunOut'>
+export type DatasetProfileSummary = import('@/lib/dataset-profile-schema').DatasetProfileSummary
+export type DatasetProfileDocumentListResponse =
+  import('@/lib/dataset-profile-schema').DatasetProfileDocumentListResponse
+export type DatasetProfileFindingListResponse = import('@/lib/dataset-profile-schema').DatasetProfileFindingListResponse
+export type DatasetProfileScanRunCreateRequest = Partial<OpenApiSchema<'DatasetProfileScanRunCreateRequest'>>
+export type DatasetProfileScanRunListResponse = import('@/lib/dataset-profile-schema').DatasetProfileScanRunListResponse
+export type DatasetProfileScanRunOut = import('@/lib/dataset-profile-schema').DatasetProfileScanRunOut
 
 export type DatasetPrecheckSummary = OpenApiSchema<'DatasetPrecheckSummary'>
 export type DatasetPrecheckFindingListResponse = OpenApiSchema<'DatasetPrecheckFindingListResponse'>
@@ -165,8 +169,7 @@ export type ConnectorRunCreateRequest = OpenApiSchema<'ConnectorRunCreateRequest
 export type ConnectorRunListResponse = OpenApiSchema<'ConnectorRunListResponse'>
 export type ConnectorRunOut = OpenApiSchema<'ConnectorRunOut'>
 // This endpoint returns a dict-like payload (best-effort tick hook), so OpenAPI emits `unknown`.
-export type ConnectorScheduledTickResponse =
-  paths['/api/v1/connectors/scheduled/tick']['post']['responses'][200]['content']['application/json']
+export type ConnectorScheduledTickResponse = OpenApiOkResponse<'/api/v1/connectors/scheduled/tick', 'post'>
 
 export type IngestionRunCompareResponse = OpenApiSchema<'IngestionRunCompareResponse'>
 export type IngestionRunListResponse = OpenApiSchema<'IngestionRunListResponse'>

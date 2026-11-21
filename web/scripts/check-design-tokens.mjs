@@ -136,12 +136,7 @@ async function main() {
   const violations = []
 
   for (const { abs, rel } of files) {
-    let text
-    try {
-      text = await fs.readFile(abs, 'utf8')
-    } catch {
-      continue
-    }
+    const text = await fs.readFile(abs, 'utf8')
 
     for (const rule of RULES) {
       rule.re.lastIndex = 0
@@ -183,7 +178,8 @@ async function main() {
   process.exit(1)
 }
 
-main().catch((err) => {
-  process.stderr.write(`ui-check: ERROR ${String(err?.message || err)}\n`)
-  process.exit(2)
+main().catch((error) => {
+  const message = error instanceof Error ? error.message : String(error)
+  process.stderr.write(`ui-check: ERROR ${message}\n`)
+  process.exitCode = 2
 })

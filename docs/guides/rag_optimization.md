@@ -2,7 +2,7 @@
 
 This guide summarizes the most impactful knobs for improving retrieval quality and answer grounding in Ragvia.
 
-> All settings are defined in `app/core/config.py` and can be set via `.env`.
+> All settings are defined in `app/infrastructure/config.py` and can be set via `.env`.
 
 ## Recommended Order (Do This First)
 
@@ -20,7 +20,7 @@ Key companion guides:
 - Platform design principles: `docs/guides/rag_platform_design_principles.md`
 - Chunking: `docs/guides/chunk_preview.md`, `docs/guides/chunk_strategies.md`
 - Hybrid fusion: `docs/guides/retrieval_fusion.md`
-- Reranking: `docs/guides/reranking_colbert.md`, `docs/guides/reranking_ltr.md`
+- Reranking: `docs/development/rag_structure.md`, `docs/guides/evidence_api.md`
 - Evidence API: `docs/guides/evidence_api.md`
 - Regression gate: `docs/guides/regression_gate.md`
 - Evaluation maturity model: `docs/guides/evaluation_maturity_model.md`
@@ -62,28 +62,19 @@ When to use:
 - Use vector retrieval for semantic matching and paraphrased questions.
 - Use `rrf` fusion when you want a robust ranking that combines both sources.
 
-## 3.5) Sparse Retrieval (Optional)
+## 3.5) Keyword Retrieval
 
-Ragvia supports an additional **sparse** candidate source (SPLADE-style scaffolding) that can improve recall on:
-- acronyms (`k8s` vs `kubernetes`)
-- domain synonyms / abbreviations
-
-Key settings:
-- `SPARSE_RETRIEVAL_ENABLED`
-- `SPARSE_RETRIEVAL_PROVIDER` (currently `deterministic`)
-- `SPARSE_RETRIEVAL_SYNONYMS`
-
-Guide:
-- `docs/guides/sparse_retrieval.md`
+Milvus owns BM25 indexing and scoring. PostgreSQL provides full-text, fuzzy, and metadata matching.
+The SPARSE experiment has been retired; see `docs/guides/milvus_bm25.md`.
 
 ## 4) Reranking
 
 Key settings:
-- `RERANKER_PROVIDER` (`llm` | `pc` | `colbert` | `openai` | `dashscope` | `none`)
+- `RERANKER_PROVIDER` (`llm` | `pc` | `openai` | `dashscope` | `none`)
 
 Tradeoffs:
 - `llm` rerank improves precision but increases latency/cost.
-- `colbert` retains its deterministic offline scaffold; local XGBoost LTR has been retired.
+- ColBERT experiments and local XGBoost LTR have been retired.
 - `none` is fastest; rely on better chunking + retrieval thresholds.
 
 Guides:

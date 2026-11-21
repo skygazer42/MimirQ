@@ -1,28 +1,28 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
+import { EventType } from '@ag-ui/core'
+import { EventSchema } from '@ag-ui/core/schemas'
 
 import type { Message, StreamEvent } from '@/types/chat'
 import type { Citation } from '@/types/processing'
 import { API_LONG_TIMEOUT_MS, API_TIMEOUT_MS } from '@/lib/env'
 import { chatApi } from '@/lib/api/chat'
-import { AUTH_SCOPE_CHANGED_EVENT, getAuthCacheScope, getAuthSessionRevision } from '@/lib/auth-storage'
+import { getAuthSessionKey, subscribeAuthSession } from '@/lib/auth-storage'
 import { reportClientError, reportClientWarning } from '@/lib/client-logging'
-import { toTrimmedPrimitiveString } from '@/lib/primitive-text'
+import { formatApiError, withRequestId } from '@/lib/api-errors'
+import { citationListSchema } from '@/lib/citations'
+import { generateRequestId } from '@/lib/request-id'
+import { queryKeys } from '@/lib/query-keys'
 
 import {
   buildChatRequest,
   buildDoneAssistantMessage,
-  buildFallbackAssistantMessage,
-  getAssistantMessageId,
-  getCitations,
-  getConversationId,
   getHistory,
-  getStepList,
   getStreamEventMessage,
-  getTokenContent,
   type ChatRagConfig,
-} from './use-chat-formatter'
+} from './chat-stream-payload'
 import { recoverStreamedAssistantMessage } from './use-chat-stream-recovery'
 
 type MutableRef<T> = {
@@ -44,15 +44,11 @@ type UseChatStreamOptions = {
   enableSummaryMemory?: boolean
   onConversationId?: (conversationId: string) => void
   onError?: (error: string) => void
+  onUnconfirmedMessage?: (message: string) => void
 }
 
-function parseStreamEvent(jsonStr: string): StreamEvent | null {
-  try {
-    return JSON.parse(jsonStr) as StreamEvent
-  } catch (err) {
-    reportClientError('Failed to parse SSE event', err)
-    return null
-  }
+function parseStreamEvent(jsonStr: string): StreamEvent {
+  return EventSchema.parse(JSON.parse(jsonStr))
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -74,20 +70,24 @@ export function useChatStream({
   enableSummaryMemory,
   onConversationId,
   onError,
+  onUnconfirmedMessage,
 }: UseChatStreamOptions) {
+  const queryClient = useQueryClient()
+  const invalidateConversationLists = useCallback(() => {
+    void queryClient.invalidateQueries({ queryKey: queryKeys.chat.conversationsAll })
+    void queryClient.invalidateQueries({ queryKey: queryKeys.chat.conversationPagesAll })
+  }, [queryClient])
   const [isLoading, setIsLoading] = useState(false)
   const [currentResponse, setCurrentResponse] = useState('')
   const [currentCitations, setCurrentCitations] = useState<Citation[]>([])
   const [currentSteps, setCurrentSteps] = useState<string[]>([])
 
-  const abortControllerRef = useRef<AbortController | null>(null)
+  const activeRequestRef = useRef<(() => void) | null>(null)
   const activeConversationIdRef = useRef<string | undefined>(conversationId)
   const fullResponseRef = useRef('')
   const currentStepsRef = useRef<string[]>([])
   const currentCitationsRef = useRef<Citation[]>([])
   const rafIdRef = useRef<number | null>(null)
-  const streamRequestIdRef = useRef<string | null>(null)
-  const stopActiveRequestRef = useRef<(() => void) | null>(null)
   const mountedRef = useRef(true)
 
   const clearRaf = useCallback(() => {
@@ -102,21 +102,22 @@ export function useChatStream({
     setCurrentResponse('')
     setCurrentCitations([])
     setCurrentSteps([])
-    streamRequestIdRef.current = null
     fullResponseRef.current = ''
     currentStepsRef.current = []
     currentCitationsRef.current = []
   }, [clearRaf])
 
+  const cancelActiveRequest = useCallback(() => {
+    const stopRequest = activeRequestRef.current
+    activeRequestRef.current = null
+    stopRequest?.()
+  }, [])
+
   const discardGeneration = useCallback(() => {
-    const controller = abortControllerRef.current
-    abortControllerRef.current = null
-    stopActiveRequestRef.current?.()
-    stopActiveRequestRef.current = null
-    controller?.abort()
+    cancelActiveRequest()
     setIsLoading(false)
     resetTransientState()
-  }, [resetTransientState])
+  }, [cancelActiveRequest, resetTransientState])
 
   useEffect(() => {
     if (activeConversationIdRef.current !== conversationId) discardGeneration()
@@ -125,18 +126,14 @@ export function useChatStream({
 
   useEffect(() => {
     mountedRef.current = true
-    globalThis.window.addEventListener(AUTH_SCOPE_CHANGED_EVENT, discardGeneration)
+    const unsubscribe = subscribeAuthSession(discardGeneration)
     return () => {
       mountedRef.current = false
-      globalThis.window.removeEventListener(AUTH_SCOPE_CHANGED_EVENT, discardGeneration)
-      const controller = abortControllerRef.current
-      abortControllerRef.current = null
-      stopActiveRequestRef.current?.()
-      stopActiveRequestRef.current = null
-      controller?.abort()
+      unsubscribe()
+      cancelActiveRequest()
       clearRaf()
     }
-  }, [clearRaf, discardGeneration])
+  }, [cancelActiveRequest, clearRaf, discardGeneration])
 
   const scheduleCurrentResponseUpdate = useCallback(() => {
     if (rafIdRef.current != null) return
@@ -151,7 +148,7 @@ export function useChatStream({
     setCurrentResponse(fullResponseRef.current)
   }, [clearRaf])
 
-  const appendStep = useCallback((message: string | null) => {
+  const appendStep = useCallback((message: string | undefined) => {
     if (!message) return
     const nextSteps = [...currentStepsRef.current, message]
     currentStepsRef.current = nextSteps
@@ -160,7 +157,7 @@ export function useChatStream({
 
   const updateConversation = useCallback(
     (nextConversationId: string) => {
-      if (!nextConversationId || nextConversationId === (activeConversationIdRef.current || '')) return
+      if (nextConversationId === activeConversationIdRef.current) return
       activeConversationIdRef.current = nextConversationId
       setConversationId(nextConversationId)
       onConversationId?.(nextConversationId)
@@ -169,46 +166,57 @@ export function useChatStream({
   )
 
   const stopGeneration = useCallback(() => {
-    stopActiveRequestRef.current?.()
+    activeRequestRef.current?.()
   }, [])
 
   const sendMessage = useCallback(
-    async (message: string) => {
-      if (!mountedRef.current || !message.trim() || abortControllerRef.current) return
+    (message: string) => {
+      if (!mountedRef.current || !message.trim() || activeRequestRef.current !== null) return false
 
+      const history = getHistory(messagesRef.current)
       const userMessage: Message = {
-        id: Date.now().toString(),
+        id: `local-user:${generateRequestId()}`,
         role: 'user',
         content: message,
+        message_metadata: { send_state: 'sending' },
         created_at: new Date().toISOString(),
       }
+
+      const controller = new AbortController()
+      const recoveryController = new AbortController()
+      const authSessionKey = getAuthSessionKey()
+      let userStopped = false
+      let timeoutId: number | undefined
+      const clearStreamTimeout = () => {
+        globalThis.window.clearTimeout(timeoutId)
+        timeoutId = undefined
+      }
+      const stopActiveRequest = () => {
+        userStopped = true
+        clearStreamTimeout()
+        controller.abort()
+        recoveryController.abort()
+      }
+      activeRequestRef.current = stopActiveRequest
+      const isCurrent = () => activeRequestRef.current === stopActiveRequest && authSessionKey === getAuthSessionKey()
 
       setMessages((prev) => [...prev, userMessage])
       setIsLoading(true)
       resetTransientState()
 
-      const controller = new AbortController()
-      const recoveryController = new AbortController()
-      const authRevision = getAuthSessionRevision()
-      const authScope = getAuthCacheScope()
-      abortControllerRef.current = controller
-      const isCurrent = () =>
-        mountedRef.current &&
-        abortControllerRef.current === controller &&
-        authRevision === getAuthSessionRevision() &&
-        authScope === getAuthCacheScope()
-      let userStopped = false
-      const stopActiveRequest = () => {
-        userStopped = true
-        controller.abort()
-        recoveryController.abort()
-      }
-      stopActiveRequestRef.current = stopActiveRequest
-
       let didTimeout = false
-      let timeoutId: number | undefined
+      let sawDone = false
+      let streamAccepted = false
+      let acceptedRequestId: string | undefined
+      let acceptedAssistantMessageId: string | undefined
+      let acceptedRunId: string | undefined
+      let acceptedThreadId: string | undefined
+      let runStarted = false
+      let textStarted = false
+      let textEnded = false
+      const toolCalls = new Map<string, { name: string; args: string; ended: boolean; resultReceived: boolean }>()
       const armTimeout = (timeoutMs: number) => {
-        if (timeoutId !== undefined) globalThis.window.clearTimeout(timeoutId)
+        clearStreamTimeout()
         timeoutId = globalThis.window.setTimeout(() => {
           didTimeout = true
           controller.abort()
@@ -216,213 +224,331 @@ export function useChatStream({
       }
       armTimeout(API_TIMEOUT_MS)
 
-      try {
-        const effectiveRagConfig = ragConfig
-        const useGraph = Boolean(effectiveRagConfig?.use_graph)
-        const chatRequest = buildChatRequest({
-          conversationId,
-          message,
-          history: getHistory(messagesRef.current),
-          documentIds,
-          datasetId,
-          promptTemplateId,
-          structuredOutput,
-          structuredPreset,
-          enableLongTermMemory,
-          enableSummaryMemory,
-          ragConfig: effectiveRagConfig,
-          useGraph,
-        })
-
-        let citations: Citation[] = []
-        let sawFirstEvent = false
-        let sawDone = false
-        let streamAccepted = false
-        let streamError: Error | null = null
-
+      const sendRequest = async () => {
         try {
-          await chatApi.streamChat(
-            chatRequest,
-            (jsonStr) => {
-              if (!isCurrent() || controller.signal.aborted || sawDone) return
-              sawFirstEvent = true
-              armTimeout(API_LONG_TIMEOUT_MS)
+          const chatRequest = buildChatRequest({
+            conversationId,
+            message,
+            history,
+            documentIds,
+            datasetId,
+            promptTemplateId,
+            structuredOutput,
+            structuredPreset,
+            enableLongTermMemory,
+            enableSummaryMemory,
+            ragConfig,
+          })
 
-              const event = parseStreamEvent(jsonStr)
-              if (!event) return
+          let citations: Citation[] = []
+          let eventFailed = false
 
-              if (event.type === 'citations') {
-                citations = getCitations(event.data)
-                currentCitationsRef.current = citations
-                setCurrentCitations(citations)
-                return
-              }
-
-              const stepMessage = getStreamEventMessage(event.type, event.data)
-              if (stepMessage) {
-                appendStep(stepMessage)
-                return
-              }
-
-              if (event.type === 'token') {
-                fullResponseRef.current += getTokenContent(event.data)
-                scheduleCurrentResponseUpdate()
-                return
-              }
-
-              if (event.type === 'done') {
-                if (timeoutId !== undefined) globalThis.window.clearTimeout(timeoutId)
-                sawDone = true
-                flushCurrentResponseUpdate()
-
-                const doneData = isRecord(event.data) ? event.data : {}
-
-                updateConversation(getConversationId(doneData.conversation_id))
-
-                const assistantMessage = buildDoneAssistantMessage({
-                  assistantMessageId: getAssistantMessageId(doneData.assistant_message_id || doneData.message_id),
-                  content: fullResponseRef.current,
-                  citations,
-                  steps: getStepList(currentStepsRef.current),
-                  doneData,
-                  structuredOutput,
-                  requestId: event.request_id,
-                })
-
-                setMessages((prev) => [...prev, assistantMessage])
-                resetTransientState()
-                return
-              }
-
-              if (event.type === 'error') {
-                const payload = isRecord(event.data) ? event.data : {}
-                streamError = new Error(toTrimmedPrimitiveString(payload.message, 'Unknown error'))
-              }
-            },
-            {
-              signal: controller.signal,
-              onOpen: ({ requestId, conversationId: openedConversationId }) => {
+          try {
+            await chatApi.streamChat(
+              chatRequest,
+              (jsonStr) => {
                 if (!isCurrent() || controller.signal.aborted) return
-                streamAccepted = true
-                streamRequestIdRef.current = requestId
-                armTimeout(API_LONG_TIMEOUT_MS)
-                if (openedConversationId) {
-                  updateConversation(openedConversationId)
+                try {
+                  const event = parseStreamEvent(jsonStr)
+                  if (sawDone) return
+                  armTimeout(API_LONG_TIMEOUT_MS)
+                  if (
+                    (event.metadata?.runId !== undefined && event.metadata.runId !== acceptedRunId) ||
+                    (event.metadata?.threadId !== undefined && event.metadata.threadId !== acceptedThreadId) ||
+                    acceptedRunId === undefined ||
+                    acceptedThreadId === undefined
+                  ) {
+                    throw new TypeError('AG-UI event belongs to another run')
+                  }
+                  if (
+                    acceptedAssistantMessageId !== undefined &&
+                    event.metadata?.assistantMessageId !== undefined &&
+                    event.metadata.assistantMessageId !== acceptedAssistantMessageId
+                  ) {
+                    throw new TypeError('AG-UI event belongs to another assistant message')
+                  }
+
+                  if (event.type === EventType.RUN_STARTED) {
+                    if (runStarted || event.runId !== acceptedRunId || event.threadId !== acceptedThreadId) {
+                      throw new TypeError('Invalid AG-UI run start')
+                    }
+                    runStarted = true
+                    return
+                  }
+                  if (!runStarted) throw new TypeError('AG-UI event arrived before its run started')
+
+                  if (event.type === EventType.TEXT_MESSAGE_START) {
+                    if (
+                      textStarted ||
+                      (event.role !== undefined && event.role !== 'assistant') ||
+                      (acceptedAssistantMessageId !== undefined && acceptedAssistantMessageId !== event.messageId) ||
+                      (event.metadata?.assistantMessageId !== undefined &&
+                        event.metadata.assistantMessageId !== event.messageId)
+                    ) {
+                      throw new TypeError('Invalid AG-UI assistant message start')
+                    }
+                    acceptedAssistantMessageId = event.messageId
+                    textStarted = true
+                    return
+                  }
+                  if (event.type === EventType.TEXT_MESSAGE_CONTENT || event.type === EventType.TEXT_MESSAGE_END) {
+                    if (!textStarted || textEnded || event.messageId !== acceptedAssistantMessageId) {
+                      throw new TypeError('AG-UI text event belongs to an inactive message')
+                    }
+                    if (event.type === EventType.TEXT_MESSAGE_END) textEnded = true
+                    else {
+                      fullResponseRef.current += event.delta
+                      scheduleCurrentResponseUpdate()
+                    }
+                    return
+                  }
+
+                  if (event.type === EventType.CUSTOM) {
+                    if (event.name === 'ragvia.citations') {
+                      citations = citationListSchema.parse(event.value)
+                      currentCitationsRef.current = citations
+                      setCurrentCitations(citations)
+                    } else if (event.name.startsWith('ragvia.')) {
+                      appendStep(getStreamEventMessage(event.name.slice('ragvia.'.length), event.value))
+                    }
+                    return
+                  }
+
+                  if (event.type === EventType.TOOL_CALL_START) {
+                    if (
+                      !textStarted ||
+                      toolCalls.has(event.toolCallId) ||
+                      (event.parentMessageId !== undefined && event.parentMessageId !== acceptedAssistantMessageId)
+                    ) {
+                      throw new TypeError('Invalid AG-UI tool call start')
+                    }
+                    toolCalls.set(event.toolCallId, {
+                      name: event.toolCallName,
+                      args: '',
+                      ended: false,
+                      resultReceived: false,
+                    })
+                    appendStep(`工具调用：${event.toolCallName}`)
+                    return
+                  }
+
+                  if (
+                    event.type === EventType.TOOL_CALL_ARGS ||
+                    event.type === EventType.TOOL_CALL_END ||
+                    event.type === EventType.TOOL_CALL_RESULT
+                  ) {
+                    const tool = toolCalls.get(event.toolCallId)
+                    if (tool === undefined || tool.resultReceived) throw new TypeError('AG-UI tool call is not active')
+                    if (event.type === EventType.TOOL_CALL_ARGS) {
+                      if (tool.ended) throw new TypeError('AG-UI tool arguments have already ended')
+                      tool.args += event.delta
+                    } else if (event.type === EventType.TOOL_CALL_END) {
+                      if (tool.ended) throw new TypeError('AG-UI tool arguments have already ended')
+                      JSON.parse(tool.args)
+                      tool.ended = true
+                    } else {
+                      const success: unknown = event.metadata?.success
+                      if (!tool.ended || (success !== undefined && typeof success !== 'boolean')) {
+                        throw new TypeError('Invalid AG-UI tool result')
+                      }
+                      tool.resultReceived = true
+                      const error: unknown = event.metadata?.error
+                      const detail = typeof error === 'string' ? `：${error}` : ''
+                      const outcome = success === undefined ? '结果' : success ? '完成' : '失败'
+                      appendStep(`工具${outcome}：${tool.name}${detail}`)
+                    }
+                    return
+                  }
+
+                  if (event.type === EventType.RUN_FINISHED) {
+                    if (event.runId !== acceptedRunId || event.threadId !== acceptedThreadId) {
+                      throw new TypeError('AG-UI run completion belongs to another run')
+                    }
+                    if (event.outcome?.type === 'cancelled') {
+                      stopActiveRequest()
+                      throw new DOMException('Aborted', 'AbortError')
+                    }
+                    if (event.outcome?.type === 'interrupt') {
+                      throw new Error('当前运行需要用户输入，但聊天暂不支持继续被中断的运行')
+                    }
+                    if (
+                      !textEnded ||
+                      acceptedAssistantMessageId === undefined ||
+                      [...toolCalls.values()].some((tool) => !tool.resultReceived)
+                    ) {
+                      throw new TypeError('Invalid AG-UI run completion')
+                    }
+                    const result: unknown = event.result
+                    const doneData: Record<string, unknown> = isRecord(result) ? result : {}
+                    if (doneData.conversation_id !== undefined && doneData.conversation_id !== acceptedThreadId) {
+                      throw new TypeError('Chat completion belongs to another conversation')
+                    }
+                    if (
+                      doneData.assistant_message_id !== undefined &&
+                      doneData.assistant_message_id !== acceptedAssistantMessageId
+                    ) {
+                      throw new TypeError('Chat completion belongs to another assistant message')
+                    }
+                    const assistantMessage = buildDoneAssistantMessage({
+                      assistantMessageId: acceptedAssistantMessageId,
+                      content: fullResponseRef.current,
+                      citations,
+                      steps: currentStepsRef.current,
+                      doneData,
+                      structuredOutput,
+                      requestId: acceptedRequestId,
+                    })
+
+                    sawDone = true
+                    flushCurrentResponseUpdate()
+                    setMessages((prev) => [...prev, assistantMessage])
+                    invalidateConversationLists()
+                    resetTransientState()
+                    return
+                  }
+
+                  if (event.type === EventType.RUN_ERROR) {
+                    throw new Error(withRequestId(event.message, acceptedRequestId))
+                  }
+                  throw new TypeError('Unsupported AG-UI chat event')
+                } catch (error) {
+                  eventFailed = true
+                  throw error instanceof Error ? error : new Error('Invalid AG-UI chat event', { cause: error })
                 }
               },
-            },
-          )
-
-          if (!isCurrent()) return
-          if (userStopped) throw new DOMException('Aborted', 'AbortError')
-          if (streamError) throw streamError
-          if (!sawFirstEvent || !sawDone) {
-            throw new Error('SSE stream ended unexpectedly')
-          }
-        } catch (streamErr) {
-          if (!isCurrent()) return
-          if (userStopped) throw new DOMException('Aborted', 'AbortError')
-          const streamWasAborted = (streamErr as { name?: string })?.name === 'AbortError'
-          if (streamWasAborted && (!streamAccepted || userStopped)) throw streamErr
-
-          if (sawDone) {
-            reportClientWarning('SSE closed after done', streamErr)
-          } else if (streamAccepted) {
-            if (streamError) throw streamError
-            const recoveredMessage = await recoverStreamedAssistantMessage({
-              conversationId: String(activeConversationIdRef.current || ''),
-              requestId: String(streamRequestIdRef.current || ''),
-              getMessages: (nextConversationId, params) => chatApi.getMessages(nextConversationId, params),
-              signal: recoveryController.signal,
-            })
-
-            if (!isCurrent()) return
-            if (userStopped) throw new DOMException('Aborted', 'AbortError')
-            if (recoveredMessage) {
-              setMessages((prev) => {
-                if (prev.some((item) => item.id === recoveredMessage.id)) return prev
-                return [...prev, recoveredMessage]
-              })
-              resetTransientState()
-            } else if (streamWasAborted && didTimeout) {
-              throw streamErr
-            } else {
-              throw new Error('Chat stream interrupted before completion and could not be recovered')
-            }
-          } else {
-            reportClientWarning('SSE unavailable; falling back to non-streaming chat', streamErr)
-            armTimeout(API_LONG_TIMEOUT_MS)
-
-            const response = await chatApi.chat(chatRequest, { signal: controller.signal })
-            if (!isCurrent()) return
-            if (userStopped) throw new DOMException('Aborted', 'AbortError')
-            if (timeoutId !== undefined) globalThis.window.clearTimeout(timeoutId)
-
-            updateConversation(getConversationId(response.conversation_id))
-            setMessages((prev) => [
-              ...prev,
-              buildFallbackAssistantMessage({
-                response,
-                structuredOutput,
-                structuredPreset,
-              }),
-            ])
-            resetTransientState()
-          }
-        }
-
-        flushCurrentResponseUpdate()
-      } catch (err) {
-        if (!isCurrent()) return
-        const maybeError = err as { name?: string; code?: string; message?: string }
-        const isAbort =
-          controller.signal.aborted ||
-          maybeError?.name === 'AbortError' ||
-          maybeError?.name === 'CanceledError' ||
-          maybeError?.code === 'ERR_CANCELED'
-
-        if (isAbort) {
-          if (didTimeout) {
-            onError?.('Request timed out')
-          } else if (userStopped) {
-            // User stopped generation: preserve whatever was already streamed
-            // instead of letting the in-flight bubble vanish once isLoading
-            // flips to false. Commit the partial answer as a stopped message.
-            const partialContent = fullResponseRef.current
-            if (partialContent) {
-              setMessages((prev) => [
-                ...prev,
-                {
-                  id: Date.now().toString(),
-                  role: 'assistant',
-                  content: partialContent,
-                  citations: currentCitationsRef.current,
-                  steps: getStepList(currentStepsRef.current),
-                  message_metadata: { stopped: true },
-                  created_at: new Date().toISOString(),
+              {
+                signal: controller.signal,
+                messages: [...history, { id: userMessage.id, role: 'user', content: message }],
+                onOpen: ({ requestId, conversationId: openedConversationId, assistantMessageId, runId }) => {
+                  if (!isCurrent() || controller.signal.aborted) return
+                  streamAccepted = true
+                  invalidateConversationLists()
+                  acceptedRequestId = requestId
+                  acceptedRunId = runId
+                  acceptedThreadId = openedConversationId
+                  setMessages((previous) =>
+                    previous.map<Message>((item) =>
+                      item.id === userMessage.id
+                        ? {
+                            ...item,
+                            message_metadata: {
+                              ...item.message_metadata,
+                              send_state: 'accepted',
+                              request_id: requestId,
+                            },
+                          }
+                        : item,
+                    ),
+                  )
+                  armTimeout(API_LONG_TIMEOUT_MS)
+                  updateConversation(openedConversationId)
+                  acceptedAssistantMessageId = assistantMessageId
                 },
-              ])
+              },
+            )
+
+            if (!isCurrent()) return
+            if (userStopped) throw new DOMException('Aborted', 'AbortError')
+            if (!sawDone) {
+              throw new Error('SSE stream ended unexpectedly')
+            }
+          } catch (streamErr) {
+            clearStreamTimeout()
+            if (!isCurrent()) return
+            if (userStopped) throw new DOMException('Aborted', 'AbortError')
+            if (sawDone) {
+              const context = didTimeout ? '回答已生成，但后续处理等待超时' : '回答已生成，但后续处理未正常结束'
+              throw new Error(
+                withRequestId(`${context}：${formatApiError(streamErr, '处理失败')}`, acceptedRequestId),
+                {
+                  cause: streamErr,
+                },
+              )
+            } else {
+              if (!streamAccepted || eventFailed) throw streamErr
+              reportClientWarning('Chat stream interrupted; reading the persisted answer', streamErr)
+              const recoveredMessage = await recoverStreamedAssistantMessage({
+                conversationId: acceptedThreadId,
+                requestId: acceptedRequestId,
+                getMessages: chatApi.getMessages,
+                signal: recoveryController.signal,
+              })
+
+              if (!isCurrent()) return
+              if (userStopped) throw new DOMException('Aborted', 'AbortError')
+              if (recoveredMessage) {
+                invalidateConversationLists()
+                setMessages((prev) => {
+                  if (prev.some((item) => item.id === recoveredMessage.id)) return prev
+                  return [...prev, recoveredMessage]
+                })
+                resetTransientState()
+              } else {
+                throw new Error(
+                  withRequestId(
+                    'Chat stream interrupted before completion and could not be recovered',
+                    acceptedRequestId,
+                  ),
+                  { cause: streamErr },
+                )
+              }
+            }
+          }
+
+          flushCurrentResponseUpdate()
+        } catch (err) {
+          if (!isCurrent()) return
+          if (!streamAccepted) {
+            setMessages((previous) =>
+              previous.map<Message>((item) =>
+                item.id === userMessage.id
+                  ? { ...item, message_metadata: { ...item.message_metadata, send_state: 'unconfirmed' } }
+                  : item,
+              ),
+            )
+            onUnconfirmedMessage?.(message)
+          }
+          if (sawDone && !userStopped) {
+            reportClientError('Chat post-processing failed after the answer was generated', err)
+            onError?.(formatApiError(err, '回答已生成，但后续处理失败'))
+            return
+          }
+          if (userStopped) {
+            const partialContent = fullResponseRef.current
+            if (partialContent && acceptedAssistantMessageId !== undefined) {
+              const stoppedMessage: Message = {
+                id: `local-assistant:${acceptedAssistantMessageId}`,
+                role: 'assistant',
+                content: partialContent,
+                citations: currentCitationsRef.current,
+                steps: currentStepsRef.current,
+                message_metadata: {
+                  stopped: true,
+                  request_id: acceptedRequestId,
+                  assistant_message_id: acceptedAssistantMessageId,
+                },
+                created_at: new Date().toISOString(),
+              }
+              setMessages((prev) => [...prev, stoppedMessage])
             }
             resetTransientState()
-          } else {
-            onError?.(maybeError?.message || 'Failed to send message')
+            return
           }
-        } else {
-          reportClientError('Chat request failed', err)
-          onError?.(maybeError?.message || 'Failed to send message')
-        }
-      } finally {
-        if (timeoutId !== undefined) globalThis.window.clearTimeout(timeoutId)
-        recoveryController.abort()
-        if (abortControllerRef.current === controller) {
-          clearRaf()
-          setIsLoading(false)
-          abortControllerRef.current = null
-        }
-        if (stopActiveRequestRef.current === stopActiveRequest) {
-          stopActiveRequestRef.current = null
+          reportClientError(didTimeout ? 'Chat request timed out' : 'Chat request failed', err)
+          const errorMessage = didTimeout ? 'Request timed out' : formatApiError(err, 'Failed to send message')
+          onError?.(withRequestId(errorMessage, acceptedRequestId))
+        } finally {
+          clearStreamTimeout()
+          recoveryController.abort()
+          if (activeRequestRef.current === stopActiveRequest) {
+            activeRequestRef.current = null
+            clearRaf()
+            setIsLoading(false)
+          }
         }
       }
+      void sendRequest()
+      return true
     },
     [
       appendStep,
@@ -434,7 +560,9 @@ export function useChatStream({
       enableSummaryMemory,
       flushCurrentResponseUpdate,
       messagesRef,
+      invalidateConversationLists,
       onError,
+      onUnconfirmedMessage,
       promptTemplateId,
       ragConfig,
       resetTransientState,
@@ -453,7 +581,6 @@ export function useChatStream({
     currentSteps,
     sendMessage,
     stopGeneration,
-    resetTransientState,
     discardGeneration,
   }
 }

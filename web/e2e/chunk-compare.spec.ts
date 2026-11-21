@@ -89,7 +89,7 @@ test('parameter requests use the edited values, block stale ingestion including 
   await page.reload()
   await expect(page.getByRole('spinbutton', { name: '目标长度（字符）', exact: true })).toHaveValue('800')
   await expect(page.getByRole('spinbutton', { name: '重叠长度（字符）', exact: true })).toHaveValue('120')
-  await page.getByRole('button', { name: '选择切块策略', exact: true }).press('ArrowDown')
+  await page.getByRole('button', { name: /^选择切块策略/ }).press('ArrowDown')
   const strategy = page.getByRole('menu', { name: '切块策略', exact: true })
   await expect(strategy.locator('[data-strategy="langchain_recursive"]')).toBeFocused()
   await strategy.locator('[data-strategy="langchain_token"]').click()
@@ -167,7 +167,7 @@ test('empty workspace offers both existing documents and upload, then reaches pr
 }) => {
   const state = await fixture(page, { empty: true })
   await open(page, true)
-  await expect(page.getByRole('heading', { name: '选择文档，查看切块结果', exact: true })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '预览文档切片', exact: true })).toBeVisible()
   await page.screenshot({ path: path.join(evidence, 'empty.png') })
   await page.getByRole('button', { name: '选择已有文档', exact: true }).click()
   await expect(page.getByRole('dialog', { name: '文档与数据范围', exact: true })).toBeVisible()

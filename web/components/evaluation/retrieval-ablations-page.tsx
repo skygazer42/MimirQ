@@ -1,6 +1,6 @@
 'use client'
-import { useQuery } from '@tanstack/react-query'
-import { useEffect, useLayoutEffect, useRef, useMemo, useState, type ReactNode } from 'react'
+import { useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-query'
+import { useEffect, useLayoutEffect, useRef, useMemo, useState, useSyncExternalStore, type ReactNode } from 'react'
 import { ChevronDown, Database, GitCompare, Info, MoreHorizontal } from '@/components/icons'
 import { toast } from 'sonner'
 import { AppFrame } from '@/components/app-frame'
@@ -36,56 +36,59 @@ import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { formatApiError } from '@/lib/api-errors'
+import { getAuthSessionKey, subscribeAuthSession } from '@/lib/auth-storage'
+import { downloadBlob } from '@/lib/download'
 import { datasetApi } from '@/lib/api/datasets'
 import { evaluationApi } from '@/lib/api/evaluation'
-import { settingsApi } from '@/lib/api/settings'
 import { Link } from '@/i18n/navigation'
-import { toTrimmedPrimitiveString } from '@/lib/primitive-text'
 import { queryKeys } from '@/lib/query-keys'
-import { normalizeRerankerProvider, RERANKER_PROVIDER_OPTIONS } from '@/lib/reranker-provider-options'
+import { RERANKER_PROVIDER_OPTIONS } from '@/lib/reranker-provider-options'
 import { sanitizeFilename } from '@/lib/sanitize'
+import {
+  analyzeRegressionRuns,
+  getRegressionRunMetric,
+  getRegressionRunParameters,
+  isParetoRun,
+} from '@/lib/regression-run-statistics'
+import {
+  regressionRunAblationParamsSchema,
+  regressionAblationFormSchema,
+  type RegressionRunAblationParams,
+} from '@/lib/regression-run-schema'
 import type {
   Dataset,
   RagasRegressionRunDiffResponse,
   RegressionAblationGridValue,
   RegressionRunMetricDiff,
   RegressionRun,
-  RegressionRunCreate,
+  RegressionRunList,
+  RegressionAblationBatchResponse,
 } from '@/types'
 import { cn, detachPromise } from '@/lib/utils'
 const EMPTY_DATASETS: Dataset[] = []
 const EMPTY_RUNS: RegressionRun[] = []
 
-type RegressionLeaderboardRow = {
-  run_id: string
-  status: string
-  created_at?: string | null
-  finished_at?: string | null
-  metric_key: string
-  metric_value?: number | null
-  retrieval_config_hash?: string | null
-}
+type RegressionRunQueryState = Pick<UseQueryResult<RegressionRunList>, 'data' | 'error' | 'isFetching' | 'refetch'>
 
-type AblationInlineTone = 'neutral' | 'sky' | 'amber' | 'violet' | 'emerald'
-type LeaderboardAssignRole = 'base' | 'target'
+type AblationScope = { datasetId: string; active: boolean }
 
 type AblationRunPayloadConfig = {
   datasetId: string
   retrievalOnly: boolean
   metricKeys: string[]
   skipEmptyContexts: boolean
-  maxCases: number
-  topK: number
-  scoreThreshold: number
+  maxCases: string
+  topK: string
+  scoreThreshold: string
   retrievalMode: string
-  alpha: number
+  alpha: string
   enableWeightRerank: boolean
-  vectorWeight: number
-  keywordWeight: number
-  mmrLambda: number
-  enableReranker: boolean
+  vectorWeight: string
+  keywordWeight: string
+  mmrLambda: string
+  rerankerMode: string
   rerankerProvider: string
-  rerankerTopN: number
+  rerankerTopN: string
 }
 
 type AutoBootstrapStage = 'top_k' | 'reranker' | 'retrieval_mode'
@@ -106,70 +109,19 @@ const JSON_TOKEN_PATTERN = new RegExp(
   'g',
 )
 
-function prettyJson(value: unknown): string {
+function downloadJson(value: unknown, filename: string): void {
   try {
-    return JSON.stringify(value, null, 2)
-  } catch {
-    return '无法序列化的 JSON'
+    const content = JSON.stringify(value, null, 2)
+    if (content === undefined) throw new Error('导出内容不是可序列化JSON')
+    downloadBlob(filename, new Blob([content], { type: 'application/json;charset=utf-8' }))
+    toast.success('已开始下载对比数据')
+  } catch (error) {
+    toast.error(formatApiError(error, '导出对比数据失败'))
   }
 }
 
-function downloadJson(value: unknown, filename: string): void {
-  const content = JSON.stringify(value ?? {}, null, 2)
-  const blob = new Blob([content], { type: 'application/json;charset=utf-8' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = filename
-  a.click()
-  globalThis.window.setTimeout(() => URL.revokeObjectURL(url), 1000)
-}
-
-function downloadBlob(blob: Blob, filename: string): void {
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = filename
-  a.click()
-  globalThis.window.setTimeout(() => URL.revokeObjectURL(url), 1000)
-}
-
-function toNumber(value: unknown): number | null {
-  if (value === null || value === undefined) return null
-  const n = Number(value)
-  return Number.isFinite(n) ? n : null
-}
-
-function clampNumber(value: number, min: number, max: number): number {
-  return Math.max(min, Math.min(value, max))
-}
-
 function pickAutoCandidateTopK(currentTopK: number): number {
-  const base = clampNumber(currentTopK, 1, 50)
-  const plus = clampNumber(base + 10, 1, 50)
-  if (plus !== base) return plus
-  const minus = clampNumber(base - 10, 1, 50)
-  if (minus !== base) return minus
-  return base >= 50 ? 49 : base + 1
-}
-
-function runParamNumber(run: RegressionRun, key: string): number | null {
-  const params = run.params && typeof run.params === 'object' ? run.params : null
-  return toNumber(params ? (params as Record<string, unknown>)[key] : null)
-}
-
-function runParamBoolean(run: RegressionRun, key: string): boolean | null {
-  const params = run.params && typeof run.params === 'object' ? run.params : null
-  const raw = params ? (params as Record<string, unknown>)[key] : null
-  if (typeof raw === 'boolean') return raw
-  if (raw === 'true') return true
-  if (raw === 'false') return false
-  return null
-}
-
-function runParamString(run: RegressionRun, key: string): string {
-  const params = run.params && typeof run.params === 'object' ? run.params : null
-  return toTrimmedPrimitiveString(params ? (params as Record<string, unknown>)[key] : null)
+  return currentTopK === 50 ? 40 : Math.min(currentTopK + 10, 50)
 }
 
 const RAGAS_METRIC_OPTIONS = [
@@ -206,112 +158,53 @@ const LEADERBOARD_METRIC_OPTIONS = [
   { key: 'refusal_correctness', label: '拒答正确率' },
 ]
 
-function _stableId(val: unknown): string {
-  return toTrimmedPrimitiveString(val)
-}
-
-function formatMetric(value: number | null): string {
-  return value === null ? '-' : value.toFixed(4)
+function formatMetric(value: number | null | undefined): string {
+  return value === null || value === undefined ? '—' : value.toFixed(4)
 }
 
 function shortId(value: string | null | undefined): string {
-  const text = String(value || '').trim()
-  if (!text) return '-'
-  return `${text.slice(0, 8)}…`
+  if (value === null || value === undefined || value === '') return '—'
+  return `${value.slice(0, 8)}…`
 }
 
 function leaderboardMetricLabel(key: string): string {
-  return LEADERBOARD_METRIC_OPTIONS.find((item) => item.key === key)?.label || key
+  return LEADERBOARD_METRIC_OPTIONS.find((item) => item.key === key)?.label ?? key
 }
 
-function runStatusMeta(statusValue: string | null | undefined): {
-  status: 'completed' | 'failed' | 'processing'
+function runStatusMeta(statusValue: string): {
+  status: 'pending' | 'completed' | 'failed' | 'processing'
   label: string
 } {
   if (statusValue === 'completed') return { status: 'completed', label: '已完成' }
   if (statusValue === 'failed') return { status: 'failed', label: '失败' }
-  return { status: 'processing', label: '运行中' }
+  if (statusValue === 'pending' || statusValue === 'queued') return { status: 'pending', label: '待运行' }
+  if (statusValue === 'running') return { status: 'processing', label: '运行中' }
+  return { status: 'pending', label: `未识别状态：${statusValue}` }
 }
 
-function pickRunPair(
-  items: RegressionRun[],
-  currentBaseRunId: string,
-  currentTargetRunId: string,
-): {
-  baseRunId: string
-  targetRunId: string
-} {
-  const ids = new Set(items.map((run) => _stableId(run.id)).filter(Boolean))
-  const currentBase = _stableId(currentBaseRunId)
-  const currentTarget = _stableId(currentTargetRunId)
-  let targetRunId = currentTarget && ids.has(currentTarget) ? currentTarget : _stableId(items?.[0]?.id)
-  let baseRunId = currentBase && ids.has(currentBase) ? currentBase : ''
-
-  if (!baseRunId || baseRunId === targetRunId) {
-    baseRunId = _stableId(items.find((run) => _stableId(run.id) !== targetRunId)?.id)
-  }
-
-  if (baseRunId === targetRunId) {
-    baseRunId = ''
-  }
-
-  return { baseRunId, targetRunId }
-}
-
-function buildRegressionRunPayload(
-  config: AblationRunPayloadConfig,
-  variant: Partial<RegressionRunCreate> = {},
-): RegressionRunCreate | null {
-  const ds = config.datasetId.trim()
-  if (!ds) return null
-
-  return {
-    dataset_id: ds,
+function buildRegressionRunPayload(draft: AblationRunPayloadConfig) {
+  const config = regressionAblationFormSchema.parse(draft)
+  const payload = {
+    dataset_id: config.datasetId,
     metrics: config.retrievalOnly ? [] : config.metricKeys,
-    skip_empty_contexts: Boolean(config.skipEmptyContexts),
-    max_cases: clampNumber(config.maxCases, 1, 500),
-    top_k: clampNumber(config.topK, 1, 50),
-    score_threshold: clampNumber(config.scoreThreshold, 0, 1),
+    skip_empty_contexts: config.skipEmptyContexts,
+    max_cases: config.maxCases,
+    top_k: config.topK,
+    score_threshold: config.scoreThreshold,
     retrieval_mode: config.retrievalMode,
-    alpha: clampNumber(config.alpha, 0, 1),
-    enable_weight_rerank: Boolean(config.enableWeightRerank),
-    vector_weight: clampNumber(config.vectorWeight, 0, 1),
-    keyword_weight: clampNumber(config.keywordWeight, 0, 1),
-    mmr_lambda: clampNumber(config.mmrLambda, 0, 1),
-    enable_reranker: Boolean(config.enableReranker),
-    reranker_provider: String(config.rerankerProvider || 'llm'),
-    reranker_top_n: clampNumber(config.rerankerTopN, 1, 200),
-    ...variant,
+    alpha: config.alpha,
+    enable_weight_rerank: config.enableWeightRerank,
+    vector_weight: config.vectorWeight,
+    keyword_weight: config.keywordWeight,
+    mmr_lambda: config.mmrLambda,
   }
-}
-
-async function submitAblationBatch(
-  payload: RegressionRunCreate | null,
-  grid: Record<string, RegressionAblationGridValue[]>,
-  maxCombinations: number,
-  refetchRuns: () => Promise<unknown>,
-  selectTargetRun: (id: string) => void,
-): Promise<void> {
-  if (!payload) {
-    toast.error('请选择数据集')
-    return
-  }
-
-  try {
-    const batch = await evaluationApi.createRegressionAblationBatch({
-      ...payload,
-      grid,
-      max_combinations: maxCombinations,
-    })
-    if (batch.run_ids[0]) {
-      selectTargetRun(batch.run_ids[0])
-    }
-    await refetchRuns()
-    toast.success(`已提交 ${batch.total} 个消融实验运行`)
-  } catch (err) {
-    const message = formatApiError(err, '批量创建消融实验运行失败')
-    toast.error(message)
-    throw new Error(message)
+  if (config.rerankerMode === 'system') return payload
+  if (config.rerankerMode === 'disabled') return { ...payload, enable_reranker: false }
+  return {
+    ...payload,
+    enable_reranker: true,
+    reranker_provider: config.rerankerProvider,
+    reranker_top_n: config.rerankerTopN,
   }
 }
 
@@ -319,8 +212,8 @@ function getComparableRunIds(
   selectedBaseRunId: string,
   selectedTargetRunId: string,
 ): { baseId: string; targetId: string } | null {
-  const baseId = String(selectedBaseRunId || '').trim()
-  const targetId = String(selectedTargetRunId || '').trim()
+  const baseId = selectedBaseRunId
+  const targetId = selectedTargetRunId
   if (!baseId || !targetId) {
     toast.error('请选择基线与候选')
     return null
@@ -335,57 +228,72 @@ function getComparableRunIds(
 async function computeRegressionDiff(
   selectedBaseRunId: string,
   selectedTargetRunId: string,
-  refetchDiff: () => Promise<{ error?: unknown }>,
+  refetchDiff: () => Promise<{ error: unknown | null }>,
+  isCurrent: () => boolean,
 ): Promise<void> {
+  if (!isCurrent()) return
   const pair = getComparableRunIds(selectedBaseRunId, selectedTargetRunId)
-  if (!pair) return
-
+  if (pair === null) return
   try {
-    const res = await refetchDiff()
-    if (res.error) return
-    toast.success('已生成差异对比')
-  } catch {}
-}
-
-async function exportRegressionDiffHtml(selectedBaseRunId: string, selectedTargetRunId: string): Promise<void> {
-  const pair = getComparableRunIds(selectedBaseRunId, selectedTargetRunId)
-  if (!pair) return
-
-  try {
-    const blob = await evaluationApi.exportRegressionRunDiffHtml(pair.targetId, {
-      base_run_id: pair.baseId,
-      redact: true,
-    })
-    const name = sanitizeFilename(`regression-diff_${pair.baseId.slice(0, 8)}_vs_${pair.targetId.slice(0, 8)}.html`)
-    downloadBlob(blob, name)
-  } catch (err) {
-    toast.error(formatApiError(err, '导出对比页面失败'))
+    const result = await refetchDiff()
+    if (isCurrent() && result.error === null) toast.success('已读取差异对比')
+  } catch (error) {
+    if (isCurrent()) toast.error(formatApiError(error, '读取差异对比失败'))
   }
 }
 
-async function exportRegressionRunBundle(runId: string, label: string): Promise<void> {
-  const id = String(runId || '').trim()
-  if (!id) {
+async function exportRegressionDiffHtml(
+  selectedBaseRunId: string,
+  selectedTargetRunId: string,
+  isCurrent: () => boolean,
+  signal: AbortSignal,
+): Promise<void> {
+  if (!isCurrent()) return
+  const pair = getComparableRunIds(selectedBaseRunId, selectedTargetRunId)
+  if (pair === null) return
+  try {
+    const blob = await evaluationApi.exportRegressionRunDiffHtml(
+      pair.targetId,
+      { base_run_id: pair.baseId, redact: true },
+      { signal },
+    )
+    if (!isCurrent()) return
+    const name = sanitizeFilename(`regression-diff_${pair.baseId.slice(0, 8)}_vs_${pair.targetId.slice(0, 8)}.html`)
+    downloadBlob(name, blob)
+    toast.success('已开始下载对比页面')
+  } catch (error) {
+    if (isCurrent() && !signal.aborted) toast.error(formatApiError(error, '导出对比页面失败'))
+  }
+}
+
+async function exportRegressionRunBundle(
+  runId: string,
+  label: 'base' | 'target',
+  isCurrent: () => boolean,
+  signal: AbortSignal,
+): Promise<void> {
+  if (!isCurrent()) return
+  if (runId === '') {
     toast.error('请选择运行记录')
     return
   }
-
   try {
-    const blob = await evaluationApi.exportRegressionRunBundle(id, {
-      include_text: false,
-      include_contexts: false,
-      download: true,
-    })
-    const name = sanitizeFilename(`regression-run_${label}_${id.slice(0, 8)}.json`)
-    downloadBlob(blob, name)
-  } catch (err) {
-    toast.error(formatApiError(err, '导出运行记录失败'))
+    const blob = await evaluationApi.exportRegressionRunBundle(
+      runId,
+      { include_text: false, include_contexts: false, download: true },
+      { signal },
+    )
+    if (!isCurrent()) return
+    downloadBlob(sanitizeFilename(`regression-run_${label}_${runId.slice(0, 8)}.json`), blob)
+    toast.success('已开始下载运行记录')
+  } catch (error) {
+    if (isCurrent() && !signal.aborted) toast.error(formatApiError(error, '导出运行记录失败'))
   }
 }
 
 function runSelectText(run: RegressionRun): string {
-  const statusMeta = runStatusMeta(String(run.status || ''))
-  return `${shortId(String(run.id))} · ${statusMeta.label}`
+  const statusMeta = runStatusMeta(run.status)
+  return `${shortId(run.id)} · ${statusMeta.label}`
 }
 
 function AblationInfoTooltip({
@@ -417,24 +325,14 @@ function AblationInfoTooltip({
   )
 }
 
-function toRecord(value: unknown): Record<string, unknown> {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
-  return value as Record<string, unknown>
-}
-
-function compactValue(value: unknown, maxLen = 72): string {
-  if (value === null || value === undefined) return '-'
-  const raw = (() => {
-    if (typeof value === 'string') return value
-    if (typeof value === 'number' || typeof value === 'boolean') return String(value)
-    try {
-      return JSON.stringify(value)
-    } catch {
-      return '无法序列化'
-    }
-  })()
-  if (!raw) return '-'
-  return raw.length > maxLen ? `${raw.slice(0, maxLen - 1)}…` : raw
+function serializeDiffValue(value: unknown): string {
+  if (value === undefined) return '未提供'
+  return JSON.stringify(value, (_key: string, field: unknown) => {
+    if (field === null || typeof field !== 'object' || Array.isArray(field)) return field
+    return Object.fromEntries(
+      Object.entries(field).sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0)),
+    )
+  })
 }
 
 function ablationDeltaClass(value: number | null): string {
@@ -497,7 +395,7 @@ function AblationDiffEmptyState({
   onAutoRun,
 }: Readonly<{
   datasetId: string
-  caseCount: number
+  caseCount: number | undefined
   runCount: number
   autoRunLabel?: string | null
   autoRunHelper?: string | null
@@ -506,11 +404,13 @@ function AblationDiffEmptyState({
 }>) {
   const hint = !datasetId
     ? '选择数据集后查看实验记录。'
-    : caseCount === 0
-      ? '先在评测中心准备 Golden 样本，再运行实验。'
-      : runCount < 2
-        ? '至少需要两条运行记录才能对比，可新建实验或自动补齐对照。'
-        : '可查看指标、参数与样本差异。'
+    : caseCount === undefined
+      ? '当前样本数尚未确认，请查看样本读取状态。'
+      : caseCount === 0
+        ? '先在评测中心准备 Golden 样本，再运行实验。'
+        : runCount < 2
+          ? '至少需要两条运行记录才能对比，可新建实验或自动补齐对照。'
+          : '可查看指标、参数与样本差异。'
 
   return (
     <div className={ws.empty}>
@@ -530,7 +430,7 @@ type JsonTokenKind = 'plain' | 'key' | 'string' | 'number' | 'boolean' | 'null' 
 type JsonToken = { text: string; kind: JsonTokenKind }
 
 function splitCodeLines(value: string): string[] {
-  const normalized = String(value ?? '').replaceAll('\r', '')
+  const normalized = value.replaceAll('\r', '')
   const lines = normalized.split('\n')
   if (lines.length > 1 && lines.at(-1) === '') lines.pop()
   return lines.length ? lines : ['']
@@ -628,7 +528,6 @@ type AblationDiffScoreDisplay = {
   base: string
   target: string
   delta: string
-  usedKeys: string[]
 }
 
 type AblationParamDiffRow = {
@@ -636,13 +535,6 @@ type AblationParamDiffRow = {
   before: string
   after: string
   changed: boolean
-}
-
-function AblationMetricDeltaCell({ value }: Readonly<{ value: unknown }>) {
-  const delta = toNumber(value)
-  const label = delta === null ? compactValue(value, 24) : delta.toFixed(4)
-
-  return <div className={cn('text-right font-mono text-[11px]', ablationDeltaClass(delta))}>{label}</div>
 }
 
 function AblationOverviewTab({
@@ -663,7 +555,7 @@ function AblationOverviewTab({
   diffDeltaClass: string
   metricDiffRows: RegressionRunMetricDiff[]
   datasetId: string
-  caseCount: number
+  caseCount: number | undefined
   runCount: number
   autoRunLabel?: string | null
   autoRunHelper?: string | null
@@ -702,28 +594,46 @@ function AblationOverviewTab({
           </div>
         </div>
 
-        <div className="grid grid-cols-[minmax(120px,1fr)_minmax(88px,0.8fr)_minmax(88px,0.8fr)_minmax(88px,0.8fr)] border-b border-border/70 bg-background px-3 py-2 text-[11px] tracking-[0.08em] text-muted-foreground">
-          <div>指标</div>
-          <div className="text-right">基线</div>
-          <div className="text-right">候选</div>
-          <div className="text-right">变化</div>
-        </div>
         {metricDiffRows.length ? (
-          metricDiffRows.map((row) => (
-            <div
-              key={row.key}
-              className="grid grid-cols-[minmax(120px,1fr)_minmax(88px,0.8fr)_minmax(88px,0.8fr)_minmax(88px,0.8fr)] border-b border-border/60 px-3 py-2 text-xs last:border-b-0"
-            >
-              <div className="truncate font-mono text-[11px] text-foreground">{row.key}</div>
-              <div className="text-right font-mono text-[11px] text-muted-foreground">
-                {compactValue(row.before, 24)}
-              </div>
-              <div className="text-right font-mono text-[11px] text-muted-foreground">
-                {compactValue(row.after, 24)}
-              </div>
-              <AblationMetricDeltaCell value={row.delta} />
-            </div>
-          ))
+          <WorkspaceTableScroll label="运行指标差异">
+            <table className="w-full min-w-[560px] text-xs">
+              <caption className="sr-only">基线与候选运行的实际指标值及差值</caption>
+              <thead className="bg-background text-[11px] tracking-[0.08em] text-muted-foreground">
+                <tr>
+                  <th scope="col" className="px-3 py-2 text-left font-medium">
+                    指标
+                  </th>
+                  <th scope="col" className="px-3 py-2 text-right font-medium">
+                    基线
+                  </th>
+                  <th scope="col" className="px-3 py-2 text-right font-medium">
+                    候选
+                  </th>
+                  <th scope="col" className="px-3 py-2 text-right font-medium">
+                    变化
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {metricDiffRows.map((row) => (
+                  <tr key={row.key} className="border-t border-border/60">
+                    <th scope="row" className="px-3 py-2 text-left font-mono text-[11px] font-normal text-foreground">
+                      {row.key}
+                    </th>
+                    <td className="px-3 py-2 text-right font-mono text-[11px] text-muted-foreground">
+                      {serializeDiffValue(row.before)}
+                    </td>
+                    <td className="px-3 py-2 text-right font-mono text-[11px] text-muted-foreground">
+                      {serializeDiffValue(row.after)}
+                    </td>
+                    <td className="px-3 py-2 text-right font-mono text-[11px] text-foreground">
+                      {formatMetric(row.delta)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </WorkspaceTableScroll>
         ) : (
           <div className="px-3 py-4 text-xs text-muted-foreground">没有可展示的指标差异。</div>
         )}
@@ -747,36 +657,52 @@ function AblationConfigTab({
 
   return (
     <div className="mx-5 my-3 overflow-hidden border border-border/70">
-      <div className="grid grid-cols-[minmax(140px,180px)_minmax(0,1fr)_minmax(0,1fr)] border-b border-border/70 bg-background px-3 py-2 text-[11px] tracking-[0.08em] text-muted-foreground">
-        <div>参数</div>
-        <div>基线</div>
-        <div>候选</div>
-      </div>
       {paramDiffRows.length ? (
-        paramDiffRows.map((row) => (
-          <div
-            key={row.key}
-            className="grid grid-cols-[minmax(140px,180px)_minmax(0,1fr)_minmax(0,1fr)] border-b border-border/60 bg-background px-3 py-2 text-xs last:border-b-0"
-          >
-            <div
-              className={cn(
-                'truncate font-mono text-[11px]',
-                row.changed ? 'font-semibold text-foreground' : 'text-foreground',
-              )}
-            >
-              {row.key}
-            </div>
-            <div className="truncate font-mono text-[11px] text-muted-foreground">{row.before}</div>
-            <div
-              className={cn(
-                'truncate font-mono text-[11px]',
-                row.changed ? 'text-foreground' : 'text-muted-foreground',
-              )}
-            >
-              {row.after}
-            </div>
-          </div>
-        ))
+        <WorkspaceTableScroll label="运行参数差异">
+          <table className="w-full min-w-[620px] text-xs">
+            <caption className="sr-only">基线与候选的完整 JSON 参数，变化按完整类型和值比较</caption>
+            <thead className="bg-background text-[11px] tracking-[0.08em] text-muted-foreground">
+              <tr>
+                <th scope="col" className="px-3 py-2 text-left font-medium">
+                  参数
+                </th>
+                <th scope="col" className="px-3 py-2 text-left font-medium">
+                  基线
+                </th>
+                <th scope="col" className="px-3 py-2 text-left font-medium">
+                  候选
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {paramDiffRows.map((row) => (
+                <tr key={row.key} className="border-t border-border/60 bg-background">
+                  <th
+                    scope="row"
+                    className={cn(
+                      'px-3 py-2 text-left align-top font-mono text-[11px] text-foreground',
+                      row.changed ? 'font-semibold' : 'font-normal',
+                    )}
+                  >
+                    {row.key}
+                    {row.changed ? <span className="mt-1 block text-[10px]">已变化</span> : null}
+                  </th>
+                  <td className="px-3 py-2 align-top font-mono text-[11px] text-muted-foreground">
+                    <pre className="max-w-[440px] whitespace-pre-wrap break-all">{row.before}</pre>
+                  </td>
+                  <td
+                    className={cn(
+                      'px-3 py-2 align-top font-mono text-[11px]',
+                      row.changed ? 'text-foreground' : 'text-muted-foreground',
+                    )}
+                  >
+                    <pre className="max-w-[440px] whitespace-pre-wrap break-all">{row.after}</pre>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </WorkspaceTableScroll>
       ) : (
         <div className="px-3 py-4 text-xs text-muted-foreground">没有可展示的参数差异。</div>
       )}
@@ -788,45 +714,104 @@ function AblationDeepDiveTab({
   datasetId,
   runDisabledReason,
   runGridBatch,
-  refetchPanels,
+  runSubmissionPending,
   diff,
   runsByDataset,
+  runsQuery,
   selectedBaseRunId,
-  selectedTargetRunId,
   leaderboardMetricKey,
   deepDiveMetricKeys,
 }: Readonly<{
   datasetId: string
   runDisabledReason: string
-  runGridBatch: (grid: Record<string, RegressionAblationGridValue[]>, maxCombinations: number) => Promise<void>
-  refetchPanels: () => Promise<void>
+  runGridBatch: (
+    grid: Record<string, RegressionAblationGridValue[]>,
+    maxCombinations: number,
+  ) => Promise<RegressionAblationBatchResponse>
+  runSubmissionPending: boolean
   diff: RagasRegressionRunDiffResponse | null
   runsByDataset: RegressionRun[]
+  runsQuery: RegressionRunQueryState
   selectedBaseRunId: string
-  selectedTargetRunId: string
   leaderboardMetricKey: string
   deepDiveMetricKeys: string[]
 }>) {
+  const hasRunData = runsQuery.data !== undefined || runsByDataset.length > 0
+  const analysis = analyzeRegressionRuns(runsByDataset, [...new Set([...deepDiveMetricKeys, leaderboardMetricKey])])
+  const paretoRunIds = new Set(
+    analysis.runs
+      .filter((entry) => isParetoRun(entry, analysis.runs, leaderboardMetricKey))
+      .map((entry) => entry.run.id),
+  )
   return (
     <div className="space-y-4 px-5 py-4">
       <AblationGridPanel
-        disabled={!datasetId.trim() || Boolean(runDisabledReason)}
+        key={datasetId}
+        disabled={datasetId === '' || runDisabledReason !== '' || runSubmissionPending}
         disabledReason={runDisabledReason}
         onRunGrid={runGridBatch}
-        onBatchComplete={refetchPanels}
       />
       <AblationStatisticsPanel diff={diff} />
-      <AblationComparisonMatrix runs={runsByDataset} baseRunId={selectedBaseRunId} metricKeys={deepDiveMetricKeys} />
-      <div className="grid gap-4 xl:grid-cols-2">
-        <AblationParetoPanel runs={runsByDataset} metricKey={leaderboardMetricKey} />
-        <AblationParameterImpactPanel runs={runsByDataset} metricKey={leaderboardMetricKey} />
-      </div>
-      <AblationSliceDiffPanel diff={diff} />
+      {datasetId !== '' && runsQuery.error !== null ? (
+        <div role="alert" className="flex flex-wrap items-center gap-2 text-sm text-destructive">
+          <p>
+            {formatApiError(runsQuery.error, '运行统计所需记录读取失败')}
+            {hasRunData ? '；保留已加载结果。' : ''}
+          </p>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={runsQuery.isFetching}
+            onClick={() => detachPromise(runsQuery.refetch())}
+          >
+            重新读取运行
+          </Button>
+        </div>
+      ) : null}
+      {datasetId === '' ? (
+        <p role="status" className="text-sm text-muted-foreground">
+          请先选择数据集，再查看运行统计。
+        </p>
+      ) : !hasRunData ? (
+        runsQuery.error === null ? (
+          <p role="status" className="text-sm text-muted-foreground">
+            正在读取当前数据集的运行记录…
+          </p>
+        ) : null
+      ) : (
+        <>
+          {runsQuery.isFetching ? (
+            <p role="status" className="text-sm text-muted-foreground">
+              正在刷新运行统计，保留已加载结果…
+            </p>
+          ) : null}
+          {analysis.errors.length > 0 ? (
+            <div role="alert" className="text-sm text-destructive">
+              {analysis.errors.map((issue) => (
+                <p key={issue.runId} className="break-words">
+                  运行 {issue.runId} 未参与数值比较：{formatApiError(issue.error, '运行统计无效')}
+                </p>
+              ))}
+            </div>
+          ) : null}
+          <AblationComparisonMatrix
+            runs={analysis.runs}
+            baseRunId={selectedBaseRunId}
+            metricKeys={deepDiveMetricKeys}
+            primaryMetricKey={leaderboardMetricKey}
+            paretoRunIds={paretoRunIds}
+          />
+          <div className="grid gap-4 xl:grid-cols-2">
+            <AblationParetoPanel runs={analysis.runs} metricKey={leaderboardMetricKey} paretoRunIds={paretoRunIds} />
+            <AblationParameterImpactPanel runs={analysis.runs} metricKey={leaderboardMetricKey} />
+          </div>
+        </>
+      )}
+      <AblationSliceDiffPanel diff={diff} metricKey={leaderboardMetricKey} />
       <AblationCaseDrilldown
-        baseRunId={selectedBaseRunId}
-        targetRunId={selectedTargetRunId}
-        metricKeys={deepDiveMetricKeys}
-        caseDiffs={diff?.case_diffs ?? []}
+        key={JSON.stringify(diff === null ? null : [diff.base_run_id, diff.target_run_id])}
+        diff={diff}
       />
     </div>
   )
@@ -854,6 +839,7 @@ function AblationComparisonWorkspace({
   setSelectedTargetRunId,
   runsSelectDisabled,
   runsByDataset,
+  runsQuery,
   diffLoading,
   canGenerateDiff,
   computeDiff,
@@ -865,7 +851,7 @@ function AblationComparisonWorkspace({
   datasetId,
   runDisabledReason,
   runGridBatch,
-  refetchPanels,
+  exportRunBundle,
   leaderboardMetricKey,
   deepDiveMetricKeys,
   diffJson,
@@ -884,6 +870,7 @@ function AblationComparisonWorkspace({
   setSelectedTargetRunId: (value: string) => void
   runsSelectDisabled: boolean
   runsByDataset: RegressionRun[]
+  runsQuery: RegressionRunQueryState
   diffLoading: boolean
   canGenerateDiff: boolean
   computeDiff: () => Promise<void>
@@ -894,12 +881,15 @@ function AblationComparisonWorkspace({
   paramDiffRows: AblationParamDiffRow[]
   datasetId: string
   runDisabledReason: string
-  runGridBatch: (grid: Record<string, RegressionAblationGridValue[]>, maxCombinations: number) => Promise<void>
-  refetchPanels: () => Promise<void>
+  runGridBatch: (
+    grid: Record<string, RegressionAblationGridValue[]>,
+    maxCombinations: number,
+  ) => Promise<RegressionAblationBatchResponse>
+  exportRunBundle: (runId: string, label: 'base' | 'target') => Promise<void>
   leaderboardMetricKey: string
   deepDiveMetricKeys: string[]
   diffJson: string
-  caseCount: number
+  caseCount: number | undefined
   autoRunLabel: string | null
   autoRunHelper: string | null
   autoBootstrapPending: boolean
@@ -913,7 +903,7 @@ function AblationComparisonWorkspace({
       <div className="flex min-h-0 flex-col">
         <div className="flex min-h-[58px] items-center justify-between gap-3 border-b border-border bg-background px-4 py-3">
           <div className="flex min-w-0 items-center gap-1.5">
-            <div className="truncate text-[15px] font-semibold text-foreground">差异对比工作区</div>
+            <h2 className="truncate text-[15px] font-semibold text-foreground">差异对比工作区</h2>
             <AblationInfoTooltip label="查看运行记录选择说明" side="bottom">
               {runsSelectionHint}
             </AblationInfoTooltip>
@@ -932,6 +922,11 @@ function AblationComparisonWorkspace({
                   <SelectValue placeholder={basePlaceholder} />
                 </SelectTrigger>
                 <SelectContent>
+                  {selectedBaseRunId !== '' && !runsByDataset.some((run) => run.id === selectedBaseRunId) ? (
+                    <SelectItem value={selectedBaseRunId} disabled>
+                      {selectedBaseRunId}（记录未载入）
+                    </SelectItem>
+                  ) : null}
                   {runsByDataset.map((run) => (
                     <SelectItem key={run.id} value={run.id}>
                       {runSelectText(run)}
@@ -950,6 +945,11 @@ function AblationComparisonWorkspace({
                   <SelectValue placeholder={targetPlaceholder} />
                 </SelectTrigger>
                 <SelectContent>
+                  {selectedTargetRunId !== '' && !runsByDataset.some((run) => run.id === selectedTargetRunId) ? (
+                    <SelectItem value={selectedTargetRunId} disabled>
+                      {selectedTargetRunId}（记录未载入）
+                    </SelectItem>
+                  ) : null}
                   {runsByDataset.map((run) => (
                     <SelectItem key={run.id} value={run.id}>
                       {runSelectText(run)}
@@ -983,13 +983,13 @@ function AblationComparisonWorkspace({
                 <DropdownMenuContent align="end" className="w-40">
                   <DropdownMenuItem
                     disabled={!selectedBaseRunId}
-                    onSelect={() => detachPromise(exportRegressionRunBundle(selectedBaseRunId, 'base'))}
+                    onSelect={() => detachPromise(exportRunBundle(selectedBaseRunId, 'base'))}
                   >
                     导出基线
                   </DropdownMenuItem>
                   <DropdownMenuItem
                     disabled={!selectedTargetRunId}
-                    onSelect={() => detachPromise(exportRegressionRunBundle(selectedTargetRunId, 'target'))}
+                    onSelect={() => detachPromise(exportRunBundle(selectedTargetRunId, 'target'))}
                   >
                     导出候选
                   </DropdownMenuItem>
@@ -1058,16 +1058,20 @@ function AblationComparisonWorkspace({
             <AblationConfigTab diff={diff} paramDiffRows={paramDiffRows} />
           </TabsContent>
 
-          <TabsContent value="deep-dive" className="mt-0 min-h-0 flex-1 overflow-auto bg-background">
+          <TabsContent
+            forceMount
+            value="deep-dive"
+            className="mt-0 min-h-0 flex-1 overflow-auto bg-background data-[state=inactive]:hidden"
+          >
             <AblationDeepDiveTab
               datasetId={datasetId}
               runDisabledReason={runDisabledReason}
               runGridBatch={runGridBatch}
-              refetchPanels={refetchPanels}
+              runSubmissionPending={autoBootstrapPending}
               diff={diff}
               runsByDataset={runsByDataset}
+              runsQuery={runsQuery}
               selectedBaseRunId={selectedBaseRunId}
-              selectedTargetRunId={selectedTargetRunId}
               leaderboardMetricKey={leaderboardMetricKey}
               deepDiveMetricKeys={deepDiveMetricKeys}
             />
@@ -1083,265 +1087,40 @@ function AblationComparisonWorkspace({
 }
 
 export function RetrievalAblationsPage() {
+  const sessionKey = useSyncExternalStore(subscribeAuthSession, getAuthSessionKey, getAuthSessionKey)
+  return <RetrievalAblationWorkspace key={sessionKey} sessionKey={sessionKey} />
+}
+
+function RetrievalAblationWorkspace({ sessionKey }: Readonly<{ sessionKey: string }>) {
+  const queryClient = useQueryClient()
+  const runRequestsRef = useRef(new Map<string, Promise<unknown>>())
+  const [pendingDatasets, setPendingDatasets] = useState<ReadonlySet<string>>(new Set())
+  const exportRequestsRef = useRef(new Set<AbortController>())
   const [datasetId, setDatasetId] = useState('')
   const [configOpen, setConfigOpen] = useState(false)
   const [runListView, setRunListView] = useState('experiments')
-  const [submitting, setSubmitting] = useState(false)
+  const submitting = pendingDatasets.has(datasetId)
   const [actionError, setActionError] = useState<string | null>(null)
-  const scopeRef = useRef({ datasetId })
+  const scopeRef = useRef<AblationScope>({ datasetId, active: false })
   const [leaderboardMetricKey, setLeaderboardMetricKey] = useState<string>('retrieval_mrr')
 
   // Run config (ablation knobs)
   const [retrievalOnly, setRetrievalOnly] = useState(true)
   const [metricKeys, setMetricKeys] = useState<string[]>(['faithfulness', 'response_relevancy'])
-  const [maxCases, setMaxCases] = useState(50)
+  const [maxCases, setMaxCases] = useState('50')
   const [skipEmptyContexts, setSkipEmptyContexts] = useState(true)
 
-  const [topK, setTopK] = useState(20)
-  const [scoreThreshold, setScoreThreshold] = useState(0)
+  const [topK, setTopK] = useState('20')
+  const [scoreThreshold, setScoreThreshold] = useState('0')
   const [retrievalMode, setRetrievalMode] = useState('hybrid')
-  const [alpha, setAlpha] = useState(0.6)
+  const [alpha, setAlpha] = useState('0.6')
   const [enableWeightRerank, setEnableWeightRerank] = useState(true)
-  const [vectorWeight, setVectorWeight] = useState(0.6)
-  const [keywordWeight, setKeywordWeight] = useState(0.4)
-  const [mmrLambda, setMmrLambda] = useState(0.7)
-  const [enableReranker, setEnableReranker] = useState(false)
+  const [vectorWeight, setVectorWeight] = useState('0.6')
+  const [keywordWeight, setKeywordWeight] = useState('0.4')
+  const [mmrLambda, setMmrLambda] = useState('0.7')
+  const [rerankerMode, setRerankerMode] = useState('system')
   const [rerankerProvider, setRerankerProvider] = useState('llm')
-  const [rerankerTopN, setRerankerTopN] = useState(20)
-  const [settingsDefaultsApplied, setSettingsDefaultsApplied] = useState(false)
-  const [defaultDatasetApplied, setDefaultDatasetApplied] = useState(false)
-  const [autoBootstrapPending, setAutoBootstrapPending] = useState(false)
-  const [selectedBaseRunId, setSelectedBaseRunId] = useState('')
-  const [selectedTargetRunId, setSelectedTargetRunId] = useState('')
-  const [extraRuns, setExtraRuns] = useState<RegressionRun[]>([])
-  const [pendingSelection, setPendingSelection] = useState<{ base: string | null; target: string | null }>({
-    base: null,
-    target: null,
-  })
-  const [selectionErrors, setSelectionErrors] = useState<{
-    base: { id: string; message: string } | null
-    target: { id: string; message: string } | null
-  }>({ base: null, target: null })
-  const selectionRequests = useRef({ base: 0, target: 0 })
-  useLayoutEffect(() => {
-    scopeRef.current = { datasetId }
-    setActionError(null)
-    setSubmitting(false)
-    setAutoBootstrapPending(false)
-    setExtraRuns([])
-    setSelectedBaseRunId('')
-    setSelectedTargetRunId('')
-    setPendingSelection({ base: null, target: null })
-    setSelectionErrors({ base: null, target: null })
-  }, [datasetId])
-
-  const datasetsQuery = useQuery({
-    queryKey: queryKeys.datasets.exhaustive({ purpose: 'retrieval-ablations' }),
-    queryFn: () => datasetApi.listAll(),
-  })
-  const settingsSnapshotQuery = useQuery({
-    queryKey: queryKeys.settings.snapshot,
-    queryFn: () => settingsApi.get(),
-  })
-  const runsQuery = useQuery({
-    queryKey: queryKeys.evaluations.list({ limit: 80, dataset_id: datasetId.trim() || undefined }),
-    queryFn: () =>
-      evaluationApi.listRegressionRuns({
-        limit: 80,
-        dataset_id: datasetId.trim() || undefined,
-      }),
-  })
-  const selectedDatasetCasesQuery = useQuery({
-    queryKey: queryKeys.evaluations.regressionCases({
-      dataset_id: datasetId.trim() || undefined,
-      limit: 1,
-    }),
-    enabled: Boolean(datasetId.trim()),
-    queryFn: () =>
-      evaluationApi.listRegressionCases({
-        dataset_id: datasetId.trim(),
-        limit: 1,
-      }),
-  })
-  const leaderboardQuery = useQuery({
-    queryKey: queryKeys.evaluations.regressionLeaderboard({
-      dataset_id: datasetId.trim() || undefined,
-      metric_key: leaderboardMetricKey,
-      limit: 50,
-      include_incomplete: false,
-    }),
-    enabled: Boolean(datasetId.trim()),
-    queryFn: () =>
-      evaluationApi.getRegressionRunLeaderboard({
-        dataset_id: datasetId.trim(),
-        metric_key: leaderboardMetricKey,
-        limit: 50,
-        include_incomplete: false,
-      }),
-  })
-  const diffQuery = useQuery({
-    queryKey: queryKeys.evaluations.regressionRunDiff(selectedTargetRunId, {
-      base_run_id: selectedBaseRunId,
-      include_significance: true,
-      include_per_case: true,
-      max_case_diffs: 500,
-    }),
-    enabled: false,
-    queryFn: () =>
-      evaluationApi.diffRegressionRuns(selectedTargetRunId, {
-        base_run_id: selectedBaseRunId,
-        include_significance: true,
-        include_per_case: true,
-        max_case_diffs: 500,
-      }),
-  })
-  const settingsSnapshot = settingsSnapshotQuery.data
-  useEffect(() => {
-    if (settingsDefaultsApplied || !settingsSnapshot?.rag) return
-    setEnableReranker(Boolean(settingsSnapshot.rag.enable_reranker))
-    setRerankerProvider(
-      settingsSnapshot.rag.reranker_provider
-        ? normalizeRerankerProvider(settingsSnapshot.rag.reranker_provider)
-        : 'llm',
-    )
-    setRerankerTopN(
-      settingsSnapshot.rag.reranker_top_n
-        ? Math.max(1, Math.min(Number(settingsSnapshot.rag.reranker_top_n), 200))
-        : 20,
-    )
-    setSettingsDefaultsApplied(true)
-  }, [settingsDefaultsApplied, settingsSnapshot])
-  const diff = diffQuery.data ?? null
-  const diffJson = useMemo(() => prettyJson(diff ?? { hint: '选择基线/候选运行并生成差异对比' }), [diff])
-  const diffScore = diff?.diff_score ?? null
-
-  const diffScoreFmt = useMemo(() => {
-    const b = toNumber(diffScore?.base_score)
-    const a = toNumber(diffScore?.target_score)
-    const d = toNumber(diffScore?.delta)
-    return {
-      base: b == null ? '-' : b.toFixed(4),
-      target: a == null ? '-' : a.toFixed(4),
-      delta: d == null ? '-' : d.toFixed(4),
-      usedKeys: Array.isArray(diffScore?.used_metric_keys) ? diffScore.used_metric_keys.map(String) : [],
-    }
-  }, [diffScore])
-
-  const datasets = datasetsQuery.data ?? EMPTY_DATASETS
-  const runs = Array.isArray(runsQuery.data?.items) ? runsQuery.data?.items : EMPTY_RUNS
-  const datasetsLoading = datasetsQuery.isLoading || datasetsQuery.isFetching
-  const runsLoading = runsQuery.isLoading || runsQuery.isFetching
-  const selectedDatasetCasesLoading = selectedDatasetCasesQuery.isLoading || selectedDatasetCasesQuery.isFetching
-  const leaderboardLoading = leaderboardQuery.isLoading || leaderboardQuery.isFetching
-  const diffLoading = diffQuery.isLoading || diffQuery.isFetching
-  const selectedDatasetCaseCount = Number(selectedDatasetCasesQuery.data?.total ?? 0)
-  const selectedDatasetHasNoCases =
-    Boolean(datasetId.trim()) &&
-    !selectedDatasetCasesLoading &&
-    !selectedDatasetCasesQuery.error &&
-    selectedDatasetCaseCount <= 0
-  const runDisabledReason = !datasetId.trim()
-    ? '请选择数据集'
-    : selectedDatasetCasesLoading
-      ? '正在确认 Golden/Regression 样本数'
-      : selectedDatasetCasesQuery.error
-        ? '无法确认 Golden/Regression 样本数，请刷新后重试'
-        : selectedDatasetHasNoCases
-          ? '当前数据集没有 Golden/Regression 样本，请先在评测页导入或生成样本'
-          : ''
-  const selectedDatasetCasesStatusText = !datasetId.trim()
-    ? '请先选择数据集，再运行检索消融。'
-    : selectedDatasetCasesLoading
-      ? '正在确认当前数据集的 Golden/Regression 样本数...'
-      : selectedDatasetCasesQuery.error
-        ? '无法读取当前数据集的 Golden/Regression 样本数，请刷新后重试。'
-        : selectedDatasetHasNoCases
-          ? '当前数据集没有 Golden/Regression 样本，运行消融会直接失败；请先在评测页导入或生成样本。'
-          : `Golden/Regression 样本 ${selectedDatasetCaseCount} 条，可运行检索消融。`
-
-  const leaderboardItems = leaderboardQuery.data?.items
-  const leaderboardRows: RegressionLeaderboardRow[] = Array.isArray(leaderboardItems) ? leaderboardItems : []
-  const runsByDataset = useMemo(() => {
-    const ds = datasetId.trim()
-    if (!ds) return runs
-    return (runs || []).filter((r) => String(r?.dataset_id || '') === ds)
-  }, [runs, datasetId])
-
-  const availableRuns = useMemo(() => {
-    const records = new Map(runsByDataset.map((run) => [run.id, run]))
-    for (const run of extraRuns) if (run.dataset_id === datasetId && !records.has(run.id)) records.set(run.id, run)
-    return Array.from(records.values())
-  }, [runsByDataset, extraRuns, datasetId])
-
-  async function selectRun(id: string, role: 'base' | 'target') {
-    const context = scopeRef.current,
-      request = ++selectionRequests.current[role]
-    setSelectionErrors((current) => ({ ...current, [role]: null }))
-    const select = role === 'base' ? setSelectedBaseRunId : setSelectedTargetRunId
-    if (availableRuns.some((run) => run.id === id)) {
-      setPendingSelection((current) => ({ ...current, [role]: null }))
-      select(id)
-      return
-    }
-    setPendingSelection((current) => ({ ...current, [role]: id }))
-    try {
-      const detail = await evaluationApi.getRegressionRun(id, { include_items: false })
-      if (scopeRef.current !== context || selectionRequests.current[role] !== request) return
-      if (detail.run.dataset_id !== datasetId) throw new Error('运行记录不属于当前数据集')
-      setExtraRuns((current) => [...current.filter((run) => run.id !== id), detail.run])
-      select(id)
-    } catch (error) {
-      if (scopeRef.current === context && selectionRequests.current[role] === request)
-        setSelectionErrors((current) => ({
-          ...current,
-          [role]: {
-            id,
-            message: `${role === 'base' ? '基线' : '候选'} ${shortId(id)}：${formatApiError(error, '读取运行详情失败')}`,
-          },
-        }))
-    } finally {
-      if (scopeRef.current === context && selectionRequests.current[role] === request)
-        setPendingSelection((current) => ({ ...current, [role]: null }))
-    }
-  }
-
-  useEffect(() => {
-    const pair = pickRunPair(availableRuns, selectedBaseRunId, selectedTargetRunId)
-    if (pair.baseRunId !== _stableId(selectedBaseRunId)) setSelectedBaseRunId(pair.baseRunId)
-    if (pair.targetRunId !== _stableId(selectedTargetRunId)) setSelectedTargetRunId(pair.targetRunId)
-  }, [availableRuns, selectedBaseRunId, selectedTargetRunId])
-
-  useEffect(() => {
-    if (!datasetsQuery.error) return
-    toast.error(formatApiError(datasetsQuery.error, '加载数据集失败'))
-  }, [datasetsQuery.error])
-
-  useEffect(() => {
-    if (!runsQuery.error) return
-    toast.error(formatApiError(runsQuery.error, '拉取运行记录失败'))
-  }, [runsQuery.error])
-
-  useEffect(() => {
-    if (!leaderboardQuery.error) return
-    toast.error(formatApiError(leaderboardQuery.error, '拉取实验排行失败'))
-  }, [leaderboardQuery.error])
-
-  useEffect(() => {
-    if (!diffQuery.error) return
-    toast.error(formatApiError(diffQuery.error, '生成差异对比失败'))
-  }, [diffQuery.error])
-
-  useEffect(() => {
-    if (defaultDatasetApplied || datasets.length === 0 || runsLoading) return
-    const datasetIds = new Set(datasets.map((dataset) => String(dataset.id)))
-    const completedRunDatasetId = _stableId(
-      runs.find((run) => String(run.status || '') === 'completed' && datasetIds.has(String(run.dataset_id || '')))
-        ?.dataset_id,
-    )
-    setDatasetId((prev) => prev || completedRunDatasetId || datasets[0]?.id || '')
-    setDefaultDatasetApplied(true)
-  }, [datasets, defaultDatasetApplied, runs, runsLoading])
-
+  const [rerankerTopN, setRerankerTopN] = useState('20')
   const runPayloadConfig: AblationRunPayloadConfig = {
     datasetId,
     retrievalOnly,
@@ -1356,229 +1135,468 @@ export function RetrievalAblationsPage() {
     vectorWeight,
     keywordWeight,
     mmrLambda,
-    enableReranker,
+    rerankerMode,
     rerankerProvider,
     rerankerTopN,
   }
 
-  function buildCurrentRegressionRunPayload(variant: Partial<RegressionRunCreate> = {}): RegressionRunCreate | null {
-    return buildRegressionRunPayload(runPayloadConfig, variant)
+  const configuration = regressionAblationFormSchema.safeParse(runPayloadConfig)
+  const [defaultDatasetApplied, setDefaultDatasetApplied] = useState(false)
+  const autoBootstrapPending = submitting
+  const [selectedBaseRunId, setSelectedBaseRunId] = useState('')
+  const [selectedTargetRunId, setSelectedTargetRunId] = useState('')
+  const [extraRuns, setExtraRuns] = useState<RegressionRun[]>([])
+  const [pendingSelection, setPendingSelection] = useState<{ base: string | null; target: string | null }>({
+    base: null,
+    target: null,
+  })
+  const [selectionErrors, setSelectionErrors] = useState<{
+    base: { id: string; message: string } | null
+    target: { id: string; message: string } | null
+  }>({ base: null, target: null })
+  const selectionRequests = useRef({ base: 0, target: 0 })
+  const selectionInitializedRef = useRef(false)
+  useLayoutEffect(() => {
+    const context = { datasetId, active: true }
+    const exportRequests = exportRequestsRef.current
+    scopeRef.current = context
+    setActionError(null)
+    setExtraRuns([])
+    setSelectedBaseRunId('')
+    setSelectedTargetRunId('')
+    setPendingSelection({ base: null, target: null })
+    setSelectionErrors({ base: null, target: null })
+    selectionRequests.current = { base: 0, target: 0 }
+    selectionInitializedRef.current = false
+    return () => {
+      context.active = false
+      for (const controller of exportRequests) controller.abort()
+      exportRequests.clear()
+    }
+  }, [datasetId])
+
+  function isCurrentScope(context: AblationScope): boolean {
+    return context.active && scopeRef.current === context && getAuthSessionKey() === sessionKey
   }
 
+  function invalidateRunRecords() {
+    if (getAuthSessionKey() !== sessionKey) return
+    detachPromise(queryClient.invalidateQueries({ queryKey: queryKeys.evaluations.regressionRunLists }))
+    detachPromise(
+      queryClient.invalidateQueries({ queryKey: queryKeys.evaluations.regressionLeaderboard().slice(0, 2) }),
+    )
+  }
+
+  async function submitRunRequest<T>(requestDatasetId: string, request: () => Promise<T>): Promise<T> {
+    if (
+      !scopeRef.current.active ||
+      scopeRef.current.datasetId !== requestDatasetId ||
+      getAuthSessionKey() !== sessionKey
+    ) {
+      throw new Error('当前范围已变化，请重新操作')
+    }
+    if (runRequestsRef.current.has(requestDatasetId)) throw new Error('当前数据集仍有创建请求进行中')
+    const pending = request()
+    runRequestsRef.current.set(requestDatasetId, pending)
+    setPendingDatasets(new Set(runRequestsRef.current.keys()))
+    try {
+      return await pending
+    } finally {
+      if (runRequestsRef.current.get(requestDatasetId) === pending) runRequestsRef.current.delete(requestDatasetId)
+      invalidateRunRecords()
+      if (scopeRef.current.active && getAuthSessionKey() === sessionKey) {
+        setPendingDatasets(new Set(runRequestsRef.current.keys()))
+      }
+    }
+  }
+
+  const datasetsQuery = useQuery({
+    queryKey: queryKeys.datasets.exhaustive(),
+    queryFn: ({ signal }) => datasetApi.listAll(undefined, { signal }),
+  })
+  const regressionRunParams = { limit: 80, dataset_id: datasetId === '' ? undefined : datasetId }
+  const runsQuery = useQuery({
+    queryKey: queryKeys.evaluations.regressionRuns(regressionRunParams),
+    queryFn: ({ signal }) => evaluationApi.listRegressionRuns(regressionRunParams, { signal }),
+  })
+  const selectedDatasetCasesParams = { dataset_id: datasetId, limit: 1 }
+  const selectedDatasetCasesQuery = useQuery({
+    queryKey: queryKeys.evaluations.regressionCases(selectedDatasetCasesParams),
+    enabled: datasetId !== '',
+    queryFn: ({ signal }) => evaluationApi.listRegressionCases(selectedDatasetCasesParams, { signal }),
+  })
+  const leaderboardParams = {
+    dataset_id: datasetId,
+    metric_key: leaderboardMetricKey,
+    limit: 50,
+    include_incomplete: false,
+    max_candidates: 500,
+  }
+  const leaderboardQuery = useQuery({
+    queryKey: queryKeys.evaluations.regressionLeaderboard(leaderboardParams),
+    enabled: datasetId !== '',
+    queryFn: ({ signal }) => evaluationApi.getRegressionRunLeaderboard(leaderboardParams, { signal }),
+  })
+  const diffParams = {
+    base_run_id: selectedBaseRunId,
+    include_significance: true,
+    include_per_case: true,
+    max_case_diffs: 500,
+  }
+  const diffQuery = useQuery({
+    queryKey: queryKeys.evaluations.regressionRunDiff(selectedTargetRunId, diffParams),
+    enabled: false,
+    queryFn: ({ signal }) => evaluationApi.diffRegressionRuns(selectedTargetRunId, diffParams, { signal }),
+  })
+  const diff = diffQuery.data ?? null
+  const diffJson = diff === null ? '尚未生成运行对比' : JSON.stringify(diff, null, 2)
+  const diffScore = diff?.diff_score ?? null
+
+  const diffScoreFmt = {
+    base: formatMetric(diffScore?.base_score),
+    target: formatMetric(diffScore?.target_score),
+    delta: formatMetric(diffScore?.delta),
+  }
+
+  const datasets = datasetsQuery.data ?? EMPTY_DATASETS
+  const runs = runsQuery.data === undefined ? EMPTY_RUNS : runsQuery.data.items
+  const datasetsLoading = datasetsQuery.isLoading || datasetsQuery.isFetching
+  const runsLoading = runsQuery.isLoading || runsQuery.isFetching
+  const selectedDatasetCasesLoading = selectedDatasetCasesQuery.isPending || selectedDatasetCasesQuery.isFetching
+  const leaderboardLoading = leaderboardQuery.isLoading || leaderboardQuery.isFetching
+  const diffLoading = diffQuery.isLoading || diffQuery.isFetching
+  const selectedDatasetCaseCount = selectedDatasetCasesQuery.data?.total
+  const selectedDatasetHasNoCases = selectedDatasetCasesQuery.isSuccess && selectedDatasetCaseCount === 0
+  const runDisabledReason =
+    datasetId === ''
+      ? '请选择数据集'
+      : selectedDatasetCasesLoading
+        ? '正在确认 Golden/Regression 样本数'
+        : selectedDatasetCasesQuery.error
+          ? '无法确认 Golden/Regression 样本数，请刷新后重试'
+          : selectedDatasetHasNoCases
+            ? '当前数据集没有 Golden/Regression 样本，请先在评测页导入或生成样本'
+            : configuration.success
+              ? ''
+              : configuration.error.issues[0].message
+  const selectedDatasetCasesStatusText =
+    datasetId === ''
+      ? '请先选择数据集，再运行检索消融。'
+      : selectedDatasetCasesLoading
+        ? '正在确认当前数据集的 Golden/Regression 样本数...'
+        : selectedDatasetCasesQuery.error
+          ? '无法读取当前数据集的 Golden/Regression 样本数，请刷新后重试。'
+          : selectedDatasetHasNoCases
+            ? '当前数据集没有 Golden/Regression 样本，运行消融会直接失败；请先在评测页导入或生成样本。'
+            : `Golden/Regression 样本 ${selectedDatasetCaseCount} 条。`
+
+  const leaderboardRows = leaderboardQuery.data === undefined ? [] : leaderboardQuery.data.items
+  const runTableQuery = runListView === 'ranking' ? leaderboardQuery : runsQuery
+  const runsByDataset = useMemo(() => {
+    if (datasetId === '') return EMPTY_RUNS
+    return runs.filter((run) => run.dataset_id === datasetId)
+  }, [runs, datasetId])
+
+  const availableRuns = useMemo(() => {
+    const records = new Map(runsByDataset.map((run) => [run.id, run]))
+    for (const run of extraRuns) if (run.dataset_id === datasetId && !records.has(run.id)) records.set(run.id, run)
+    return Array.from(records.values())
+  }, [runsByDataset, extraRuns, datasetId])
+
+  const recordedConfigurations = useMemo(() => {
+    const records = new Map<string, RegressionRunAblationParams>()
+    const errors: { runId: string; error: unknown }[] = []
+    for (const run of availableRuns) {
+      try {
+        const parameters = Object.fromEntries(
+          getRegressionRunParameters(run).map((parameter) => [parameter.key, parameter.value]),
+        )
+        records.set(run.id, regressionRunAblationParamsSchema.parse(parameters))
+      } catch (error) {
+        errors.push({ runId: run.id, error })
+      }
+    }
+    return { records, errors }
+  }, [availableRuns])
+
+  function runTopK(run: RegressionRun): number | null {
+    const config = recordedConfigurations.records.get(run.id)
+    return config === undefined || config.top_k === undefined ? null : config.top_k
+  }
+
+  function runRerankerEnabled(run: RegressionRun): boolean | null {
+    const config = recordedConfigurations.records.get(run.id)
+    return config === undefined || config.enable_reranker === undefined ? null : config.enable_reranker
+  }
+
+  function runRetrievalMode(run: RegressionRun): string | null {
+    const config = recordedConfigurations.records.get(run.id)
+    return config === undefined || config.retrieval_mode === undefined ? null : config.retrieval_mode
+  }
+
+  async function selectRun(id: string, role: 'base' | 'target') {
+    selectionInitializedRef.current = true
+    const context = scopeRef.current,
+      request = ++selectionRequests.current[role]
+    setSelectionErrors((current) => ({ ...current, [role]: null }))
+    const select = role === 'base' ? setSelectedBaseRunId : setSelectedTargetRunId
+    if (availableRuns.some((run) => run.id === id)) {
+      setPendingSelection((current) => ({ ...current, [role]: null }))
+      select(id)
+      return
+    }
+    setPendingSelection((current) => ({ ...current, [role]: id }))
+    try {
+      const detail = await evaluationApi.getRegressionRun(id, { include_items: false })
+      if (!isCurrentScope(context) || selectionRequests.current[role] !== request) return
+      if (detail.run.dataset_id !== datasetId) throw new Error('运行记录不属于当前数据集')
+      setExtraRuns((current) => [...current.filter((run) => run.id !== id), detail.run])
+      select(id)
+    } catch (error) {
+      if (isCurrentScope(context) && selectionRequests.current[role] === request)
+        setSelectionErrors((current) => ({
+          ...current,
+          [role]: {
+            id,
+            message: `${role === 'base' ? '基线' : '候选'} ${shortId(id)}：${formatApiError(error, '读取运行详情失败')}`,
+          },
+        }))
+    } finally {
+      if (isCurrentScope(context) && selectionRequests.current[role] === request)
+        setPendingSelection((current) => ({ ...current, [role]: null }))
+    }
+  }
+
+  useEffect(() => {
+    if (
+      selectionInitializedRef.current ||
+      submitting ||
+      runsQuery.data === undefined ||
+      runsQuery.error !== null ||
+      availableRuns.length === 0
+    )
+      return
+    selectionInitializedRef.current = true
+    setSelectedTargetRunId(availableRuns[0].id)
+    const baseline = availableRuns.find((run) => run.id !== availableRuns[0].id)
+    if (baseline !== undefined) setSelectedBaseRunId(baseline.id)
+  }, [availableRuns, submitting, runsQuery.data, runsQuery.error])
+
+  useEffect(() => {
+    if (
+      defaultDatasetApplied ||
+      datasetId !== '' ||
+      datasets.length === 0 ||
+      datasetsQuery.error !== null ||
+      runsQuery.data === undefined ||
+      runsQuery.error !== null ||
+      runsLoading
+    )
+      return
+    const datasetIds = new Set(datasets.map((dataset) => dataset.id))
+    const recent = runs.find(
+      (run) => run.status === 'completed' && run.dataset_id !== null && datasetIds.has(run.dataset_id),
+    )
+    const initial = recent === undefined || recent.dataset_id === null ? datasets[0].id : recent.dataset_id
+    setDatasetId(initial)
+    setDefaultDatasetApplied(true)
+  }, [
+    datasets,
+    datasetId,
+    defaultDatasetApplied,
+    runs,
+    runsLoading,
+    runsQuery.data,
+    runsQuery.error,
+    datasetsQuery.error,
+  ])
+
   async function runAblation(): Promise<void> {
-    const payload = buildCurrentRegressionRunPayload()
-    if (!payload || runDisabledReason) {
-      setActionError(runDisabledReason || '请选择数据集')
+    selectionInitializedRef.current = true
+    if (runDisabledReason !== '') {
+      setActionError(runDisabledReason)
       return
     }
     const context = scopeRef.current
-    setSubmitting(true)
+    const selection = { ...selectionRequests.current }
     setActionError(null)
     try {
-      const run = await evaluationApi.createRegressionRun(payload)
-      if (scopeRef.current !== context) return
-      await refetchAblationPanels()
-      if (scopeRef.current !== context) return
-      setSelectedTargetRunId(run.id)
+      const payload = buildRegressionRunPayload(runPayloadConfig)
+      const run = await submitRunRequest(payload.dataset_id, () => evaluationApi.createRegressionRun(payload))
+      if (!isCurrentScope(context)) return
+      setExtraRuns((current) => [...current.filter((item) => item.id !== run.id), run])
+      if (sameSelection(selection)) setSelectedTargetRunId(run.id)
       setConfigOpen(false)
-      toast.success('已创建实验运行')
+      toast.success('已接受实验运行，结果请查看运行记录')
     } catch (error) {
-      if (scopeRef.current === context) setActionError(formatApiError(error, '创建实验运行失败'))
-    } finally {
-      if (scopeRef.current === context) setSubmitting(false)
+      if (isCurrentScope(context))
+        setActionError('未取得有效创建回执，请先重新读取运行记录确认。 ' + formatApiError(error, '提交实验运行失败'))
     }
   }
 
   async function runAutoBootstrap(): Promise<void> {
-    if (runDisabledReason) {
-      toast.error(runDisabledReason)
+    if (runDisabledReason !== '') {
+      setActionError(runDisabledReason)
       return
     }
-
-    const context = scopeRef.current
-    setActionError(null)
     const plan = autoBootstrapPlan
-    if (!plan) {
-      await runAblation()
+    if (plan === null) {
+      setActionError('自动配置尚不可用，请先读取当前运行记录')
       return
     }
-
-    const baselineTopK = clampNumber(topK, 1, 50)
-    const candidateTopK = pickAutoCandidateTopK(baselineTopK)
-    setAutoBootstrapPending(true)
-
+    selectionInitializedRef.current = true
+    const context = scopeRef.current
+    const selection = { ...selectionRequests.current }
+    setActionError(null)
     try {
-      const payload = buildCurrentRegressionRunPayload()
-      if (!payload) {
-        toast.error('请选择数据集')
-        return
-      }
-
+      const payload = buildRegressionRunPayload(runPayloadConfig)
+      let key: 'top_k' | 'enable_reranker' | 'retrieval_mode'
+      let values: RegressionAblationGridValue[]
       if (plan.stage === 'top_k') {
-        if (runsByDataset.length === 0) {
-          const batch = await evaluationApi.createRegressionAblationBatch({
-            ...payload,
-            grid: {
-              top_k: [baselineTopK, candidateTopK],
-            },
-            max_combinations: 2,
-            ablation_label_prefix: 'auto-bootstrap-top-k',
-          })
-          await runsQuery.refetch()
-          if (scopeRef.current !== context) return
-          if (batch.run_ids[0]) setSelectedBaseRunId(String(batch.run_ids[0]))
-          if (batch.run_ids[1]) setSelectedTargetRunId(String(batch.run_ids[1]))
-          toast.success(`已自动生成第 1 轮对比：top_k ${baselineTopK} vs ${candidateTopK}`)
-          return
-        }
-
-        const baselineRun =
-          runsByDataset.find((run) => runParamNumber(run, 'top_k') !== candidateTopK) || runsByDataset[0] || null
-        const run = await evaluationApi.createRegressionRun({
-          ...payload,
-          top_k: candidateTopK,
-        })
-        await runsQuery.refetch()
-        if (scopeRef.current !== context) return
-        if (baselineRun?.id) setSelectedBaseRunId(String(baselineRun.id))
-        setSelectedTargetRunId(run.id)
-        toast.success(`已自动补齐第 1 轮对比：top_k ${candidateTopK}`)
-        return
+        key = 'top_k'
+        values = [payload.top_k, pickAutoCandidateTopK(payload.top_k)]
+      } else if (plan.stage === 'reranker') {
+        key = 'enable_reranker'
+        values = [false, true]
+      } else {
+        key = 'retrieval_mode'
+        values = ['hybrid', 'vector']
       }
 
-      if (plan.stage === 'reranker') {
-        const existingStates = new Set(
-          runsByDataset
-            .map((run) => runParamBoolean(run, 'enable_reranker'))
-            .filter((value): value is boolean => typeof value === 'boolean'),
-        )
-        const nextEnableReranker = existingStates.has(false) ? true : existingStates.has(true) ? false : !enableReranker
-        const baselineRun =
-          runsByDataset.find((run) => runParamBoolean(run, 'enable_reranker') !== nextEnableReranker) ||
-          runsByDataset[0] ||
-          null
-        const run = await evaluationApi.createRegressionRun({
+      const batch = await submitRunRequest(payload.dataset_id, () =>
+        evaluationApi.createRegressionAblationBatch({
           ...payload,
-          enable_reranker: nextEnableReranker,
-        })
-        await runsQuery.refetch()
-        if (scopeRef.current !== context) return
-        if (baselineRun?.id) setSelectedBaseRunId(String(baselineRun.id))
-        setSelectedTargetRunId(run.id)
-        toast.success(`已自动生成第 2 轮对比：reranker ${nextEnableReranker ? 'ON' : 'OFF'}`)
-        return
-      }
-
-      const existingModes = new Set(
-        runsByDataset
-          .map((run) => runParamString(run, 'retrieval_mode'))
-          .filter((value) => value === 'hybrid' || value === 'vector'),
+          grid: { [key]: values },
+          max_combinations: values.length,
+          ablation_label_prefix: `auto-bootstrap-${key}`,
+        }),
       )
-      const nextRetrievalMode =
-        existingModes.has('hybrid') && !existingModes.has('vector')
-          ? 'vector'
-          : existingModes.has('vector') && !existingModes.has('hybrid')
-            ? 'hybrid'
-            : retrievalMode === 'vector'
-              ? 'hybrid'
-              : 'vector'
-      const baselineRun =
-        runsByDataset.find((run) => runParamString(run, 'retrieval_mode') !== nextRetrievalMode) ||
-        runsByDataset[0] ||
-        null
-      const run = await evaluationApi.createRegressionRun({
-        ...payload,
-        retrieval_mode: nextRetrievalMode,
-      })
-      await runsQuery.refetch()
-      if (scopeRef.current !== context) return
-      if (baselineRun?.id) setSelectedBaseRunId(String(baselineRun.id))
-      setSelectedTargetRunId(run.id)
-      toast.success(`已自动生成第 3 轮对比：${nextRetrievalMode === 'hybrid' ? 'hybrid' : 'vector'}`)
-    } catch (err) {
-      if (scopeRef.current === context) setActionError(formatApiError(err, '自动补齐基线/候选失败'))
-    } finally {
-      if (scopeRef.current === context) setAutoBootstrapPending(false)
+      if (!isCurrentScope(context)) return
+      if (sameSelection(selection)) {
+        setSelectedBaseRunId(batch.run_ids[0])
+        setSelectedTargetRunId(batch.run_ids[batch.run_ids.length - 1])
+      }
+      toast.success(`已接受 ${batch.total} 个自动配置运行，结果请查看运行记录`)
+    } catch (error) {
+      if (isCurrentScope(context)) {
+        setActionError('未取得有效创建回执，请先重新读取运行记录确认。 ' + formatApiError(error, '自动提交失败'))
+      }
     }
   }
 
   async function runGridBatch(
     grid: Record<string, RegressionAblationGridValue[]>,
     maxCombinations: number,
-  ): Promise<void> {
-    if (runDisabledReason) {
-      toast.error(runDisabledReason)
-      return
-    }
+  ): Promise<RegressionAblationBatchResponse> {
+    selectionInitializedRef.current = true
+    if (runDisabledReason !== '') throw new Error(runDisabledReason)
+    const payload = buildRegressionRunPayload(runPayloadConfig)
     const context = scopeRef.current
-    await submitAblationBatch(
-      buildCurrentRegressionRunPayload(),
-      grid,
-      maxCombinations,
-      () => runsQuery.refetch(),
-      (id) => {
-        if (scopeRef.current === context) setSelectedTargetRunId(id)
-      },
+    const selection = { ...selectionRequests.current }
+    const batch = await submitRunRequest(payload.dataset_id, () =>
+      evaluationApi.createRegressionAblationBatch({
+        ...payload,
+        grid,
+        max_combinations: maxCombinations,
+      }),
     )
+    if (isCurrentScope(context)) {
+      if (sameSelection(selection)) setSelectedTargetRunId(batch.run_ids[0])
+      toast.success(`已接受 ${batch.total} 个消融运行，结果请查看运行记录`)
+    }
+    return batch
+  }
+
+  function sameSelection(selection: { base: number; target: number }): boolean {
+    return selectionRequests.current.base === selection.base && selectionRequests.current.target === selection.target
   }
 
   async function computeDiff(): Promise<void> {
-    await computeRegressionDiff(selectedBaseRunId, selectedTargetRunId, () => diffQuery.refetch())
+    const context = scopeRef.current
+    const selection = { ...selectionRequests.current }
+    await computeRegressionDiff(
+      selectedBaseRunId,
+      selectedTargetRunId,
+      () => diffQuery.refetch(),
+      () => isCurrentScope(context) && sameSelection(selection),
+    )
   }
 
   async function exportDiffHtml(): Promise<void> {
-    await exportRegressionDiffHtml(selectedBaseRunId, selectedTargetRunId)
+    const context = scopeRef.current
+    const controller = new AbortController()
+    exportRequestsRef.current.add(controller)
+    try {
+      await exportRegressionDiffHtml(
+        selectedBaseRunId,
+        selectedTargetRunId,
+        () => isCurrentScope(context),
+        controller.signal,
+      )
+    } finally {
+      exportRequestsRef.current.delete(controller)
+    }
+  }
+
+  async function exportRunBundle(runId: string, label: 'base' | 'target'): Promise<void> {
+    const context = scopeRef.current
+    const controller = new AbortController()
+    exportRequestsRef.current.add(controller)
+    try {
+      await exportRegressionRunBundle(runId, label, () => isCurrentScope(context), controller.signal)
+    } finally {
+      exportRequestsRef.current.delete(controller)
+    }
   }
 
   async function refetchAblationPanels(): Promise<void> {
-    await runsQuery.refetch()
-    await leaderboardQuery.refetch()
+    await Promise.all([runsQuery.refetch(), datasetId === '' ? undefined : leaderboardQuery.refetch()])
   }
 
-  const selectedDataset = useMemo(
-    () => datasets.find((dataset) => dataset.id === datasetId) || null,
-    [datasetId, datasets],
-  )
+  const selectedDataset = datasets.find((dataset) => dataset.id === datasetId)
   const runsSelectDisabled = runsLoading || availableRuns.length === 0
-  const canGenerateDiff = Boolean(
+  const canGenerateDiff =
     availableRuns.some((run) => run.id === selectedBaseRunId) &&
     availableRuns.some((run) => run.id === selectedTargetRunId) &&
-    _stableId(selectedBaseRunId) !== _stableId(selectedTargetRunId),
-  )
-  const autoBootstrapPlan = useMemo<AutoBootstrapPlan | null>(() => {
-    if (runDisabledReason) return null
+    selectedBaseRunId !== selectedTargetRunId
+  function getAutoBootstrapPlan(): AutoBootstrapPlan | null {
+    if (
+      runDisabledReason !== '' ||
+      submitting ||
+      !configuration.success ||
+      runsLoading ||
+      runsQuery.data === undefined ||
+      runsQuery.error !== null
+    )
+      return null
 
     const topKValues = new Set(
-      runsByDataset
-        .map((run) => runParamNumber(run, 'top_k'))
-        .filter((value): value is number => typeof value === 'number'),
+      runsByDataset.map((run) => runTopK(run)).filter((value): value is number => typeof value === 'number'),
     )
     if (topKValues.size < 2) {
-      const candidateTopK = pickAutoCandidateTopK(topK)
+      const candidateTopK = pickAutoCandidateTopK(configuration.data.topK)
       return {
         stage: 'top_k',
         label: runsByDataset.length === 0 ? '自动生成第 1 轮对比' : '自动补齐第 1 轮对比',
-        helper: `系统会先比较 top_k：${clampNumber(topK, 1, 50)} vs ${candidateTopK}。`,
+        helper: `系统会先比较 top_k：${configuration.data.topK} vs ${candidateTopK}。`,
       }
     }
 
     const rerankerStates = new Set(
       runsByDataset
-        .map((run) => runParamBoolean(run, 'enable_reranker'))
+        .map((run) => runRerankerEnabled(run))
         .filter((value): value is boolean => typeof value === 'boolean'),
     )
     if (!(rerankerStates.has(true) && rerankerStates.has(false))) {
       return {
         stage: 'reranker',
         label: '自动生成第 2 轮对比',
-        helper: '系统会在保持其他参数基本不变时，补一组 reranker ON/OFF 对比。',
+        helper: '按当前配置新建关闭与启用重排的两次运行。',
       }
     }
 
     const retrievalModes = new Set(
-      runsByDataset
-        .map((run) => runParamString(run, 'retrieval_mode'))
-        .filter((value) => value === 'hybrid' || value === 'vector'),
+      runsByDataset.map((run) => runRetrievalMode(run)).filter((value) => value === 'hybrid' || value === 'vector'),
     )
     if (!(retrievalModes.has('hybrid') && retrievalModes.has('vector'))) {
       return {
@@ -1589,9 +1607,10 @@ export function RetrievalAblationsPage() {
     }
 
     return null
-  }, [runDisabledReason, runsByDataset, topK])
-  const autoRunLabel = autoBootstrapPlan?.label || null
-  const autoRunHelper = autoBootstrapPlan?.helper || null
+  }
+  const autoBootstrapPlan = getAutoBootstrapPlan()
+  const autoRunLabel = autoBootstrapPlan === null ? null : autoBootstrapPlan.label
+  const autoRunHelper = autoBootstrapPlan === null ? null : autoBootstrapPlan.helper
   const runsSelectionHint = useMemo(() => {
     if (!datasetId.trim()) return '先选择数据集，再加载可对比的运行记录。'
     if (runsLoading) return '正在加载当前数据集的运行记录...'
@@ -1604,16 +1623,17 @@ export function RetrievalAblationsPage() {
     return '这里用于比较两次运行的配置、指标和逐样本差异；基线通常选择稳定版本，候选选择待验证版本。'
   }, [datasetId, runsByDataset.length, runsLoading])
   const deepDiveMetricKeys = useMemo(() => LEADERBOARD_METRIC_OPTIONS.map((item) => item.key), [])
-  const diffDelta = toNumber(diffScore?.delta)
+  const diffDelta = diffScore === null ? null : diffScore.delta
   const diffDeltaClass = ablationDeltaClass(diffDelta)
-  const metricDiffRows = useMemo(() => (Array.isArray(diff?.metric_diffs) ? diff.metric_diffs : []), [diff])
+  const metricDiffRows = diff === null ? [] : diff.metric_diffs
   const paramDiffRows = useMemo(() => {
-    const base = toRecord(diff?.base_params)
-    const target = toRecord(diff?.target_params)
+    if (diff === null) return []
+    const base = diff.base_params
+    const target = diff.target_params
     const keys = Array.from(new Set([...Object.keys(base), ...Object.keys(target)])).sort((a, b) => a.localeCompare(b))
     return keys.map((key) => {
-      const before = compactValue(base[key])
-      const after = compactValue(target[key])
+      const before = serializeDiffValue(base[key])
+      const after = serializeDiffValue(target[key])
       return { key, before, after, changed: before !== after }
     })
   }, [diff])
@@ -1626,20 +1646,29 @@ export function RetrievalAblationsPage() {
           return {
             id: rank.run_id,
             status: rank.status,
-            createdAt: rank.created_at ?? run?.created_at,
-            topK: run ? runParamNumber(run, 'top_k') : null,
-            metric: toNumber(rank.metric_value),
+            createdAt: rank.created_at,
+            topK: run ? runTopK(run) : null,
+            metric: rank.metric_value,
+            metricError: null,
             hash: rank.retrieval_config_hash,
           }
         })
       : runsByDataset.map((run) => {
           const rank = leaderboardRows.find((item) => item.run_id === run.id)
+          let metric: number | null = null
+          let metricError: string | null = null
+          try {
+            metric = getRegressionRunMetric(run, leaderboardMetricKey)
+          } catch (error) {
+            metricError = formatApiError(error, '运行指标无效')
+          }
           return {
             id: run.id,
             status: run.status,
             createdAt: run.created_at,
-            topK: runParamNumber(run, 'top_k'),
-            metric: toNumber(rank?.metric_value),
+            topK: runTopK(run),
+            metric,
+            metricError,
             hash: rank?.retrieval_config_hash,
           }
         })
@@ -1649,7 +1678,7 @@ export function RetrievalAblationsPage() {
       <OperationalWorkspace
         title="检索调参对比"
         icon="retrieval-ablation"
-        context={selectedDataset?.name || '选择数据集'}
+        context={selectedDataset?.name ?? (datasetId === '' ? '选择数据集' : datasetId)}
         actions={
           <>
             <Button asChild variant="ghost">
@@ -1674,7 +1703,10 @@ export function RetrievalAblationsPage() {
                 className="h-10 max-w-[220px] rounded-md border border-input bg-background px-3"
                 value={datasetId}
                 disabled={datasetsLoading}
-                onChange={(event) => setDatasetId(event.target.value)}
+                onChange={(event) => {
+                  setDefaultDatasetApplied(true)
+                  setDatasetId(event.target.value)
+                }}
               >
                 <option value="" disabled>
                   选择数据集
@@ -1713,6 +1745,23 @@ export function RetrievalAblationsPage() {
           </>
         }
       >
+        {!configOpen && actionError !== null ? (
+          <WorkspaceNotice>
+            <p>{actionError}</p>
+            <Button type="button" variant="outline" size="sm" onClick={() => detachPromise(refetchAblationPanels())}>
+              重新读取运行记录
+            </Button>
+          </WorkspaceNotice>
+        ) : null}
+        {recordedConfigurations.errors.length > 0 ? (
+          <WorkspaceNotice>
+            {recordedConfigurations.errors.map((issue) => (
+              <p key={issue.runId}>
+                运行 {issue.runId} 的记录参数不可用于自动配置：{formatApiError(issue.error, '参数结构无效')}
+              </p>
+            ))}
+          </WorkspaceNotice>
+        ) : null}
         {datasetsQuery.isError ? (
           <WorkspaceNotice
             retry={() => {
@@ -1757,7 +1806,7 @@ export function RetrievalAblationsPage() {
                 variant={runListView === 'experiments' ? 'secondary' : 'ghost'}
                 onClick={() => setRunListView('experiments')}
               >
-                全部运行
+                最近运行
               </Button>
               <Button
                 variant={runListView === 'ranking' ? 'secondary' : 'ghost'}
@@ -1767,7 +1816,17 @@ export function RetrievalAblationsPage() {
               </Button>
             </div>
           </div>
-          {runsLoading ? (
+          <p className="mb-3 text-[11px] text-muted-foreground">
+            最近运行最多显示 80 条；排行从最近 500 条已完成运行中取前 50 条。
+          </p>
+          {runTableQuery.isFetching && !runTableQuery.isPending ? (
+            <p role="status" className="mb-3 text-[13px] text-muted-foreground">
+              正在刷新运行记录…
+            </p>
+          ) : null}
+          {datasetId === '' ? (
+            <p className="py-8 text-sm text-muted-foreground">请先选择数据集。</p>
+          ) : runTableQuery.isPending ? (
             <p role="status" className="py-8 text-sm text-muted-foreground">
               正在读取实验记录…
             </p>
@@ -1800,9 +1859,19 @@ export function RetrievalAblationsPage() {
                           <StatusBadge status={badge.status} label={badge.label} dense />
                         </td>
                         <td>{row.topK ?? '—'}</td>
-                        <td className="tabular-nums">{formatMetric(row.metric)}</td>
+                        <td className="tabular-nums">
+                          {row.metricError === null ? (
+                            formatMetric(row.metric)
+                          ) : (
+                            <p role="alert" className="max-w-64 text-destructive">
+                              {row.metricError}
+                            </p>
+                          )}
+                        </td>
                         <td>
-                          <span className="font-mono text-xs">{row.hash?.slice(0, 12) || '—'}</span>
+                          <span className="font-mono text-xs">
+                            {row.hash === null || row.hash === undefined ? '—' : row.hash.slice(0, 12)}
+                          </span>
                         </td>
                         <td>
                           <div className="flex gap-1">
@@ -1837,15 +1906,12 @@ export function RetrievalAblationsPage() {
                   })}
                 </tbody>
               </table>
-              {runListView === 'ranking' && !leaderboardRows.length ? (
-                <p className="py-8 text-sm text-muted-foreground">当前主指标暂无可排行的已完成运行</p>
-              ) : null}
             </WorkspaceTableScroll>
-          ) : !runsQuery.isError ? (
+          ) : !runTableQuery.isError ? (
             <div className={ws.empty}>
-              <h2>当前数据集暂无实验运行</h2>
+              <h2>{runListView === 'ranking' ? '当前指标暂无已完成运行' : '当前数据集暂无实验运行'}</h2>
               <p>{selectedDatasetCasesStatusText}</p>
-              <Button disabled={Boolean(runDisabledReason)} onClick={() => setConfigOpen(true)}>
+              <Button disabled={submitting || datasetId === ''} onClick={() => setConfigOpen(true)}>
                 配置实验
               </Button>
             </div>
@@ -1874,6 +1940,7 @@ export function RetrievalAblationsPage() {
           }}
           runsSelectDisabled={runsSelectDisabled}
           runsByDataset={availableRuns}
+          runsQuery={runsQuery}
           diffLoading={diffLoading}
           canGenerateDiff={canGenerateDiff}
           computeDiff={computeDiff}
@@ -1885,7 +1952,7 @@ export function RetrievalAblationsPage() {
           datasetId={datasetId}
           runDisabledReason={runDisabledReason}
           runGridBatch={runGridBatch}
-          refetchPanels={refetchAblationPanels}
+          exportRunBundle={exportRunBundle}
           leaderboardMetricKey={leaderboardMetricKey}
           deepDiveMetricKeys={deepDiveMetricKeys}
           diffJson={diffJson}
@@ -1895,15 +1962,20 @@ export function RetrievalAblationsPage() {
           autoBootstrapPending={autoBootstrapPending}
           runAutoBootstrap={runAutoBootstrap}
         />
-        <Dialog open={configOpen} onOpenChange={setConfigOpen}>
+        <Dialog
+          open={configOpen}
+          onOpenChange={(open) => {
+            if (!submitting) setConfigOpen(open)
+          }}
+        >
           <DialogContent className={cn(ws.dialog, ws.wideDialog)}>
             <DialogHeader className={ws.dialogHeader}>
               <DialogTitle>实验参数</DialogTitle>
               <DialogDescription>
-                数据集：{selectedDataset?.name || datasetId || '未选择'}。本次参数仅用于新建实验。
+                数据集：{selectedDataset?.name ?? (datasetId === '' ? '未选择' : datasetId)}。本次参数仅用于新建实验。
               </DialogDescription>
             </DialogHeader>
-            <div className={ws.dialogBody}>
+            <fieldset disabled={submitting} className={cn(ws.dialogBody, 'min-w-0')}>
               <p className="mb-3 text-[13px] text-muted-foreground">{selectedDatasetCasesStatusText}</p>
               <AblationSection
                 title="评测模式"
@@ -1953,33 +2025,46 @@ export function RetrievalAblationsPage() {
               <AblationSection title="检索参数" description="召回窗口、混合检索与权重参数。" className="bg-card">
                 <div className="grid gap-3 sm:grid-cols-2">
                   <div className="space-y-1.5">
-                    <Label className="text-[11px] tracking-[0.08em] text-muted-foreground">样本上限</Label>
+                    <Label htmlFor="ablation-max-cases" className="text-[11px] tracking-[0.08em] text-muted-foreground">
+                      样本上限
+                    </Label>
                     <Input
+                      id="ablation-max-cases"
                       aria-label="评测样本上限"
                       type="number"
                       value={maxCases}
                       min={1}
                       max={500}
-                      onChange={(e) => setMaxCases(Number(e.target.value || 0))}
+                      required
+                      onChange={(e) => setMaxCases(e.target.value)}
                       className="h-9 rounded-lg border-border/70 bg-card"
                     />
                   </div>
                   <div className="space-y-1.5">
-                    <Label className="text-[11px] tracking-[0.08em] text-muted-foreground">召回数量</Label>
+                    <Label htmlFor="ablation-top-k" className="text-[11px] tracking-[0.08em] text-muted-foreground">
+                      召回数量
+                    </Label>
                     <Input
+                      id="ablation-top-k"
                       aria-label="召回数量 TOP-K"
                       type="number"
                       value={topK}
                       min={1}
                       max={50}
-                      onChange={(e) => setTopK(Number(e.target.value || 0))}
+                      required
+                      onChange={(e) => setTopK(e.target.value)}
                       className="h-9 rounded-lg border-border/70 bg-card"
                     />
                   </div>
                   <div className="space-y-1.5">
-                    <Label className="text-[11px] tracking-[0.08em] text-muted-foreground">检索模式</Label>
+                    <Label
+                      htmlFor="ablation-retrieval-mode"
+                      className="text-[11px] tracking-[0.08em] text-muted-foreground"
+                    >
+                      检索模式
+                    </Label>
                     <Select value={retrievalMode} onValueChange={setRetrievalMode}>
-                      <SelectTrigger className="h-9 rounded-lg border-border/70 bg-card">
+                      <SelectTrigger id="ablation-retrieval-mode" className="h-9 rounded-lg border-border/70 bg-card">
                         <SelectValue placeholder="选择模式" />
                       </SelectTrigger>
                       <SelectContent>
@@ -1992,67 +2077,99 @@ export function RetrievalAblationsPage() {
                     </Select>
                   </div>
                   <div className="space-y-1.5">
-                    <Label className="text-[11px] tracking-[0.08em] text-muted-foreground">分数阈值</Label>
+                    <Label
+                      htmlFor="ablation-score-threshold"
+                      className="text-[11px] tracking-[0.08em] text-muted-foreground"
+                    >
+                      分数阈值
+                    </Label>
                     <Input
+                      id="ablation-score-threshold"
                       aria-label="分数阈值"
                       type="number"
                       value={scoreThreshold}
                       min={0}
                       max={1}
-                      step={0.01}
-                      onChange={(e) => setScoreThreshold(Number(e.target.value || 0))}
+                      step="any"
+                      required
+                      onChange={(e) => setScoreThreshold(e.target.value)}
                       className="h-9 rounded-lg border-border/70 bg-card"
                     />
                   </div>
                   <div className="space-y-1.5">
-                    <Label className="text-[11px] tracking-[0.08em] text-muted-foreground">混合权重</Label>
+                    <Label htmlFor="ablation-alpha" className="text-[11px] tracking-[0.08em] text-muted-foreground">
+                      混合权重
+                    </Label>
                     <Input
+                      id="ablation-alpha"
                       aria-label="混合权重"
                       type="number"
                       value={alpha}
                       min={0}
                       max={1}
-                      step={0.05}
-                      onChange={(e) => setAlpha(Number(e.target.value || 0))}
+                      step="any"
+                      required
+                      onChange={(e) => setAlpha(e.target.value)}
                       className="h-9 rounded-lg border-border/70 bg-card"
                     />
                   </div>
                   <div className="space-y-1.5">
-                    <Label className="text-[11px] tracking-[0.08em] text-muted-foreground">多样性系数</Label>
+                    <Label
+                      htmlFor="ablation-mmr-lambda"
+                      className="text-[11px] tracking-[0.08em] text-muted-foreground"
+                    >
+                      多样性系数
+                    </Label>
                     <Input
+                      id="ablation-mmr-lambda"
                       aria-label="MMR 多样性系数"
                       type="number"
                       value={mmrLambda}
                       min={0}
                       max={1}
-                      step={0.05}
-                      onChange={(e) => setMmrLambda(Number(e.target.value || 0))}
+                      step="any"
+                      required
+                      onChange={(e) => setMmrLambda(e.target.value)}
                       className="h-9 rounded-lg border-border/70 bg-card"
                     />
                   </div>
                   <div className="space-y-1.5">
-                    <Label className="text-[11px] tracking-[0.08em] text-muted-foreground">向量权重</Label>
+                    <Label
+                      htmlFor="ablation-vector-weight"
+                      className="text-[11px] tracking-[0.08em] text-muted-foreground"
+                    >
+                      向量权重
+                    </Label>
                     <Input
+                      id="ablation-vector-weight"
                       aria-label="向量权重"
                       type="number"
                       value={vectorWeight}
                       min={0}
                       max={1}
-                      step={0.05}
-                      onChange={(e) => setVectorWeight(Number(e.target.value || 0))}
+                      step="any"
+                      required
+                      onChange={(e) => setVectorWeight(e.target.value)}
                       className="h-9 rounded-lg border-border/70 bg-card"
                     />
                   </div>
                   <div className="space-y-1.5">
-                    <Label className="text-[11px] tracking-[0.08em] text-muted-foreground">关键词权重</Label>
+                    <Label
+                      htmlFor="ablation-keyword-weight"
+                      className="text-[11px] tracking-[0.08em] text-muted-foreground"
+                    >
+                      关键词权重
+                    </Label>
                     <Input
+                      id="ablation-keyword-weight"
                       aria-label="关键词权重"
                       type="number"
                       value={keywordWeight}
                       min={0}
                       max={1}
-                      step={0.05}
-                      onChange={(e) => setKeywordWeight(Number(e.target.value || 0))}
+                      step="any"
+                      required
+                      onChange={(e) => setKeywordWeight(e.target.value)}
                       className="h-9 rounded-lg border-border/70 bg-card"
                     />
                   </div>
@@ -2088,59 +2205,81 @@ export function RetrievalAblationsPage() {
                   </label>
 
                   <div className="border-t border-border/70 pt-3">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className="text-sm font-medium text-foreground">重排器</div>
-                        <div className="mt-1 text-[11px] leading-5 text-muted-foreground">
-                          默认跟随全局重排配置；本次实验可临时切换重排服务与候选数量。
-                        </div>
-                      </div>
-                      <Switch aria-label="启用重排器" checked={enableReranker} onCheckedChange={setEnableReranker} />
-                    </div>
-                    <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                      <div className="space-y-1.5">
-                        <Label className="text-[11px] tracking-[0.08em] text-muted-foreground">重排服务</Label>
-                        <Select value={rerankerProvider} onValueChange={setRerankerProvider}>
-                          <SelectTrigger className="h-9 rounded-lg border-border/70 bg-card">
-                            <SelectValue placeholder="选择重排器" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {RERANKER_PROVIDER_OPTIONS.map((option) => (
-                              <SelectItem key={option.key} value={option.key}>
-                                {option.label}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <div className="text-[11px] leading-5 text-muted-foreground">
-                          读取系统设置默认值，运行实验时可单独覆盖。
-                        </div>
-                      </div>
-                      <div className="space-y-1.5">
-                        <Label className="text-[11px] tracking-[0.08em] text-muted-foreground">重排数量</Label>
-                        <Input
-                          aria-label="重排数量"
-                          type="number"
-                          value={rerankerTopN}
-                          min={1}
-                          max={200}
-                          onChange={(e) => setRerankerTopN(Number(e.target.value || 0))}
+                    <div className="space-y-1.5">
+                      <Label htmlFor="ablation-reranker-mode">重排配置</Label>
+                      <Select value={rerankerMode} onValueChange={setRerankerMode}>
+                        <SelectTrigger
+                          id="ablation-reranker-mode"
+                          aria-label="本轮重排配置"
                           className="h-9 rounded-lg border-border/70 bg-card"
-                        />
-                      </div>
+                        >
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="system">跟随系统</SelectItem>
+                          <SelectItem value="disabled">本轮关闭</SelectItem>
+                          <SelectItem value="enabled">本轮启用并指定参数</SelectItem>
+                        </SelectContent>
+                      </Select>
                     </div>
+                    {rerankerMode === 'system' ? (
+                      <p className="mt-2 text-[11px] text-muted-foreground">
+                        本轮不覆盖重排选项，服务端使用实际全局配置。
+                      </p>
+                    ) : rerankerMode === 'enabled' ? (
+                      <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                        <div className="space-y-1.5">
+                          <Label htmlFor="ablation-reranker-provider" className="text-[11px] text-muted-foreground">
+                            重排服务
+                          </Label>
+                          <Select value={rerankerProvider} onValueChange={setRerankerProvider}>
+                            <SelectTrigger
+                              id="ablation-reranker-provider"
+                              aria-label="本轮重排服务"
+                              className="h-9 rounded-lg border-border/70 bg-card"
+                            >
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {RERANKER_PROVIDER_OPTIONS.filter((option) => option.key !== 'none').map((option) => (
+                                <SelectItem key={option.key} value={option.key}>
+                                  {option.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <label className="block space-y-1.5 text-[11px] text-muted-foreground">
+                          重排数量
+                          <Input
+                            type="number"
+                            value={rerankerTopN}
+                            min={1}
+                            max={200}
+                            required
+                            onChange={(event) => setRerankerTopN(event.target.value)}
+                            className="h-9 rounded-lg border-border/70 bg-card"
+                          />
+                        </label>
+                      </div>
+                    ) : null}
                   </div>
                 </div>
               </AblationSection>
 
-              {actionError ? <WorkspaceNotice>{actionError}</WorkspaceNotice> : null}
-            </div>
+              {!configuration.success ? (
+                <p role="alert" className="mt-3 text-sm text-destructive">
+                  {configuration.error.issues[0].message}
+                </p>
+              ) : null}
+              {actionError !== null ? <WorkspaceNotice>{actionError}</WorkspaceNotice> : null}
+            </fieldset>
             <DialogFooter className={ws.dialogFooter}>
-              <Button variant="outline" onClick={() => setConfigOpen(false)}>
+              <Button variant="outline" disabled={submitting} onClick={() => setConfigOpen(false)}>
                 取消
               </Button>
               <Button
-                disabled={Boolean(runDisabledReason) || submitting || autoBootstrapPending}
+                disabled={runDisabledReason !== '' || submitting}
                 onClick={() => {
                   void runAblation()
                 }}
@@ -2150,7 +2289,7 @@ export function RetrievalAblationsPage() {
               {autoRunLabel ? (
                 <Button
                   variant="outline"
-                  disabled={Boolean(runDisabledReason) || submitting || autoBootstrapPending}
+                  disabled={runDisabledReason !== '' || submitting}
                   onClick={() => {
                     void runAutoBootstrap()
                   }}

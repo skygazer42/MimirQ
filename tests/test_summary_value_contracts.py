@@ -6,10 +6,10 @@ from fastapi import HTTPException
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
-from app.api.v1 import chat_conversation_memory
-from app.core.database import Base
-from app.models.conversation_summary import ConversationSummary
-from app.services.conversation_summary_service import get_conversation_summary
+from app.api.v1.conversations import memory as chat_conversation_memory
+from app.infrastructure.database.connection import Base
+from app.models.conversations.chat import ConversationSummary
+from app.services.chat.conversation_summary import get_conversation_summary
 
 
 @pytest.fixture
@@ -33,7 +33,7 @@ def test_summary_endpoint_returns_the_actual_tenant_scoped_stored_text(
         assert db is summary_db
         assert scope == {"tenant_id": tenant_id, "account_id": "reader", "conversation_id": conversation_id}
 
-    monkeypatch.setattr(chat_conversation_memory, "_load_accessible_conversation", authorize)
+    monkeypatch.setattr(chat_conversation_memory, "_ensure_conversation_access", authorize)
     response = chat_conversation_memory.get_conversation_summary_endpoint(
         conversation_id, tenant_id=tenant_id, account_id="reader", db=summary_db
     )
@@ -53,7 +53,7 @@ def test_summary_endpoint_exposes_a_read_failure_after_authorization(monkeypatch
     def read_failure(*_args, **_kwargs):
         raise RuntimeError("summary storage unavailable")
 
-    monkeypatch.setattr(chat_conversation_memory, "_load_accessible_conversation", authorize)
+    monkeypatch.setattr(chat_conversation_memory, "_ensure_conversation_access", authorize)
     monkeypatch.setattr(chat_conversation_memory, "get_conversation_summary", read_failure)
 
     with pytest.raises(RuntimeError, match="summary storage unavailable"):
@@ -69,7 +69,7 @@ def test_summary_endpoint_keeps_authorization_rejection_before_storage_access(mo
     def unexpected_read(*_args, **_kwargs):
         pytest.fail("Summary read must follow authorization")
 
-    monkeypatch.setattr(chat_conversation_memory, "_load_accessible_conversation", denied)
+    monkeypatch.setattr(chat_conversation_memory, "_ensure_conversation_access", denied)
     monkeypatch.setattr(chat_conversation_memory, "get_conversation_summary", unexpected_read)
 
     with pytest.raises(HTTPException) as error:

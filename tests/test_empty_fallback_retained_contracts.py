@@ -1,28 +1,30 @@
 from contextlib import nullcontext
-import importlib
 from io import BytesIO
 from types import SimpleNamespace
 from uuid import UUID
 
 import pytest
-import sqlalchemy
 import yaml
-from langchain_core.documents import Document
 from docx import Document as DocxDocument
+from langchain_core.documents import Document
 
-from app.connectors.db import catalog_runner
-from app.parsing.processors.support.recovery import (
+from app.connectors import catalog
+from app.rag.ingestion import pipeline as process_document_flow
+from app.rag.ingestion.indexing import processor as processor_module
+from app.rag.ingestion.indexing.support.recovery import (
     _checkpoint_matches_current_document,
     _validate_retry_cleanup_scope,
     checkpoint_stage,
     upsert_ingest_checkpoint,
 )
-from app.parsing.processors import processor as processor_module
-from app.parsing.processors.support import process_document_flow
-from app.parsing.models.manifest import load_small_model_manifest
-from app.parsing.output.docx_writer import render_clean_docx_bytes
-from app.parsing.output.markdown_writer import write_clean_markdown
-from app.parsing.utils.document_elements import _clean_element_text, _normalize_string, normalize_document_elements
+from app.rag.ingestion.parsing.models.manifest import load_small_model_manifest
+from app.rag.ingestion.parsing.output.docx_writer import render_clean_docx_bytes
+from app.rag.ingestion.parsing.utils.block_schema import block_text
+from app.rag.ingestion.parsing.utils.document_elements import (
+    _clean_element_text,
+    _normalize_string,
+    normalize_document_elements,
+)
 from app.storage.object.runtime import (
     SOURCE_STORAGE_REGION_KEY,
     ObjectStorageRef,
@@ -36,8 +38,19 @@ def test_element_scalar_text_preserves_provided_falsy_values(value):
     assert _normalize_string(value) is None
 
 
-def test_snapshot_column_names_keep_provided_falsy_scalar_values():
-    assert catalog_runner._snapshot_columns([], [None, 0, False], max_cols=10) == ["0", "False"]
+def test_snapshot_column_names_preserve_numeric_and_boolean_labels():
+    table = catalog.CatalogTableInput(
+        engine="sqlserver",
+        db_name="db",
+        schema_name="dbo",
+        table_name="table",
+        table_type="table",
+        comment=None,
+        fingerprint="fixture",
+        columns=[catalog.CatalogColumnInput(ordinal=1, name="0"), catalog.CatalogColumnInput(ordinal=2, name="False")],
+    )
+    snapshot = catalog._snapshot_payload(source_table="dbo.table", table=table, rows_raw=[], max_rows=10, max_cols=10)
+    assert snapshot["columns"] == ["0", "False", "__row_pk_hash"]
 
 
 def test_checkpoint_creation_preserves_absent_optional_fingerprints():
@@ -59,10 +72,11 @@ def test_invalid_checkpoint_fingerprint_does_not_match_absent_fingerprint(value)
 @pytest.mark.parametrize("driver", [0, False])
 def test_malformed_odbc_driver_cannot_select_named_default(monkeypatch, driver):
     engine = SimpleNamespace(connect=lambda: nullcontext(object()), dispose=lambda: None)
-    monkeypatch.setattr(sqlalchemy, "create_engine", lambda *args, **kwargs: engine)
+    monkeypatch.setattr(catalog, "create_engine", lambda *args, **kwargs: engine)
     with pytest.raises(AttributeError):
-        with catalog_runner._connect_sqlserver(
-            {"host": "host", "database": "db", "username": "user", "password": "", "odbc_driver": driver}
+        with catalog._connect_catalog(
+            engine_name="sqlserver",
+            config={"host": "host", "database": "db", "username": "user", "password": "", "odbc_driver": driver},
         ):
             pass
 
@@ -75,8 +89,10 @@ def test_absent_odbc_driver_selects_existing_driver_18_default(monkeypatch):
         drivers.append(url.query["driver"])
         return engine
 
-    monkeypatch.setattr(sqlalchemy, "create_engine", create)
-    with catalog_runner._connect_sqlserver({"host": "host", "database": "db", "username": "user", "password": ""}):
+    monkeypatch.setattr(catalog, "create_engine", create)
+    with catalog._connect_catalog(
+        engine_name="sqlserver", config={"host": "host", "database": "db", "username": "user", "password": ""}
+    ):
         pass
     assert drivers == ["ODBC Driver 18 for SQL Server"]
 
@@ -92,22 +108,23 @@ def test_invalid_stored_object_region_is_not_treated_as_absent(value):
 
 
 def test_retry_cleanup_cannot_authorize_a_missing_pipeline_fingerprint():
-    assert _validate_retry_cleanup_scope({}, request={"version": "1", "scope": "document"}, document_id=UUID(int=1)) is None
+    assert (
+        _validate_retry_cleanup_scope({}, request={"version": "1", "scope": "document"}, document_id=UUID(int=1))
+        is None
+    )
 
 
 @pytest.mark.parametrize("value", [0, False])
-@pytest.mark.parametrize("module_name", ["header_footer_remover", "watermark_detector"])
-def test_element_detection_text_preserves_scalar_content(module_name, value):
-    module = importlib.import_module(f"app.parsing.enrich.{module_name}")
-    assert module._text_value({"text": value}) == str(value)
+def test_element_detection_text_preserves_scalar_content(value):
+    assert block_text({"text": value}) == str(value)
 
 
 @pytest.mark.parametrize("value", [0, False])
-def test_small_model_manifest_preserves_scalar_model_identifier(tmp_path, value):
+def test_small_model_manifest_rejects_scalar_model_identifier(tmp_path, value):
     path = tmp_path / "models.yaml"
     path.write_text(yaml.safe_dump({"ocr": {"default": value, "models": {value: {"kind": "onnx"}}}}), encoding="utf-8")
-    manifest = load_small_model_manifest(path)
-    assert manifest.defaults["ocr"] == str(value)
+    with pytest.raises(ValueError, match="Small-model default must be a nonempty string"):
+        load_small_model_manifest(path)
 
 
 def test_invalid_optional_visual_hint_stays_no_match_and_preserves_raw_attribute():
@@ -129,14 +146,26 @@ def test_malformed_rollback_scope_cannot_trigger_document_wide_cleanup(monkeypat
             deleted.append(kwargs)
 
     monkeypatch.setattr(processor_module, "Indexer", Indexer)
-    processor_module.DocumentProcessorService._rollback_and_cleanup_indexes(
-        None,
-        SimpleNamespace(rollback=lambda: None),
-        db_document=SimpleNamespace(
-            doc_metadata={"active_pipeline_ready": True, "active_pipeline_hash": "active", "pipeline_hash": False}
-        ),
+    db_document = SimpleNamespace(
+        doc_metadata={"active_pipeline_ready": True, "active_pipeline_hash": "active", "pipeline_hash": False}
+    )
+
+    class Query:
+        def populate_existing(self):
+            return self
+
+        def filter(self, *_clauses):
+            return self
+
+        def first(self):
+            return db_document
+
+    processor_module._rollback_and_cleanup_indexes(
+        SimpleNamespace(rollback=lambda: None, refresh=lambda _document: None, query=lambda _model: Query()),
+        db_document=db_document,
         tenant_id=UUID(int=1),
         document_id=UUID(int=2),
+        cleanup_indexes=True,
     )
     assert deleted == []
 
@@ -157,21 +186,21 @@ async def test_legacy_indexed_checkpoint_does_not_invent_an_empty_pipeline_key()
             return []
 
     result = await process_document_flow._resume_from_indexed_checkpoint(
-        None,
         db=SimpleNamespace(query=lambda model: Query()),
         db_document=SimpleNamespace(
-            doc_metadata={"parser_backend": "basic", "chunk_strategy": "fixed", "ingest_checkpoint": {"version": "1", "stage": "indexed"}}
+            doc_metadata={
+                "parser_backend": "basic",
+                "chunk_strategy": "fixed",
+                "ingest_checkpoint": {"version": "1", "stage": "indexed"},
+            }
         ),
         tenant_id=UUID(int=1),
         document_id=UUID(int=2),
-        parser_backend=None,
-        chunk_strategy=None,
         prepared_state=None,
         with_stage_durations=lambda metadata: metadata,
     )
     assert result is None
-    assert filters
-    assert len(filters) == 2
+    assert filters == []
 
 
 @pytest.mark.parametrize("value", [0, False])
@@ -179,13 +208,3 @@ def test_docx_writer_keeps_scalar_paragraph_content(value):
     result = render_clean_docx_bytes(title=None, blocks=[{"text": value}])
     document = DocxDocument(BytesIO(result))
     assert [paragraph.text for paragraph in document.paragraphs] == [str(value)]
-
-
-@pytest.mark.parametrize("value", [0, False])
-def test_markdown_writer_keeps_scalar_paragraph_and_alt_text(tmp_path, value):
-    path = write_clean_markdown(
-        tmp_path / "output.md", title=None, blocks=[{"text": value}, {"type": "image", "alt": value, "path": "image.png"}]
-    )
-    rendered = path.read_text(encoding="utf-8")
-    assert rendered.startswith(str(value) + "\n")
-    assert f"![{value}](image.png)" in rendered

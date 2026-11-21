@@ -103,16 +103,10 @@ def _build_api_url() -> str:
 
 
 def _render_pdf_pages(pdf_bytes: bytes, *, dpi: int) -> list[bytes]:
-    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
-    images: list[bytes] = []
-    try:
-        for page in doc:
-            scale = float(dpi) / 72.0
-            pix = page.get_pixmap(matrix=fitz.Matrix(scale, scale), alpha=False)
-            images.append(pix.tobytes("jpg"))
-    finally:
-        doc.close()
-    return images
+    scale = dpi / 72.0
+    matrix = fitz.Matrix(scale, scale)
+    with fitz.open(stream=pdf_bytes, filetype="pdf") as doc:
+        return [page.get_pixmap(matrix=matrix, alpha=False).tobytes("jpg") for page in doc]
 
 
 def _extract_message_text(payload: Any) -> str:
@@ -199,17 +193,16 @@ def _ocr_pages_serial(pages: list[bytes], *, layout_as_thought: bool) -> list[st
 
 
 def _ocr_pages_parallel(pages: list[bytes], *, layout_as_thought: bool) -> list[str]:
-    results = [""] * len(pages)
+    results: list[str] = []
     with ThreadPoolExecutor(max_workers=min(_PAGE_CONCURRENCY, len(pages))) as pool:
-        future_map = {
-            pool.submit(_call_qianfan_ocr, image_bytes=img, layout_as_thought=layout_as_thought): idx
-            for idx, img in enumerate(pages)
-        }
-        for future, idx in future_map.items():
+        futures = [
+            pool.submit(_call_qianfan_ocr, image_bytes=image, layout_as_thought=layout_as_thought) for image in pages
+        ]
+        for page_number, future in enumerate(futures, start=1):
             try:
-                results[idx] = future.result()
+                results.append(future.result())
             except Exception as exc:
-                raise RuntimeError(f"page_{idx + 1}_failed: {str(exc)[:300]}") from exc
+                raise RuntimeError(f"page_{page_number}_failed: {str(exc)[:300]}") from exc
     return results
 
 

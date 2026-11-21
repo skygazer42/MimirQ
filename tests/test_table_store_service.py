@@ -7,7 +7,7 @@ import pytest
 
 
 def test_table_store_table_id_parse_and_format():  # noqa: ANN001
-    from app.services.table_store import format_table_id, parse_table_id
+    from app.services.tables.store_paths import format_table_id, parse_table_id
 
     doc_id = uuid.uuid4()
     tid = format_table_id(document_id=doc_id, sheet_index=3)
@@ -23,15 +23,15 @@ def test_table_store_table_id_parse_and_format():  # noqa: ANN001
 
 
 def test_table_store_quotes_sqlite_identifiers():  # noqa: ANN001
-    from app.services.table_store import quote_sqlite_ident
+    from app.services.tables.store_paths import quote_sqlite_ident
 
     assert quote_sqlite_ident("sheet_0") == '"sheet_0"'
     assert quote_sqlite_ident('sheet_"; DROP TABLE documents; --') == '"sheet_""; DROP TABLE documents; --"'
 
 
 def test_table_store_import_csv_and_query(monkeypatch):  # noqa: ANN001
-    from app.core.config import settings
-    from app.services.table_store_service import import_table_document, run_table_query
+    from app.infrastructure.config import settings
+    from app.services.tables.store import import_table_document, run_table_query
 
     tenant_id = uuid.uuid4()
     dataset_id = uuid.uuid4()
@@ -97,8 +97,8 @@ def test_table_store_import_csv_and_query(monkeypatch):  # noqa: ANN001
 def test_table_store_import_xlsx_and_query(monkeypatch):  # noqa: ANN001
     import pandas as pd  # type: ignore
 
-    from app.core.config import settings
-    from app.services.table_store_service import import_table_document, run_table_query
+    from app.infrastructure.config import settings
+    from app.services.tables.store import import_table_document, run_table_query
 
     tenant_id = uuid.uuid4()
     dataset_id = uuid.uuid4()
@@ -139,8 +139,8 @@ def test_table_store_import_xlsx_and_query(monkeypatch):  # noqa: ANN001
 def test_table_store_import_xlsx_with_empty_sheet(monkeypatch, tmp_path: Path):  # noqa: ANN001
     import pandas as pd  # type: ignore
 
-    from app.core.config import settings
-    from app.services.table_store_service import import_table_document, run_table_query
+    from app.infrastructure.config import settings
+    from app.services.tables.store import import_table_document, run_table_query
 
     tenant_id = uuid.uuid4()
     dataset_id = uuid.uuid4()
@@ -187,9 +187,9 @@ def test_table_store_import_docx_tables(monkeypatch):  # noqa: ANN001
     pytest.importorskip("docx")
     from docx import Document as DocxDocument  # type: ignore
 
-    from app.core.config import settings
-    from app.services.table_store import table_store_path
-    from app.services.table_store_service import import_docx_tables
+    from app.infrastructure.config import settings
+    from app.services.tables.store import import_docx_tables
+    from app.services.tables.store_paths import table_store_path
 
     tenant_id = uuid.uuid4()
     dataset_id = uuid.uuid4()
@@ -235,8 +235,8 @@ def test_table_store_import_docx_tables(monkeypatch):  # noqa: ANN001
 
 
 def test_table_store_import_db_row_snapshots(monkeypatch):  # noqa: ANN001
-    from app.core.config import settings
-    from app.services.table_store_service import import_db_row_snapshots, run_table_query
+    from app.infrastructure.config import settings
+    from app.services.tables.store import import_db_row_snapshots, run_table_query
 
     tenant_id = uuid.uuid4()
     dataset_id = uuid.uuid4()
@@ -288,5 +288,5 @@ def test_table_store_import_db_row_snapshots(monkeypatch):  # noqa: ANN001
 
 
 def test_table_store_service_no_longer_uses_silent_pass_fallbacks() -> None:
-    text = Path("app/services/table_store_service.py").read_text(encoding="utf-8")
+    text = Path("app/services/tables/store.py").read_text(encoding="utf-8")
     assert re.search(r"except[^\n]*:\n[ \t]*pass\b", text) is None

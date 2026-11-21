@@ -7,11 +7,11 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from app.core.config import Settings, settings
-from app.core.database import Base
-from app.core.security import verify_password
-from app.models.tenant import Tenant, TenantMember
-from app.models.user import User
+from app.infrastructure.config import Settings, settings
+from app.infrastructure.database.connection import Base
+from app.infrastructure.security.passwords import verify_password
+from app.models.identity.accounts import User
+from app.models.identity.workspaces import Tenant, TenantMember
 
 
 def _set_prod_bootstrap_env(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -68,7 +68,7 @@ def default_admin_config(tmp_path):
 def test_blank_admin_configuration_creates_default_owner_with_saved_random_credentials(default_admin_config, caplog):
     from pathlib import Path
 
-    from app.services.initial_admin_service import bootstrap_initial_admin_if_configured
+    from app.services.identity.initial_admin import bootstrap_initial_admin_if_configured
 
     engine, sessions = _build_test_session()
     try:
@@ -92,7 +92,7 @@ def test_blank_admin_configuration_creates_default_owner_with_saved_random_crede
 def test_default_admin_restarts_do_not_rotate_password_or_recreate_missing_credentials(default_admin_config):
     from pathlib import Path
 
-    from app.services.initial_admin_service import bootstrap_initial_admin_if_configured
+    from app.services.identity.initial_admin import bootstrap_initial_admin_if_configured
 
     engine, sessions = _build_test_session()
     try:
@@ -116,8 +116,8 @@ def test_default_admin_restarts_do_not_rotate_password_or_recreate_missing_crede
 def test_default_admin_does_not_override_existing_members_or_elevate_identities(default_admin_config):
     from pathlib import Path
 
-    from app.core.security import hash_password
-    from app.services.initial_admin_service import bootstrap_initial_admin_if_configured
+    from app.infrastructure.security.passwords import hash_password
+    from app.services.identity.initial_admin import bootstrap_initial_admin_if_configured
 
     engine, sessions = _build_test_session()
     try:
@@ -140,7 +140,7 @@ def test_default_admin_does_not_override_existing_members_or_elevate_identities(
 def test_default_admin_reuses_saved_credentials_after_database_recreation(default_admin_config):
     from pathlib import Path
 
-    from app.services.initial_admin_service import bootstrap_initial_admin_if_configured
+    from app.services.identity.initial_admin import bootstrap_initial_admin_if_configured
 
     path = Path(default_admin_config.INITIAL_ADMIN_CREDENTIALS_FILE)
     path.parent.mkdir(parents=True)
@@ -163,7 +163,7 @@ def test_default_admin_reuses_saved_credentials_after_database_recreation(defaul
 
 
 def test_unwritable_default_credentials_prevent_inaccessible_admin_creation(default_admin_config, tmp_path):
-    from app.services.initial_admin_service import InitialAdminBootstrapError, bootstrap_initial_admin_if_configured
+    from app.services.identity.initial_admin import InitialAdminBootstrapError, bootstrap_initial_admin_if_configured
 
     blocker = tmp_path / "not-a-directory"
     blocker.write_text("file")
@@ -183,7 +183,7 @@ def test_unwritable_default_credentials_prevent_inaccessible_admin_creation(defa
 def test_failed_default_credential_write_can_be_retried(default_admin_config, monkeypatch, failure_point):
     from pathlib import Path
 
-    from app.services import initial_admin_service as service
+    from app.services.identity import initial_admin as service
 
     def fail_write(_payload, handle):
         handle.write("{")
@@ -220,7 +220,7 @@ def test_failed_default_credential_write_can_be_retried(default_admin_config, mo
 def test_different_installations_get_different_default_admin_passwords(default_admin_config, tmp_path):
     from pathlib import Path
 
-    from app.services.initial_admin_service import bootstrap_initial_admin_if_configured
+    from app.services.identity.initial_admin import bootstrap_initial_admin_if_configured
 
     passwords = []
     for index in range(2):
@@ -240,7 +240,7 @@ def test_different_installations_get_different_default_admin_passwords(default_a
 def test_explicit_admin_configuration_takes_priority_over_default_credentials(default_admin_config):
     from pathlib import Path
 
-    from app.services.initial_admin_service import bootstrap_initial_admin_if_configured
+    from app.services.identity.initial_admin import bootstrap_initial_admin_if_configured
 
     default_admin_config.INITIAL_ADMIN_EMAIL = "operator@example.com"
     default_admin_config.INITIAL_ADMIN_USERNAME = "operator"
@@ -262,7 +262,7 @@ def test_explicit_admin_configuration_takes_priority_over_default_credentials(de
 def test_invalid_saved_default_credentials_do_not_create_an_unknown_admin(default_admin_config, contents):
     from pathlib import Path
 
-    from app.services.initial_admin_service import InitialAdminBootstrapError, bootstrap_initial_admin_if_configured
+    from app.services.identity.initial_admin import InitialAdminBootstrapError, bootstrap_initial_admin_if_configured
 
     path = Path(default_admin_config.INITIAL_ADMIN_CREDENTIALS_FILE)
     path.parent.mkdir(parents=True)
@@ -334,7 +334,7 @@ def test_initial_admin_validation_never_echoes_password(monkeypatch: pytest.Monk
 
 
 def test_initial_admin_bootstrap_creates_owner_membership(monkeypatch: pytest.MonkeyPatch) -> None:
-    from app.services.initial_admin_service import bootstrap_initial_admin_if_configured
+    from app.services.identity.initial_admin import bootstrap_initial_admin_if_configured
 
     tenant_id = str(uuid4())
     monkeypatch.setattr(settings, "DEFAULT_TENANT_ID", tenant_id, raising=False)
@@ -364,7 +364,7 @@ def test_initial_admin_bootstrap_creates_owner_membership(monkeypatch: pytest.Mo
 def test_initial_admin_bootstrap_is_idempotent_and_keeps_existing_password_hash(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from app.services.initial_admin_service import bootstrap_initial_admin_if_configured
+    from app.services.identity.initial_admin import bootstrap_initial_admin_if_configured
 
     tenant_id = str(uuid4())
     monkeypatch.setattr(settings, "DEFAULT_TENANT_ID", tenant_id, raising=False)
@@ -394,8 +394,8 @@ def test_initial_admin_bootstrap_is_idempotent_and_keeps_existing_password_hash(
 
 
 def test_initial_admin_bootstrap_rejects_existing_different_member(monkeypatch: pytest.MonkeyPatch) -> None:
-    from app.core.security import hash_password
-    from app.services.initial_admin_service import bootstrap_initial_admin_if_configured
+    from app.infrastructure.security.passwords import hash_password
+    from app.services.identity.initial_admin import bootstrap_initial_admin_if_configured
 
     tenant_id = str(uuid4())
     monkeypatch.setattr(settings, "DEFAULT_TENANT_ID", tenant_id, raising=False)
@@ -440,8 +440,8 @@ def test_initial_admin_bootstrap_rejects_existing_different_member(monkeypatch: 
 
 
 def test_initial_admin_bootstrap_never_elevates_an_existing_identity(monkeypatch: pytest.MonkeyPatch) -> None:
-    from app.core.security import hash_password
-    from app.services.initial_admin_service import bootstrap_initial_admin_if_configured
+    from app.infrastructure.security.passwords import hash_password
+    from app.services.identity.initial_admin import bootstrap_initial_admin_if_configured
 
     tenant_id = str(uuid4())
     monkeypatch.setattr(settings, "DEFAULT_TENANT_ID", tenant_id, raising=False)
@@ -479,7 +479,7 @@ def test_initial_admin_bootstrap_reads_password_from_file(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path,
 ) -> None:
-    from app.services.initial_admin_service import bootstrap_initial_admin_if_configured
+    from app.services.identity.initial_admin import bootstrap_initial_admin_if_configured
 
     password_file = tmp_path / "initial-admin-password.txt"
     password_file.write_text("correct-horse-battery-staple\n", encoding="utf-8")

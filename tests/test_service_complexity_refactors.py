@@ -56,12 +56,12 @@ class _QueryDB:
 def test_diff_regression_run_summaries_preserves_schema_sorting_and_defaults(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from app.services import regression_run_diff as service
+    from app.services.evaluation import run_diff as service
 
     base_run_id = uuid4()
     target_run_id = uuid4()
     fixed_now = datetime(2026, 8, 16, 9, 30, tzinfo=UTC)
-    monkeypatch.setattr(service, "_now_utc", lambda: fixed_now, raising=True)
+    monkeypatch.setattr(service, "datetime", SimpleNamespace(now=lambda _timezone: fixed_now), raising=True)
 
     result = service.diff_regression_run_summaries(
         base_run_id=base_run_id,
@@ -363,7 +363,7 @@ def test_diff_regression_run_summaries_preserves_schema_sorting_and_defaults(
 def test_run_daily_stale_report_tracks_summary_and_write_order(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from app.services import stale_report_jobs as service
+    from app.services.observability import stale_reports as service
 
     tenant_id = uuid4()
     dataset_id = uuid4()
@@ -521,7 +521,7 @@ def test_run_daily_stale_report_tracks_summary_and_write_order(
 def test_run_daily_stale_report_rolls_back_on_audit_failure(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from app.services import stale_report_jobs as service
+    from app.services.observability import stale_reports as service
 
     tenant_id = uuid4()
     db = _RecordingDB()
@@ -565,7 +565,7 @@ def test_run_daily_stale_report_rolls_back_on_audit_failure(
 def test_run_embedding_drift_monitor_preserves_schema_thresholds_and_order(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from app.services import embedding_drift_monitor as service
+    from app.services.embeddings import drift_monitor as service
     from app.storage.vector import milvus as milvus_module
 
     tenant_id = uuid4()
@@ -680,7 +680,7 @@ def test_run_embedding_drift_monitor_preserves_schema_thresholds_and_order(
 def test_run_embedding_drift_monitor_reports_embed_failures(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from app.services import embedding_drift_monitor as service
+    from app.services.embeddings import drift_monitor as service
     from app.storage.vector import milvus as milvus_module
 
     monkeypatch.setattr(service.settings, "VECTOR_BACKEND", "milvus", raising=False)
@@ -716,7 +716,7 @@ def test_run_embedding_drift_monitor_reports_embed_failures(
 def test_sem_filter_preserves_row_order_across_batches_and_fails_closed(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from app.services import lotus_bridge as service
+    from app.services.tables import semantic_operators as service
 
     responses = iter(
         [
@@ -737,7 +737,7 @@ def test_sem_filter_preserves_row_order_across_batches_and_fails_closed(
     monkeypatch.setattr(service.settings, "TABLE_SEM_FILTER_MAX_COLS", 5, raising=False)
     monkeypatch.setattr(service.settings, "TABLE_SEM_FILTER_MAX_CELL_CHARS", 20, raising=False)
     monkeypatch.setattr(service.settings, "TABLE_SEM_FILTER_BATCH_SIZE", 2, raising=False)
-    monkeypatch.setattr(service, "_build_llm", lambda temperature=0.0: _FakeLLM(), raising=True)
+    monkeypatch.setattr(service, "create_table_chat_model", lambda temperature=0.0: _FakeLLM(), raising=True)
     monkeypatch.setattr(
         service,
         "_build_row_payload",
@@ -774,7 +774,7 @@ def test_sem_filter_preserves_row_order_across_batches_and_fails_closed(
 def test_sem_filter_validates_instruction_and_egress_flag(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from app.services import lotus_bridge as service
+    from app.services.tables import semantic_operators as service
 
     monkeypatch.setattr(service.settings, "TABLE_LLM_ALLOW_ROW_EGRESS", False, raising=False)
     df = pd.DataFrame([{"name": "alpha"}])
@@ -790,8 +790,8 @@ def test_build_ingestion_policy_suggestion_preserves_schema_and_bucket_order(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path,
 ) -> None:
-    from app.api.schemas.ingestion_policy import IngestionPolicy
-    from app.services import dataset_precheck_ingestion_suggestion as service
+    from app.api.schemas.sources.policy import IngestionPolicy
+    from app.services.datasets.precheck import ingestion_suggestions as service
 
     tenant_id = uuid4()
     fixed_now = datetime(2026, 8, 16, 14, 0, tzinfo=UTC)
@@ -848,7 +848,7 @@ def test_build_ingestion_policy_suggestion_preserves_schema_and_bucket_order(
         "exact_dup": SimpleNamespace(total=1, items=[SimpleNamespace(name="dup.txt")]),
     }
 
-    monkeypatch.setattr(service, "_now_utc", lambda: fixed_now, raising=True)
+    monkeypatch.setattr(service, "datetime", SimpleNamespace(now=lambda _timezone: fixed_now), raising=True)
     monkeypatch.setattr(
         service,
         "_assert_artifact_path_under_tenant",
@@ -970,7 +970,7 @@ def test_build_ingestion_policy_suggestion_preserves_schema_and_bucket_order(
 def test_apply_ingestion_policy_suggestion_updates_dataset_and_refreshes(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from app.services import dataset_precheck_ingestion_suggestion as service
+    from app.services.datasets.precheck import ingestion_suggestions as service
 
     db = _RecordingDB()
     dataset = SimpleNamespace(dataset_metadata={})
@@ -1015,7 +1015,7 @@ def test_apply_ingestion_policy_suggestion_updates_dataset_and_refreshes(
 
 
 def test_apply_ingestion_policy_suggestion_rejects_existing_policy_without_replace() -> None:
-    from app.services import dataset_precheck_ingestion_suggestion as service
+    from app.services.datasets.precheck import ingestion_suggestions as service
 
     with pytest.raises(HTTPException, match="ingestion_policy already exists"):
         service.apply_ingestion_policy_suggestion(

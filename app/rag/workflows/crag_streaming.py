@@ -1,8 +1,8 @@
 from typing import Any
 
-from app.core.config import settings
-from app.rag.evaluation.retrieval_evaluator import evaluate_retrieval_verdict
-from app.rag.tools.web_search import web_search
+from app.infrastructure.config import settings
+from app.rag.agents.tools.web_search import web_search
+from app.rag.evaluation.regression.retrieval_evaluator import evaluate_retrieval_verdict
 
 
 def classify_retrieval_verdict(

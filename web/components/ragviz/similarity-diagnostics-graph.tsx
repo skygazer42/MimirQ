@@ -4,6 +4,7 @@ import { useMemo, useRef, useState } from 'react'
 import dynamic from 'next/dynamic'
 import { useTranslations } from 'next-intl'
 import { useTheme } from 'next-themes'
+import type { ForceGraphProps } from 'react-force-graph-3d'
 
 import { PageLoading } from '@/components/ui/page-loading'
 import { useResizeObserver } from '@/hooks/use-resize-observer'
@@ -15,10 +16,9 @@ import type { SimilarityDiagnosticLink, SimilarityDiagnosticNode } from './simil
 const MAX_DIAGNOSTICS_GRAPH_NODES = 180
 const MAX_DIAGNOSTICS_GRAPH_LINKS = 900
 
-const ForceGraph3D = dynamic(() => import('react-force-graph-3d'), {
-  ssr: false,
-  loading: () => <GraphLoadingShell />,
-})
+function formatDiagnosticPercent(value: number | null): string {
+  return value === null ? '—' : `${(value * 100).toFixed(0)}%`
+}
 
 type SimilarityDiagnosticsGraphProps = Readonly<{
   nodes: SimilarityDiagnosticNode[]
@@ -26,8 +26,13 @@ type SimilarityDiagnosticsGraphProps = Readonly<{
 }>
 
 type GraphNode = SimilarityDiagnosticNode & {
-  val?: number
+  val: number
 }
+
+const ForceGraph3D = dynamic<ForceGraphProps<GraphNode, SimilarityDiagnosticLink>>(
+  () => import('react-force-graph-3d').then(({ default: Graph }) => Graph<GraphNode, SimilarityDiagnosticLink>),
+  { ssr: false, loading: () => <GraphLoadingShell /> },
+)
 
 export function SimilarityDiagnosticsGraph({ nodes, links }: SimilarityDiagnosticsGraphProps) {
   const { resolvedTheme } = useTheme()
@@ -46,20 +51,20 @@ export function SimilarityDiagnosticsGraph({ nodes, links }: SimilarityDiagnosti
         ...node,
         val: Math.max(4, node.supportCount * 2 + (node.isOutlier ? 2 : 1)),
       })),
-      links,
+      links: links.map((link) => ({ ...link })),
     }),
     [links, nodes],
   )
 
-  const selectedNode = nodes.find((node) => node.id === selectedNodeId) ?? null
-  const selectedLink = links.find((link) => link.id === selectedLinkId) ?? null
+  const selectedNode = nodes.find((node) => node.id === selectedNodeId)
+  const selectedLink = links.find((link) => link.id === selectedLinkId)
   const exceedsGraphComplexityBudget =
     nodes.length > MAX_DIAGNOSTICS_GRAPH_NODES || links.length > MAX_DIAGNOSTICS_GRAPH_LINKS
   const selectedNodeDescription = selectedNode
     ? t('nodeCardSelectedDescription', {
         axis: selectedNode.axis.toUpperCase(),
-        mean: (selectedNode.averageSimilarity * 100).toFixed(0),
-        peak: (selectedNode.peakSimilarity * 100).toFixed(0),
+        mean: formatDiagnosticPercent(selectedNode.averageSimilarity),
+        peak: formatDiagnosticPercent(selectedNode.peakSimilarity),
       })
     : t('nodeCardEmptyDescription')
   const selectedLinkTitle = selectedLink
@@ -114,39 +119,34 @@ export function SimilarityDiagnosticsGraph({ nodes, links }: SimilarityDiagnosti
             enableNodeDrag={false}
             cooldownTicks={0}
             nodeLabel={(node) => {
-              const current = node as SimilarityDiagnosticNode
-              return t('nodeTooltip', {
-                axis: current.axis.toUpperCase(),
-                label: current.label,
-                outlierSuffix: current.isOutlier ? t('nodeTooltipOutlierSuffix') : '',
-                mean: (current.averageSimilarity * 100).toFixed(0),
-                peak: (current.peakSimilarity * 100).toFixed(0),
+              const tooltip = document.createElement('span')
+              tooltip.textContent = t('nodeTooltip', {
+                axis: node.axis.toUpperCase(),
+                label: node.label,
+                outlierSuffix: node.isOutlier ? t('nodeTooltipOutlierSuffix') : '',
+                mean: formatDiagnosticPercent(node.averageSimilarity),
+                peak: formatDiagnosticPercent(node.peakSimilarity),
               })
+              return tooltip.outerHTML
             }}
-            nodeColor={(node) => (node as SimilarityDiagnosticNode).color}
+            nodeColor={(node) => node.color}
             nodeRelSize={5}
             linkOpacity={0.35}
-            linkDirectionalParticles={(link) => ((link as SimilarityDiagnosticLink).isOutlier ? 2 : 0)}
-            linkDirectionalParticleWidth={(link) => ((link as SimilarityDiagnosticLink).isMarked ? 4 : 2)}
+            linkDirectionalParticles={(link) => (link.isOutlier ? 2 : 0)}
+            linkDirectionalParticleWidth={(link) => (link.isMarked ? 4 : 2)}
             linkColor={(link) => {
-              const current = link as SimilarityDiagnosticLink
-              if (current.isMarked) return '#f59e0b'
-              if (current.isOutlier) return '#ef4444'
+              if (link.isMarked) return '#f59e0b'
+              if (link.isOutlier) return '#ef4444'
               return '#64748b'
             }}
             linkWidth={(link) => {
-              const current = link as SimilarityDiagnosticLink
-              if (current.isMarked) return 4
-              if (current.isOutlier) return 3
-              return Math.max(1.1, current.similarity * 3.2)
+              if (link.isMarked) return 4
+              if (link.isOutlier) return 3
+              return Math.max(1.1, link.similarity * 3.2)
             }}
-            onNodeClick={(node) => {
-              const current = node as GraphNode
-              setSelectedNodeId(current.id)
-            }}
+            onNodeClick={(node) => setSelectedNodeId(node.id)}
             onLinkClick={(link) => {
-              const current = link as SimilarityDiagnosticLink
-              if (current.isOutlier) setSelectedLinkId(current.id)
+              if (link.isOutlier) setSelectedLinkId(link.id)
             }}
           />
         ) : null}

@@ -11,17 +11,17 @@ from app.rag.evaluation.poc_runner import png_tasks
 @pytest.mark.parametrize(
     "module_name",
     [
-        "datasets.schema",
-        "hard_negative_mining",
-        "poc_runner.attribution_classifier",
-        "poc_runner.out_of_scope_verifier",
-        "poc_runner.source_builder",
-        "poc_runner.telemetry",
+        "app.rag.evaluation.datasets.schema",
+        "app.rag.evaluation.generation.hard_negative_mining",
+        "app.rag.evaluation.poc_runner.attribution_classifier",
+        "app.rag.policy.out_of_scope_verifier",
+        "app.rag.evaluation.poc_runner.source_builder",
+        "app.rag.evaluation.poc_runner.telemetry",
     ],
 )
 @pytest.mark.parametrize("value", [0, False])
 def test_nullable_scalar_text_preserves_provided_falsy_values(module_name, value):
-    module = importlib.import_module(f"app.rag.evaluation.{module_name}")
+    module = importlib.import_module(module_name)
     assert module._safe_str(value) == str(value)
     assert module._safe_str(None) is None
 
@@ -40,9 +40,7 @@ def test_answer_metric_scores_provided_falsy_scalar(value):
 
 @pytest.mark.parametrize("value", [0, False])
 def test_subquery_metric_counts_provided_falsy_scalar(value):
-    metrics = compute_decomposition_metrics(
-        [{"gold_subqueries": [str(value)], "predicted_subqueries": [value]}]
-    )
+    metrics = compute_decomposition_metrics([{"gold_subqueries": [str(value)], "predicted_subqueries": [value]}])
     assert metrics["decomposition_f1"] == 1.0
 
 

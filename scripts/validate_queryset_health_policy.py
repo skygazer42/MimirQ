@@ -18,7 +18,7 @@ def _load_json(path: Path) -> dict[str, Any]:
 
 
 def run(*, policy_path: Path, out: Path | None = None) -> dict[str, Any]:
-    from app.services.queryset_health_service import validate_and_normalize_queryset_health_policy
+    from app.services.evaluation.queryset_health import validate_and_normalize_queryset_health_policy
 
     raw = _load_json(policy_path)
     normalized = validate_and_normalize_queryset_health_policy(raw)

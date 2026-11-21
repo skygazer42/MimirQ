@@ -33,8 +33,8 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from app.core.database import SessionLocal  # noqa: E402
-from app.services.embedding_migration import (  # noqa: E402
+from app.infrastructure.database.connection import SessionLocal  # noqa: E402
+from app.services.embeddings.migration import (  # noqa: E402
     resolve_shadow_embedding_config,
     run_embedding_migration_overlap_check,
     run_shadow_collection_backfill,
@@ -77,6 +77,8 @@ def main(argv: list[str] | None = None) -> int:
     execute = args.execute
 
     out: dict[str, object] = {"ok": True, "shadow": cfg}
+
+    import app.models.registry  # noqa: F401
 
     db = SessionLocal()
     try:

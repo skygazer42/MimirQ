@@ -25,7 +25,7 @@ from uuid import UUID
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
 
-# import app.models._all  # noqa: F401
+# import app.models.registry  # noqa: F401
 Base = None
 SessionLocal = None
 engine = None
@@ -95,21 +95,23 @@ def _ensure_app_imports() -> None:
     if Base is not None:
         return
 
-    importlib.import_module("app.models._all")
-    Base = importlib.import_module("app.core.database").Base
-    SessionLocal = importlib.import_module("app.core.database").SessionLocal
-    engine = importlib.import_module("app.core.database").engine
-    apply_runtime_migrations = importlib.import_module("app.core.migrations").apply_runtime_migrations
-    dataset_module = importlib.import_module("app.models.dataset")
+    importlib.import_module("app.models.registry")
+    Base = importlib.import_module("app.infrastructure.database.connection").Base
+    SessionLocal = importlib.import_module("app.infrastructure.database.connection").SessionLocal
+    engine = importlib.import_module("app.infrastructure.database.connection").engine
+    apply_runtime_migrations = importlib.import_module(
+        "app.infrastructure.database.migrations"
+    ).apply_runtime_migrations
+    dataset_module = importlib.import_module("app.models.datasets.records")
     Dataset = dataset_module.Dataset
-    DatasetPermissionEnum = dataset_module.DatasetPermissionEnum
-    document_module = importlib.import_module("app.models.document")
+    DatasetPermissionEnum = importlib.import_module("app.models.datasets.access").DatasetPermissionEnum
+    document_module = importlib.import_module("app.models.documents.records")
     DBDocument = document_module.Document
     DocumentChunk = document_module.DocumentChunk
-    tenant_module = importlib.import_module("app.models.tenant")
+    tenant_module = importlib.import_module("app.models.identity.workspaces")
     Tenant = tenant_module.Tenant
     TenantMember = tenant_module.TenantMember
-    kg_models = importlib.import_module("app.rag.kg.models")
+    kg_models = importlib.import_module("app.models.knowledge_graph.entities")
     KgEntity = kg_models.KgEntity
     KgEntityAlias = kg_models.KgEntityAlias
     KgEventEntity = kg_models.KgEventEntity
@@ -118,15 +120,15 @@ def _ensure_app_imports() -> None:
 
 
 def _normalize_name(text: str) -> str:
-    from app.rag.kg.extraction.parser import EntityValueParser
+    from app.rag.kg.extraction.parser import normalize_entity_name
 
-    return EntityValueParser().normalize_name(text)
+    return normalize_entity_name(text)
 
 
 def _normalize_type(text: str) -> str:
-    from app.rag.kg.extraction.parser import EntityValueParser
+    from app.rag.kg.extraction.parser import normalize_entity_type
 
-    return EntityValueParser().normalize_type(text)
+    return normalize_entity_type(text)
 
 
 def _kg_section_list(kg: dict[str, Any], key: str) -> list[dict[str, Any]]:

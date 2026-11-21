@@ -6,13 +6,14 @@ from uuid import uuid4
 import pytest
 from fastapi import HTTPException
 
-from app.api.schemas.document import (
+from app.api.schemas.documents.document import (
     DocumentAccessUpdateRequest,
     DocumentBatchDeleteRequest,
     DocumentBatchLifecycleRequest,
 )
-from app.api.v1 import document_access
-from app.services import document_access_service, document_lifecycle_service
+from app.api.v1.documents import access as document_access
+from app.services.documents import access as document_access_service
+from app.services.documents import lifecycle as document_lifecycle_service
 
 
 class Query:
@@ -54,7 +55,7 @@ def test_batch_lifecycle_applies_state_and_audits_changed_document(monkeypatch: 
     audit = []
     monkeypatch.setattr(document_lifecycle_service.dataset_service, "ensure_member", lambda *_args: None)
     monkeypatch.setattr(
-        document_access_service,
+        document_lifecycle_service,
         "assert_document_writable_for_lifecycle",
         lambda *_args, **_kwargs: None,
         raising=True,
@@ -65,15 +66,17 @@ def test_batch_lifecycle_applies_state_and_audits_changed_document(monkeypatch: 
         lambda *_args, **kwargs: audit.append(kwargs),
     )
 
-    result = document_lifecycle_service.apply_batch_lifecycle(
+    result = document_lifecycle_service.update_document_lifecycle_state(
         payload=DocumentBatchLifecycleRequest(document_ids=[document.id]),
-        action="disable",
+        state_field="disabled_at",
+        audit_action="document.disable",
+        set_timestamp=True,
         db=db,
         tenant_id=document.tenant_id,
         account_id="account-1",
     )
 
-    assert result.updated == 1
+    assert result["updated"] == 1
     assert isinstance(document.disabled_at, datetime)
     assert document.disabled_at.tzinfo is UTC
     assert db.commits == 1
@@ -92,7 +95,7 @@ def test_batch_delete_calls_lifecycle_owner_and_classifies_per_id_errors(
     async def delete_one(**kwargs):
         document_id = kwargs["document_id"]
         deleted.append(document_id)
-        membership_checks.append(kwargs["enforce_membership"])
+        membership_checks.append(kwargs["enforce_permissions"])
         if document_id == document_ids[1]:
             raise HTTPException(status_code=404, detail="missing")
         if document_id == document_ids[2]:
@@ -100,7 +103,7 @@ def test_batch_delete_calls_lifecycle_owner_and_classifies_per_id_errors(
 
     monkeypatch.setattr(document_lifecycle_service, "_delete_document_lifecycle", delete_one)
     result = asyncio.run(
-        document_lifecycle_service.delete_batch_documents(
+        document_lifecycle_service.delete_documents(
             payload=DocumentBatchDeleteRequest(document_ids=document_ids),
             db=object(),
             tenant_id=tenant_id,
@@ -108,9 +111,9 @@ def test_batch_delete_calls_lifecycle_owner_and_classifies_per_id_errors(
         )
     )
 
-    assert result.deleted == 1
-    assert result.not_found == [document_ids[1]]
-    assert result.denied == [document_ids[2]]
+    assert result["deleted"] == 1
+    assert result["not_found"] == [document_ids[1]]
+    assert result["denied"] == [document_ids[2]]
     assert deleted == document_ids
     assert membership_checks == [True, True, True]
 

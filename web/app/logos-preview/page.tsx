@@ -28,12 +28,17 @@ const providers = [
   { id: 'local-reranker', name: '本地 Reranker', color: '#F97316' },
 ]
 
+const previewBackgrounds = [
+  { label: '页面背景', className: 'bg-background border-border' },
+  { label: '弱化背景', className: 'bg-muted/60 border-border/60' },
+  { label: '前景色背景', className: 'bg-foreground border-border/60' },
+]
+
 export default function LogosPreviewPage() {
   return (
     <AppFrame>
       <PageScaffold
         title="品牌 Logo 预览"
-        badge="LOGOS"
         icon={Grid3X3}
         iconColor="text-accent"
         description="查看所有模型提供商的图标展示与适配效果"
@@ -69,10 +74,10 @@ export default function LogosPreviewPage() {
             <h2 className="text-2xl font-bold text-foreground mb-6">尺寸对比</h2>
             <div className="space-y-8">
               {[
-                { size: 'w-6 h-6', label: '小 (24px)', px: '24px' },
-                { size: 'w-8 h-8', label: '中 (32px)', px: '32px' },
-                { size: 'w-12 h-12', label: '大 (48px)', px: '48px' },
-                { size: 'w-16 h-16', label: '特大 (64px)', px: '64px' },
+                { size: 'w-6 h-6', label: '小 (24px)' },
+                { size: 'w-8 h-8', label: '中 (32px)' },
+                { size: 'w-12 h-12', label: '大 (48px)' },
+                { size: 'w-16 h-16', label: '特大 (64px)' },
               ].map((sizeConfig) => (
                 <div key={sizeConfig.size}>
                   <h3 className="text-sm font-medium text-foreground/80 mb-3">{sizeConfig.label}</h3>
@@ -97,41 +102,16 @@ export default function LogosPreviewPage() {
           <CardContent className="p-8">
             <h2 className="text-2xl font-bold text-foreground mb-6">背景对比</h2>
             <div className="grid grid-cols-3 gap-6">
-              {/* 白色背景 */}
-              <div>
-                <h3 className="text-sm font-medium text-foreground/80 mb-3">白色背景</h3>
-                <div className="bg-background p-4 rounded-lg border border-border">
-                  <div className="flex flex-wrap gap-3">
+              {previewBackgrounds.map(({ label, className }) => (
+                <div key={label}>
+                  <h3 className="text-sm font-medium text-foreground/80 mb-3">{label}</h3>
+                  <div className={`flex flex-wrap gap-3 rounded-lg border p-4 ${className}`}>
                     {providers.map((provider) => (
                       <ProviderIcon key={provider.id} providerId={provider.id} className="w-10 h-10" />
                     ))}
                   </div>
                 </div>
-              </div>
-
-              {/* 灰色背景 */}
-              <div>
-                <h3 className="text-sm font-medium text-foreground/80 mb-3">灰色背景</h3>
-                <div className="bg-muted/60 p-4 rounded-lg border border-border/60">
-                  <div className="flex flex-wrap gap-3">
-                    {providers.map((provider) => (
-                      <ProviderIcon key={provider.id} providerId={provider.id} className="w-10 h-10" />
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              {/* 深色背景 */}
-              <div>
-                <h3 className="text-sm font-medium text-foreground/80 mb-3">深色背景</h3>
-                <div className="bg-foreground p-4 rounded-lg border border-border/60">
-                  <div className="flex flex-wrap gap-3">
-                    {providers.map((provider) => (
-                      <ProviderIcon key={provider.id} providerId={provider.id} className="w-10 h-10" />
-                    ))}
-                  </div>
-                </div>
-              </div>
+              ))}
             </div>
           </CardContent>
         </Card>

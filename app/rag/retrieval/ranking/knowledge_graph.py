@@ -1,0 +1,355 @@
+"""KG scope resolution, KG document merge, KG chunk boost, and KG injection chunk fetch.
+
+Split out of ``app.rag.retrieval.orchestrator`` (see
+``app.rag.retrieval.orchestration``).
+"""
+
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any, TypedDict
+from uuid import UUID
+
+from langchain_core.documents import Document
+
+from app.rag.retrieval.results import _log_orchestrator_fallback, _safe_float, document_key
+from app.types.document_metadata import metadata_text
+
+if TYPE_CHECKING:
+    from sqlalchemy.orm import Session
+
+    from app.models.documents.records import DocumentChunk
+
+
+def _coerce_uuid_list(values: Any) -> list[UUID]:
+    out: list[UUID] = []
+    seen: set[UUID] = set()
+    for value in values or []:
+        try:
+            item = value if isinstance(value, UUID) else UUID(str(value))
+        except Exception as exc:
+            _log_orchestrator_fallback("_coerce_uuid_list", exc)
+            continue
+        if item in seen:
+            continue
+        seen.add(item)
+        out.append(item)
+    return out
+
+
+def _resolve_kg_scope(state: dict[str, Any]) -> tuple[list[UUID] | None, UUID | None, list[UUID]]:
+    raw_document_ids = state.get("document_ids")
+    if raw_document_ids is not None:
+        document_ids = [value if isinstance(value, UUID) else UUID(str(value)) for value in raw_document_ids]
+        return document_ids, None, []
+
+    dataset_id_raw = state.get("dataset_id")
+    dataset_id: UUID | None = None
+    if dataset_id_raw is not None:
+        dataset_id = dataset_id_raw if isinstance(dataset_id_raw, UUID) else UUID(str(dataset_id_raw))
+    if dataset_id is not None:
+        return None, dataset_id, []
+
+    return None, None, _coerce_uuid_list(state.get("dataset_ids") or [])
+
+
+def _kg_signal_score(meta: dict[str, Any]) -> float:
+    for key in ("kg_pagerank", "score", "retrieval_score"):
+        try:
+            value = meta.get(key)
+            if value is None:
+                continue
+            return max(0.0, float(value or 0.0))
+        except (OverflowError, TypeError, ValueError):
+            continue
+    return 0.0
+
+
+def _coerce_optional_int(meta: dict[str, Any], key: str) -> int | None:
+    raw_value = meta.get(key)
+    if raw_value is None:
+        return None
+    try:
+        return int(raw_value)
+    except (OverflowError, TypeError, ValueError):
+        return None
+
+
+def _merge_optional_int(
+    main_meta: dict[str, Any],
+    kg_meta: dict[str, Any],
+    *,
+    key: str,
+    reducer: Callable[[int, int], int],
+) -> None:
+    kg_value = _coerce_optional_int(kg_meta, key)
+    if kg_value is None:
+        return
+    current_value = _coerce_optional_int(main_meta, key)
+    main_meta[key] = reducer(current_value, kg_value) if current_value is not None else kg_value
+
+
+def _merge_kg_metadata_into_main(main_doc: Document, kg_doc: Document) -> Document:
+    main_meta = dict(main_doc.metadata or {})
+    kg_meta = dict(kg_doc.metadata or {})
+
+    main_kg_score = _kg_signal_score({"kg_pagerank": main_meta.get("kg_pagerank")})
+    kg_score = _kg_signal_score(kg_meta)
+    if kg_score > 0.0 or main_kg_score > 0.0:
+        main_meta["kg_pagerank"] = max(main_kg_score, kg_score)
+
+    for key in ("kg_path", "kg_path_provenance"):
+        if kg_meta.get(key) and not main_meta.get(key):
+            main_meta[key] = kg_meta[key]
+
+    _merge_optional_int(main_meta, kg_meta, key="kg_path_length", reducer=min)
+    _merge_optional_int(main_meta, kg_meta, key="kg_shared_events", reducer=max)
+
+    if "kg_evidence_anchored" in kg_meta:
+        main_meta["kg_evidence_anchored"] = bool(
+            main_meta.get("kg_evidence_anchored") or kg_meta.get("kg_evidence_anchored")
+        )
+
+    main_meta["kg_duplicate_candidate"] = True
+    return Document(
+        page_content=main_doc.page_content,
+        metadata=main_meta,
+        id=main_doc.id or main_meta.get("chunk_id"),
+    )
+
+
+def _merge_kg_docs_preserving_main(docs: list[Document] | None, kg_docs: list[Document] | None) -> list[Document]:
+    merged = [d for d in (docs if docs is not None else []) if d is not None]
+    index_by_key: dict[str, int] = {}
+    for i, doc in enumerate(merged):
+        index_by_key[document_key(doc)] = i
+
+    for kg_doc in kg_docs if kg_docs is not None else []:
+        if kg_doc is None:
+            continue
+        key = document_key(kg_doc)
+        if key in index_by_key:
+            existing_index = index_by_key[key]
+            merged[existing_index] = _merge_kg_metadata_into_main(merged[existing_index], kg_doc)
+            continue
+        index_by_key[key] = len(merged)
+        merged.append(kg_doc)
+    return merged
+
+
+def _fetch_document_chunks_for_kg_injection(
+    *,
+    db: "Session",
+    tenant_id: UUID,
+    account_id: str | None,
+    dataset_id: UUID | None,
+    dataset_ids: list[UUID] | None = None,
+    document_ids: list[UUID] | None,
+    chunk_ids: list[UUID],
+) -> list["DocumentChunk"]:
+    """
+    Load scoped KG injection chunks; the optional KG stage owns error reporting.
+    """
+    if not chunk_ids:
+        return []
+
+    if tenant_id is None:
+        raise ValueError("KG chunk injection requires an explicit tenant")
+
+    from app.models.documents.records import DocumentChunk as DBDocumentChunk  # noqa: WPS433
+
+    # Prefer explicit document_ids scope (already ACL-filtered by the API layer when present).
+    if document_ids is not None:
+        return (
+            db.query(DBDocumentChunk)
+            .filter(
+                DBDocumentChunk.tenant_id == tenant_id,
+                DBDocumentChunk.document_id.in_(list(document_ids)),
+                DBDocumentChunk.id.in_(list(chunk_ids)),
+            )
+            .all()
+        )
+
+    # Dataset-scoped retrieval: enforce dataset permission + doc-level ACL via shared helper.
+    scoped_dataset_ids = [dataset_id] if dataset_id is not None else (dataset_ids if dataset_ids is not None else [])
+
+    if not scoped_dataset_ids or (account_id is None or not account_id.strip()):
+        return []
+
+    from sqlalchemy import or_, select  # noqa: WPS433
+
+    from app.models.documents.records import Document as DBDocument  # noqa: WPS433
+    from app.services.datasets.profile import build_dataset_documents_query  # noqa: WPS433
+
+    allowed_doc_filters = []
+    for scoped_dataset_id in scoped_dataset_ids:
+        _dataset, allowed_documents = build_dataset_documents_query(
+            db,
+            tenant_id=tenant_id,
+            account_id=account_id,
+            dataset_id=scoped_dataset_id,
+        )
+        doc_ids_subquery = allowed_documents.with_entities(DBDocument.id).subquery()
+        allowed_doc_filters.append(DBDocumentChunk.document_id.in_(select(doc_ids_subquery.c.id)))
+
+    return (
+        db.query(DBDocumentChunk)
+        .filter(
+            DBDocumentChunk.tenant_id == tenant_id,
+            or_(*allowed_doc_filters),
+            DBDocumentChunk.id.in_(list(chunk_ids)),
+        )
+        .all()
+    )
+
+
+def _kg_chunk_boost_meta(*, enabled: bool, weight: float, max_promoted: int) -> dict[str, Any]:
+    return {
+        "enabled": bool(enabled),
+        "weight": round(float(weight), 4),
+        "max_promoted": int(max_promoted),
+        "eligible": 0,
+        "promoted": 0,
+        "top_changed": False,
+    }
+
+
+def _kg_chunk_boost_disabled_reason(
+    *, enabled: bool, docs: list[Document], weight: float, max_promoted: int
+) -> str | None:
+    if enabled and docs and weight > 0.0 and max_promoted > 0:
+        return None
+    if not enabled:
+        return "disabled"
+    if weight <= 0.0:
+        return "zero_weight"
+    if max_promoted <= 0:
+        return "zero_max_promoted"
+    return "no_docs"
+
+
+class _KGBoostRow(TypedDict):
+    idx: int
+    doc: Document
+    meta: dict[str, Any]
+    base_score: float
+    kg_score: float
+    boosted_score: float
+    is_kg: bool
+
+
+def _kg_boost_row(doc: Document, *, index: int, weight: float) -> _KGBoostRow:
+    row_meta = dict(doc.metadata or {})
+    base_raw = row_meta.get("retrieval_score")
+    if base_raw is None:
+        base_raw = row_meta.get("score", 0.0)
+    base_score = _safe_float(base_raw, default=0.0, minimum=0.0)
+    role = metadata_text(row_meta, "retrieval_role")
+    role = role.lower() if role is not None else None
+    kg_raw = row_meta.get("kg_pagerank")
+    if kg_raw is None and role == "kg":
+        kg_raw = row_meta.get("score", 0.0)
+    kg_score = _safe_float(kg_raw, default=0.0, minimum=0.0)
+    is_kg = role == "kg" or kg_score > 0.0
+    boosted_score = base_score + (float(weight) * kg_score) if is_kg else base_score
+    return {
+        "idx": index,
+        "doc": doc,
+        "meta": row_meta,
+        "base_score": base_score,
+        "kg_score": kg_score,
+        "boosted_score": boosted_score,
+        "is_kg": is_kg,
+    }
+
+
+def _kg_boost_rows(docs: list[Document], *, weight: float) -> tuple[list[_KGBoostRow], list[_KGBoostRow]]:
+    rows: list[_KGBoostRow] = []
+    eligible_rows: list[_KGBoostRow] = []
+    for index, doc in enumerate(docs):
+        row = _kg_boost_row(doc, index=index, weight=weight)
+        rows.append(row)
+        if row["is_kg"] and row["kg_score"] > 0.0:
+            eligible_rows.append(row)
+    return rows, eligible_rows
+
+
+def _kg_boost_promoted_indexes(eligible_rows: list[_KGBoostRow], *, max_promoted: int) -> set[int]:
+    eligible_rows.sort(
+        key=lambda row: (
+            -(row["boosted_score"] - row["base_score"]),
+            -row["kg_score"],
+            row["idx"],
+        )
+    )
+    return {row["idx"] for row in eligible_rows[:max_promoted]}
+
+
+def _kg_boost_ranked_rows(rows: list[_KGBoostRow], *, promoted_indexes: set[int]) -> list[_KGBoostRow]:
+    return sorted(
+        rows,
+        key=lambda row: (
+            -(row["boosted_score"] if row["idx"] in promoted_indexes else row["base_score"]),
+            row["idx"],
+        ),
+    )
+
+
+def _kg_boost_document(row: _KGBoostRow, *, promoted_indexes: set[int]) -> tuple[Document, int]:
+    doc = row["doc"]
+    doc_meta = dict(row["meta"])
+    original_index = row["idx"]
+    if original_index in promoted_indexes:
+        doc_meta["kg_boost_applied"] = True
+        doc_meta["kg_boost_score"] = round(row["boosted_score"], 6)
+    out_doc = Document(
+        page_content=doc.page_content,
+        metadata=doc_meta,
+        id=doc.id or doc_meta.get("chunk_id"),
+    )
+    return out_doc, original_index
+
+
+def _kg_boost_output(ranked_rows: list[_KGBoostRow], *, promoted_indexes: set[int]) -> tuple[list[Document], int]:
+    out: list[Document] = []
+    promoted = 0
+    for new_index, row in enumerate(ranked_rows):
+        doc, original_index = _kg_boost_document(row, promoted_indexes=promoted_indexes)
+        if original_index in promoted_indexes and new_index < original_index:
+            promoted += 1
+        out.append(doc)
+    return out, promoted
+
+
+def _apply_kg_chunk_boost(
+    docs: list[Document],
+    *,
+    enabled: bool,
+    weight: float,
+    max_promoted: int,
+) -> tuple[list[Document], dict[str, Any]]:
+    meta = _kg_chunk_boost_meta(enabled=enabled, weight=weight, max_promoted=max_promoted)
+    disabled_reason = _kg_chunk_boost_disabled_reason(
+        enabled=enabled,
+        docs=docs,
+        weight=weight,
+        max_promoted=max_promoted,
+    )
+    if disabled_reason is not None:
+        meta["reason"] = disabled_reason
+        return docs, meta
+
+    rows, eligible_rows = _kg_boost_rows(docs, weight=weight)
+    if not rows or not eligible_rows:
+        meta["reason"] = "no_kg_candidates"
+        return docs, meta
+
+    promoted_indexes = _kg_boost_promoted_indexes(eligible_rows, max_promoted=max_promoted)
+    meta["eligible"] = len(eligible_rows)
+    out, promoted = _kg_boost_output(
+        _kg_boost_ranked_rows(rows, promoted_indexes=promoted_indexes),
+        promoted_indexes=promoted_indexes,
+    )
+
+    meta["promoted"] = promoted
+    meta["top_changed"] = bool(out and docs and document_key(out[0]) != document_key(docs[0]))
+    meta["reason"] = "applied"
+    return out, meta

@@ -9,8 +9,8 @@ from app.api.schemas.sources import (
     MySQLCatalogConnectorConfig,
     SQLServerCatalogConnectorConfig,
 )
-from app.core.async_bridge import run_blocking_in_thread
-from app.services.connector_egress_policy import validate_db_connector_config
+from app.infrastructure.runtime.async_bridge import run_blocking_in_thread
+from app.services.connectors.egress_policy import validate_db_connector_config
 
 _WRITE_PRIVILEGES = (
     "all privileges",
@@ -41,7 +41,7 @@ def _inspect_connection(
         cursor.fetchone()
     check: dict[str, Any] = {
         "ok": True,
-        "latency_ms": round((time.time() - started_at) * 1000.0, 1),
+        "latency_ms": round((time.perf_counter() - started_at) * 1000.0, 1),
         "read_only": None,
     }
     warnings: list[dict[str, Any]] = []
@@ -67,7 +67,7 @@ def _inspect_connection(
 def _check_mysql_connection(config: MySQLCatalogConnectorConfig) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     import pymysql
 
-    started_at = time.time()
+    started_at = time.perf_counter()
     with closing(
         pymysql.connect(
             host=config.host,
@@ -105,7 +105,7 @@ def _check_sqlserver_connection(config: SQLServerCatalogConnectorConfig) -> tupl
         "Encrypt=yes;"
         "TrustServerCertificate=yes;"
     )
-    started_at = time.time()
+    started_at = time.perf_counter()
     with closing(pyodbc.connect(connection_string, timeout=3)) as connection:
         # The connect timeout covers login; queries need their own driver timeout.
         connection.timeout = 3

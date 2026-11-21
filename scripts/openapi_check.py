@@ -8,8 +8,12 @@ REQUIRED_ARTIFACTS = (
 )
 
 
+def _repo_root() -> Path:
+    return Path(__file__).resolve().parents[1]
+
+
 def _run(cmd: list[str]) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(cmd, text=True, capture_output=True)
+    return subprocess.run(cmd, cwd=_repo_root(), text=True, capture_output=True)
 
 
 def _is_tracked(path: Path) -> bool:
@@ -25,7 +29,7 @@ def _is_non_empty_file(path: Path) -> bool:
 
 
 def _git_diff_clean(path: Path) -> bool:
-    result = subprocess.run(["git", "diff", "--quiet", "--exit-code", "--", str(path)])
+    result = _run(["git", "diff", "--quiet", "--exit-code", "--", str(path)])
     return result.returncode == 0
 
 
@@ -68,6 +72,13 @@ def _load_spec(repo_root: Path) -> dict[str, object] | None:
     except (OSError, UnicodeError, json.JSONDecodeError) as exc:
         print(f"[openapi-check] FAIL: could not parse web/openapi.json: {exc}")
         return None
+    if not isinstance(spec, dict):
+        print("[openapi-check] FAIL: web/openapi.json must contain an object")
+        return None
+    components = spec.get("components", {})
+    if not isinstance(components, dict) or not isinstance(components.get("schemas", {}), dict):
+        print("[openapi-check] FAIL: components and schemas must be objects")
+        return None
     return spec
 
 
@@ -102,7 +113,7 @@ def _report_empty_object_paths(paths: list[str]) -> None:
 
 
 def main() -> int:
-    repo_root = Path(__file__).resolve().parent.parent
+    repo_root = _repo_root()
     if not _required_artifacts_exist(repo_root):
         return 1
 

@@ -7,17 +7,17 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.api.schemas.base import OrmModel
-from app.core.config import settings
-from app.core.model_execution import reject_retired_provider, reject_retired_retrieval_profile
-from app.rag.core.retrieval_modes import normalize_retrieval_mode
-from app.rag.core.retrieval_profiles import apply_retrieval_profile_overrides
-from app.rag.retrieval.contract import (
-    VALID_RETRIEVAL_CONTRACT_MODES,
-    normalize_retrieval_contract_mode,
+from app.infrastructure.config import settings
+from app.infrastructure.model_policy import (
+    reject_retired_provider,
+    reject_retired_retrieval_options,
+    reject_retired_retrieval_profile,
 )
+from app.rag.retrieval.configuration.contract import VALID_RETRIEVAL_CONTRACT_MODES, normalize_retrieval_contract_mode
+from app.rag.retrieval.configuration.profiles import apply_retrieval_profile_overrides, normalize_retrieval_mode
 
 _HIERARCHY_FAMILY_AGGREGATION_VALUES = ("frequency", "score", "combined")
-_FUSION_CHANNELS = frozenset({"vector", "bm25", "lexical", "sparse"})
+_FUSION_CHANNELS = frozenset({"vector", "bm25", "lexical"})
 _RETRIEVAL_PROFILES_BY_MODE = {
     "basic": "hybrid_ce",
     "contextual": "long_context",
@@ -165,6 +165,13 @@ class HistoryMessage(BaseModel):
 class ChatRAGConfig(BaseModel):
     """RAG parameters specific to the chat endpoint."""
 
+    @model_validator(mode="before")
+    @classmethod
+    def _reject_retired_retrieval_options(cls, value: Any) -> Any:
+        if isinstance(value, dict):
+            reject_retired_retrieval_options(value)
+        return value
+
     model_config = ConfigDict(extra="ignore")
 
     # An explicit profile takes precedence over the product-facing mode.
@@ -239,8 +246,6 @@ class ChatRAGConfig(BaseModel):
     # Optional per-request cap for candidate overfetch. None keeps global retrieval defaults.
     retrieval_overfetch_multiplier: int | None = Field(default=None, ge=1, le=20)
     retrieval_overfetch_max_k: int | None = Field(default=None, ge=1, le=500)
-    sparse_retrieval_enabled: bool | None = None
-    sparse_retrieval_provider: Literal["deterministic"] | None = None
 
     # Channel weighting and reranking.
     enable_weight_rerank: bool = True
@@ -374,7 +379,7 @@ class ChatRAGConfig(BaseModel):
                 if not channel:
                     continue
                 if channel not in _FUSION_CHANNELS:
-                    raise ValueError("fusion_budgets keys must be in: vector, bm25, lexical, sparse")
+                    raise ValueError("fusion_budgets keys must be in: vector, bm25, lexical")
                 if budget < 0 or budget > 200:
                     raise ValueError("fusion_budgets values must be between 0 and 200")
                 cleaned_budgets[channel] = budget
@@ -389,7 +394,7 @@ class ChatRAGConfig(BaseModel):
                 if not channel:
                     continue
                 if channel not in _FUSION_CHANNELS:
-                    raise ValueError("fusion_min_scores keys must be in: vector, bm25, lexical, sparse")
+                    raise ValueError("fusion_min_scores keys must be in: vector, bm25, lexical")
                 if min_score < 0.0 or min_score > 1.0:
                     raise ValueError("fusion_min_scores values must be between 0.0 and 1.0")
                 cleaned_scores[channel] = min_score
@@ -409,7 +414,7 @@ class ChatRAGConfig(BaseModel):
             if not channel:
                 continue
             if channel not in _FUSION_CHANNELS:
-                raise ValueError("fusion_weights keys must be one of: vector, bm25, lexical, sparse")
+                raise ValueError("fusion_weights keys must be one of: vector, bm25, lexical")
             if weight < 0.0 or weight > 1.0:
                 raise ValueError("fusion_weights values must be in [0,1]")
             cleaned[channel] = weight
@@ -487,8 +492,6 @@ class ChatRAGConfig(BaseModel):
             self.hierarchy_parent_depth = applied["hierarchy_parent_depth"]
             self.hierarchy_sibling_window = applied["hierarchy_sibling_window"]
             self.hierarchy_overfetch_factor = applied["hierarchy_overfetch_factor"]
-        if "sparse_retrieval_enabled" in applied:
-            self.sparse_retrieval_enabled = applied["sparse_retrieval_enabled"]
         if default_profile_applied and settings.CHAT_DEFAULT_VISIBLE_EVIDENCE_ONLY:
             self.visible_evidence_only = True
         return self

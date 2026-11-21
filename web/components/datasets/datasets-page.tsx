@@ -3,30 +3,31 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
   type Dispatch,
   type ReactNode,
+  type Ref,
   type SetStateAction,
 } from 'react'
 import { Dataset as DatasetIcon } from '@/components/icons'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import {
   AlertCircle,
   BarChart3,
   Check,
-  CheckCircle,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
   Clock3,
+  Copy,
   Database,
   FileSearch,
   FlaskConical,
   FolderOpen,
-  FolderTree,
   Globe,
   Ingestion,
   Layers,
@@ -34,6 +35,7 @@ import {
   Lock,
   MoreHorizontal,
   Pencil,
+  Plus,
   RefreshCw,
   Search,
   Settings2,
@@ -59,6 +61,7 @@ import {
 } from '@/components/ui/alert-dialog'
 import {
   Dialog,
+  DialogClose,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -69,7 +72,9 @@ import {
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
@@ -84,15 +89,17 @@ import { Textarea } from '@/components/ui/textarea'
 import { datasetApi, datasetCategoryApi } from '@/lib/api'
 import type { DatasetListParams } from '@/lib/api/datasets'
 import { formatApiError } from '@/lib/api-errors'
+import { getAuthSessionKey } from '@/lib/auth-storage'
 import { reportClientError } from '@/lib/client-logging'
 import { queryKeys } from '@/lib/query-keys'
+import { flattenDatasetCategoryTree } from '@/lib/dataset-categories'
 import { cn, detachPromise } from '@/lib/utils'
 import type {
   Dataset,
-  DatasetCategoryNode,
   DatasetIngestionSummary,
   DatasetListResponse,
   DatasetOperationalStatus,
+  DatasetUpdate,
   PermissionEnum,
   DocumentPipelineOptions,
 } from '@/types'
@@ -101,12 +108,19 @@ import { GovernanceProfileSelector } from '@/components/governance-profile-selec
 import { usePipelineOptions } from '@/contexts/pipeline-options-context'
 import { DatasetCategoryTree } from '@/components/dataset-categories/category-tree'
 import { DatasetCategoryMultiSelect } from '@/components/dataset-categories/category-multi-select'
-import { CreateDatasetButton } from '@/components/datasets/create-dataset-button'
 import { GroupChipsInput } from '@/components/groups/group-chips-input'
 import styles from './datasets-page.module.css'
 
 const DATASET_SEARCH_DEBOUNCE_MS = 220
 const DATASET_SEARCH_MAX_LENGTH = 200
+
+type DatasetEditSection = 'basics' | 'access' | 'pipeline'
+
+const EDIT_SECTION_LABELS: Record<DatasetEditSection, string> = {
+  basics: '编辑基础信息',
+  access: '编辑访问权限',
+  pipeline: '编辑默认管线',
+}
 
 type DatasetFormState = {
   name: string
@@ -134,7 +148,7 @@ const PERMISSION_CONFIG: Record<PermissionEnum, { label: string; icon: PlatformI
 }
 
 function parseMembers(text: string): string[] {
-  return (text || '')
+  return text
     .split(/[\n,]/g)
     .map((s) => s.trim())
     .filter(Boolean)
@@ -160,8 +174,6 @@ function getDatasetOperationalStatus(
   stats?: DatasetIngestionSummary | null,
 ): DatasetOperationalStatus {
   if (dataset.operational_status) return dataset.operational_status
-  const name = dataset.name.toLowerCase()
-  if (name.includes('test') || name.includes('demo') || name.includes('测试')) return 'testing'
   if (getDatasetAnomalyCount(stats) > 0) return 'anomaly'
   if (getDatasetPendingCount(stats) > 0) return 'pending'
   return 'active'
@@ -181,9 +193,10 @@ function buildDatasetListParams(
   return {
     skip: Math.max(0, (input.currentPage - 1) * input.pageSize),
     limit: input.pageSize,
-    category_id: input.selectedCategoryId || undefined,
+    category_id:
+      input.selectedCategoryId === null || input.selectedCategoryId === '' ? undefined : input.selectedCategoryId,
     include_descendants: true,
-    q: searchQuery || undefined,
+    q: searchQuery === '' ? undefined : searchQuery,
     operational_status: input.collectionFilter,
     order_by: input.sortBy === 'name_asc' ? 'name' : 'created_at',
     order_dir: input.sortBy === 'name_asc' ? 'asc' : 'desc',
@@ -202,25 +215,31 @@ function formatRelativeTime(value?: string | null): string {
   return `${diffDays} 天前`
 }
 
-function getDatasetStatusBadgeConfig(status: DatasetOperationalStatus) {
+function getDatasetStatusBadgeConfig(dataset: Dataset) {
+  const stats = dataset.ingestion_summary
+  const status = getDatasetOperationalStatus(dataset, stats)
   switch (status) {
-    case 'active':
-      return { label: '正常', icon: CheckCircle }
     case 'anomaly':
-      return { label: '异常', icon: AlertCircle }
+      return { label: '异常', icon: AlertCircle, state: 'anomaly' }
     case 'pending':
-      return { label: '待处理', icon: Clock3 }
-    case 'testing':
-      return { label: '测试集', icon: FlaskConical }
+      return { label: '待处理', icon: Clock3, state: 'pending' }
   }
+  if (!stats) return { label: '未检查', icon: AlertCircle, state: 'unknown' }
+  if (stats.total_documents === 0) return { label: '空数据集', icon: DatasetIcon, state: 'empty' }
+  if (stats.total_chunks === 0) return { label: '待切块', icon: Layers, state: 'pending' }
+  if (status === 'testing') return { label: '测试集', icon: FlaskConical, state: 'testing' }
+  return { label: '已有切块', icon: Layers, state: 'unverified' }
 }
 
 function DatasetStatus({ dataset }: Readonly<{ dataset: Dataset }>) {
-  const status = getDatasetOperationalStatus(dataset, dataset.ingestion_summary)
-  const { label, icon: Icon } = getDatasetStatusBadgeConfig(status)
-  const count = status === 'anomaly' ? getDatasetAnomalyCount(dataset.ingestion_summary) : 0
+  const { label, icon: Icon, state } = getDatasetStatusBadgeConfig(dataset)
+  const count = state === 'anomaly' ? getDatasetAnomalyCount(dataset.ingestion_summary) : 0
   return (
-    <span className={styles.status} data-state={status}>
+    <span
+      className={styles.status}
+      data-state={state}
+      title={state === 'unverified' ? '已有切块，向量索引是否可用尚未检查' : undefined}
+    >
       <Icon className="size-3.5" />
       {label}
       {count > 0 ? <span className={styles.anomalyCount}>{count}</span> : null}
@@ -232,8 +251,7 @@ export function DatasetsPage() {
   const router = useRouter()
   const queryClient = useQueryClient()
   const { options: defaultPipelineOptions } = usePipelineOptions()
-  const [pipelineTogglePendingId, setPipelineTogglePendingId] = useState<string | null>(null)
-  const [permissionUpdatePendingId, setPermissionUpdatePendingId] = useState<string | null>(null)
+  const [copiedDatasetId, setCopiedDatasetId] = useState<string | null>(null)
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('')
@@ -243,6 +261,7 @@ export function DatasetsPage() {
   const [inspectorOpen, setInspectorOpen] = useState(false)
   const rowButtons = useRef(new Map<string, HTMLButtonElement>())
   const returnDatasetId = useRef<string | null>(null)
+  const inspectorInteractedOutside = useRef(false)
   const [pageSize, setPageSize] = useState(20)
   const [currentPage, setCurrentPage] = useState(1)
   const [deleteTarget, setDeleteTarget] = useState<Dataset | null>(null)
@@ -253,6 +272,16 @@ export function DatasetsPage() {
   const [createOpen, setCreateOpen] = useState(false)
   const [editOpen, setEditOpen] = useState(false)
   const [editing, setEditing] = useState<Dataset | null>(null)
+  const [savingDataset, setSavingDataset] = useState(false)
+  const datasetSaveRef = useRef<symbol | null>(null)
+  useLayoutEffect(
+    () => () => {
+      datasetSaveRef.current = null
+    },
+    [],
+  )
+  const [editSection, setEditSection] = useState<DatasetEditSection>('basics')
+  const editNameInput = useRef<HTMLInputElement>(null)
 
   const [form, setForm] = useState<DatasetFormState>({
     name: '',
@@ -305,13 +334,12 @@ export function DatasetsPage() {
 
   const datasetsQuery = useQuery({
     queryKey: datasetsQueryKey,
-    queryFn: () => datasetApi.list(datasetListParams),
+    queryFn: ({ signal }) => datasetApi.list(datasetListParams, { signal }),
   })
 
   const response = datasetsQuery.data
   const items = useMemo(() => response?.items ?? [], [response?.items])
   const scopeTotal = response?.facets?.scope_total ?? 0
-  const filteredTotal = response?.facets?.filtered_total ?? 0
   const displayedTotal = response?.total ?? 0
   const statusCounts = useMemo(
     () => ({
@@ -369,16 +397,19 @@ export function DatasetsPage() {
   }, [items, selectedDatasetId])
 
   const canSubmit = useMemo(() => form.name.trim().length > 0, [form.name])
+  const canUpdate =
+    !!editing &&
+    canSubmit &&
+    (editSection !== 'basics' ||
+      form.name.trim() !== editing.name.trim() ||
+      form.description.trim() !== (editing.description ?? '').trim())
   const selectedDataset = useMemo(
     () => items.find((item) => item.id === selectedDatasetId) ?? items[0] ?? null,
     [items, selectedDatasetId],
   )
   const selectedDatasetStats = selectedDataset?.ingestion_summary ?? undefined
   const deleteTargetStats = deleteTarget?.ingestion_summary ?? undefined
-  const deleteTargetDocumentCount = Math.max(
-    0,
-    Number(deleteDocumentCountHint ?? deleteTargetStats?.total_documents ?? 0),
-  )
+  const deleteTargetDocumentCount = Math.max(0, deleteDocumentCountHint ?? deleteTargetStats?.total_documents ?? 0)
   const deleteRequiresDocumentPurge = deleteTargetDocumentCount > 0
   const hasActiveFilters = Boolean(searchQuery.trim() || selectedCategoryId || collectionFilter !== 'all')
 
@@ -401,6 +432,13 @@ export function DatasetsPage() {
     [updateDatasetListCache],
   )
 
+  const configurationMutation = useMutation({
+    mutationFn: ({ datasetId, updates }: { datasetId: string; updates: DatasetUpdate }) =>
+      datasetApi.update(datasetId, updates),
+    onSuccess: replaceDataset,
+    onError: (error) => toast.error(formatApiError(error, '数据集配置保存失败')),
+  })
+
   const buildPayload = (mode: 'create' | 'update') => {
     const payload: DatasetSavePayload = {
       name: form.name.trim(),
@@ -411,7 +449,7 @@ export function DatasetsPage() {
     }
     if (form.permission === 'partial_members') {
       payload.partial_member_list = parseMembers(form.partialMembersText)
-      payload.partial_group_list = (form.partialGroupIds || []).map(String)
+      payload.partial_group_list = form.partialGroupIds
     } else {
       payload.partial_member_list = null
       payload.partial_group_list = null
@@ -424,31 +462,53 @@ export function DatasetsPage() {
     return payload
   }
 
-  const handleCreate = async () => {
-    if (!canSubmit) return
+  async function submitDataset(mode: 'create' | 'update', submit: () => Promise<unknown>) {
+    if (datasetSaveRef.current !== null) return
+    const request = Symbol()
+    const sessionKey = getAuthSessionKey()
+    const ownsSave = () => datasetSaveRef.current === request && getAuthSessionKey() === sessionKey
+    datasetSaveRef.current = request
+    setSavingDataset(true)
     try {
-      await datasetApi.create(buildPayload('create'))
-      toast.success('已创建数据集')
-      setCreateOpen(false)
+      await submit()
+      if (!ownsSave()) return
+      if (mode === 'create') {
+        setCreateOpen(false)
+        toast.success('已创建数据集')
+      } else {
+        setEditOpen(false)
+        setEditing(null)
+        toast.success('已更新数据集')
+      }
       resetForm()
-      await refreshDatasets()
-    } catch (e: unknown) {
-      toast.error(formatApiError(e, '创建失败'))
+      detachPromise(refreshDatasets())
+    } catch (error) {
+      if (ownsSave()) toast.error(formatApiError(error, mode === 'create' ? '创建失败' : '更新失败'))
+    } finally {
+      if (datasetSaveRef.current === request) {
+        datasetSaveRef.current = null
+        setSavingDataset(false)
+      }
     }
   }
 
+  function handleCreate() {
+    if (canSubmit) detachPromise(submitDataset('create', () => datasetApi.create(buildPayload('create'))))
+  }
+
   const openEdit = useCallback(
-    (ds: Dataset, permissionOverride?: PermissionEnum) => {
-      returnDatasetId.current = ds.id
-      setEditing(ds)
-      const mergedPipeline = mergePipelineOptions(defaultPipelineOptions, ds.pipeline)
+    (dataset: Dataset, section: DatasetEditSection = 'basics', permissionOverride?: PermissionEnum) => {
+      returnDatasetId.current = dataset.id
+      setEditSection(section)
+      setEditing(dataset)
+      const mergedPipeline = mergePipelineOptions(defaultPipelineOptions, dataset.pipeline)
       setForm({
-        name: ds.name || '',
-        description: ds.description || '',
-        permission: permissionOverride ?? ds.permission ?? 'all_team_members',
-        partialMembersText: (ds.partial_member_list || []).join('\n'),
-        partialGroupIds: (ds.partial_group_list || []).map(String),
-        pipelineEnabled: !!ds.pipeline,
+        name: dataset.name,
+        description: dataset.description ?? '',
+        permission: permissionOverride ?? dataset.permission,
+        partialMembersText: dataset.partial_member_list?.join('\n') ?? '',
+        partialGroupIds: dataset.partial_group_list ?? [],
+        pipelineEnabled: !!dataset.pipeline,
         pipelineOptions: mergedPipeline,
       })
       setEditOpen(true)
@@ -456,18 +516,16 @@ export function DatasetsPage() {
     [defaultPipelineOptions],
   )
 
-  const handleUpdate = async () => {
-    if (!editing?.id || !canSubmit) return
-    try {
-      await datasetApi.update(editing.id, buildPayload('update'))
-      toast.success('已更新数据集')
-      setEditOpen(false)
-      setEditing(null)
-      resetForm()
-      await refreshDatasets()
-    } catch (e: unknown) {
-      toast.error(formatApiError(e, '更新失败'))
-    }
+  function handleUpdate() {
+    if (editing === null || !canUpdate) return
+    const { name, permission, partial_member_list, partial_group_list, pipeline } = buildPayload('update')
+    const updates =
+      editSection === 'basics'
+        ? { name, description: form.description.trim() }
+        : editSection === 'access'
+          ? { permission, partial_member_list, partial_group_list }
+          : { pipeline }
+    detachPromise(submitDataset('update', () => datasetApi.update(editing.id, updates)))
   }
 
   const handleDelete = async () => {
@@ -482,8 +540,7 @@ export function DatasetsPage() {
           dry_run: false,
           max_delete: Math.min(Math.max(deleteTargetDocumentCount, 1), 10000),
         })
-        const blocked =
-          Number(purgeResult?.denied || 0) + Number(purgeResult?.conflicts || 0) + Number(purgeResult?.errors || 0)
+        const blocked = purgeResult.denied + purgeResult.conflicts + purgeResult.errors
         if (blocked > 0) {
           throw new Error(`清空文档未完成：${blocked} 个文档需要人工处理`)
         }
@@ -511,51 +568,39 @@ export function DatasetsPage() {
     }
   }
 
-  const handleToggleDefaultPipeline = useCallback(
-    async (dataset: Dataset, nextEnabled: boolean) => {
-      setPipelineTogglePendingId(dataset.id)
-      try {
-        const updated = await datasetApi.update(dataset.id, {
-          pipeline: nextEnabled ? mergePipelineOptions(defaultPipelineOptions, dataset.pipeline) : {},
-        })
-        replaceDataset(updated)
-        toast.success(nextEnabled ? '已启用默认管线' : '已关闭默认管线')
-      } catch (e: unknown) {
-        toast.error(formatApiError(e, nextEnabled ? '启用默认管线失败' : '关闭默认管线失败'))
-      } finally {
-        setPipelineTogglePendingId((current) => (current === dataset.id ? null : current))
-      }
-    },
-    [defaultPipelineOptions, replaceDataset],
-  )
+  const handleToggleDefaultPipeline = (dataset: Dataset, nextEnabled: boolean) => {
+    configurationMutation.mutate({
+      datasetId: dataset.id,
+      updates: {
+        pipeline: nextEnabled ? mergePipelineOptions(defaultPipelineOptions, dataset.pipeline) : {},
+      },
+    })
+  }
 
-  const handleInspectorPermissionChange = useCallback(
-    async (dataset: Dataset, nextPermission: PermissionEnum) => {
-      if (nextPermission === dataset.permission) return
-      if (nextPermission === 'partial_members') {
-        setInspectorOpen(false)
-        openEdit(dataset, 'partial_members')
-        return
-      }
+  const handleInspectorPermissionChange = (dataset: Dataset, nextPermission: PermissionEnum) => {
+    if (nextPermission === dataset.permission) return
+    if (nextPermission === 'partial_members') {
+      setInspectorOpen(false)
+      openEdit(dataset, 'access', 'partial_members')
+      return
+    }
+    configurationMutation.mutate({ datasetId: dataset.id, updates: { permission: nextPermission } })
+  }
 
-      setPermissionUpdatePendingId(dataset.id)
-      try {
-        const updated = await datasetApi.update(dataset.id, { permission: nextPermission })
-        replaceDataset(updated)
-        toast.success(nextPermission === 'only_me' ? '已切换为仅自己' : '已切换为全员可见')
-      } catch (e: unknown) {
-        toast.error(formatApiError(e, '更新访问权限失败'))
-      } finally {
-        setPermissionUpdatePendingId((current) => (current === dataset.id ? null : current))
-      }
-    },
-    [openEdit, replaceDataset],
-  )
+  const configurationIsCurrent = configurationMutation.variables?.datasetId === selectedDataset?.id
 
-  const pipelineTogglePending = selectedDataset ? pipelineTogglePendingId === selectedDataset.id : false
-  const permissionUpdatePending = selectedDataset ? permissionUpdatePendingId === selectedDataset.id : false
+  const copyDatasetId = async (dataset: Dataset) => {
+    try {
+      await navigator.clipboard.writeText(dataset.id)
+      setCopiedDatasetId(dataset.id)
+    } catch {
+      toast.error('复制失败，请手动复制数据集 ID')
+    }
+  }
 
   const openDetails = (dataset: Dataset) => {
+    inspectorInteractedOutside.current = false
+    setCopiedDatasetId(null)
     returnDatasetId.current = dataset.id
     setSelectedDatasetId(dataset.id)
     setInspectorOpen(true)
@@ -563,10 +608,14 @@ export function DatasetsPage() {
 
   const restoreRowFocus = (event: Event) => {
     event.preventDefault()
-    if (editOpen || deleteTarget) return
-    const target =
-      rowButtons.current.get(returnDatasetId.current || '') || rowButtons.current.get(selectedDataset?.id || '')
-    target?.focus()
+    if (editOpen || deleteTarget !== null) return
+    const datasetId = returnDatasetId.current
+    const opener = datasetId === null ? undefined : rowButtons.current.get(datasetId)
+    if (opener !== undefined) {
+      opener.focus()
+      return
+    }
+    if (selectedDataset !== null) rowButtons.current.get(selectedDataset.id)?.focus()
   }
 
   const clearFilters = () => {
@@ -588,34 +637,45 @@ export function DatasetsPage() {
       <section className={styles.shell} data-datasets-shell="true">
         <header data-testid="datasets-page-toolbar" className={styles.pageHeader}>
           <div className={styles.pageHeading}>
-            <DatasetIcon appearance="color" className="size-6" data-dataset-title-mark="true" />
+            <span className={styles.titleMark}>
+              <DatasetIcon className="size-5" data-dataset-title-mark="true" />
+            </span>
             <h1>数据集</h1>
           </div>
           <Dialog
             open={createOpen}
             onOpenChange={(open) => {
+              if (datasetSaveRef.current !== null) return
               setCreateOpen(open)
               if (open) resetForm()
             }}
           >
             <DialogTrigger asChild>
-              <CreateDatasetButton className={styles.createButton} />
+              <Button className={styles.createButton}>
+                <Plus className="size-4" aria-hidden="true" />
+                <span>新建数据集</span>
+              </Button>
             </DialogTrigger>
-            <DialogContent className="max-w-xl p-0 sm:rounded-xl">
+            <DialogContent className="max-w-xl p-0 sm:rounded-xl" showCloseButton={!savingDataset}>
               <div className="flex max-h-[min(88dvh,860px)] flex-col">
                 <DialogHeader className="border-b border-border/60 px-6 pt-6 pb-4">
                   <DialogTitle>新建数据集</DialogTitle>
                   <DialogDescription>为文档分组并设置访问权限</DialogDescription>
                 </DialogHeader>
-                <div className="min-h-0 flex-1 overflow-y-auto custom-scrollbar px-6 py-5">
+                <fieldset
+                  disabled={savingDataset}
+                  className="min-h-0 min-w-0 flex-1 overflow-y-auto custom-scrollbar px-6 py-5"
+                >
                   <DatasetForm form={form} setForm={setForm} />
-                </div>
+                </fieldset>
                 <DialogFooter className="border-t border-border/60 px-6 py-4">
-                  <Button variant="ghost" onClick={() => setCreateOpen(false)}>
-                    取消
-                  </Button>
-                  <Button onClick={handleCreate} disabled={!canSubmit}>
-                    确认创建
+                  <DialogClose asChild>
+                    <Button variant="ghost" disabled={savingDataset}>
+                      取消
+                    </Button>
+                  </DialogClose>
+                  <Button onClick={handleCreate} disabled={!canSubmit || savingDataset}>
+                    {savingDataset ? '正在创建…' : '确认创建'}
                   </Button>
                 </DialogFooter>
               </div>
@@ -629,7 +689,7 @@ export function DatasetsPage() {
             {(
               [
                 { value: 'all', label: '全部', count: scopeTotal },
-                { value: 'active', label: '正常', count: statusCounts.active },
+                { value: 'active', label: '常规', count: statusCounts.active },
                 { value: 'anomaly', label: '异常', count: statusCounts.anomaly },
                 { value: 'pending', label: '待处理', count: statusCounts.pending },
                 { value: 'testing', label: '测试集', count: statusCounts.testing },
@@ -648,6 +708,11 @@ export function DatasetsPage() {
                 <span className={styles.filterCount}>{isLoading ? '—' : filter.count.toLocaleString()}</span>
               </Button>
             ))}
+            {hasActiveFilters ? (
+              <Button variant="ghost" size="sm" className={styles.resetFilters} onClick={clearFilters}>
+                重置筛选
+              </Button>
+            ) : null}
           </div>
           <div className={styles.toolsEnd}>
             <div className={styles.search}>
@@ -685,15 +750,6 @@ export function DatasetsPage() {
             </Button>
           </div>
         </div>
-
-        {hasActiveFilters ? (
-          <div className={styles.filterSummary} role="status">
-            <span>{isLoading ? '正在筛选…' : `找到 ${displayedTotal.toLocaleString()} 个数据集`}</span>
-            <Button variant="ghost" size="sm" onClick={clearFilters}>
-              清除筛选
-            </Button>
-          </div>
-        ) : null}
 
         <div className={styles.workspace} data-testid="datasets-workspace">
           <div
@@ -752,7 +808,6 @@ export function DatasetsPage() {
                         icon={AlertCircle}
                         iconClassName="text-destructive"
                         title="数据集加载失败"
-                        description="请稍后重试。"
                         className={styles.empty}
                       >
                         <Button
@@ -773,15 +828,12 @@ export function DatasetsPage() {
                       <EmptyState
                         icon={DatasetIcon}
                         title={hasActiveFilters ? '未找到匹配的数据集' : '暂无数据集'}
-                        description={hasActiveFilters ? '试试其他关键词，或清除筛选。' : '新建数据集，开始整理文档。'}
+                        description={hasActiveFilters ? '换个关键词或清除筛选。' : undefined}
                         className={styles.empty}
                       >
-                        {hasActiveFilters ? (
-                          <Button variant="outline" onClick={clearFilters}>
-                            清除筛选
-                          </Button>
-                        ) : (
+                        {!hasActiveFilters ? (
                           <Button
+                            className={styles.createButton}
                             onClick={() => {
                               resetForm()
                               setCreateOpen(true)
@@ -789,7 +841,7 @@ export function DatasetsPage() {
                           >
                             新建数据集
                           </Button>
-                        )}
+                        ) : null}
                       </EmptyState>
                     </td>
                   </tr>
@@ -798,13 +850,16 @@ export function DatasetsPage() {
                     const stats = dataset.ingestion_summary
                     const permission = PERMISSION_CONFIG[dataset.permission] || PERMISSION_CONFIG.all_team_members
                     const PermissionIcon = permission.icon
-                    const isActive = selectedDataset?.id === dataset.id
+                    const isActive = inspectorOpen && selectedDataset?.id === dataset.id
                     return (
                       <tr
                         key={dataset.id}
                         data-dataset-row={dataset.id}
                         data-selected={isActive}
-                        onClick={() => setSelectedDatasetId(dataset.id)}
+                        onClick={() => {
+                          setSelectedDatasetId(dataset.id)
+                          if (inspectorOpen) returnDatasetId.current = dataset.id
+                        }}
                       >
                         <td>
                           <div className={styles.dataset}>
@@ -824,7 +879,6 @@ export function DatasetsPage() {
                                 onClick={() => openDetails(dataset)}
                               >
                                 <span>{dataset.name}</span>
-                                {isActive ? <Check className={styles.selectedCheck} /> : null}
                               </button>
                               {dataset.description ? (
                                 <p className={styles.description} title={dataset.description}>
@@ -832,7 +886,7 @@ export function DatasetsPage() {
                                 </p>
                               ) : null}
                               <span className={styles.mobileMeta}>
-                                {Number(stats?.total_documents || 0).toLocaleString()} 篇文档
+                                {stats ? `${stats.total_documents.toLocaleString()} 篇文档` : '文档量未统计'}
                               </span>
                             </div>
                           </div>
@@ -841,10 +895,10 @@ export function DatasetsPage() {
                           <DatasetStatus dataset={dataset} />
                         </td>
                         <td className={cn(styles.numeric, styles.desktopColumn)}>
-                          {Number(stats?.total_documents || 0).toLocaleString()}
+                          {stats?.total_documents.toLocaleString() ?? '—'}
                         </td>
                         <td className={cn(styles.numeric, styles.chunks, styles.desktopColumn)}>
-                          {Number(stats?.total_chunks || 0).toLocaleString()}
+                          {stats?.total_chunks.toLocaleString() ?? '—'}
                         </td>
                         <td className={styles.desktopColumn}>
                           <span className={styles.permission}>
@@ -893,58 +947,70 @@ export function DatasetsPage() {
                                   <MoreHorizontal className="size-4" />
                                 </Button>
                               </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end" className={styles.menu}>
-                                <DropdownMenuItem onSelect={() => openDetails(dataset)}>
-                                  <DatasetIcon className="size-4" />
-                                  数据集详情
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onSelect={() => openEdit(dataset)}>
-                                  <Pencil className="size-4" />
-                                  编辑设置
-                                </DropdownMenuItem>
+                              <DropdownMenuContent
+                                align="end"
+                                collisionPadding={8}
+                                className={styles.menu}
+                                onCloseAutoFocus={(event) => {
+                                  if (editOpen || inspectorOpen || deleteTarget) event.preventDefault()
+                                }}
+                              >
+                                <DropdownMenuGroup aria-label="基础信息">
+                                  <DropdownMenuLabel className={styles.menuLabel}>基础信息</DropdownMenuLabel>
+                                  <DropdownMenuItem onSelect={() => openDetails(dataset)}>
+                                    <DatasetIcon className="size-4" />
+                                    数据集详情
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem onSelect={() => openEdit(dataset)}>
+                                    <Pencil className="size-4" />
+                                    编辑基础信息
+                                  </DropdownMenuItem>
+                                </DropdownMenuGroup>
                                 <DropdownMenuSeparator />
-                                <DropdownMenuItem
-                                  className={styles.mobileMenuAction}
-                                  onSelect={() => router.push(`/datasets/${dataset.id}/ingestion`)}
-                                >
-                                  <Ingestion className="size-4" />
-                                  入库管理
-                                </DropdownMenuItem>
-                                <DropdownMenuItem
-                                  className={styles.mobileMenuAction}
-                                  onSelect={() => router.push(`/knowledge?tab=retrieval&dataset=${dataset.id}`)}
-                                >
-                                  <FileSearch className="size-4" />
-                                  检索测试
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onSelect={() => router.push(`/datasets/${dataset.id}/precheck`)}>
-                                  <FileSearch className="size-4" />
-                                  文档预检
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onSelect={() => router.push(`/datasets/${dataset.id}/profile`)}>
-                                  <BarChart3 className="size-4" />
-                                  数据画像
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onSelect={() => router.push(`/datasets/${dataset.id}/workflow`)}>
-                                  <Layers className="size-4" />
-                                  流程编排
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onSelect={() => router.push(`/datasets/${dataset.id}/tables`)}>
-                                  <Table2 className="size-4" />
-                                  表格资产
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onSelect={() => router.push(`/datasets/${dataset.id}/db-catalog`)}>
-                                  <Database className="size-4" />
-                                  数据库目录
-                                </DropdownMenuItem>
+                                <DropdownMenuGroup aria-label="数据集工具">
+                                  <DropdownMenuLabel className={styles.menuLabel}>数据集工具</DropdownMenuLabel>
+                                  <DropdownMenuItem
+                                    className={styles.mobileMenuAction}
+                                    onSelect={() => router.push(`/datasets/${dataset.id}/ingestion`)}
+                                  >
+                                    <Ingestion className="size-4" />
+                                    入库管理
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem
+                                    className={styles.mobileMenuAction}
+                                    onSelect={() => router.push(`/knowledge?tab=retrieval&dataset=${dataset.id}`)}
+                                  >
+                                    <FlaskConical className="size-4" />
+                                    检索测试
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem onSelect={() => router.push(`/datasets/${dataset.id}/precheck`)}>
+                                    <FileSearch className="size-4" />
+                                    文档预检
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem onSelect={() => router.push(`/datasets/${dataset.id}/profile`)}>
+                                    <BarChart3 className="size-4" />
+                                    数据画像
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem onSelect={() => router.push(`/datasets/${dataset.id}/tables`)}>
+                                    <Table2 className="size-4" />
+                                    表格资产
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem onSelect={() => router.push(`/datasets/${dataset.id}/db-catalog`)}>
+                                    <Database className="size-4" />
+                                    数据库目录
+                                  </DropdownMenuItem>
+                                </DropdownMenuGroup>
                                 <DropdownMenuSeparator />
-                                <DropdownMenuItem
-                                  className="text-destructive focus:bg-destructive/10 focus:text-destructive"
-                                  onSelect={() => requestDelete(dataset)}
-                                >
-                                  <Trash2 className="size-4" />
-                                  删除数据集
-                                </DropdownMenuItem>
+                                <DropdownMenuGroup aria-label="危险操作">
+                                  <DropdownMenuLabel className={styles.menuLabel}>危险操作</DropdownMenuLabel>
+                                  <DropdownMenuItem
+                                    className="text-destructive focus:bg-destructive/10 focus:text-destructive"
+                                    onSelect={() => requestDelete(dataset)}
+                                  >
+                                    <Trash2 className="size-4" />
+                                    删除数据集
+                                  </DropdownMenuItem>
+                                </DropdownMenuGroup>
                               </DropdownMenuContent>
                             </DropdownMenu>
                           </div>
@@ -970,58 +1036,75 @@ export function DatasetsPage() {
               </>
             )}
           </span>
-          <div className={styles.pagination}>
-            <Select
-              value={String(pageSize)}
-              onValueChange={(value) => {
-                setPageSize(Number(value))
-                setCurrentPage(1)
-              }}
-            >
-              <SelectTrigger className={styles.pageSize} aria-label="每页数据集数量">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="10">10 条 / 页</SelectItem>
-                <SelectItem value="20">20 条 / 页</SelectItem>
-                <SelectItem value="50">50 条 / 页</SelectItem>
-              </SelectContent>
-            </Select>
-            <div className={styles.pageControls}>
-              <Button
-                variant="ghost"
-                size="icon"
-                aria-label="上一页"
-                className={styles.pageArrow}
-                disabled={isLoading || currentPage <= 1}
-                onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
+          {displayedTotal > 0 && !datasetsQuery.isError ? (
+            <div className={styles.pagination}>
+              <Select
+                value={String(pageSize)}
+                onValueChange={(value) => {
+                  setPageSize(Number(value))
+                  setCurrentPage(1)
+                }}
               >
-                <ChevronLeft className="size-4" />
-              </Button>
-              <span
-                className={styles.pageNumber}
-                aria-label={`第 ${totalPages === 0 ? 0 : currentPage} 页，共 ${totalPages} 页`}
-              >
-                {totalPages === 0 ? '0' : currentPage}
-              </span>
-              <span className={styles.pageOf}>/ {totalPages}</span>
-              <Button
-                variant="ghost"
-                size="icon"
-                aria-label="下一页"
-                className={styles.pageArrow}
-                disabled={isLoading || totalPages === 0 || currentPage >= totalPages}
-                onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
-              >
-                <ChevronRight className="size-4" />
-              </Button>
+                <SelectTrigger className={styles.pageSize} aria-label="每页数据集数量">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="10">10 条 / 页</SelectItem>
+                  <SelectItem value="20">20 条 / 页</SelectItem>
+                  <SelectItem value="50">50 条 / 页</SelectItem>
+                </SelectContent>
+              </Select>
+              <div className={styles.pageControls}>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label="上一页"
+                  className={styles.pageArrow}
+                  disabled={isLoading || currentPage <= 1}
+                  onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
+                >
+                  <ChevronLeft className="size-4" />
+                </Button>
+                <span className={styles.pageNumber} aria-label={`第 ${currentPage} 页，共 ${totalPages} 页`}>
+                  {currentPage}
+                </span>
+                <span className={styles.pageOf}>/ {totalPages}</span>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label="下一页"
+                  className={styles.pageArrow}
+                  disabled={isLoading || totalPages === 0 || currentPage >= totalPages}
+                  onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
+                >
+                  <ChevronRight className="size-4" />
+                </Button>
+              </div>
             </div>
-          </div>
+          ) : null}
         </footer>
       </section>
 
-      <Sheet open={inspectorOpen && Boolean(selectedDataset)} onOpenChange={setInspectorOpen}>
-        <SheetContent className={styles.detailSheet} onCloseAutoFocus={restoreRowFocus}>
+      <Sheet modal={false} open={inspectorOpen && Boolean(selectedDataset)} onOpenChange={setInspectorOpen}>
+        <SheetContent
+          className={styles.detailSheet}
+          onInteractOutside={(event) => {
+            const target = event.detail.originalEvent.target
+            if (target instanceof Element && target.closest('[data-dataset-row]')) {
+              event.preventDefault()
+            } else {
+              inspectorInteractedOutside.current = true
+            }
+          }}
+          onCloseAutoFocus={(event) => {
+            if (inspectorInteractedOutside.current) {
+              event.preventDefault()
+              inspectorInteractedOutside.current = false
+            } else {
+              restoreRowFocus(event)
+            }
+          }}
+        >
           {selectedDataset ? (
             <>
               <SheetHeader className={styles.detailHeader}>
@@ -1037,57 +1120,120 @@ export function DatasetsPage() {
                 {selectedDataset.description ? (
                   <p className={styles.detailDescription}>{selectedDataset.description}</p>
                 ) : null}
-                <dl className={styles.detailFields}>
-                  <DatasetDetailRow label="数据集 ID">
-                    <span className={styles.datasetId}>{selectedDataset.id}</span>
-                  </DatasetDetailRow>
-                  <DatasetDetailRow label="文档量">
-                    {Number(selectedDatasetStats?.total_documents || 0).toLocaleString()}
-                  </DatasetDetailRow>
-                  <DatasetDetailRow label="切块量">
-                    {Number(selectedDatasetStats?.total_chunks || 0).toLocaleString()}
-                  </DatasetDetailRow>
-                  <DatasetDetailRow label="最近处理">
-                    {formatRelativeTime(selectedDatasetStats?.last_processed_at)}
-                  </DatasetDetailRow>
-                  <DatasetDetailRow label="访问权限">
-                    <Select
-                      value={selectedDataset.permission}
-                      disabled={permissionUpdatePending}
-                      onValueChange={(value) =>
-                        detachPromise(handleInspectorPermissionChange(selectedDataset, value as PermissionEnum))
-                      }
-                    >
-                      <SelectTrigger aria-label="访问权限" className={styles.detailSelect}>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="only_me">仅自己</SelectItem>
-                        <SelectItem value="all_team_members">全员可见</SelectItem>
-                        <SelectItem value="partial_members">部分成员</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </DatasetDetailRow>
-                  <DatasetDetailRow label="默认管线">
-                    <div className={styles.pipelineControl}>
-                      <span>{selectedDataset.pipeline ? '已启用' : '未启用'}</span>
-                      <Switch
-                        checked={Boolean(selectedDataset.pipeline)}
-                        disabled={pipelineTogglePending}
-                        onCheckedChange={(nextChecked) =>
-                          detachPromise(handleToggleDefaultPipeline(selectedDataset, nextChecked))
-                        }
-                        aria-label={selectedDataset.pipeline ? '关闭默认管线' : '启用默认管线'}
-                      />
+                <div className={styles.idRow}>
+                  <span>ID</span>
+                  <code className={styles.datasetId}>{selectedDataset.id}</code>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className={styles.copyId}
+                    aria-label={copiedDatasetId === selectedDataset.id ? '已复制数据集 ID' : '复制数据集 ID'}
+                    onClick={() => detachPromise(copyDatasetId(selectedDataset))}
+                  >
+                    {copiedDatasetId === selectedDataset.id ? (
+                      <Check className="size-3.5" />
+                    ) : (
+                      <Copy className="size-3.5" />
+                    )}
+                  </Button>
+                </div>
+                <dl className={styles.detailMetrics}>
+                  {[
+                    { label: '文档量', value: selectedDatasetStats?.total_documents.toLocaleString() ?? '—' },
+                    { label: '切块量', value: selectedDatasetStats?.total_chunks.toLocaleString() ?? '—' },
+                    { label: '最近处理', value: formatRelativeTime(selectedDatasetStats?.last_processed_at) },
+                  ].map(({ label, value }) => (
+                    <div key={label}>
+                      <dt>{label}</dt>
+                      <dd>{value}</dd>
                     </div>
-                  </DatasetDetailRow>
+                  ))}
                 </dl>
+                <section className={styles.configuration} aria-labelledby="dataset-configuration-title">
+                  <div className={styles.configurationHeading}>
+                    <h3 id="dataset-configuration-title">检索与权限配置</h3>
+                    <span role="status" className={styles.saveStatus}>
+                      {configurationMutation.isPending
+                        ? configurationIsCurrent
+                          ? '正在保存…'
+                          : '正在保存其他更改'
+                        : configurationIsCurrent && configurationMutation.isError
+                          ? '未保存，请重试'
+                          : configurationIsCurrent && configurationMutation.isSuccess
+                            ? '已自动保存'
+                            : '更改后自动保存'}
+                    </span>
+                  </div>
+                  <dl className={styles.detailFields}>
+                    <DatasetDetailRow label="访问权限">
+                      <Select
+                        value={selectedDataset.permission}
+                        disabled={configurationMutation.isPending}
+                        onValueChange={(value) =>
+                          handleInspectorPermissionChange(selectedDataset, value as PermissionEnum)
+                        }
+                      >
+                        <SelectTrigger aria-label="访问权限" className={styles.detailSelect}>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="only_me">仅自己</SelectItem>
+                          <SelectItem value="all_team_members">全员可见</SelectItem>
+                          <SelectItem value="partial_members">部分成员</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      {selectedDataset.permission === 'partial_members' ? (
+                        <Button
+                          variant="link"
+                          size="sm"
+                          className={styles.accessMembers}
+                          disabled={configurationMutation.isPending}
+                          onClick={() => {
+                            setInspectorOpen(false)
+                            openEdit(selectedDataset, 'access')
+                          }}
+                        >
+                          编辑允许成员
+                        </Button>
+                      ) : null}
+                    </DatasetDetailRow>
+                    <DatasetDetailRow label="默认管线">
+                      <div className={styles.pipelineControl}>
+                        <span>{selectedDataset.pipeline ? '已启用' : '未启用'}</span>
+                        <Switch
+                          checked={Boolean(selectedDataset.pipeline)}
+                          disabled={configurationMutation.isPending}
+                          onCheckedChange={(nextChecked) => handleToggleDefaultPipeline(selectedDataset, nextChecked)}
+                          aria-label={selectedDataset.pipeline ? '关闭默认管线' : '启用默认管线'}
+                        />
+                      </div>
+                    </DatasetDetailRow>
+                  </dl>
+                  <Button
+                    variant="link"
+                    size="sm"
+                    className={styles.pipelineSettings}
+                    disabled={configurationMutation.isPending}
+                    onClick={() => {
+                      setInspectorOpen(false)
+                      openEdit(selectedDataset, 'pipeline')
+                    }}
+                  >
+                    <Settings2 className="size-3.5" />
+                    调整管线选项
+                  </Button>
+                </section>
+                <DatasetCategoryMultiSelect
+                  key={selectedDataset.id}
+                  datasetId={selectedDataset.id}
+                  className={styles.detailCategories}
+                />
                 <nav className={styles.detailLinks} aria-label="数据集操作">
                   {[
                     { label: '入库管理', icon: Ingestion, href: `/datasets/${selectedDataset.id}/ingestion` },
                     {
                       label: '检索测试',
-                      icon: FileSearch,
+                      icon: FlaskConical,
                       href: `/knowledge?tab=retrieval&dataset=${selectedDataset.id}`,
                     },
                     { label: '文档预检', icon: FileSearch, href: `/datasets/${selectedDataset.id}/precheck` },
@@ -1113,7 +1259,7 @@ export function DatasetsPage() {
                   }}
                 >
                   <Pencil className="size-4" />
-                  编辑设置
+                  编辑基础信息
                 </Button>
               </div>
             </>
@@ -1146,7 +1292,7 @@ export function DatasetsPage() {
                 <div className="min-w-0">
                   <div className="font-semibold">该数据集还有 {deleteTargetDocumentCount} 个文档</div>
                   <p className="mt-1 text-xs leading-relaxed text-warning/80">
-                    直接删除会被后端拦截。勾选后会先清空文档、分块和索引，再删除数据集记录。
+                    删除数据集前，须勾选并确认同时删除文档、切片和索引。
                   </p>
                 </div>
               </div>
@@ -1184,6 +1330,7 @@ export function DatasetsPage() {
       <Dialog
         open={editOpen}
         onOpenChange={(open) => {
+          if (datasetSaveRef.current !== null) return
           setEditOpen(open)
           if (!open) {
             setEditing(null)
@@ -1191,22 +1338,45 @@ export function DatasetsPage() {
           }
         }}
       >
-        <DialogContent className="max-w-xl p-0 sm:rounded-xl" onCloseAutoFocus={restoreRowFocus}>
+        <DialogContent
+          className="max-w-xl p-0 sm:rounded-xl"
+          showCloseButton={!savingDataset}
+          onOpenAutoFocus={(event) => {
+            const input = editNameInput.current
+            if (editSection === 'basics' && input) {
+              event.preventDefault()
+              input.focus()
+              input.setSelectionRange(input.value.length, input.value.length)
+            }
+          }}
+          onCloseAutoFocus={restoreRowFocus}
+        >
           <div className="flex max-h-[min(88vh,860px)] flex-col">
             <DialogHeader className="border-b border-border/60 px-6 pt-6 pb-4">
-              <DialogTitle>编辑数据集</DialogTitle>
-              <DialogDescription>更新名称、描述与访问权限</DialogDescription>
+              <DialogTitle>{EDIT_SECTION_LABELS[editSection]}</DialogTitle>
+              <DialogDescription>
+                {editSection === 'basics'
+                  ? '更新名称与描述，保存后生效'
+                  : editSection === 'access'
+                    ? '选择可访问的成员与组，保存后生效'
+                    : '调整该数据集的默认治理与索引配置，保存后生效'}
+              </DialogDescription>
             </DialogHeader>
-            <div className="flex-1 overflow-y-auto custom-scrollbar px-6 py-5">
-              <DatasetForm form={form} setForm={setForm} />
-              {editing?.id ? <DatasetCategoryMultiSelect datasetId={editing.id} /> : null}
-            </div>
+            <fieldset disabled={savingDataset} className="min-w-0 flex-1 overflow-y-auto custom-scrollbar px-6 py-5">
+              <DatasetForm form={form} setForm={setForm} section={editSection} nameInputRef={editNameInput} />
+            </fieldset>
             <DialogFooter className="border-t border-border/60 px-6 py-4">
-              <Button variant="ghost" onClick={() => setEditOpen(false)}>
-                取消
-              </Button>
-              <Button onClick={handleUpdate} disabled={!canSubmit || !editing}>
-                保存变更
+              <DialogClose asChild>
+                <Button variant="ghost" disabled={savingDataset}>
+                  取消
+                </Button>
+              </DialogClose>
+              <Button
+                className="bg-accent text-accent-foreground hover:bg-accent/90"
+                onClick={handleUpdate}
+                disabled={!canUpdate || savingDataset}
+              >
+                {savingDataset ? '正在保存…' : '保存变更'}
               </Button>
             </DialogFooter>
           </div>
@@ -1225,16 +1395,6 @@ function DatasetDetailRow({ label, children }: Readonly<{ label: string; childre
   )
 }
 
-function flattenCategories(
-  items: DatasetCategoryNode[],
-  depth = 0,
-): Array<{ id: string; name: string; depth: number }> {
-  return items.flatMap((item) => [
-    { id: item.id, name: item.name, depth },
-    ...flattenCategories(item.children || [], depth + 1),
-  ])
-}
-
 function DatasetCategoryFilter({
   selectedId,
   onSelect,
@@ -1244,9 +1404,9 @@ function DatasetCategoryFilter({
   const trigger = useRef<HTMLButtonElement>(null)
   const categories = useQuery({
     queryKey: queryKeys.datasetCategories.tree,
-    queryFn: () => datasetCategoryApi.listTree(),
+    queryFn: ({ signal }) => datasetCategoryApi.listTree({ signal }),
   })
-  const items = useMemo(() => flattenCategories(categories.data?.items || []), [categories.data])
+  const items = useMemo(() => flattenDatasetCategoryTree(categories.data?.items ?? []), [categories.data])
   const label = selectedId ? items.find((item) => item.id === selectedId)?.name || '当前分类' : '全部分类'
   const select = (id: string | null) => {
     onSelect(id)
@@ -1258,7 +1418,7 @@ function DatasetCategoryFilter({
         <PopoverTrigger asChild>
           <Button
             ref={trigger}
-            variant="outline"
+            variant="ghost"
             className={styles.categoryTrigger}
             aria-label="选择数据集分类"
             title={label}
@@ -1271,7 +1431,7 @@ function DatasetCategoryFilter({
         <PopoverContent align="start" className={styles.categoryMenu}>
           <div className={styles.categoryOptions} role="group" aria-label="数据集分类">
             <Button variant="ghost" aria-pressed={!selectedId} onClick={() => select(null)}>
-              <FolderTree className="size-4" />
+              <FolderOpen className="size-4" />
               <span>全部分类</span>
               {!selectedId ? <Check className="ml-auto size-3.5" /> : null}
             </Button>
@@ -1342,117 +1502,134 @@ function DatasetCategoryFilter({
 function DatasetForm({
   form,
   setForm,
+  section = 'all',
+  nameInputRef,
 }: Readonly<{
   form: DatasetFormState
   setForm: Dispatch<SetStateAction<DatasetFormState>>
+  section?: DatasetEditSection | 'all'
+  nameInputRef?: Ref<HTMLInputElement>
 }>) {
   return (
     <div className="grid gap-5">
-      <div className="grid gap-2">
-        <Label htmlFor="ds-name">名称</Label>
-        <Input
-          id="ds-name"
-          value={form.name}
-          onChange={(e) => setForm({ ...form, name: e.target.value })}
-          placeholder="例如：产品文档 / 技术周报 / 合同资料"
-        />
-      </div>
-
-      <div className="grid gap-2">
-        <Label htmlFor="ds-desc">描述（可选）</Label>
-        <Textarea
-          id="ds-desc"
-          value={form.description}
-          onChange={(e) => setForm({ ...form, description: e.target.value })}
-          placeholder="用于说明该数据集包含哪些文档、用途是什么..."
-          className="resize-none"
-        />
-      </div>
-
-      <div className="grid gap-2">
-        <Label>权限</Label>
-        <Select value={form.permission} onValueChange={(v) => setForm({ ...form, permission: v as PermissionEnum })}>
-          <SelectTrigger>
-            <SelectValue placeholder="选择权限" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all_team_members">全员可见</SelectItem>
-            <SelectItem value="only_me">仅自己</SelectItem>
-            <SelectItem value="partial_members">部分成员</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-
-      {form.permission === 'partial_members' && (
-        <div className="grid gap-4">
+      {section === 'all' || section === 'basics' ? (
+        <>
           <div className="grid gap-2">
-            <Label>允许组（可选）</Label>
-            <GroupChipsInput
-              value={form.partialGroupIds}
-              onChange={(next) => setForm({ ...form, partialGroupIds: next })}
-              placeholder="选择组（组内成员将自动获得访问权限）"
+            <Label htmlFor="ds-name">名称</Label>
+            <Input
+              id="ds-name"
+              ref={nameInputRef}
+              className="bg-card"
+              value={form.name}
+              onChange={(e) => setForm({ ...form, name: e.target.value })}
+              placeholder="例如：产品文档 / 技术周报 / 合同资料"
             />
-            <div className="text-xs text-muted-foreground">
-              组 allowlist 与成员 allowlist 同时生效（满足任一即可访问）。
-            </div>
           </div>
+
           <div className="grid gap-2">
-            <Label htmlFor="ds-members">允许成员（account_id，一行一个或逗号分隔）</Label>
+            <Label htmlFor="ds-desc">描述（可选）</Label>
             <Textarea
-              id="ds-members"
-              value={form.partialMembersText}
-              onChange={(e) => setForm({ ...form, partialMembersText: e.target.value })}
-              placeholder="user_1&#10;user_2"
-              className="font-mono text-sm"
+              id="ds-desc"
+              value={form.description}
+              onChange={(e) => setForm({ ...form, description: e.target.value })}
+              placeholder="文档范围或用途"
+              className="resize-none bg-card"
             />
           </div>
-        </div>
-      )}
+        </>
+      ) : null}
 
-      <Panel variant="muted" padding="none" className="rounded-lg overflow-hidden border border-foreground/10">
-        <div className="flex items-start gap-3 border-b border-foreground/15 bg-background/70 px-4 py-3">
-          <Checkbox
-            checked={form.pipelineEnabled}
-            onCheckedChange={(v) => setForm({ ...form, pipelineEnabled: v === true })}
-            className="mt-1"
-          />
-          <div className="min-w-0">
-            <div className="text-sm font-medium text-foreground">数据集默认管线</div>
-            <div className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
-              启用后，该数据集下的文档默认使用此治理/索引配置
+      {section === 'all' || section === 'access' ? (
+        <>
+          <div className="grid gap-2">
+            <Label>权限</Label>
+            <Select
+              value={form.permission}
+              onValueChange={(v) => setForm({ ...form, permission: v as PermissionEnum })}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="选择权限" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all_team_members">全员可见</SelectItem>
+                <SelectItem value="only_me">仅自己</SelectItem>
+                <SelectItem value="partial_members">部分成员</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {form.permission === 'partial_members' && (
+            <div className="grid gap-4">
+              <div className="grid gap-2">
+                <Label>允许组（可选）</Label>
+                <GroupChipsInput
+                  value={form.partialGroupIds}
+                  onChange={(next) => setForm({ ...form, partialGroupIds: next })}
+                  placeholder="选择组"
+                />
+                <div className="text-xs text-muted-foreground">所选组内的成员和下方指定的成员都可访问。</div>
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="ds-members">允许成员（account_id，一行一个或逗号分隔）</Label>
+                <Textarea
+                  id="ds-members"
+                  value={form.partialMembersText}
+                  onChange={(e) => setForm({ ...form, partialMembersText: e.target.value })}
+                  placeholder="user_1&#10;user_2"
+                  className="font-mono text-sm"
+                />
+              </div>
+            </div>
+          )}
+        </>
+      ) : null}
+
+      {section === 'all' || section === 'pipeline' ? (
+        <Panel variant="muted" padding="none" className="rounded-lg overflow-hidden border border-foreground/10">
+          <div className="flex items-start gap-3 border-b border-foreground/15 bg-background/70 px-4 py-3">
+            <Checkbox
+              checked={form.pipelineEnabled}
+              onCheckedChange={(v) => setForm({ ...form, pipelineEnabled: v === true })}
+              className="mt-1"
+            />
+            <div className="min-w-0">
+              <div className="text-sm font-medium text-foreground">数据集默认管线</div>
+              <div className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
+                启用后，该数据集下的文档默认使用此治理/索引配置
+              </div>
             </div>
           </div>
-        </div>
-        {form.pipelineEnabled && (
-          <div className="bg-background/70 p-4">
-            <div className="mb-4">
-              <div className="text-xs font-medium text-muted-foreground mb-2">治理预设</div>
-              <GovernanceProfileSelector
+          {form.pipelineEnabled && (
+            <div className="bg-background/70 p-4">
+              <div className="mb-4">
+                <div className="text-xs font-medium text-muted-foreground mb-2">治理预设</div>
+                <GovernanceProfileSelector
+                  compact={true}
+                  onApplyPatch={(patch) => {
+                    setForm({
+                      ...form,
+                      pipelineOptions: mergePipelineOptions(form.pipelineOptions, patch),
+                    })
+                  }}
+                />
+              </div>
+              <PipelineOptionsPanel
                 compact={true}
-                onApplyPatch={(patch) => {
-                  setForm({
-                    ...form,
-                    pipelineOptions: mergePipelineOptions(form.pipelineOptions, patch),
-                  })
+                hideEnabledToggle={true}
+                enabled={true}
+                value={form.pipelineOptions}
+                onEnabledChange={() => {}}
+                onOptionChange={(key, value) => {
+                  setForm((prev) => ({
+                    ...prev,
+                    pipelineOptions: { ...prev.pipelineOptions, [key]: value },
+                  }))
                 }}
               />
             </div>
-            <PipelineOptionsPanel
-              compact={true}
-              hideEnabledToggle={true}
-              enabled={true}
-              value={form.pipelineOptions}
-              onEnabledChange={() => {}}
-              onOptionChange={(key, value) => {
-                setForm((prev) => ({
-                  ...prev,
-                  pipelineOptions: { ...prev.pipelineOptions, [key]: value },
-                }))
-              }}
-            />
-          </div>
-        )}
-      </Panel>
+          )}
+        </Panel>
+      ) : null}
     </div>
   )
 }

@@ -6,8 +6,8 @@ import pytest
 from fastapi import HTTPException
 from langchain_core.documents import Document
 
-from app.api.schemas.chat import ChatRAGConfig, ChatRequest, ConversationDetail
-from app.core.model_execution import RetiredModelProviderError
+from app.api.schemas.conversations.chat import ChatRAGConfig, ChatRequest, ConversationDetail
+from app.infrastructure.model_policy import RetiredModelProviderError
 
 
 @pytest.mark.parametrize("provider", ["cross_encoder", "local_bge_v2_m3"])
@@ -38,8 +38,8 @@ def test_conversation_response_keeps_historical_reranker_provenance(provider):
 @pytest.mark.parametrize("flow", ["chat-dataset", "preview-dataset", "chat-template", "preview-template"])
 @pytest.mark.parametrize("patch", [{"reranker_provider": "cross_encoder"}, {"retrieval_profile": "sparse_splade"}])
 def test_real_bootstrap_and_preview_boundaries_propagate_retirement(flow, patch, monkeypatch):
-    from app.api.v1 import rag
-    from app.services import chat_bootstrap_runtime as bootstrap
+    from app.api.v1.retrieval import routes as rag
+    from app.services.chat import bootstrap
 
     dataset_id, tenant_id, template_id = uuid4(), uuid4(), uuid4()
     config = ChatRAGConfig()
@@ -149,12 +149,12 @@ class _DB:
 @pytest.mark.parametrize("operation", ["create", "reactivate", "copy-version"])
 @pytest.mark.parametrize("patch", [{"reranker_provider": "cross_encoder"}, {"retrieval_profile": "sparse_splade"}])
 def test_template_writes_validate_inherited_patch_before_any_mutation(operation, patch, monkeypatch):
-    from app.api.schemas.rag_config_template import (
+    from app.api.schemas.conversations.rag_config_templates import (
         RagConfigTemplateCreate,
         RagConfigTemplateNewVersion,
         RagConfigTemplateUpdate,
     )
-    from app.api.v1 import rag_config_templates as routes
+    from app.api.v1.retrieval import config_templates as routes
 
     current = _template(patch, active=operation != "reactivate")
     db = _DB(current)
@@ -195,8 +195,8 @@ def _image_state(doc, *, account_id="member"):
 
 @pytest.mark.asyncio
 async def test_stream_checks_referenced_document_acl_not_carrier_chunk(monkeypatch):
-    from app.rag.engine_support.standard_stream_retrieval import boost_kg_and_select_images
-    from app.services import document_asset_access as access
+    from app.rag.runtime.streaming.retrieval import boost_kg_and_select_images
+    from app.services.documents import asset_access as access
 
     tenant, dataset, carrier, private, readable = uuid4(), uuid4(), uuid4(), uuid4(), uuid4()
     seen = []
@@ -225,8 +225,8 @@ async def test_stream_checks_referenced_document_acl_not_carrier_chunk(monkeypat
 
 @pytest.mark.asyncio
 async def test_stream_checks_preview_account_ownership_and_keeps_valid_reuse(monkeypatch, tmp_path):
-    from app.rag.engine_support.standard_stream_retrieval import boost_kg_and_select_images
-    from app.services import document_asset_access as access
+    from app.rag.runtime.streaming.retrieval import boost_kg_and_select_images
+    from app.services.documents import asset_access as access
 
     tenant, image = uuid4(), uuid4()
 
@@ -250,8 +250,8 @@ async def test_stream_checks_preview_account_ownership_and_keeps_valid_reuse(mon
 
 @pytest.mark.asyncio
 async def test_image_permission_lookup_failure_is_not_treated_as_no_images(monkeypatch):
-    from app.rag.engine_support.standard_stream_retrieval import boost_kg_and_select_images
-    from app.services import document_asset_access as access
+    from app.rag.runtime.streaming.retrieval import boost_kg_and_select_images
+    from app.services.documents import asset_access as access
 
     tenant = uuid4()
 
@@ -267,8 +267,8 @@ async def test_image_permission_lookup_failure_is_not_treated_as_no_images(monke
 
 
 def test_explicit_supported_request_override_wins_over_retired_stored_default():
-    from app.services.rag_config_template_apply import apply_rag_config_patch
-    from app.services.rag_defaults import merge_rag_config_with_dataset_defaults
+    from app.services.retrieval.defaults import merge_rag_config_with_dataset_defaults
+    from app.services.retrieval.template_apply import apply_rag_config_patch
 
     request = ChatRAGConfig(reranker_provider="openai")
     patch = {"reranker_provider": "cross_encoder"}
@@ -281,8 +281,8 @@ def test_explicit_supported_request_override_wins_over_retired_stored_default():
 
 
 def test_legacy_template_can_be_disabled_and_replaced_explicitly(monkeypatch):
-    from app.api.schemas.rag_config_template import RagConfigTemplateNewVersion, RagConfigTemplateUpdate
-    from app.api.v1 import rag_config_templates as routes
+    from app.api.schemas.conversations.rag_config_templates import RagConfigTemplateNewVersion, RagConfigTemplateUpdate
+    from app.api.v1.retrieval import config_templates as routes
 
     current = _template({"reranker_provider": "cross_encoder"})
     db = _DB(current)
@@ -303,8 +303,8 @@ def test_legacy_template_can_be_disabled_and_replaced_explicitly(monkeypatch):
 def test_retired_sparse_profile_is_rejected_before_write_or_enqueue(model):
     from pydantic import ValidationError
 
-    from app.api.schemas.dataset import DatasetUpdate
-    from app.api.schemas.regression import RagasRegressionRunCreateRequest
+    from app.api.schemas.datasets.dataset import DatasetUpdate
+    from app.api.schemas.evaluation.regression import RagasRegressionRunCreateRequest
 
     with pytest.raises(ValidationError, match="retired"):
         if model == "dataset":
@@ -316,7 +316,7 @@ def test_retired_sparse_profile_is_rejected_before_write_or_enqueue(model):
 @pytest.mark.asyncio
 @pytest.mark.parametrize("missing", ["db", "tenant_id", "account_id"])
 async def test_image_evidence_requires_an_authenticated_asset_scope(missing):
-    from app.rag.engine_support.standard_stream_retrieval import boost_kg_and_select_images
+    from app.rag.runtime.streaming.retrieval import boost_kg_and_select_images
 
     doc = Document(page_content="OCR", metadata={"image_id": str(uuid4()), "request_tenant": uuid4()})
     state = _image_state(doc)

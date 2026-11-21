@@ -2,24 +2,43 @@ from uuid import uuid4
 
 import pytest
 
-from app.services import chat_tag_service, table_store_service, table_tag_service
+from app.services.tables import chat_context as chat_tag_service
+from app.services.tables import generation as table_tag_service
+from app.services.tables import store as table_store_service
 
 
 def candidate(sheet_name=None):
     return chat_tag_service._TableCandidate(
-        document_id=uuid4(), dataset_id=uuid4(), filename="table.csv", file_type="csv", source_ext=None,
-        table_id="table-id", sheet_index=0, sheet_name=sheet_name, row_count=0, col_count=1,
-        columns=[{"name": "amount", "dtype": "int64"}], sample_rows=[], row_source_table=None,
-        row_source_sync_token=None, row_source_pk_hash_col=None, score=0,
+        document_id=uuid4(),
+        dataset_id=uuid4(),
+        filename="table.csv",
+        file_type="csv",
+        source_ext=None,
+        table_id="table-id",
+        sheet_index=0,
+        sheet_name=sheet_name,
+        row_count=0,
+        col_count=1,
+        columns=[{"name": "amount", "dtype": "int64"}],
+        sample_rows=[],
+        row_source_table=None,
+        row_source_sync_token=None,
+        row_source_pk_hash_col=None,
+        score=0,
     )
 
 
-@pytest.mark.parametrize("column,error", [({}, KeyError), ({"name": 0}, AttributeError), ({"name": None}, AttributeError)])
+@pytest.mark.parametrize(
+    "column,error", [({}, KeyError), ({"name": 0}, AttributeError), ({"name": None}, AttributeError)]
+)
 def test_sql_generation_requires_the_column_names_emitted_by_table_producers(column, error, monkeypatch):
     monkeypatch.setattr(table_tag_service.settings, "TABLE_NL2SQL_DETERMINISTIC_ONLY", True)
     with pytest.raises(error):
         table_tag_service.generate_sql_for_table_with_metadata(
-            question="count rows", sql_table="sheet_0", columns=[column], max_rows=10,
+            question="count rows",
+            sql_table="sheet_0",
+            columns=[column],
+            max_rows=10,
         )
 
 

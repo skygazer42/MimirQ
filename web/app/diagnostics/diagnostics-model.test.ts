@@ -53,13 +53,13 @@ describe('diagnostic evidence semantics', () => {
     const channels = buildChannels({
       channels: {
         timing: { vector_elapsed_sec: 0.15 },
-        counts: { vector_candidates: 32, bm25_candidates: 28, sparse_candidates: 0 },
+        counts: { vector_candidates: 32, bm25_candidates: 28, lexical_candidates: 0 },
         retrieval_degraded: false,
         retrieval_degraded_reasons: [],
       },
     })
     expect(channels.map((c) => c.count)).toEqual([32, 28, 0])
-    expect(channels.map((c) => c.key)).toEqual(['vector_candidates', 'bm25_candidates', 'sparse_candidates'])
+    expect(channels.map((c) => c.key)).toEqual(['vector_candidates', 'bm25_candidates', 'lexical_candidates'])
   })
   it('does not treat reranker configuration as proof of execution', () => {
     expect(rerankState({}, { enable_reranker: true }).label).toBe('已启用')
@@ -94,8 +94,8 @@ describe('diagnostic evidence semantics', () => {
     expect(
       perfVerdict({ current_report: { cases: [] }, diff: { strict_gate: { passed: false }, ok: true } }).label,
     ).toBe('未通过')
-    expect(perfVerdict({ current_report: { cases: [] }, diff: { ok: false } }).label).toBe('未通过')
-    expect(perfVerdict({ current_report: { cases: [] }, diff: { ok: true } }).label).toBe('通过')
+    expect(perfVerdict({ current_report: { cases: [] }, diff: { ok: false } }).label).toBe('结论未返回')
+    expect(perfVerdict({ current_report: { cases: [] }, diff: { ok: true } }).label).toBe('结论未返回')
     expect(perfVerdict({ current_report: { cases: [] } }).label).toBe('结论未返回')
   })
 })

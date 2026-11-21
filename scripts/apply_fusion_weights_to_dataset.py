@@ -26,9 +26,9 @@ import json
 import sys
 from uuid import UUID
 
-from app.core.config import settings
-from app.core.database import SessionLocal
-from app.models.dataset import Dataset
+from app.infrastructure.config import settings
+from app.infrastructure.database.connection import SessionLocal
+from app.models.datasets.records import Dataset
 
 
 def _parse_uuid(value: str) -> UUID:
@@ -58,10 +58,12 @@ def _unwrap_weights(obj: object) -> dict[object, object]:
 
 
 def _positive_allowed_weights(obj: dict[object, object]) -> dict[str, float]:
-    allowed = {"vector", "bm25", "lexical", "sparse"}
+    allowed = {"vector", "bm25", "lexical"}
     out: dict[str, float] = {}
     for k, v in obj.items():
         key = str(k or "").strip().lower()
+        if key == "sparse":
+            raise ValueError("sparse fusion weights are no longer supported")
         if not key or key not in allowed:
             continue
         try:

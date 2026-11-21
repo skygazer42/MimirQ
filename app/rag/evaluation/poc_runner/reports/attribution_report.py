@@ -17,10 +17,7 @@ def _iso_now() -> str:
 
 
 def _metric_card_rows(metrics: dict[str, Any]) -> list[dict[str, Any]]:
-    rows: list[dict[str, Any]] = []
-    for key in _CORE_METRIC_KEYS:
-        rows.append({"key": key, "value": metrics.get(key)})
-    return rows
+    return [{"key": key, "value": metrics.get(key)} for key in _CORE_METRIC_KEYS]
 
 
 def _report_meta(payload: "DatasetAnalysisReportPayload") -> dict[str, Any]:

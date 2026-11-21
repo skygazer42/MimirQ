@@ -3,9 +3,8 @@ import uuid
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from app.api.dependencies.auth import get_current_account_id
-from app.api.dependencies.tenant import get_tenant_id
-from app.core.database import get_db
+from app.api.dependencies import get_current_account_id, get_tenant_id
+from app.infrastructure.database.connection import get_db
 
 
 class _DummyDB:
@@ -195,7 +194,7 @@ def _build_chunk_presets_client(  # noqa: ANN202
 
 
 def test_chunk_presets_crud(monkeypatch):  # noqa: ANN001
-    import app.api.v1.chunk_presets as chunk_presets_module
+    import app.api.v1.pipelines.chunk_presets as chunk_presets_module
 
     tenant_id = uuid.uuid4()
     dataset_id = uuid.uuid4()

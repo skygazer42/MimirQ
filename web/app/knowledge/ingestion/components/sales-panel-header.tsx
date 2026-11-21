@@ -4,7 +4,7 @@ import { ChevronRight, type PlatformIcon } from '@/components/icons'
 
 import { cn } from '@/lib/utils'
 
-export type SalesPanelHeaderProps = {
+type SalesPanelHeaderProps = {
   actionLabel?: string
   icon: PlatformIcon
   iconTone?: string
@@ -32,7 +32,7 @@ export function SalesPanelHeader({
           <div className="mt-0.5 pl-[18px] text-[8px] leading-3 text-muted-foreground">{subtitle}</div>
         ) : null}
       </div>
-      {actionLabel ? (
+      {actionLabel && onAction ? (
         <button
           type="button"
           onClick={onAction}

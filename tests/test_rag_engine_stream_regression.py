@@ -7,6 +7,21 @@ import pytest
 from langchain_core.documents import Document
 
 
+@pytest.fixture(autouse=True)
+def _offline_stream_models(monkeypatch):
+    from langchain_core.language_models.fake_chat_models import FakeListChatModel
+
+    from app.infrastructure import tokens
+    from app.rag.runtime import engine
+
+    pool = SimpleNamespace(get_external_sync_client=lambda: None, get_external_async_client=lambda: None)
+    monkeypatch.setattr(engine, "get_http_client_pool", lambda: pool)
+    monkeypatch.setattr(
+        engine.RAGEngine, "_build_llm", lambda *_args, **_kwargs: FakeListChatModel(responses=["fixture"])
+    )
+    monkeypatch.setattr(tokens, "_get_encoder", lambda: False)
+
+
 class _TracingRetriever:
     def __init__(self, docs: list[Document], calls: list[str]) -> None:
         self._docs = list(docs)
@@ -89,7 +104,7 @@ def _mk_doc() -> Document:
 
 
 def _disable_optional_features(monkeypatch: pytest.MonkeyPatch) -> None:
-    from app.core.config import settings
+    from app.infrastructure.config import settings
 
     monkeypatch.setattr(settings, "LLM_API_KEY", "test-only-client-construction-key")
     monkeypatch.setattr(settings, "ENABLE_QUERY_REWRITE", False, raising=False)
@@ -115,7 +130,7 @@ def _disable_optional_features(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_active_pipeline_filter_preserves_metadata_and_selects_ready_versions() -> None:
-    from app.rag.engine import RAGEngine
+    from app.rag.runtime.engine import RAGEngine
 
     active_document_id = uuid.uuid4()
     legacy_document_id = uuid.uuid4()
@@ -182,18 +197,13 @@ def test_active_pipeline_filter_preserves_metadata_and_selects_ready_versions() 
 async def test_stream_chat_emits_stable_event_sequence_before_generation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.rag.engine as engine_mod
-    from app.rag.engine import RAGEngine
+    from app.rag.runtime.engine import RAGEngine
 
     _disable_optional_features(monkeypatch)
     calls: list[str] = []
     retriever = _TracingRetriever([_mk_doc()], calls)
-    monkeypatch.setattr(
-        engine_mod,
-        "hybrid_retriever",
-        retriever,
-        raising=True,
-    )
+    monkeypatch.setattr("app.rag.runtime.streaming.retrieval.hybrid_retriever", retriever, raising=True)
+    monkeypatch.setattr("app.rag.runtime.streaming.corrective.hybrid_retriever", retriever, raising=True)
 
     engine = RAGEngine()
     engine.prompt_template = _TracingChain(calls)
@@ -271,18 +281,15 @@ async def test_stream_chat_emits_stable_event_sequence_before_generation(
 async def test_stream_chat_propagates_retrieval_admission_timeout_before_generation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.rag.engine as engine_mod
-    from app.rag.engine import RAGEngine
-    from app.services.rag_runtime_limiter import RetrievalAdmissionTimeoutError
+    import app.rag.runtime.engine as engine_mod
+    from app.rag.runtime.engine import RAGEngine
+    from app.services.runtime.retrieval_limiter import RetrievalAdmissionTimeoutError
 
     _disable_optional_features(monkeypatch)
     calls: list[str] = []
-    monkeypatch.setattr(
-        engine_mod,
-        "hybrid_retriever",
-        _TracingRetriever([_mk_doc()], calls),
-        raising=True,
-    )
+    _stream_retriever = _TracingRetriever([_mk_doc()], calls)
+    monkeypatch.setattr("app.rag.runtime.streaming.retrieval.hybrid_retriever", _stream_retriever, raising=True)
+    monkeypatch.setattr("app.rag.runtime.streaming.corrective.hybrid_retriever", _stream_retriever, raising=True)
 
     async def _raise_timeout(*_args: object, **_kwargs: object) -> object:
         calls.append("retrieval")
@@ -322,19 +329,18 @@ async def test_stream_chat_propagates_retrieval_admission_timeout_before_generat
 
 
 @pytest.mark.asyncio
-async def test_stream_chat_resolves_rewrite_bindings_through_engine_module(
+async def test_stream_chat_resolves_rewrite_bindings_through_current_planner(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from langchain_core.language_models.fake_chat_models import FakeListChatModel
 
-    import app.rag.engine as engine_mod
-    from app.core.config import settings
-    from app.rag.engine import RAGEngine
+    from app.infrastructure.config import settings
+    from app.rag.runtime.engine import RAGEngine
 
     _disable_optional_features(monkeypatch)
     monkeypatch.setattr(settings, "ENABLE_QUERY_REWRITE", True, raising=False)
     monkeypatch.setattr(settings, "QUERY_REWRITE_MAX_CHARS", 400, raising=False)
-    monkeypatch.setattr(engine_mod, "should_rewrite_query", lambda _q: True, raising=True)
+    monkeypatch.setattr("app.rag.retrieval.planning.planner.should_rewrite_query", lambda _q: True, raising=True)
     rewrite_spec = {
         "strategy_id": "patched-rewrite-strategy",
         "strategy_hash": "patched-rewrite-hash",
@@ -350,19 +356,24 @@ async def test_stream_chat_resolves_rewrite_bindings_through_engine_module(
         prompt_strategy_ids.append(strategy_id)
         return "History: {history}\nQuestion: {question}"
 
-    monkeypatch.setattr(engine_mod, "build_query_rewrite_strategy_spec", _build_rewrite_spec, raising=True)
-    monkeypatch.setattr(engine_mod, "get_query_rewrite_prompt_template", _get_rewrite_prompt, raising=True)
+    monkeypatch.setattr(
+        "app.rag.retrieval.planning.planner.build_query_rewrite_strategy_spec", _build_rewrite_spec, raising=True
+    )
+    monkeypatch.setattr(
+        "app.rag.runtime.query_models.get_query_rewrite_prompt_template", _get_rewrite_prompt, raising=True
+    )
 
     calls: list[str] = []
     retriever = _QueryCapturingRetriever([_mk_doc()], calls)
-    monkeypatch.setattr(engine_mod, "hybrid_retriever", retriever, raising=True)
+    monkeypatch.setattr("app.rag.runtime.streaming.retrieval.hybrid_retriever", retriever, raising=True)
+    monkeypatch.setattr("app.rag.runtime.streaming.corrective.hybrid_retriever", retriever, raising=True)
 
     engine = RAGEngine()
     engine.models["fast"] = FakeListChatModel(responses=["rewritten evidence question"])
     monkeypatch.setattr(
         engine,
         "_select_llm",
-        lambda *_args, **_kwargs: (_FakeChatLLM(), "fake", "test"),
+        lambda *_args, **_kwargs: (engine.models["fast"], "fast", "test"),
         raising=True,
     )
     engine.prompt_template = _TracingChain(calls)
@@ -415,8 +426,7 @@ async def test_stream_chat_resolves_prompt_template_through_engine_module(
 ) -> None:
     from langchain_core.language_models.fake_chat_models import FakeListChatModel
 
-    import app.rag.engine as engine_mod
-    from app.rag.engine import RAGEngine
+    from app.rag.runtime.engine import RAGEngine
 
     _disable_optional_features(monkeypatch)
     prompt_template_id = uuid.uuid4()
@@ -435,7 +445,9 @@ async def test_stream_chat_resolves_prompt_template_through_engine_module(
         resolver_calls.append(dict(kwargs))
         return chosen
 
-    monkeypatch.setattr(engine_mod, "resolve_prompt_template", _resolve_prompt_template, raising=True)
+    monkeypatch.setattr(
+        "app.rag.runtime.streaming.setup.resolve_prompt_template", _resolve_prompt_template, raising=True
+    )
 
     class _DB:
         def __init__(self) -> None:
@@ -488,9 +500,8 @@ async def test_stream_chat_resolves_prompt_template_through_engine_module(
 async def test_stream_chat_resolves_intent_router_through_engine_module(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.rag.engine as engine_mod
-    from app.core.config import settings
-    from app.rag.engine import RAGEngine
+    from app.infrastructure.config import settings
+    from app.rag.runtime.engine import RAGEngine
 
     _disable_optional_features(monkeypatch)
     monkeypatch.setattr(settings, "ADAPTIVE_RETRIEVAL_ROUTING_ENABLED", False, raising=False)
@@ -503,10 +514,13 @@ async def test_stream_chat_resolves_intent_router_through_engine_module(
             {"enabled": True, "used": True, "preset_id": "patched-router"},
         )
 
-    monkeypatch.setattr(engine_mod, "route_retrieval_preset", _route_retrieval_preset, raising=True)
+    monkeypatch.setattr(
+        "app.rag.retrieval.planning.routing.route_retrieval_preset", _route_retrieval_preset, raising=True
+    )
     calls: list[str] = []
     retriever = _TracingRetriever([_mk_doc()], calls)
-    monkeypatch.setattr(engine_mod, "hybrid_retriever", retriever, raising=True)
+    monkeypatch.setattr("app.rag.runtime.streaming.retrieval.hybrid_retriever", retriever, raising=True)
+    monkeypatch.setattr("app.rag.runtime.streaming.corrective.hybrid_retriever", retriever, raising=True)
 
     engine = RAGEngine()
     engine.prompt_template = _TracingChain(calls)
@@ -551,17 +565,13 @@ async def test_stream_chat_midstream_termination_stops_generation_without_termin
     monkeypatch: pytest.MonkeyPatch,
     termination: str,
 ) -> None:
-    import app.rag.engine as engine_mod
-    from app.rag.engine import RAGEngine
+    from app.rag.runtime.engine import RAGEngine
 
     _disable_optional_features(monkeypatch)
     calls: list[str] = []
-    monkeypatch.setattr(
-        engine_mod,
-        "hybrid_retriever",
-        _TracingRetriever([_mk_doc()], calls),
-        raising=True,
-    )
+    _stream_retriever = _TracingRetriever([_mk_doc()], calls)
+    monkeypatch.setattr("app.rag.runtime.streaming.retrieval.hybrid_retriever", _stream_retriever, raising=True)
+    monkeypatch.setattr("app.rag.runtime.streaming.corrective.hybrid_retriever", _stream_retriever, raising=True)
 
     engine = RAGEngine()
     chain = _BlockingGenerationChain(calls)
@@ -617,37 +627,50 @@ async def test_stream_chat_midstream_termination_stops_generation_without_termin
 
 
 @pytest.mark.asyncio
-async def test_alias_expansion_resolves_collaborator_through_engine_module(
+async def test_alias_expansion_resolves_collaborator_through_query_planner(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.rag.engine as engine_mod
-    import app.rag.engine_support.standard_stream_query as query_phase
-    from app.rag.engine_support.standard_stream_state import StandardStreamState
+    import app.rag.runtime.streaming.query as query_phase
+    from app.rag.retrieval.planning import planner
+    from app.rag.retrieval.stages import preparation
+    from app.rag.runtime.streaming.state import StandardStreamState
 
     calls: list[dict[str, object]] = []
 
     def _patched_alias_expansion(**kwargs: object) -> tuple[list[str], dict[str, object]]:
         calls.append(dict(kwargs))
-        return ["patched alias query"], {"enabled": True, "used": True, "source": "engine"}
+        return ["patched alias query"], {"enabled": True, "used": True, "source": "planner"}
 
-    def _unexpected_support_binding(**_kwargs: object) -> tuple[list[str], dict[str, object]]:
-        raise AssertionError("standard stream bypassed app.rag.engine alias seam")
-
-    monkeypatch.setattr(engine_mod, "generate_alias_queries", _patched_alias_expansion, raising=True)
-    monkeypatch.setattr(query_phase, "generate_alias_queries", _unexpected_support_binding, raising=False)
-    runtime = StandardStreamState(
-        engine=SimpleNamespace(),
-        module=engine_mod,
-        payload={
+    request = preparation._build_retrieval_request(
+        {
+            "enable_query_rewrite": False,
+            "industry_rules_enabled": False,
             "enable_query_alias_expansion": True,
             "query_aliases": {"SSO": ["single sign-on"]},
             "query_alias_max_queries": 3,
-            "query_for_retrieval": "Explain SSO",
             "enable_kg_query_expansion": False,
+            "enable_multi_query": False,
+            "enable_hyde": False,
+            "enable_step_back_query": False,
+            "enable_query_decomposition": False,
+            "intent_router": False,
+            "adaptive_router": False,
+        },
+        question="Explain SSO",
+        history_text="",
+    )
+    plan = planner.prepare_query_plan(request, models=SimpleNamespace())
+    monkeypatch.setattr(planner, "generate_alias_queries", _patched_alias_expansion)
+    runtime = StandardStreamState(
+        engine=SimpleNamespace(),
+        payload={
+            "prepared_query_outcome": plan.prepared,
+            "query_routing_outcome": plan.routing,
+            "llm": None,
         },
     )
 
-    await query_phase.expand_aliases_dictionary_and_init_kg(runtime)
+    await query_phase.prepare_query_plan(runtime)
 
     assert calls == [
         {
@@ -657,17 +680,16 @@ async def test_alias_expansion_resolves_collaborator_through_engine_module(
         }
     ]
     assert runtime.data.alias_queries == ["patched alias query"]
-    assert runtime.data.alias_meta["source"] == "engine"
+    assert runtime.data.alias_meta["source"] == "planner"
 
 
 @pytest.mark.asyncio
 async def test_kg_recall_resolves_search_through_engine_module(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.rag.engine as engine_mod
-    import app.rag.engine_support.standard_stream_evidence as evidence_phase
-    from app.core.config import settings
-    from app.rag.engine_support.standard_stream_state import StandardStreamState
+    import app.rag.runtime.streaming.evidence as evidence_phase
+    from app.infrastructure.config import settings
+    from app.rag.runtime.streaming.state import StandardStreamState
 
     monkeypatch.setattr(settings, "KG_ENABLED", True, raising=False)
     monkeypatch.setattr(settings, "KG_CHAT_ENABLED", True, raising=False)
@@ -679,19 +701,15 @@ async def test_kg_recall_resolves_search_through_engine_module(
         calls.append(dict(kwargs))
         return {"events": [{"title": "Patched KG event", "summary": "Runtime module result"}]}
 
-    async def _unexpected_support_binding(**_kwargs: object) -> dict[str, object]:
-        raise AssertionError("standard stream bypassed app.rag.engine KG seam")
-
-    monkeypatch.setattr(engine_mod, "kg_search", _patched_kg_search, raising=True)
-    monkeypatch.setattr(evidence_phase, "kg_search", _unexpected_support_binding, raising=False)
+    monkeypatch.setattr("app.rag.runtime.streaming.evidence.kg_search", _patched_kg_search, raising=True)
     tenant_id = uuid.uuid4()
     document_id = uuid.uuid4()
     runtime = StandardStreamState(
         engine=SimpleNamespace(),
-        module=engine_mod,
         payload={
             "strict_visible": False,
             "kg_result_cached": None,
+            "query_plan": SimpleNamespace(kg=SimpleNamespace(failure=None, response=None)),
             "question": "What changed?",
             "tenant_id": tenant_id,
             "document_ids": [document_id],
@@ -714,10 +732,9 @@ async def test_kg_recall_resolves_search_through_engine_module(
 async def test_out_of_scope_guard_resolves_through_engine_module(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.rag.engine as engine_mod
-    import app.rag.engine_support.standard_stream_evidence as evidence_phase
-    from app.core.config import settings
-    from app.rag.engine_support.standard_stream_state import StandardStreamState
+    import app.rag.runtime.streaming.evidence as evidence_phase
+    from app.infrastructure.config import settings
+    from app.rag.runtime.streaming.state import StandardStreamState
 
     monkeypatch.setattr(settings, "RAG_OUT_OF_SCOPE_LIVE_GUARD_ENABLED", True, raising=False)
     calls: list[dict[str, object]] = []
@@ -731,20 +748,12 @@ async def test_out_of_scope_guard_resolves_through_engine_module(
             "abstain_reason": "patched_engine_guard",
         }
 
-    def _unexpected_support_binding(**_kwargs: object) -> dict[str, object]:
-        raise AssertionError("standard stream bypassed app.rag.engine out-of-scope seam")
-
-    monkeypatch.setattr(engine_mod, "maybe_apply_out_of_scope_live_guard", _patched_guard, raising=True)
     monkeypatch.setattr(
-        evidence_phase,
-        "maybe_apply_out_of_scope_live_guard",
-        _unexpected_support_binding,
-        raising=False,
+        "app.rag.runtime.streaming.evidence.maybe_apply_out_of_scope_live_guard", _patched_guard, raising=True
     )
     tenant_id = uuid.uuid4()
     runtime = StandardStreamState(
         engine=SimpleNamespace(_build_retrieval_info_event=lambda **_kwargs: None),
-        module=engine_mod,
         payload={
             "citations": [],
             "abstain_enabled": False,
@@ -779,11 +788,10 @@ async def test_out_of_scope_guard_resolves_through_engine_module(
 async def test_vision_helpers_resolve_through_engine_module(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.rag.engine as engine_mod
-    import app.rag.engine_support.standard_stream_generation as generation_phase
-    import app.rag.engine_support.standard_stream_retrieval as retrieval_phase
-    from app.core.config import settings
-    from app.rag.engine_support.standard_stream_state import StandardStreamState
+    import app.rag.runtime.streaming.generation as generation_phase
+    import app.rag.runtime.streaming.retrieval as retrieval_phase
+    from app.infrastructure.config import settings
+    from app.rag.runtime.streaming.state import StandardStreamState
 
     monkeypatch.setattr(settings, "VISION_RAG_READER_ENABLED", True, raising=False)
     monkeypatch.setattr(settings, "VISION_LLM_ENABLED", False, raising=False)
@@ -797,21 +805,13 @@ async def test_vision_helpers_resolve_through_engine_module(
             "source": "engine",
         }
 
-    async def _unexpected_reader(**_kwargs: object) -> tuple[list[Document], dict[str, object]]:
-        raise AssertionError("standard stream bypassed app.rag.engine vision reader seam")
-
-    monkeypatch.setattr(engine_mod, "build_vision_reader_context_docs", _patched_reader, raising=True)
     monkeypatch.setattr(
-        retrieval_phase,
-        "build_vision_reader_context_docs",
-        _unexpected_reader,
-        raising=False,
+        "app.rag.runtime.streaming.retrieval.build_vision_reader_context_docs", _patched_reader, raising=True
     )
     tenant_id = uuid.uuid4()
     image_doc = Document(page_content="image", metadata={"source": "image.png"})
     runtime = StandardStreamState(
         engine=SimpleNamespace(http_async_client=object()),
-        module=engine_mod,
         payload={
             "image_docs": [image_doc],
             "question": "Read the image",
@@ -841,20 +841,9 @@ async def test_vision_helpers_resolve_through_engine_module(
         stream_calls.append(dict(kwargs))
         return token_stream_marker
 
-    async def _unexpected_blocks(**_kwargs: object) -> tuple[list[dict[str, object]], dict[str, object]]:
-        raise AssertionError("standard stream bypassed app.rag.engine vision block seam")
-
-    def _unexpected_stream(**_kwargs: object) -> object:
-        raise AssertionError("standard stream bypassed app.rag.engine vision stream seam")
-
-    monkeypatch.setattr(engine_mod, "build_vision_image_blocks", _patched_blocks, raising=True)
-    monkeypatch.setattr(engine_mod, "stream_vision_chat_completions_tokens", _patched_stream, raising=True)
-    monkeypatch.setattr(generation_phase, "build_vision_image_blocks", _unexpected_blocks, raising=False)
+    monkeypatch.setattr("app.rag.runtime.streaming.generation.build_vision_image_blocks", _patched_blocks, raising=True)
     monkeypatch.setattr(
-        generation_phase,
-        "stream_vision_chat_completions_tokens",
-        _unexpected_stream,
-        raising=False,
+        "app.rag.runtime.streaming.generation.stream_vision_chat_completions_tokens", _patched_stream, raising=True
     )
     runtime.data.source_identification_answer_used = False
     runtime.data.multimodal_modality = "image"

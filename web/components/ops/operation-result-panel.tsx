@@ -14,23 +14,24 @@ type OperationResultPanelProps = {
   className?: string
 }
 
-function prettyJson(value: unknown) {
+function formatResponse(value: unknown): string {
   try {
-    return JSON.stringify(value, null, 2)
+    const json = JSON.stringify(value, null, 2)
+    return json === undefined ? '响应无正文。' : json
   } catch {
-    return String(value)
+    return '响应内容无法转换为 JSON。'
   }
 }
 
 export function OperationResultPanel({ title, result, emptyMessage, className }: Readonly<OperationResultPanelProps>) {
   return (
     <div className={cn('rounded-lg border border-border/60 bg-muted/20 p-3', className)}>
-      <div className="text-xs font-semibold text-foreground">{result?.title || title}</div>
-      {result ? (
+      <div className="text-xs font-semibold text-foreground">{result === null ? title : result.title}</div>
+      {result !== null ? (
         <details className="mt-2">
           <summary className="cursor-pointer text-xs font-semibold text-primary">查看原始响应</summary>
           <pre className="mt-2 max-h-64 overflow-auto rounded-md border border-border/60 bg-background p-2 text-xs whitespace-pre-wrap break-words">
-            {prettyJson(result.payload)}
+            {formatResponse(result.payload)}
           </pre>
         </details>
       ) : (

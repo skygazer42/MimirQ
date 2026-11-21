@@ -24,7 +24,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from app.rag.evaluation.evidence_retrieve_gate import (  # noqa: E402
+from app.rag.evaluation.regression.evidence_retrieve_gate import (  # noqa: E402
     build_retrieval_gate_summary,
     compute_retrieval_item_meta,
 )

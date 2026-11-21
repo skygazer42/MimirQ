@@ -7,11 +7,10 @@ import pytest
 if not hasattr(dt, "UTC"):
     dt.UTC = timezone.utc
 
-from app.api.v1 import evidence as evidence_api
-from app.api.v1 import feedback as feedback_api
-from app.models.chat import Conversation, Message
-from app.models.evidence import EvidenceItem, EvidenceSuite
-from app.models.feedback import MessageFeedback
+from app.api.v1.conversations import feedback as feedback_api
+from app.api.v1.evaluation import evidence as evidence_api
+from app.models.conversations.chat import Conversation, Message, MessageFeedback
+from app.models.evaluation.evidence import EvidenceItem, EvidenceSuite
 
 
 class _FakeQuery:
@@ -253,11 +252,11 @@ def test_create_evidence_item_from_feedback_keeps_trace_refs_when_finalize_fails
         raising=True,
     )
 
-    import app.api.v1.evaluations as evaluations_api
+    import app.services.evaluation.reference_sources as reference_sources
 
     monkeypatch.setattr(
-        evaluations_api,
-        "_finalize_reference_sources",
+        reference_sources,
+        "finalize_reference_sources",
         lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("normalize failed")),
         raising=True,
     )
@@ -325,11 +324,9 @@ def test_patch_evidence_item_only_updates_selected_fields_and_finalizes_refs(
         raising=True,
     )
 
-    import app.api.v1.evaluations as evaluations_api
-
     finalized_refs = [{"chunk_id": "new", "document_id": str(uuid.uuid4())}]
     monkeypatch.setattr(
-        evaluations_api, "_finalize_reference_sources", lambda *_args, **_kwargs: finalized_refs, raising=True
+        evidence_api, "finalize_reference_sources", lambda *_args, **_kwargs: finalized_refs, raising=True
     )
 
     payload = evidence_api.EvidenceItemPatchRequest(

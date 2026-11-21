@@ -982,6 +982,23 @@
   background: transparent;
   box-shadow: none;
 }
+.headerActions button:focus-visible,
+.primary:focus-visible,
+.tab:focus-visible,
+.searchInput:focus-visible,
+.filterSelect:focus-visible,
+.selectionBar button:focus-visible,
+.empty button:focus-visible,
+.pagination button.pageSize:focus-visible,
+.pageNumbers button:focus-visible,
+.dialogFooter button:focus-visible,
+.field input:focus-visible,
+.contentInput:focus-visible,
+.deleteDialog button:focus-visible,
+.bindingTabList button:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 2px;
+}
 .bindingTabList button[data-state='active'] {
   background: transparent;
   border-color: hsl(var(--foreground));

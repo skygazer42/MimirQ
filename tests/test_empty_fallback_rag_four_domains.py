@@ -2,10 +2,9 @@ from uuid import uuid4
 
 import pytest
 
-from app.models.document import Document as DBDocument
+from app.rag.agents.tools import mcp_tools
 from app.rag.pipeline_plugins import contracts, local_runner, runtime
 from app.rag.policy import intent_router
-from app.rag.tools import mcp_tools
 from app.rag.workflows.evaluator_optimizer import EvaluatorOptimizerWorkflow
 from app.rag.workflows.react import ReActWorkflow
 
@@ -59,26 +58,24 @@ def test_content_only_retrieval_text_does_not_require_metadata() -> None:
 @pytest.mark.parametrize("actor", [0, False])
 def test_invalid_mcp_actor_is_not_the_omitted_service_context(actor: object) -> None:
     document_id = uuid4()
-    document = DBDocument(id=document_id, owner_id="owner", access_mode="only_me")
     with pytest.raises(AttributeError):
-        mcp_tools._can_read_document_content(
-            object(), document, tenant_id=uuid4(), document_id=document_id, account_id=actor
-        )
+        mcp_tools._can_read_document_content(object(), tenant_id=uuid4(), document_id=document_id, account_id=actor)
 
 
 def test_empty_explicit_mcp_actor_does_not_bypass_private_document_access() -> None:
     document_id = uuid4()
-    document = DBDocument(id=document_id, owner_id="owner", access_mode="only_me")
-    assert mcp_tools._can_read_document_content(
-        object(), document, tenant_id=uuid4(), document_id=document_id, account_id=""
-    ) is False
+    assert (
+        mcp_tools._can_read_document_content(object(), tenant_id=uuid4(), document_id=document_id, account_id="")
+        is False
+    )
 
 
 def test_policy_numeric_zero_bool_override_remains_false() -> None:
     result = intent_router.normalize_intent_router_policy(
-        {"schema": "mimirq.intent_router_policy.v1", "rules": [
-            {"rule_id": "rule", "match_any": ["term"], "overrides": {"enable_reranker": 0}}
-        ]}
+        {
+            "schema": "mimirq.intent_router_policy.v1",
+            "rules": [{"rule_id": "rule", "match_any": ["term"], "overrides": {"enable_reranker": 0}}],
+        }
     )
     assert result is not None
     assert result["rules"][0]["overrides"]["enable_reranker"] is False
@@ -86,9 +83,10 @@ def test_policy_numeric_zero_bool_override_remains_false() -> None:
 
 def test_policy_scalar_zero_rule_id_and_term_are_not_omitted() -> None:
     result = intent_router.normalize_intent_router_policy(
-        {"schema": "mimirq.intent_router_policy.v1", "rules": [
-            {"rule_id": 0, "match_any": [0], "overrides": {"enable_reranker": True}}
-        ]}
+        {
+            "schema": "mimirq.intent_router_policy.v1",
+            "rules": [{"rule_id": 0, "match_any": [0], "overrides": {"enable_reranker": True}}],
+        }
     )
     assert result is not None
     assert result["rules"][0]["rule_id"] == "0"
@@ -98,7 +96,9 @@ def test_policy_scalar_zero_rule_id_and_term_are_not_omitted() -> None:
 @pytest.mark.parametrize("value", [0, False, 1, True])
 def test_plugin_document_scalar_text_is_preserved(value: object) -> None:
     assert local_runner._coerce_input_document({"content": value}).page_content == str(value)
-    assert runtime._coerce_document({"content": value}, stage="chunk", plugin_ref="plugin:example", index=0).page_content == str(value)
+    assert runtime._coerce_document(
+        {"content": value}, stage="chunk", plugin_ref="plugin:example", index=0
+    ).page_content == str(value)
 
 
 def test_plugin_document_requires_a_text_field() -> None:

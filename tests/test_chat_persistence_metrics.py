@@ -3,7 +3,7 @@ from uuid import uuid4
 
 import pytest
 
-from app.services import chat_persistence as persistence
+from app.services.chat import response_finalization as persistence
 
 
 def _base_finalize_options(

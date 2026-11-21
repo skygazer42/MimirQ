@@ -2,6 +2,8 @@
 
 Status: implemented
 
+现有SESSION通知被QueryProvider消费的后续决定见[提交回执与会话清理](2026-11-18-ablation-submit-receipts-and-session-ownership.md)。本篇凭证/profile归属和普通token轮换理由继续成立；同scope不强发SCOPE事件的取舍没有翻转，SESSION是独立的明确替换通知。
+
 ## Problem
 
 API 客户端在处理 401 时读取当前 token，等待 OIDC 刷新后直接写回凭证或清空会话。用户在等待期间登出或登录另一账号时，旧刷新会覆盖新登录或使其退出。登出后使用相同账号和 token 重新登录时，仅比较 token 与缓存范围也不能区分两次会话。全局刷新 promise 还可能让新账号加入旧账号的刷新请求。

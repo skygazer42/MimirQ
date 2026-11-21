@@ -8,11 +8,11 @@ Status: implemented
 
 ## Decision
 
-LLMBundle 保留为有状态客户端，直接读取已经声明和校验的 Settings 字段。视觉配置为空时借用通用 API key／base 是实际配置约定，继续保留；模型覆盖、请求载荷、超时、token 和温度设置不变，每实例连接池与 cookie 状态继续复用。
+VisionCaptionClient 保留为有状态客户端，直接读取已经声明和校验的 Settings 字段。视觉配置为空时借用通用 API key／base 是实际配置约定，继续保留；模型覆盖、请求载荷、超时、token 和温度设置不变，每实例连接池与 cookie 状态继续复用。
 
 请求响应使用自身上下文管理器，HTTP错误、JSON错误及协议错误均退出响应作用域。只有原来的200状态成功，原错误前缀和截断日志保持。响应必须是对象，choices、首项 message 和 content 是必需字段；缺键或不符合结构直接失败，非文本 content 抛 TypeError。真正的 content=None 仍按原约定表示空文本。
 
-显式 close 使用同一个幂等 finalizer；finalizer 的回调只持有 Session，不持有 LLMBundle。固定上游没有关闭钩子时，正常回收或解释器退出仍可释放连接池；显式关闭后禁止继续请求。不引入共享全局客户端、逐请求新 Session、重试或备用模型。
+显式 close 使用同一个幂等 finalizer；finalizer 的回调只持有 Session，不持有 VisionCaptionClient。固定上游没有关闭钩子时，正常回收或解释器退出仍可释放连接池；显式关闭后禁止继续请求。不引入共享全局客户端、逐请求新 Session、重试或备用模型。
 
 未配置视觉能力仍抛原 NotImplementedError，由已有上游可选视觉分支承担其明确定义的降级。坏响应不再伪装成空成功，最终由原调用方的错误边界处理。[集成分块实际所有者](../architecture/2026-11-13-integrated-pipeline-canonical-owner.md)说明固定上游和本地适配的不同维护责任。
 

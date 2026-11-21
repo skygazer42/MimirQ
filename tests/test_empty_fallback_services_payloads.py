@@ -3,8 +3,10 @@ from uuid import uuid4
 
 import pytest
 
-from app.services import chat_execution_runtime, connector_egress_policy, dataset_precheck_scan_runner
-from app.services.document_access_service import _document_acl_owner_allowed
+from app.services.chat import execution as chat_execution_runtime
+from app.services.connectors import egress_policy as connector_egress_policy
+from app.services.datasets.precheck import scan as dataset_precheck_scan_runner
+from app.services.documents.access import _document_acl_owner_allowed
 
 
 def test_nullable_owner_does_not_match_an_empty_account_identifier():

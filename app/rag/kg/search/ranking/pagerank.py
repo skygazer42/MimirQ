@@ -3,9 +3,10 @@ PageRank-style rerank combining query similarity and entity co-occurrence graph.
 """
 
 import math
+from itertools import combinations
 from typing import Any
 
-from app.core.config import settings
+from app.infrastructure.config import settings
 from app.rag.kg.loading.processor import generate_embedding
 from app.rag.kg.repository import EventRepository, get_session
 from app.rag.kg.search.config import SearchConfig
@@ -31,7 +32,8 @@ def _key_entity_ids(key_final: list[dict[str, Any]]) -> set[str]:
 
 
 def _entity_weight(entity_id_value: str, key_weights: dict[Any, Any], default: float = 0.1) -> float:
-    return float(key_weights.get(entity_id_value, default) or default)
+    value = key_weights.get(entity_id_value)
+    return default if value is None else float(value)
 
 
 def _entity_to_events(assoc_map: dict[str, list[Any]], graph_ids: set[str]) -> dict[str, list[str]]:
@@ -63,10 +65,9 @@ def _build_shared_entity_graph(
             continue
         weight = _entity_weight(entity_id_value, key_weights)
         unique_events = sorted(set(event_list))
-        for index, left in enumerate(unique_events):
-            for right in unique_events[index + 1 :]:
-                graph[left][right] = float(graph[left].get(right, 0.0) or 0.0) + weight
-                graph[right][left] = float(graph[right].get(left, 0.0) or 0.0) + weight
+        for left, right in combinations(unique_events, 2):
+            graph[left][right] = graph[left].get(right, 0.0) + weight
+            graph[right][left] = graph[right].get(left, 0.0) + weight
     return graph
 
 
@@ -118,7 +119,7 @@ def _extras_by_event(
 
 
 def _outbound_weight_sums(graph: dict[str, dict[str, float]], nodes: list[str]) -> dict[str, float]:
-    return {node: float(sum(graph.get(node, {}).values()) or 1.0) for node in nodes}
+    return {node: sum(graph[node].values()) or 1.0 for node in nodes}
 
 
 def _teleport_scores(damping: float, base_scores: dict[str, float], nodes: list[str]) -> dict[str, float]:
@@ -132,8 +133,7 @@ def _apply_pagerank_edges(
     scale: float,
 ) -> None:
     for destination, weight in edges.items():
-        current = float(new_scores.get(destination, 0.0) or 0.0)
-        new_scores[destination] = current + scale * float(weight or 0.0)
+        new_scores[destination] = new_scores.get(destination, 0.0) + scale * weight
 
 
 def _pagerank_iteration(
@@ -147,13 +147,13 @@ def _pagerank_iteration(
 ) -> dict[str, float]:
     new_scores = dict(teleport)
     for source in nodes:
-        edges = graph.get(source) or {}
+        edges = graph[source]
         if not edges:
             continue
-        denominator = float(out_sum.get(source, 1.0) or 1.0)
+        denominator = out_sum[source]
         if math.isclose(denominator, 0.0, abs_tol=1e-12):
             continue
-        scale = float(damping) * (float(scores.get(source, 0.0) or 0.0) / denominator)
+        scale = damping * (scores[source] / denominator)
         _apply_pagerank_edges(new_scores=new_scores, edges=edges, scale=scale)
     return new_scores
 
@@ -167,6 +167,8 @@ async def rerank(
     query_vector: list[float] | None = None,
     event_hops: dict[str, int] | None = None,
 ) -> dict[str, Any]:
+    if config.tenant_id is None:
+        raise ValueError("tenant_id is required for KG search")
     session = get_session()
     try:
         repo = EventRepository(session)

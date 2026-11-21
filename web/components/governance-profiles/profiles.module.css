@@ -236,7 +236,7 @@
 }
 :global(.dark) .directoryItem[aria-current='true']::before,
 :global(.dark) .sourceTabs button::after {
-  background: hsl(var(--primary-300, var(--foreground)));
+  background: hsl(var(--primary-300));
 }
 .profileMark {
   display: inline-flex;
@@ -737,10 +737,7 @@
   line-height: 22px;
   color: hsl(var(--muted-foreground));
 }
-.previewColumn > label > span {
-  margin-left: auto;
-  font-size: 12px;
-}
+.previewColumn > label > span,
 .outputLabel > span {
   margin-left: auto;
   font-size: 12px;
@@ -766,17 +763,12 @@
 .preview[data-document-source='true'] .previewColumn textarea,
 .preview[data-document-source='true'] .previewOutput {
   height: 360px;
-  min-height: 200px;
   max-height: 360px;
   overflow: auto;
   overscroll-behavior: contain;
 }
 .preview[data-document-source='true'] .previewColumn textarea {
   resize: none;
-}
-.previewOutput :global(.prose) {
-  font-size: 14px;
-  line-height: 25px;
 }
 .previewOutput table {
   width: 100%;
@@ -806,7 +798,6 @@
   line-height: 23px;
   color: hsl(var(--muted-foreground));
 }
-.error,
 .warning {
   display: flex;
   align-items: flex-start;
@@ -814,16 +805,7 @@
   margin-top: 12px;
   font-size: 13px;
   line-height: 23px;
-  color: hsl(var(--destructive));
-}
-.warning {
   color: hsl(var(--warning));
-}
-.error > svg {
-  width: 16px;
-  height: 16px;
-  margin-top: 3px;
-  flex-shrink: 0;
 }
 .loading,
 .listLoading {
@@ -893,7 +875,9 @@
 }
 .page button:focus-visible,
 .page summary:focus-visible,
-.page select:focus-visible {
+.page select:focus-visible,
+.search:focus-visible,
+.previewColumn textarea:focus-visible {
   outline: 2px solid hsl(var(--ring));
   outline-offset: 3px;
 }
@@ -942,9 +926,6 @@
   }
   .reader {
     display: none;
-  }
-  .workspace:has(.reader article) {
-    min-height: 0;
   }
   .page[data-detail-open='true'] .directory {
     display: none;

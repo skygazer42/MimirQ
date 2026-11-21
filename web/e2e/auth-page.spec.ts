@@ -53,11 +53,11 @@ test('clears login errors and keeps registration reachable at low viewport heigh
   })
 
   await page.goto('/auth')
-  await page.getByLabel('账号').fill('unknown-user')
+  await page.getByRole('textbox', { name: '账号', exact: true }).fill('unknown-user')
   await page.getByLabel('密码', { exact: true }).fill('wrong-password')
   await page.locator('form').getByRole('button', { name: '登录', exact: true }).click()
   const formAlert = page.locator('form [role="alert"]')
-  await expect(formAlert).toContainText('账号或密码不正确，请重试。')
+  await expect(formAlert).toContainText('账号或密码不正确，请核对后重新输入。')
 
   await page.getByRole('button', { name: '注册', exact: true }).click()
   await expect(formAlert).toHaveCount(0)

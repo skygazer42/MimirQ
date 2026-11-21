@@ -1,5 +1,7 @@
-import type { AxiosInstance, AxiosRequestConfig, Method } from 'axios'
+import type { AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios'
 import type { ZodType } from 'zod'
+
+import { extractHeaderRequestId, withRequestId } from '@/lib/api-errors'
 
 import type {
   OpenApiHeaderParams,
@@ -11,22 +13,24 @@ import type {
   OpenApiRequestBody,
 } from '@/types/openapi-helpers'
 
-const HTTP_METHODS = new Set(['get', 'post', 'put', 'patch', 'delete'])
-
 type JsonContentType = 'application/json'
 type MultipartContentType = 'multipart/form-data'
-export type OpenApiContentType = JsonContentType | MultipartContentType
 
-function stripApiV1Prefix(rawPath: string): string {
-  const p = String(rawPath || '')
-  if (p === '/api/v1') return '/'
-  if (p.startsWith('/api/v1/')) return p.slice('/api/v1'.length)
-  if (p.startsWith('/api/v1')) return p.slice('/api/v1'.length) || '/'
-  return p || '/'
+function isRequestScalar(value: unknown): value is string | number | boolean | bigint {
+  return (
+    typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean' || typeof value === 'bigint'
+  )
 }
 
-function renderPathTemplate(pathTemplate: string, params?: Record<string, unknown>): string {
+function stripApiV1Prefix(path: string): string {
+  if (path === '/api/v1') return '/'
+  if (path.startsWith('/api/v1/')) return path.slice('/api/v1'.length)
+  return path
+}
+
+function renderPathTemplate(pathTemplate: string, params: unknown): string {
   const base = stripApiV1Prefix(pathTemplate)
+  const pathParams = isRecord(params) ? params : undefined
   let output = ''
   let cursor = 0
   while (cursor < base.length) {
@@ -36,90 +40,57 @@ function renderPathTemplate(pathTemplate: string, params?: Record<string, unknow
       break
     }
     const close = base.indexOf('}', open + 1)
-    if (close === -1) {
-      output += base.slice(cursor)
-      break
-    }
+    if (close === -1) throw new Error(`[openapi-request] invalid path template: ${pathTemplate}`)
     output += base.slice(cursor, open)
-    const key = base.slice(open + 1, close).trim()
-    const value = params?.[key]
-    if (value === undefined || value === null || key === '') {
-      throw new Error(`[openapi-request] missing path param: ${key || '(empty)'}`)
+    const key = base.slice(open + 1, close)
+    if (key.length === 0) throw new Error(`[openapi-request] invalid path template: ${pathTemplate}`)
+    const value = pathParams?.[key]
+    if (value === undefined || value === null) {
+      throw new Error(`[openapi-request] missing path param: ${key}`)
     }
-    if (
-      typeof value === 'string' ||
-      typeof value === 'number' ||
-      typeof value === 'boolean' ||
-      typeof value === 'bigint'
-    ) {
-      output += encodeURIComponent(String(value))
-      cursor = close + 1
-      continue
-    }
-    throw new Error(`[openapi-request] invalid path param: ${key}`)
+    if (!isRequestScalar(value)) throw new Error(`[openapi-request] invalid path param: ${key}`)
+    output += encodeURIComponent(String(value))
+    cursor = close + 1
   }
   return output
 }
 
-function isFormData(value: unknown): value is FormData {
-  return typeof FormData !== 'undefined' && value instanceof FormData
-}
-
 function isRecord(value: unknown): value is Record<string, unknown> {
-  return !!value && typeof value === 'object' && !Array.isArray(value)
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
-function optionalRecord(value: unknown): Record<string, unknown> | undefined {
-  return isRecord(value) ? value : undefined
+function appendFormValue(form: FormData, name: string, value: unknown): void {
+  if (value === undefined || value === null) return
+  if (value instanceof Blob) {
+    form.append(name, value)
+    return
+  }
+  if (typeof value === 'object') {
+    const serialized = JSON.stringify(value)
+    if (serialized === undefined) throw new TypeError(`[openapi-request] unsupported form-data field: ${name}`)
+    form.append(name, serialized)
+    return
+  }
+  if (isRequestScalar(value)) {
+    form.append(name, String(value))
+    return
+  }
+  throw new TypeError(`[openapi-request] unsupported form-data field: ${name}`)
 }
 
 function toFormData(body: Record<string, unknown>): FormData {
-  if (typeof FormData === 'undefined') {
-    throw new TypeError('[openapi-request] FormData is not available in this environment')
+  const form = new FormData()
+  for (const [name, value] of Object.entries(body)) {
+    if (Array.isArray(value)) {
+      for (const item of value) appendFormValue(form, name, item)
+    } else {
+      appendFormValue(form, name, value)
+    }
   }
-
-  const fd = new FormData()
-  const hasBlob = typeof Blob !== 'undefined'
-
-  for (const [k, raw] of Object.entries(body)) {
-    if (raw === undefined || raw === null) continue
-
-    if (Array.isArray(raw)) {
-      for (const v of raw) {
-        if (v === undefined || v === null) continue
-        if (hasBlob && v instanceof Blob) {
-          fd.append(k, v)
-        } else if (typeof v === 'object') {
-          fd.append(k, JSON.stringify(v))
-        } else {
-          fd.append(k, String(v))
-        }
-      }
-      continue
-    }
-
-    if (hasBlob && raw instanceof Blob) {
-      fd.append(k, raw)
-      continue
-    }
-
-    if (typeof raw === 'object') {
-      fd.append(k, JSON.stringify(raw))
-      continue
-    }
-
-    if (typeof raw === 'string' || typeof raw === 'number' || typeof raw === 'boolean' || typeof raw === 'bigint') {
-      fd.append(k, String(raw))
-      continue
-    }
-
-    throw new Error(`[openapi-request] unsupported form-data field: ${k}`)
-  }
-
-  return fd
+  return form
 }
 
-export type OpenApiAxiosRequestArgs<P extends OpenApiPath, M extends OpenApiMethodForPath<P>> = {
+type OpenApiAxiosRequestArgs<P extends OpenApiPath, M extends OpenApiMethodForPath<P>> = {
   path: P
   method: M
   query?: OpenApiQueryParams<P, M>
@@ -140,78 +111,43 @@ export type OpenApiAxiosRequestArgs<P extends OpenApiPath, M extends OpenApiMeth
       : {
           contentType: MultipartContentType
           // Allow passing pre-built FormData for cases that need custom filenames or repeated keys.
-          // Typed multipart bodies (object shape) are also accepted and will be converted best-effort.
+          // Object bodies are serialized into multipart fields.
           body: FormData | OpenApiRequestBody<P, M, MultipartContentType>
         })
 )
 
-function headerValueToString(value: unknown): string | undefined {
-  if (typeof value === 'string') {
-    const trimmed = value.trim()
-    return trimmed || undefined
-  }
-  if (typeof value === 'number' || typeof value === 'boolean') return String(value)
-  if (Array.isArray(value)) {
-    const joined = value
-      .filter(
-        (item): item is string | number | boolean =>
-          typeof item === 'string' || typeof item === 'number' || typeof item === 'boolean',
-      )
-      .map(String)
-      .join(', ')
-      .trim()
-    return joined || undefined
-  }
-  return undefined
-}
+export function parseApiResponse<T>(response: AxiosResponse<unknown>, schema: ZodType<T>, schemaLabel: string): T {
+  const parsed = schema.safeParse(response.data)
+  if (parsed.success) return parsed.data
 
-function extractResponseRequestId(headers: unknown): string | undefined {
-  if (!headers) return undefined
-
-  try {
-    if (typeof (headers as { get?: unknown }).get === 'function') {
-      const get = (headers as { get(name: string): unknown }).get
-      return headerValueToString(get('x-request-id') ?? get('X-Request-ID'))
-    }
-  } catch {
-    // Ignore header accessor failures and fall back to object access below.
-  }
-
-  const record = headers as Record<string, unknown>
-  return headerValueToString(record['x-request-id'] ?? record['X-Request-ID'])
-}
-
-function withRequestId(message: string, requestId?: string): string {
-  const rid = String(requestId || '').trim()
-  if (!rid || /\brequest_id=/.test(message)) return message
-  return `${message} (request_id=${rid})`
+  const requestId = extractHeaderRequestId(response.headers)
+  const firstIssue = parsed.error.issues[0]?.message
+  const message = withRequestId(
+    firstIssue === undefined
+      ? `[openapi-request] invalid ${schemaLabel} response`
+      : `[openapi-request] invalid ${schemaLabel} response: ${firstIssue}`,
+    requestId,
+  )
+  throw Object.assign(new Error(message), {
+    requestId,
+    issues: parsed.error.issues,
+    status: response.status,
+  })
 }
 
 export function createOpenApiAxiosClient(apiClient: AxiosInstance) {
   return async function openapiRequest<P extends OpenApiPath, M extends OpenApiMethodForPath<P>>(
     args: OpenApiAxiosRequestArgs<P, M>,
   ): Promise<OpenApiOkResponse<P, M>> {
-    const method = String(args.method || '').toLowerCase()
-    if (!HTTP_METHODS.has(method)) {
-      throw new Error(`[openapi-request] unsupported method: ${String(args.method)}`)
-    }
-
-    const url = renderPathTemplate(String(args.path), optionalRecord(args.pathParams))
-
-    const requestArgs = args as OpenApiAxiosRequestArgs<P, M> & {
-      contentType?: OpenApiContentType
-      body?: unknown
-    }
-    const contentType: OpenApiContentType = requestArgs.contentType || 'application/json'
-    let data = requestArgs.body
-
-    if (contentType === 'multipart/form-data' && isRecord(data) && !isFormData(data)) {
+    const url = renderPathTemplate(args.path, args.pathParams)
+    let data: unknown = args.body
+    if (args.contentType === 'multipart/form-data' && isRecord(data) && !(data instanceof FormData)) {
       data = toFormData(data)
     }
 
-    const res = await apiClient.request({
+    const res = await apiClient.request<OpenApiOkResponse<P, M>>({
       url,
-      method: method as Method,
+      method: args.method,
       params: args.query,
       data,
       headers: args.headers as AxiosRequestConfig['headers'],
@@ -220,28 +156,12 @@ export function createOpenApiAxiosClient(apiClient: AxiosInstance) {
       ...args.axios,
     })
 
-    if (!args.responseSchema) {
+    if (args.responseSchema === undefined) {
       return res.data
     }
 
-    const parsed = args.responseSchema.safeParse(res.data)
-    if (parsed.success) {
-      return parsed.data
-    }
-
-    const requestId = extractResponseRequestId(res.headers)
-    const schemaLabel = String(args.responseSchemaName || `${String(args.method).toUpperCase()} ${String(args.path)}`)
-    const firstIssue = parsed.error.issues[0]?.message
-    const message = withRequestId(
-      firstIssue
-        ? `[openapi-request] invalid ${schemaLabel} response: ${firstIssue}`
-        : `[openapi-request] invalid ${schemaLabel} response`,
-      requestId,
-    )
-    const error = new Error(message)
-    ;(error as Error & { requestId?: string; issues?: unknown[]; status?: number }).requestId = requestId
-    ;(error as Error & { requestId?: string; issues?: unknown[]; status?: number }).issues = parsed.error.issues
-    ;(error as Error & { requestId?: string; issues?: unknown[]; status?: number }).status = res.status
-    throw error
+    const schemaLabel =
+      args.responseSchemaName === undefined ? `${args.method.toUpperCase()} ${args.path}` : args.responseSchemaName
+    return parseApiResponse(res, args.responseSchema, schemaLabel)
   }
 }

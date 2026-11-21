@@ -3,14 +3,13 @@ import uuid
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from app.api.dependencies.auth import get_current_account_id
-from app.api.dependencies.tenant import get_tenant_id
-from app.core.database import get_db
+from app.api.dependencies import get_current_account_id, get_tenant_id
+from app.infrastructure.database.connection import get_db
 
 
 def test_parsing_extract_endpoint_returns_json_with_evidence(monkeypatch):  # noqa: ANN001
-    import app.api.v1.parsing as parsing_module
-    from app.services import dataset_service
+    import app.api.v1.pipelines.parsing as parsing_module
+    from app.services.datasets import management as dataset_service
 
     tenant_id = uuid.uuid4()
     document_id = uuid.uuid4()

@@ -1,28 +1,26 @@
 """
-Vector store router for Milvus, memory, Qdrant and pgvector.
+Vector store router for Milvus and the development memory backend.
 Switch via VECTOR_BACKEND to keep the retrieval path centralized.
 """
 
 import json
+import logging
 import math
 import threading
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
-from app.core.config import settings
-from app.core.constants import EmbeddingProviders
-from app.rag.core.filters import match_metadata_filter as _match_metadata_filter
-from app.rag.core.hashing import stable_hash
-from app.rag.core.logging import get_logger
+from app.infrastructure.config import settings
+from app.infrastructure.hashing import stable_hash
+from app.infrastructure.metadata_filters import match_metadata_filter as _match_metadata_filter
+from app.infrastructure.model_policy import EmbeddingProviders
 from app.rag.embedding import create_langchain_embeddings_from_config
 from app.storage.vector.milvus import milvus_store
-from app.storage.vector.pgvector import PGVectorStore
-from app.storage.vector.qdrant import QdrantVectorStore
 
 if TYPE_CHECKING:
     from app.rag.embedding.adapter import LangChainEmbeddingsAdapter
 
-logger = get_logger("storage.vector.factory")
+logger = logging.getLogger("storage.vector.factory")
 
 
 class BaseVectorStore:
@@ -131,22 +129,23 @@ class MemoryVectorStore(BaseVectorStore):
 
     def add_documents(self, docs: list[dict[str, Any]], document_id: UUID, tenant_id: UUID) -> list[str]:
         with self._lock:
-            texts = [d["content"] for d in docs]
+            texts = [doc["content"] for doc in docs]
             vectors = self.emb.embed_documents(texts)
-            for vec, doc in zip(vectors, docs, strict=False):
+            records: list[tuple[list[float], dict[str, Any]]] = []
+            ids: list[str] = []
+            for index, (vector, doc) in enumerate(zip(vectors, docs, strict=True)):
                 meta = dict(doc.get("metadata") or {})
                 meta.setdefault("document_id", str(document_id))
                 meta.setdefault("tenant_id", str(tenant_id))
-                if meta.get("chunk_id"):
-                    meta["chunk_id"] = str(meta.get("chunk_id"))
                 meta.setdefault("content", doc["content"])
-                self.storage.append((vec, meta))
-            # In-memory mode uses placeholder IDs instead of real vector IDs.
-            ids: list[str] = []
-            for i, d in enumerate(docs):
-                meta = dict(d.get("metadata") or {})
-                cid = meta.get("chunk_id")
-                ids.append(str(cid) if cid else f"{document_id}_mem_{i}")
+                chunk_id = meta.get("chunk_id")
+                if chunk_id:
+                    meta["chunk_id"] = str(chunk_id)
+                    ids.append(meta["chunk_id"])
+                else:
+                    ids.append(f"{document_id}_mem_{index}")
+                records.append((vector, meta))
+            self.storage.extend(records)
             return ids
 
     def search(
@@ -162,13 +161,9 @@ class MemoryVectorStore(BaseVectorStore):
             if not self.storage:
                 return []
             qvec = self.emb.embed_query(query)
+            query_norm = math.sqrt(sum(value * value for value in qvec))
             allowed_ids = {str(did) for did in document_ids} if document_ids else None
             allowed_tenant = str(tenant_id) if tenant_id else None
-
-            def cosine(a: list[float], b: list[float]) -> float:
-                num = sum(x * y for x, y in zip(a, b, strict=False))
-                denom = math.sqrt(sum(x * x for x in a)) * math.sqrt(sum(y * y for y in b))
-                return num / denom if denom else 0.0
 
             results: list[dict[str, Any]] = []
             for vec, meta in self.storage:
@@ -178,7 +173,9 @@ class MemoryVectorStore(BaseVectorStore):
                     continue
                 if metadata_filter and not _match_metadata_filter(meta, metadata_filter):
                     continue
-                score = cosine(qvec, vec)
+                dot_product = sum(query_value * value for query_value, value in zip(qvec, vec, strict=False))
+                norm_product = query_norm * math.sqrt(sum(value * value for value in vec))
+                score = dot_product / norm_product if norm_product else 0.0
                 if score < score_threshold:
                     continue
                 results.append(
@@ -231,7 +228,7 @@ class MemoryVectorStore(BaseVectorStore):
 
 _VECTOR_STORE_SINGLETONS: dict[str, BaseVectorStore] = {}
 _VECTOR_STORE_SINGLETONS_LOCK = threading.RLock()
-_EMBEDDING_AWARE_VECTOR_BACKENDS = frozenset({"memory", "qdrant", "pgvector"})
+_EMBEDDING_AWARE_VECTOR_BACKENDS = frozenset({"memory"})
 
 
 def _normalize_region(region: str | None = None) -> str:
@@ -262,16 +259,26 @@ def _load_vector_region_backends() -> dict[str, str]:
     return out
 
 
-def _resolve_vector_backend(*, backend: str | None = None, region: str | None = None) -> tuple[str, str | None]:
+def _validate_vector_backend(backend: str) -> None:
+    if backend == "faiss":
+        raise ValueError("FAISS vector backend has been retired. Select a supported backend explicitly.")
+    if backend == "chroma":
+        raise ValueError("Chroma vector backend has been retired. Select a supported backend explicitly.")
+    if backend in {"qdrant", "pgvector"}:
+        raise ValueError(f"{backend} vector backend has been retired. Select a supported backend explicitly.")
+    if backend not in {"milvus", "memory"}:
+        raise ValueError(f"Unsupported vector backend: {backend}")
+
+
+def resolve_vector_backend(*, backend: str | None = None, region: str | None = None) -> tuple[str, str | None]:
+    """Validate and resolve the active backend without creating a store or embedding client."""
     region_key = _normalize_region(region)
     selected_backend = settings.VECTOR_BACKEND if backend is None else backend
     requested = selected_backend.strip().lower()
+    _validate_vector_backend(requested)
     if region_key:
         requested = _load_vector_region_backends().get(region_key, requested)
-    if requested == "faiss":
-        raise ValueError("FAISS vector backend has been retired. Select a supported backend explicitly.")
-    if requested == "chroma":
-        raise ValueError("Chroma vector backend has been retired. Select a supported backend explicitly.")
+        _validate_vector_backend(requested)
     return requested, (region_key if region_key else None)
 
 
@@ -304,7 +311,7 @@ def get_vector_store(*, backend: str | None = None, region: str | None = None) -
     Return the configured vector store backend (singleton).
     The memory backend keeps state in-process; its singleton preserves that state.
     """
-    backend_name, region_key = _resolve_vector_backend(backend=backend, region=region)
+    backend_name, region_key = resolve_vector_backend(backend=backend, region=region)
     cache_key = _vector_store_cache_key(backend_name=backend_name, region_key=region_key)
     with _VECTOR_STORE_SINGLETONS_LOCK:
         cached = _VECTOR_STORE_SINGLETONS.get(cache_key)
@@ -315,10 +322,6 @@ def get_vector_store(*, backend: str | None = None, region: str | None = None) -
             store: BaseVectorStore = MilvusVectorStore()
         elif backend_name == "memory":
             store = MemoryVectorStore()
-        elif backend_name == "qdrant":
-            store = QdrantVectorStore()
-        elif backend_name == "pgvector":
-            store = PGVectorStore()
         else:
             raise ValueError(f"Unsupported vector backend: {backend_name}")
 

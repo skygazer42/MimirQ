@@ -10,11 +10,13 @@ Status: implemented
 
 ## Decision
 
+会话运行时由 runtime 持有：engine、streaming、graph 及 checkpoint/store 分开维护。Graph 的 state 构造、上下文、生成、答案、指标、任务与装配各归实际模块，检索由 orchestrator 顺序组装 stages；原 engine_support、pipelines 与 retrieval/orchestration 支持目录的源码退出，消费者直接使用定义。智能体专属工具与中间件归 agents，agents 包标记不加载 runner；离线预检工具归 evaluation/scanning。完整当前目录说明见仓库 docs/development/rag_structure.md。
+
 两个智能体使用rag_agent中的build_agentic_rag_state模块函数，具名传递真实request与history，不新增文件或Context。原覆盖优先级、raw legacy参数和零值规则保持；单分支补传既有request_id，并行映射保持原语义。实际engine、request／结果记录、模型／registry／缓存／锁继续由有状态对象持有。
 
 [流式依赖所有者](2026-11-14-stream-dependency-owners.md)进一步删除整engine模块透传，并以实际Graph／Request字段声明替代过期白名单；合法score阈值0不再被legacy默认替换。本篇原核心scope／资源／退休原则继续成立，其余legacy缺省不借此统一改写。
 
-两个完整同体的融合实现归现有doc_utils.fuse_doc_lists，调用方显式传入同一fuse_docs_rrf和rrf_k，保原运算序、排序／tie和metadata复制。阶段调度、输入范围和异步边界不合并。
+两个完整同体的融合实现归 retrieval/ranking/fusion.py 的模块函数，调用方只传实际文档和 rrf_k；查询去重归 planning/variants.py。无状态 DocUtilsMixin 和单实现回调退出，所有引擎与智能体消费者直接依赖真实定义，保原运算序、排序／tie和metadata复制。阶段调度、输入范围和异步边界不合并。
 
 旧tools.py、prebuilt facade、未挂载MCP server／dashboard以及simple KB／三个无业务scanner助手退出，共八文件；包imports和exports同步清理。真实format／length／settings服务入口、simhash冻结测试和底层PII／secrets／PDF实现保持。旧工具的run_path schema测试、prebuilt适配器测试以及旧查询初始化函数的测试引用明确登记为冻结例外，不称全仓无人引用，不留生产兼容壳。
 
@@ -22,7 +24,7 @@ Status: implemented
 
 检索准备继续使用现有 QueryPlan、RuntimeState、runner 和实际阶段列表。旧 support_contracts 实现及两个旧包装没有真正调度调用，闭包一起退出；只清理无根的旧分解包装和专属导入，活跃的查询分解、模型选择和阶段不删。插件策略复用其既有实际所有者，同签名内部转发改为实际函数绑定，没有新增 Context 或整个模块的 Any 透传。
 
-KG 的 agentic_beam_search、drift_search、lazy_indexer、pprank、snapshot_router，以及独立 plaid 编解码器没有应用、脚本、配置或动态注册调用，整模块退出。plaid 有真实算法，不以 stub 为删除理由；实际 ranking/pagerank、ColBERT 索引、method_router 标签和查询字段保持。自身 __all__ 只是声明，冻结测试的直接导入真实列在证据中，不宣称全仓零引用。
+KG 的 agentic_beam_search、drift_search、lazy_indexer、pprank、snapshot_router，以及独立 plaid 编解码器没有应用、脚本、配置或动态注册调用，整模块退出。plaid 有真实算法，不以 stub 为删除理由；实际 ranking/pagerank、method_router 标签和查询字段保持。当时保留的 ColBERT 索引由后续[检索职责收敛与 ColBERT 退役](2026-11-16-retrieval-ranking-owners.md)决定退出；该篇同时接管召回、融合和模型重排的当前归属，其余资源和退役原则继续成立。自身 __all__ 只是声明，冻结测试的直接导入真实列在证据中，不宣称全仓零引用。
 
 跟进查询的[词数预算修复](../bug-fix/2026-11-14-followup-term-budget.md)独立持有行为决定，原排序、状态和资源所有权不因此改变。
 
@@ -41,6 +43,10 @@ LangGraph 状态入口直接用已有 RagStateBuildOptions 接收真实调用者
 - 保留重复映射可以少改调用方，但字段已经出现request_id差异，两个实际消费者使用同一函数可消除维护分叉。
 - 新增执行Context／通用manager能统一更多步骤，却隐藏当前明确的状态与函数依赖，因此沿用现有模块。
 - 给没有挂载的服务补鉴权并接入口可以保代码，但会新增产品能力；完整图确认没有实际消费者后退出。
+
+## Verification
+
+当前职责拆解核对 23 个检索阶段、七组 stream 操作和 83 项策略注册，保持顺序、别名及配置含义。11,947 个起点定义经明确变换核同，15 项方法转函数另核同；智能体遗留调用已修并做 512 组独立对照。RRF、重排、Graph 和文件分块有各自有限行为证明，完整当前结果归 docs/maintenance/style-unification/rag-structure-verification.json。下面原批次数字保留各自来源，不作为当前源指纹。Python 测试继续冻结且未运行，真实模型、数据库和持久化恢复未验证。
 
 ## Consequences
 

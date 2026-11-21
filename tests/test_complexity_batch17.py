@@ -1,30 +1,16 @@
-import builtins
-import datetime as _datetime
-import json
 from pathlib import Path
 from types import SimpleNamespace
 
 import numpy as np
 import pytest
-import starlette.status as starlette_status
 from PIL import Image
-from pydantic import ConfigDict as _PydanticConfigDict
-
-if not hasattr(_datetime, "UTC"):
-    _datetime.UTC = _datetime.timezone.utc
-if not hasattr(starlette_status, "HTTP_413_CONTENT_TOO_LARGE"):
-    starlette_status.HTTP_413_CONTENT_TOO_LARGE = 413
-if not hasattr(starlette_status, "HTTP_422_UNPROCESSABLE_CONTENT"):
-    starlette_status.HTTP_422_UNPROCESSABLE_CONTENT = 422
-if not hasattr(builtins, "ConfigDict"):
-    builtins.ConfigDict = _PydanticConfigDict
 
 
 def test_deepdoc_parser_docx_parse_formats_sections_and_attaches_profile(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    from app.parsing.parsers.deepdoc_parser import DeepDocParser
+    from app.rag.ingestion.parsing.parsers.deepdoc_parser import DeepDocParser
 
     runtime_metadata = {
         "layout": {"available": True},
@@ -32,14 +18,14 @@ def test_deepdoc_parser_docx_parse_formats_sections_and_attaches_profile(
     }
 
     class _DocxParser:
-        def __call__(self, _path: str):
+        def parse_sections(self, _path: str):
             return (
                 [
                     ("Document Title", "Heading 1"),
                     ("First bullet", "List Bullet"),
-                    "Body paragraph",
+                    ("Body paragraph", None),
                 ],
-                [["A1", "A2"], "Table tail"],
+                [["A1", "A2"], ["Table tail"]],
             )
 
     parser = DeepDocParser()
@@ -74,17 +60,21 @@ def test_deepdoc_parser_pdf_returns_fallback_doc_with_profile_when_empty(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    import app.parsing.parsers.deepdoc_parser as deepdoc_module
-    from app.parsing.parsers.deepdoc_parser import DeepDocParser
+    import app.rag.ingestion.parsing.parsers.deepdoc_parser as deepdoc_module
+    from app.rag.ingestion.parsing.parsers.deepdoc_parser import DeepDocParser
 
     runtime_metadata = {"layout": {"available": True}}
+    closed: list[bool] = []
 
     class _PdfParser:
         total_page = 2
         ocr = SimpleNamespace(last_recognition_profile={"provider": "fake"})
 
         def __call__(self, _path: str, **_kwargs):
-            return [], []
+            return "", []
+
+        def close_images(self) -> None:
+            closed.append(True)
 
     parser = DeepDocParser()
     monkeypatch.setattr(parser, "_ensure_pdf_parser", lambda: _PdfParser())
@@ -119,14 +109,15 @@ def test_deepdoc_parser_pdf_returns_fallback_doc_with_profile_when_empty(
     assert docs[0].metadata["deepdoc_profile"]["document_count"] == 1
     assert docs[0].metadata["deepdoc_profile"]["total_pages"] == 2
     assert docs[0].metadata["deepdoc_profile"]["ocr_recognition"] == {"provider": "fake"}
+    assert closed == [True]
 
 
 def test_deepseek_ocr_parse_preserves_page_order_and_artifacts(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    import app.parsing.parsers.deepseek_ocr_parser as deepseek_module
-    from app.parsing.parsers.deepseek_ocr_parser import DeepSeekOCRParser
+    import app.rag.ingestion.parsing.parsers.deepseek_ocr_parser as deepseek_module
+    from app.rag.ingestion.parsing.parsers.deepseek_ocr_parser import DeepSeekOCRParser
 
     pdf_path = tmp_path / "scan.pdf"
     pdf_path.write_bytes(b"%PDF-1.4")
@@ -190,11 +181,10 @@ def test_deepseek_ocr_parse_preserves_page_order_and_artifacts(
     assert (artifact_root / "images" / "missing.jpg").read_bytes() == b"jpg-1"
 
 
-def test_paddle_vl_normalize_local_files_rewrites_images_json_and_markdown(
-    monkeypatch: pytest.MonkeyPatch,
+def test_parser_artifact_normalization_rewrites_images_and_markdown(
     tmp_path: Path,
 ) -> None:
-    from app.parsing.parsers.paddle_vl_parser import PaddleVLParser
+    from app.rag.ingestion.parsing.utils.artifact_normalizer import normalize_extracted_artifacts
 
     output_dir = tmp_path / "output"
     page_dir = output_dir / "page_1"
@@ -205,47 +195,32 @@ def test_paddle_vl_normalize_local_files_rewrites_images_json_and_markdown(
 
     old_name = "img_in_image_box_1_2_3_4.jpg"
     (imgs_dir / old_name).write_bytes(b"img-bytes")
-    (page_dir / "page_1_res.json").write_text(
-        json.dumps(
-            {
-                "page_index": 0,
-                "parsing_res_list": [{"block_label": "image", "block_bbox": [1, 2, 3, 4]}],
-            }
-        ),
-        encoding="utf-8",
-    )
     markdown_path = nested_dir / "source.md"
     markdown_path.write_text(
-        f'![figure](./{old_name})\n<img src="{old_name}" alt="figure">',
+        f'![figure](./{old_name})\n<img src="{old_name}" alt="figure">'
+        f'\n![remote](https://example.com/{old_name})\n<img data-src="{old_name}" alt="lazy">',
         encoding="utf-8",
     )
 
-    parser = object.__new__(PaddleVLParser)
-    monkeypatch.setattr(
-        "app.parsing.parsers.paddle_vl_parser.ZipImageProcessor._choose_markdown_file",
-        lambda files: markdown_path,
-    )
-
-    normalized = parser._normalize_local_files(output_dir)
+    normalized = normalize_extracted_artifacts(output_dir)
 
     assert normalized["image_count"] == 1
     assert normalized["markdown_file"] == output_dir / "result.md"
-    assert normalized["json_file"] == output_dir / "result.json"
+    assert normalized["image_dir"] == output_dir / "images"
     assert (output_dir / "images" / "image_001.jpg").read_bytes() == b"img-bytes"
     assert not (imgs_dir / old_name).exists()
-
-    combined = json.loads((output_dir / "result.json").read_text(encoding="utf-8"))
-    assert combined["pages"][0]["parsing_res_list"][0]["img_path"] == "images/image_001.jpg"
 
     markdown = (output_dir / "result.md").read_text(encoding="utf-8")
     assert "![figure](images/image_001.jpg)" in markdown
     assert '<img src="images/image_001.jpg" alt="figure">' in markdown
+    assert f"![remote](https://example.com/{old_name})" in markdown
+    assert f'<img data-src="{old_name}" alt="lazy">' in markdown
 
 
 def test_excel_parser_parse_xlsx_unmerges_cells_and_marks_truncation(tmp_path: Path) -> None:
     from openpyxl import Workbook
 
-    from app.parsing.parsers.excel_parser import ExcelParser
+    from app.rag.ingestion.parsing.parsers.excel_parser import ExcelParser
 
     workbook = Workbook()
     sheet = workbook.active
@@ -271,7 +246,7 @@ def test_excel_parser_parse_xlsx_unmerges_cells_and_marks_truncation(tmp_path: P
 
 
 def test_preprocess_file_applies_text_and_html_steps_in_order(tmp_path: Path) -> None:
-    from app.parsing.preprocess.file_preprocessor import preprocess_file
+    from app.rag.ingestion.parsing.preprocess.file_preprocessor import preprocess_file
 
     input_path = tmp_path / "sample.html"
     input_path.write_bytes(
@@ -316,7 +291,7 @@ def test_preprocess_file_applies_text_and_html_steps_in_order(tmp_path: Path) ->
 
 
 def test_run_local_onnx_cleanup_restores_original_size(tmp_path: Path) -> None:
-    from app.parsing.preprocess.handwriting_cleanup import _run_local_onnx_cleanup
+    from app.rag.ingestion.parsing.preprocess.handwriting_cleanup import _run_local_onnx_cleanup
 
     input_path = tmp_path / "source.png"
     output_path = tmp_path / "cleaned.png"
@@ -340,7 +315,7 @@ def test_run_local_onnx_cleanup_restores_original_size(tmp_path: Path) -> None:
 
 
 def test_cleanup_handwriting_document_auto_uses_heuristic_for_raster(tmp_path: Path) -> None:
-    from app.parsing.preprocess.handwriting_cleanup import cleanup_handwriting_document
+    from app.rag.ingestion.parsing.preprocess.handwriting_cleanup import cleanup_handwriting_document
 
     input_path = tmp_path / "handwritten.png"
     output_path = tmp_path / "handwritten.cleaned.png"
@@ -362,8 +337,8 @@ def test_preprocess_image_document_skips_high_quality_pdf(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    from app.parsing.preprocess import image_preprocess as image_module
-    from app.parsing.preprocess.image_preprocess import preprocess_image_document
+    from app.rag.ingestion.parsing.preprocess import image_preprocess as image_module
+    from app.rag.ingestion.parsing.preprocess.image_preprocess import preprocess_image_document
 
     pdf_path = tmp_path / "clean.pdf"
     pdf_path.write_bytes(b"%PDF-1.4")
@@ -388,8 +363,8 @@ def test_preprocess_image_document_image_pipeline_preserves_stage_order_and_arti
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    from app.parsing.preprocess import image_preprocess as image_module
-    from app.parsing.preprocess.image_preprocess import ImagePreprocessStepLog, preprocess_image_document
+    from app.rag.ingestion.parsing.preprocess import image_preprocess as image_module
+    from app.rag.ingestion.parsing.preprocess.image_preprocess import ImagePreprocessStepLog, preprocess_image_document
 
     input_path = tmp_path / "photo.png"
     Image.new("RGB", (4, 4), color=(10, 20, 30)).save(input_path)
@@ -465,5 +440,5 @@ def test_preprocess_image_document_image_pipeline_preserves_stage_order_and_arti
     assert result.meta["paddle_ocr_preprocess"] == {"backend": "paddle"}
     assert result.meta["handwriting_cleanup"] == {"backend": "heuristic"}
     assert result.meta["watermark_removal"] == {"backend": "http"}
-    assert result.meta["artifact_dir"].endswith("/.mimirq_preprocess/photo_17")
+    assert Path(result.meta["artifact_dir"]) == tmp_path / ".mimirq_preprocess" / "photo_17"
     assert Path(result.output_path).name == "photo.dewatermark.png"

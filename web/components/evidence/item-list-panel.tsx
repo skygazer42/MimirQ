@@ -2,18 +2,15 @@
 
 import { Plus, RefreshCw } from '@/components/icons'
 
-import type { EvidenceItem, EvidenceItemStatus, EvidenceSuite } from '@/types'
-import { cn } from '@/lib/utils'
-import { Badge } from '@/components/ui/badge'
+import type { EvidenceItem } from '@/types'
 import { Button } from '@/components/ui/button'
 import { WorkspaceNotice, workspaceStyles as ws } from '@/components/ui/operational-workspace'
-import { Panel } from '@/components/ui/panel'
-import { ScrollArea } from '@/components/ui/scroll-area'
+import { LoadingButton } from '@/components/ui/loading-button'
+import { Skeleton } from '@/components/ui/skeleton'
 import { SearchInput } from '@/components/ui/search-input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 
 type ItemListPanelProps = {
-  selectedSuite: EvidenceSuite | null
   selectedSuiteId: string
   itemQuery: string
   onItemQueryChange: (value: string) => void
@@ -26,11 +23,9 @@ type ItemListPanelProps = {
   selectedItemId: string
   onCreateItem: () => void
   onSelectItem: (itemId: string) => void
-  statusBadgeVariant: (status: EvidenceItemStatus) => 'outline' | 'secondary' | 'soft' | 'destructive'
 }
 
 export function ItemListPanel({
-  selectedSuite,
   selectedSuiteId,
   itemQuery,
   onItemQueryChange,
@@ -43,7 +38,6 @@ export function ItemListPanel({
   selectedItemId,
   onCreateItem,
   onSelectItem,
-  statusBadgeVariant,
 }: Readonly<ItemListPanelProps>) {
   const labels: Record<string, string> = { draft: '草稿', reviewed: '已复核', approved: '已通过', archived: '已归档' }
   return (
@@ -70,28 +64,31 @@ export function ItemListPanel({
             ))}
           </SelectContent>
         </Select>
-        <Button
+        <LoadingButton
+          loading={itemsLoading}
           variant="ghost"
           size="icon"
           aria-label="重新读取证据条目"
           disabled={!selectedSuiteId || itemsLoading}
           onClick={onRefresh}
         >
-          <RefreshCw className={itemsLoading ? 'animate-spin motion-reduce:animate-none' : ''} />
-        </Button>
+          <RefreshCw />
+        </LoadingButton>
       </div>
-      {itemsError ? (
+      {itemsError !== null ? (
         <WorkspaceNotice retry={onRefresh} pending={itemsLoading}>
           {itemsError}
         </WorkspaceNotice>
-      ) : !selectedSuiteId ? (
+      ) : null}
+      {!selectedSuiteId ? (
         <p className={ws.muted}>从目录选择一个证据集。</p>
-      ) : itemsLoading ? (
-        <p role="status" className={ws.muted}>
-          正在读取证据条目…
-        </p>
+      ) : itemsLoading && filteredItems.length === 0 ? (
+        <div className="space-y-2" aria-label="正在读取证据条目">
+          <Skeleton className="h-9 w-full" />
+          <Skeleton className="h-14 w-full" />
+        </div>
       ) : filteredItems.length ? (
-        <div className={ws.tableScroll}>
+        <div className={ws.tableScroll} aria-busy={itemsLoading}>
           <table className={ws.table} aria-label="证据条目列表">
             <thead>
               <tr>
@@ -123,11 +120,11 @@ export function ItemListPanel({
             </tbody>
           </table>
         </div>
-      ) : (
+      ) : itemsError === null ? (
         <p className={ws.muted}>
           {itemQuery || statusFilter !== '__all__' ? '没有符合当前条件的条目。' : '此证据集还没有条目。'}
         </p>
-      )}
+      ) : null}
     </section>
   )
 }

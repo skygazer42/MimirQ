@@ -13,7 +13,7 @@ import { waitForAssertion } from '@/test/hook-harness'
 import { clearAuthSession, setAccessToken, setAuthSession } from '@/lib/auth-storage'
 import { queryKeys } from '@/lib/query-keys'
 import type { ParsedFileData } from '@/store/use-parsed-files-store'
-import type { ChunkPreviewResponse } from '@/types'
+import type { ChunkPreviewResponse, PipelineCapabilitiesResponse } from '@/types'
 import { ChunkAutoTuneDialog } from './components/chunk-auto-tune-dialog'
 import { ChunkPresetPanel } from './components/chunk-preset-panel'
 import { Sidebar } from './components/workbench/sidebar-client'
@@ -32,7 +32,7 @@ const api = vi.hoisted(() => ({
   },
   parsing: { listDocuments: vi.fn(), getContent: vi.fn() },
   presets: { list: vi.fn(), update: vi.fn(), create: vi.fn() },
-  datasets: { list: vi.fn() },
+  datasets: { listAll: vi.fn() },
   pipeline: {
     listPipelinePlugins: vi.fn(),
     ingestionPreview: vi.fn(),
@@ -41,7 +41,11 @@ const api = vi.hoisted(() => ({
   },
   evaluations: { createRegressionRun: vi.fn() },
   parsedFiles: [] as ParsedFileData[],
-  capabilities: { capabilities: null, parserBackendAvailable: vi.fn(), chunkStrategyAvailable: vi.fn() },
+  capabilities: {
+    capabilities: null as PipelineCapabilitiesResponse | null,
+    parserBackendAvailable: vi.fn(),
+    chunkStrategyAvailable: vi.fn(),
+  },
   router: { replace: vi.fn() },
   search: new URLSearchParams(),
   toast: { success: vi.fn(), error: vi.fn(), info: vi.fn(), message: vi.fn() },
@@ -55,6 +59,7 @@ vi.mock('@/lib/api', () => ({
   pipelineApi: api.pipeline,
   evaluationApi: api.evaluations,
 }))
+vi.mock('@/lib/api/datasets', () => ({ datasetApi: api.datasets }))
 vi.mock('@/contexts/pipeline-capabilities-context', () => ({ usePipelineCapabilities: () => api.capabilities }))
 vi.mock('@/store/use-parsed-files-store', () => ({
   useParsedFiles: (select: (state: { files: ParsedFileData[] }) => unknown) => select({ files: api.parsedFiles }),
@@ -134,14 +139,27 @@ vi.mock('@/components/ui/dropdown-menu', async () => {
   }
 })
 vi.mock('@tanstack/react-virtual', () => ({
-  useVirtualizer: ({ count }: { count: number }) => ({
+  useVirtualizer: ({ count, getItemKey }: { count: number; getItemKey?: (index: number) => string | number }) => ({
     getVirtualItems: () =>
-      Array.from({ length: count }, (_, index) => ({ index, key: index, start: index * 140, size: 140 })),
+      Array.from({ length: count }, (_, index) => ({
+        index,
+        key: getItemKey === undefined ? index : getItemKey(index),
+        start: index * 140,
+        size: 140,
+      })),
     getTotalSize: () => count * 140,
     measureElement: vi.fn(),
     scrollToIndex: vi.fn(),
   }),
 }))
+vi.mock('framer-motion', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('framer-motion')>()
+  return {
+    ...actual,
+    AnimatePresence: ({ children }: { children: React.ReactNode }) => children,
+    useReducedMotion: () => true,
+  }
+})
 vi.mock('@/components/pipeline-options-panel', () => ({ PipelineOptionsPanel: () => null }))
 vi.mock('@/components/business/chunk-strategy-dropdown', () => ({ ChunkStrategyDropdown: () => null }))
 vi.mock('@/components/test-generation-dialog', () => ({ TestGenerationDialog: () => null }))
@@ -298,6 +316,17 @@ function changeText(input: HTMLInputElement | HTMLTextAreaElement, value: string
   act(() => input.dispatchEvent(new Event('input', { bubbles: true })))
 }
 
+function chooseSelectValue(container: HTMLElement, value: string) {
+  const select = Array.from(container.querySelectorAll<HTMLSelectElement>('select')).find((element) =>
+    Array.from(element.options).some((option) => option.value === value),
+  )
+  if (select === undefined) throw new Error(`Missing select option ${value}`)
+  act(() => {
+    select.value = value
+    select.dispatchEvent(new Event('change', { bubbles: true }))
+  })
+}
+
 function clipboard() {
   const previous = Object.getOwnPropertyDescriptor(navigator, 'clipboard')
   const value = { readText: vi.fn(), writeText: vi.fn().mockResolvedValue(undefined) }
@@ -356,6 +385,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   api.search = new URLSearchParams()
   api.parsedFiles = []
+  api.capabilities.capabilities = null
   api.capabilities.parserBackendAvailable.mockReturnValue(undefined)
   api.capabilities.chunkStrategyAvailable.mockReturnValue(undefined)
   api.documents.list.mockReset().mockResolvedValue({ items: [], total: 0 })
@@ -369,7 +399,7 @@ beforeEach(() => {
   api.presets.list.mockReset().mockResolvedValue({ items: [] })
   api.presets.update.mockReset().mockResolvedValue({})
   api.presets.create.mockReset().mockResolvedValue({ id: 'created-preset' })
-  api.datasets.list.mockReset().mockResolvedValue({ items: [] })
+  api.datasets.listAll.mockReset().mockResolvedValue([])
   api.pipeline.listPipelinePlugins.mockReset().mockResolvedValue({ items: [], errors: [] })
   api.pipeline.ingestionPreview.mockReset()
   api.pipeline.buildPluginChunkReport.mockReset()
@@ -387,6 +417,30 @@ afterEach(async () => {
 })
 
 describe('active preview and session replacement', () => {
+  it.each(['agentic_chunker', 'late_chunking', 'late_chunking_jina', 'raptor'])(
+    'preserves a saved removed %s selection and blocks preview requests',
+    async (strategy) => {
+      localStorage.setItem('mimirq_chunk_strategy', strategy)
+      api.capabilities.capabilities = {
+        default_parser_backend: 'auto',
+        default_chunk_strategy: 'langchain_recursive',
+        pdf_backends: [],
+        chunk_strategies: [{ name: 'langchain_recursive', available: true }],
+      }
+      api.capabilities.chunkStrategyAvailable.mockImplementation((name) => (name === strategy ? false : undefined))
+      const hook = await mount()
+      expect(hook.result.current.chunkStrategy).toBe(strategy)
+      expect(hook.result.current.error).toContain('已移除')
+      act(() => hook.result.current.addFiles([new File(['first'], 'first.md')]))
+      await act(async () => hook.result.current.runPreview())
+      expect(hook.result.current.chunkStrategy).toBe(strategy)
+      expect(localStorage.getItem('mimirq_chunk_strategy')).toBe(strategy)
+      expect(api.documents.chunkPreview).not.toHaveBeenCalled()
+      expect(api.documents.chunkPreviewBySha).not.toHaveBeenCalled()
+      expect(hook.result.current.error).toContain('不可用')
+    },
+  )
+
   it('retains an automatic active preview after appending another file', async () => {
     const hook = await mount({ autoPreview: true })
     act(() => hook.result.current.addFiles([new File(['first'], 'first.md')]))
@@ -578,6 +632,723 @@ describe('active preview and session replacement', () => {
     })
     expect(hook.result.current.isSubmitting).toBe(false)
     expect(hook.result.current.createdDocumentId).toBe('current-document')
+  })
+})
+
+describe('preview submission snapshot ownership', () => {
+  it.each(['submitChunks', 'submitSelectedFiles'] as const)(
+    'does not silently ingest a truncated active preview through %s',
+    async (action) => {
+      const data = preview()
+      data.chunks_truncated = true
+      data.total_chunks_full = 3
+      api.documents.chunkPreview.mockResolvedValue(data)
+      const hook = await mount()
+      act(() => hook.result.current.updatePerfSettings({ maxChunks: 1 }))
+      await prepareFile(hook)
+      const fileId = hook.result.current.currentFileItem!.id
+      act(() => {
+        hook.result.current.toggleIngestFileSelection(fileId)
+        hook.result.current.updateChunkOverride(0, { content: '' })
+      })
+
+      await act(async () => hook.result.current[action]())
+
+      expect(api.documents.createFromChunks).not.toHaveBeenCalled()
+      expect(hook.result.current.error).toContain('完整预览')
+      expect(hook.result.current.chunkOverrides[0].content).toBe('')
+      expect(hook.result.current.selectedIngestFileIds.has(fileId)).toBe(true)
+      expect(api.toast.success).not.toHaveBeenCalled()
+    },
+  )
+
+  it('requests all chunks for an unseen batch target regardless of the UI preview limit', async () => {
+    const hook = await mount()
+    act(() =>
+      hook.result.current.addFiles([new File(['current'], 'current.md'), new File(['one\ntwo\nthree'], 'batch.md')]),
+    )
+    const target = hook.result.current.fileList[1]
+    act(() => {
+      hook.result.current.toggleIngestFileSelection(target.id)
+      hook.result.current.updatePerfSettings({ maxChunks: 1 })
+    })
+    api.documents.chunkPreview.mockImplementation(async (file: File, params: { max_chunks: number }) => {
+      const data = preview(file.name, 'one\ntwo\nthree')
+      const chunks = [
+        { index: 4, content: 'one', length: 3, start_index: 0, end_index: 3 },
+        { index: 9, content: 'two', length: 3, start_index: 4, end_index: 7 },
+        { index: 12, content: 'three', length: 5, start_index: 8, end_index: 13 },
+      ]
+      data.chunks = params.max_chunks === 0 ? chunks : chunks.slice(0, params.max_chunks)
+      data.total_chunks = data.chunks.length
+      data.total_chunks_full = chunks.length
+      data.chunks_truncated = data.chunks.length < chunks.length
+      return data
+    })
+
+    await act(async () => hook.result.current.submitSelectedFiles())
+
+    expect(api.documents.createFromChunks).toHaveBeenCalledOnce()
+    expect(
+      api.documents.createFromChunks.mock.calls[0][0].chunks.map((chunk: { content: string }) => chunk.content),
+    ).toEqual(['one', 'two', 'three'])
+  })
+
+  it('preserves a completed result when a forced replacement preview fails', async () => {
+    const hook = await mount()
+    await prepareFile(hook)
+    await act(async () => hook.result.current.submitChunks())
+    const previous = hook.result.current.previewData
+    act(() => hook.result.current.setSelectedChunkIndex(0))
+    api.documents.chunkPreview.mockRejectedValue(new Error('replacement preview refused'))
+
+    await act(async () => hook.result.current.runPreview({ force: true }))
+
+    expect(hook.result.current.previewData).toBe(previous)
+    expect(hook.result.current.submitSuccess).toBe(true)
+    expect(hook.result.current.createdDocumentId).toBe('created-document')
+    expect(hook.result.current.selectedChunkIndex).toBe(0)
+    expect(hook.result.current.error).toBe('replacement preview refused')
+  })
+
+  it('does not submit the same completed preview again through Ctrl+S', async () => {
+    const hook = await mount()
+    await prepareFile(hook)
+    await act(async () => hook.result.current.submitChunks())
+
+    await act(async () => window.dispatchEvent(new KeyboardEvent('keydown', { key: 's', ctrlKey: true })))
+
+    expect(api.documents.createFromChunks).toHaveBeenCalledOnce()
+  })
+
+  it.each(['s', 'Enter'])('does not run workspace Ctrl+%s while typing an unsaved chunk editor draft', async (key) => {
+    const hook = await mount({ children: <ChunkList /> })
+    await prepareFile(hook)
+    click(hook, 'chunkCard.edit')
+    const editor = hook.container.querySelector<HTMLTextAreaElement>(
+      'textarea[aria-label="chunkInspector.contentLabel"]',
+    )
+    if (editor === null) throw new Error('Missing actual editor input')
+    changeText(editor, 'unsaved editor body')
+    const previewCalls = api.documents.chunkPreview.mock.calls.length
+
+    const event = new KeyboardEvent('keydown', { key, ctrlKey: true, bubbles: true, cancelable: true })
+    act(() => editor.dispatchEvent(event))
+
+    expect(api.documents.createFromChunks).not.toHaveBeenCalled()
+    expect(api.documents.chunkPreview).toHaveBeenCalledTimes(previewCalls)
+    expect(event.defaultPrevented).toBe(true)
+    expect(editor.value).toBe('unsaved editor body')
+  })
+
+  it('rejects an outdated selected preview before batch writes and keeps its edits and selection', async () => {
+    const hook = await mount()
+    await prepareFile(hook)
+    const fileId = hook.result.current.currentFileItem!.id
+    act(() => {
+      hook.result.current.toggleIngestFileSelection(fileId)
+      hook.result.current.updateChunkOverride(0, { content: 'saved preview edit' })
+      hook.result.current.updateSettings({ chunkSize: 900 })
+    })
+    expect(hook.result.current.isPreviewDirty).toBe(true)
+
+    await act(async () => hook.result.current.submitSelectedFiles())
+
+    expect(api.documents.createFromChunks).not.toHaveBeenCalled()
+    expect(hook.result.current.error).toBe('当前预览需要更新，请重新生成后再入库。')
+    expect(api.toast.error).toHaveBeenCalledExactlyOnceWith('当前预览需要更新，请重新生成后再入库。')
+    expect(hook.result.current.chunkOverrides[0].content).toBe('saved preview edit')
+    expect(hook.result.current.selectedIngestFileIds.has(fileId)).toBe(true)
+    expect(api.toast.success).not.toHaveBeenCalled()
+  })
+
+  it('rejects a selected current preview while its replacement request is pending', async () => {
+    const hook = await mount()
+    await prepareFile(hook)
+    act(() => hook.result.current.toggleIngestFileSelection(hook.result.current.currentFileItem!.id))
+    const response = deferred<ChunkPreviewResponse>()
+    api.documents.chunkPreview.mockReturnValue(response.promise)
+    let completion!: Promise<void>
+    act(() => {
+      completion = hook.result.current.runPreview({ force: true })
+    })
+    try {
+      await act(async () => hook.result.current.submitSelectedFiles())
+      expect(api.documents.createFromChunks).not.toHaveBeenCalled()
+      expect(hook.result.current.error).toBe('请等待预览完成后再入库。')
+    } finally {
+      await act(async () => {
+        response.resolve(preview())
+        await completion
+      })
+    }
+  })
+
+  it('can ingest another selected file while the unselected current preview is outdated', async () => {
+    const hook = await mount()
+    act(() => hook.result.current.addFiles([new File(['first'], 'first.md'), new File(['second'], 'second.md')]))
+    await act(async () => hook.result.current.runPreview())
+    const target = hook.result.current.fileList[1]
+    act(() => {
+      hook.result.current.toggleIngestFileSelection(target.id)
+      hook.result.current.updateSettings({ chunkSize: 900 })
+    })
+
+    await act(async () => hook.result.current.submitSelectedFiles())
+
+    expect(api.documents.createFromChunks).toHaveBeenCalledOnce()
+    expect(api.documents.createFromChunks.mock.calls[0][0]).toMatchObject({ filename: 'second.md' })
+    expect(hook.result.current.processedStatus[target.id]).toBe('success')
+  })
+
+  it.each(['submitChunks', 'submitSelectedFiles'] as const)(
+    'does not publish an old %s result into a newer preview of the same file',
+    async (action) => {
+      const onConfirm = vi.fn()
+      const hook = await mount({ onConfirm })
+      await prepareFile(hook)
+      const fileId = hook.result.current.currentFileItem!.id
+      act(() => hook.result.current.toggleIngestFileSelection(fileId))
+      const response = deferred<{ id: string; status: string }>()
+      api.documents.createFromChunks.mockReturnValue(response.promise)
+      let completion!: Promise<void>
+      act(() => {
+        completion = hook.result.current[action]()
+      })
+      api.documents.chunkPreview.mockResolvedValue(preview('first.md', 'newer preview body'))
+      await act(async () => hook.result.current.runPreview({ force: true }))
+      await act(async () => {
+        response.resolve({ id: 'created-old-preview', status: 'completed' })
+        await completion
+      })
+
+      expect(hook.result.current.previewData?.chunks[0].content).toBe('newer preview body')
+      expect(hook.result.current.createdDocumentId).toBeNull()
+      expect(hook.result.current.submitSuccess).toBe(false)
+      expect(hook.result.current.processedStatus[fileId]).toBe('success')
+      expect(onConfirm).not.toHaveBeenCalled()
+      expect(api.toast.success).not.toHaveBeenCalled()
+    },
+  )
+
+  it('does not publish completion into edits made after a single submission started', async () => {
+    const onConfirm = vi.fn()
+    const hook = await mount({ onConfirm })
+    await prepareFile(hook)
+    const response = deferred<{ id: string; status: string }>()
+    api.documents.createFromChunks.mockReturnValue(response.promise)
+    let completion!: Promise<void>
+    act(() => {
+      completion = hook.result.current.submitChunks()
+    })
+    act(() => hook.result.current.updateChunkOverride(0, { content: 'new unsent body' }))
+    await act(async () => {
+      response.resolve({ id: 'created-original-body', status: 'completed' })
+      await completion
+    })
+
+    expect(hook.result.current.chunkOverrides[0].content).toBe('new unsent body')
+    expect(hook.result.current.submitSuccess).toBe(false)
+    expect(hook.result.current.createdDocumentId).toBeNull()
+    expect(onConfirm).not.toHaveBeenCalled()
+    expect(api.toast.success).not.toHaveBeenCalled()
+  })
+
+  it.each(['submitChunks', 'submitSelectedFiles'] as const)(
+    'checks the original document when %s is retried after a status read failure',
+    async (submit) => {
+      const hook = await mount()
+      await prepareFile(hook)
+      if (submit === 'submitSelectedFiles') {
+        const fileId = hook.result.current.fileList[0].id
+        act(() => hook.result.current.toggleIngestFileSelection(fileId))
+      }
+      api.documents.createFromChunks.mockResolvedValue({ id: 'created-once', status: 'processing' })
+      api.documents.getStatus.mockRejectedValueOnce(new Error('状态接口暂不可用'))
+
+      vi.useFakeTimers()
+      try {
+        await act(async () => {
+          const completion = hook.result.current[submit]()
+          await vi.advanceTimersByTimeAsync(1500)
+          await completion
+        })
+        expect(hook.result.current.error).toContain('文档已创建，入库状态未确认')
+        expect(hook.result.current.createdDocumentId).toBe('created-once')
+
+        await act(async () => {
+          const completion = hook.result.current[submit]()
+          await vi.advanceTimersByTimeAsync(1500)
+          await completion
+        })
+        expect(api.documents.createFromChunks).toHaveBeenCalledOnce()
+        expect(api.documents.getStatus).toHaveBeenLastCalledWith('created-once')
+        expect(hook.result.current.submitSuccess).toBe(true)
+      } finally {
+        vi.useRealTimers()
+      }
+    },
+  )
+
+  it('does not keep a completed submission attached to later unsent edits', async () => {
+    const hook = await mount()
+    await prepareFile(hook)
+    await act(async () => hook.result.current.submitChunks())
+    expect(hook.result.current.submitSuccess).toBe(true)
+    act(() => hook.result.current.updateChunkOverride(0, { content: '' }))
+
+    expect(hook.result.current.submitSuccess).toBe(false)
+    expect(hook.result.current.createdDocumentId).toBeNull()
+    expect(hook.result.current.chunkOverrides[0].content).toBe('')
+  })
+
+  it('keeps only failed batch targets selected and exposes their actual write error', async () => {
+    const hook = await mount()
+    act(() => hook.result.current.addFiles([new File(['first'], 'first.md'), new File(['second'], 'second.md')]))
+    const ids = hook.result.current.fileList.map((item) => item.id)
+    act(() => ids.forEach((id) => hook.result.current.toggleIngestFileSelection(id)))
+    api.documents.createFromChunks
+      .mockRejectedValueOnce(new Error('write refused'))
+      .mockResolvedValueOnce({ id: 'created-second', status: 'completed' })
+
+    await act(async () => hook.result.current.submitSelectedFiles())
+
+    expect(hook.result.current.selectedIngestFileIds).toEqual(new Set([ids[0]]))
+    expect(hook.result.current.processedStatus).toMatchObject({ [ids[0]]: 'error', [ids[1]]: 'success' })
+    expect(hook.result.current.error).toBe('write refused')
+    expect(api.toast.success).not.toHaveBeenCalled()
+  })
+
+  it('does not keep a completed submission attached to changed chunk settings', async () => {
+    const hook = await mount()
+    await prepareFile(hook)
+    await act(async () => hook.result.current.submitChunks())
+    expect(hook.result.current.submitSuccess).toBe(true)
+
+    act(() => hook.result.current.updateSettings({ chunkSize: 900 }))
+
+    expect(hook.result.current.isPreviewDirty).toBe(true)
+    expect(hook.result.current.submitSuccess).toBe(false)
+    expect(hook.result.current.createdDocumentId).toBeNull()
+  })
+})
+
+describe('preview file content and source identity', () => {
+  function parsedSource(): ParsedFileData {
+    return {
+      id: 'source-a',
+      filename: 'source.md',
+      fileType: 'md',
+      fileSize: 4,
+      markdownContent: 'aaaa',
+      originalMarkdownContent: 'aaaa',
+      contentLoaded: true,
+      parsedAt: '1970-01-01T00:00:00Z',
+      parser: 'Text',
+      source: 'parsing_workspace',
+    }
+  }
+
+  it('keeps an explicitly loaded empty current body and real zero metadata', async () => {
+    api.parsedFiles = [{ ...parsedSource(), markdownContent: '', originalMarkdownContent: 'old body', fileSize: 0 }]
+    const hook = await mount()
+
+    expect(hook.result.current.currentFile).not.toBeNull()
+    expect(await hook.result.current.currentFile!.text()).toBe('')
+    expect(hook.result.current.currentFileItem?.originalFileSize).toBe(0)
+    expect(hook.result.current.currentFileItem?.sourceTimeMs).toBe(0)
+  })
+
+  it('keeps one document when its cached target dataset differs from the parsing storage dataset', async () => {
+    api.parsedFiles = [{ ...parsedSource(), datasetId: 'target-dataset' }]
+    api.parsing.listDocuments.mockResolvedValue({
+      items: [
+        { id: 'source-a', filename: 'source.md', file_type: 'md', file_size: 4, dataset_id: 'workspace-dataset' },
+      ],
+      total: 1,
+    })
+    api.parsing.getContent.mockResolvedValue({ markdown_content: 'aaaa' })
+    const hook = await mount()
+
+    expect(hook.result.current.fileList.map((item) => item.id)).toEqual(['source-a'])
+  })
+
+  it('shows the real epoch time in the actual Sidebar instead of an unknown timestamp', async () => {
+    api.parsedFiles = [parsedSource()]
+    const hook = await mount({ children: <Sidebar /> })
+    const name = hook.container.querySelector<HTMLElement>('[title="source.md"]')
+    const row = name?.closest('button')
+    if (row === null || row === undefined) throw new Error('Missing actual source row')
+    const titles = Array.from(row.querySelectorAll('[title]'), (element) => element.getAttribute('title'))
+    expect(titles.some((title) => title?.includes('sidebar.fileList.timeFallback'))).toBe(false)
+  })
+
+  it('keeps an unavailable remote timestamp unknown instead of using the current time', async () => {
+    api.parsing.listDocuments.mockResolvedValue({
+      items: [{ id: 'source-a', filename: 'source.md', file_type: 'md', file_size: 4 }],
+      total: 1,
+    })
+    api.parsing.getContent.mockResolvedValue({ markdown_content: 'aaaa' })
+    const hook = await mount()
+    expect(hook.result.current.currentFileItem?.sourceTimeMs).toBeUndefined()
+  })
+
+  it('sorts a known zero timestamp ahead of an unknown time in the actual Sidebar', async () => {
+    api.parsing.listDocuments.mockResolvedValue({
+      items: [
+        { id: 'unknown-time', filename: 'unknown.md', file_type: 'md', file_size: 4 },
+        { id: 'epoch-time', filename: 'epoch.md', file_type: 'md', file_size: 4, updated_at: '1970-01-01T00:00:00Z' },
+      ],
+      total: 2,
+    })
+    api.parsing.getContent.mockResolvedValue({ markdown_content: 'aaaa' })
+    const hook = await mount({ children: <Sidebar /> })
+    const names = Array.from(hook.container.querySelectorAll('[data-chunk-file-list] [title]'), (element) =>
+      element.getAttribute('title'),
+    ).filter((name) => name === 'unknown.md' || name === 'epoch.md')
+    expect(names).toEqual(['epoch.md', 'unknown.md'])
+  })
+
+  it('exposes content read failures and retains the known local file', async () => {
+    api.parsedFiles = [parsedSource()]
+    api.parsing.listDocuments.mockResolvedValue({
+      items: [{ id: 'source-a', filename: 'source.md', file_type: 'md', file_size: 4 }],
+      total: 1,
+    })
+    api.parsing.getContent.mockRejectedValue(new Error('source read refused'))
+    const hook = await mount()
+
+    expect(hook.result.current.scopeSyncError).toBe('source read refused')
+    expect(await hook.result.current.currentFile!.text()).toBe('aaaa')
+  })
+
+  it('can retry a failed scope read without discarding the manually uploaded input', async () => {
+    api.parsing.listDocuments.mockRejectedValueOnce(new Error('scope offline')).mockResolvedValue({
+      items: [{ id: 'remote-a', filename: 'remote.md', file_type: 'md', file_size: 4 }],
+      total: 1,
+    })
+    api.parsing.getContent.mockResolvedValue({ markdown_content: 'aaaa' })
+    const hook = await mount()
+    expect(hook.result.current.scopeSyncError).toBe('scope offline')
+    const manual = new File(['manual body'], 'manual.md')
+    act(() => hook.result.current.addFiles([manual]))
+
+    act(() => hook.result.current.reloadScopeDocuments())
+    await waitForAssertion(() => expect(hook.result.current.scopeSyncLoading).toBe(false))
+
+    expect(hook.result.current.scopeSyncError).toBeNull()
+    expect(hook.result.current.currentFile).toBe(manual)
+    expect(hook.result.current.fileList.map((item) => item.displayName)).toEqual(['manual.md', 'remote.md'])
+  })
+
+  it('does not restore background source files after the workbench is explicitly cleared', async () => {
+    api.parsedFiles = [parsedSource()]
+    const response = deferred<{
+      items: Array<{ id: string; filename: string; file_type: string; file_size: number }>
+      total: number
+    }>()
+    api.parsing.listDocuments.mockReturnValue(response.promise)
+    const hook = await mount({ waitForScope: false })
+    act(() => hook.result.current.clearFiles())
+    await act(async () =>
+      response.resolve({ items: [{ id: 'source-a', filename: 'source.md', file_type: 'md', file_size: 4 }], total: 1 }),
+    )
+    await waitForAssertion(() => expect(hook.result.current.scopeSyncLoading).toBe(false))
+
+    expect(hook.result.current.fileList).toHaveLength(0)
+    act(() => {
+      api.parsedFiles = [{ ...parsedSource(), parser: 'updated metadata' }]
+      hook.result.current.toggleSettingsPanel()
+    })
+    expect(hook.result.current.fileList).toHaveLength(0)
+  })
+
+  it('does not revive a removed source after an older scope request finishes', async () => {
+    api.parsedFiles = [parsedSource()]
+    const response = deferred<{
+      items: Array<{ id: string; filename: string; file_type: string; file_size: number }>
+      total: number
+    }>()
+    api.parsing.listDocuments.mockReturnValue(response.promise)
+    const hook = await mount({ waitForScope: false })
+    act(() => hook.result.current.removeFile(0))
+    await act(async () =>
+      response.resolve({ items: [{ id: 'source-a', filename: 'source.md', file_type: 'md', file_size: 4 }], total: 1 }),
+    )
+    await waitForAssertion(() => expect(hook.result.current.scopeSyncLoading).toBe(false))
+
+    expect(hook.result.current.fileList).toHaveLength(0)
+  })
+
+  it('keeps an explicit uploaded-file focus when a saved focus arrives from the backend later', async () => {
+    localStorage.setItem('mimirq_chunk_preview_focus_file_id', 'remote-a')
+    const response = deferred<{
+      items: Array<{ id: string; filename: string; file_type: string; file_size: number }>
+      total: number
+    }>()
+    api.parsing.listDocuments.mockReturnValue(response.promise)
+    api.parsing.getContent.mockResolvedValue({ markdown_content: 'aaaa' })
+    const hook = await mount({ waitForScope: false })
+    const manual = new File(['manual body'], 'manual.md')
+    act(() => hook.result.current.addFiles([manual]))
+    await act(async () =>
+      response.resolve({ items: [{ id: 'remote-a', filename: 'remote.md', file_type: 'md', file_size: 4 }], total: 1 }),
+    )
+    await waitForAssertion(() => expect(hook.result.current.scopeSyncLoading).toBe(false))
+
+    expect(hook.result.current.currentFile).toBe(manual)
+  })
+
+  it('can automatically preview an explicit manual input while unrelated scope documents are still loading', async () => {
+    localStorage.setItem('mimirq_chunk_preview_focus_file_id', 'remote-a')
+    const response = deferred<{ items: never[]; total: number }>()
+    api.parsing.listDocuments.mockReturnValue(response.promise)
+    const hook = await mount({ waitForScope: false, autoPreview: true })
+    act(() => hook.result.current.addFiles([new File(['manual'], 'manual.md')]))
+    try {
+      await waitForAssertion(() => expect(hook.result.current.previewData?.filename).toBe('manual.md'))
+      expect(hook.result.current.scopeSyncLoading).toBe(true)
+    } finally {
+      await act(async () => response.resolve({ items: [], total: 0 }))
+    }
+  })
+
+  it.each(['', '  body\n\n'])(
+    'keeps the remote current body exactly, including a legitimate empty string: %j',
+    async (body) => {
+      api.parsing.listDocuments.mockResolvedValue({
+        items: [
+          {
+            id: 'source-a',
+            filename: 'source.md',
+            file_type: 'md',
+            file_size: 0,
+            updated_at: '1970-01-01T00:00:00Z',
+          },
+        ],
+        total: 1,
+      })
+      api.parsing.getContent.mockResolvedValue({ markdown_content: body, original_markdown_content: 'old body' })
+      const hook = await mount()
+
+      expect(await hook.result.current.currentFile!.text()).toBe(body)
+      expect(hook.result.current.currentFileItem?.originalFileSize).toBe(0)
+      expect(hook.result.current.currentFileItem?.sourceTimeMs).toBe(0)
+    },
+  )
+
+  it.each([
+    { available: false, markdown_truncated: false, original_markdown_truncated: false },
+    { available: true, markdown_truncated: true, original_markdown_truncated: false },
+    { available: true, markdown_truncated: false, original_markdown_truncated: true },
+  ])('does not preview unavailable or partial knowledge content: %j', async (flags) => {
+    localStorage.setItem('mimirq_chunk_preview_dataset_id', 'dataset-a')
+    api.documents.list.mockResolvedValue({
+      items: [{ id: 'source-a', filename: 'source.md', file_type: 'md', file_size: 4, dataset_id: 'dataset-a' }],
+      total: 1,
+    })
+    api.documents.getParsedContent.mockResolvedValue({
+      ...flags,
+      document_id: 'source-a',
+      markdown_content: 'incomplete prefix',
+      original_markdown_content: 'incomplete prefix',
+      max_chars: 2_000_000,
+    })
+    const hook = await mount()
+
+    expect(hook.result.current.scopeSyncError).not.toBeNull()
+    expect(hook.result.current.fileList).toHaveLength(0)
+    expect(api.documents.chunkPreview).not.toHaveBeenCalled()
+  })
+
+  it('preserves the active File and unsaved editor when another cached file is appended', async () => {
+    const source = parsedSource()
+    api.parsedFiles = [source]
+    api.parsing.listDocuments.mockResolvedValue({
+      items: [{ id: 'source-a', filename: 'source.md', file_type: 'md', file_size: 4 }],
+      total: 1,
+    })
+    api.parsing.getContent.mockResolvedValue({ markdown_content: 'old body' })
+    const hook = await mount({ children: <ChunkList /> })
+    await act(async () => hook.result.current.runPreview())
+    const file = hook.result.current.currentFile
+    click(hook, 'chunkCard.edit')
+    const editor = hook.container.querySelector<HTMLTextAreaElement>(
+      'textarea[aria-label="chunkInspector.contentLabel"]',
+    )
+    if (editor === null) throw new Error('Missing actual editor input')
+    changeText(editor, 'unsaved editor draft')
+
+    act(() => {
+      api.parsedFiles = [source, { ...source, id: 'source-b', filename: 'other.md' }]
+      hook.result.current.toggleSettingsPanel()
+    })
+
+    expect(hook.result.current.currentFile).toBe(file)
+    expect(hook.container.contains(editor)).toBe(true)
+    expect(editor.value).toBe('unsaved editor draft')
+  })
+
+  it('keeps the current remote document selected when a different cached document arrives first', async () => {
+    api.parsing.listDocuments.mockResolvedValue({
+      items: [{ id: 'remote-a', filename: 'remote.md', file_type: 'md', file_size: 4 }],
+      total: 1,
+    })
+    api.parsing.getContent.mockResolvedValue({ markdown_content: 'aaaa' })
+    const hook = await mount({ children: <ChunkList /> })
+    await act(async () => hook.result.current.runPreview())
+    click(hook, 'chunkCard.edit')
+    const editor = hook.container.querySelector<HTMLTextAreaElement>(
+      'textarea[aria-label="chunkInspector.contentLabel"]',
+    )
+    if (editor === null) throw new Error('Missing actual editor input')
+    changeText(editor, 'unsaved remote draft')
+
+    act(() => {
+      api.parsedFiles = [{ ...parsedSource(), id: 'cached-b', filename: 'cached.md' }]
+      hook.result.current.toggleSettingsPanel()
+    })
+
+    expect(hook.result.current.currentFileItem?.id).toBe('remote-a')
+    expect(hook.result.current.fileList.map((item) => item.id)).toEqual(['remote-a', 'cached-b'])
+    expect(hook.container.contains(editor)).toBe(true)
+    expect(editor.value).toBe('unsaved remote draft')
+  })
+
+  it('keeps the current document identity when a refreshed scope removes an earlier noncurrent row', async () => {
+    const documents = ['a', 'b', 'c'].map((id) => ({ id, filename: `${id}.md`, file_type: 'md', file_size: 1 }))
+    api.parsing.listDocuments.mockResolvedValue({ items: documents, total: documents.length })
+    api.parsing.getContent.mockImplementation(async (id: string) => ({ markdown_content: id }))
+    const hook = await mount()
+    act(() => hook.result.current.setCurrentFileIndex(1))
+    await act(async () => hook.result.current.runPreview())
+    const previous = hook.result.current.previewData
+    api.parsing.listDocuments.mockResolvedValue({ items: documents.slice(1), total: 2 })
+
+    act(() => hook.result.current.reloadScopeDocuments())
+    await waitForAssertion(() => expect(hook.result.current.scopeSyncLoading).toBe(false))
+
+    expect(hook.result.current.currentFileItem?.id).toBe('b')
+    expect(hook.result.current.currentFileIndex).toBe(0)
+    expect(hook.result.current.previewData).toBe(previous)
+  })
+
+  it('keeps an open draft when the backing source changes until a new preview is requested', async () => {
+    const source = parsedSource()
+    api.parsedFiles = [source]
+    const hook = await mount({ children: <ChunkList /> })
+    await act(async () => hook.result.current.runPreview())
+    const previous = hook.result.current.previewData
+    const previousFile = hook.result.current.currentFile
+    click(hook, 'chunkCard.edit')
+    const editor = hook.container.querySelector<HTMLTextAreaElement>(
+      'textarea[aria-label="chunkInspector.contentLabel"]',
+    )
+    if (editor === null) throw new Error('Missing actual editor input')
+    changeText(editor, 'unsaved editor draft')
+
+    act(() => {
+      api.parsedFiles = [{ ...source, markdownContent: 'bbbb', originalMarkdownContent: 'bbbb' }]
+      hook.result.current.toggleSettingsPanel()
+    })
+
+    expect(hook.result.current.previewData).toBe(previous)
+    expect(hook.result.current.previewSourceFile).toBe(previousFile)
+    expect(hook.result.current.isPreviewDirty).toBe(true)
+    expect(hook.container.contains(editor)).toBe(true)
+    expect(editor.value).toBe('unsaved editor draft')
+  })
+
+  it('does not attach an accepted older write status to a newer source revision', async () => {
+    const source = parsedSource()
+    api.parsedFiles = [source]
+    const hook = await mount()
+    await act(async () => hook.result.current.runPreview())
+    const key = queryKeys.documents.list({ limit: 100 })
+    hook.result.current.queryClient.setQueryData(key, { items: [], total: 0 })
+    const response = deferred<{ id: string; status: string }>()
+    api.documents.createFromChunks.mockReturnValue(response.promise)
+    let completion!: Promise<void>
+    act(() => {
+      completion = hook.result.current.submitChunks()
+    })
+    act(() => {
+      api.parsedFiles = [{ ...source, markdownContent: 'bbbb', originalMarkdownContent: 'bbbb' }]
+      hook.result.current.toggleSettingsPanel()
+    })
+
+    expect(hook.result.current.processedStatus[source.id]).toBeUndefined()
+
+    await act(async () => {
+      response.resolve({ id: 'created-older-source', status: 'completed' })
+      await completion
+    })
+    expect(hook.result.current.isSubmitting).toBe(false)
+    expect(hook.result.current.processedStatus[source.id]).toBeUndefined()
+    expect(hook.result.current.createdDocumentId).toBeNull()
+    expect(hook.result.current.submitSuccess).toBe(false)
+    expect(hook.result.current.queryClient.getQueryState(key)?.isInvalidated).toBe(true)
+  })
+
+  it('retains the selected new source revision after an older batch version completes', async () => {
+    const source = parsedSource()
+    api.parsedFiles = [source]
+    const hook = await mount()
+    await act(async () => hook.result.current.runPreview())
+    act(() => hook.result.current.toggleIngestFileSelection(source.id))
+    const response = deferred<{ id: string; status: string }>()
+    api.documents.createFromChunks.mockReturnValue(response.promise)
+    let completion!: Promise<void>
+    act(() => {
+      completion = hook.result.current.submitSelectedFiles()
+    })
+    act(() => {
+      api.parsedFiles = [{ ...source, markdownContent: 'bbbb', originalMarkdownContent: 'bbbb' }]
+      hook.result.current.toggleSettingsPanel()
+    })
+    await act(async () => {
+      response.resolve({ id: 'created-older-batch', status: 'completed' })
+      await completion
+    })
+
+    expect(hook.result.current.selectedIngestFileIds.has(source.id)).toBe(true)
+    expect(hook.result.current.processedStatus[source.id]).toBeUndefined()
+    expect(hook.result.current.submitSuccess).toBe(false)
+  })
+
+  it('does not reuse old content when one document gets same-size text with the same file timestamps', async () => {
+    const OriginalFile = globalThis.File
+    class FixedTimeFile extends OriginalFile {
+      constructor(parts: BlobPart[], name: string, options?: FilePropertyBag) {
+        super(parts, name, { ...options, lastModified: 1700000000000 })
+      }
+    }
+    vi.stubGlobal('File', FixedTimeFile)
+    try {
+      const source = parsedSource()
+      api.parsedFiles = [source]
+      api.documents.chunkPreview.mockImplementation(async (file: File) => preview(file.name, await file.text()))
+      const hook = await mount()
+      await act(async () => hook.result.current.runPreview())
+      const previousFile = hook.result.current.currentFile!
+      act(() => {
+        api.parsedFiles = [{ ...source, markdownContent: 'bbbb', originalMarkdownContent: 'bbbb' }]
+        hook.result.current.toggleSettingsPanel()
+      })
+      const currentFile = hook.result.current.currentFile!
+      expect([currentFile.name, currentFile.size, currentFile.lastModified]).toEqual([
+        previousFile.name,
+        previousFile.size,
+        previousFile.lastModified,
+      ])
+
+      await act(async () => hook.result.current.runPreview())
+
+      expect(hook.result.current.cacheHit).toBe(false)
+      expect(hook.result.current.previewData?.chunks[0].content).toBe('bbbb')
+    } finally {
+      vi.stubGlobal('File', OriginalFile)
+    }
   })
 })
 
@@ -831,24 +1602,32 @@ describe('chunk preview workspace state and request lifetime', () => {
   })
 
   it('imports a current clipboard config, preserving number coercion and separator overlap policy', async () => {
-    clipboard().readText.mockResolvedValue(
-      JSON.stringify({
-        dataset_id: '',
-        parser_backend: 'marker',
-        chunk_strategy: 'separator',
-        chunk_size: '600',
-        chunk_overlap: '90',
-        separator: String.raw`\t`,
-        keep_separator: false,
-      }),
-    )
+    const response = deferred<string>()
+    clipboard().readText.mockReturnValue(response.promise)
     const hook = await mount({ children: <TopBar onOpenDocuments={() => undefined} /> })
+    act(() => hook.result.current.setDatasetId('dataset-a'))
+    await waitForAssertion(() => expect(hook.result.current.scopeSyncLoading).toBe(false))
     act(() => hook.result.current.addFiles([new File(['first'], 'first.md')]))
 
     click(hook, 'topBar.actions.importConfigFromClipboard')
+    act(() => hook.result.current.pipeline.updateOption('chunk_merge_small_min_chars', 321))
+    await act(async () =>
+      response.resolve(
+        JSON.stringify({
+          parser_backend: 'marker',
+          chunk_strategy: 'separator',
+          chunk_size: '600',
+          chunk_overlap: '90',
+          separator: String.raw`\t`,
+          keep_separator: false,
+          pipeline: { chunk_vector_enabled: true },
+        }),
+      ),
+    )
     await waitForAssertion(() => expect(api.toast.success).toHaveBeenCalledWith('topBar.toasts.importedFromClipboard'))
 
     expect(hook.result.current).toMatchObject({
+      datasetId: 'dataset-a',
       parserBackend: 'marker',
       chunkStrategy: 'separator',
       chunkSize: 600,
@@ -856,6 +1635,89 @@ describe('chunk preview workspace state and request lifetime', () => {
       separatorCustom: String.raw`\t`,
       keepSeparator: false,
     })
+    expect(hook.result.current.pipeline.options.chunk_merge_small_min_chars).toBe(321)
+  })
+
+  it('keeps settings from the current workspace when a config contains an unsupported pipeline option', async () => {
+    clipboard().readText.mockResolvedValue(
+      JSON.stringify({ dataset_id: 'other-dataset', chunk_size: 600, pipeline: { sparse_enabled: true } }),
+    )
+    const hook = await mount({ children: <TopBar onOpenDocuments={() => undefined} /> })
+    act(() => hook.result.current.addFiles([new File(['first'], 'first.md')]))
+    const { datasetId, chunkSize } = hook.result.current
+
+    click(hook, 'topBar.actions.importConfigFromClipboard')
+
+    await waitForAssertion(() =>
+      expect(api.toast.error).toHaveBeenCalledWith(expect.stringContaining('sparse_enabled')),
+    )
+    expect(hook.result.current).toMatchObject({ datasetId, chunkSize })
+    expect(api.toast.success).not.toHaveBeenCalledWith('topBar.toasts.importedFromClipboard')
+  })
+
+  it('copies and restores the current parent-child draft with an older preview on screen', async () => {
+    const output = clipboard()
+    const hook = await mount({ children: <TopBar onOpenDocuments={() => undefined} /> })
+    await prepareFile(hook)
+    act(() => {
+      hook.result.current.setParserBackend('marker')
+      hook.result.current.updateSettings({ strategy: 'parent_child', chunkSize: 800, chunkOverlap: 120 })
+      hook.result.current.updateParentChildSettings({ parentChildRatio: 0.4, parentChildMinChildSize: 160 })
+    })
+
+    click(hook, 'topBar.actions.copyConfig')
+    const exportedConfig = output.writeText.mock.calls[0][0]
+    expect(JSON.parse(exportedConfig)).toMatchObject({
+      parser_backend: 'marker',
+      chunk_strategy: 'parent_child',
+      chunk_size: 800,
+      chunk_overlap: 120,
+      child_ratio: 0.4,
+      min_child_size: 160,
+      dataset_id: null,
+      pipeline: null,
+    })
+
+    act(() => {
+      hook.result.current.updateParentChildSettings({ parentChildRatio: 0.6, parentChildMinChildSize: 200 })
+      hook.result.current.pipeline.setEnabled(true)
+    })
+    output.readText.mockResolvedValue(exportedConfig)
+    click(hook, 'topBar.actions.importConfigFromClipboard')
+    await waitForAssertion(() => expect(api.toast.success).toHaveBeenCalledWith('topBar.toasts.importedFromClipboard'))
+
+    expect(hook.result.current).toMatchObject({ parentChildRatio: 0.4, parentChildMinChildSize: 160 })
+    expect(hook.result.current.pipeline.enabled).toBe(false)
+  })
+
+  it('restores the exact separator and pipeline settings stored in an existing preset', async () => {
+    const separator = ' \t"\\t"\n '
+    api.presets.list.mockResolvedValue({
+      items: [
+        {
+          id: 'custom-preset',
+          name: 'Custom separator',
+          payload: {
+            chunk_strategy: 'separator',
+            separator_preset: 'custom',
+            separator,
+            keep_separator: false,
+            pipeline: { enabled: false, options: { chunk_size: 900 } },
+          },
+        },
+      ],
+    })
+    const hook = await mount({ children: <ChunkPresetPanel /> })
+    await waitForAssertion(() => expect(hook.container.querySelector('option[value="custom-preset"]')).not.toBeNull())
+
+    chooseSelectValue(hook.container, 'custom-preset')
+
+    expect(hook.result.current.buildChunkPreviewRequestParams()).toMatchObject({
+      chunk_strategy: 'separator',
+      separator,
+      keep_separator: false,
+    })
+    expect(hook.result.current.pipeline).toMatchObject({ enabled: false, options: { chunk_size: 900 } })
   })
 
   it('discards a plugin report after selecting a different plugin', async () => {
@@ -985,7 +1847,7 @@ describe('chunk preview workspace state and request lifetime', () => {
     expect(hook.container.textContent).toContain('321 token')
   })
 
-  it('recalculates the displayed token estimate for an actual content edit', async () => {
+  it('does not reuse the backend token estimate for an actual content edit', async () => {
     const data = preview()
     data.params.unit = 'tokens'
     data.chunks[0].tokens_est = 321
@@ -995,7 +1857,516 @@ describe('chunk preview workspace state and request lifetime', () => {
     act(() => hook.result.current.updateChunkOverride(0, { content: 'new text for display' }))
 
     expect(hook.container.textContent).not.toContain('321 token')
+    expect(hook.container.textContent).toContain('- token')
     expect(hook.container.textContent).toContain('new text for display')
+  })
+
+  it('projects real chunk-index edits into the list without adding export-only skip metadata', async () => {
+    const data = preview()
+    data.chunks[0].index = 4
+    api.documents.chunkPreview.mockResolvedValue(data)
+    const hook = await mount({ children: <ChunkList /> })
+    await prepareFile(hook)
+    act(() => hook.result.current.updateChunkOverride(4, { content: '  😀\n````\nbody  \n', disabled: true }))
+
+    expect(hook.container.textContent).toContain('16 字')
+    expect(hook.container.textContent).toContain('已跳过')
+    expect(hook.result.current.chunkOverrides[4].metadata).toBeUndefined()
+    expect(data.chunks[0].content).not.toContain('😀')
+  })
+
+  it('maps a list-position approval to the actual backend chunk index', async () => {
+    const data = preview()
+    data.chunks[0] = { ...data.chunks[0], index: 4, metadata: { needs_review: true, weight: 0 } }
+    api.documents.chunkPreview.mockResolvedValue(data)
+    const hook = await mount({ children: <ChunkList /> })
+    await prepareFile(hook)
+    click(hook, '标记已复核')
+
+    expect(hook.result.current.chunkOverrides[4]?.metadata).toMatchObject({ review_status: 'approved', weight: 0 })
+    expect(hook.result.current.chunkOverrides[0]).toBeUndefined()
+  })
+
+  it.each(['  😀\n\n', '', 'first\r\nsecond\rthird'])(
+    'copies the selected edited body verbatim: %j',
+    async (content) => {
+      const output = clipboard()
+      const hook = await mount({ children: <ChunkList /> })
+      await prepareFile(hook)
+      act(() => {
+        hook.result.current.updateChunkOverride(0, { content })
+        hook.result.current.setSelectedChunkIndex(0)
+      })
+      click(hook, 'chunkList.actions.copySelected')
+      await act(async () => Promise.resolve())
+
+      expect(output.writeText).toHaveBeenCalledWith(content)
+      expect(api.toast.success).toHaveBeenCalledWith('chunkList.toasts.copiedSelected')
+    },
+  )
+
+  it('reports a rejected selected-copy operation instead of silently logging it', async () => {
+    const output = clipboard()
+    output.writeText.mockRejectedValue(new Error('Clipboard denied'))
+    const hook = await mount({ children: <ChunkList /> })
+    await prepareFile(hook)
+    act(() => hook.result.current.setSelectedChunkIndex(0))
+    click(hook, 'chunkList.actions.copySelected')
+    await act(async () => Promise.resolve())
+
+    expect(api.toast.error).toHaveBeenCalledWith('chunkList.toasts.copyFailed')
+    expect(api.toast.success).not.toHaveBeenCalledWith('chunkList.toasts.copiedSelected')
+  })
+
+  it('uses actual backend indices when skipping a filtered list position', async () => {
+    const data = preview()
+    data.chunks = [
+      { ...data.chunks[0], index: 4, content: 'first body' },
+      { ...data.chunks[0], index: 9, content: 'second body' },
+    ]
+    data.total_chunks = 2
+    api.documents.chunkPreview.mockResolvedValue(data)
+    const hook = await mount({ children: <ChunkList /> })
+    await prepareFile(hook)
+    const input = hook.container.querySelector<HTMLInputElement>('input[aria-label="搜索切块内容"]')
+    if (input === null) throw new Error('Missing actual chunk search control')
+    changeText(input, 'second')
+    await waitForAssertion(() => expect(hook.container.querySelectorAll('[data-chunk-card]')).toHaveLength(1))
+    click(hook, 'chunkList.toolbar.filtersWithCount')
+    click(hook, 'chunkList.batch.skipFiltered')
+
+    expect(hook.result.current.chunkOverrides[9]?.disabled).toBe(true)
+    expect(hook.result.current.chunkOverrides[1]).toBeUndefined()
+    expect(hook.result.current.chunkOverrides[4]).toBeUndefined()
+  })
+
+  it('shows a clipboard write failure from the actual card action', async () => {
+    const output = clipboard()
+    output.writeText.mockRejectedValue(new Error('Clipboard denied'))
+    const hook = await mount({ children: <ChunkList /> })
+    await prepareFile(hook)
+    click(hook, 'chunkCard.copyContent')
+    await act(async () => Promise.resolve())
+
+    expect(api.toast.error).toHaveBeenCalledWith('chunkCard.copyFailed')
+    expect(api.toast.success).not.toHaveBeenCalledWith('chunkCard.copyContentSuccess')
+  })
+
+  it('copies an actual citation with a fence longer than the body backticks', async () => {
+    const output = clipboard()
+    const hook = await mount({ children: <ChunkList /> })
+    await prepareFile(hook)
+    act(() => hook.result.current.updateChunkOverride(0, { content: 'before\n````\n😀after' }))
+    click(hook, 'chunkCard.copyCitation')
+    await act(async () => Promise.resolve())
+
+    expect(output.writeText.mock.calls[0][0]).toContain('`````text\nbefore\n````\n😀after\n`````')
+  })
+
+  it('keeps unknown token measurements after real values in both sorts and out of bounded filters', async () => {
+    const data = preview()
+    data.params.unit = 'tokens'
+    data.chunks = [
+      { ...data.chunks[0], index: 4, tokens_est: 0 },
+      { ...data.chunks[0], index: 9, tokens_est: undefined },
+      { ...data.chunks[0], index: 12, tokens_est: 100 },
+    ]
+    data.total_chunks = 3
+    api.documents.chunkPreview.mockResolvedValue(data)
+    const hook = await mount({ children: <ChunkList /> })
+    await prepareFile(hook)
+    click(hook, 'chunkList.toolbar.filters')
+    const sort = Array.from(hook.container.querySelectorAll<HTMLSelectElement>('select')).find((select) =>
+      Array.from(select.options).some((option) => option.value === 'length_asc'),
+    )
+    if (sort === undefined) throw new Error('Missing actual length sort control')
+    act(() => {
+      sort.value = 'length_asc'
+      sort.dispatchEvent(new Event('change', { bubbles: true }))
+    })
+    expect(
+      Array.from(hook.container.querySelectorAll<HTMLElement>('[data-chunk-card]'), (card) => card.dataset.chunkIndex),
+    ).toEqual(['0', '2', '1'])
+    act(() => {
+      sort.value = 'length_desc'
+      sort.dispatchEvent(new Event('change', { bubbles: true }))
+    })
+    expect(
+      Array.from(hook.container.querySelectorAll<HTMLElement>('[data-chunk-card]'), (card) => card.dataset.chunkIndex),
+    ).toEqual(['2', '0', '1'])
+    const maximum = hook.container.querySelector<HTMLInputElement>(
+      'input[aria-label="chunkList.lengthFilter.maxAriaTokens"]',
+    )
+    if (maximum === null) throw new Error('Missing actual maximum token control')
+    changeText(maximum, '1')
+    expect(
+      Array.from(hook.container.querySelectorAll<HTMLElement>('[data-chunk-card]'), (card) => card.dataset.chunkIndex),
+    ).toEqual(['0'])
+  })
+
+  it('copies and submits the same payload for a chunk edited by its actual index', async () => {
+    const output = clipboard()
+    const data = preview()
+    data.file_size = 0
+    data.chunks[0] = { ...data.chunks[0], index: 4, metadata: undefined }
+    api.documents.chunkPreview.mockResolvedValue(data)
+    api.documents.createFromChunks.mockResolvedValue({ id: 'created-zero', status: 'completed' })
+    const hook = await mount({ children: <TopBar onOpenDocuments={() => undefined} /> })
+    await prepareFile(hook)
+    act(() => hook.result.current.updateChunkOverride(4, { content: '' }))
+    click(hook, 'topBar.actions.copyIngestPayload')
+    await act(async () => hook.result.current.submitChunks())
+
+    const payload = api.documents.createFromChunks.mock.calls[0][0]
+    expect(JSON.parse(output.writeText.mock.calls[0][0])).toEqual(JSON.parse(JSON.stringify(payload)))
+    expect(payload.file_size).toBe(0)
+    expect(payload.chunks[0].content).toBe('')
+    expect(payload.chunks[0].metadata).toBeUndefined()
+    expect(data.chunks[0].content).not.toBe('')
+  })
+
+  it.each(['parent-node', 0])('groups each real child once under its actual parent identity: %j', async (parentId) => {
+    const data = preview()
+    data.chunk_strategy = 'parent_child'
+    data.chunks = [
+      {
+        index: 4,
+        content: 'parent',
+        length: 6,
+        start_index: 0,
+        end_index: 30,
+        metadata: { chunk_role: 'parent', node_id: parentId },
+      },
+      {
+        index: 9,
+        content: 'first child',
+        length: 11,
+        start_index: 0,
+        end_index: 11,
+        metadata: { chunk_role: 'child', parent_node_id: parentId },
+      },
+      {
+        index: 12,
+        content: 'second child',
+        length: 12,
+        start_index: 12,
+        end_index: 24,
+        metadata: { chunk_role: 'child', parent_node_id: parentId },
+      },
+    ]
+    data.total_chunks = 3
+    api.documents.chunkPreview.mockResolvedValue(data)
+    const hook = await mount({ children: <ChunkList /> })
+    await prepareFile(hook)
+    click(hook, 'chunkList.toolbar.filters')
+    chooseSelectValue(hook.container, 'hierarchy')
+
+    expect(
+      Array.from(hook.container.querySelectorAll<HTMLElement>('[data-chunk-card]'), (card) => card.dataset.chunkIndex),
+    ).toEqual(['0', '1', '2'])
+    expect(hook.container.querySelectorAll('button[aria-label="chunkList.groupToggle.collapseGroup"]')).toHaveLength(1)
+  })
+
+  it('keeps parentless children as real rows instead of promoting and duplicating the first child', async () => {
+    const data = preview()
+    data.chunk_strategy = 'parent_child'
+    data.chunks = [
+      {
+        index: 9,
+        content: 'first child',
+        length: 11,
+        start_index: 0,
+        end_index: 11,
+        metadata: { chunk_role: 'child', parent_id: 'omitted-parent' },
+      },
+      {
+        index: 12,
+        content: 'second child',
+        length: 12,
+        start_index: 12,
+        end_index: 24,
+        metadata: { chunk_role: 'child', parent_id: 'omitted-parent' },
+      },
+    ]
+    data.total_chunks = 2
+    api.documents.chunkPreview.mockResolvedValue(data)
+    const hook = await mount({ children: <ChunkList /> })
+    await prepareFile(hook)
+    click(hook, 'chunkList.toolbar.filters')
+    chooseSelectValue(hook.container, 'hierarchy')
+
+    expect(
+      Array.from(hook.container.querySelectorAll<HTMLElement>('[data-chunk-card]'), (card) => card.dataset.chunkIndex),
+    ).toEqual(['0', '1'])
+    expect(hook.container.querySelectorAll('button[aria-label="chunkList.groupToggle.collapseGroup"]')).toHaveLength(0)
+  })
+
+  it.each(['__mimirq_section_all__', '__mimirq_section_none__'])(
+    'keeps the actual section name separate from control values: %s',
+    async (sectionName) => {
+      const data = preview()
+      data.chunks = [
+        { ...data.chunks[0], index: 4, content: 'named section', metadata: { header_path: sectionName } },
+        { ...data.chunks[0], index: 9, content: 'without section', metadata: undefined },
+      ]
+      data.total_chunks = 2
+      api.documents.chunkPreview.mockResolvedValue(data)
+      const hook = await mount({ children: <ChunkList /> })
+      await prepareFile(hook)
+      click(hook, 'chunkList.toolbar.filters')
+      const section = Array.from(hook.container.querySelectorAll<HTMLSelectElement>('select')).find((select) =>
+        Array.from(select.options).some((option) => option.textContent === sectionName),
+      )
+      if (section === undefined) throw new Error('Missing actual section filter')
+      const option = Array.from(section.options).find((candidate) => candidate.textContent === sectionName)
+      if (option === undefined) throw new Error('Missing actual named section option')
+      act(() => {
+        section.value = option.value
+        section.dispatchEvent(new Event('change', { bubbles: true }))
+      })
+      expect(
+        Array.from(
+          hook.container.querySelectorAll<HTMLElement>('[data-chunk-card]'),
+          (card) => card.dataset.chunkIndex,
+        ),
+      ).toEqual(['0'])
+      chooseSelectValue(hook.container, '__mimirq_section_all__')
+      chooseSelectValue(hook.container, 'section')
+      expect(
+        hook.container.querySelectorAll('button[aria-label="chunkList.groupToggle.collapseSection"]'),
+      ).toHaveLength(2)
+    },
+  )
+
+  it('does not label absent server measurements as healthy or zero', async () => {
+    const data = preview()
+    data.review_signals = null
+    api.documents.chunkPreview.mockResolvedValue(data)
+    const hook = await mount({ children: <ChunkList /> })
+    await prepareFile(hook)
+    click(hook, 'chunkList.toolbar.filters')
+
+    expect(hook.container.textContent).not.toContain('chunkList.filters.healthySummary')
+    expect(hook.container.textContent).toContain('chunkList.toolbar.noQualitySignals')
+    const short = Array.from(hook.container.querySelectorAll<HTMLButtonElement>('button')).filter(
+      (button) => button.textContent?.trim() === 'chunkList.filters.shortLabel',
+    )
+    expect(short).toHaveLength(1)
+    expect(short[0].disabled).toBe(true)
+  })
+
+  it('invalidates body-dependent markers without silently clearing an active filter or the edit', async () => {
+    const data = preview()
+    data.review_signals = { short_indices: [0], duplicate_indices: [], gap_indices: [], overlap_indices: [] }
+    api.documents.chunkPreview.mockResolvedValue(data)
+    const hook = await mount({ children: <ChunkList /> })
+    await prepareFile(hook)
+    click(hook, 'chunkList.toolbar.filters')
+    click(hook, 'chunkList.filters.shortLabel')
+    act(() => hook.result.current.updateChunkOverride(0, { content: 'long body '.repeat(100) }))
+
+    expect(hook.container.textContent).toContain('chunkList.states.unavailableSignals')
+    expect(hook.container.textContent).not.toContain('chunkList.states.noMatches')
+    expect(hook.result.current.chunkOverrides[0].content).toBe('long body '.repeat(100))
+  })
+
+  it('keeps valid server short markers after a manual approval', async () => {
+    const data = preview()
+    data.chunks[0].metadata = { needs_review: true }
+    data.review_signals = { short_indices: [0] }
+    api.documents.chunkPreview.mockResolvedValue(data)
+    const hook = await mount({ children: <ChunkList /> })
+    await prepareFile(hook)
+    click(hook, '标记已复核')
+
+    expect(hook.container.textContent).toContain('内容偏短')
+    expect(hook.result.current.chunkOverrides[0].metadata?.reviewed).toBe(true)
+  })
+
+  it('keeps zero as an actual maximum-length bound', async () => {
+    const data = preview()
+    data.chunks.push({ ...data.chunks[0], index: 9, content: 'nonempty', length: 8 })
+    data.total_chunks = 2
+    api.documents.chunkPreview.mockResolvedValue(data)
+    const hook = await mount({ children: <ChunkList /> })
+    await prepareFile(hook)
+    act(() => hook.result.current.updateChunkOverride(0, { content: '' }))
+    click(hook, 'chunkList.toolbar.filters')
+    const maximum = hook.container.querySelector<HTMLInputElement>(
+      'input[aria-label="chunkList.lengthFilter.maxAriaChars"]',
+    )
+    if (maximum === null) throw new Error('Missing maximum length input')
+    changeText(maximum, '0')
+
+    expect(maximum.value).toBe('0')
+    expect(
+      Array.from(hook.container.querySelectorAll<HTMLElement>('[data-chunk-card]'), (card) => card.dataset.chunkIndex),
+    ).toEqual(['0'])
+  })
+
+  it('keeps an invalid length draft visible instead of truncating it into an applied bound', async () => {
+    const hook = await mount({ children: <ChunkList /> })
+    await prepareFile(hook)
+    click(hook, 'chunkList.toolbar.filters')
+    const minimum = hook.container.querySelector<HTMLInputElement>(
+      'input[aria-label="chunkList.lengthFilter.minAriaChars"]',
+    )
+    if (minimum === null) throw new Error('Missing minimum length input')
+    changeText(minimum, '1.5')
+
+    expect(minimum.value).toBe('1.5')
+    expect(hook.container.textContent).toContain('chunkList.lengthFilter.invalid')
+    expect(hook.container.textContent).not.toContain('chunkList.states.noMatches')
+  })
+
+  it('resets list drafts when another cached preview of the same filename becomes current', async () => {
+    const first = preview('first.md', 'first version')
+    const second = preview('first.md', 'second version')
+    second.params.chunk_size = 900
+    api.documents.chunkPreview.mockResolvedValueOnce(first).mockResolvedValueOnce(second)
+    const hook = await mount({ children: <ChunkList /> })
+    await prepareFile(hook)
+    act(() => hook.result.current.updateSettings({ chunkSize: 900 }))
+    await act(async () => hook.result.current.runPreview())
+    const input = hook.container.querySelector<HTMLInputElement>('input[aria-label="搜索切块内容"]')
+    if (input === null) throw new Error('Missing actual list search input')
+    changeText(input, 'second')
+    act(() => hook.result.current.updateSettings({ chunkSize: 1000 }))
+    await act(async () => hook.result.current.runPreview())
+
+    expect(hook.result.current.cacheHit).toBe(true)
+    expect(api.documents.chunkPreview).toHaveBeenCalledTimes(2)
+    expect(input.value).toBe('')
+    expect(hook.container.textContent).toContain('first version')
+  })
+
+  it('highlights the actual original substring after lowercase expansion', async () => {
+    const data = preview('first.md', 'İ😀hit')
+    data.total_characters = 5
+    data.file_size = 9
+    data.chunks[0].length = 5
+    data.chunks[0].end_index = 5
+    api.documents.chunkPreview.mockResolvedValue(data)
+    const hook = await mount({ children: <ChunkList /> })
+    await prepareFile(hook)
+    const input = hook.container.querySelector<HTMLInputElement>('input[aria-label="搜索切块内容"]')
+    if (input === null) throw new Error('Missing actual list search input')
+    changeText(input, 'hit')
+    await waitForAssertion(() => expect(hook.container.querySelector('mark')?.textContent).toBe('hit'))
+  })
+
+  it('retains computed local search results when the panel is collapsed', async () => {
+    const hook = await mount({ children: <ChunkList /> })
+    await prepareFile(hook)
+    click(hook, 'chunkList.retrieve.trigger')
+    const input = hook.container.querySelector<HTMLInputElement>(
+      'input[placeholder="chunkList.retrieve.queryPlaceholder"]',
+    )
+    if (input === null) throw new Error('Missing actual ranked query input')
+    changeText(input, 'first')
+    expect(hook.container.textContent).toContain('chunkList.retrieve.trigger 1')
+    click(hook, 'chunkList.retrieve.trigger 1')
+    expect(hook.container.textContent).toContain('chunkList.retrieve.trigger 1')
+  })
+
+  it('reveals a full-preview search hit hidden by the current list filter', async () => {
+    const data = preview()
+    data.chunks = [
+      { ...data.chunks[0], index: 4, content: 'visible paragraph' },
+      { ...data.chunks[0], index: 9, content: 'hidden target' },
+    ]
+    data.total_chunks = 2
+    api.documents.chunkPreview.mockResolvedValue(data)
+    const hook = await mount({ children: <ChunkList /> })
+    await prepareFile(hook)
+    const listQuery = hook.container.querySelector<HTMLInputElement>('input[aria-label="搜索切块内容"]')
+    if (listQuery === null) throw new Error('Missing list query')
+    changeText(listQuery, 'visible')
+    await waitForAssertion(() => expect(hook.container.querySelectorAll('[data-chunk-card]')).toHaveLength(1))
+    click(hook, 'chunkList.retrieve.trigger')
+    const query = hook.container.querySelector<HTMLInputElement>(
+      'input[aria-label="chunkList.retrieve.queryPlaceholder"]',
+    )
+    if (query === null) throw new Error('Missing ranked query')
+    changeText(query, 'hidden')
+    const hit = Array.from(hook.container.querySelectorAll<HTMLButtonElement>('button')).find((button) =>
+      button.textContent?.includes('hidden target'),
+    )
+    if (hit === undefined) throw new Error('Missing actual ranked target')
+    act(() => hit.click())
+
+    expect(listQuery.value).toBe('')
+    expect(hook.result.current.selectedChunkIndex).toBe(1)
+    expect(hook.container.querySelector('[data-chunk-index="1"][data-selected="true"]')).not.toBeNull()
+  })
+
+  it('opens only the search target section and retains other collapse preferences', async () => {
+    const data = preview()
+    data.chunks = [
+      { ...data.chunks[0], index: 4, content: 'hidden target', metadata: { header_path: 'A' } },
+      { ...data.chunks[0], index: 9, content: 'other paragraph', metadata: { header_path: 'B' } },
+    ]
+    data.total_chunks = 2
+    api.documents.chunkPreview.mockResolvedValue(data)
+    const hook = await mount({ children: <ChunkList /> })
+    await prepareFile(hook)
+    click(hook, 'chunkList.toolbar.filters')
+    chooseSelectValue(hook.container, 'section')
+    for (let count = 0; count < 2; count += 1) {
+      const button = hook.container.querySelector<HTMLButtonElement>(
+        'button[aria-label="chunkList.groupToggle.collapseSection"]',
+      )
+      if (button === null) throw new Error('Missing actual section collapse control')
+      act(() => button.click())
+    }
+    expect(hook.container.querySelectorAll('[data-chunk-card]')).toHaveLength(0)
+    click(hook, 'chunkList.retrieve.trigger')
+    const query = hook.container.querySelector<HTMLInputElement>(
+      'input[aria-label="chunkList.retrieve.queryPlaceholder"]',
+    )
+    if (query === null) throw new Error('Missing ranked query')
+    changeText(query, 'hidden')
+    const hit = Array.from(hook.container.querySelectorAll<HTMLButtonElement>('button')).find((button) =>
+      button.textContent?.includes('hidden target'),
+    )
+    if (hit === undefined) throw new Error('Missing actual ranked target')
+    act(() => hit.click())
+
+    expect(hook.container.querySelector('[data-chunk-index="0"][data-selected="true"]')).not.toBeNull()
+    expect(hook.container.querySelector('[data-chunk-index="1"]')).toBeNull()
+    expect(api.toast.info).not.toHaveBeenCalledWith('chunkList.toasts.filtersClearedForResult')
+  })
+
+  it.each([
+    { draft: 'visible', expected: '' },
+    { draft: 'hid', expected: 'hid' },
+  ])('keeps a retrieved target visible after the pending query deadline: $draft', async ({ draft, expected }) => {
+    const data = preview()
+    data.chunks = [
+      { ...data.chunks[0], index: 4, content: 'visible paragraph' },
+      { ...data.chunks[0], index: 9, content: 'hidden target' },
+    ]
+    data.total_chunks = 2
+    api.documents.chunkPreview.mockResolvedValue(data)
+    const hook = await mount({ children: <ChunkList /> })
+    await prepareFile(hook)
+    click(hook, 'chunkList.retrieve.trigger')
+    const rankedQuery = hook.container.querySelector<HTMLInputElement>(
+      'input[aria-label="chunkList.retrieve.queryPlaceholder"]',
+    )
+    const listQuery = hook.container.querySelector<HTMLInputElement>('input[aria-label="搜索切块内容"]')
+    if (rankedQuery === null || listQuery === null) throw new Error('Missing actual query controls')
+    changeText(rankedQuery, 'hidden')
+    const hit = Array.from(hook.container.querySelectorAll<HTMLButtonElement>('button')).find((button) =>
+      button.textContent?.includes('hidden target'),
+    )
+    if (hit === undefined) throw new Error('Missing actual ranked target')
+    changeText(listQuery, draft)
+    act(() => hit.click())
+    await act(async () => new Promise((resolve) => setTimeout(resolve, 180)))
+
+    expect(listQuery.value).toBe(expected)
+    expect(hook.container.querySelector('[data-chunk-index="1"][data-selected="true"]')).not.toBeNull()
   })
 
   it('does not show an old ingestion audit after switching its file', async () => {
@@ -1052,7 +2423,10 @@ describe('chunk preview workspace state and request lifetime', () => {
     act(() => {
       hook.result.current.addFiles([new File(['first'], 'first.md')])
       hook.result.current.updateSettings({ strategy: 'separator' })
-      hook.result.current.updateSeparatorSettings({ separatorPreset: 'custom', separatorCustom: "a'b" })
+      hook.result.current.updateSeparatorSettings({
+        separatorPreset: 'custom',
+        separatorCustom: String.raw`a'b\nc`,
+      })
     })
 
     click(hook, 'topBar.actions.copyCurl')
@@ -1060,7 +2434,10 @@ describe('chunk preview workspace state and request lifetime', () => {
     const text = output.writeText.mock.calls[0][0] as string
     const lines = text.split('\n')
     expect(lines.slice(0, -1).every((line) => line.endsWith(' \\') && !line.endsWith(' \\\\'))).toBe(true)
-    expect(text).toContain(String.raw`separator=a\'b`)
+    expect(lines[0]).toContain('chunk_overlap=0')
+    expect(lines[0]).toContain('include_review_signals=true')
+    expect(text).toContain("--form-string $'dataset_id=dataset-a'")
+    expect(text).toContain(String.raw`--form-string $'separator=a\'b\nc'`)
   })
 
   it('keeps the latest dataset preset list when an earlier list resolves last', async () => {
@@ -1098,18 +2475,32 @@ describe('chunk preview workspace state and request lifetime', () => {
     await act(async () => response.resolve({ id: 'created' }))
   })
 
-  it('previews the chosen auto-tune recommendation with its new settings', async () => {
+  it('applies a measured auto-tune result and previews its settings', async () => {
     const withSha = { ...preview(), file_sha256: 'first-sha' }
     api.documents.chunkPreview.mockResolvedValue(withSha)
-    api.documents.chunkPreviewBySha.mockResolvedValue({
-      ...withSha,
-      stats: { count: 1, avg: 10, p90: 10, short_count: 0, coverage_ratio: 1, overlap_waste_ratio: 0 },
-    })
+    api.documents.chunkPreviewBySha.mockImplementation(
+      async (params: { chunk_size: number; chunk_overlap: number }) => ({
+        ...withSha,
+        stats: {
+          count: 1,
+          avg: 10,
+          p90: 10,
+          short_count: 0,
+          coverage_ratio: 1,
+          overlap_waste_ratio: params.chunk_size === 600 && params.chunk_overlap === 60 ? undefined : 0,
+        },
+      }),
+    )
     const hook = await mount({ children: <ChunkAutoTuneDialog /> })
     await prepareFile(hook)
     click(hook, 'autoTune.trigger.label')
     click(hook, 'autoTune.actions.start')
     await waitForAssertion(() => expect(hook.container.textContent).toContain('autoTune.actions.applyAndPreview'))
+    expect(api.documents.chunkPreviewBySha.mock.calls[0][0]).toMatchObject({
+      include_chunks: false,
+      include_original_text: false,
+      include_review_signals: false,
+    })
     const apply = Array.from(hook.container.querySelectorAll('button')).find(
       (button) => button.textContent?.trim() === 'autoTune.actions.applyAndPreview',
     )!
@@ -1117,7 +2508,7 @@ describe('chunk preview workspace state and request lifetime', () => {
     await act(async () => apply.click())
 
     expect(hook.result.current.chunkSize).toBe(600)
-    expect(api.documents.chunkPreviewBySha.mock.lastCall?.[0]).toMatchObject({ chunk_size: 600, chunk_overlap: 60 })
+    expect(api.documents.chunkPreviewBySha.mock.lastCall?.[0]).toMatchObject({ chunk_size: 600, chunk_overlap: 90 })
   })
 
   it('retires auto-tune results and follow-up requests when selecting another file', async () => {
@@ -1326,6 +2717,65 @@ describe('chunk preview workspace state and request lifetime', () => {
     expect(api.documents.chunkPreview).toHaveBeenCalledTimes(2)
   })
 
+  it('does not restore a locally selected chunk while clearing its URL', async () => {
+    const hook = await mount()
+    await prepareFile(hook)
+    act(() => hook.result.current.setSelectedChunkIndex(0))
+    expect(api.router.replace).toHaveBeenCalledWith('/chunk-preview?chunk=1')
+
+    act(() => {
+      api.search = new URLSearchParams('chunk=1')
+      hook.result.current.setSelectedChunkIndex(null)
+    })
+    expect(api.router.replace).toHaveBeenCalledWith('/chunk-preview')
+
+    api.documents.chunkPreview.mockResolvedValueOnce(preview('first.md', 'replacement preview'))
+    await act(async () => hook.result.current.runPreview({ force: true }))
+    expect(hook.result.current.selectedChunkIndex).toBeNull()
+  })
+
+  it('replaces a queued chunk URL update when the selection is cleared first', async () => {
+    const hook = await mount()
+    await prepareFile(hook)
+    const previousCalls = api.router.replace.mock.calls.length
+
+    act(() => hook.result.current.setSelectedChunkIndex(0))
+    act(() => hook.result.current.setSelectedChunkIndex(null))
+
+    expect(api.router.replace.mock.calls.slice(previousCalls)).toEqual([['/chunk-preview?chunk=1'], ['/chunk-preview']])
+
+    act(() => {
+      api.search = new URLSearchParams('chunk=1')
+      hook.result.current.setHoveredChunkIndex(0)
+    })
+    expect(hook.result.current.selectedChunkIndex).toBeNull()
+  })
+
+  it('removes the previous chunk number in the dataset navigation itself', async () => {
+    api.search = new URLSearchParams('dataset_id=dataset-a')
+    const hook = await mount()
+    await prepareFile(hook)
+    act(() => hook.result.current.setSelectedChunkIndex(0))
+    act(() => {
+      api.search = new URLSearchParams('dataset_id=dataset-a&chunk=1')
+      hook.result.current.setHoveredChunkIndex(0)
+    })
+    const previousCalls = api.router.replace.mock.calls.length
+
+    act(() => hook.result.current.setDatasetId('dataset-b'))
+
+    expect(hook.result.current.selectedChunkIndex).toBeNull()
+    expect(api.router.replace.mock.calls.slice(previousCalls)).toEqual([['/chunk-preview?dataset_id=dataset-b']])
+  })
+
+  it('ignores an incoming chunk position containing nonnumeric characters', async () => {
+    api.search = new URLSearchParams('chunk=1extra')
+    const hook = await mount()
+    await prepareFile(hook)
+
+    expect(hook.result.current.selectedChunkIndex).toBeNull()
+  })
+
   it('reuses a valid preview for the same file and settings', async () => {
     const hook = await mount()
     await prepareFile(hook)
@@ -1333,6 +2783,27 @@ describe('chunk preview workspace state and request lifetime', () => {
     await act(async () => hook.result.current.runPreview())
 
     expect(api.documents.chunkPreview).toHaveBeenCalledOnce()
+    expect(hook.result.current.cacheHit).toBe(true)
+  })
+
+  it('reuses a preview when two inputs decode to the same custom separator', async () => {
+    const hook = await mount()
+    act(() => {
+      hook.result.current.updateSettings({ strategy: 'separator' })
+      hook.result.current.updateSeparatorSettings({
+        separatorPreset: 'custom',
+        separatorCustom: String.raw`\u002e`,
+      })
+    })
+    await prepareFile(hook)
+    expect(api.documents.chunkPreview.mock.calls[0][1]).toMatchObject({ separator: '.', chunk_overlap: 0 })
+
+    act(() => hook.result.current.updateSeparatorSettings({ separatorCustom: '.' }))
+    expect(hook.result.current.isPreviewDirty).toBe(false)
+    await act(async () => hook.result.current.runPreview())
+
+    expect(api.documents.chunkPreview).toHaveBeenCalledOnce()
+    expect(api.documents.chunkPreviewBySha).not.toHaveBeenCalled()
     expect(hook.result.current.cacheHit).toBe(true)
   })
 

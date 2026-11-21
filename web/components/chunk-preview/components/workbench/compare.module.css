@@ -25,6 +25,16 @@
 .coverageTrigger[data-state='open'] > svg {
   transform: rotate(180deg);
 }
+.coverageTrigger:focus-visible,
+.headerActions > .ingest:focus-visible,
+.fileSelect > button:focus-visible,
+.sourceModes > button:focus-visible,
+.listButton:focus-visible,
+.numberInput input:focus-visible,
+.listSearch input:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 2px;
+}
 .coveragePanel {
   width: min(320px, calc(100vw - 24px));
   padding: 18px;
@@ -308,38 +318,6 @@
   width: 15px;
   height: 15px;
 }
-.notice {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-  padding: 9px 28px;
-  border-bottom: 1px solid hsl(var(--border));
-  font-size: 13px;
-  line-height: 23px;
-  color: var(--compare-warning-ink);
-  background: hsl(var(--warning) / 0.045);
-}
-.notice > svg {
-  width: 16px;
-  height: 16px;
-  flex: none;
-}
-.noticeError {
-  color: hsl(var(--destructive));
-  background: hsl(var(--destructive) / 0.04);
-}
-.noticeSuccess {
-  color: hsl(var(--success));
-  background: hsl(var(--success) / 0.04);
-}
-.notice p {
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-.notice small {
-  font-size: 13px;
-}
 .parameters {
   display: flex;
   min-width: 0;
@@ -419,9 +397,6 @@
 }
 .workspace[data-original-visible='false'] {
   grid-template-columns: minmax(0, 1fr);
-}
-.workspace[data-original-visible='false'] > .original {
-  display: none;
 }
 .original,
 .results {
@@ -548,15 +523,6 @@
   background: hsl(var(--foreground) / 0.08);
   color: hsl(var(--foreground));
   border-radius: 2px;
-}
-.listTools {
-  display: flex;
-  flex: none;
-  flex-direction: column;
-  border-bottom: 1px solid hsl(var(--border));
-  background: hsl(var(--muted) / 0.16);
-  padding: 12px 24px;
-  gap: 10px;
 }
 .listToolRow {
   display: flex;
@@ -1006,10 +972,6 @@
     padding-left: 18px;
     padding-right: 18px;
   }
-  .listTools {
-    padding-left: 18px;
-    padding-right: 18px;
-  }
   .originalScroll {
     padding: 20px;
   }
@@ -1139,9 +1101,6 @@
     max-width: 160px;
     font-size: 12px;
   }
-  .notice {
-    padding: 8px 20px;
-  }
   .paneHead {
     flex-wrap: wrap;
     gap: 6px;
@@ -1163,9 +1122,6 @@
   .title h1 {
     font-size: 18px;
     white-space: nowrap;
-  }
-  .headerActions > .headerHelp {
-    display: none;
   }
   .headerActions > button {
     font-size: 12px;

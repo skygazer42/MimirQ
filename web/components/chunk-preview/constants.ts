@@ -2,7 +2,7 @@
  * ChunkPreview 常量定义
  */
 
-export const SEPARATOR_PRESET_OPTIONS: Array<{
+export const SEPARATOR_PRESET_OPTIONS: ReadonlyArray<{
   value: 'paragraph' | 'line' | 'sentence_cn' | 'sentence_en' | 'markdown_hr' | 'markdown_h1' | 'markdown_h2' | 'custom'
   label: string
   hint: string

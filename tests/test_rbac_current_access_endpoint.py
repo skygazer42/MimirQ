@@ -5,9 +5,8 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from app.api.dependencies.auth import get_current_account_id
-from app.api.dependencies.tenant import get_tenant_id
-from app.core.database import get_db
+from app.api.dependencies import get_current_account_id, get_tenant_id
+from app.infrastructure.database.connection import get_db
 
 
 class _DummyDB:
@@ -19,7 +18,7 @@ def _override_get_db():  # noqa: ANN202
 
 
 def _build_client(*, monkeypatch: pytest.MonkeyPatch, tenant_id: uuid.UUID, role: str) -> TestClient:
-    import app.api.v1.rbac as rbac_api
+    import app.api.v1.identity.rbac as rbac_api
 
     def _override_get_tenant_id() -> uuid.UUID:
         return tenant_id

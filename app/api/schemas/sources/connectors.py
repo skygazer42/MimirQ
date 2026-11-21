@@ -4,7 +4,7 @@ Connector-related Pydantic schemas.
 
 import re
 from datetime import datetime
-from typing import Any, Literal
+from typing import Any, Literal, Self
 from urllib.parse import urlparse
 from uuid import UUID
 
@@ -33,9 +33,7 @@ def _normalize_connector_urls(urls: list[str], *, limit: int) -> list[str]:
     return normalized
 
 
-def _normalize_connector_extensions(
-    extensions: list[str], *, defaults: tuple[str, ...], max_length: int | None = None
-) -> list[str]:
+def _normalize_connector_extensions(extensions: list[str], *, defaults: tuple[str, ...]) -> list[str]:
     normalized: list[str] = []
     seen: set[str] = set()
     for raw in extensions:
@@ -44,8 +42,6 @@ def _normalize_connector_extensions(
             continue
         if not extension.startswith("."):
             extension = "." + extension
-        if max_length is not None and len(extension) > max_length:
-            continue
         if extension in seen:
             continue
         seen.add(extension)
@@ -185,70 +181,6 @@ class WebCrawlConnectorConfig(BaseModel):
         # Cap regex patterns to reduce ReDoS risk (compiled server-side).
         self.include_patterns = [pattern.strip()[:500] for pattern in self.include_patterns if pattern.strip()][:30]
         self.exclude_patterns = [pattern.strip()[:500] for pattern in self.exclude_patterns if pattern.strip()][:60]
-        return self
-
-
-class GitHubRepoConnectorConfig(BaseModel):
-    """Config for `github_repo` connector (repository file ingestion via raw.githubusercontent.com)."""
-
-    repo: str = Field(max_length=200, description="GitHub repo in owner/repo format")
-    branch: str = Field(default="main", max_length=200, description="Branch or tag name (default: main)")
-    include_extensions: list[str] = Field(
-        default_factory=lambda: [".md", ".txt", ".pdf"],
-        description="File extensions to ingest (case-insensitive).",
-    )
-    max_files: int = Field(default=50, ge=1, le=200)
-    user_agent: str | None = Field(default=None, max_length=200)
-    auth: WebCrawlAuthConfig | None = None  # bearer token for GitHub API (optional)
-
-    # Ingest options for each discovered file URL.
-    parser_backend: str = "auto"
-    chunk_strategy: str = "langchain_recursive"
-    pipeline: DocumentPipelineOptions | None = None
-    access: DocumentAccessUpdateRequest | None = None
-    source_acl: ConnectorSourceAclConfig | None = None
-
-    @model_validator(mode="after")
-    def _normalize(self) -> "GitHubRepoConnectorConfig":
-        repo = self.repo.strip()
-        if "/" not in repo:
-            raise ValueError("repo must be in owner/repo format")
-        owner, name = repo.split("/", 1)
-        owner = owner.strip()
-        name = name.strip()
-        if not owner or not name:
-            raise ValueError("repo must be in owner/repo format")
-        self.repo = f"{owner}/{name}"
-
-        self.branch = self.branch.strip() or "main"
-
-        self.include_extensions = _normalize_connector_extensions(
-            self.include_extensions, defaults=(".md", ".txt"), max_length=12
-        )
-        return self
-
-
-class DriveFilesConnectorConfig(BaseModel):
-    """Config for `drive_files` connector (Google Drive share links -> direct download)."""
-
-    urls: list[str] = Field(min_length=1, max_length=50, description="Google Drive file share links")
-    filename: str | None = Field(
-        default=None,
-        max_length=500,
-        description="Optional override filename for display/extension inference (applies to all urls).",
-    )
-    user_agent: str | None = Field(default=None, max_length=200)
-    auth: WebCrawlAuthConfig | None = None
-
-    parser_backend: str = "auto"
-    chunk_strategy: str = "langchain_recursive"
-    pipeline: DocumentPipelineOptions | None = None
-    access: DocumentAccessUpdateRequest | None = None
-    source_acl: ConnectorSourceAclConfig | None = None
-
-    @model_validator(mode="after")
-    def _normalize(self) -> "DriveFilesConnectorConfig":
-        self.urls = _normalize_connector_urls(self.urls, limit=50)
         return self
 
 
@@ -432,90 +364,57 @@ class JiraProjectConnectorConfig(BaseModel):
         return self
 
 
-class MySQLCatalogConnectorConfig(BaseModel):
+class _DbCatalogConnectorConfig(BaseModel):
+    host: str = Field(max_length=255)
+    port: int
+    database: str = Field(max_length=255, description="Database name")
+    username: str = Field(max_length=255)
+    password: str = Field(max_length=10_000)
+    # Optional: allowlist which schemas/tables to ingest (best-effort; connector runner may ignore).
+    include_schemas: list[str] = Field(default_factory=list, description="Optional: ingest only these schemas")
+    include_tables: list[str] = Field(
+        default_factory=list, description="Optional: ingest only these tables (names, not patterns)"
+    )
+    max_tables: int = Field(default=200, ge=1, le=2000)
+    profile_enabled: bool = Field(default=True, description="If true, compute safe aggregate profiles (no raw rows)")
+    row_sync_enabled: bool = Field(
+        default=False,
+        description="If true, ingest bounded row snapshots into a TAG sidecar document for deterministic row recall.",
+    )
+    row_sync_max_tables: int = Field(
+        default=0, ge=0, le=500, description="Per-run cap for row-snapshot tables; 0 means use global default."
+    )
+    row_sync_max_rows_per_table: int = Field(
+        default=0, ge=0, le=1000, description="Per-table row cap for row snapshots; 0 means use global default."
+    )
+    row_sync_max_cols: int = Field(
+        default=0, ge=0, le=500, description="Per-table column cap for row snapshots; 0 means use global default."
+    )
+
+    @model_validator(mode="after")
+    def _normalize(self) -> Self:
+        self.host = self.host.strip()
+        self.database = self.database.strip()
+        self.username = self.username.strip()
+        if not self.host:
+            raise ValueError("host is required")
+        if not self.database:
+            raise ValueError("database is required")
+        if not self.username:
+            raise ValueError("username is required")
+        return self
+
+
+class MySQLCatalogConnectorConfig(_DbCatalogConnectorConfig):
     """Config for `mysql_catalog` connector (ingest schema/table/column catalog + safe profiling)."""
 
-    host: str = Field(max_length=255)
     port: int = Field(default=3306, ge=1, le=65535)
-    database: str = Field(max_length=255, description="Database name")
-    username: str = Field(max_length=255)
-    password: str = Field(max_length=10_000)
-    # Optional: allowlist which schemas/tables to ingest (best-effort; connector runner may ignore).
-    include_schemas: list[str] = Field(default_factory=list, description="Optional: ingest only these schemas")
-    include_tables: list[str] = Field(
-        default_factory=list, description="Optional: ingest only these tables (names, not patterns)"
-    )
-    max_tables: int = Field(default=200, ge=1, le=2000)
-    profile_enabled: bool = Field(default=True, description="If true, compute safe aggregate profiles (no raw rows)")
-    row_sync_enabled: bool = Field(
-        default=False,
-        description="If true, ingest bounded row snapshots into a TAG sidecar document for deterministic row recall.",
-    )
-    row_sync_max_tables: int = Field(
-        default=0, ge=0, le=500, description="Per-run cap for row-snapshot tables; 0 means use global default."
-    )
-    row_sync_max_rows_per_table: int = Field(
-        default=0, ge=0, le=1000, description="Per-table row cap for row snapshots; 0 means use global default."
-    )
-    row_sync_max_cols: int = Field(
-        default=0, ge=0, le=500, description="Per-table column cap for row snapshots; 0 means use global default."
-    )
-
-    @model_validator(mode="after")
-    def _normalize(self) -> "MySQLCatalogConnectorConfig":
-        self.host = self.host.strip()
-        self.database = self.database.strip()
-        self.username = self.username.strip()
-        if not self.host:
-            raise ValueError("host is required")
-        if not self.database:
-            raise ValueError("database is required")
-        if not self.username:
-            raise ValueError("username is required")
-        return self
 
 
-class SQLServerCatalogConnectorConfig(BaseModel):
+class SQLServerCatalogConnectorConfig(_DbCatalogConnectorConfig):
     """Config for `sqlserver_catalog` connector (ingest schema/table/column catalog + safe profiling)."""
 
-    host: str = Field(max_length=255)
     port: int = Field(default=1433, ge=1, le=65535)
-    database: str = Field(max_length=255, description="Database name")
-    username: str = Field(max_length=255)
-    password: str = Field(max_length=10_000)
-    # Optional: allowlist which schemas/tables to ingest (best-effort; connector runner may ignore).
-    include_schemas: list[str] = Field(default_factory=list, description="Optional: ingest only these schemas")
-    include_tables: list[str] = Field(
-        default_factory=list, description="Optional: ingest only these tables (names, not patterns)"
-    )
-    max_tables: int = Field(default=200, ge=1, le=2000)
-    profile_enabled: bool = Field(default=True, description="If true, compute safe aggregate profiles (no raw rows)")
-    row_sync_enabled: bool = Field(
-        default=False,
-        description="If true, ingest bounded row snapshots into a TAG sidecar document for deterministic row recall.",
-    )
-    row_sync_max_tables: int = Field(
-        default=0, ge=0, le=500, description="Per-run cap for row-snapshot tables; 0 means use global default."
-    )
-    row_sync_max_rows_per_table: int = Field(
-        default=0, ge=0, le=1000, description="Per-table row cap for row snapshots; 0 means use global default."
-    )
-    row_sync_max_cols: int = Field(
-        default=0, ge=0, le=500, description="Per-table column cap for row snapshots; 0 means use global default."
-    )
-
-    @model_validator(mode="after")
-    def _normalize(self) -> "SQLServerCatalogConnectorConfig":
-        self.host = self.host.strip()
-        self.database = self.database.strip()
-        self.username = self.username.strip()
-        if not self.host:
-            raise ValueError("host is required")
-        if not self.database:
-            raise ValueError("database is required")
-        if not self.username:
-            raise ValueError("username is required")
-        return self
 
 
 DbCatalogConnectorConfig = MySQLCatalogConnectorConfig | SQLServerCatalogConnectorConfig
@@ -524,8 +423,6 @@ DbCatalogConnectorConfig = MySQLCatalogConnectorConfig | SQLServerCatalogConnect
 ConnectorRunConfig = (
     UrlBatchConnectorConfig
     | WebCrawlConnectorConfig
-    | GitHubRepoConnectorConfig
-    | DriveFilesConnectorConfig
     | MinioBucketConnectorConfig
     | ConfluenceSpaceConnectorConfig
     | JiraProjectConnectorConfig
@@ -536,8 +433,6 @@ ConnectorRunConfig = (
 CONNECTOR_CONFIG_MODELS: dict[str, type[ConnectorRunConfig]] = {
     "url_batch": UrlBatchConnectorConfig,
     "web_crawl": WebCrawlConnectorConfig,
-    "github_repo": GitHubRepoConnectorConfig,
-    "drive_files": DriveFilesConnectorConfig,
     "minio_bucket": MinioBucketConnectorConfig,
     "confluence_space": ConfluenceSpaceConnectorConfig,
     "jira_project": JiraProjectConnectorConfig,
@@ -614,6 +509,8 @@ class ConnectorRunOut(BaseModel):
     connector_id: str
     requested_by: str | None = None
     status: ConnectorRunStatus
+    supports_retry_failed: bool = False
+    supports_resume: bool = False
     config: dict[str, Any] = Field(default_factory=dict)
     stats: dict[str, Any] = Field(default_factory=dict)
     error_message: str | None = None

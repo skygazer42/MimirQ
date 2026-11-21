@@ -4,9 +4,9 @@ from uuid import uuid4
 import pytest
 from langchain_core.messages import AIMessage, SystemMessage
 
-from app.services.indexer import Indexer
-from app.services.indexing.vector_writer import _prepare_shadow_vector_items
-from app.services.lotus_bridge import _invoke_sem_filter_batch
+from app.rag.ingestion.indexing.indexer import Indexer
+from app.rag.ingestion.indexing.vector_writer import _prepare_shadow_vector_items
+from app.services.tables.semantic_operators import _invoke_sem_filter_batch
 
 
 @pytest.mark.parametrize("content", [None, 0])

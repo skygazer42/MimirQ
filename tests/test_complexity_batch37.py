@@ -3,7 +3,7 @@ from types import SimpleNamespace
 from langchain_core.documents import Document
 from llama_index.core.schema import NodeRelationship
 
-from app.rag.chunking.strategies.llama_index import LlamaIndexHierarchicalChunker
+from app.rag.ingestion.chunking.strategies.model_based.llama_index import LlamaIndexHierarchicalChunker
 
 
 class _Node:

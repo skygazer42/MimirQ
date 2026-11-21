@@ -7,10 +7,10 @@ becomes the next step's input.
 Pattern: Step1 -> Step2 -> Step3 -> ... -> Result
 """
 
+import logging
 from collections.abc import Awaitable, Callable
 from typing import Any
 
-from app.rag.core.logging import get_logger
 from app.rag.workflows.base import (
     BaseWorkflow,
     WorkflowMode,
@@ -18,7 +18,7 @@ from app.rag.workflows.base import (
     WorkflowStep,
 )
 
-logger = get_logger("rag.workflows.chain")
+logger = logging.getLogger("rag.workflows.chain")
 
 
 class ChainWorkflow(BaseWorkflow):
@@ -116,12 +116,13 @@ class ChainWorkflow(BaseWorkflow):
                 execution_path.append(step_name)
 
                 # Check for error in state
-                if current_state.get("error") and self.stop_on_error:
-                    logger.warning("Step %s returned error: %s", step_name, current_state.get("error"))
+                step_error = current_state.get("error")
+                if step_error and self.stop_on_error:
+                    logger.warning("Step %s returned error: %s", step_name, step_error)
                     return self.create_result(
                         current_state,
                         success=False,
-                        error=current_state.get("error"),
+                        error=step_error,
                         execution_path=execution_path,
                     )
 
@@ -134,12 +135,13 @@ class ChainWorkflow(BaseWorkflow):
                         error=str(e),
                         execution_path=execution_path,
                     )
-                else:
-                    current_state["error"] = str(e)
+                current_state["error"] = str(e)
 
+        error = current_state.get("error")
         return self.create_result(
             current_state,
-            success=True,
+            success=not bool(error),
+            error=error,
             execution_path=execution_path,
         )
 

@@ -6,11 +6,11 @@ from sqlalchemy import JSON, MetaData, create_engine
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Session
 
-from app.api.schemas.rag_config_template import RagConfigTemplateNewVersion, RagConfigTemplateUpdate
-from app.api.v1 import rag_config_templates
+from app.api.schemas.conversations.rag_config_templates import RagConfigTemplateNewVersion, RagConfigTemplateUpdate
+from app.api.v1.retrieval import config_templates as rag_config_templates
 from app.models.audit_log import AuditLog
-from app.models.rag_config_template import RagConfigTemplate
-from app.services.audit_log_service import audit_log_event
+from app.models.templates.versions import RagConfigTemplate
+from app.services.observability.audit_log import audit_log_event
 
 
 @pytest.fixture
@@ -120,11 +120,11 @@ def test_audit_record_preserves_empty_fields_and_falsy_mapping_contents(local_db
 def test_scim_audit_preserves_actual_request_metadata(local_db: Session) -> None:
     from starlette.requests import Request
 
-    from app.api.v1.scim import _audit_scim
+    from app.api.v1.identity.scim import _commit_scim_audit
 
     request = Request({"type": "http", "method": "GET", "path": "/", "headers": [(b"user-agent", b"")]})
     request.state.request_id = ""
-    _audit_scim(
+    _commit_scim_audit(
         local_db,
         tenant_id=uuid4(),
         actor_id="writer",
@@ -132,6 +132,7 @@ def test_scim_audit_preserves_actual_request_metadata(local_db: Session) -> None
         resource_type="user",
         resource_id="user-1",
         http_request=request,
+        details={},
     )
     local_db.flush()
     record = local_db.query(AuditLog).one()
@@ -141,8 +142,8 @@ def test_scim_audit_preserves_actual_request_metadata(local_db: Session) -> None
 
 
 def test_clean_preview_stats_preserve_actual_source_metadata() -> None:
-    from app.api.v1.pipeline_support.clean_preview import _clean_preview_rule_stats
-    from app.rag.preprocessing.cleaning import RegexRule
+    from app.api.v1.pipelines.support.clean_preview import _clean_preview_rule_stats
+    from app.rag.ingestion.governance.cleaning import RegexRule
 
     records = _clean_preview_rule_stats([RegexRule(pattern="a", repl="b")], [{"source": "", "pack": False}], [0])
 

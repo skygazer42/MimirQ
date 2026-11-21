@@ -8,9 +8,10 @@ import pytest
 from langgraph.checkpoint.base import empty_checkpoint
 from PIL import Image
 
-from app.rag.checkpointer.sqlite import SqliteSaver
 from app.rag.evaluation.poc_runner.reports.png_renderer import render_dataset_analysis_png
-from app.rag.evaluation.replay_capture import sanitize_citations_for_capture
+from app.rag.evaluation.regression.replay_capture import sanitize_citations_for_capture
+from app.rag.ingestion.governance.deduplication.near_dedup import INDEX_VERSION, load_near_dedup_index
+from app.rag.ingestion.governance.deduplication.paragraph_dedup import drop_duplicate_paragraphs
 from app.rag.kg.extraction.config import _clean_kg_python_params
 from app.rag.kg.extraction.skill_processor import _coerce_str_list
 from app.rag.llm.factory import create_llm_client
@@ -19,8 +20,7 @@ from app.rag.pipeline_plugins import refs as plugin_refs
 from app.rag.pipeline_plugins.contracts import DISPLAY_METADATA_KEY, EVALUABLE_METADATA_KEY, INDEXED_METADATA_KEY
 from app.rag.pipeline_plugins.golden_drafts import build_golden_draft_bundle_from_chunks
 from app.rag.pipeline_plugins.refs import clean_python_plugin_ref
-from app.rag.preprocessing.near_dedup import INDEX_VERSION, load_near_dedup_index
-from app.rag.preprocessing.paragraph_dedup import drop_duplicate_paragraphs
+from app.rag.runtime.checkpoints.sqlite import SqliteSaver
 
 
 def _checkpoint_with_id(checkpoint_id: str) -> dict:

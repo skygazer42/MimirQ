@@ -5,9 +5,7 @@ import Layout from '@theme/Layout'
 
 import styles from './index.module.css'
 
-type IconName = 'arrow' | 'book' | 'braces' | 'database' | 'github' | 'network' | 'shield' | 'terminal'
-
-const ICONS: Record<IconName, ReactNode> = {
+const ICONS = {
   arrow: (
     <>
       <path d="M5 12h14" />
@@ -58,7 +56,7 @@ const ICONS: Record<IconName, ReactNode> = {
   ),
 }
 
-function Icon({ name, size = 20 }: { name: IconName; size?: number }) {
+function Icon({ name, size }: Readonly<{ name: keyof typeof ICONS; size: number }>) {
   return (
     <svg
       aria-hidden="true"
@@ -77,145 +75,140 @@ function Icon({ name, size = 20 }: { name: IconName; size?: number }) {
   )
 }
 
-function getCopy(locale: string) {
-  const en = locale === 'en'
+const START_PATHS = [
+  { id: 'deployment', icon: 'terminal', to: '/docs/ops/getting-started' },
+  { id: 'knowledgeBase', icon: 'book', to: '/docs/guide/welcome' },
+  { id: 'integration', icon: 'braces', to: '/docs/integration/welcome' },
+] as const
 
-  return {
-    eyebrow: en ? 'RAGVIA DOCUMENTATION' : 'Ragvia 全栈手册',
-    title: en ? ['Make knowledge', 'paths explainable.'] : ['让每一条知识链路，', '都可以被解释。'],
-    lead: en
-      ? 'Start with a working deployment, then inspect parsing, governance, chunking, retrieval, reranking, citations, and regression gates one layer at a time.'
-      : '先跑通一个可用部署，再逐层深入解析、治理、切块、检索、重排、引用与回归门禁。',
-    start: en ? 'Start here' : '开始部署',
-    fullGuide: en ? 'Read the full guide' : '阅读完整操作指南',
-    recommended: en ? 'RECOMMENDED PATH' : '推荐路径',
-    duration: en ? 'About 15 minutes' : '约 15 分钟',
-    steps: en
-      ? [
-          'Create local configuration',
-          'Connect model services',
-          'Start API, Web, and infrastructure',
-          'Create a dataset and verify citations',
-        ]
-      : ['生成本地配置', '连接模型服务', '启动 API、Web 与基础设施', '创建数据集并验证引用'],
-    openQuickStart: en ? 'Open quick start' : '打开快速开始',
-    pipelineLabel: en ? 'KNOWLEDGE PATH' : '知识链路',
-    pipeline: en
-      ? ['Assess', 'Parse', 'Govern', 'Chunk', 'Index', 'Retrieve', 'Rerank', 'Cite', 'Evaluate']
-      : ['评估', '解析', '治理', '切块', '入库', '召回', '重排', '引用', '评测'],
-    chooseTitle: en ? 'Choose the shortest path to your goal' : '选择离目标最近的入口',
-    chooseLead: en
-      ? 'The handbook is organized by tasks, not by feature inventory.'
-      : '手册按真实任务组织，而不是把功能名称堆在一起。',
-    paths: en
-      ? [
-          {
-            icon: 'terminal' as const,
-            label: 'First deployment',
-            title: 'From .env to first login',
-            description: 'Prepare credentials, choose Docker or host processes, and verify readiness.',
-            to: '/docs/ops/getting-started',
-            action: 'Deploy Ragvia',
-          },
-          {
-            icon: 'book' as const,
-            label: 'First knowledge base',
-            title: 'From dataset to cited answer',
-            description: 'Upload a document, inspect chunks, test retrieval, and trace the final evidence.',
-            to: '/docs/guide/welcome',
-            action: 'Follow the workflow',
-          },
-          {
-            icon: 'braces' as const,
-            label: 'Existing application',
-            title: 'Integrate API, Dify, or a workflow',
-            description: 'Use stable contracts for auth, ingestion, retrieval, streaming, and retries.',
-            to: '/docs/integration/welcome',
-            action: 'Open integration guide',
-          },
-        ]
-      : [
-          {
-            icon: 'terminal' as const,
-            label: '首次部署',
-            title: '从 .env 到首次登录',
-            description: '准备密钥，选择 Docker 或主机进程，完成健康检查。',
-            to: '/docs/ops/getting-started',
-            action: '部署 Ragvia',
-          },
-          {
-            icon: 'book' as const,
-            label: '第一个知识库',
-            title: '从数据集到带引用回答',
-            description: '上传文档，检查 Chunk，测试召回，最后回看证据链。',
-            to: '/docs/guide/welcome',
-            action: '跟随完整流程',
-          },
-          {
-            icon: 'braces' as const,
-            label: '接入现有业务',
-            title: '集成 API、Dify 或工作流',
-            description: '按稳定契约处理认证、入库、检索、流式输出与重试。',
-            to: '/docs/integration/welcome',
-            action: '查看集成指南',
-          },
-        ],
-    mapEyebrow: en ? 'SYSTEM MAP' : '手册地图',
-    mapTitle: en ? 'Inspect the system by layer' : '按系统层次深入',
-    mapLead: en
-      ? 'Each area documents its input, output, boundaries, failure modes, and verification path.'
-      : '每个分区都说明输入输出、权限边界、失败模式与验证方法。',
-    areas: en
-      ? [
-          {
-            icon: 'database' as const,
-            title: 'Knowledge operations',
-            text: 'Datasets, ingestion, parsing, chunking, retrieval, and evidence.',
-            to: '/docs/guide/welcome',
-          },
-          {
-            icon: 'network' as const,
-            title: 'Integration flows',
-            text: 'End-to-end scenarios, tenant headers, SSE, retries, and Dify.',
-            to: '/docs/integration/welcome',
-          },
-          {
-            icon: 'shield' as const,
-            title: 'Operations',
-            text: 'Deployment, configuration, health probes, and observability.',
-            to: '/docs/ops/welcome',
-          },
-        ]
-      : [
-          {
-            icon: 'database' as const,
-            title: '知识库运营',
-            text: '数据集、入库、解析、切块、检索与证据。',
-            to: '/docs/guide/welcome',
-          },
-          {
-            icon: 'network' as const,
-            title: '集成流程',
-            text: '端到端场景、租户请求头、SSE、重试与 Dify。',
-            to: '/docs/integration/welcome',
-          },
-          {
-            icon: 'shield' as const,
-            title: '部署与运维',
-            text: '部署、配置、健康探针、可观测与排障。',
-            to: '/docs/ops/welcome',
-          },
-        ],
-    closeTitle: en ? 'The code and the handbook evolve together.' : '代码与手册一起演进。',
-    closeText: en
-      ? 'OpenAPI remains the schema source of truth. The handbook explains how those contracts form a reliable knowledge workflow.'
-      : 'OpenAPI 保持 Schema 单一事实来源，手册负责说明这些契约如何组成可靠的知识流程。',
-    api: en ? 'Browse API reference' : '查看 API 参考',
-    github: 'GitHub',
-  }
-}
+const SYSTEM_AREAS = [
+  { id: 'knowledge', icon: 'database', to: '/docs/guide/welcome' },
+  { id: 'integration', icon: 'network', to: '/docs/integration/welcome' },
+  { id: 'operations', icon: 'shield', to: '/docs/ops/welcome' },
+] as const
 
-function Hero({ copy }: { copy: ReturnType<typeof getCopy> }) {
+const HOME_COPY = {
+  en: {
+    eyebrow: 'RAGVIA DOCUMENTATION',
+    title: ['Make knowledge', 'paths explainable.'],
+    lead: 'Start with a working deployment, then inspect parsing, governance, chunking, retrieval, reranking, citations, and regression gates one layer at a time.',
+    start: 'Start here',
+    fullGuide: 'Read the full guide',
+    recommended: 'RECOMMENDED PATH',
+    duration: 'About 15 minutes',
+    steps: [
+      'Create local configuration',
+      'Connect model services',
+      'Start API, Web, and infrastructure',
+      'Create a dataset and verify citations',
+    ],
+    openQuickStart: 'Open quick start',
+    pipelineLabel: 'KNOWLEDGE PATH',
+    pipeline: ['Assess', 'Parse', 'Govern', 'Chunk', 'Index', 'Retrieve', 'Rerank', 'Cite', 'Evaluate'],
+    chooseTitle: 'Choose the shortest path to your goal',
+    chooseLead: 'The handbook is organized by tasks, not by feature inventory.',
+    paths: {
+      deployment: {
+        label: 'First deployment',
+        title: 'From .env to first login',
+        description: 'Prepare credentials, choose Docker or host processes, and verify readiness.',
+        action: 'Deploy Ragvia',
+      },
+      knowledgeBase: {
+        label: 'First knowledge base',
+        title: 'From dataset to cited answer',
+        description: 'Upload a document, inspect chunks, test retrieval, and trace the final evidence.',
+        action: 'Follow the workflow',
+      },
+      integration: {
+        label: 'Existing application',
+        title: 'Integrate API, Dify, or a workflow',
+        description: 'Use stable contracts for auth, ingestion, retrieval, streaming, and retries.',
+        action: 'Open integration guide',
+      },
+    },
+    mapEyebrow: 'SYSTEM MAP',
+    mapTitle: 'Inspect the system by layer',
+    mapLead: 'Each area documents its input, output, boundaries, failure modes, and verification path.',
+    areas: {
+      knowledge: {
+        title: 'Knowledge operations',
+        text: 'Datasets, ingestion, parsing, chunking, retrieval, and evidence.',
+      },
+      integration: {
+        title: 'Integration flows',
+        text: 'End-to-end scenarios, tenant headers, SSE, retries, and Dify.',
+      },
+      operations: {
+        title: 'Operations',
+        text: 'Deployment, configuration, health probes, and observability.',
+      },
+    },
+    closeTitle: 'The code and the handbook evolve together.',
+    closeText:
+      'OpenAPI remains the schema source of truth. The handbook explains how those contracts form a reliable knowledge workflow.',
+    api: 'Browse API reference',
+  },
+  'zh-Hans': {
+    eyebrow: 'Ragvia 全栈手册',
+    title: ['让每一条知识链路，', '都可以被解释。'],
+    lead: '先跑通一个可用部署，再逐层深入解析、治理、切块、检索、重排、引用与回归门禁。',
+    start: '开始部署',
+    fullGuide: '阅读完整操作指南',
+    recommended: '推荐路径',
+    duration: '约 15 分钟',
+    steps: ['生成本地配置', '连接模型服务', '启动 API、Web 与基础设施', '创建数据集并验证引用'],
+    openQuickStart: '打开快速开始',
+    pipelineLabel: '知识链路',
+    pipeline: ['评估', '解析', '治理', '切块', '入库', '召回', '重排', '引用', '评测'],
+    chooseTitle: '选择离目标最近的入口',
+    chooseLead: '手册按真实任务组织，而不是把功能名称堆在一起。',
+    paths: {
+      deployment: {
+        label: '首次部署',
+        title: '从 .env 到首次登录',
+        description: '准备密钥，选择 Docker 或主机进程，完成健康检查。',
+        action: '部署 Ragvia',
+      },
+      knowledgeBase: {
+        label: '第一个知识库',
+        title: '从数据集到带引用回答',
+        description: '上传文档，检查 Chunk，测试召回，最后回看证据链。',
+        action: '跟随完整流程',
+      },
+      integration: {
+        label: '接入现有业务',
+        title: '集成 API、Dify 或工作流',
+        description: '按稳定契约处理认证、入库、检索、流式输出与重试。',
+        action: '查看集成指南',
+      },
+    },
+    mapEyebrow: '手册地图',
+    mapTitle: '按系统层次深入',
+    mapLead: '每个分区都说明输入输出、权限边界、失败模式与验证方法。',
+    areas: {
+      knowledge: {
+        title: '知识库运营',
+        text: '数据集、入库、解析、切块、检索与证据。',
+      },
+      integration: {
+        title: '集成流程',
+        text: '端到端场景、租户请求头、SSE、重试与 Dify。',
+      },
+      operations: {
+        title: '部署与运维',
+        text: '部署、配置、健康探针、可观测与排障。',
+      },
+    },
+    closeTitle: '代码与手册一起演进。',
+    closeText: 'OpenAPI 保持 Schema 单一事实来源，手册负责说明这些契约如何组成可靠的知识流程。',
+    api: '查看 API 参考',
+  },
+} as const
+
+type HomeCopy = (typeof HOME_COPY)[keyof typeof HOME_COPY]
+
+function Hero({ copy }: Readonly<{ copy: HomeCopy }>) {
   return (
     <section className={styles.hero}>
       <div className={styles.heroGrid}>
@@ -246,10 +239,10 @@ function Hero({ copy }: { copy: ReturnType<typeof getCopy> }) {
             <span>{copy.recommended}</span>
             <small>{copy.duration}</small>
           </div>
-          <ol>
+          <ol role="list">
             {copy.steps.map((step, index) => (
               <li key={step}>
-                <span>{String(index + 1).padStart(2, '0')}</span>
+                <span aria-hidden="true">{String(index + 1).padStart(2, '0')}</span>
                 {step}
               </li>
             ))}
@@ -264,11 +257,8 @@ function Hero({ copy }: { copy: ReturnType<typeof getCopy> }) {
       <div className={styles.pipeline}>
         <span>{copy.pipelineLabel}</span>
         <div>
-          {copy.pipeline.map((stage, index) => (
-            <span key={stage}>
-              {stage}
-              {index < copy.pipeline.length - 1 && <i aria-hidden="true" />}
-            </span>
+          {copy.pipeline.map((stage) => (
+            <span key={stage}>{stage}</span>
           ))}
         </div>
       </div>
@@ -276,7 +266,7 @@ function Hero({ copy }: { copy: ReturnType<typeof getCopy> }) {
   )
 }
 
-function StartPaths({ copy }: { copy: ReturnType<typeof getCopy> }) {
+function StartPaths({ copy }: Readonly<{ copy: HomeCopy }>) {
   return (
     <section className={styles.contentSection}>
       <div className={styles.sectionHeading}>
@@ -284,27 +274,29 @@ function StartPaths({ copy }: { copy: ReturnType<typeof getCopy> }) {
         <p>{copy.chooseLead}</p>
       </div>
       <div className={styles.pathGrid}>
-        {copy.paths.map((path, index) => (
-          <Link className={styles.pathCard} key={path.title} to={path.to}>
-            <div className={styles.cardMeta}>
-              <span>{String(index + 1).padStart(2, '0')}</span>
-              <Icon name={path.icon} size={22} />
-            </div>
-            <small>{path.label}</small>
-            <h3>{path.title}</h3>
-            <p>{path.description}</p>
-            <strong>
-              {path.action}
-              <Icon name="arrow" size={16} />
-            </strong>
-          </Link>
-        ))}
+        {START_PATHS.map(({ id, icon, to }) => {
+          const pathCopy = copy.paths[id]
+          return (
+            <Link className={styles.pathCard} key={id} to={to}>
+              <div className={styles.cardMeta}>
+                <Icon name={icon} size={22} />
+              </div>
+              <small>{pathCopy.label}</small>
+              <h3>{pathCopy.title}</h3>
+              <p>{pathCopy.description}</p>
+              <strong>
+                {pathCopy.action}
+                <Icon name="arrow" size={16} />
+              </strong>
+            </Link>
+          )
+        })}
       </div>
     </section>
   )
 }
 
-function SystemMap({ copy }: { copy: ReturnType<typeof getCopy> }) {
+function SystemMap({ copy }: Readonly<{ copy: HomeCopy }>) {
   return (
     <section className={styles.mapSection}>
       <div className={styles.mapIntro}>
@@ -313,22 +305,25 @@ function SystemMap({ copy }: { copy: ReturnType<typeof getCopy> }) {
         <p>{copy.mapLead}</p>
       </div>
       <div className={styles.areaList}>
-        {copy.areas.map((area) => (
-          <Link key={area.title} to={area.to}>
-            <Icon name={area.icon} size={21} />
-            <span>
-              <strong>{area.title}</strong>
-              <small>{area.text}</small>
-            </span>
-            <Icon name="arrow" size={17} />
-          </Link>
-        ))}
+        {SYSTEM_AREAS.map(({ id, icon, to }) => {
+          const areaCopy = copy.areas[id]
+          return (
+            <Link key={id} to={to}>
+              <Icon name={icon} size={21} />
+              <span>
+                <strong>{areaCopy.title}</strong>
+                <small>{areaCopy.text}</small>
+              </span>
+              <Icon name="arrow" size={17} />
+            </Link>
+          )
+        })}
       </div>
     </section>
   )
 }
 
-function Closing({ copy }: { copy: ReturnType<typeof getCopy> }) {
+function Closing({ copy }: Readonly<{ copy: HomeCopy }>) {
   return (
     <section className={styles.closing}>
       <div>
@@ -342,7 +337,7 @@ function Closing({ copy }: { copy: ReturnType<typeof getCopy> }) {
         </a>
         <a href="https://github.com/skygazer42/MimirQ/tree/feat/ragvia-ui">
           <Icon name="github" size={18} />
-          {copy.github}
+          GitHub
         </a>
       </div>
     </section>
@@ -350,11 +345,11 @@ function Closing({ copy }: { copy: ReturnType<typeof getCopy> }) {
 }
 
 export default function Home(): ReactNode {
-  const { i18n, siteConfig } = useDocusaurusContext()
-  const copy = getCopy(i18n.currentLocale)
+  const { i18n } = useDocusaurusContext()
+  const copy = HOME_COPY[i18n.currentLocale === 'en' ? 'en' : 'zh-Hans']
 
   return (
-    <Layout title={siteConfig.title} description={siteConfig.tagline}>
+    <Layout description={copy.lead}>
       <main className={styles.home}>
         <Hero copy={copy} />
         <StartPaths copy={copy} />

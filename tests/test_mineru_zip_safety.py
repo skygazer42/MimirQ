@@ -3,7 +3,7 @@ import zipfile
 
 import pytest
 
-from app.deepdoc.parser.mineru_parser import MinerUParser
+from app.rag.ingestion.parsing.parsers.mineru_parser import MinerUParser
 
 
 def _parser() -> MinerUParser:

@@ -1,7 +1,7 @@
 import pytest
 
-from app.api.schemas.chat import ChatRAGConfig
-from app.services.rag_defaults import merge_rag_config_with_dataset_defaults
+from app.api.schemas.conversations.chat import ChatRAGConfig
+from app.services.retrieval.defaults import merge_rag_config_with_dataset_defaults
 
 
 @pytest.mark.parametrize("defaults", [{"fusion_strategy": False}, {"retrieval_contract_mode": "corrupt"}])

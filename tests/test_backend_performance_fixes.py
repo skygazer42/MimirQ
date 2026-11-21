@@ -8,9 +8,12 @@ from types import SimpleNamespace
 import httpx
 import pytest
 
+import app.services.dify.chunk_hydration as dify_chunk_hydration
+import app.services.dify.kg_on_demand as dify_kg_on_demand
+
 
 def test_metadata_worker_reduces_budget_by_gate_queue_time(monkeypatch: pytest.MonkeyPatch) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     worker_db = SimpleNamespace(close=lambda: None)
     observed_budgets: list[int] = []
@@ -35,7 +38,7 @@ def test_metadata_worker_reduces_budget_by_gate_queue_time(monkeypatch: pytest.M
 def test_metadata_worker_skips_session_when_gate_queue_exhausts_budget(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     session_created = False
 
@@ -59,7 +62,7 @@ def test_metadata_worker_skips_session_when_gate_queue_exhausts_budget(
 def test_metadata_fallback_does_not_query_after_connection_wait_exhausts_budget(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     query_called = False
 
@@ -87,6 +90,7 @@ def test_metadata_fallback_does_not_query_after_connection_wait_exhausts_budget(
     result = dify_api._metadata_anchor_db_fallback_records(
         db=_SlowCheckoutDB(),
         tenant_id=uuid.uuid4(),
+        account_id="reader",
         dataset_ids=[uuid.uuid4()],
         query="generic service lookup",
         top_k=1,
@@ -101,16 +105,16 @@ def test_metadata_fallback_does_not_query_after_connection_wait_exhausts_budget(
 async def test_dify_chunk_hydration_uses_worker_session_off_event_loop(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     loop_thread_id = threading.get_ident()
     events: list[str] = []
     worker_db = SimpleNamespace(close=lambda: events.append("close"))
     request_db = SimpleNamespace(rollback=lambda: events.append("rollback"))
     observed: list[tuple[object, int]] = []
-    monkeypatch.setattr(dify_api, "SessionLocal", lambda: worker_db, raising=True)
+    monkeypatch.setattr(dify_chunk_hydration, "SessionLocal", lambda: worker_db, raising=True)
     monkeypatch.setattr(
-        dify_api,
+        dify_chunk_hydration,
         "_load_chunk_content_map",
         lambda **kwargs: observed.append((kwargs["db"], threading.get_ident())) or {"chunk": "full"},
         raising=True,
@@ -132,16 +136,16 @@ async def test_dify_chunk_hydration_uses_worker_session_off_event_loop(
 async def test_dify_kg_hydration_uses_worker_session_off_event_loop(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     loop_thread_id = threading.get_ident()
     events: list[str] = []
     worker_db = SimpleNamespace(close=lambda: events.append("close"))
     request_db = SimpleNamespace(rollback=lambda: events.append("rollback"))
     observed: list[tuple[object, int]] = []
-    monkeypatch.setattr(dify_api, "SessionLocal", lambda: worker_db)
+    monkeypatch.setattr(dify_kg_on_demand, "SessionLocal", lambda: worker_db)
     monkeypatch.setattr(
-        dify_api,
+        dify_kg_on_demand,
         "_load_dify_kg_chunk_rows",
         lambda **kwargs: observed.append((kwargs["db"], threading.get_ident())) or ["row"],
         raising=False,
@@ -164,7 +168,7 @@ async def test_dify_kg_hydration_uses_worker_session_off_event_loop(
 async def test_retrieval_limiter_drops_cancelled_queued_work(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.services.rag_runtime_limiter as limiter
+    import app.services.runtime.retrieval_limiter as limiter
 
     first_started = threading.Event()
     release_first = threading.Event()
@@ -195,7 +199,7 @@ async def test_retrieval_limiter_drops_cancelled_queued_work(
 async def test_retrieval_limiter_rejects_queued_work_after_admission_timeout(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.services.rag_runtime_limiter as limiter
+    import app.services.runtime.retrieval_limiter as limiter
 
     first_started = threading.Event()
     release_first = threading.Event()
@@ -228,7 +232,7 @@ async def test_retrieval_limiter_rejects_queued_work_after_admission_timeout(
 def test_sync_retrieval_limiter_drops_cancellation_racing_with_admission(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.services.rag_runtime_limiter as limiter
+    import app.services.runtime.retrieval_limiter as limiter
 
     cancel_event = threading.Event()
     work_ran = False
@@ -263,9 +267,9 @@ def test_sync_retrieval_limiter_drops_cancellation_racing_with_admission(
 async def test_dify_final_reranker_shares_retrieval_admission_gate(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
-    import app.services.rag_runtime_limiter as limiter
-    from app.rag.reranker.types import RerankResult
+    import app.api.v1.integrations.dify as dify_api
+    import app.services.runtime.retrieval_limiter as limiter
+    from app.rag.retrieval.reranking.types import RerankResult
 
     active = 0
     max_active = 0
@@ -328,7 +332,7 @@ async def test_dify_final_reranker_shares_retrieval_admission_gate(
 def test_dify_chunk_hydration_closes_worker_session_after_failure(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.integrations.dify as dify_api
 
     closed = False
 
@@ -337,9 +341,9 @@ def test_dify_chunk_hydration_closes_worker_session_after_failure(
             nonlocal closed
             closed = True
 
-    monkeypatch.setattr(dify_api, "SessionLocal", _WorkerDB, raising=True)
+    monkeypatch.setattr(dify_chunk_hydration, "SessionLocal", _WorkerDB, raising=True)
     monkeypatch.setattr(
-        dify_api,
+        dify_chunk_hydration,
         "_load_chunk_content_map",
         lambda **_kwargs: (_ for _ in ()).throw(RuntimeError("hydrate failed")),
         raising=True,
@@ -356,7 +360,7 @@ def test_dify_chunk_hydration_closes_worker_session_after_failure(
 
 @pytest.mark.asyncio
 async def test_sync_iterator_worker_runs_source_off_event_loop() -> None:
-    from app.services.chat_stream_graph import _iterate_sync_in_worker
+    from app.services.chat.stream_graph import _iterate_sync_in_worker
 
     loop_thread_id = threading.get_ident()
     source_thread_ids: list[int] = []
@@ -377,7 +381,7 @@ async def test_sync_iterator_worker_runs_source_off_event_loop() -> None:
 
 @pytest.mark.asyncio
 async def test_sync_iterator_worker_propagates_errors() -> None:
-    from app.services.chat_stream_graph import _iterate_sync_in_worker
+    from app.services.chat.stream_graph import _iterate_sync_in_worker
 
     def source():
         yield "event"
@@ -391,7 +395,7 @@ async def test_sync_iterator_worker_propagates_errors() -> None:
 
 @pytest.mark.asyncio
 async def test_sync_iterator_worker_bounds_buffer_and_closes_producer() -> None:
-    from app.services.chat_stream_graph import _iterate_sync_in_worker
+    from app.services.chat.stream_graph import _iterate_sync_in_worker
 
     closed = threading.Event()
     produced = 0
@@ -417,7 +421,7 @@ async def test_sync_iterator_worker_bounds_buffer_and_closes_producer() -> None:
 async def test_async_retriever_does_not_run_sync_retrieval_on_event_loop(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from app.rag.retriever import HybridRetriever
+    from app.rag.retrieval.recall.retriever import HybridRetriever
 
     loop_thread_id = threading.get_ident()
     retrieval_thread_ids: list[int] = []
@@ -438,8 +442,8 @@ async def test_async_retriever_does_not_run_sync_retrieval_on_event_loop(
 async def test_stream_extractive_fallback_runs_retrieval_off_event_loop(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.services.chat_stream_orchestrator as orchestrator
-    import app.services.rag_runtime_limiter as limiter
+    import app.services.chat.stream_orchestrator as orchestrator
+    import app.services.runtime.retrieval_limiter as limiter
 
     loop_thread_id = threading.get_ident()
     fallback_thread_ids: list[int] = []
@@ -511,7 +515,7 @@ async def test_stream_extractive_fallback_runs_retrieval_off_event_loop(
     )
     events = [
         event
-        async for event in orchestrator.stream_chat_sse_events(
+        async for event in orchestrator.stream_chat_events(
             http_request=SimpleNamespace(
                 state=SimpleNamespace(request_id="extractive-offload-test"),
                 client=SimpleNamespace(host="127.0.0.1"),
@@ -533,7 +537,7 @@ async def test_stream_extractive_fallback_runs_retrieval_off_event_loop(
         )
     ]
 
-    assert any('"type": "done"' in event for event in events)
+    assert any(event["type"] == "done" for event in events)
     assert len(fallback_thread_ids) == 1
     assert fallback_thread_ids[0] != loop_thread_id
     assert request_rollbacks == 1
@@ -546,9 +550,13 @@ def test_retriever_resolves_runtime_once_and_rechecks_only_new_candidate_identit
     replace_candidate: bool,
     expected_enrich_calls: int,
 ) -> None:
-    from app.core.config import settings
-    from app.rag.retriever import HybridRetriever
-    from app.services.dataset_embedding_config import DatasetEmbeddingRuntimeConfig
+    from app.infrastructure.config import settings
+    from app.rag.retrieval.recall import candidate_retrieval
+    from app.rag.retrieval.recall import retriever as retriever_module
+    from app.rag.retrieval.recall.channel_diagnostics import empty_channel_metrics
+    from app.rag.retrieval.recall.retriever import HybridRetriever
+    from app.rag.retrieval.recall.runtime_scope import ResolvedRetrievalScope, RetrievalScope, RuntimeShard
+    from app.services.datasets.embedding_config import DatasetEmbeddingRuntimeConfig
 
     tenant_id = uuid.uuid4()
     document_id = uuid.uuid4()
@@ -577,14 +585,33 @@ def test_retriever_resolves_runtime_once_and_rechecks_only_new_candidate_identit
     enrich_calls = 0
     received_runtimes: list[DatasetEmbeddingRuntimeConfig | None] = []
 
-    def resolve_runtime(self, *, tenant_id):  # noqa: ANN001,ARG001
+    def resolve_runtime(self, *, query, options, embedding_runtime):  # noqa: ANN001,ARG001
         nonlocal resolve_calls
         resolve_calls += 1
-        return runtime
+        return ResolvedRetrievalScope(
+            RetrievalScope(tenant_id, "reader", document_ids=(document_id,)),
+            (),
+            (RuntimeShard(runtime, ()),),
+            runtime,
+            None,
+            None,
+            None,
+            False,
+        )
 
-    def hybrid_search(self, query, *, embedding_runtime=None, **kwargs):  # noqa: ANN001,ARG001
-        received_runtimes.append(embedding_runtime)
-        return [dict(child)]
+    def hybrid_search(request, **_kwargs):
+        received_runtimes.append(request.resolved_scope.runtime)
+        metrics = empty_channel_metrics()
+        metrics["counts"]["vector_candidates"] = 1
+        return candidate_retrieval.CandidateBatch(
+            [dict(child)],
+            request.resolved_scope,
+            None,
+            None,
+            candidate_retrieval.CandidateCacheOutcome("computed", {}),
+            candidate_retrieval.CandidateTimings(),
+            metrics,
+        )
 
     def enrich(self, results, *, embedding_runtime=None, **kwargs):  # noqa: ANN001,ARG001
         nonlocal enrich_calls
@@ -596,8 +623,9 @@ def test_retriever_resolves_runtime_once_and_rechecks_only_new_candidate_identit
     monkeypatch.setattr(settings, "RETRIEVAL_GOVERNANCE_PREFER_AUTHORITY", False, raising=False)
     monkeypatch.setattr(settings, "RETRIEVAL_GOVERNANCE_PREFER_LATEST", False, raising=False)
     monkeypatch.setattr(settings, "RETRIEVAL_GOVERNANCE_FILTER_SUPERSEDED", False, raising=False)
-    monkeypatch.setattr(HybridRetriever, "_resolve_embedding_runtime", resolve_runtime)
-    monkeypatch.setattr(HybridRetriever, "_hybrid_search", hybrid_search)
+    monkeypatch.setattr(HybridRetriever, "_resolve_hybrid_runtime_scope", resolve_runtime)
+    monkeypatch.setattr(candidate_retrieval, "retrieve_candidates", hybrid_search)
+    monkeypatch.setattr(retriever_module, "get_corpus_index", lambda: object())
     monkeypatch.setattr(HybridRetriever, "_enrich_results_with_db_metadata", enrich)
     monkeypatch.setattr(HybridRetriever, "_expand_results_with_neighbors", lambda self, results: list(results))
     monkeypatch.setattr(
@@ -619,7 +647,7 @@ def test_runtime_document_metadata_never_reads_source_pdf(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path,
 ) -> None:  # noqa: ANN001
-    from app.services.document_metadata_service import build_runtime_document_metadata
+    from app.services.documents.runtime_metadata import build_runtime_document_metadata
 
     source = tmp_path / "legacy.pdf"
     source.write_bytes(b"not-a-real-pdf")
@@ -638,7 +666,7 @@ def test_runtime_document_metadata_never_reads_source_pdf(
 
 
 def test_dataset_embedding_runtime_reuses_bounded_adapter(monkeypatch: pytest.MonkeyPatch) -> None:
-    import app.services.dataset_embedding_config as config_module
+    import app.services.datasets.embedding_config as config_module
 
     calls: list[dict] = []
 
@@ -673,13 +701,13 @@ def test_dataset_embedding_runtime_reuses_bounded_adapter(monkeypatch: pytest.Mo
 def test_dataset_embedding_runtime_rejects_dataset_scoped_defaults_without_milvus(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.services.dataset_embedding_config as config_module
+    import app.services.datasets.embedding_config as config_module
 
     monkeypatch.setattr(config_module.settings, "VECTOR_BACKEND", "memory", raising=False)
 
     with pytest.raises(ValueError, match="VECTOR_BACKEND=milvus"):
         config_module.resolve_dataset_embedding_runtime(
-            {"embedding_defaults": {"provider": "local", "model": "embed-a"}}
+            {"embedding_defaults": {"provider": "openai_compatible", "model": "embed-a"}}
         )
 
 
@@ -719,7 +747,7 @@ async def test_dashscope_embedding_reuses_shared_sync_and_async_clients(
         get_external_sync_client=lambda: sync_client,
         get_external_async_client=lambda: async_client,
     )
-    monkeypatch.setattr(dashscope_module, "get_http_client_pool", lambda: pool)
+    monkeypatch.setattr("app.rag.embedding.providers.openai.get_http_client_pool", lambda: pool)
 
     embedding = dashscope_module.DashScopeEmbedding(
         model="text-embedding-v4",
@@ -736,7 +764,7 @@ async def test_dashscope_embedding_reuses_shared_sync_and_async_clients(
 def test_weight_rerank_builds_document_frequency_without_repeated_list_scans(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from app.rag.retriever import HybridRetriever
+    from app.rag.retrieval.ranking.candidates import _RankingRun
 
     class CountingTokens(list[str]):
         contains_calls = 0
@@ -748,14 +776,14 @@ def test_weight_rerank_builds_document_frequency_without_repeated_list_scans(
     def tokenize(_self, text: str) -> list[str]:  # noqa: ANN001
         return CountingTokens(text.split())
 
-    monkeypatch.setattr(HybridRetriever, "_tokenize_lexical_text", tokenize)
+    monkeypatch.setattr(_RankingRun, "_tokenize_lexical_text", tokenize)
     documents = [
         {"chunk_id": "a", "content": "needle alpha alpha", "score": 0.4},
         {"chunk_id": "b", "content": "beta gamma", "score": 0.7},
         {"chunk_id": "c", "content": "delta epsilon", "score": 0.6},
     ]
 
-    reranked = HybridRetriever()._weight_rerank(
+    reranked = _RankingRun.__new__(_RankingRun)._weight_rerank(
         "needle",
         documents,
         vector_weight=0.6,
@@ -771,8 +799,8 @@ def test_weight_rerank_builds_document_frequency_without_repeated_list_scans(
 def test_plugin_retrieval_policy_scores_each_candidate_once(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.rag.retrieval.plugin_policy as policy_module
-    from app.rag.retriever import HybridRetriever
+    import app.rag.retrieval.ranking.policy as policy_module
+    from app.rag.retrieval.recall.retriever import HybridRetriever
 
     calls = 0
 

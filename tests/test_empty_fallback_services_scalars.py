@@ -2,16 +2,23 @@ from functools import partial
 
 import pytest
 
-from app.services import evidence_feedback_materialization, hardcase_discovery_service, indexer, lineage_service, report_service
+from app.rag.ingestion.indexing import indexer
+from app.services.documents import lineage as lineage_service
+from app.services.evaluation import feedback_cases as evidence_feedback_materialization
+from app.services.evaluation import hardcase_discovery as hardcase_discovery_service
+from app.services.reports import aggregation as report_service
 
 
-@pytest.mark.parametrize("normalize", [
-    evidence_feedback_materialization._safe_text,
-    hardcase_discovery_service._safe_str,
-    lineage_service._safe_str,
-    report_service._safe_report_text,
-    partial(indexer._coerce_short_text, max_chars=32),
-])
+@pytest.mark.parametrize(
+    "normalize",
+    [
+        evidence_feedback_materialization._safe_text,
+        hardcase_discovery_service._safe_str,
+        lineage_service._safe_str,
+        report_service._safe_report_text,
+        partial(indexer._coerce_short_text, max_chars=32),
+    ],
+)
 def test_optional_scalar_text_preserves_zero_and_actual_absence(normalize):
     assert normalize(0) == "0"
     assert normalize(None) is None

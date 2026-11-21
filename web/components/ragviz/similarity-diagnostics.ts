@@ -1,8 +1,10 @@
+import { readSimilarityItemId } from './similarity/utils'
+
 type JsonRecord = Record<string, unknown>
 
 export type DiagnosticDecision = 'disabled' | 'marked'
 
-export type SimilarityDiagnosticsNode = {
+type SimilarityDiagnosticsNode = {
   id: string
   axis: 'x' | 'y'
   label: string
@@ -10,15 +12,15 @@ export type SimilarityDiagnosticsNode = {
   x: number
   y: number
   z: number
-  averageSimilarity: number
-  peakSimilarity: number
+  averageSimilarity: number | null
+  peakSimilarity: number | null
   supportCount: number
   isOutlier: boolean
   isMarked: boolean
   isDisabled: boolean
 }
 
-export type SimilarityDiagnosticsLink = {
+type SimilarityDiagnosticsLink = {
   id: string
   source: string
   target: string
@@ -30,7 +32,7 @@ export type SimilarityDiagnosticsLink = {
   isMarked: boolean
 }
 
-export type SimilarityDiagnosticsOutlier = {
+type SimilarityDiagnosticsOutlier = {
   id: string
   xId: string
   yId: string
@@ -43,7 +45,7 @@ export type SimilarityDiagnosticsOutlier = {
   decision: DiagnosticDecision | null
 }
 
-export type SimilarityDiagnosticsSummary = {
+type SimilarityDiagnosticsSummary = {
   nodeCount: number
   totalNodes: number
   linkCount: number
@@ -63,8 +65,6 @@ export type SimilarityDiagnosticsResult = {
 
 export type SimilarityDiagnosticNode = SimilarityDiagnosticsNode
 export type SimilarityDiagnosticLink = SimilarityDiagnosticsLink
-export type SimilarityDiagnosticOutlier = SimilarityDiagnosticsOutlier
-export type SimilarityDiagnosticsModel = SimilarityDiagnosticsResult
 
 type BuildSimilarityDiagnosticsInput = {
   matrix: Array<Array<number | null>>
@@ -79,8 +79,8 @@ type BuildSimilarityDiagnosticsInput = {
 }
 
 type AxisStats = {
-  average: number
-  peak: number
+  average: number | null
+  peak: number | null
   supportCount: number
   topIndex: number
   topGap: number
@@ -95,17 +95,12 @@ function toFiniteNumber(value: number | null | undefined): number | null {
   return typeof value === 'number' && Number.isFinite(value) ? value : null
 }
 
-function sanitizeId(raw: unknown, fallback: string): string {
-  const value = typeof raw === 'string' || typeof raw === 'number' ? String(raw).trim() : ''
-  return value || fallback
-}
-
 function axisStats(values: Array<number | null>): AxisStats {
   const finite = values.map(toFiniteNumber).filter((value): value is number => value !== null)
   if (finite.length === 0) {
     return {
-      average: 0,
-      peak: 0,
+      average: null,
+      peak: null,
       supportCount: 0,
       topIndex: 0,
       topGap: 0,
@@ -119,10 +114,10 @@ function axisStats(values: Array<number | null>): AxisStats {
 
   return {
     average: finite.reduce((sum, value) => sum + value, 0) / finite.length,
-    peak: ranked[0]?.value ?? 0,
+    peak: ranked[0].value,
     supportCount: finite.filter((value) => value >= SUPPORT_THRESHOLD).length,
-    topIndex: ranked[0]?.index ?? 0,
-    topGap: (ranked[0]?.value ?? 0) - (ranked[1]?.value ?? 0),
+    topIndex: ranked[0].index,
+    topGap: ranked[0].value - (ranked[1]?.value ?? 0),
   }
 }
 
@@ -237,17 +232,17 @@ export function buildSimilarityDiagnostics({
       const similarity = toFiniteNumber(matrix[rowIndex]?.[columnIndex])
       if (similarity === null || similarity < outlierMinSimilarity) continue
 
-      const xItem = xItems[columnIndex] ?? {}
-      const yItem = yItems[rowIndex] ?? {}
-      const lexicalScore = lexicalOverlap(xItem, yItem)
-      if (lexicalScore > 0.18) continue
-
       const xAxis = xStats[columnIndex]
       const yAxis = yStats[rowIndex]
       if (xAxis.supportCount > 2 && yAxis.supportCount > 2) continue
 
-      const xRawId = sanitizeId(xItem.id, `x-${columnIndex + 1}`)
-      const yRawId = sanitizeId(yItem.id, `y-${rowIndex + 1}`)
+      const xItem = xItems[columnIndex]
+      const yItem = yItems[rowIndex]
+      const lexicalScore = lexicalOverlap(xItem, yItem)
+      if (lexicalScore > 0.18) continue
+
+      const xRawId = readSimilarityItemId(xItem) ?? `x-${columnIndex + 1}`
+      const yRawId = readSimilarityItemId(yItem) ?? `y-${rowIndex + 1}`
       const candidateId = `${xRawId}::${yRawId}`
       const decision = decisions[candidateId] ?? null
 
@@ -299,8 +294,8 @@ export function buildSimilarityDiagnostics({
 
     const xItem = xItems[columnIndex] ?? {}
     const yItem = yItems[rowIndex] ?? {}
-    const xRawId = sanitizeId(xItem.id, `x-${columnIndex + 1}`)
-    const yRawId = sanitizeId(yItem.id, `y-${rowIndex + 1}`)
+    const xRawId = readSimilarityItemId(xItem) ?? `x-${columnIndex + 1}`
+    const yRawId = readSimilarityItemId(yItem) ?? `y-${rowIndex + 1}`
     const linkId = `${xRawId}::${yRawId}`
     const decision = decisions[linkId] ?? null
     if (decision === 'disabled') return
@@ -336,9 +331,11 @@ export function buildSimilarityDiagnostics({
 
   const nodes: SimilarityDiagnosticsNode[] = [
     ...xItems.slice(0, safeColCount).map((item, index) => {
-      const rawId = sanitizeId(item.id, `x-${index + 1}`)
+      const rawId = readSimilarityItemId(item) ?? `x-${index + 1}`
       const nodeId = `x:${rawId}`
-      const stats = xStats[index] ?? axisStats([])
+      const stats = xStats[index]
+      const average = stats.average ?? 0
+      const peak = stats.peak ?? 0
       const axisPosition = safeRowCount > 1 ? stats.topIndex / (safeRowCount - 1) - 0.5 : 0
       const isDisabled = disabledNodeIds.has(nodeId) && !activeOutlierNodeIds.has(nodeId)
       const isMarked = markedNodeIds.has(nodeId)
@@ -347,9 +344,9 @@ export function buildSimilarityDiagnostics({
         id: nodeId,
         axis: 'x' as const,
         label: xLabels[index] || `X ${index + 1}`,
-        x: -56 + stats.average * 30,
+        x: -56 + average * 30,
         y: axisPosition * 120,
-        z: (stats.peak - stats.average) * 180 - 32,
+        z: (peak - average) * 180 - 32,
         averageSimilarity: stats.average,
         peakSimilarity: stats.peak,
         supportCount: stats.supportCount,
@@ -360,9 +357,11 @@ export function buildSimilarityDiagnostics({
       }
     }),
     ...yItems.slice(0, safeRowCount).map((item, index) => {
-      const rawId = sanitizeId(item.id, `y-${index + 1}`)
+      const rawId = readSimilarityItemId(item) ?? `y-${index + 1}`
       const nodeId = `y:${rawId}`
-      const stats = yStats[index] ?? axisStats([])
+      const stats = yStats[index]
+      const average = stats.average ?? 0
+      const peak = stats.peak ?? 0
       const axisPosition = safeColCount > 1 ? stats.topIndex / (safeColCount - 1) - 0.5 : 0
       const isDisabled = disabledNodeIds.has(nodeId) && !activeOutlierNodeIds.has(nodeId)
       const isMarked = markedNodeIds.has(nodeId)
@@ -371,9 +370,9 @@ export function buildSimilarityDiagnostics({
         id: nodeId,
         axis: 'y' as const,
         label: yLabels[index] || `Y ${index + 1}`,
-        x: 56 - stats.average * 30,
+        x: 56 - average * 30,
         y: axisPosition * 120,
-        z: (stats.peak - stats.average) * 180 + 32,
+        z: (peak - average) * 180 + 32,
         averageSimilarity: stats.average,
         peakSimilarity: stats.peak,
         supportCount: stats.supportCount,

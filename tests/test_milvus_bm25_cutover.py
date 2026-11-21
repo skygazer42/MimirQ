@@ -27,8 +27,8 @@ class Store:
 
 
 def test_shared_corpus_reads_and_writes_native_storage_without_local_bm25(monkeypatch):
-    from app.core.config import settings
-    from app.rag.retrieval.corpus_index import CorpusIndex, CorpusScope
+    from app.infrastructure.config import settings
+    from app.rag.retrieval.corpus import CorpusIndex, CorpusScope
 
     monkeypatch.setattr(settings, "VECTOR_BACKEND", "milvus")
     monkeypatch.setattr(settings, "BM25_INDEX_ENABLED", True)
@@ -58,10 +58,10 @@ def test_shared_corpus_reads_and_writes_native_storage_without_local_bm25(monkey
 
 @pytest.mark.parametrize("backend", ["pgvector", "memory"])
 def test_non_milvus_backend_disables_bm25_without_contacting_milvus(backend, monkeypatch):
-    from app.core.config import settings
-    from app.rag.retrieval.corpus_index import CorpusIndex, CorpusScope
-    from app.rag.retriever import HybridRetriever
-    from app.services.indexer import Indexer
+    from app.infrastructure.config import settings
+    from app.rag.ingestion.indexing.indexer import Indexer
+    from app.rag.retrieval.corpus import CorpusIndex, CorpusScope
+    from app.rag.retrieval.recall.retriever import HybridRetriever
 
     monkeypatch.setattr(settings, "VECTOR_BACKEND", backend)
     monkeypatch.setattr(settings, "BM25_INDEX_ENABLED", True)
@@ -80,11 +80,11 @@ import importlib.abc
 import sys
 class NoRetriever(importlib.abc.MetaPathFinder):
     def find_spec(self, fullname, path=None, target=None):
-        if fullname == 'app.rag.retriever':
+        if fullname == 'app.rag.retrieval.recall.retriever':
             raise AssertionError('Writer still imports the query retriever')
 sys.meta_path.insert(0, NoRetriever())
-from app.services.indexer import Indexer
-assert 'app.rag.retriever' not in sys.modules
+from app.rag.ingestion.indexing.indexer import Indexer
+assert 'app.rag.retrieval.recall.retriever' not in sys.modules
 """
     result = subprocess.run(
         [sys.executable, "-c", code],
@@ -99,10 +99,10 @@ assert 'app.rag.retriever' not in sys.modules
 
 def test_rebuild_published_corpus_batches_native_upserts_and_keeps_dataset_ids(monkeypatch):
     monkeypatch.setattr(
-        "app.services.corpus_cache_tokens.invalidate_corpus_cache_scope", lambda *_args, **_kwargs: None
+        "app.services.retrieval.corpus_tokens.invalidate_corpus_cache_scope", lambda *_args, **_kwargs: None
     )
-    from app.core.config import settings
-    from app.rag.retrieval.corpus_index import CorpusIndex, CorpusScope
+    from app.infrastructure.config import settings
+    from app.rag.retrieval.corpus import CorpusIndex, CorpusScope
 
     monkeypatch.setattr(settings, "VECTOR_BACKEND", "milvus")
     monkeypatch.setattr(settings, "BM25_INDEX_ENABLED", True)
@@ -125,8 +125,8 @@ def test_rebuild_published_corpus_batches_native_upserts_and_keeps_dataset_ids(m
 
 
 def test_corpus_native_error_is_not_converted_into_a_healthy_empty_response(monkeypatch):
-    from app.core.config import settings
-    from app.rag.retrieval.corpus_index import CorpusIndex, CorpusScope
+    from app.infrastructure.config import settings
+    from app.rag.retrieval.corpus import CorpusIndex, CorpusScope
 
     monkeypatch.setattr(settings, "VECTOR_BACKEND", "milvus")
     monkeypatch.setattr(settings, "BM25_INDEX_ENABLED", True)
@@ -143,11 +143,11 @@ def test_corpus_native_error_is_not_converted_into_a_healthy_empty_response(monk
 def test_missing_native_index_reaches_the_real_channel_caller(monkeypatch):
     from types import SimpleNamespace
 
-    from app.core.config import settings
-    from app.rag.retrieval.corpus_index import CorpusIndex
-    from app.rag.retrieval.hybrid.channel_collection import ChannelRequest, collect_channels
-    from app.rag.retrieval.retriever_options import HybridSearchOptions
-    from app.rag.retriever import HybridRetriever
+    from app.infrastructure.config import settings
+    from app.rag.retrieval.configuration.options import HybridSearchOptions
+    from app.rag.retrieval.corpus import CorpusIndex
+    from app.rag.retrieval.recall.channel_collection import ChannelRequest, collect_channels
+    from app.rag.retrieval.recall.retriever import HybridRetriever
     from app.storage.bm25.milvus import BM25IndexNotReadyError
 
     monkeypatch.setattr(settings, "VECTOR_BACKEND", "milvus")
@@ -175,7 +175,7 @@ def test_native_readiness_error_has_an_actionable_http_contract():
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
 
-    from app.core.exceptions import register_exception_handlers
+    from app.infrastructure.exceptions import register_exception_handlers
     from app.storage.bm25.milvus import BM25IndexNotReadyError
 
     app = FastAPI()

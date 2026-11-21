@@ -1,8 +1,8 @@
 import type { ParsingPosition } from '@/lib/parsing-positions'
 
-export type PdfBboxCoordinateSpace = 'absolute' | 'normalized-1000'
+type PdfBboxCoordinateSpace = 'absolute' | 'normalized-1000'
 
-export type PdfOverlayRect = {
+type PdfOverlayRect = {
   left: number
   top: number
   width: number
@@ -18,7 +18,7 @@ function isFiniteNumber(value: unknown): value is number {
 }
 
 export function detectPdfBboxCoordinateSpace(params: {
-  items: Array<{ position: ParsingPosition }>
+  items: ReadonlyArray<{ position: ParsingPosition }>
   pageBaseWidth?: number | null
   pageBaseHeight?: number | null
 }): PdfBboxCoordinateSpace {
@@ -27,10 +27,7 @@ export function detectPdfBboxCoordinateSpace(params: {
     return 'absolute'
   }
 
-  for (const item of items || []) {
-    const position = item?.position
-    if (!position) continue
-
+  for (const { position } of items) {
     const maxX = Math.max(position.left, position.right)
     const maxY = Math.max(position.top, position.bottom)
     if (maxX > pageBaseWidth + 1 || maxY > pageBaseHeight + 1) {
@@ -49,7 +46,7 @@ export function computePdfOverlayRect(params: {
   coordinateSpace?: PdfBboxCoordinateSpace
 }): PdfOverlayRect {
   const { position, scale, pageBaseWidth, pageBaseHeight } = params
-  const coordinateSpace = params.coordinateSpace || 'absolute'
+  const coordinateSpace = params.coordinateSpace ?? 'absolute'
 
   const left = Math.min(position.left, position.right)
   const right = Math.max(position.left, position.right)

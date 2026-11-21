@@ -1,8 +1,65 @@
-import type { DocumentPipelineOptions } from '@/types/backend'
+import type { DocumentBatchUploadFailure, DocumentPipelineOptions } from '@/types/backend'
 
-import { appendPipelineOptionsToFormData } from '@/lib/form-data'
+import { resolveParserBackendForFilename } from '@/lib/parser-compat'
 
 export type DocumentLifecycleFilter = 'active' | 'archived' | 'disabled' | 'all'
+
+export const DOCUMENT_UPLOAD_BATCH_LIMIT = 50
+const UPLOAD_SOURCE_PATH_LIMIT = 500
+
+export function getUploadFilename(file: File): string {
+  const relativePath = file.webkitRelativePath
+  return relativePath === undefined || relativePath === '' ? file.name : relativePath
+}
+
+function getUploadSourceKey(file: File): string {
+  // Match the source path returned by the upload service for relative paths.
+  const parts = getUploadFilename(file)
+    .replaceAll('\\', '/')
+    .split('/')
+    .map((part) => part.trim())
+    .filter((part) => part !== '' && part !== '.')
+  const firstPart = parts[0]
+  if (firstPart !== undefined && /^[a-zA-Z]:$/.test(firstPart)) parts.shift()
+  const normalized: string[] = []
+  for (const part of parts) {
+    if (part === '..') normalized.pop()
+    else normalized.push(part)
+  }
+  if (normalized.length === 2 && normalized[0].toLowerCase() === 'fakepath') normalized.shift()
+  return Array.from(normalized.join('/')).slice(0, UPLOAD_SOURCE_PATH_LIMIT).join('')
+}
+
+type UploadReceiptFile = Pick<DocumentBatchUploadFailure, 'filename' | 'source_path'>
+
+export function getUploadReceiptKey({ filename, source_path }: UploadReceiptFile): string {
+  return source_path === undefined || source_path === null || source_path === '' ? filename.trim() : source_path
+}
+
+export function matchUploadReceipts<Receipt extends UploadReceiptFile>(
+  files: readonly File[],
+  receipts: readonly Receipt[],
+) {
+  const filesByKey = new Map<string, File | null>()
+  for (const file of files) {
+    const key = getUploadSourceKey(file)
+    if (key !== '') filesByKey.set(key, filesByKey.has(key) ? null : file)
+  }
+
+  const receiptCounts = new Map<string, number>()
+  for (const receipt of receipts) {
+    const key = getUploadReceiptKey(receipt)
+    receiptCounts.set(key, (receiptCounts.get(key) ?? 0) + 1)
+  }
+
+  const matched = new Map<Receipt, File>()
+  for (const receipt of receipts) {
+    const key = getUploadReceiptKey(receipt)
+    const file = filesByKey.get(key)
+    if (file && receiptCounts.get(key) === 1) matched.set(receipt, file)
+  }
+  return matched
+}
 
 export type ChunkPreviewRequestParams = {
   chunk_size?: number
@@ -25,48 +82,49 @@ export type ChunkPreviewRequestParams = {
   separator_max_chunk_size?: number
 }
 
-function appendFormDataIfString(formData: FormData, key: string, value: string | undefined, requireTruthy = false) {
-  if (typeof value !== 'string') return
-  if (requireTruthy && !value) return
-  formData.append(key, value)
-}
-
-function appendFormDataIfNumber(formData: FormData, key: string, value: number | undefined) {
-  if (typeof value === 'number') formData.append(key, String(value))
-}
-
-function appendFormDataIfBoolean(formData: FormData, key: string, value: boolean | undefined) {
-  if (typeof value === 'boolean') formData.append(key, value ? 'true' : 'false')
-}
-
-export function appendChunkPreviewFormFields(
-  formData: FormData,
-  params: ChunkPreviewRequestParams,
-  effectiveStrategy: string,
+function appendOptionalFormField(
+  form: FormData | URLSearchParams,
+  key: string,
+  value: string | number | boolean | undefined,
 ) {
-  appendFormDataIfString(formData, 'dataset_id', params.dataset_id, true)
-  if (effectiveStrategy === 'parent_child') {
-    appendFormDataIfNumber(formData, 'child_ratio', params.child_ratio)
-    appendFormDataIfNumber(formData, 'min_child_size', params.min_child_size)
-  }
-  appendFormDataIfString(formData, 'separator_preset', params.separator_preset, true)
-  appendFormDataIfString(formData, 'separator', params.separator)
-  appendFormDataIfBoolean(formData, 'keep_separator', params.keep_separator)
-  appendFormDataIfNumber(formData, 'separator_max_chunk_size', params.separator_max_chunk_size)
-  appendPipelineOptionsToFormData(formData, params.pipeline)
+  if (value !== undefined) form.append(key, String(value))
+}
+
+export function appendPipelineOptionsToForm(
+  form: FormData | URLSearchParams,
+  pipeline?: DocumentPipelineOptions,
+): void {
+  if (pipeline === undefined) return
+  form.append('pipeline', JSON.stringify(pipeline))
+}
+
+export function appendChunkPreviewSettings(
+  form: FormData | URLSearchParams,
+  filename: string,
+  params: ChunkPreviewRequestParams,
+) {
+  const parser = resolveParserBackendForFilename(filename, params.parser_backend)
+  form.append('parser_backend', parser.backend)
+  appendOptionalFormField(form, 'chunk_strategy', params.chunk_strategy)
+  appendOptionalFormField(form, 'dataset_id', params.dataset_id)
+  appendOptionalFormField(form, 'child_ratio', params.child_ratio)
+  appendOptionalFormField(form, 'min_child_size', params.min_child_size)
+  appendOptionalFormField(form, 'separator_preset', params.separator_preset)
+  appendOptionalFormField(form, 'separator', params.separator)
+  appendOptionalFormField(form, 'keep_separator', params.keep_separator)
+  appendOptionalFormField(form, 'separator_max_chunk_size', params.separator_max_chunk_size)
+  appendPipelineOptionsToForm(form, params.pipeline)
 }
 
 export function buildChunkPreviewQueryParams(params: ChunkPreviewRequestParams) {
   return {
-    chunk_size: params.chunk_size ?? params.pipeline?.chunk_size ?? 1000,
-    chunk_overlap: params.chunk_overlap ?? params.pipeline?.chunk_overlap ?? 200,
-    include_original_text: typeof params.include_original_text === 'boolean' ? params.include_original_text : undefined,
-    include_chunks: typeof params.include_chunks === 'boolean' ? params.include_chunks : undefined,
-    include_review_signals:
-      typeof params.include_review_signals === 'boolean' ? params.include_review_signals : undefined,
-    original_text_max_chars:
-      typeof params.original_text_max_chars === 'number' ? params.original_text_max_chars : undefined,
-    max_chunks: typeof params.max_chunks === 'number' ? params.max_chunks : undefined,
-    use_parse_cache: typeof params.use_parse_cache === 'boolean' ? params.use_parse_cache : undefined,
+    chunk_size: params.chunk_size ?? params.pipeline?.chunk_size,
+    chunk_overlap: params.chunk_overlap ?? params.pipeline?.chunk_overlap,
+    include_original_text: params.include_original_text,
+    include_chunks: params.include_chunks,
+    include_review_signals: params.include_review_signals,
+    original_text_max_chars: params.original_text_max_chars,
+    max_chunks: params.max_chunks,
+    use_parse_cache: params.use_parse_cache,
   }
 }

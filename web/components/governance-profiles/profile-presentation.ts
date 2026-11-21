@@ -57,26 +57,26 @@ const NAMES: Record<string, string> = {
 }
 
 export function profileRef(profile: GovernanceProfileSummary) {
-  return profile.is_system ? profile.key : profile.id?.trim() || profile.key
+  if (profile.is_system) return profile.key
+  const id = profile.id?.trim()
+  return id === undefined || id === '' ? profile.key : id
 }
 
+const PROFILE_KINDS = [
+  ['pdf', /pdf|report|prospectus|policy|manual|government|law|judgment/],
+  ['web', /html|confluence|sharepoint|notion|feishu/],
+  ['privacy', /legal|pii|medical|quarantine/],
+  ['code', /code/],
+  ['data', /structured/],
+] as const
+
 export function profileIdentity(profile: GovernanceProfileSummary) {
-  const id = profile.is_system ? profile.key.replace(/^builtin:/, '') : ''
-  const group = profile.is_system
-    ? Object.entries(GROUPS).find(([, keys]) => keys.includes(id))?.[0] || '其他模板'
-    : '自定义配置'
-  const kind = /pdf|report|prospectus|policy|manual|government|law|judgment/.test(id)
-    ? 'pdf'
-    : /html|confluence|sharepoint|notion|feishu/.test(id)
-      ? 'web'
-      : /legal|pii|medical|quarantine/.test(id)
-        ? 'privacy'
-        : /code/.test(id)
-          ? 'code'
-          : /structured/.test(id)
-            ? 'data'
-            : 'text'
-  return { group, kind, name: NAMES[id] || profile.name }
+  if (!profile.is_system) return { group: '自定义配置', kind: 'text', name: profile.name } as const
+  const key = profile.key.replace(/^builtin:/, '')
+  const group = Object.entries(GROUPS).find(([, keys]) => keys.includes(key))?.[0] ?? '其他模板'
+  const kind = PROFILE_KINDS.find(([, pattern]) => pattern.test(key))?.[0]
+  const name = Object.hasOwn(NAMES, key) ? NAMES[key] : profile.name
+  return { group, kind: kind ?? 'text', name } as const
 }
 
 // These are presentation labels for existing pipeline fields, not defaults.
@@ -132,12 +132,12 @@ const FIELDS: Record<string, [string, string, string?]> = {
 }
 
 export function profileField(key: string) {
-  const field = FIELDS[key]
-  return { label: field?.[0] || key, purpose: field?.[1] || '自定义管线参数', unit: field?.[2] || '' }
+  const field = Object.hasOwn(FIELDS, key) ? FIELDS[key] : undefined
+  return { label: field?.[0] ?? key, purpose: field?.[1] ?? '自定义管线参数', unit: field?.[2] }
 }
 
 const RULE_PACK_NAMES: Record<string, string> = {
-  ai_chat_export_noise: 'AI 对话导出噪声',
+  chat_export_noise: 'AI 对话导出噪声',
   cn_finance_report_artifacts: '金融报告噪声',
   cn_gov_redhead_artifacts: '政府公文尾部',
   cn_medical_record_artifacts: '医疗记录表头',
@@ -153,31 +153,31 @@ const RULE_PACK_NAMES: Record<string, string> = {
   wechat_mp_noise: '微信公众号噪声',
 }
 
+const REDACTION_MODE_LABELS = { mask: '遮盖', hash: '哈希替换', token: '令牌替换' }
+const FIELD_VALUE_LABELS: Record<string, Record<string, string>> = {
+  governance_remove_images: { none: '保留全部图片', all: '移除全部图片', decorative: '移除装饰图片' },
+  governance_pii_mode: REDACTION_MODE_LABELS,
+  governance_secrets_mode: REDACTION_MODE_LABELS,
+  governance_keywords_provider: { auto: '自动' },
+}
+
 export function profileValue(value: unknown, field?: string): string {
-  if (value === null || value === undefined) return '沿用默认'
+  if (value == null) return '沿用默认'
   if (typeof value === 'boolean') return value ? '启用' : '关闭'
   if (typeof value === 'string') {
-    const names: Record<string, string> =
-      field === 'governance_remove_images'
-        ? { none: '保留全部图片', all: '移除全部图片', decorative: '移除装饰图片' }
-        : field === 'governance_pii_mode' || field === 'governance_secrets_mode'
-          ? { mask: '遮盖', hash: '哈希替换' }
-          : field === 'governance_keywords_provider'
-            ? { auto: '自动' }
-            : {}
-    return names[value] || value || '空文本'
+    if (value === '') return '空文本'
+    if (field === undefined || !Object.hasOwn(FIELD_VALUE_LABELS, field)) return value
+    const labels = FIELD_VALUE_LABELS[field]
+    return Object.hasOwn(labels, value) ? labels[value] : value
   }
-  if (Array.isArray(value))
-    return value.length
-      ? value
-          .map((item) =>
-            typeof item === 'string'
-              ? field === 'governance_rule_packs'
-                ? RULE_PACK_NAMES[item] || item
-                : item
-              : JSON.stringify(item),
-          )
-          .join('、')
-      : '未配置'
+  if (Array.isArray(value)) {
+    if (value.length === 0) return '未配置'
+    return value
+      .map((item: unknown) => {
+        if (typeof item !== 'string') return JSON.stringify(item)
+        return field === 'governance_rule_packs' && Object.hasOwn(RULE_PACK_NAMES, item) ? RULE_PACK_NAMES[item] : item
+      })
+      .join('、')
+  }
   return typeof value === 'object' ? JSON.stringify(value) : String(value)
 }

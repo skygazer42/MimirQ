@@ -4,9 +4,7 @@ from typing import Any
 
 def _safe_text(value: Any, *, max_len: int = 400) -> str:
     text = str(value or "").strip()
-    if not text:
-        return ""
-    return text[: max(1, int(max_len or 1))]
+    return text[: max(1, max_len)]
 
 
 def _entity_lookup(key_entities: Sequence[Mapping[str, Any]] | None) -> dict[str, dict[str, str]]:
@@ -53,44 +51,17 @@ def _path_entities(
     return out
 
 
-def _report_summary(report: Mapping[str, Any]) -> str:
-    return _safe_text(report.get("summary"), max_len=500)
-
-
-def _report_event_ids(report: Mapping[str, Any]) -> set[str]:
-    event_ids: set[str] = set()
-    for rep_event in report.get("events") or []:
-        if isinstance(rep_event, Mapping):
-            rep_event_id = _safe_text(rep_event.get("id"), max_len=200)
-            if rep_event_id:
-                event_ids.add(rep_event_id)
-    return event_ids
-
-
 def _matching_report_summary(event_id: str, community_reports: Sequence[Mapping[str, Any]] | None) -> str:
     for report in community_reports or []:
-        if isinstance(report, Mapping) and event_id in _report_event_ids(report):
-            summary = _report_summary(report)
-            if summary:
-                return summary
+        if not isinstance(report, Mapping):
+            continue
+        summary = _safe_text(report.get("summary"), max_len=500)
+        if summary and any(
+            isinstance(item, Mapping) and _safe_text(item.get("id"), max_len=200) == event_id
+            for item in report.get("events") or []
+        ):
+            return summary
     return ""
-
-
-def _first_report_summary(community_reports: Sequence[Mapping[str, Any]] | None) -> str:
-    for report in community_reports or []:
-        if isinstance(report, Mapping):
-            summary = _report_summary(report)
-            if summary:
-                return summary
-    return ""
-
-
-def _community_context_for_event(
-    event: Mapping[str, Any], community_reports: Sequence[Mapping[str, Any]] | None
-) -> str | None:
-    event_id = _safe_text(event.get("id"), max_len=200)
-    matched_summary = _matching_report_summary(event_id, community_reports) if event_id else ""
-    return matched_summary or _first_report_summary(community_reports) or None
 
 
 def build_path_renderings(
@@ -101,15 +72,16 @@ def build_path_renderings(
     community_reports: Sequence[Mapping[str, Any]] | None = None,
 ) -> dict[str, Any]:
     entities = _path_entities(event, key_entities=key_entities)
+    event_id = _safe_text(event.get("id"), max_len=200)
     event_title = _safe_text(event.get("title"), max_len=200)
-    if not entities or not event_title:
+    if not entities or not event_id or not event_title:
         return {}
 
     path_labels = [f"{item['name']} [{item['type']}]" for item in entities]
-    path_string = " -> ".join(path_labels + [event_title])
+    path_string = "; ".join(f"{label} -> {event_title}" for label in path_labels)
 
     verbalized_triples = [
-        f'{item["name"]} ({item["type"]}) contributes evidence for event "{event_title}".' for item in entities
+        f'{item["name"]} ({item["type"]}) is associated with event "{event_title}".' for item in entities
     ]
 
     graph_nodes = [
@@ -123,29 +95,21 @@ def build_path_renderings(
     ]
     graph_nodes.append(
         {
-            "id": _safe_text(event.get("id"), max_len=200) or f"event:{event_title}",
+            "id": event_id,
             "label": event_title,
             "kind": "event",
             "type": "event",
         }
     )
 
-    graph_edges: list[dict[str, str]] = []
-    for left, right in zip(entities, entities[1:], strict=False):
-        graph_edges.append(
-            {
-                "source": left["entity_id"],
-                "target": right["entity_id"],
-                "relation": "related_to",
-            }
-        )
-    graph_edges.append(
+    graph_edges = [
         {
-            "source": entities[-1]["entity_id"],
-            "target": _safe_text(event.get("id"), max_len=200) or f"event:{event_title}",
-            "relation": "supports_event",
+            "source": item["entity_id"],
+            "target": event_id,
+            "relation": "associated_with_event",
         }
-    )
+        for item in entities
+    ]
 
     query_text = _safe_text(query, max_len=300)
     reasoning_parts = []
@@ -167,7 +131,7 @@ def build_path_renderings(
         "reasoning_chain": " ".join(reasoning_parts),
     }
 
-    community_context = _community_context_for_event(event, community_reports)
+    community_context = _matching_report_summary(event_id, community_reports)
     if community_context:
         out["community_context"] = community_context
     return out

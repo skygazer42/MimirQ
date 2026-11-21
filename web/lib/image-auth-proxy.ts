@@ -1,161 +1,147 @@
 'use client'
 
 import { API_BASE_URL, toAbsoluteBackendUrl } from '@/lib/env'
-import { AUTH_SCOPE_CHANGED_EVENT, getAuthCacheScope } from '@/lib/auth-storage'
+import { AUTH_SCOPE_CHANGED_EVENT, AUTH_SESSION_CHANGED_EVENT, getAuthSessionKey } from '@/lib/auth-storage'
 import { getAuthHeaders } from '@/lib/auth-headers'
 import { authenticatedFetch } from '@/lib/authenticated-fetch'
-import { buildMarkdownImageProxyUrl } from '@/lib/markdown-image-proxy'
 
 const DOCUMENT_DOWNLOAD_PATH_RE = /^\/api\/v1\/documents\/[^/]+\/download\/?$/
-const ASSET_BASE_URL = API_BASE_URL || globalThis.window?.location.origin
 
-let BACKEND_ORIGIN = ''
-try {
-  const backend = new URL(ASSET_BASE_URL || '')
-  BACKEND_ORIGIN = /^https?:$/i.test(backend.protocol) ? backend.origin : ''
-} catch {
-  BACKEND_ORIGIN = ''
+type AuthAssetCache = Readonly<{
+  scope: string
+  controller: AbortController
+  blobUrls: Map<string, string>
+  allocatedUrls: Set<string>
+  pending: Map<string, Promise<string>>
+}>
+
+let assetCache: AuthAssetCache | null = null
+
+function releaseAssetCache() {
+  const cache = assetCache
+  assetCache = null
+  if (cache === null) return
+  cache.controller.abort()
+  for (const url of cache.allocatedUrls) URL.revokeObjectURL(url)
+  cache.allocatedUrls.clear()
+  cache.blobUrls.clear()
+  cache.pending.clear()
 }
 
-const blobCache = new Map<string, string>()
-const proxiedRemoteUrlCache = new Map<string, string>()
-const inflightBlobFetches = new Map<string, Promise<string | null>>()
-const inflightRemoteProxyFetches = new Map<string, Promise<string | null>>()
-
-function cacheKey(url: string): string {
-  return `${getAuthCacheScope()}:${url}`
+function invalidateAssetCache() {
+  if (assetCache?.scope === getAuthSessionKey()) return
+  releaseAssetCache()
 }
 
-function clearAssetCaches() {
-  for (const blobUrl of blobCache.values()) URL.revokeObjectURL(blobUrl)
-  blobCache.clear()
-  proxiedRemoteUrlCache.clear()
-  inflightBlobFetches.clear()
-  inflightRemoteProxyFetches.clear()
-}
+globalThis.window?.addEventListener(AUTH_SCOPE_CHANGED_EVENT, invalidateAssetCache)
+globalThis.window?.addEventListener(AUTH_SESSION_CHANGED_EVENT, invalidateAssetCache)
 
-globalThis.window?.addEventListener(AUTH_SCOPE_CHANGED_EVENT, clearAssetCaches)
-
-export function normalizeAssetUrl(rawUrl: string | null | undefined): string | null {
-  const raw = String(rawUrl || '').trim()
-  if (!raw) return null
-  if (/^https?:\/\//i.test(raw) || /^data:/i.test(raw) || /^blob:/i.test(raw)) return raw
-  return toAbsoluteBackendUrl(raw)
-}
-
-function resolveAssetUrl(resolved: string): URL | null {
-  if (!BACKEND_ORIGIN) return null
-  try {
-    return new URL(resolved, ASSET_BASE_URL)
-  } catch {
-    return null
+/** Stop reuse; issued URLs remain available to their consumers until the scope ends. */
+export function invalidateAuthAssetUrl(url: string, scope: string): void {
+  const cache = assetCache
+  if (cache === null || cache.scope !== scope || scope !== getAuthSessionKey()) return
+  for (const [key, cachedUrl] of cache.blobUrls) {
+    if (cachedUrl !== url) continue
+    cache.blobUrls.delete(key)
+    return
   }
 }
 
-export function needsAuthAssetProxy(rawUrl: string | null | undefined): boolean {
-  const resolved = normalizeAssetUrl(rawUrl)
-  if (!resolved || /^data:/i.test(resolved) || /^blob:/i.test(resolved)) return false
+function getAssetCache(): AuthAssetCache {
+  const scope = getAuthSessionKey()
+  if (assetCache === null || assetCache.scope !== scope) {
+    releaseAssetCache()
+    assetCache = {
+      scope,
+      controller: new AbortController(),
+      blobUrls: new Map(),
+      allocatedUrls: new Set(),
+      pending: new Map(),
+    }
+  }
+  return assetCache
+}
 
-  const parsed = resolveAssetUrl(resolved)
-  if (!parsed) return false
-  if (parsed.origin !== BACKEND_ORIGIN) return /^https?:$/i.test(parsed.protocol)
+function assertCurrentAssetCache(cache: AuthAssetCache) {
+  cache.controller.signal.throwIfAborted()
+  if (assetCache !== cache || cache.scope !== getAuthSessionKey()) {
+    throw new DOMException('资源读取已失效', 'AbortError')
+  }
+}
 
-  const path = parsed.pathname || ''
+export function normalizeAssetUrl(rawUrl: string | null | undefined): string | null {
+  if (rawUrl === null || rawUrl === undefined) return null
+  const source = rawUrl.trim()
+  if (source.length === 0) return null
+  if (/^(https?:\/\/|data:|blob:)/i.test(source)) return source
+  return toAbsoluteBackendUrl(source)
+}
+
+function isProtectedBackendAsset(url: URL, backend: URL): boolean {
+  const basePath = backend.pathname.replace(/\/+$/, '')
+  if (!url.pathname.startsWith(basePath + '/')) return false
+  const path = url.pathname.slice(basePath.length)
   return (
-    path.includes('/api/v1/documents/image/') ||
-    path.includes('/api/v1/documents/image-url/') ||
+    path.startsWith('/api/v1/documents/image/') ||
+    path.startsWith('/api/v1/documents/image-url/') ||
     DOCUMENT_DOWNLOAD_PATH_RE.test(path)
   )
 }
 
-async function mintOpaqueRemoteImageUrl(rawUrl: string): Promise<string | null> {
-  const key = cacheKey(rawUrl)
-  const cached = proxiedRemoteUrlCache.get(key)
-  if (cached) return cached
-  const inflight = inflightRemoteProxyFetches.get(key)
-  if (inflight) return inflight
-
-  const pending = (async () => {
-    try {
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-      }
-      Object.assign(headers, getAuthHeaders())
-      const response = await authenticatedFetch('/api/markdown-image', {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          src: rawUrl,
-        }),
-      })
-
-      if (response.ok) {
-        const payload = (await response.json()) as { src?: unknown }
-        const nextUrl = typeof payload?.src === 'string' ? payload.src.trim() : ''
-        if (nextUrl) {
-          if (key !== cacheKey(rawUrl)) return null
-          proxiedRemoteUrlCache.set(key, nextUrl)
-          return nextUrl
-        }
-      }
-    } catch {
-      // Fall through to the legacy query proxy below.
+async function loadAssetUrl(source: string, url: URL, backend: URL, cache: AuthAssetCache): Promise<string> {
+  const signal = cache.controller.signal
+  if (url.origin !== backend.origin) {
+    const response = await authenticatedFetch('/api/markdown-image', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+      body: JSON.stringify({ src: source }),
+      signal,
+    })
+    if (!response.ok) throw new Error(`图片代理请求失败（HTTP ${response.status}）`)
+    const payload: unknown = await response.json()
+    assertCurrentAssetCache(cache)
+    if (
+      typeof payload !== 'object' ||
+      payload === null ||
+      !('src' in payload) ||
+      typeof payload.src !== 'string' ||
+      payload.src.trim().length === 0
+    ) {
+      throw new Error('图片代理未返回有效地址')
     }
-
-    if (process.env.NODE_ENV === 'production') return null
-
-    const fallbackUrl = buildMarkdownImageProxyUrl(rawUrl)
-    if (key !== cacheKey(rawUrl)) return null
-    proxiedRemoteUrlCache.set(key, fallbackUrl)
-    return fallbackUrl
-  })()
-
-  inflightRemoteProxyFetches.set(key, pending)
-  try {
-    return await pending
-  } finally {
-    if (inflightRemoteProxyFetches.get(key) === pending) {
-      inflightRemoteProxyFetches.delete(key)
-    }
+    return payload.src.trim()
   }
+
+  const response = await authenticatedFetch(source, { headers: getAuthHeaders(), signal })
+  if (!response.ok) throw new Error(`资源读取失败（HTTP ${response.status}）`)
+  const blob = await response.blob()
+  assertCurrentAssetCache(cache)
+  const blobUrl = URL.createObjectURL(blob)
+  cache.allocatedUrls.add(blobUrl)
+  cache.blobUrls.set(url.href, blobUrl)
+  return blobUrl
 }
 
-export async function fetchAuthAssetUrl(rawUrl: string | null | undefined): Promise<string | null> {
-  const resolved = normalizeAssetUrl(rawUrl)
-  if (!resolved) return null
-  if (!needsAuthAssetProxy(resolved)) return resolved
+export async function fetchAuthAssetUrl(rawUrl: string): Promise<string> {
+  const source = normalizeAssetUrl(rawUrl)
+  if (source === null) throw new Error('资源地址为空')
+  const backend = new URL(API_BASE_URL.length === 0 ? globalThis.window.location.origin : API_BASE_URL)
+  const url = new URL(source, backend)
+  if (url.protocol === 'data:' || url.protocol === 'blob:') return source
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') throw new Error('资源地址不支持此协议')
+  if (url.origin === backend.origin && !isProtectedBackendAsset(url, backend)) return source
 
-  const parsed = resolveAssetUrl(resolved)
-  if (!parsed) return null
-  if (parsed.origin !== BACKEND_ORIGIN) {
-    return await mintOpaqueRemoteImageUrl(resolved)
-  }
+  const cache = getAssetCache()
+  const cached = cache.blobUrls.get(url.href)
+  if (cached !== undefined) return cached
+  const existing = cache.pending.get(url.href)
+  if (existing !== undefined) return existing
 
-  const key = cacheKey(resolved)
-  const cached = blobCache.get(key)
-  if (cached) return cached
-  const inflight = inflightBlobFetches.get(key)
-  if (inflight) return inflight
-
-  const pending = (async () => {
-    const response = await authenticatedFetch(resolved, { headers: getAuthHeaders() })
-    if (!response.ok) return null
-
-    const blobUrl = URL.createObjectURL(await response.blob())
-    if (key !== cacheKey(resolved)) {
-      URL.revokeObjectURL(blobUrl)
-      return null
-    }
-    blobCache.set(key, blobUrl)
-    return blobUrl
-  })()
-
-  inflightBlobFetches.set(key, pending)
+  const pending = loadAssetUrl(source, url, backend, cache)
+  cache.pending.set(url.href, pending)
   try {
     return await pending
   } finally {
-    if (inflightBlobFetches.get(key) === pending) {
-      inflightBlobFetches.delete(key)
-    }
+    if (cache.pending.get(url.href) === pending) cache.pending.delete(url.href)
   }
 }

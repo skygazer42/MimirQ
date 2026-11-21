@@ -27,7 +27,7 @@ def build_document_heatmap(rows: list[dict[str, Any]]) -> dict[str, Any]:
                 negative_counts[filename] += 1
 
     all_files = sorted(
-        set(retrieval_counts.keys()) | set(negative_counts.keys()),
+        retrieval_counts,
         key=lambda name: (-retrieval_counts.get(name, 0), -negative_counts.get(name, 0), name),
     )
     rows_out: list[_CoverageRow] = [

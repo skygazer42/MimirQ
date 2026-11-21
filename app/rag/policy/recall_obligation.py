@@ -23,7 +23,7 @@ def _to_int(value: Any, *, default: int = 0) -> int:
         if value is None:
             return int(default)
         return int(value)
-    except Exception:
+    except (OverflowError, TypeError, ValueError):
         return int(default)
 
 
@@ -156,7 +156,8 @@ def build_must_recall_proof(
     )
     source_eval_obj = source_eval if isinstance(source_eval, dict) else {}
     anchor_eval_obj = anchor_eval if isinstance(anchor_eval, dict) else {}
-    required_source_keys_norm = normalize_source_keys(list(required_source_keys or []))
+    required_source_keys_norm = [entry["source_key"] for entry in ledger["source_keys"]["obligations"]]
+    anchors = ledger["anchors"]
     matched_by_required = (
         dict(source_eval_obj.get("matched_by_required_source_key") or {})
         if isinstance(source_eval_obj.get("matched_by_required_source_key"), dict)
@@ -197,20 +198,16 @@ def build_must_recall_proof(
         "missing_source_keys": [str(v) for v in (source_eval_obj.get("missing_source_keys") or []) if str(v).strip()][
             :100
         ],
-        "required_anchor_fields": normalize_source_keys(list(required_anchor_fields or [])),
-        "anchor_missing_any": max(0, _to_int(anchor_eval_obj.get("missing_any"), default=0)),
+        "required_anchor_fields": [entry["field"] for entry in anchors["obligations"]],
+        "anchor_missing_any": anchors["missing_any"],
         "anchor_missing_counts": (
             dict(anchor_eval_obj.get("missing_counts") or {})
             if isinstance(anchor_eval_obj.get("missing_counts"), dict)
             else {}
         ),
-        "anchor_considered_citations": max(0, _to_int(anchor_eval_obj.get("considered_citations"), default=0)),
-        "anchor_skipped_citations": max(0, _to_int(anchor_eval_obj.get("skipped_citations"), default=0)),
-        "anchor_skipped_by_role": (
-            dict(anchor_eval_obj.get("skipped_by_role") or {})
-            if isinstance(anchor_eval_obj.get("skipped_by_role"), dict)
-            else {}
-        ),
+        "anchor_considered_citations": anchors["considered_citations"],
+        "anchor_skipped_citations": anchors["skipped_citations"],
+        "anchor_skipped_by_role": dict(anchors["skipped_by_role"]),
         "fail_reasons": reasons,
         "obligation_ledger": ledger,
         "second_pass": (dict(second_pass) if isinstance(second_pass, dict) else {}),

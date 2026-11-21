@@ -24,6 +24,11 @@ function PreviewOptions() {
     useParseCache,
     updatePerfSettings,
   } = useChunkPreview()
+
+  function updateLimit(setting: 'originalTextMaxChars' | 'maxChunks', value: number) {
+    if (Number.isFinite(value)) updatePerfSettings({ [setting]: value })
+  }
+
   return (
     <details className={styles.disclosure}>
       <summary>
@@ -71,7 +76,7 @@ function PreviewOptions() {
               step={10000}
               value={originalTextMaxChars}
               disabled={!includeOriginalText}
-              onChange={(event) => updatePerfSettings({ originalTextMaxChars: Number(event.target.value) })}
+              onChange={(event) => updateLimit('originalTextMaxChars', event.currentTarget.valueAsNumber)}
             />
           </label>
           <label>
@@ -83,11 +88,11 @@ function PreviewOptions() {
               max={20000}
               step={100}
               value={maxChunks}
-              onChange={(event) => updatePerfSettings({ maxChunks: Number(event.target.value) })}
+              onChange={(event) => updateLimit('maxChunks', event.currentTarget.valueAsNumber)}
             />
           </label>
         </div>
-        <p className={styles.note}>上限设为 0 时不限制返回数量。</p>
+        <p className={styles.note}>原文上限为 0 时省略原文，切块上限为 0 时返回全部切块。</p>
       </div>
     </details>
   )
@@ -117,10 +122,10 @@ export function AdvancedConfigBody({
   } = useChunkPreview()
   const [mobileView, setMobileView] = useState<'settings' | 'result'>('settings')
   const stats = previewData?.stats
-  const unit = previewData?.params?.unit === 'tokens' ? 'Token' : '字符'
+  const unit = previewData?.params.unit === 'tokens' ? 'Token' : '字符'
   const coverage = stats?.coverage_ratio == null ? '—' : `${Math.round(stats.coverage_ratio * 100)}%`
   const waste = stats?.overlap_waste_ratio == null ? '—' : `${Math.round(stats.overlap_waste_ratio * 100)}%`
-  const at = lastPreviewAt
+  const previewTime = lastPreviewAt
     ? new Date(lastPreviewAt).toLocaleString([], {
         month: '2-digit',
         day: '2-digit',
@@ -181,8 +186,8 @@ export function AdvancedConfigBody({
                   ].map((item) => (
                     <Button
                       key={item.strategy}
+                      type="button"
                       variant="outline"
-                      aria-pressed={chunkStrategy === item.strategy}
                       onClick={() => {
                         updateSettings(item)
                         toast.success(`已应用${item.label}参数`)
@@ -205,7 +210,7 @@ export function AdvancedConfigBody({
           {previewData ? (
             <>
               <p className={styles.timestamp}>
-                {at || '当前文档'}
+                {previewTime ?? '当前文档'}
                 {lastPreviewDurationMs != null && ` · ${lastPreviewDurationMs} ms`}
               </p>
               <div className={styles.total}>
@@ -213,7 +218,7 @@ export function AdvancedConfigBody({
                 <span>个切块</span>
               </div>
               <p className={styles.previewParams}>
-                {getChunkStrategyLabel(previewData.chunk_strategy || 'auto')} · {previewData.params.chunk_size} /{' '}
+                {getChunkStrategyLabel(previewData.chunk_strategy)} · {previewData.params.chunk_size} /{' '}
                 {previewData.params.chunk_overlap} {unit}
               </p>
               <dl className={styles.stats}>
@@ -243,11 +248,7 @@ export function AdvancedConfigBody({
                   <dt>断点</dt>
                   <dd>
                     {stats?.gap_count ?? '—'}
-                    {stats?.largest_gap != null && (
-                      <small>
-                        最大 {stats.largest_gap} {unit}
-                      </small>
-                    )}
+                    {stats?.largest_gap != null && <small>最大 {stats.largest_gap} 字符</small>}
                   </dd>
                 </div>
               </dl>

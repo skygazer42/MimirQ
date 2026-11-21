@@ -25,8 +25,6 @@ export function NavigationVisibilityGate({ moduleKey, pageName, children }: Read
   const [hasHydrated, setHasHydrated] = useState(false)
   const { isDevMode } = useAuth()
   const access = useTenantAccess()
-  const allowed = hasHydrated && canShowAdminControlledNavigationModule(access.data, moduleKey)
-  const effectiveAllowed = hasHydrated && (isDevMode || allowed)
   async function recheckAccess() {
     toast.dismiss('navigation-access-recheck')
     const result = await access.refetch()
@@ -39,7 +37,7 @@ export function NavigationVisibilityGate({ moduleKey, pageName, children }: Read
     setHasHydrated(true)
   }, [])
 
-  if (!hasHydrated || access.isLoading) {
+  if (!hasHydrated || (!isDevMode && access.isLoading)) {
     return (
       <AppFrame>
         <PageLoading
@@ -51,8 +49,8 @@ export function NavigationVisibilityGate({ moduleKey, pageName, children }: Read
     )
   }
 
-  if (!effectiveAllowed) {
-    const isUnknown = access.isError || !access.data
+  if (!isDevMode && !canShowAdminControlledNavigationModule(access.data, moduleKey)) {
+    const isUnknown = access.isError || access.data === undefined
     return (
       <AppFrame>
         <PageStatus
@@ -88,7 +86,7 @@ export function NavigationVisibilityGate({ moduleKey, pageName, children }: Read
                 <dt>入口标识</dt>
                 <dd className="break-all font-mono text-foreground">{moduleKey}</dd>
                 <dt>最近读取的角色</dt>
-                <dd className="break-all text-foreground">{access.data?.role || '未读取'}</dd>
+                <dd className="break-all text-foreground">{access.data?.role ?? '未读取'}</dd>
               </dl>
               <p className="mt-3">管理员可在「设置 → 导航权限」调整。</p>
             </details>

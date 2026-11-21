@@ -72,6 +72,10 @@ Notes:
 ## Code conventions
 
 - Use PEP 8 and the repository's Ruff configuration for Python, with a target line length of 120.
+- Follow [module ownership](../docs/development/module_boundaries.md) for names and imports: SQLAlchemy entities
+  belong to `app/models`, HTTP contracts to `app/api/schemas`, and shared internal records to `app/types`.
+  Keep business services in their domain packages and import actual definitions; startup owners explicitly load
+  `app.models.registry` before ORM work.
   Describe structured request and response data with Pydantic. Ordinary business functions may use plain
   parameters without type annotations; retain the annotations FastAPI needs for injection and validation.
   Declare real nullable fields and defaults in their input models, and avoid repeating those declarations
@@ -96,6 +100,18 @@ Notes:
   same batch, and verify real behavior when changing types, exceptions or call boundaries.
 - Preserve vendored code, generated files, released migrations and static assets. Record deliberate exceptions
   and file coverage in `docs/maintenance/style-unification/coverage.csv` during this migration.
+- Parsing algorithms integrated from DeepDoc are maintained in `app/rag/ingestion/parsing/` with their upstream
+  attribution retained. Reuse the existing format, model, enrichment and utility owners; consolidate
+  duplicate behavior and migrate actual callers instead of restoring a standalone DeepDoc facade.
+- Adopted file-chunking algorithms are maintained in `app/rag/ingestion/parsing/files` and
+  `app/rag/ingestion/chunking` shared section/record utilities. Use `app.rag.ingestion.chunking.factory.chunk_file` for raw files, retain the existing
+  `integrated_*` configuration IDs and upstream attribution, and avoid restoring a second vendor facade.
+- RAG execution lives in `app/rag/runtime`; retrieval planning, stages, indexes, evidence and caches have
+  separate owners. Split mixed responsibilities before grouping files. Import implementations directly;
+  package markers must not load agent runners or optional file parsers. See `docs/development/rag_structure.md`.
+- Retrieval candidates come from `retrieval/recall`, fusion and diversity live in `retrieval/ranking`,
+  and model rerankers live in `retrieval/reranking`. Query readers and index writers share `CorpusIndex`;
+  do not restore per-retriever shadow indexes or the retired ColBERT experiment.
 
 ### Refactoring verification
 

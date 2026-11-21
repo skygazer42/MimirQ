@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ChatResponse, Message } from '@/types/chat'
 import { AUTH_SCOPE_CHANGED_EVENT } from '@/lib/auth-storage'
 import { renderHook, waitForAssertion } from '@/test/hook-harness'
+import { createChatStreamFixture } from '@/test/chat-stream-fixture'
 
 const api = vi.hoisted(() => ({ chat: vi.fn(), getMessages: vi.fn(), streamChat: vi.fn() }))
 vi.hoisted(() => vi.stubGlobal('BroadcastChannel', undefined))
@@ -80,11 +81,13 @@ afterEach(() => {
 
 describe('useChat conversation ownership', () => {
   it('preserves spaces and newlines from streamed token chunks', async () => {
-    api.streamChat.mockImplementation(async (_request, onJson) => {
+    api.streamChat.mockImplementation(async (_request, onJson, options) => {
+      const run = createChatStreamFixture({ messageId: 'assistant-a' })
+      run.start(onJson, options.onOpen)
       for (const content of ['Hello', ' ', 'world', '\n', '  indented']) {
-        onJson(JSON.stringify({ type: 'token', data: { content } }))
+        onJson(run.text(content))
       }
-      onJson(JSON.stringify({ type: 'done', data: { assistant_message_id: 'assistant-a' } }))
+      run.finish(onJson)
     })
     const hook = mount()
 
@@ -96,14 +99,15 @@ describe('useChat conversation ownership', () => {
   it('commits a done event once and notifies its conversation once', async () => {
     const onConversationId = vi.fn()
     api.streamChat.mockImplementation(async (_request, onJson, options) => {
-      options.onOpen({ requestId: 'request-a', conversationId: 'conversation-a' })
-      onJson(JSON.stringify({ type: 'token', data: { content: 'answer' } }))
-      const done = JSON.stringify({
-        type: 'done',
-        data: { conversation_id: 'conversation-a', assistant_message_id: 'assistant-a' },
+      const run = createChatStreamFixture({
+        requestId: 'request-a',
+        threadId: 'conversation-a',
+        messageId: 'assistant-a',
       })
-      onJson(done)
-      onJson(done)
+      run.start(onJson, options.onOpen)
+      onJson(run.text('answer'))
+      run.finish(onJson, { conversation_id: 'conversation-a' })
+      run.finish(onJson, { conversation_id: 'conversation-a' })
     })
     const hook = mount({ onConversationId })
 
@@ -111,6 +115,32 @@ describe('useChat conversation ownership', () => {
 
     expect(hook.result.current.messages.filter((message) => message.role === 'assistant')).toHaveLength(1)
     expect(onConversationId.mock.calls).toEqual([['conversation-a']])
+  })
+
+  it('sends stable history IDs and the actual new user message ID to the stream boundary', async () => {
+    api.streamChat.mockImplementation(async (_request, onJson, options) => {
+      const run = createChatStreamFixture({
+        runId: `run-${api.streamChat.mock.calls.length}`,
+        messageId: `assistant-${api.streamChat.mock.calls.length}`,
+      })
+      run.start(onJson, options.onOpen)
+      onJson(run.text('answer'))
+      run.finish(onJson)
+    })
+    const hook = mount()
+    await act(async () => {
+      hook.result.current.sendMessage('first question')
+    })
+    const previous = [...hook.result.current.messages]
+    await act(async () => {
+      hook.result.current.sendMessage('second question')
+    })
+
+    expect(api.streamChat.mock.calls[0][2].messages[0].id).toBe(previous[0].id)
+    expect(api.streamChat.mock.calls[1][2].messages).toEqual([
+      ...previous.map(({ id, role, content }) => ({ id, role, content })),
+      { id: hook.result.current.messages[2].id, role: 'user', content: 'second question' },
+    ])
   })
 
   it('discards late stream callbacks after clearing messages', async () => {
@@ -121,15 +151,16 @@ describe('useChat conversation ownership', () => {
       return completion.promise
     })
     const hook = mount()
-    let sending!: Promise<void>
+    let sending!: boolean
     act(() => {
       sending = hook.result.current.sendMessage('old question')
     })
     act(() => hook.result.current.clearMessages())
 
     await act(async () => {
-      emit(JSON.stringify({ type: 'token', data: { content: 'late answer' } }))
-      emit(JSON.stringify({ type: 'done', data: { assistant_message_id: 'old-assistant' } }))
+      const run = createChatStreamFixture({ messageId: 'old-assistant' })
+      emit(run.text('late answer'))
+      run.finish(emit)
       completion.resolve()
       await sending
     })
@@ -145,26 +176,22 @@ describe('useChat conversation ownership', () => {
     const onConversationId = vi.fn()
     api.streamChat.mockImplementation(async (_request, onJson, options) => {
       emit = onJson
-      options.onOpen({ requestId: 'old-request', conversationId: 'old-conversation' })
+      options.onOpen(createChatStreamFixture({ requestId: 'old-request', threadId: 'old-conversation' }).opened)
       return completion.promise
     })
     const currentMessage = assistant('new-assistant', 'new history')
     api.getMessages.mockResolvedValue({ conversation_id: 'new-conversation', messages: [currentMessage] })
     const hook = mount({ onConversationId })
-    let sending!: Promise<void>
+    let sending!: boolean
     act(() => {
       sending = hook.result.current.sendMessage('old question')
     })
     await act(async () => hook.result.current.loadConversation('new-conversation'))
 
     await act(async () => {
-      emit(JSON.stringify({ type: 'token', data: { content: 'late old answer' } }))
-      emit(
-        JSON.stringify({
-          type: 'done',
-          data: { conversation_id: 'old-conversation', assistant_message_id: 'old-assistant' },
-        }),
-      )
+      const run = createChatStreamFixture({ threadId: 'old-conversation', messageId: 'old-assistant' })
+      emit(run.text('late old answer'))
+      run.finish(emit, { conversation_id: 'old-conversation' })
       completion.resolve()
       await sending
     })
@@ -177,12 +204,12 @@ describe('useChat conversation ownership', () => {
   it('discards a recovery response after the conversation is reset', async () => {
     const history = deferred<{ conversation_id: string; messages: Message[] }>()
     api.streamChat.mockImplementation(async (_request, _onJson, options) => {
-      options.onOpen({ requestId: 'old-request', conversationId: 'old-conversation' })
+      options.onOpen(createChatStreamFixture({ requestId: 'old-request', threadId: 'old-conversation' }).opened)
       throw new Error('stream disconnected')
     })
     api.getMessages.mockReturnValue(history.promise)
     const hook = mount()
-    let sending!: Promise<void>
+    let sending!: boolean
     act(() => {
       sending = hook.result.current.sendMessage('old question')
     })
@@ -202,8 +229,9 @@ describe('useChat conversation ownership', () => {
   it('stops recovery reads when the user stops generation', async () => {
     const history = deferred<{ conversation_id: string; messages: Message[] }>()
     api.streamChat.mockImplementation(async (_request, onJson, options) => {
-      options.onOpen({ requestId: 'old-request', conversationId: 'old-conversation' })
-      onJson(JSON.stringify({ type: 'token', data: { content: 'partial draft' } }))
+      const run = createChatStreamFixture({ requestId: 'old-request', threadId: 'old-conversation' })
+      run.start(onJson, options.onOpen)
+      onJson(run.text('partial draft'))
       throw new Error('stream disconnected')
     })
     api.getMessages.mockReturnValueOnce(history.promise).mockResolvedValue({
@@ -211,7 +239,7 @@ describe('useChat conversation ownership', () => {
       messages: [],
     })
     const hook = mount()
-    let sending!: Promise<void>
+    let sending!: boolean
     act(() => {
       sending = hook.result.current.sendMessage('question')
     })
@@ -231,22 +259,18 @@ describe('useChat conversation ownership', () => {
     })
   })
 
-  it('discards a fallback response after the conversation is reset', async () => {
-    const fallback = deferred<ChatResponse>()
+  it('does not replay an unconfirmed request and clears it when the conversation is reset', async () => {
     api.streamChat.mockRejectedValue(new Error('stream unavailable'))
-    api.chat.mockReturnValue(fallback.promise)
-    const hook = mount()
-    let sending!: Promise<void>
+    const onUnconfirmedMessage = vi.fn()
+    const hook = mount({ onUnconfirmedMessage })
+    let sending!: boolean
     act(() => {
       sending = hook.result.current.sendMessage('old question')
     })
-    await waitForAssertion(() => expect(api.chat).toHaveBeenCalledOnce())
+    await waitForAssertion(() => expect(onUnconfirmedMessage).toHaveBeenCalledWith('old question'))
+    expect(api.chat).not.toHaveBeenCalled()
     act(() => hook.result.current.resetConversation())
-
-    await act(async () => {
-      fallback.resolve(response())
-      await sending
-    })
+    await sending
 
     expect(hook.result.current.messages).toEqual([])
     expect(hook.result.current.conversationId).toBeUndefined()
@@ -255,8 +279,9 @@ describe('useChat conversation ownership', () => {
   it('does not replay an accepted request that reports a stream error', async () => {
     const onError = vi.fn()
     api.streamChat.mockImplementation(async (_request, onJson, options) => {
-      options.onOpen({ requestId: 'old-request', conversationId: 'old-conversation' })
-      onJson(JSON.stringify({ type: 'error', data: { message: 'generation failed' } }))
+      const run = createChatStreamFixture({ requestId: 'old-request', threadId: 'old-conversation' })
+      run.start(onJson, options.onOpen)
+      onJson(run.error('generation failed'))
     })
     api.chat.mockResolvedValue(response())
     const hook = mount({ onError })
@@ -264,20 +289,21 @@ describe('useChat conversation ownership', () => {
     await act(async () => hook.result.current.sendMessage('question'))
 
     expect(api.chat).not.toHaveBeenCalled()
-    expect(onError).toHaveBeenCalledWith('generation failed')
+    expect(onError).toHaveBeenCalledWith('generation failed (request_id=old-request)')
     expect(hook.result.current.messages.map((message) => message.role)).toEqual(['user'])
   })
 
-  it('keeps the user draft when the current fallback fails', async () => {
+  it('keeps the user draft when the stream request is unconfirmed', async () => {
     const onError = vi.fn()
     api.streamChat.mockRejectedValue(new Error('stream unavailable'))
-    api.chat.mockRejectedValue(new Error('fallback failed'))
     const hook = mount({ onError })
 
     await act(async () => hook.result.current.sendMessage('unsent answer context'))
 
     expect(hook.result.current.messages).toMatchObject([{ role: 'user', content: 'unsent answer context' }])
-    expect(onError).toHaveBeenCalledWith('fallback failed')
+    expect(onError).toHaveBeenCalledWith('stream unavailable')
+    expect(api.chat).not.toHaveBeenCalled()
+    expect(hook.result.current.messages[0].message_metadata?.send_state).toBe('unconfirmed')
     expect(hook.result.current.isLoading).toBe(false)
   })
 
@@ -286,7 +312,7 @@ describe('useChat conversation ownership', () => {
     api.streamChat.mockReturnValue(completion.promise)
     api.chat.mockResolvedValue(response())
     const hook = mount()
-    let sending!: Promise<void>
+    let sending!: boolean
     act(() => {
       sending = hook.result.current.sendMessage('question')
     })
@@ -301,7 +327,7 @@ describe('useChat conversation ownership', () => {
     expect(hook.result.current.messages).toMatchObject([{ role: 'user', content: 'question' }])
   })
 
-  it('keeps the pre-acceptance fallback and request scope fields', async () => {
+  it('keeps request scope fields without replaying an unconfirmed stream', async () => {
     const options = {
       datasetId: 'dataset-a',
       documentIds: ['document-a'],
@@ -312,13 +338,12 @@ describe('useChat conversation ownership', () => {
       ragConfig: { top_k: 8 },
     }
     api.streamChat.mockRejectedValue(new Error('stream unavailable'))
-    api.chat.mockResolvedValue({ ...response(), structured_data: { summary: 'answer' } })
     const hook = mount(options)
 
     await act(async () => hook.result.current.sendMessage('question'))
 
-    expect(api.chat).toHaveBeenCalledOnce()
-    expect(api.chat.mock.calls[0]?.[0]).toMatchObject({
+    expect(api.chat).not.toHaveBeenCalled()
+    expect(api.streamChat.mock.calls[0]?.[0]).toMatchObject({
       message: 'question',
       document_ids: ['document-a'],
       dataset_id: undefined,
@@ -328,7 +353,7 @@ describe('useChat conversation ownership', () => {
       enable_long_term_memory: true,
       rag_config: { top_k: 8 },
     })
-    expect(hook.result.current.messages.at(-1)?.content).toBe('```json\n{\n  "summary": "answer"\n}\n```')
+    expect(hook.result.current.messages).toMatchObject([{ role: 'user', content: 'question' }])
   })
 
   it('clears history and retires callbacks when the auth scope changes', async () => {
@@ -342,16 +367,17 @@ describe('useChat conversation ownership', () => {
       return completion.promise
     })
     const hook = mount({ onConversationId })
-    let sending!: Promise<void>
+    let sending!: boolean
     act(() => {
       sending = hook.result.current.sendMessage('private question')
     })
     act(() => window.dispatchEvent(new Event(AUTH_SCOPE_CHANGED_EVENT)))
 
     await act(async () => {
-      open({ requestId: 'old-request', conversationId: 'old-conversation' })
-      emit(JSON.stringify({ type: 'token', data: { content: 'private response' } }))
-      emit(JSON.stringify({ type: 'done', data: { assistant_message_id: 'old-assistant' } }))
+      const run = createChatStreamFixture({ requestId: 'old-request', threadId: 'old-conversation' })
+      open(run.opened)
+      emit(run.text('private response'))
+      run.finish(emit)
       completion.resolve()
       await sending
     })
@@ -415,7 +441,7 @@ describe('useChat conversation ownership', () => {
       return completion.promise
     })
     const hook = mount({ onConversationId, onError })
-    let sending!: Promise<void>
+    let sending!: boolean
     act(() => {
       sending = hook.result.current.sendMessage('question')
     })
@@ -423,12 +449,7 @@ describe('useChat conversation ownership', () => {
     cleanup.splice(cleanup.indexOf(hook.unmount), 1)
 
     await act(async () => {
-      emit(
-        JSON.stringify({
-          type: 'done',
-          data: { conversation_id: 'old-conversation', assistant_message_id: 'old-assistant' },
-        }),
-      )
+      createChatStreamFixture({ threadId: 'old-conversation', messageId: 'old-assistant' }).finish(emit)
       completion.resolve()
       await sending
     })
@@ -461,7 +482,7 @@ describe('useChat conversation ownership', () => {
 
     expect(result?.id).toBe('matching')
     expect(getMessages).toHaveBeenCalledTimes(2)
-    expect(getMessages.mock.calls[0]).toEqual(['conversation-a', { limit: 40 }])
+    expect(getMessages.mock.calls[0]).toEqual(['conversation-a', { limit: 40 }, { signal: undefined }])
     expect(wait).toHaveBeenCalledTimes(1)
   })
 

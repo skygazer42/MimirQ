@@ -171,7 +171,7 @@ def test_run_gate_prefers_explicit_item_failures_over_passing_summary(tmp_path: 
 
 
 def test_run_gate_does_not_override_explicit_provenance_failure_with_nonstrict_capsule(tmp_path: Path) -> None:
-    from app.rag.core.evidence_capsule_builder import build_evidence_capsule
+    from app.rag.retrieval.evidence.capsule import build_evidence_capsule
 
     mod = _load_module()
     capsule = build_evidence_capsule(
@@ -208,7 +208,7 @@ def test_run_gate_does_not_override_explicit_provenance_failure_with_nonstrict_c
 
 
 def test_run_gate_strict_provenance_validates_capsule_from_item_meta(tmp_path: Path) -> None:
-    from app.rag.core.evidence_capsule_builder import build_evidence_capsule
+    from app.rag.retrieval.evidence.capsule import build_evidence_capsule
 
     mod = _load_module()
     capsule = build_evidence_capsule(

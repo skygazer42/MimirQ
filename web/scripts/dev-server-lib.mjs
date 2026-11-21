@@ -44,30 +44,22 @@ export function resolveDevServerOptions(argv = [], env = process.env) {
 export function isPortAvailable(port, host) {
   return new Promise((resolve) => {
     const server = net.createServer()
-
-    const finish = (available) => {
-      server.removeAllListeners()
-      try {
-        server.close(() => resolve(available))
-      } catch {
-        resolve(available)
-      }
-    }
-
-    server.once('error', () => finish(false))
-    server.once('listening', () => finish(true))
-    server.listen(port, host)
+    server.once('error', () => resolve(false))
+    server.listen(port, host, () => {
+      server.close(() => resolve(true))
+    })
   })
 }
 
 export async function findAvailablePort(preferredPort, host, probe = isPortAvailable) {
-  for (let candidate = preferredPort; candidate < preferredPort + MAX_PORT_SEARCH; candidate += 1) {
+  const lastPort = Math.min(preferredPort + MAX_PORT_SEARCH - 1, 65_535)
+  for (let candidate = preferredPort; candidate <= lastPort; candidate += 1) {
     if (await probe(candidate, host)) {
       return candidate
     }
   }
 
-  throw new Error(`No available port found between ${preferredPort} and ${preferredPort + MAX_PORT_SEARCH - 1}.`)
+  throw new Error(`No available port found between ${preferredPort} and ${lastPort}.`)
 }
 
 export async function finalizeDevServerOptions(options) {

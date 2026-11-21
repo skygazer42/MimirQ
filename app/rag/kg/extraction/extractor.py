@@ -4,18 +4,23 @@ Event extractor coordinating LLM + embeddings + persistence.
 
 import asyncio
 import hashlib
+import logging
 import time
 from collections import defaultdict
 from collections.abc import Sequence
-from dataclasses import dataclass, field
+from contextlib import AsyncExitStack
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from langchain_core.documents import Document as LCDocument
 
-from app.core.config import settings
-from app.core.database import SessionLocal
-from app.models.document import DocumentChunk
+from app.infrastructure.config import settings
+from app.infrastructure.database.connection import SessionLocal
+from app.models.documents.records import DocumentChunk
+from app.models.knowledge_graph.entities import KgEntity, KgEventEntity, KgRelation, KgSourceEvent
+from app.rag.ingestion.governance.text.normalization import normalize_text
+from app.rag.ingestion.indexing.indexer import Indexer
 from app.rag.kg.extraction.alias import (
     AliasCandidate,
     best_suffix_match,
@@ -24,7 +29,7 @@ from app.rag.kg.extraction.alias import (
     is_abbrev_token,
     split_trailing_parenthetical_alias,
 )
-from app.rag.kg.extraction.backend_router import ExtractionBackendSelection, resolve_extraction_backend
+from app.rag.kg.extraction.backend_router import ExtractionBackendSelection, normalize_extraction_backend
 from app.rag.kg.extraction.config import ExtractConfig
 from app.rag.kg.extraction.entity_verifier import EntityCandidate, EntityVerifier
 from app.rag.kg.extraction.evidence import EvidenceSpan, coerce_evidence, surface_mentioned
@@ -35,16 +40,16 @@ from app.rag.kg.extraction.relation_processor import CandidateEntity, RelationPr
 from app.rag.kg.extraction.relation_verifier import RelationCandidate, RelationVerifier
 from app.rag.kg.extraction.skill_processor import SkillProcessor
 from app.rag.kg.loading.processor import generate_batch
-from app.rag.kg.models import KgEntity, KgEventEntity, KgRelation, KgSourceEvent
-from app.rag.kg.provenance import build_event_entity_provenance
+from app.rag.kg.provenance import (
+    KG_EXTRACTION_COMPLETE_KEY,
+    build_event_entity_provenance,
+    is_event_extraction_complete,
+)
 from app.rag.kg.repository import RelationRepository
-from app.rag.kg.utils import get_logger
 from app.rag.llm.factory import create_llm_client
 from app.rag.pipeline_plugins.runtime import apply_kg_python_plugin
-from app.rag.preprocessing.normalization import normalize_text
-from app.services.indexer import Indexer
-from app.services.metrics_logger import log_metrics
-from app.services.prompt_resolver import resolve_prompt_template
+from app.services.observability.metrics_log import log_metrics
+from app.services.prompts.resolver import resolve_prompt_template
 from app.types.indexing import EventEntityInput, IndexingOptions, IndexKind, IndexRecord, PersistEventsResult
 
 if TYPE_CHECKING:
@@ -53,8 +58,7 @@ if TYPE_CHECKING:
     from app.rag.kg.extraction.backend_router import ExtractionProcessor
     from app.rag.llm.base import BaseLLMClient
 
-logger = get_logger("kg.extract.extractor")
-_KG_EXTRACTOR_FALLBACK_LOG_MESSAGE = "Ignoring non-critical KG extractor fallback failure: %s"
+logger = logging.getLogger("kg.extract.extractor")
 
 _PROMPT_SELECTOR_KEYS = (
     "kg_prompt_template_id",
@@ -181,14 +185,8 @@ def _apply_document_chunk_budget(
 
 def _release_idle_transaction(session: "Session") -> None:  # noqa: ANN001
     """Release read-only DB transactions before long LLM/vector work."""
-    try:
-        session.expunge_all()
-    except Exception as exc:
-        logger.debug("Ignoring non-critical KG session cleanup failure: %s", exc)
-    try:
-        session.rollback()
-    except Exception as exc:
-        logger.debug("Ignoring non-critical KG session cleanup failure: %s", exc)
+    session.expunge_all()
+    session.rollback()
 
 
 def _normalize_prompt_selector_value(value: object) -> str:
@@ -205,18 +203,15 @@ def _compute_content_stats(text: str) -> tuple[str, int]:
 
 def _document_from_chunk(chunk: DocumentChunk) -> LCDocument:
     meta = dict(chunk.doc_metadata or {})
-    if chunk.document_id is not None:
-        meta.setdefault("document_id", str(chunk.document_id))
-    if chunk.id is not None:
-        meta.setdefault("chunk_id", str(chunk.id))
-    if chunk.chunk_index is not None:
-        meta.setdefault("chunk_index", int(chunk.chunk_index))
-    if chunk.page_number is not None:
-        meta.setdefault("page_number", int(chunk.page_number))
-    if chunk.start_char is not None:
-        meta.setdefault("start_char", int(chunk.start_char))
-    if chunk.end_char is not None:
-        meta.setdefault("end_char", int(chunk.end_char))
+    meta.update(
+        document_id=str(chunk.document_id),
+        chunk_id=str(chunk.id),
+        chunk_index=chunk.chunk_index,
+        page=chunk.page_number,
+        page_number=chunk.page_number,
+        start_char=chunk.start_char,
+        end_char=chunk.end_char,
+    )
     return LCDocument(
         page_content=chunk.content,
         metadata=meta,
@@ -232,23 +227,30 @@ def _is_chunk_unchanged(
 ) -> bool:
     if not prior_events:
         return False
-    if not isinstance(content_hash, str) or not content_hash.strip():
-        return False
-
     for ev in prior_events:
-        refs = ev.references if isinstance(ev.references, dict) else {}
-        prior_hash = (refs.get("content_hash") or "").strip()
-        if not prior_hash or prior_hash != content_hash:
-            return False
-
         extra = ev.extra_data
-        if not isinstance(extra, dict):
+        # Unknown legacy state is a cache miss, not an unreadable/invalid fact.
+        if not is_event_extraction_complete(extra):
+            return False
+        refs = ev.references
+        if not isinstance(refs, dict):
+            return False
+        prior_hash = refs.get("content_hash")
+        if not isinstance(prior_hash, str) or prior_hash.strip() != content_hash:
             return False
         for key in _PROMPT_SELECTOR_KEYS:
             if _normalize_prompt_selector_value(extra.get(key)) != prompt_selector_expected.get(key, ""):
                 return False
 
     return True
+
+
+def _mark_event_extraction_complete(events: Sequence[KgSourceEvent]) -> None:
+    """Stage completion in the owner's final successful SQL transaction."""
+    for event in events:
+        extra = dict(event.extra_data) if event.extra_data is not None else {}
+        extra[KG_EXTRACTION_COMPLETE_KEY] = True
+        event.extra_data = extra
 
 
 def _build_canonicalized_entity(
@@ -605,13 +607,7 @@ def _apply_budget_metadata(meta: dict[str, object], budget_stats: dict[str, int 
 
 
 def _apply_alias_metadata(meta: dict[str, object], alias_stats: dict[str, int]) -> None:
-    for key, value in alias_stats.items():
-        if not key:
-            continue
-        try:
-            meta[str(key)] = int(value or 0)
-        except Exception:
-            logger.debug("Skipping item after non-critical exception", exc_info=True)
+    meta.update(alias_stats)
 
 
 def _document_metadata_counts(
@@ -653,7 +649,7 @@ def _build_relation_verify_candidates(
                 subject_id=relation["subject_id"].strip(),
                 predicate=relation["predicate"].strip() or "unknown",
                 object_id=relation["object_id"].strip(),
-                confidence=float(relation.get("confidence") or 0.5),
+                confidence=relation["confidence"],
                 evidence_quote=relation.get("evidence_quote"),
             )
         )
@@ -725,9 +721,7 @@ async def _verify_relations_for_chunk(
         )
         return chunk_id, None, False
 
-    kept = verify_output.get("kept") if isinstance(verify_output, dict) else None
-    if not isinstance(kept, list) or not kept:
-        return chunk_id, None, True
+    kept = verify_output["kept"]
     return (
         chunk_id,
         _merge_verified_relations(
@@ -753,11 +747,18 @@ def _build_chunk_sections(
         return [target]
 
     sections: list[DocumentChunk] = [target]
+    pipeline_key = (target.doc_metadata or {}).get("doc_pipeline_key")
     for step in range(1, context_window + 1):
-        if position - step >= 0:
-            sections.append(chunks_to_process[position - step])
-        if position + step < len(chunks_to_process):
-            sections.append(chunks_to_process[position + step])
+        for candidate_position in (position - step, position + step):
+            if not 0 <= candidate_position < len(chunks_to_process):
+                continue
+            candidate = chunks_to_process[candidate_position]
+            if (
+                candidate.document_id == target.document_id
+                and candidate.tenant_id == target.tenant_id
+                and (candidate.doc_metadata or {}).get("doc_pipeline_key") == pipeline_key
+            ):
+                sections.append(candidate)
     return sections
 
 
@@ -872,9 +873,11 @@ async def _extract_chunk_with_retries(
                 max_entities_per_event=max_entities_per_event,
                 chunk_timeout_sec=chunk_timeout_sec,
             )
+            if not isinstance(data, list):
+                raise ValueError("KG extraction processor must return an event list")
             progress.succeeded_chunk_ids.add(chunk.id)
             _record_chunk_retry_success(progress, chunk_id=chunk.id, attempt=attempt)
-            return chunk, data if isinstance(data, list) else []
+            return chunk, data
         except asyncio.TimeoutError as exc:
             progress.timed_out_chunks += 1
             progress.timeout_chunk_ids.add(chunk.id)
@@ -975,14 +978,31 @@ def _load_resolved_chunks(
     session: "Session", config: ExtractConfig, chunks: Sequence[DocumentChunk] | None
 ) -> list[DocumentChunk]:
     if chunks is None:
-        return (
+        resolved_chunks = (
             session.query(DocumentChunk)
-            .filter(DocumentChunk.id.in_(config.chunk_ids))
-            .order_by(DocumentChunk.chunk_index)
+            .filter(DocumentChunk.tenant_id == config.tenant_id, DocumentChunk.id.in_(config.chunk_ids))
             .all()
         )
-    resolved_chunks = list(chunks)
-    resolved_chunks.sort(key=lambda chunk: chunk.chunk_index)
+    else:
+        resolved_chunks = list(chunks)
+        requested_ids = set(config.chunk_ids)
+        if any(
+            chunk.tenant_id != config.tenant_id or chunk.id not in requested_ids or chunk.document_id is None
+            for chunk in resolved_chunks
+        ):
+            raise ValueError("Supplied chunks do not match the extraction tenant and requested IDs")
+    for chunk in resolved_chunks:
+        pipeline_key = (chunk.doc_metadata or {}).get("doc_pipeline_key")
+        if pipeline_key is not None and not isinstance(pipeline_key, str):
+            raise ValueError("Chunk pipeline identity must be a string or null")
+    resolved_chunks.sort(
+        key=lambda chunk: (
+            chunk.document_id,
+            (chunk.doc_metadata or {}).get("doc_pipeline_key") or "",
+            chunk.chunk_index,
+            chunk.id,
+        )
+    )
     return resolved_chunks
 
 
@@ -1035,25 +1055,28 @@ def _plugin_writeback(
 
 
 def _cleanup_plugin_extract(
-    *, session: "Session", config: ExtractConfig, tenant_id: object, chunk_ids_for_replace: list[object]
+    *,
+    session: "Session",
+    config: ExtractConfig,
+    tenant_id: object,
+    chunk_ids_for_replace: list[object],
+    exclude_event_ids: list[object],
 ) -> None:
     if not bool(config.replace_existing) or not chunk_ids_for_replace:
         return
-    try:
-        RelationRepository(session).delete_relations_for_chunks(
-            chunk_ids_for_replace,
-            tenant_id=tenant_id,
-            commit=False,
-        )
-        Indexer(session).delete_event_indexes_for_chunks(
-            tenant_id=tenant_id,
-            chunk_ids=chunk_ids_for_replace,
-            commit=False,
-            exclude_event_ids=[],
-            prune_orphan_entities=bool(config.prune_orphan_entities),
-        )
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("Failed to cleanup previous plugin KG events for chunks: %s", str(exc)[:200])
+    RelationRepository(session).delete_relations_for_chunks(
+        chunk_ids_for_replace,
+        tenant_id=tenant_id,
+        commit=False,
+    )
+    Indexer(session).delete_event_indexes_for_chunks(
+        tenant_id=tenant_id,
+        chunk_ids=chunk_ids_for_replace,
+        commit=False,
+        exclude_event_ids=exclude_event_ids,
+        prune_orphan_entities=bool(config.prune_orphan_entities),
+        strict=True,
+    )
 
 
 def _plugin_metrics_payload(
@@ -1111,14 +1134,25 @@ def _maybe_run_python_plugin(
         params=dict(config.kg_python_params or {}),
         context={"tenant_id": str(tenant_id)},
     )
+    events_to_index = [
+        replace(
+            record,
+            extra_data={
+                **(record.extra_data if record.extra_data is not None else {}),
+                KG_EXTRACTION_COMPLETE_KEY: False,
+            },
+        )
+        for record in events_to_index
+    ]
     chunk_ids_for_replace = [chunk.id for chunk in resolved_chunks if chunk.id is not None]
-    _cleanup_plugin_extract(
-        session=session,
-        config=config,
-        tenant_id=tenant_id,
-        chunk_ids_for_replace=chunk_ids_for_replace,
-    )
     if not events_to_index:
+        _cleanup_plugin_extract(
+            session=session,
+            config=config,
+            tenant_id=tenant_id,
+            chunk_ids_for_replace=chunk_ids_for_replace,
+            exclude_event_ids=[],
+        )
         if bool(config.replace_existing) and chunk_ids_for_replace:
             session.commit()
         elapsed = time.perf_counter() - t0
@@ -1153,8 +1187,17 @@ def _maybe_run_python_plugin(
         )
         .event_result
     )
-    events = result.events if result else []
-    entity_total = len(result.entities) if result else 0
+    if result is None:
+        raise RuntimeError("KG plugin event indexing returned no result")
+    events = result.events
+    entity_total = len(result.entities)
+    _cleanup_plugin_extract(
+        session=session,
+        config=config,
+        tenant_id=tenant_id,
+        chunk_ids_for_replace=chunk_ids_for_replace,
+        exclude_event_ids=[event.id for event in events],
+    )
     elapsed = time.perf_counter() - t0
     log_metrics(
         _plugin_metrics_payload(
@@ -1169,6 +1212,7 @@ def _maybe_run_python_plugin(
             entity_total=entity_total,
         )
     )
+    _mark_event_extraction_complete(events)
     _plugin_writeback(
         session=session,
         tenant_id=tenant_id,
@@ -1199,14 +1243,8 @@ def _resolve_prompt_template_content(
 
     prompt_template_content = chosen.content.strip()
     chosen_template_id = str(chosen.id)
-    try:
-        chosen.usage_count += 1
-        session.commit()
-    except Exception:
-        session.rollback()
-        logger.warning(
-            "Failed to update kg extract prompt usage_count for template %s", chosen_template_id, exc_info=True
-        )
+    chosen.usage_count += 1
+    session.commit()
     return prompt_template_content, chosen_template_id
 
 
@@ -1214,25 +1252,9 @@ def _populate_chunk_content_maps(state: _ExtractState) -> None:
     for chunk in state.resolved_chunks:
         meta = chunk.doc_metadata
         meta_dict = meta if isinstance(meta, dict) else {}
-        raw_hash = meta_dict.get("content_hash")
-        content_hash = raw_hash.strip() if isinstance(raw_hash, str) and raw_hash.strip() else ""
-        raw_len = meta_dict.get("content_len")
-        try:
-            content_len = int(raw_len) if raw_len is not None else None
-        except Exception:
-            content_len = None
-
-        computed_digest = ""
-        computed_len = 0
-        if not content_hash or content_len is None:
-            computed_digest, computed_len = _compute_content_stats(chunk.content)
-        if not content_hash:
-            content_hash = computed_digest
-        if content_len is None:
-            content_len = computed_len
-
+        content_hash, content_len = _compute_content_stats(chunk.content)
         state.chunk_hash_by_id[chunk.id] = content_hash
-        state.chunk_len_by_id[chunk.id] = max(0, content_len)
+        state.chunk_len_by_id[chunk.id] = content_len
 
         raw_key = meta_dict.get("chunk_key")
         chunk_key = raw_key.strip() if isinstance(raw_key, str) and raw_key.strip() else ""
@@ -1405,9 +1427,7 @@ async def _verify_entities_for_chunk(
                 verify_output = await asyncio.wait_for(verify_coro, timeout=state.chunk_timeout_sec)
             else:
                 verify_output = await verify_coro
-        if isinstance(verify_output, dict):
-            return chunk_id, verify_output, True
-        return chunk_id, {"kept": [], "aliases": []}, True
+        return chunk_id, verify_output, True
     except Exception as exc:  # noqa: BLE001
         logger.warning(
             "KG entity verify failed for chunk %s: %s",
@@ -1418,13 +1438,9 @@ async def _verify_entities_for_chunk(
 
 
 def _build_keep_map(verify_output: dict[str, object]) -> dict[str, dict[str, object]]:
-    kept = verify_output.get("kept") if isinstance(verify_output, dict) else None
-    if not isinstance(kept, list) or not kept:
-        return {}
+    kept = verify_output["kept"]
     keep_map: dict[str, dict[str, object]] = {}
     for item in kept:
-        if not isinstance(item, dict):
-            continue
         cid = item["id"].strip()
         if cid:
             keep_map[cid] = dict(item)
@@ -1432,13 +1448,9 @@ def _build_keep_map(verify_output: dict[str, object]) -> dict[str, dict[str, obj
 
 
 def _clean_llm_aliases(verify_output: dict[str, object]) -> list[dict[str, object]]:
-    aliases = verify_output.get("aliases") if isinstance(verify_output, dict) else None
-    if not isinstance(aliases, list) or not aliases:
-        return []
+    aliases = verify_output["aliases"]
     cleaned: list[dict[str, object]] = []
     for item in aliases:
-        if not isinstance(item, dict):
-            continue
         alias_id = item["alias_id"].strip()
         canonical_id = item["canonical_id"].strip()
         if not alias_id or not canonical_id or alias_id == canonical_id:
@@ -1451,7 +1463,7 @@ def _apply_keep_map_to_entity(ent: dict, keep_map: dict[str, dict[str, object]])
     cid = str(ent.get("_cid") or "").strip()
     if not cid or cid not in keep_map:
         return None
-    info = keep_map.get(cid) or {}
+    info = keep_map[cid]
     if info.get("type"):
         ent["type"] = info.get("type")
     if info.get("description"):
@@ -1467,9 +1479,9 @@ def _apply_keep_map_to_events(
     processed_events: list[tuple[DocumentChunk, dict]], keep_map_by_chunk: dict[object, dict[str, dict[str, object]]]
 ) -> None:
     for chunk, event_payload in processed_events:
-        keep_map = keep_map_by_chunk.get(chunk.id)
-        if not keep_map:
+        if chunk.id not in keep_map_by_chunk:
             continue
+        keep_map = keep_map_by_chunk[chunk.id]
         ent_list = event_payload.get("entities") if isinstance(event_payload, dict) else None
         if not isinstance(ent_list, list) or not ent_list:
             continue
@@ -1512,8 +1524,7 @@ async def _run_entity_verification(
         if not ok:
             continue
         keep_map = _build_keep_map(verify_output)
-        if keep_map:
-            keep_map_by_chunk[chunk_id] = keep_map
+        keep_map_by_chunk[chunk_id] = keep_map
         aliases = _clean_llm_aliases(verify_output)
         if aliases:
             llm_aliases_by_chunk[chunk_id] = aliases
@@ -1552,6 +1563,8 @@ def _apply_entity_evidence(ent: dict, *, chunk: DocumentChunk, name: str, eviden
         fallback_mention=name,
         max_quote_chars=240,
     )
+    if evidence_required and evidence is not None and not surface_mentioned(quote=evidence.quote, surface=name):
+        evidence = coerce_evidence(text=chunk.content, evidence_quote=None, fallback_mention=name, max_quote_chars=240)
     if evidence is None:
         return None if evidence_required else ent
     ent["evidence_quote"] = evidence.quote
@@ -1647,7 +1660,7 @@ async def _build_embedding_cache(
         for offset in range(0, len(to_embed), state.embed_batch_size):
             batch = to_embed[offset : offset + state.embed_batch_size]
             vectors = await generate_batch(batch)
-            for text, vector in zip(batch, vectors, strict=False):
+            for text, vector in zip(batch, vectors, strict=True):
                 if vector:
                     embed_cache[text] = vector
     except Exception as exc:  # noqa: BLE001
@@ -1722,6 +1735,7 @@ def _build_event_index_records(
                 vector=vector,
                 entities=entity_inputs,
                 extra_data={
+                    KG_EXTRACTION_COMPLETE_KEY: False,
                     "kg_prompt_template_id": state.chosen_template_id,
                     "kg_prompt_template_key": config.prompt_template_key,
                     "kg_prompt_ab_experiment_key": config.prompt_ab_experiment_key,
@@ -1891,7 +1905,6 @@ def _handle_empty_extract_result(
         and not processed_events
         and progress.llm_called_chunk_ids
         and len(progress.failed_chunk_ids) >= len(progress.llm_called_chunk_ids)
-        and not progress.timeout_chunk_ids
     ):
         unique_errors = list(dict.fromkeys(msg for msg in progress.failure_messages if msg))
         detail = "; ".join(unique_errors)[:500] if unique_errors else "unknown_error"
@@ -1916,21 +1929,19 @@ def _handle_empty_extract_result(
         replace_existing=state.replace_existing,
     )
     if state.replace_existing and replace_cleanup_chunk_ids:
-        try:
-            if extract_relations_enabled:
-                RelationRepository(session).delete_relations_for_chunks(
-                    replace_cleanup_chunk_ids,
-                    tenant_id=state.tenant_id,
-                    commit=False,
-                )
-            Indexer(session).delete_event_indexes_for_chunks(
+        if extract_relations_enabled:
+            RelationRepository(session).delete_relations_for_chunks(
+                replace_cleanup_chunk_ids,
                 tenant_id=state.tenant_id,
-                chunk_ids=list(replace_cleanup_chunk_ids),
-                exclude_event_ids=[],
-                prune_orphan_entities=bool(config.prune_orphan_entities),
+                commit=False,
             )
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("Failed to cleanup previous KG events for chunks: %s", str(exc)[:200])
+        Indexer(session).delete_event_indexes_for_chunks(
+            tenant_id=state.tenant_id,
+            chunk_ids=list(replace_cleanup_chunk_ids),
+            exclude_event_ids=[],
+            prune_orphan_entities=bool(config.prune_orphan_entities),
+            strict=True,
+        )
 
     events = list(state.kept_events) + list(kept_on_failure)
     elapsed = time.perf_counter() - t0
@@ -2019,6 +2030,7 @@ def _finalize_extract_result(
             max_concurrency=state.max_concurrency,
         )
     )
+    _mark_event_extraction_complete(new_events)
     _writeback_document_metadata(
         session=session,
         tenant_id=state.tenant_id,
@@ -2096,12 +2108,7 @@ def _build_relation_pass_data(context: _RelationPostIndexContext) -> _RelationPa
 
 
 def _relation_alias_confidence() -> float:
-    alias_conf_raw = settings.KG_RELATION_ALIAS_CONFIDENCE
-    try:
-        alias_conf = float(alias_conf_raw) if alias_conf_raw is not None else 0.95
-    except Exception:
-        alias_conf = 0.95
-    return max(0.0, min(alias_conf, 1.0))
+    return max(0.0, min(settings.KG_RELATION_ALIAS_CONFIDENCE, 1.0))
 
 
 def _record_alias_candidate_methods(
@@ -2315,7 +2322,7 @@ def _alias_upsert_payload(missing_entities: dict[tuple[str, str], str], vectors:
         list(missing_entities.keys()),
         list(missing_entities.values()),
         vectors,
-        strict=False,
+        strict=True,
     ):
         payload.append(
             {
@@ -2354,16 +2361,13 @@ async def _upsert_missing_alias_entities(
     except Exception as exc:  # noqa: BLE001
         logger.warning("KG alias embedding failed; proceeding without vectors: %s", str(exc)[:200])
         vectors = [[] for _ in alias_texts]
-    try:
-        upserted = context.indexer.upsert_entities(
-            tenant_id=context.state.tenant_id,
-            entities=_alias_upsert_payload(missing_entities, vectors),
-            options=context.index_options,
-            commit=True,
-        )
-        _merge_upserted_alias_entities(context, data, upserted)
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("KG alias entity upsert failed; continuing: %s", str(exc)[:200])
+    upserted = context.indexer.upsert_entities(
+        tenant_id=context.state.tenant_id,
+        entities=_alias_upsert_payload(missing_entities, vectors),
+        options=context.index_options,
+        commit=True,
+    )
+    _merge_upserted_alias_entities(context, data, upserted)
 
 
 async def _prepare_relation_alias_data(context: _RelationPostIndexContext, data: _RelationPassData) -> None:
@@ -2614,25 +2618,22 @@ def _existing_alias_relation_keys(
     llm_aliases_existing = context.llm_aliases_by_chunk.get(chunk.id) or []
     if ok or not (alias_specs or llm_aliases_existing):
         return seen_rel_keys
-    try:
-        existing = (
-            context.session.query(
-                KgRelation.subject_entity_id,
-                KgRelation.predicate,
-                KgRelation.object_entity_id,
-            )
-            .filter(
-                KgRelation.tenant_id == context.state.tenant_id,
-                KgRelation.chunk_id == chunk.id,
-                KgRelation.predicate.in_(["alias_of", "same_as"]),
-            )
-            .all()
+    existing = (
+        context.session.query(
+            KgRelation.subject_entity_id,
+            KgRelation.predicate,
+            KgRelation.object_entity_id,
         )
-        for subj_id, pred, obj_id in existing:
-            if subj_id is not None and obj_id is not None:
-                seen_rel_keys.add((subj_id, pred.strip(), obj_id))
-    except Exception as exc:
-        logger.debug(_KG_EXTRACTOR_FALLBACK_LOG_MESSAGE, exc)
+        .filter(
+            KgRelation.tenant_id == context.state.tenant_id,
+            KgRelation.chunk_id == chunk.id,
+            KgRelation.predicate.in_(["alias_of", "same_as"]),
+        )
+        .all()
+    )
+    for subj_id, pred, obj_id in existing:
+        if subj_id is not None and obj_id is not None:
+            seen_rel_keys.add((subj_id, pred.strip(), obj_id))
     return seen_rel_keys
 
 
@@ -2648,15 +2649,6 @@ def _relation_entity_ids(
         obj_cand.normalized_name.strip(),
     )
     return data.entity_id_by_key.get(subj_key), data.entity_id_by_key.get(obj_key)
-
-
-def _relation_confidence(rel: dict[str, object]) -> float:
-    conf_raw = rel.get("confidence")
-    try:
-        conf = float(conf_raw) if conf_raw is not None else 0.5
-    except Exception:
-        conf = 0.5
-    return max(0.0, min(1.0, conf))
 
 
 def _append_extracted_relation_rows(
@@ -2691,8 +2683,7 @@ def _append_extracted_relation_rows(
         rel_key = (subj_ent_id, pred, obj_ent_id)
         if rel_key in seen_rel_keys:
             continue
-        seen_rel_keys.add(rel_key)
-        _append_extracted_relation_row(
+        if _append_extracted_relation_row(
             context=context,
             chunk=chunk,
             rel=rel,
@@ -2705,7 +2696,8 @@ def _append_extracted_relation_rows(
             pipeline_hash=pipeline_hash,
             relation_evidence_stats=relation_evidence_stats,
             rel_rows=rel_rows,
-        )
+        ):
+            seen_rel_keys.add(rel_key)
 
 
 def _append_extracted_relation_row(
@@ -2722,8 +2714,8 @@ def _append_extracted_relation_row(
     pipeline_hash: str | None,
     relation_evidence_stats: dict[str, int],
     rel_rows: list[KgRelation],
-) -> None:
-    conf = _relation_confidence(rel)
+) -> bool:
+    conf = rel["confidence"]
     rel_refs = dict(refs)
     evidence, evidence_ok = _build_relation_evidence(
         chunk=chunk,
@@ -2734,10 +2726,10 @@ def _append_extracted_relation_row(
     )
     if evidence is None and context.evidence_required:
         relation_evidence_stats["dropped_no_evidence"] += 1
-        return
+        return False
     if evidence is not None and not evidence_ok:
         relation_evidence_stats["dropped_missing_endpoints"] += 1
-        return
+        return False
     if evidence is not None:
         rel_refs["evidence_quote"] = evidence.quote
         rel_refs["evidence_start_char"] = evidence.start_char
@@ -2765,6 +2757,7 @@ def _append_extracted_relation_row(
             },
         )
     )
+    return True
 
 
 def _heuristic_alias_entity_ids(
@@ -2803,9 +2796,6 @@ def _append_heuristic_alias_relation_rows(
             )
             _alias_bump(context.alias_stats_by_doc, chunk.document_id, "kg_alias_edges_skipped_duplicate", 1)
             continue
-        seen_rel_keys.add(rel_key)
-        context.alias_diag["edges_appended"] = int(context.alias_diag.get("edges_appended", 0) or 0) + 1
-        _alias_bump(context.alias_stats_by_doc, chunk.document_id, "kg_alias_edges_appended", 1)
         alias_refs = dict(refs)
         evidence = coerce_evidence(
             text=(chunk.content),
@@ -2815,6 +2805,9 @@ def _append_heuristic_alias_relation_rows(
         )
         if evidence is None and context.evidence_required:
             continue
+        seen_rel_keys.add(rel_key)
+        context.alias_diag["edges_appended"] = context.alias_diag["edges_appended"] + 1
+        _alias_bump(context.alias_stats_by_doc, chunk.document_id, "kg_alias_edges_appended", 1)
         if evidence is not None:
             alias_refs["evidence_quote"] = evidence.quote
             alias_refs["evidence_start_char"] = evidence.start_char
@@ -2882,7 +2875,6 @@ def _append_llm_alias_relation_rows(
         rel_key = (subj_ent_id, "alias_of", obj_ent_id)
         if rel_key in seen_rel_keys or (obj_ent_id, "alias_of", subj_ent_id) in seen_rel_keys:
             continue
-        seen_rel_keys.add(rel_key)
         llm_refs = dict(refs)
         evidence = coerce_evidence(
             text=(chunk.content),
@@ -2892,16 +2884,13 @@ def _append_llm_alias_relation_rows(
         )
         if evidence is None and context.evidence_required:
             continue
+        seen_rel_keys.add(rel_key)
         if evidence is not None:
             llm_refs["evidence_quote"] = evidence.quote
             llm_refs["evidence_start_char"] = evidence.start_char
             llm_refs["evidence_end_char"] = evidence.end_char
             llm_refs["evidence_source"] = evidence.source.strip() or "quote"
-        try:
-            conf = float(item.get("confidence") or 0.9)
-        except Exception:
-            conf = 0.9
-        conf = max(0.0, min(1.0, conf))
+        conf = item["confidence"]
         rel_rows.append(
             KgRelation(
                 tenant_id=context.state.tenant_id,
@@ -3071,26 +3060,19 @@ async def _run_relation_post_index_pass(context: _RelationPostIndexContext) -> d
     if not context.state.extract_relations_enabled or not context.cleanup_chunk_ids:
         return relation_evidence_stats
 
-    try:
-        data = _build_relation_pass_data(context)
-        await _prepare_relation_alias_data(context, data)
-        await _populate_relation_extraction_results(context, data)
-        succeeded_chunk_ids, rel_rows = _build_relation_rows(
-            context,
-            data,
-            relation_evidence_stats,
-        )
-        _persist_relation_rows(
-            context,
-            succeeded_chunk_ids=succeeded_chunk_ids,
-            rel_rows=rel_rows,
-        )
-    except Exception as exc:  # noqa: BLE001
-        try:
-            context.session.rollback()
-        except Exception as rollback_exc:
-            logger.debug(_KG_EXTRACTOR_FALLBACK_LOG_MESSAGE, rollback_exc)
-        logger.warning("KG relation pass failed; continuing without relations: %s", str(exc)[:200])
+    data = _build_relation_pass_data(context)
+    await _prepare_relation_alias_data(context, data)
+    await _populate_relation_extraction_results(context, data)
+    succeeded_chunk_ids, rel_rows = _build_relation_rows(
+        context,
+        data,
+        relation_evidence_stats,
+    )
+    _persist_relation_rows(
+        context,
+        succeeded_chunk_ids=succeeded_chunk_ids,
+        rel_rows=rel_rows,
+    )
 
     return relation_evidence_stats
 
@@ -3200,7 +3182,6 @@ def _normalize_skill_item(
     outputs = raw.get("outputs") if isinstance(raw.get("outputs"), list) else []
     tools = raw.get("tools") if isinstance(raw.get("tools"), list) else []
     tags = raw.get("tags") if isinstance(raw.get("tags"), list) else []
-    skill_evidence_stats["kept"] += 1
     return {
         "name": name,
         "normalized_name": normalized,
@@ -3215,8 +3196,9 @@ def _normalize_skill_item(
             "outputs": [str(item).strip() for item in outputs if str(item).strip()][:50],
             "tools": [str(item).strip() for item in tools if str(item).strip()][:50],
             "tags": _dedupe_surfaces(tags, limit=10),
-            "confidence": raw.get("confidence"),
+            "confidence": raw["confidence"],
         },
+        "_confidence": raw["confidence"],
         "_embed_text": _skill_embed_text(name, summary, steps),
         "_chunk_id": chunk_id,
         "_evidence_quote": evidence.quote if evidence is not None else None,
@@ -3256,6 +3238,7 @@ def _collect_skill_items_for_chunk(
         if normalized in seen_norm:
             continue
         seen_norm.add(normalized)
+        skill_evidence_stats["kept"] += 1
         kept.append(item)
         text = item["_embed_text"].strip()
         if text:
@@ -3306,7 +3289,7 @@ async def _embed_skill_items(data: _SkillPassData) -> None:
     skill_vectors_by_text: dict[str, list[float]] = {}
     try:
         vectors = await generate_batch(data.skill_embed_texts)
-        for text, vec in zip(data.skill_embed_texts, vectors, strict=False):
+        for text, vec in zip(data.skill_embed_texts, vectors, strict=True):
             if vec:
                 skill_vectors_by_text[str(text)] = list(vec)
     except Exception as exc:  # noqa: BLE001
@@ -3318,10 +3301,6 @@ async def _embed_skill_items(data: _SkillPassData) -> None:
             if embed_text and embed_text in skill_vectors_by_text:
                 item["vector"] = skill_vectors_by_text.get(embed_text)
             item.pop("_embed_text", None)
-            try:
-                item["_confidence"] = float(item.get("extra_data", {}).get("confidence") or 0.6)
-            except Exception:
-                item["_confidence"] = 0.6
             data.skill_entity_inputs.append(item)
 
 
@@ -3382,9 +3361,9 @@ async def _embed_taxonomy_surfaces(
         vectors = await generate_batch(to_embed)
     except Exception as exc:  # noqa: BLE001
         logger.warning("KG skill taxonomy embedding failed; proceeding without vectors: %s", str(exc)[:200])
-        vectors = [[] for _ in to_embed]
-    for idx, vec in enumerate(list(vectors or [])):
-        surface = to_embed[idx].strip()
+        return tag_vectors_by_norm, category_vectors_by_norm
+    for surface, vec in zip(to_embed, vectors, strict=True):
+        surface = surface.strip()
         if not surface:
             continue
         normalized = normalize_entity_name(surface)
@@ -3392,7 +3371,7 @@ async def _embed_taxonomy_surfaces(
             continue
         if surface in tag_surface_by_norm.values() and vec:
             tag_vectors_by_norm[normalized] = list(vec)
-        elif surface in category_surface_by_norm.values() and vec:
+        if surface in category_surface_by_norm.values() and vec:
             category_vectors_by_norm[normalized] = list(vec)
     return tag_vectors_by_norm, category_vectors_by_norm
 
@@ -3428,43 +3407,40 @@ async def _upsert_skill_taxonomy(context: _SkillPostIndexContext, data: _SkillPa
     if not context.state.extract_relations_enabled:
         return
     tag_surface_by_norm, category_surface_by_norm = _collect_taxonomy_surfaces(data.skills_by_chunk)
-    try:
-        tag_vectors_by_norm, category_vectors_by_norm = await _embed_taxonomy_surfaces(
-            tag_surface_by_norm,
-            category_surface_by_norm,
+    tag_vectors_by_norm, category_vectors_by_norm = await _embed_taxonomy_surfaces(
+        tag_surface_by_norm,
+        category_surface_by_norm,
+    )
+    tag_inputs = _taxonomy_inputs(
+        type_name="SkillTag",
+        surfaces_by_norm=tag_surface_by_norm,
+        vectors_by_norm=tag_vectors_by_norm,
+    )
+    category_inputs = _taxonomy_inputs(
+        type_name="SkillCategory",
+        surfaces_by_norm=category_surface_by_norm,
+        vectors_by_norm=category_vectors_by_norm,
+    )
+    if tag_inputs:
+        upserted_tags = context.indexer.upsert_entities(
+            tenant_id=context.state.tenant_id,
+            entities=tag_inputs,
+            options=context.index_options,
+            commit=True,
         )
-        tag_inputs = _taxonomy_inputs(
-            type_name="SkillTag",
-            surfaces_by_norm=tag_surface_by_norm,
-            vectors_by_norm=tag_vectors_by_norm,
+        _merge_taxonomy_entities(upserted_tags, expected_type="SkillTag", target=data.tag_id_by_norm)
+    if category_inputs:
+        upserted_categories = context.indexer.upsert_entities(
+            tenant_id=context.state.tenant_id,
+            entities=category_inputs,
+            options=context.index_options,
+            commit=True,
         )
-        category_inputs = _taxonomy_inputs(
-            type_name="SkillCategory",
-            surfaces_by_norm=category_surface_by_norm,
-            vectors_by_norm=category_vectors_by_norm,
+        _merge_taxonomy_entities(
+            upserted_categories,
+            expected_type="SkillCategory",
+            target=data.category_id_by_norm,
         )
-        if tag_inputs:
-            upserted_tags = context.indexer.upsert_entities(
-                tenant_id=context.state.tenant_id,
-                entities=tag_inputs,
-                options=context.index_options,
-                commit=True,
-            )
-            _merge_taxonomy_entities(upserted_tags, expected_type="SkillTag", target=data.tag_id_by_norm)
-        if category_inputs:
-            upserted_categories = context.indexer.upsert_entities(
-                tenant_id=context.state.tenant_id,
-                entities=category_inputs,
-                options=context.index_options,
-                commit=True,
-            )
-            _merge_taxonomy_entities(
-                upserted_categories,
-                expected_type="SkillCategory",
-                target=data.category_id_by_norm,
-            )
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("KG skill taxonomy upsert failed; continuing without taxonomy nodes: %s", str(exc)[:200])
 
 
 def _skill_refs_base(
@@ -3488,25 +3464,22 @@ def _existing_skill_relation_keys(
     session: "Session", *, tenant_id: object, chunk_id: object
 ) -> set[tuple[object, str, object]]:
     seen_skill_rel_keys: set[tuple[object, str, object]] = set()
-    try:
-        existing = (
-            session.query(
-                KgRelation.subject_entity_id,
-                KgRelation.predicate,
-                KgRelation.object_entity_id,
-            )
-            .filter(
-                KgRelation.tenant_id == tenant_id,
-                KgRelation.chunk_id == chunk_id,
-                KgRelation.predicate.in_(["belong_to", "compose_with", "depends_on"]),
-            )
-            .all()
+    existing = (
+        session.query(
+            KgRelation.subject_entity_id,
+            KgRelation.predicate,
+            KgRelation.object_entity_id,
         )
-        for subj_id, pred, obj_id in existing:
-            if subj_id is not None and obj_id is not None:
-                seen_skill_rel_keys.add((subj_id, pred.strip(), obj_id))
-    except Exception as exc:
-        logger.debug(_KG_EXTRACTOR_FALLBACK_LOG_MESSAGE, exc)
+        .filter(
+            KgRelation.tenant_id == tenant_id,
+            KgRelation.chunk_id == chunk_id,
+            KgRelation.predicate.in_(["belong_to", "compose_with", "depends_on"]),
+        )
+        .all()
+    )
+    for subj_id, pred, obj_id in existing:
+        if subj_id is not None and obj_id is not None:
+            seen_skill_rel_keys.add((subj_id, pred.strip(), obj_id))
     return seen_skill_rel_keys
 
 
@@ -3519,8 +3492,7 @@ def _skill_ids_in_chunk(items: list[dict], skill_id_by_norm: dict[str, object]) 
         skill_id = skill_id_by_norm.get(normalized)
         if not skill_id:
             continue
-        conf = float(item.get("_confidence") or 0.6)
-        conf = max(0.0, min(1.0, conf))
+        conf = item["_confidence"]
         skill_ids.append((skill_id, conf, item))
     return skill_ids
 
@@ -3597,32 +3569,23 @@ def _append_skill_belong_to_edge(
 
 
 def _compose_pair_quote(a_item: dict, b_item: dict, chunk_text: str) -> tuple[str | None, int | None, int | None]:
-    try:
-        a_s = a_item.get("_evidence_start_char")
-        a_e = a_item.get("_evidence_end_char")
-        b_s = b_item.get("_evidence_start_char")
-        b_e = b_item.get("_evidence_end_char")
-        if (
-            isinstance(a_s, int)
-            and isinstance(a_e, int)
-            and isinstance(b_s, int)
-            and isinstance(b_e, int)
-            and chunk_text
-        ):
-            start = min(a_s, b_s)
-            end = max(a_e, b_e)
-            if 0 <= start < end <= len(chunk_text):
-                raw_quote = chunk_text[start:end]
-                lstrip_len = len(raw_quote) - len(raw_quote.lstrip())
-                rstrip_len = len(raw_quote) - len(raw_quote.rstrip())
-                start2 = start + lstrip_len
-                end2 = end - rstrip_len
-                if 0 <= start2 < end2 <= len(chunk_text):
-                    quote = chunk_text[start2:end2]
-                    if quote and len(quote) <= 240:
-                        return quote, start2, end2
-    except Exception:
-        return None, None, None
+    a_s = a_item.get("_evidence_start_char")
+    a_e = a_item.get("_evidence_end_char")
+    b_s = b_item.get("_evidence_start_char")
+    b_e = b_item.get("_evidence_end_char")
+    if isinstance(a_s, int) and isinstance(a_e, int) and isinstance(b_s, int) and isinstance(b_e, int) and chunk_text:
+        start = min(a_s, b_s)
+        end = max(a_e, b_e)
+        if 0 <= start < end <= len(chunk_text):
+            raw_quote = chunk_text[start:end]
+            lstrip_len = len(raw_quote) - len(raw_quote.lstrip())
+            rstrip_len = len(raw_quote) - len(raw_quote.rstrip())
+            start2 = start + lstrip_len
+            end2 = end - rstrip_len
+            if 0 <= start2 < end2 <= len(chunk_text):
+                quote = chunk_text[start2:end2]
+                if quote and len(quote) <= 240:
+                    return quote, start2, end2
     return None, None, None
 
 
@@ -3700,8 +3663,7 @@ def _append_skill_links(
             skill_id = skill_id_by_norm.get(normalized)
             if not skill_id:
                 continue
-            conf = float(item.get("_confidence") or 0.6)
-            conf = max(0.0, min(1.0, conf))
+            conf = item["_confidence"]
             link_extra = dict(link_extra_base or {})
             evidence_quote = item.get("_evidence_quote")
             if isinstance(evidence_quote, str) and evidence_quote.strip():
@@ -3833,42 +3795,35 @@ async def _run_skill_post_index_pass(context: _SkillPostIndexContext) -> dict[st
     if not context.state.extract_skills_enabled or not context.cleanup_chunk_ids:
         return skill_evidence_stats
 
-    try:
-        max_skills_per_chunk = max(
-            0,
-            int(settings.KG_SKILL_MAX_SKILLS_PER_CHUNK),
-        )
-        if max_skills_per_chunk <= 0:
-            raise RuntimeError("KG_SKILL_MAX_SKILLS_PER_CHUNK must be > 0 when skills are enabled")
-        skill_evidence_required = bool(settings.KG_SKILL_EVIDENCE_REQUIRED)
-        data = _build_skill_pass_data(context)
-        await _collect_skills_by_chunk(
-            context,
-            data,
-            max_skills_per_chunk=max_skills_per_chunk,
-            skill_evidence_required=skill_evidence_required,
-            skill_evidence_stats=skill_evidence_stats,
-        )
-        await _embed_skill_items(data)
-        _upsert_skill_entities(context, data)
-        await _upsert_skill_taxonomy(context, data)
-        links, skill_rel_rows = _build_skill_links_and_relations(
-            context,
-            data,
-            skill_evidence_required=skill_evidence_required,
-            skill_evidence_stats=skill_evidence_stats,
-        )
-        _persist_skill_links_and_relations(
-            context.session,
-            links=links,
-            skill_rel_rows=skill_rel_rows,
-        )
-    except Exception as exc:  # noqa: BLE001
-        try:
-            context.session.rollback()
-        except Exception as rollback_exc:
-            logger.debug(_KG_EXTRACTOR_FALLBACK_LOG_MESSAGE, rollback_exc)
-        logger.warning("KG skill pass failed; continuing without skills: %s", str(exc)[:200])
+    max_skills_per_chunk = max(
+        0,
+        int(settings.KG_SKILL_MAX_SKILLS_PER_CHUNK),
+    )
+    if max_skills_per_chunk <= 0:
+        raise RuntimeError("KG_SKILL_MAX_SKILLS_PER_CHUNK must be > 0 when skills are enabled")
+    skill_evidence_required = bool(settings.KG_SKILL_EVIDENCE_REQUIRED)
+    data = _build_skill_pass_data(context)
+    await _collect_skills_by_chunk(
+        context,
+        data,
+        max_skills_per_chunk=max_skills_per_chunk,
+        skill_evidence_required=skill_evidence_required,
+        skill_evidence_stats=skill_evidence_stats,
+    )
+    await _embed_skill_items(data)
+    _upsert_skill_entities(context, data)
+    await _upsert_skill_taxonomy(context, data)
+    links, skill_rel_rows = _build_skill_links_and_relations(
+        context,
+        data,
+        skill_evidence_required=skill_evidence_required,
+        skill_evidence_stats=skill_evidence_stats,
+    )
+    _persist_skill_links_and_relations(
+        context.session,
+        links=links,
+        skill_rel_rows=skill_rel_rows,
+    )
 
     return skill_evidence_stats
 
@@ -3887,52 +3842,48 @@ def _writeback_document_metadata(
     budget_stats_by_doc: dict[object, dict[str, int | str]] | None = None,
     alias_stats_by_doc: dict[object, dict[str, int]] | None = None,
 ) -> None:
-    try:
-        from app.models.document import Document as DBDocument
+    from app.models.documents.records import Document as DBDocument
 
-        if not chunks:
-            return
+    if not chunks:
+        return
 
-        doc_ids, _chunk_id_to_doc_id, counts = _document_metadata_counts(
-            chunks=chunks,
-            kept_events=kept_events,
-            skipped_chunk_ids=skipped_chunk_ids,
-            budget_skipped_chunk_ids=budget_skipped_chunk_ids,
-            skipped_short_chunk_ids=skipped_short_chunk_ids,
-            failed_chunk_ids=failed_chunk_ids,
-            retry_chunk_ids=retry_chunk_ids,
+    doc_ids, _chunk_id_to_doc_id, counts = _document_metadata_counts(
+        chunks=chunks,
+        kept_events=kept_events,
+        skipped_chunk_ids=skipped_chunk_ids,
+        budget_skipped_chunk_ids=budget_skipped_chunk_ids,
+        skipped_short_chunk_ids=skipped_short_chunk_ids,
+        failed_chunk_ids=failed_chunk_ids,
+        retry_chunk_ids=retry_chunk_ids,
+    )
+    if not doc_ids:
+        return
+
+    extracted_at = datetime.now(UTC).isoformat()
+    docs = (
+        session.query(DBDocument)
+        .filter(
+            DBDocument.id.in_(list(doc_ids)),
+            DBDocument.tenant_id == tenant_id,
         )
-        if not doc_ids:
-            return
-
-        extracted_at = datetime.now(UTC).isoformat()
-        docs = (
-            session.query(DBDocument)
-            .filter(
-                DBDocument.id.in_(list(doc_ids)),
-                DBDocument.tenant_id == tenant_id,
-            )
-            .all()
-        )
-        for doc in docs:
-            meta = dict(doc.doc_metadata or {})
-            meta["kg_event_count"] = counts["events"].get(doc.id, 0)
-            meta["kg_skipped_chunks"] = counts["skipped"].get(doc.id, 0)
-            meta["kg_budget_skipped_chunks"] = counts["budget_skipped"].get(doc.id, 0)
-            meta["kg_skipped_short_chunks"] = counts["short_skipped"].get(doc.id, 0)
-            meta["kg_failed_chunks"] = counts["failed"].get(doc.id, 0)
-            meta["kg_retry_chunks"] = counts["retry"].get(doc.id, 0)
-            meta["kg_extracted_at"] = extracted_at
-            budget_stats = budget_stats_by_doc.get(doc.id, {}) if isinstance(budget_stats_by_doc, dict) else {}
-            _apply_budget_metadata(meta, budget_stats)
-            alias_stats = alias_stats_by_doc.get(doc.id, {}) if isinstance(alias_stats_by_doc, dict) else {}
-            if isinstance(alias_stats, dict):
-                _apply_alias_metadata(meta, alias_stats)
-            doc.doc_metadata = meta
-        session.commit()
-    except Exception as exc:  # noqa: BLE001
-        session.rollback()
-        logger.warning("Failed to write back kg metrics to document metadata: %s", str(exc)[:200], exc_info=True)
+        .all()
+    )
+    for doc in docs:
+        meta = dict(doc.doc_metadata or {})
+        meta["kg_event_count"] = counts["events"].get(doc.id, 0)
+        meta["kg_skipped_chunks"] = counts["skipped"].get(doc.id, 0)
+        meta["kg_budget_skipped_chunks"] = counts["budget_skipped"].get(doc.id, 0)
+        meta["kg_skipped_short_chunks"] = counts["short_skipped"].get(doc.id, 0)
+        meta["kg_failed_chunks"] = counts["failed"].get(doc.id, 0)
+        meta["kg_retry_chunks"] = counts["retry"].get(doc.id, 0)
+        meta["kg_extracted_at"] = extracted_at
+        budget_stats = budget_stats_by_doc.get(doc.id, {}) if isinstance(budget_stats_by_doc, dict) else {}
+        _apply_budget_metadata(meta, budget_stats)
+        alias_stats = alias_stats_by_doc.get(doc.id, {}) if isinstance(alias_stats_by_doc, dict) else {}
+        if isinstance(alias_stats, dict):
+            _apply_alias_metadata(meta, alias_stats)
+        doc.doc_metadata = meta
+    session.commit()
 
 
 class EventExtractor:
@@ -3964,156 +3915,157 @@ class EventExtractor:
         t0 = time.perf_counter()
         session = SessionLocal()
         try:
-            initialized = await self._initialize_extract_context(
-                session=session,
-                config=config,
-                chunks=chunks,
-                index_options=index_options,
-                t0=t0,
-            )
-            if isinstance(initialized, list):
-                return initialized
-
-            state, progress, alias_diag, alias_stats_by_doc, llm_client = initialized
-            tenant_id = state.tenant_id
-            processor = state.processor
-            backend_selection = state.backend_selection
-            backend_reason = state.backend_reason
-            max_concurrency = state.max_concurrency
-            max_events_per_chunk = state.max_events_per_chunk
-            max_entities_per_event = state.max_entities_per_event
-            sem = state.sem
-            chunk_timeout_sec = state.chunk_timeout_sec
-            context_window = state.context_window
-            min_chars = state.min_chars
-            chunk_max_retries = state.chunk_max_retries
-            retry_backoff_sec = state.retry_backoff_sec
-            replace_existing = state.replace_existing
-            extract_relations_enabled = state.extract_relations_enabled
-            chosen_template_id = state.chosen_template_id
-            chunk_len_by_id = state.chunk_len_by_id
-
-            extracted = await _extract_chunk_groups(
-                chunks_to_process=state.chunks_to_process,
-                processor=processor,
-                sem=sem,
-                chunk_id_to_pos=state.chunk_id_to_pos,
-                chunk_len_by_id=chunk_len_by_id,
-                context_window=context_window,
-                min_chars=min_chars,
-                max_concurrency=max_concurrency,
-                max_events_per_chunk=max_events_per_chunk,
-                max_entities_per_event=max_entities_per_event,
-                chunk_timeout_sec=chunk_timeout_sec,
-                chunk_max_retries=chunk_max_retries,
-                retry_backoff_sec=retry_backoff_sec,
-                progress=progress,
-            )
-
-            processed_events = _build_processed_events(
-                extracted,
-                max_events_per_chunk=max_events_per_chunk,
-                max_entities_per_event=max_entities_per_event,
-            )
-
-            event_bundle = await _prepare_event_bundle(
-                state=state,
-                config=config,
-                processed_events=processed_events,
-                llm_client=llm_client,
-            )
-            processed_events = event_bundle.processed_events
-            events_to_index = event_bundle.events_to_index
-            entity_total = event_bundle.entity_total
-            entity_evidence_stats = event_bundle.entity_evidence_stats
-            relation_verify_enabled = event_bundle.relation_verify_enabled
-            evidence_required = event_bundle.evidence_required
-            llm_aliases_by_chunk = event_bundle.llm_aliases_by_chunk
-
-            if not events_to_index:
-                return _handle_empty_extract_result(
+            async with AsyncExitStack() as llm_resources:
+                initialized = await self._initialize_extract_context(
                     session=session,
                     config=config,
+                    chunks=chunks,
+                    index_options=index_options,
+                    t0=t0,
+                    llm_resources=llm_resources,
+                )
+                if isinstance(initialized, list):
+                    return initialized
+
+                state, progress, alias_diag, alias_stats_by_doc, llm_client = initialized
+                tenant_id = state.tenant_id
+                processor = state.processor
+                backend_selection = state.backend_selection
+                backend_reason = state.backend_reason
+                max_concurrency = state.max_concurrency
+                max_events_per_chunk = state.max_events_per_chunk
+                max_entities_per_event = state.max_entities_per_event
+                sem = state.sem
+                chunk_timeout_sec = state.chunk_timeout_sec
+                context_window = state.context_window
+                min_chars = state.min_chars
+                chunk_max_retries = state.chunk_max_retries
+                retry_backoff_sec = state.retry_backoff_sec
+                replace_existing = state.replace_existing
+                extract_relations_enabled = state.extract_relations_enabled
+                chosen_template_id = state.chosen_template_id
+                chunk_len_by_id = state.chunk_len_by_id
+
+                extracted = await _extract_chunk_groups(
+                    chunks_to_process=state.chunks_to_process,
+                    processor=processor,
+                    sem=sem,
+                    chunk_id_to_pos=state.chunk_id_to_pos,
+                    chunk_len_by_id=chunk_len_by_id,
+                    context_window=context_window,
+                    min_chars=min_chars,
+                    max_concurrency=max_concurrency,
+                    max_events_per_chunk=max_events_per_chunk,
+                    max_entities_per_event=max_entities_per_event,
+                    chunk_timeout_sec=chunk_timeout_sec,
+                    chunk_max_retries=chunk_max_retries,
+                    retry_backoff_sec=retry_backoff_sec,
+                    progress=progress,
+                )
+
+                processed_events = _build_processed_events(
+                    extracted,
+                    max_events_per_chunk=max_events_per_chunk,
+                    max_entities_per_event=max_entities_per_event,
+                )
+
+                event_bundle = await _prepare_event_bundle(
+                    state=state,
+                    config=config,
+                    processed_events=processed_events,
+                    llm_client=llm_client,
+                )
+                processed_events = event_bundle.processed_events
+                events_to_index = event_bundle.events_to_index
+                entity_total = event_bundle.entity_total
+                entity_evidence_stats = event_bundle.entity_evidence_stats
+                relation_verify_enabled = event_bundle.relation_verify_enabled
+                evidence_required = event_bundle.evidence_required
+                llm_aliases_by_chunk = event_bundle.llm_aliases_by_chunk
+
+                if not events_to_index:
+                    return _handle_empty_extract_result(
+                        session=session,
+                        config=config,
+                        state=state,
+                        progress=progress,
+                        processed_events=processed_events,
+                        alias_diag=alias_diag,
+                        alias_stats_by_doc=alias_stats_by_doc,
+                        entity_evidence_stats=entity_evidence_stats,
+                        extract_relations_enabled=extract_relations_enabled,
+                        t0=t0,
+                        evidence_required=evidence_required,
+                        backend_selection=backend_selection,
+                        backend_reason=backend_reason,
+                    )
+
+                indexer = Indexer(session)
+                result = indexer.upsert(
+                    tenant_id=tenant_id,
+                    records=events_to_index,
+                    options=index_options,
+                ).event_result
+
+                if result is None:
+                    raise RuntimeError("KG event indexing returned no result")
+                new_events = result.events
+                cleanup_chunk_ids = [
+                    cid for cid in progress.succeeded_chunk_ids if cid not in progress.skipped_chunk_ids
+                ]
+
+                # Optional pass: extract entity->entity relations (triples) per processed chunk.
+                # This runs after event/entity indexing so we can map candidate entities to persisted KgEntity ids.
+                # IMPORTANT: commit relations before deleting old events when pruning is enabled; otherwise,
+                # relation-referenced entities could be pruned prematurely.
+                relation_evidence_stats, skill_evidence_stats = await _run_post_index_passes(
+                    session=session,
+                    config=config,
+                    index_options=index_options,
+                    indexer=indexer,
                     state=state,
                     progress=progress,
                     processed_events=processed_events,
+                    result=result,
+                    new_events=new_events,
+                    cleanup_chunk_ids=cleanup_chunk_ids,
+                    llm_client=llm_client,
                     alias_diag=alias_diag,
                     alias_stats_by_doc=alias_stats_by_doc,
-                    entity_evidence_stats=entity_evidence_stats,
-                    extract_relations_enabled=extract_relations_enabled,
-                    t0=t0,
+                    llm_aliases_by_chunk=llm_aliases_by_chunk,
+                    relation_verify_enabled=relation_verify_enabled,
+                    chosen_template_id=chosen_template_id,
                     evidence_required=evidence_required,
-                    backend_selection=backend_selection,
-                    backend_reason=backend_reason,
                 )
 
-            indexer = Indexer(session)
-            result = indexer.upsert(
-                tenant_id=tenant_id,
-                records=events_to_index,
-                options=index_options,
-            ).event_result
-
-            new_events = result.events if result else []
-            cleanup_chunk_ids = [cid for cid in progress.succeeded_chunk_ids if cid not in progress.skipped_chunk_ids]
-
-            # Optional pass: extract entity->entity relations (triples) per processed chunk.
-            # This runs after event/entity indexing so we can map candidate entities to persisted KgEntity ids.
-            # IMPORTANT: commit relations before deleting old events when pruning is enabled; otherwise,
-            # relation-referenced entities could be pruned prematurely.
-            relation_evidence_stats, skill_evidence_stats = await _run_post_index_passes(
-                session=session,
-                config=config,
-                index_options=index_options,
-                indexer=indexer,
-                state=state,
-                progress=progress,
-                processed_events=processed_events,
-                result=result,
-                new_events=new_events,
-                cleanup_chunk_ids=cleanup_chunk_ids,
-                llm_client=llm_client,
-                alias_diag=alias_diag,
-                alias_stats_by_doc=alias_stats_by_doc,
-                llm_aliases_by_chunk=llm_aliases_by_chunk,
-                relation_verify_enabled=relation_verify_enabled,
-                chosen_template_id=chosen_template_id,
-                evidence_required=evidence_required,
-            )
-
-            replace_cleanup_chunk_ids = list(
-                dict.fromkeys(
-                    list(cleanup_chunk_ids) + (list(state.budget_skipped_chunk_ids) if replace_existing else [])
+                replace_cleanup_chunk_ids = list(
+                    dict.fromkeys(
+                        list(cleanup_chunk_ids) + (list(state.budget_skipped_chunk_ids) if replace_existing else [])
+                    )
                 )
-            )
-            if replace_existing and replace_cleanup_chunk_ids:
-                try:
+                if replace_existing and replace_cleanup_chunk_ids:
                     indexer.delete_event_indexes_for_chunks(
                         tenant_id=tenant_id,
                         chunk_ids=list(replace_cleanup_chunk_ids),
                         exclude_event_ids=[ev.id for ev in new_events],
                         prune_orphan_entities=bool(config.prune_orphan_entities),
+                        strict=True,
                     )
-                except Exception as exc:  # noqa: BLE001
-                    logger.warning("Failed to cleanup previous KG events for chunks: %s", str(exc)[:200])
 
-            return _finalize_extract_result(
-                session=session,
-                state=state,
-                progress=progress,
-                new_events=new_events,
-                alias_diag=alias_diag,
-                alias_stats_by_doc=alias_stats_by_doc,
-                entity_evidence_stats=entity_evidence_stats,
-                relation_evidence_stats=relation_evidence_stats,
-                skill_evidence_stats=skill_evidence_stats,
-                entity_total=entity_total,
-                t0=t0,
-                evidence_required=evidence_required,
-            )
-        except Exception:
-            session.rollback()
-            raise
+                return _finalize_extract_result(
+                    session=session,
+                    state=state,
+                    progress=progress,
+                    new_events=new_events,
+                    alias_diag=alias_diag,
+                    alias_stats_by_doc=alias_stats_by_doc,
+                    entity_evidence_stats=entity_evidence_stats,
+                    relation_evidence_stats=relation_evidence_stats,
+                    skill_evidence_stats=skill_evidence_stats,
+                    entity_total=entity_total,
+                    t0=t0,
+                    evidence_required=evidence_required,
+                )
         finally:
             session.close()
 
@@ -4123,6 +4075,7 @@ class EventExtractor:
         config: ExtractConfig,
         resolved_chunks: list[DocumentChunk],
         prompt_template_content: str | None,
+        llm_resources: AsyncExitStack,
     ) -> "tuple[ExtractionBackendSelection, BaseLLMClient | None]":
         requested_backend = config.extraction_backend
         auto_backend_reason: str | None = None
@@ -4133,7 +4086,8 @@ class EventExtractor:
                 requested_backend = long_doc_backend
                 auto_backend_reason = f"long_doc_chunk_threshold:{len(resolved_chunks)}"
 
-        if requested_backend == "heuristic":
+        backend = normalize_extraction_backend(requested_backend)
+        if backend == "heuristic":
             return (
                 ExtractionBackendSelection(
                     backend="heuristic",
@@ -4143,14 +4097,14 @@ class EventExtractor:
                 None,
             )
 
-        llm_client = await create_llm_client(scenario="extract", model_config=self.model_config)
+        llm_client = await create_llm_client(model_config=self.model_config)
+        llm_resources.push_async_callback(llm_client.aclose)
         llm_processor = EventProcessor(llm_client=llm_client, prompt_template=prompt_template_content)
-        backend_selection = resolve_extraction_backend(
-            llm_processor=llm_processor,
-            requested_backend=requested_backend,
+        backend_selection = ExtractionBackendSelection(
+            backend=backend,
+            processor=llm_processor,
+            fallback_reason=auto_backend_reason,
         )
-        if auto_backend_reason and not backend_selection.fallback_reason:
-            backend_selection.fallback_reason = auto_backend_reason
         return backend_selection, llm_client
 
     async def _build_extract_state(
@@ -4164,13 +4118,15 @@ class EventExtractor:
         chunk_budget_strategy: str,
         budget_stats_by_doc: dict[object, dict[str, int | str]],
         budget_skipped_chunk_ids: set[object],
+        llm_resources: AsyncExitStack,
     ) -> "tuple[_ExtractState, BaseLLMClient | None]":
-        tenant_id = config.tenant_id or resolved_chunks[0].tenant_id
+        tenant_id = config.tenant_id
         prompt_template_content, chosen_template_id = _resolve_prompt_template_content(session, tenant_id, config)
         backend_selection, llm_client = await self._resolve_backend_runtime(
             config=config,
             resolved_chunks=resolved_chunks,
             prompt_template_content=prompt_template_content,
+            llm_resources=llm_resources,
         )
         max_concurrency = max(
             1,
@@ -4202,7 +4158,7 @@ class EventExtractor:
             max_concurrency=max_concurrency,
             max_events_per_chunk=max(1, int(settings.KG_EXTRACT_MAX_EVENTS_PER_CHUNK)),
             max_entities_per_event=max(1, int(settings.KG_EXTRACT_MAX_ENTITIES_PER_EVENT)),
-            embed_batch_size=max(1, int(settings.KG_EXTRACT_EMBED_BATCH_SIZE)),
+            embed_batch_size=settings.KG_EXTRACT_EMBED_BATCH_SIZE,
             chunk_timeout_sec=chunk_timeout_sec,
             context_window=max(0, min(int(settings.KG_EXTRACT_CONTEXT_WINDOW_CHUNKS), 20)),
             min_chars=max(0, int(settings.KG_EXTRACT_MIN_CHARS)),
@@ -4229,12 +4185,15 @@ class EventExtractor:
         chunks: Sequence[DocumentChunk] | None,
         index_options: IndexingOptions | None,
         t0: float,
+        llm_resources: AsyncExitStack,
     ) -> (
         tuple[_ExtractState, _ExtractProgress, dict[str, object], dict[object, dict[str, int]], object | None]
         | list[KgSourceEvent]
     ):
         alias_diag = _new_alias_diag()
         alias_stats_by_doc: dict[object, dict[str, int]] = {}
+        if config.tenant_id is None:
+            raise ValueError("KG extraction requires tenant_id")
         resolved_chunks = _load_resolved_chunks(session, config, chunks)
         if not resolved_chunks:
             logger.warning("No chunks found for extraction")
@@ -4247,7 +4206,7 @@ class EventExtractor:
             budget_stats_by_doc,
             budget_skipped_chunk_ids,
         ) = _prepare_chunk_budget(resolved_chunks)
-        tenant_id = config.tenant_id or resolved_chunks[0].tenant_id
+        tenant_id = config.tenant_id
         plugin_result = _maybe_run_python_plugin(
             session=session,
             config=config,
@@ -4273,6 +4232,7 @@ class EventExtractor:
             chunk_budget_strategy=chunk_budget_strategy,
             budget_stats_by_doc=budget_stats_by_doc,
             budget_skipped_chunk_ids=budget_skipped_chunk_ids,
+            llm_resources=llm_resources,
         )
         progress = _ExtractProgress()
         _populate_chunk_content_maps(state)

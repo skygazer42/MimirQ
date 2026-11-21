@@ -16,10 +16,11 @@ import json
 import threading
 import time
 from collections import OrderedDict
+from copy import deepcopy
 from dataclasses import dataclass
 from typing import Any
 
-from app.rag.core.hashing import stable_hash, stable_json_dumps
+from app.infrastructure.hashing import stable_hash, stable_json_dumps
 
 
 def _hash_doc_scope(document_ids: list[str]) -> str:
@@ -42,7 +43,7 @@ def build_kg_search_cache_key(
     Build a short, stable cache key for a KG search request.
 
     Notes:
-    - We hash the signature to avoid storing raw query text / scope identifiers in key names.
+    - Keys use a tenant prefix and a digest of the request signature.
     - `search_config` should include any settings/params that can affect results.
     """
     signature: dict[str, Any] = {
@@ -75,49 +76,37 @@ class KGSearchCacheEntry:
 class KGSearchCache:
     def __init__(self) -> None:
         self._lock = threading.Lock()
-        self._entries: "OrderedDict[str, KGSearchCacheEntry]" = OrderedDict()
+        self._entries: OrderedDict[str, KGSearchCacheEntry] = OrderedDict()
 
     def _purge_expired_locked(self, *, now: float, ttl_sec: int) -> None:
-        if ttl_sec <= 0 or not self._entries:
-            return
-        expired: list[str] = []
-        for key, entry in self._entries.items():
-            if now - entry.created_at_monotonic > float(ttl_sec):
-                expired.append(key)
+        expired = [key for key, entry in self._entries.items() if now - entry.created_at_monotonic > ttl_sec]
         for key in expired:
-            self._entries.pop(key, None)
+            del self._entries[key]
 
     def get(self, key: str, *, ttl_sec: int) -> tuple[dict[str, Any] | None, int | None]:
-        if not key:
-            return None, None
-        if int(ttl_sec or 0) <= 0:
+        if not key or ttl_sec <= 0:
             return None, None
         now = time.monotonic()
         with self._lock:
-            self._purge_expired_locked(now=now, ttl_sec=int(ttl_sec))
+            self._purge_expired_locked(now=now, ttl_sec=ttl_sec)
             entry = self._entries.get(key)
             if entry is None:
                 return None, None
             # LRU bump
             self._entries.move_to_end(key, last=True)
             age_ms = int(max(0.0, (now - entry.created_at_monotonic) * 1000.0))
-            return dict(entry.value), age_ms
+            return deepcopy(entry.value), age_ms
 
     def set(self, key: str, value: dict[str, Any], *, ttl_sec: int, max_entries: int) -> None:
-        if not key:
-            return
-        if int(ttl_sec or 0) <= 0:
-            return
-        cap = int(max_entries or 0)
-        if cap <= 0:
+        if not key or ttl_sec <= 0 or max_entries <= 0:
             return
 
         now = time.monotonic()
         with self._lock:
-            self._purge_expired_locked(now=now, ttl_sec=int(ttl_sec))
-            self._entries[key] = KGSearchCacheEntry(created_at_monotonic=now, value=dict(value or {}))
+            self._purge_expired_locked(now=now, ttl_sec=ttl_sec)
+            self._entries[key] = KGSearchCacheEntry(created_at_monotonic=now, value=deepcopy(value))
             self._entries.move_to_end(key, last=True)
-            while len(self._entries) > cap:
+            while len(self._entries) > max_entries:
                 self._entries.popitem(last=False)
 
     def clear(self) -> None:
@@ -176,24 +165,19 @@ def build_kg_community_summary_cache_key(
 class KGCommunitySummaryCache:
     def __init__(self) -> None:
         self._lock = threading.Lock()
-        self._entries: "OrderedDict[str, tuple[str, float]]" = OrderedDict()
+        self._entries: OrderedDict[str, tuple[str, float]] = OrderedDict()
 
     def _purge_expired_locked(self, *, now: float, ttl_sec: int) -> None:
-        if ttl_sec <= 0 or not self._entries:
-            return
-        expired: list[str] = []
-        for key, (_value, created_at) in self._entries.items():
-            if now - created_at > float(ttl_sec):
-                expired.append(key)
+        expired = [key for key, (_value, created_at) in self._entries.items() if now - created_at > ttl_sec]
         for key in expired:
-            self._entries.pop(key, None)
+            del self._entries[key]
 
     def get(self, key: str, *, ttl_sec: int) -> tuple[str | None, int | None]:
-        if not key or int(ttl_sec or 0) <= 0:
+        if not key or ttl_sec <= 0:
             return None, None
         now = time.monotonic()
         with self._lock:
-            self._purge_expired_locked(now=now, ttl_sec=int(ttl_sec))
+            self._purge_expired_locked(now=now, ttl_sec=ttl_sec)
             entry = self._entries.get(key)
             if entry is None:
                 return None, None
@@ -203,19 +187,14 @@ class KGCommunitySummaryCache:
             return value, age_ms
 
     def set(self, key: str, value: str, *, ttl_sec: int, max_entries: int) -> None:
-        if not key or not value.strip():
-            return
-        if int(ttl_sec or 0) <= 0:
-            return
-        cap = int(max_entries or 0)
-        if cap <= 0:
+        if not key or not value.strip() or ttl_sec <= 0 or max_entries <= 0:
             return
         now = time.monotonic()
         with self._lock:
-            self._purge_expired_locked(now=now, ttl_sec=int(ttl_sec))
-            self._entries[key] = (str(value), now)
+            self._purge_expired_locked(now=now, ttl_sec=ttl_sec)
+            self._entries[key] = (value, now)
             self._entries.move_to_end(key, last=True)
-            while len(self._entries) > cap:
+            while len(self._entries) > max_entries:
                 self._entries.popitem(last=False)
 
     def clear(self) -> None:

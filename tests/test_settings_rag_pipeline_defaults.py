@@ -1,5 +1,5 @@
 def test_zero_corrective_faithfulness_threshold_does_not_retry(monkeypatch):
-    from app.rag.pipelines import langgraph
+    from app.rag.runtime.graph import tasks as langgraph
 
     monkeypatch.setattr(langgraph.settings, "RAG_CORRECTIVE_ENABLED", True)
     monkeypatch.setattr(langgraph.settings, "RAG_CORRECTIVE_MAX_ATTEMPTS", 2)

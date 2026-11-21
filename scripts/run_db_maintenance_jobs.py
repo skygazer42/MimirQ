@@ -46,7 +46,7 @@ def _load_settings() -> None:
     if settings is not None:
         return
 
-    from app.core.config import settings as app_settings
+    from app.infrastructure.config import settings as app_settings
 
     if settings is None:
         settings = app_settings
@@ -57,7 +57,8 @@ def _load_session_local() -> None:
     if SessionLocal is not None:
         return
 
-    from app.core.database import SessionLocal as AppSessionLocal
+    import app.models.registry  # noqa: F401
+    from app.infrastructure.database.connection import SessionLocal as AppSessionLocal
 
     if SessionLocal is None:
         SessionLocal = AppSessionLocal
@@ -68,7 +69,7 @@ def _load_tenant_model() -> None:
     if Tenant is not None:
         return
 
-    from app.models.tenant import Tenant as TenantModel
+    from app.models.identity.workspaces import Tenant as TenantModel
 
     if Tenant is None:
         Tenant = TenantModel
@@ -79,7 +80,7 @@ def _load_postgres_runner() -> None:
     if run_postgres_maintenance is not None:
         return
 
-    from app.services.db_maintenance_jobs import run_postgres_maintenance as postgres_runner
+    from app.services.observability.database_maintenance import run_postgres_maintenance as postgres_runner
 
     if run_postgres_maintenance is None:
         run_postgres_maintenance = postgres_runner
@@ -90,7 +91,7 @@ def _load_audit_retention_runner() -> None:
     if run_audit_log_retention is not None:
         return
 
-    from app.services.retention_jobs import run_audit_log_retention as audit_log_runner
+    from app.services.retention.jobs import run_audit_log_retention as audit_log_runner
 
     if run_audit_log_retention is None:
         run_audit_log_retention = audit_log_runner
@@ -101,7 +102,7 @@ def _load_regression_retention_runner() -> None:
     if run_regression_run_retention is not None:
         return
 
-    from app.services.retention_jobs import run_regression_run_retention as regression_run_runner
+    from app.services.retention.jobs import run_regression_run_retention as regression_run_runner
 
     if run_regression_run_retention is None:
         run_regression_run_retention = regression_run_runner

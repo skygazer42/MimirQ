@@ -6,17 +6,16 @@ from uuid import uuid4
 import pytest
 from langchain_core.documents import Document
 
-import app.api.v1.scim as scim
-import app.parsing.parsers.html_parser as html_parser_module
-import app.parsing.utils.artifact_normalizer as artifact_normalizer_module
-from app.api.v1 import document_manual as manual_module
-from app.parsing.parsers.html_parser import HtmlParser
-from app.parsing.quality.reading_order import score_reading_order
-from app.parsing.utils.artifact_normalizer import normalize_extracted_artifacts
-from app.parsing.utils.document_elements import normalize_document_elements
-from app.rag.chunking.strategies.qa_markdown import QAMarkdownChunker
-from app.rag.chunking.strategies.qa_pairs import QAPairsChunker
-from app.rag.chunking.strategies.timeline_events import TimelineEventsChunker
+import app.api.v1.identity.scim as scim
+import app.rag.ingestion.parsing.parsers.html_parser as html_parser_module
+import app.rag.ingestion.parsing.utils.artifact_normalizer as artifact_normalizer_module
+from app.rag.ingestion.chunking.strategies.records.qa_markdown import QAMarkdownChunker
+from app.rag.ingestion.chunking.strategies.records.qa_pairs import QAPairsChunker
+from app.rag.ingestion.chunking.strategies.records.timeline_events import TimelineEventsChunker
+from app.rag.ingestion.parsing.parsers.html_parser import HtmlParser
+from app.rag.ingestion.parsing.quality.reading_order import score_reading_order
+from app.rag.ingestion.parsing.utils.artifact_normalizer import normalize_extracted_artifacts
+from app.rag.ingestion.parsing.utils.document_elements import normalize_document_elements
 
 
 def _summarize_chunks(chunker, text: str) -> list[tuple[str, dict]]:
@@ -319,6 +318,8 @@ def test_index_manual_document_chunks_characterizes_metadata_merging_and_image_t
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
+    from app.services.documents import manual_ingestion
+
     tenant_id = uuid4()
     dataset_id = uuid4()
     document_id = uuid4()
@@ -356,21 +357,15 @@ def test_index_manual_document_chunks_characterizes_metadata_merging_and_image_t
             return content.replace("prebound", "uploaded-1"), ["uploaded-1"], start_index + 1
         return f"{content} [rewritten]", ["uploaded-2", "uploaded-3"], start_index + 2
 
-    monkeypatch.setattr(manual_module.settings, "MINIO_ENABLED", True, raising=False)
-    monkeypatch.setattr(manual_module.settings, "UPLOAD_DIR", str(tmp_path), raising=False)
-    monkeypatch.setattr(manual_module, "Indexer", _FakeIndexer)
-    monkeypatch.setattr(
-        manual_module,
-        "to_pipeline_options",
-        lambda pipeline: {"requested": pipeline},
-        raising=True,
-    )
+    monkeypatch.setattr(manual_ingestion.settings, "MINIO_ENABLED", True, raising=False)
+    monkeypatch.setattr(manual_ingestion.settings, "UPLOAD_DIR", str(tmp_path), raising=False)
+    monkeypatch.setattr(manual_ingestion, "Indexer", _FakeIndexer)
 
     monkeypatch.setattr(
-        manual_module, "resolve_pipeline_effective", lambda **_kwargs: SimpleNamespace(kg_enabled=False)
+        manual_ingestion, "resolve_pipeline_effective", lambda **_kwargs: SimpleNamespace(kg_enabled=False)
     )
-    monkeypatch.setattr(manual_module, "build_indexing_options", lambda _effective: {"mode": "manual"})
-    monkeypatch.setattr(manual_module, "_rewrite_preview_images_to_minio", fake_rewrite)
+    monkeypatch.setattr(manual_ingestion, "build_indexing_options", lambda _effective: {"mode": "manual"})
+    monkeypatch.setattr(manual_ingestion, "_rewrite_preview_images_to_minio", fake_rewrite)
     request = SimpleNamespace(
         filename="manual.md",
         file_type="MD",
@@ -409,13 +404,13 @@ def test_index_manual_document_chunks_characterizes_metadata_merging_and_image_t
         error_message="stale",
     )
 
-    manual_module._index_manual_document_chunks(
+    manual_ingestion._index_manual_document_chunks(
         db=_FakeDB(),
         request=request,
         tenant_id=tenant_id,
         account_id="acct-1",
         dataset=SimpleNamespace(id=dataset_id, dataset_metadata={}),
-        db_document=db_document,
+        document=db_document,
     )
 
     upsert_kwargs = captured["upsert"]

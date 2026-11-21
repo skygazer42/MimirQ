@@ -124,4 +124,61 @@ describe('useChatSession request ordering', () => {
     harness.unmount()
     queryClient.clear()
   })
+
+  it('cancels the underlying history request when its query cache is cleared', async () => {
+    let signal: AbortSignal | undefined
+    chatApiMock.getMessages.mockImplementation(
+      (_conversationId: string, _params: unknown, options: { signal: AbortSignal }) => {
+        signal = options.signal
+        return new Promise(() => {})
+      },
+    )
+    const onError = vi.fn()
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const harness = renderHook(() => useChatSession({ onError }), {
+      wrapper: ({ children }) => <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>,
+    })
+    let completion!: Promise<void>
+    act(() => {
+      completion = harness.result.current.loadConversation('conversation-a')
+    })
+    expect(signal?.aborted).toBe(false)
+
+    await act(async () => {
+      queryClient.clear()
+      await completion
+    })
+
+    expect(signal?.aborted).toBe(true)
+    expect(harness.result.current.messages).toEqual([])
+    expect(harness.result.current.isLoading).toBe(false)
+    expect(harness.result.current.loadError).toBeUndefined()
+    expect(onError).not.toHaveBeenCalled()
+    harness.unmount()
+  })
+
+  it('reports history failures with the backend message and request id while preserving current messages', async () => {
+    chatApiMock.getMessages.mockRejectedValue({
+      response: {
+        data: { detail: 'History unavailable' },
+        headers: { 'x-request-id': 'history-request' },
+      },
+    })
+    const onError = vi.fn()
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const harness = renderHook(() => useChatSession({ onError }), {
+      wrapper: ({ children }) => <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>,
+    })
+    act(() => harness.result.current.setMessages([message('visible-message')]))
+
+    await act(async () => harness.result.current.loadConversation('failed-conversation'))
+
+    expect(onError).toHaveBeenCalledOnce()
+    expect(onError.mock.calls[0][0]).toContain('History unavailable')
+    expect(onError.mock.calls[0][0]).toContain('history-request')
+    expect(harness.result.current.messages).toEqual([message('visible-message')])
+    expect(harness.result.current.isLoading).toBe(false)
+    harness.unmount()
+    queryClient.clear()
+  })
 })

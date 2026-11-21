@@ -1,13 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import {
-  filterGroups,
-  formatGroupDate,
-  groupDraft,
-  memberIds,
-  pageRows,
-  parseGroupScope,
-  readAll,
-} from './groups-model'
+import { paginateDirectory, readDirectoryPages } from '@/lib/directory-pagination'
+import { filterGroups, formatGroupDate, groupDraft, memberIds, parseGroupScope } from './groups-model'
 import type { TenantGroupOut } from '@/types/backend'
 
 describe('group-directory scope and safe writes', () => {
@@ -41,7 +34,7 @@ describe('group-directory scope and safe writes', () => {
     ] as TenantGroupOut[]
     expect(filterGroups(groups, { query: 'IDP-A', external: 'filled' }).map((g) => g.id)).toEqual(['g-1'])
     expect(filterGroups(groups, { query: 'g-2', external: 'empty' }).map((g) => g.id)).toEqual(['g-2'])
-    expect(pageRows(groups, 90, 1)).toMatchObject({ page: 2, pages: 2, items: [groups[1]] })
+    expect(paginateDirectory(groups, 90, 1)).toMatchObject({ page: 2, pages: 2, items: [groups[1]] })
   })
   it('sends an explicit empty string to clear the backend external identifier', () => {
     expect(groupDraft(' 研发 ', '  ')).toEqual({ errors: {}, payload: { name: '研发', external_id: '' } })
@@ -57,8 +50,8 @@ describe('group-directory scope and safe writes', () => {
   it('reads more than one API page without losing records', async () => {
     const items = Array.from({ length: 507 }, (_, id) => ({ id: String(id) })),
       skips: number[] = []
-    const all = await readAll(
-      async (skip, limit) => {
+    const all = await readDirectoryPages(
+      async ({ skip, limit }) => {
         skips.push(skip)
         return { items: items.slice(skip, skip + limit), total: items.length }
       },
@@ -69,19 +62,19 @@ describe('group-directory scope and safe writes', () => {
   })
   it('rejects overlapping or inconsistent pagination instead of reporting an empty directory', async () => {
     await expect(
-      readAll<string>(
+      readDirectoryPages<string>(
         async () => ({ total: 0 }),
         (item) => item,
       ),
     ).resolves.toEqual([])
     await expect(
-      readAll(
-        async (skip) => (skip ? { items: [{ id: 'a' }], total: 2 } : { items: [{ id: 'a' }], total: 2 }),
+      readDirectoryPages(
+        async () => ({ items: [{ id: 'a' }], total: 2 }),
         (item) => item.id,
       ),
     ).rejects.toThrow('重复')
     await expect(
-      readAll(
+      readDirectoryPages(
         async () => ({ items: [], total: 1 }),
         (item) => String(item),
       ),

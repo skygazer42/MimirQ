@@ -27,6 +27,8 @@ from app.rag.pipeline_plugins.runtime import (
     PythonPipelinePluginError,
     _coerce_documents,
     _coerce_kg_events,
+    _coerce_metadata,
+    _coerce_text,
     _invoke_plugin,
 )
 
@@ -47,8 +49,12 @@ def _coerce_input_document(item: Any) -> Document:
             content = item.get("text")
         if content is None:
             raise PipelinePluginRegistryError("input document must provide page_content, content or text")
-        metadata = item.get("metadata") if isinstance(item.get("metadata"), dict) else {}
-        return Document(page_content=str(content), metadata=dict(metadata))
+        try:
+            metadata = _coerce_metadata(item.get("metadata"))
+            text = _coerce_text(content, field_name="input document content")
+        except PythonPipelinePluginError as exc:
+            raise PipelinePluginRegistryError(str(exc)) from exc
+        return Document(page_content=text, metadata=metadata)
     raise PipelinePluginRegistryError(f"unsupported input document item: {type(item).__name__}")
 
 
@@ -202,6 +208,12 @@ def _run_document_stage(
             metadata_schema=descriptor.metadata_schema,
             stage=stage,
         )
+        if current_documents and not output_documents:
+            metadata_validation = {
+                "ok": False,
+                "checked": 0,
+                "errors": [{"reason": f"{stage} stage emitted no documents"}],
+            }
     except (PipelinePluginContractError, PythonPipelinePluginError) as exc:
         metadata_validation = {"ok": False, "checked": len(output_documents), "errors": [{"reason": str(exc)}]}
 
@@ -242,12 +254,33 @@ def _run_plugin_stages(
     stages: list[str] | tuple[str, ...],
     params: dict[str, Any] | None = None,
 ) -> tuple[list[Document], dict[str, Any], bool]:
-    current_documents = list(input_documents)
-    stage_reports: dict[str, Any] = {}
-    passed = True
+    if not stages:
+        raise PipelinePluginRegistryError("plugin test must select at least one stage")
+    if len(set(stages)) != len(stages):
+        raise PipelinePluginRegistryError("plugin test must not contain duplicate stages")
     for stage in stages:
         if stage not in descriptor.entries:
             raise PipelinePluginRegistryError(f"plugin has no {stage} entry")
+
+    current_documents = list(input_documents)
+    stage_reports: dict[str, Any] = {}
+    passed = True
+    failed_stage: str | None = None
+    for stage in stages:
+        if failed_stage is not None:
+            stage_reports[stage] = _plugin_stage_failure_report(
+                stage=stage,
+                input_count=0,
+                reason=f"{stage} stage skipped because {failed_stage} failed",
+            )
+            continue
+        if not current_documents:
+            passed = False
+            failed_stage = stage
+            stage_reports[stage] = _plugin_stage_failure_report(
+                stage=stage, input_count=0, reason=f"{stage} stage requires input documents"
+            )
+            continue
         try:
             plugin_input_documents, result = _invoke_stage_result(
                 descriptor=descriptor,
@@ -255,8 +288,24 @@ def _run_plugin_stages(
                 current_documents=current_documents,
                 params=params,
             )
+            if stage == "kg":
+                report, stage_passed = _run_kg_stage(
+                    descriptor=descriptor,
+                    current_documents=current_documents,
+                    plugin_input_documents=plugin_input_documents,
+                    result=result,
+                )
+            else:
+                output_documents, report, stage_passed = _run_document_stage(
+                    descriptor=descriptor,
+                    stage=stage,
+                    current_documents=current_documents,
+                    result=result,
+                )
+                current_documents = output_documents if stage_passed else []
         except Exception as exc:  # noqa: BLE001
             passed = False
+            failed_stage = stage
             stage_reports[stage] = _plugin_stage_failure_report(
                 stage=stage,
                 input_count=len(current_documents),
@@ -264,27 +313,10 @@ def _run_plugin_stages(
             )
             current_documents = []
             continue
-        if stage == "kg":
-            report, stage_passed = _run_kg_stage(
-                descriptor=descriptor,
-                current_documents=current_documents,
-                plugin_input_documents=plugin_input_documents,
-                result=result,
-            )
-            if not stage_passed:
-                passed = False
-            stage_reports[stage] = report
-            continue
-        output_documents, report, stage_passed = _run_document_stage(
-            descriptor=descriptor,
-            stage=stage,
-            current_documents=current_documents,
-            result=result,
-        )
         if not stage_passed:
             passed = False
+            failed_stage = stage
         stage_reports[stage] = report
-        current_documents = output_documents
     return current_documents, stage_reports, passed
 
 

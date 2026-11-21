@@ -31,7 +31,8 @@ const svg = (name, nodes, { color = false, embedded = false } = {}) => {
 }
 const output = (file, contents) => {
   fs.mkdirSync(path.dirname(file), { recursive: true })
-  if (!fs.existsSync(file) || fs.readFileSync(file, 'utf8') !== contents) fs.writeFileSync(file, contents)
+  const current = fs.existsSync(file) ? fs.readFileSync(file, 'utf8').replaceAll('\r\n', '\n') : undefined
+  if (current !== contents) fs.writeFileSync(file, contents)
 }
 const names = new Set()
 for (const [name, , , , aliases] of icons) {

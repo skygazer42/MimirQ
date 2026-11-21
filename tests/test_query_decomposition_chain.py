@@ -1,6 +1,16 @@
+from dataclasses import replace
 from typing import Any
 
 import pytest
+
+from app.rag.retrieval.planning.contracts import QueryListOutcome
+
+
+@pytest.fixture(autouse=True)
+def _offline_stream_models(monkeypatch):
+    from app.infrastructure import tokens
+
+    monkeypatch.setattr(tokens, "_get_encoder", lambda: False)
 
 
 def _base_state() -> dict[str, Any]:
@@ -19,7 +29,7 @@ def _base_state() -> dict[str, Any]:
 
 def test_run_retrieval_chains_decomposed_queries_sequentially(monkeypatch: pytest.MonkeyPatch) -> None:
     import app.rag.retrieval.orchestrator as orch
-    from app.core.config import settings
+    from app.infrastructure.config import settings
 
     monkeypatch.setattr(settings, "ENABLE_QUERY_REWRITE", False, raising=False)
     monkeypatch.setattr(settings, "ENABLE_MULTI_QUERY", False, raising=False)
@@ -53,10 +63,13 @@ def test_run_retrieval_chains_decomposed_queries_sequentially(monkeypatch: pytes
                 out.extend(list(ds or []))
             return out
 
-    monkeypatch.setattr(orch, "hybrid_retriever", _Retriever(), raising=True)
-    monkeypatch.setattr(orch, "get_rag_engine", lambda: _FakeEngine(), raising=True)
+    monkeypatch.setattr("app.rag.retrieval.stages.preparation.hybrid_retriever", _Retriever())
+    monkeypatch.setattr("app.rag.runtime.engine.get_rag_engine", lambda: _FakeEngine())
     monkeypatch.setattr(
-        orch, "_decompose_query", lambda *args, **kwargs: ["subquestion one", "subquestion two"], raising=False
+        "app.rag.retrieval.planning.model_expansion.decompose_query",
+        lambda *args, **kwargs: QueryListOutcome(
+            True, ["subquestion one", "subquestion two"], 0.0, "fixture", {"ok": True}
+        ),
     )
 
     out = orch.run_retrieval(_base_state())
@@ -74,54 +87,38 @@ def test_run_retrieval_chains_decomposed_queries_sequentially(monkeypatch: pytes
 def test_decompose_query_parses_deduplicates_and_truncates_llm_output(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.rag.retrieval.orchestrator as orch
-    from app.core.config import settings
+    from app.rag.retrieval.planning.model_expansion import decompose_query
+    from tests.query_model_fixtures import model_query_settings
 
     long_question = "x" * 520
     raw_output = f'["first question", "first question", "{long_question}", "ignored third"]'
 
-    class _Pipeline:
-        def __or__(self, _other):  # noqa: ANN001
-            return self
-
-        def invoke(self, _payload):  # noqa: ANN001
-            return raw_output
-
     class _Model:
         model_name = "decompose-test"
 
-        def bind(self, **_kwargs):  # noqa: ANN003
-            return self
+        def invoke(self, *, query):
+            assert query == "original complex question"
+            return raw_output
 
-    class _Parser:
-        pass
+    class _Models:
+        def decompose(self, *, max_questions, temperature):
+            assert max_questions == 2
+            return _Model()
 
-    class _Engine:
-        models = {"fast": _Model()}
-        decompose_prompt = _Pipeline()
-
-    monkeypatch.setattr(settings, "ENABLE_QUERY_DECOMPOSITION", True, raising=False)
-    monkeypatch.setattr(settings, "QUERY_DECOMPOSITION_MAX_SUBQUESTIONS", 2, raising=False)
-    monkeypatch.setattr(settings, "QUERY_DECOMPOSITION_MIN_CHARS", 0, raising=False)
-    monkeypatch.setattr(settings, "QUERY_DECOMPOSITION_MAX_CHARS", 400, raising=False)
-    monkeypatch.setattr(settings, "QUERY_DECOMPOSITION_HEURISTIC_FALLBACK_ENABLED", False, raising=False)
-    monkeypatch.setattr(settings, "LLM_API_KEY", "test-key", raising=False)
-    monkeypatch.setattr(orch, "_get_langchain_text_pipeline_primitives", lambda: (object, _Parser))
-
-    questions, _elapsed, model_used, parse_meta = orch._decompose_query(
+    result = decompose_query(
         "original complex question",
-        _Engine(),
-        enabled=True,
+        settings=replace(model_query_settings().decomposition, max_questions=2),
+        models=_Models(),
     )
 
-    assert questions == ["first question", f"{'x' * 500}..."]
-    assert model_used == "decompose-test"
-    assert parse_meta.get("ok") is True
+    assert result.queries == ["first question", f"{'x' * 500}..."]
+    assert result.model_used == "decompose-test"
+    assert result.parse_metadata["ok"] is True
 
 
 def test_run_retrieval_marks_decomposition_chain_metrics(monkeypatch: pytest.MonkeyPatch) -> None:
     import app.rag.retrieval.orchestrator as orch
-    from app.core.config import settings
+    from app.infrastructure.config import settings
 
     monkeypatch.setattr(settings, "ENABLE_QUERY_REWRITE", False, raising=False)
     monkeypatch.setattr(settings, "ENABLE_MULTI_QUERY", False, raising=False)
@@ -152,10 +149,13 @@ def test_run_retrieval_marks_decomposition_chain_metrics(monkeypatch: pytest.Mon
                 out.extend(list(ds or []))
             return out
 
-    monkeypatch.setattr(orch, "hybrid_retriever", _Retriever(), raising=True)
-    monkeypatch.setattr(orch, "get_rag_engine", lambda: _FakeEngine(), raising=True)
+    monkeypatch.setattr("app.rag.retrieval.stages.preparation.hybrid_retriever", _Retriever())
+    monkeypatch.setattr("app.rag.runtime.engine.get_rag_engine", lambda: _FakeEngine())
     monkeypatch.setattr(
-        orch, "_decompose_query", lambda *args, **kwargs: ["subquestion one", "subquestion two"], raising=False
+        "app.rag.retrieval.planning.model_expansion.decompose_query",
+        lambda *args, **kwargs: QueryListOutcome(
+            True, ["subquestion one", "subquestion two"], 0.0, "fixture", {"ok": True}
+        ),
     )
 
     out = orch.run_retrieval(_base_state())

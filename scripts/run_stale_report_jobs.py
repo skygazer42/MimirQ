@@ -19,14 +19,14 @@ Examples:
 
 import argparse
 import json
+import sys
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 from uuid import UUID
 
-from app.core.config import settings
-from app.core.database import SessionLocal
-from app.models.tenant import Tenant
-from app.services.stale_report_jobs import run_daily_stale_report
+if __package__ in {None, ""}:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 
 def _parse_uuid(value: str) -> UUID:
@@ -54,6 +54,12 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--force", action="store_true", help="Write audit even if today's report already exists.")
 
     args = p.parse_args(argv)
+
+    import app.models.registry  # noqa: F401
+    from app.infrastructure.config import settings
+    from app.infrastructure.database.connection import SessionLocal
+    from app.models.identity.workspaces import Tenant
+    from app.services.observability.stale_reports import run_daily_stale_report
 
     tenant_ids: list[UUID] = []
     if args.all_tenants:

@@ -60,6 +60,12 @@
 .headerActions button:not(:last-child) {
   color: hsl(var(--muted-foreground));
 }
+.headerActions button:focus-visible,
+.pagination button:focus-visible,
+.dialogActions button:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 2px;
+}
 .headerActions svg {
   height: 15px;
   width: 15px;
@@ -599,6 +605,15 @@
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
+.pendingTable {
+  min-width: 0;
+}
+.pendingTable .datasetColumn {
+  width: 32%;
+}
+.pendingTable .actionColumn {
+  width: 12%;
+}
 .resourceWindow {
   margin: 0;
   padding: 9px 28px;
@@ -856,6 +871,9 @@
   }
 }
 @container usage-workspace (max-width:600px) {
+  .pendingTable :is(th, td):nth-child(n + 4):not(:last-child) {
+    display: none;
+  }
   .header {
     padding: 10px 12px 10px 57px;
     min-height: 72px;
@@ -883,7 +901,7 @@
     border: 0;
     background: transparent;
   }
-  .headerActions button span {
+  .headerActions .actionLabel {
     display: none;
   }
   .headerActions svg {
@@ -975,7 +993,7 @@
   .tab {
     font-size: 14px;
   }
-  .table {
+  .table:not(.pendingTable) {
     min-width: 860px;
   }
   .table .datasetColumn {

@@ -4,11 +4,10 @@ from pathlib import Path
 
 import pytest
 
-from app.models.dataset import Dataset, DatasetPermission
-from app.models.dataset_category import DatasetCategory, DatasetCategoryMembership
-from app.models.group_permissions import DatasetGroupPermission, DocumentGroupPermission
-from app.models.tenant import Tenant, TenantMember
-from app.models.tenant_group import TenantGroup, TenantGroupMember
+from app.models.datasets.access import DatasetGroupPermission, DatasetPermission
+from app.models.datasets.records import Dataset, DatasetCategory, DatasetCategoryMembership
+from app.models.documents.access import DocumentGroupPermission
+from app.models.identity.workspaces import Tenant, TenantGroup, TenantGroupMember, TenantMember
 
 
 @pytest.mark.parametrize(

@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { expect, type Page, type Route } from '@playwright/test'
-import type { DatasetProfileSummary } from '../types'
+import type { DatasetProfileSummary, DatasetProfileScanRunOut } from '../types'
 import { datasetPolicyFixture, policyDatasetId } from './dataset-policy.helpers'
 import { precheckSummary } from './precheck-workspace.helpers'
 import { installRemainingRuntimeDiagnostics, saveRemainingRuntimeFailure } from './remaining-runtime.helpers'
@@ -9,8 +9,54 @@ import { installRemainingRuntimeDiagnostics, saveRemainingRuntimeFailure } from 
 export const remainingEvidence = path.resolve(__dirname, '../../artifacts/rebrand/remaining-pages-2026-10-27')
 export const datasetRoute = (page: string) => `/datasets/${policyDatasetId}/${page}`
 export function profileSummary(): DatasetProfileSummary {
-  const { total_files, ...summary } = precheckSummary()
-  return { ...summary, total_documents: total_files, by_status: { completed: 120, failed: 5, quarantined: 3 } }
+  const precheck = precheckSummary()
+  return {
+    dataset_id: precheck.dataset_id,
+    generated_at: precheck.generated_at,
+    total_documents: precheck.total_files,
+    total_size_bytes: precheck.total_size_bytes,
+    by_status: { completed: 120, failed: 5, quarantined: 3 },
+    by_file_type: precheck.by_file_type,
+    by_directory: {},
+    by_quality_bucket: {},
+    file_size_histogram: precheck.file_size_histogram.map((bin) => ({
+      ...bin,
+      min: bin.min ?? null,
+      max: bin.max ?? null,
+    })),
+    length_percentiles: precheck.length_percentiles,
+    length_histogram: precheck.length_histogram.map((bin) => ({ ...bin, min: bin.min ?? null, max: bin.max ?? null })),
+    chunk_count_percentiles: { p25: 0, p50: 0, p75: 0, p90: 0, p99: 0 },
+    chunk_count_histogram: [],
+    avg_chunk_chars_percentiles: { p25: 0, p50: 0, p75: 0, p90: 0, p99: 0 },
+    avg_chunk_chars_histogram: [],
+    chunk_length_percentiles: { p25: 0, p50: 0, p75: 0, p90: 0, p99: 0 },
+    chunk_length_histogram: [],
+    chunk_token_percentiles: { p25: 0, p50: 0, p75: 0, p90: 0, p99: 0 },
+    chunk_token_histogram: [],
+    avg_chunk_tokens_percentiles: { p25: 0, p50: 0, p75: 0, p90: 0, p99: 0 },
+    avg_chunk_tokens_histogram: [],
+    chunk_coverage_percentiles: { p25: 0, p50: 0, p75: 0, p90: 0, p99: 0 },
+    chunk_coverage_histogram: [],
+    chunk_overlap_waste_percentiles: { p25: 0, p50: 0, p75: 0, p90: 0, p99: 0 },
+    chunk_overlap_waste_histogram: [],
+    page_number_histogram: [],
+    parse_quality_histogram: [],
+    language_mix: {},
+    pdf_scan: precheck.pdf_scan,
+    parsing_provenance: {
+      docs_with_provenance: 0,
+      by_resolved_backend: {},
+      fallback_docs: 0,
+      elapsed_ms_percentiles: { p25: 0, p50: 0, p75: 0, p90: 0, p99: 0 },
+    },
+    pii_hits_total: precheck.pii_hits_total,
+    secrets_hits_total: precheck.secrets_hits_total,
+    findings: precheck.findings.map((finding) => ({ ...finding, description: finding.description ?? null })),
+    recall_risk_hints: [],
+    chunk_targets: [],
+    latest_scan_run: null,
+  }
 }
 async function json(route: Route, data: unknown, status = 200) {
   await route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(data) })
@@ -29,8 +75,25 @@ export async function remainingFixture(page: Page, theme: 'light' | 'dark' = 'li
     failHealth: false,
     failHistory: false,
     profile: profileSummary(),
+    scanRuns: [] as DatasetProfileScanRunOut[],
     writes: [] as string[],
   }
+  state.scanRuns = ['profile-scan-new', 'profile-scan-old'].map((id) => ({
+    id,
+    tenant_id: 'tenant-e2e',
+    dataset_id: policyDatasetId,
+    kind: 'profile',
+    status: 'completed',
+    progress: 100,
+    requested_by: null,
+    created_at: state.profile.generated_at,
+    started_at: state.profile.generated_at,
+    finished_at: state.profile.generated_at,
+    updated_at: state.profile.generated_at,
+    error_message: null,
+    config: {},
+    summary: state.profile,
+  }))
   await page.route('**/api/v1/**', async (route) => {
     const url = new URL(route.request().url()),
       p = url.pathname.replace(/\/$/, '')
@@ -39,7 +102,7 @@ export async function remainingFixture(page: Page, theme: 'light' | 'dark' = 'li
     if (p === `/api/v1/datasets/${policyDatasetId}/profile/scan-runs`)
       return state.failHistory
         ? json(route, { detail: '扫描历史读取暂不可用' }, 503)
-        : json(route, { total: 0, items: [] })
+        : json(route, { total: state.scanRuns.length, items: state.scanRuns })
     if (p === `/api/v1/datasets/${policyDatasetId}/health`)
       return state.failHealth
         ? json(route, { detail: '健康概览暂不可用' }, 503)
@@ -49,9 +112,12 @@ export async function remainingFixture(page: Page, theme: 'light' | 'dark' = 'li
             profile: state.profile,
             ingestion: {
               total_documents: 128,
+              pending: 0,
+              processing: 0,
               completed: 120,
               failed: 5,
               quarantined: 3,
+              cancelled: 0,
               by_status: state.profile.by_status,
             },
           })
@@ -61,12 +127,19 @@ export async function remainingFixture(page: Page, theme: 'light' | 'dark' = 'li
         items: [
           {
             id: '56b974c6-26f6-4890-b26f-10752ea61111',
+            dataset_id: policyDatasetId,
             filename: 'product-guide.pdf',
             file_type: 'pdf',
             file_size: 4096,
             status: 'completed',
+            chunk_count: 0,
+            total_characters: 0,
             created_at: state.profile.generated_at,
             updated_at: state.profile.generated_at,
+            error_message: null,
+            metadata: {},
+            preview: null,
+            preview_truncated: false,
           },
         ],
       })

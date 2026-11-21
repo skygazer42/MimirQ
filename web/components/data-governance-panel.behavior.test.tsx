@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { Document } from '@/types/backend'
 import type { CleanPreviewResponse, GovernanceAnalyzeResponse } from '@/types/processing'
+import type { DocContentCacheRecord } from '@/lib/doc-content-cache'
 import { PipelineOptionsProvider } from '@/contexts/pipeline-options-context'
 import { ROOT_FOLDER_ID, useParsedFiles, type ParsedFileData } from '@/store/use-parsed-files-store'
 import { waitForAssertion } from '@/test/hook-harness'
@@ -28,7 +29,7 @@ const boundary = vi.hoisted(() => ({
   llmCleanPreview: vi.fn(),
   listPrompts: vi.fn(),
   cachedContent: vi.fn(),
-  saveContent: vi.fn(),
+  updateContent: vi.fn(),
   success: vi.fn(),
   warning: vi.fn(),
   error: vi.fn(),
@@ -63,9 +64,10 @@ vi.mock('@/lib/auth-storage', () => ({
   AUTH_SCOPE_CHANGED_EVENT: 'mimirq:auth-scope-changed',
   getAuthCacheScope: () => 'tenant-a:user-a',
 }))
-vi.mock('@/lib/doc-content-cache', () => ({
+vi.mock('@/lib/doc-content-cache', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/doc-content-cache')>()),
   getDocContentFromCache: boundary.cachedContent,
-  saveDocContentToCache: boundary.saveContent,
+  updateDocContentInCache: boundary.updateContent,
   clearDocCachesForScope: vi.fn(),
   deleteDocContentFromCache: vi.fn(),
   deleteDocSourceFromCache: vi.fn(),
@@ -166,7 +168,7 @@ function deferred<T>() {
 }
 
 async function mount(files = [localFile()]) {
-  useParsedFiles.setState({ files, folders: [], activeFolderId: ROOT_FOLDER_ID, isLoaded: true })
+  useParsedFiles.setState({ files, folders: [], activeFolderId: ROOT_FOLDER_ID, isLoaded: true, loadError: undefined })
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } })
   const container = document.createElement('div')
   document.body.appendChild(container)
@@ -260,7 +262,7 @@ beforeEach(() => {
   boundary.listParsing.mockResolvedValue({ total: 0, items: [] })
   boundary.listKnowledge.mockResolvedValue({ total: 0, items: [] })
   boundary.cachedContent.mockResolvedValue(null)
-  boundary.saveContent.mockResolvedValue(undefined)
+  boundary.updateContent.mockResolvedValue(undefined)
   boundary.listPrompts.mockResolvedValue({ total: 0, items: [] })
   boundary.governanceAnalyze.mockResolvedValue({ issues: [] })
   boundary.cleanPreview.mockResolvedValue({ markdown: 'Cleaned content', applied_rules: 1, changed: true })
@@ -268,15 +270,57 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  vi.restoreAllMocks()
   cleanups
     .splice(0)
     .reverse()
     .forEach((dispose) => dispose())
-  useParsedFiles.setState({ files: [], folders: [], activeFolderId: ROOT_FOLDER_ID, isLoaded: false })
+  useParsedFiles.setState({
+    files: [],
+    folders: [],
+    activeFolderId: ROOT_FOLDER_ID,
+    isLoaded: false,
+    loadError: undefined,
+  })
   document.body.replaceChildren()
 })
 
 describe('parent reset intent', () => {
+  it('shows a failed local restoration, retains the current document and retries through the visible control', async () => {
+    const view = await mount()
+    const key = 'mimirq_parsed_files:tenant-a:user-a'
+    const malformed = '{invalid document index'
+    localStorage.setItem(key, malformed)
+    await act(async () => useParsedFiles.persist.rehydrate())
+
+    expect(view.container.querySelector('[role="alert"]')?.textContent).toContain('本地文档记录读取失败')
+    expect(view.container.textContent).not.toContain('正在加载文档')
+    expect(view.container.querySelector('[data-governance-document]')?.textContent).toContain(ORIGINAL)
+    expect(localStorage.getItem(key)).toBe(malformed)
+
+    await click(view.container, '编辑')
+    const draft = 'Unsaved text retained while the document index is unavailable'
+    await type(view.container.querySelector<HTMLTextAreaElement>('[aria-label="编辑文档正文"]')!, draft)
+    await click(view.container, '保存并继续切块')
+
+    expect(boundary.success).not.toHaveBeenCalled()
+    expect(boundary.router.push).not.toHaveBeenCalled()
+    expect(boundary.error).toHaveBeenCalledWith(expect.stringContaining('保存失败'), expect.anything())
+    expect(view.container.querySelector<HTMLTextAreaElement>('[aria-label="编辑文档正文"]')?.value).toBe(draft)
+    expect(localStorage.getItem(key)).toBe(malformed)
+
+    localStorage.setItem(
+      key,
+      JSON.stringify({ version: 0, state: { files: [localFile()], folders: [], activeFolderId: ROOT_FOLDER_ID } }),
+    )
+    await click(view.container, '重试读取文档')
+
+    expect(view.container.textContent).not.toContain('本地文档记录读取失败')
+    expect(view.container.querySelector<HTMLTextAreaElement>('[aria-label="编辑文档正文"]')?.value).toBe(draft)
+    expect(view.container.textContent).toContain('修改尚未保存')
+    expect(useParsedFiles.getState().isLoaded).toBe(true)
+  })
+
   it.each(['resolve', 'reject'] as const)(
     'retires a cleaner %s when global reset keeps the same text',
     async (settlement) => {
@@ -411,10 +455,42 @@ describe('library synchronization', () => {
       expect(useParsedFiles.getState().files.some((file) => file.id === 'available')).toBe(true),
     )
     expect(button(view.container, 'DataGovernancePanel.a11y.openFile {"filename":"available.md"}')).toBeDefined()
-    expect(boundary.reportWarning).toHaveBeenCalledWith('Failed to sync parsing documents for governance:', failure)
+    expect(view.container.querySelector('[role="alert"]')?.textContent).toContain('队列加载失败')
+    expect(button(view.container, '重试')).toBeDefined()
+    boundary.listParsing.mockResolvedValue({ total: 0, items: [] })
+    await click(view.container, '重试')
+    await waitForAssertion(() => expect(view.container.textContent).not.toContain('队列加载失败'))
   })
 
-  it('stops pagination at an empty terminal page even when total was stale', async () => {
+  it('does not revive a file deleted after the directory read started', async () => {
+    const listing = deferred<{ total: number; items: Document[] }>()
+    boundary.listParsing.mockReturnValue(listing.promise)
+    const view = await mount([localFile('removed', { source: 'parsing_workspace' })])
+    await act(async () => useParsedFiles.getState().removeFile('removed'))
+    await act(async () => listing.resolve({ total: 1, items: [remoteDocument('removed')] }))
+    await waitForAssertion(() => expect(view.client.isFetching()).toBe(0))
+
+    expect(useParsedFiles.getState().files).toEqual([])
+    expect(view.container.querySelector('[data-governance-file="removed"]')).toBeNull()
+  })
+
+  it('keeps both source snapshots on failure instead of showing a normal empty queue', async () => {
+    boundary.listParsing.mockRejectedValue(new Error('Parsing unavailable'))
+    boundary.listKnowledge.mockRejectedValue(new Error('Knowledge unavailable'))
+    const files = [
+      localFile('parsing', { source: 'parsing_workspace' }),
+      localFile('knowledge', { source: 'knowledge_base' }),
+    ]
+    const view = await mount(files)
+    await waitForAssertion(() =>
+      expect(view.container.querySelector('[role="alert"]')?.textContent).toContain('队列加载失败'),
+    )
+
+    expect(useParsedFiles.getState().files).toEqual(files)
+    expect(view.container.textContent).not.toContain('当前范围没有文档')
+  })
+
+  it('rejects an incomplete terminal page and retains the current index with retry feedback', async () => {
     boundary.listParsing.mockResolvedValueOnce({
       total: 201,
       items: Array.from({ length: 200 }, (_, i) => remoteDocument(`row-${i}`)),
@@ -423,10 +499,10 @@ describe('library synchronization', () => {
     const view = await mount()
 
     await waitForAssertion(() => {
-      expect(useParsedFiles.getState().files).toHaveLength(201)
+      expect(view.container.querySelector('[role="alert"]')?.textContent).toContain('队列加载失败')
       expect(view.client.isFetching()).toBe(0)
     })
-    expect(useParsedFiles.getState().files).toHaveLength(201)
+    expect(useParsedFiles.getState().files.map((file) => file.id)).toEqual(['file-a'])
     expect(boundary.listParsing.mock.calls.map(([params]) => params.skip)).toEqual([0, 200])
   })
 
@@ -482,6 +558,170 @@ describe('library synchronization', () => {
 })
 
 describe('edit and save workflow', () => {
+  it('waits for a saved body before batch submission instead of persisting its loading placeholder', async () => {
+    const pending = deferred<DocContentCacheRecord>()
+    const cached: DocContentCacheRecord = {
+      id: 'file-a',
+      markdownContent: 'Previously saved body',
+      originalMarkdownContent: 'Previously saved original',
+      updatedAt: 1,
+    }
+    boundary.cachedContent.mockReturnValue(pending.promise)
+    const view = await mount([
+      localFile('file-a', { markdownContent: '', originalMarkdownContent: '', chunkStatus: 'ready' }),
+    ])
+    await click(view.container, '批量选择切块文档')
+    await act(async () =>
+      view.container.querySelector<HTMLInputElement>('[aria-label="选择切块文档 file-a.md"]')!.click(),
+    )
+    await click(view.container, '切块')
+    try {
+      expect(boundary.updateContent).not.toHaveBeenCalled()
+      expect(boundary.router.push).not.toHaveBeenCalled()
+    } finally {
+      await act(async () => pending.resolve(cached))
+    }
+
+    await waitForAssertion(() => expect(boundary.router.push).toHaveBeenCalledWith('/chunk-preview'))
+    expect(boundary.updateContent).toHaveBeenCalledWith(
+      {
+        id: 'file-a',
+        markdownContent: 'Previously saved body',
+        originalMarkdownContent: 'Previously saved original',
+      },
+      'tenant-a:user-a',
+      expect.any(AbortSignal),
+    )
+  })
+
+  it('shows a saved body read failure without replacing it with an older server body', async () => {
+    boundary.listParsing.mockResolvedValue({ total: 1, items: [remoteDocument('file-a')] })
+    boundary.cachedContent.mockRejectedValue(new Error('Saved content could not be read'))
+    boundary.parsingContent.mockResolvedValue({ markdown_content: 'Older server body' })
+    const view = await mount([
+      localFile('file-a', {
+        markdownContent: '',
+        originalMarkdownContent: '',
+        source: 'parsing_workspace',
+        governanceStatus: 'ready',
+        chunkStatus: 'ready',
+      }),
+    ])
+
+    await waitForAssertion(() => expect(view.container.textContent).toContain('正文加载失败'))
+    expect(boundary.parsingContent).not.toHaveBeenCalled()
+    await click(view.container, '批量选择切块文档')
+    await act(async () =>
+      view.container.querySelector<HTMLInputElement>('[aria-label="选择切块文档 file-a.md"]')!.click(),
+    )
+    await click(view.container, '切块')
+
+    expect(boundary.updateContent).not.toHaveBeenCalled()
+    expect(boundary.router.push).not.toHaveBeenCalled()
+    expect(boundary.error).toHaveBeenCalledWith(expect.stringContaining('保存失败'), expect.anything())
+  })
+
+  it('keeps a real empty edit instead of restoring the previous cached text', async () => {
+    const view = await mount()
+    await click(view.container, '编辑')
+    await type(view.container.querySelector<HTMLTextAreaElement>('[aria-label="编辑文档正文"]')!, '')
+
+    await click(view.container, '保存')
+
+    expect(boundary.updateContent).toHaveBeenCalledWith(
+      { id: 'file-a', markdownContent: '', originalMarkdownContent: ORIGINAL },
+      'tenant-a:user-a',
+      expect.any(AbortSignal),
+    )
+    expect(useParsedFiles.getState().files[0].markdownContent).toBe('')
+    expect(boundary.success).toHaveBeenCalled()
+  })
+
+  it('does not call an unavailable knowledge result a loaded empty document', async () => {
+    boundary.listKnowledge.mockResolvedValue({ total: 1, items: [remoteDocument('file-a')] })
+    boundary.knowledgeContent.mockResolvedValue({
+      available: false,
+      markdown_content: '',
+      original_markdown_content: '',
+    })
+    const view = await mount([
+      localFile('file-a', { markdownContent: '', originalMarkdownContent: '', source: 'knowledge_base' }),
+    ])
+
+    await waitForAssertion(() => expect(view.container.textContent).toContain('正文加载失败'))
+    expect(button(view.container, '保存').disabled).toBe(true)
+    expect(boundary.updateContent).not.toHaveBeenCalled()
+  })
+
+  it.each(['保存', '保存并继续切块'])(
+    'keeps the draft when local metadata storage is unavailable during %s',
+    async (action) => {
+      const view = await mount()
+      await waitForAssertion(() => expect(view.client.isFetching()).toBe(0))
+      await click(view.container, '编辑')
+      const draft = 'Draft retained without local document storage'
+      await type(view.container.querySelector<HTMLTextAreaElement>('[aria-label="编辑文档正文"]')!, draft)
+      vi.spyOn(window, 'localStorage', 'get').mockImplementation(() => {
+        throw new DOMException('Browser storage is unavailable', 'SecurityError')
+      })
+
+      await click(view.container, action)
+
+      expect(boundary.success).not.toHaveBeenCalled()
+      expect(boundary.router.push).not.toHaveBeenCalled()
+      expect(boundary.error).toHaveBeenCalledWith(expect.stringContaining('保存失败'), expect.anything())
+      expect(view.container.querySelector<HTMLTextAreaElement>('[aria-label="编辑文档正文"]')?.value).toBe(draft)
+      expect(view.container.textContent).toContain('修改尚未保存')
+      expect(button(view.container, '保存').disabled).toBe(false)
+    },
+  )
+
+  it('keeps the draft when the local document index rejects the actual write', async () => {
+    const view = await mount()
+    await waitForAssertion(() => expect(view.client.isFetching()).toBe(0))
+    await click(view.container, '编辑')
+    const draft = 'Draft retained after a failed local index write'
+    await type(view.container.querySelector<HTMLTextAreaElement>('[aria-label="编辑文档正文"]')!, draft)
+    // This Store supplies its JSON storage adapter unconditionally.
+    const storage = useParsedFiles.persist.getOptions().storage!
+    useParsedFiles.persist.setOptions({
+      storage: {
+        ...storage,
+        setItem: () => {
+          throw new DOMException('Index quota exceeded', 'QuotaExceededError')
+        },
+      },
+    })
+    try {
+      await click(view.container, '保存并继续切块')
+
+      expect(boundary.success).not.toHaveBeenCalled()
+      expect(boundary.router.push).not.toHaveBeenCalled()
+      expect(boundary.error).toHaveBeenCalledWith(expect.stringContaining('保存失败'), expect.anything())
+      expect(view.container.querySelector<HTMLTextAreaElement>('[aria-label="编辑文档正文"]')?.value).toBe(draft)
+      expect(view.container.textContent).toContain('修改尚未保存')
+    } finally {
+      useParsedFiles.persist.setOptions({ storage })
+    }
+  })
+
+  it('keeps the draft when the actual content store rejects saving', async () => {
+    const view = await mount()
+    await click(view.container, '编辑')
+    const draft = 'Draft retained after a failed content write'
+    await type(view.container.querySelector<HTMLTextAreaElement>('[aria-label="编辑文档正文"]')!, draft)
+    const failure = new Error('Content storage unavailable')
+    boundary.updateContent.mockRejectedValue(failure)
+
+    await click(view.container, '保存并继续切块')
+
+    expect(boundary.success).not.toHaveBeenCalled()
+    expect(boundary.router.push).not.toHaveBeenCalled()
+    expect(boundary.error).toHaveBeenCalledWith(expect.stringContaining('保存失败'), expect.anything())
+    expect(view.container.querySelector<HTMLTextAreaElement>('[aria-label="编辑文档正文"]')?.value).toBe(draft)
+    expect(view.container.textContent).toContain('修改尚未保存')
+  })
+
   it('preserves original text in the shared content cache when saving an edited file', async () => {
     const view = await mount([localFile('file-a', { markdownContent: 'Already edited draft' })])
     await click(view.container, 'DataGovernancePanel.actions.save')
@@ -496,10 +736,12 @@ describe('edit and save workflow', () => {
     await type(view.container.querySelector('textarea')!, 'New saved draft')
     await click(view.container, 'DataGovernancePanel.actions.save')
 
-    expect(boundary.saveContent).toHaveBeenLastCalledWith(
+    expect(boundary.updateContent).toHaveBeenLastCalledWith(
       { id: 'file-a', markdownContent: 'New saved draft', originalMarkdownContent: ORIGINAL },
       'tenant-a:user-a',
+      expect.any(AbortSignal),
     )
+    expect(boundary.updateContent).toHaveBeenCalledTimes(2)
   })
 
   it('filters the file list through the visible filename search', async () => {
@@ -534,7 +776,7 @@ describe('edit and save workflow', () => {
     expect(useParsedFiles.getState().files[0].chunkStatus).toBe('submitted')
     expect(useParsedFiles.getState().files[1].chunkStatus).toBeUndefined()
     expect(boundary.router.push).toHaveBeenCalledWith('/chunk-preview?dataset_id=dataset%2Fa')
-    expect(boundary.listKnowledge).toHaveBeenCalledWith({ skip: 0, limit: 200, dataset_id: 'dataset/a' })
+    expect(boundary.listKnowledge).toHaveBeenCalledWith({ skip: 0, limit: 200 }, { signal: expect.any(AbortSignal) })
   })
 
   it('combines folder descendants and file selection without mixing equal-text drafts', async () => {
@@ -583,6 +825,21 @@ describe('upload and content boundaries', () => {
       signal: expect.any(AbortSignal),
       dataset_id: undefined,
     })
+    expect(boundary.updateContent).toHaveBeenCalledWith(
+      expect.objectContaining({ markdownContent: 'First\n\nSecond', originalMarkdownContent: 'First\n\nSecond' }),
+      'tenant-a:user-a',
+      expect.any(AbortSignal),
+    )
+  })
+
+  it('keeps the imported file unpublished and reports a required content cache failure', async () => {
+    boundary.preview.mockResolvedValue({ segments: [{ content: 'Preview body' }], parser_backend: 'auto' })
+    boundary.updateContent.mockRejectedValue(new Error('Preview cache unavailable'))
+    const view = await mount([])
+    await upload(view.container, [new File(['source'], 'failed-import.md')])
+    expect(useParsedFiles.getState().files).toHaveLength(0)
+    expect(boundary.success).not.toHaveBeenCalled()
+    expect(boundary.error).toHaveBeenCalled()
   })
 
   it('discards a preview after cancelling the upload', async () => {
@@ -615,6 +872,7 @@ describe('upload and content boundaries', () => {
   })
 
   it('loads cached text before trying a remote content request', async () => {
+    boundary.listKnowledge.mockResolvedValue({ total: 1, items: [remoteDocument('file-a')] })
     boundary.cachedContent.mockResolvedValue({
       markdownContent: 'Cached draft',
       originalMarkdownContent: 'Cached original',
@@ -631,8 +889,10 @@ describe('upload and content boundaries', () => {
     expect(useParsedFiles.getState().files[0].originalMarkdownContent).toBe('Cached original')
   })
 
-  it('loads knowledge content when the cache has no text', async () => {
+  it('loads available knowledge content when there is no cached record', async () => {
+    boundary.listKnowledge.mockResolvedValue({ total: 1, items: [remoteDocument('file-a')] })
     boundary.knowledgeContent.mockResolvedValue({
+      available: true,
       markdown_content: 'Remote draft',
       original_markdown_content: 'Remote original',
     })
@@ -647,4 +907,28 @@ describe('upload and content boundaries', () => {
     await click(view.container, 'DataGovernancePanel.actions.save')
     expect(useParsedFiles.getState().files[0].originalMarkdownContent).toBe('Remote original')
   })
+
+  it.each(['markdown_truncated', 'original_markdown_truncated'] as const)(
+    'rejects incomplete knowledge content before it can be saved or handed to chunking: %s',
+    async (truncatedField) => {
+      boundary.listKnowledge.mockResolvedValue({ total: 1, items: [remoteDocument('file-a')] })
+      boundary.knowledgeContent.mockResolvedValue({
+        available: true,
+        markdown_content: 'Incomplete body',
+        original_markdown_content: 'Incomplete source',
+        [truncatedField]: true,
+      })
+      const view = await mount([
+        localFile('file-a', { markdownContent: '', originalMarkdownContent: '', source: 'knowledge_base' }),
+      ])
+      await waitForAssertion(() => expect(view.container.textContent).toContain('解析正文超过读取范围'))
+      expect(view.container.querySelector('[data-displayed-content]')?.textContent).not.toBe('Incomplete body')
+      expect(boundary.updateContent).not.toHaveBeenCalled()
+      expect(boundary.router.push).not.toHaveBeenCalled()
+      for (const button of view.container.querySelectorAll<HTMLButtonElement>('button')) {
+        if (button.textContent === '保存' || button.textContent?.includes('保存并继续切块'))
+          expect(button.disabled).toBe(true)
+      }
+    },
+  )
 })

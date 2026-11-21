@@ -1,9 +1,11 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { CheckCircle2, Copy, RefreshCw, Trash2 } from '@/components/icons'
 
+import { SettingsNumberInput } from '@/components/settings/settings-number-input'
 import { SettingsSwitch } from '@/components/settings/settings-switch'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -11,26 +13,27 @@ import { Input } from '@/components/ui/input'
 import { settingsLayoutTokens, settingsTextTokens } from '@/components/ui/system-page-tokens'
 import { datasetApi } from '@/lib/api/datasets'
 import { formatApiError } from '@/lib/api-errors'
-import type { SystemSettings } from '@/types/settings'
+import { queryKeys } from '@/lib/query-keys'
+import type { DifyExternalKnowledgeConfig } from '@/types/settings'
 import { cn } from '@/lib/utils'
 import type { Dataset } from '@/types/datasets'
 import styles from '../settings.module.css'
 
-type DifyExternalKnowledgeSettings = NonNullable<SystemSettings['dify_external_knowledge']>
-
 type DifyIntegrationSectionProps = {
-  difyExternalKnowledge: DifyExternalKnowledgeSettings
-  updateDifyExternalKnowledge: (patch: Partial<DifyExternalKnowledgeSettings>) => void
+  difyExternalKnowledge: DifyExternalKnowledgeConfig
+  updateDifyExternalKnowledge: (patch: Partial<DifyExternalKnowledgeConfig>) => void
 }
 
 type KnowledgeMap = Record<string, unknown>
+
+const DATASET_SELECTOR_KEYS = ['dataset_ids', 'datasets', 'dataset_id'] as const
 
 function isKnowledgeMapping(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
 function parseKnowledgeMap(raw: string): KnowledgeMap {
-  if (!raw.trim()) return {}
+  if (raw.trim() === '') return {}
   const parsed: unknown = JSON.parse(raw)
   if (!isKnowledgeMapping(parsed)) throw new TypeError('Knowledge map must be a JSON object')
   return parsed
@@ -38,10 +41,10 @@ function parseKnowledgeMap(raw: string): KnowledgeMap {
 
 function bindingDatasetIds(value: unknown): string[] {
   if (typeof value === 'string') return value ? [value] : []
-  if (Array.isArray(value)) return value.flatMap(bindingDatasetIds)
+  if (Array.isArray(value)) return Array.from(new Set(value.flatMap(bindingDatasetIds)))
   if (isKnowledgeMapping(value)) {
-    for (const key of ['dataset_ids', 'datasets', 'dataset_id']) {
-      if (key in value) return bindingDatasetIds(value[key])
+    for (const key of DATASET_SELECTOR_KEYS) {
+      if (Object.hasOwn(value, key)) return bindingDatasetIds(value[key])
     }
   }
   return []
@@ -76,31 +79,35 @@ export function DifyIntegrationSection({
   difyExternalKnowledge,
   updateDifyExternalKnowledge,
 }: Readonly<DifyIntegrationSectionProps>) {
-  const [datasets, setDatasets] = useState<Dataset[]>([])
+  const datasetsQuery = useQuery({
+    queryKey: queryKeys.datasets.exhaustive(),
+    queryFn: ({ signal }) => datasetApi.listAll(undefined, { signal }),
+    retry: false,
+  })
   const [selectedDatasetIds, setSelectedDatasetIds] = useState<string[]>([])
-  const [knowledgeId, setKnowledgeId] = useState('kb_default')
-  const [datasetsError, setDatasetsError] = useState('')
-  const [datasetsLoading, setDatasetsLoading] = useState(false)
+  const [knowledgeIdDraft, setKnowledgeIdDraft] = useState<string | null>(null)
   const [origin, setOrigin] = useState('')
   const [copied, setCopied] = useState(false)
   const copyOwnerRef = useRef({ active: true })
   const copyTimerRef = useRef<number | null>(null)
 
-  const endpointPath = difyExternalKnowledge.endpoint_path || '/api/v1/integrations/dify/retrieval'
-  const endpointUrl = `${origin}${endpointPath}`
+  const endpointUrl = `${origin}${difyExternalKnowledge.endpoint_path}`
 
   let knowledgeMap: KnowledgeMap = {}
-  let knowledgeMapError = ''
+  let knowledgeMapError: string | null = null
   try {
-    knowledgeMap = parseKnowledgeMap(difyExternalKnowledge.knowledge_map_json || '')
+    knowledgeMap = parseKnowledgeMap(difyExternalKnowledge.knowledge_map_json)
   } catch {
     knowledgeMapError = '当前绑定配置不是有效的 JSON 对象，可重新生成绑定覆盖'
   }
+  const knowledgeBindings = Object.entries(knowledgeMap)
 
   const selectedDatasets = useMemo(
-    () => datasets.filter((dataset) => selectedDatasetIds.includes(dataset.id)),
-    [datasets, selectedDatasetIds],
+    () => datasetsQuery.data?.filter((dataset) => selectedDatasetIds.includes(dataset.id)) ?? [],
+    [datasetsQuery.data, selectedDatasetIds],
   )
+  const suggestedKnowledgeId = buildKnowledgeId(selectedDatasets)
+  const knowledgeId = knowledgeIdDraft ?? suggestedKnowledgeId
 
   useEffect(() => {
     const owner = { active: true }
@@ -112,32 +119,6 @@ export function DifyIntegrationSection({
     }
   }, [])
 
-  useEffect(() => {
-    let cancelled = false
-    async function loadDatasets() {
-      setDatasetsLoading(true)
-      setDatasetsError('')
-      try {
-        const items = await datasetApi.listAll()
-        if (cancelled) return
-        setDatasets(items)
-        setSelectedDatasetIds((prev) => prev.filter((id) => items.some((dataset) => dataset.id === id)))
-      } catch {
-        if (!cancelled) setDatasetsError('数据集加载失败，请刷新后重试')
-      } finally {
-        if (!cancelled) setDatasetsLoading(false)
-      }
-    }
-    void loadDatasets()
-    return () => {
-      cancelled = true
-    }
-  }, [])
-
-  useEffect(() => {
-    if (selectedDatasets.length > 0) setKnowledgeId(buildKnowledgeId(selectedDatasets))
-  }, [selectedDatasets])
-
   const toggleDataset = (datasetId: string) => {
     setSelectedDatasetIds((prev) =>
       prev.includes(datasetId) ? prev.filter((id) => id !== datasetId) : [...prev, datasetId],
@@ -147,11 +128,12 @@ export function DifyIntegrationSection({
   const writeBinding = () => {
     const ids = selectedDatasets.map((dataset) => dataset.id)
     if (ids.length === 0) return
-    const bindingId = knowledgeId.trim() || buildKnowledgeId(selectedDatasets)
-    const current = knowledgeMap[bindingId]
+    const draftId = knowledgeId.trim()
+    const bindingId = draftId === '' ? suggestedKnowledgeId : draftId
+    const current = Object.hasOwn(knowledgeMap, bindingId) ? knowledgeMap[bindingId] : undefined
     let binding: unknown = ids
     if (isKnowledgeMapping(current)) {
-      const selector = ['dataset_ids', 'datasets', 'dataset_id'].find((key) => key in current) || 'dataset_ids'
+      const selector = DATASET_SELECTOR_KEYS.find((key) => Object.hasOwn(current, key)) ?? 'dataset_ids'
       binding = { ...current, [selector]: ids }
     }
     updateDifyExternalKnowledge({
@@ -169,7 +151,7 @@ export function DifyIntegrationSection({
   }
 
   const copyEndpoint = async () => {
-    if (!endpointUrl) return
+    if (origin === '') return
     const owner = copyOwnerRef.current
     try {
       if (!navigator.clipboard?.writeText) throw new Error('当前浏览器不支持剪贴板复制')
@@ -204,8 +186,8 @@ export function DifyIntegrationSection({
           <span>{difyExternalKnowledge.enabled ? '已启用' : '未启用'}</span>
           <SettingsSwitch
             id="dify-enabled"
-            checked={Boolean(difyExternalKnowledge.enabled)}
-            onClick={() => updateDifyExternalKnowledge({ enabled: !difyExternalKnowledge.enabled })}
+            checked={difyExternalKnowledge.enabled}
+            onCheckedChange={(enabled) => updateDifyExternalKnowledge({ enabled })}
             aria-label="切换 Dify 外部知识库接入"
           />
         </div>
@@ -223,12 +205,13 @@ export function DifyIntegrationSection({
                   检索接入地址
                 </div>
                 <div className={styles.integrationEndpoint}>
-                  <code aria-labelledby="dify-endpoint-label">{endpointUrl || endpointPath}</code>
+                  <code aria-labelledby="dify-endpoint-label">{endpointUrl}</code>
                   <Button
                     type="button"
                     variant="ghost"
                     className="h-11 shrink-0 gap-1.5 px-2 text-[13px] sm:h-9"
                     onClick={copyEndpoint}
+                    disabled={origin === ''}
                     aria-label="复制检索地址"
                   >
                     {copied ? <CheckCircle2 className="size-3.5" /> : <Copy className="size-3.5" />}
@@ -243,7 +226,7 @@ export function DifyIntegrationSection({
                 <Input
                   id="dify-api-key"
                   type="password"
-                  value={difyExternalKnowledge.api_keys || ''}
+                  value={difyExternalKnowledge.api_keys}
                   placeholder="Dify Bearer Token"
                   className={cn(inputClassName, 'mt-2')}
                   onChange={(event) => updateDifyExternalKnowledge({ api_keys: event.target.value })}
@@ -264,7 +247,7 @@ export function DifyIntegrationSection({
                   选择数据集
                 </span>
                 <span className="text-[13px] tabular-nums text-muted-foreground" aria-live="polite">
-                  已选 {selectedDatasetIds.length} 项
+                  已选 {selectedDatasets.length} 项
                 </span>
               </div>
               <div
@@ -272,21 +255,25 @@ export function DifyIntegrationSection({
                 aria-labelledby="dify-dataset-label"
                 className="max-h-64 divide-y divide-border/60 overflow-auto"
               >
-                {datasetsLoading ? (
+                {datasetsQuery.isLoading ? (
                   <div role="status" className="flex items-center gap-2 py-3 text-[13px] text-muted-foreground">
-                    <RefreshCw className="size-3.5 animate-spin" />
+                    <RefreshCw className="size-3.5 animate-spin motion-reduce:animate-none" />
                     正在加载数据集
                   </div>
                 ) : null}
-                {datasetsError ? (
+                {datasetsQuery.isError ? (
                   <div role="alert" className="py-3 text-[13px] text-warning">
-                    {datasetsError}
+                    <p>数据集加载失败</p>
+                    <p>{formatApiError(datasetsQuery.error, '请重新读取')}</p>
+                    <Button type="button" variant="ghost" size="sm" onClick={() => void datasetsQuery.refetch()}>
+                      重试
+                    </Button>
                   </div>
                 ) : null}
-                {!datasetsLoading && datasets.length === 0 && !datasetsError ? (
+                {datasetsQuery.isSuccess && datasetsQuery.data.length === 0 ? (
                   <div className="py-3 text-[13px] text-muted-foreground">暂无可绑定数据集</div>
                 ) : null}
-                {datasets.map((dataset) => {
+                {datasetsQuery.data?.map((dataset) => {
                   const checked = selectedDatasetIds.includes(dataset.id)
                   return (
                     <label
@@ -327,13 +314,13 @@ export function DifyIntegrationSection({
                   value={knowledgeId}
                   className={cn(inputClassName, 'mt-2 font-mono')}
                   placeholder="knowledge_id"
-                  onChange={(event) => setKnowledgeId(event.target.value)}
+                  onChange={(event) => setKnowledgeIdDraft(event.target.value)}
                 />
               </div>
               <Button
                 type="button"
                 className="h-11 shrink-0 rounded-lg px-4 text-[14px] font-medium sm:h-10"
-                disabled={selectedDatasetIds.length === 0}
+                disabled={selectedDatasets.length === 0}
                 onClick={writeBinding}
               >
                 生成绑定
@@ -343,22 +330,20 @@ export function DifyIntegrationSection({
             <div className="mt-7 border-t border-border/60 pt-5">
               <div className="flex items-center gap-3">
                 <h4 className={styles.integrationLabel}>已有绑定</h4>
-                {Object.keys(knowledgeMap).length > 0 ? (
-                  <span className="text-[13px] tabular-nums text-muted-foreground">
-                    {Object.keys(knowledgeMap).length} 条
-                  </span>
+                {knowledgeBindings.length > 0 ? (
+                  <span className="text-[13px] tabular-nums text-muted-foreground">{knowledgeBindings.length} 条</span>
                 ) : null}
               </div>
-              {knowledgeMapError ? (
+              {knowledgeMapError !== null ? (
                 <div role="alert" className="mt-3 text-[13px] text-warning">
                   {knowledgeMapError}
                 </div>
               ) : null}
-              {!knowledgeMapError && Object.keys(knowledgeMap).length === 0 ? (
+              {knowledgeMapError === null && knowledgeBindings.length === 0 ? (
                 <p className="mt-3 text-[13px] text-muted-foreground">尚未创建绑定</p>
               ) : null}
               <div className="mt-2 divide-y divide-border/60">
-                {Object.entries(knowledgeMap).map(([bindingId, datasetIds]) => (
+                {knowledgeBindings.map(([bindingId, datasetIds]) => (
                   <div key={bindingId} className="flex items-start justify-between gap-3 py-3">
                     <div className="min-w-0">
                       <div className="break-all font-mono text-[13px] font-medium text-foreground">{bindingId}</div>
@@ -369,7 +354,7 @@ export function DifyIntegrationSection({
                             className="break-words text-[13px] leading-5 text-muted-foreground [overflow-wrap:anywhere]"
                           >
                             {datasetLabel(
-                              datasets.find((dataset) => dataset.id === datasetId),
+                              datasetsQuery.data?.find((dataset) => dataset.id === datasetId),
                               datasetId,
                             )}
                           </span>
@@ -403,7 +388,7 @@ export function DifyIntegrationSection({
               </label>
               <Input
                 id="dify-account"
-                value={difyExternalKnowledge.account_id || 'system:dify'}
+                value={difyExternalKnowledge.account_id}
                 className={cn(inputClassName, 'mt-2')}
                 onChange={(event) => updateDifyExternalKnowledge({ account_id: event.target.value })}
               />
@@ -413,18 +398,13 @@ export function DifyIntegrationSection({
                 最大返回条数
               </label>
               <div className="mt-2 flex items-center gap-3">
-                <Input
+                <SettingsNumberInput
                   id="dify-top-k"
-                  type="number"
                   min={1}
                   max={200}
                   value={difyExternalKnowledge.top_k_max}
                   className={cn(inputClassName, 'max-w-28 tabular-nums')}
-                  onChange={(event) =>
-                    updateDifyExternalKnowledge({
-                      top_k_max: Math.max(1, Math.min(200, Number(event.target.value || '50'))),
-                    })
-                  }
+                  onValueChange={(topKMax) => updateDifyExternalKnowledge({ top_k_max: topKMax })}
                 />
                 <span className="text-[13px] text-muted-foreground">条</span>
               </div>

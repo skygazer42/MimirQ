@@ -1,7 +1,7 @@
 'use client'
 import { FeedbackToast } from '@/components/feedback-toast'
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { ArrowRight, ExternalLink, Loader2, Plus, Search } from '@/components/icons'
@@ -21,6 +21,8 @@ import {
   createRulesetDraft,
   draftValue,
   isRuleDraftDirty,
+  isRuleSection,
+  RULE_SECTIONS,
   rowsFromValue,
   type RuleDraft,
   type RuleRow,
@@ -37,7 +39,6 @@ import { randomBase36Id } from '@/lib/secure-random'
 import { cn, detachPromise } from '@/lib/utils'
 import styles from '../settings.module.css'
 
-const sections: RuleSection[] = ['glossary', 'patterns', 'intents']
 const meta = {
   glossary: {
     title: '术语词库',
@@ -84,7 +85,7 @@ export function IndustryRulesSection() {
   const [activeSection, setActiveSection] = useState<RuleSection>('glossary')
   const [drafts, setDrafts] = useState<Record<string, RulesetDraft>>({})
   const [filter, setFilter] = useState('')
-  const [focusRowId, setFocusRowId] = useState<string | null>(null)
+  const [focusTarget, setFocusTarget] = useState<Readonly<{ rowId: string }> | null>(null)
   const [removed, setRemoved] = useState<RemovedRow | null>(null)
   const [saving, setSaving] = useState(false)
   const [editorError, setEditorError] = useState<string | null>(null)
@@ -95,16 +96,15 @@ export function IndustryRulesSection() {
 
   const rulesetsQuery = useQuery({
     queryKey: queryKeys.industryRules.rulesets,
-    queryFn: () => industryRulesApi.listRulesets(),
+    queryFn: ({ signal }) => industryRulesApi.listRulesets({ signal }),
   })
   const rulesets = rulesetsQuery.data?.rulesets ?? []
   const rulesetName = rulesets.some((item) => item.name === selection)
     ? selection
     : (rulesets.find((item) => item.name === 'industrial_control')?.name ?? rulesets[0]?.name ?? '')
-  const visit = useMemo(() => ({ rulesetName, session }), [rulesetName, session])
-  const visitRef = useRef<typeof visit | null>(null)
+  const visitRef = useRef<symbol | null>(null)
   useLayoutEffect(() => {
-    visitRef.current = visit
+    visitRef.current = Symbol()
     savingRef.current = null
     testingRef.current = null
     setSaving(false)
@@ -112,9 +112,10 @@ export function IndustryRulesSection() {
     return () => {
       visitRef.current = null
     }
-  }, [visit])
+  }, [rulesetName, session])
   useEffect(() => {
     setDrafts({})
+    setFocusTarget(null)
     setRemoved(null)
     setEditorError(null)
     setPreview(null)
@@ -122,7 +123,7 @@ export function IndustryRulesSection() {
   }, [session])
   const detailQuery = useQuery({
     queryKey: queryKeys.industryRules.ruleset(rulesetName),
-    queryFn: () => industryRulesApi.getRuleset(rulesetName),
+    queryFn: ({ signal }) => industryRulesApi.getRuleset(rulesetName, { signal }),
     enabled: Boolean(rulesetName),
     retry: 1,
   })
@@ -148,10 +149,20 @@ export function IndustryRulesSection() {
     setEditorError(null)
   }
 
+  function removeRule(section: RuleSection, row: RuleRow, index: number, nextVisibleRowId: string | null) {
+    setFocusTarget(nextVisibleRowId === null ? null : { rowId: nextVisibleRowId })
+    if (nextVisibleRowId === null) document.getElementById(`industry-add-${section}`)?.focus()
+    setRemoved({ ruleset: rulesetName, section, row, index })
+    updateDraft(section, (previous) => ({
+      ...previous,
+      rows: previous.rows.filter((item) => item.id !== row.id),
+    }))
+  }
+
   function changeSection(section: RuleSection) {
     setActiveSection(section)
     setFilter('')
-    setFocusRowId(null)
+    setFocusTarget(null)
     setEditorError(null)
   }
 
@@ -165,6 +176,7 @@ export function IndustryRulesSection() {
           : { ...draft, rows: rowsFromValue(activeSection, value), json: null },
       )
       setFilter('')
+      setFocusTarget(null)
       setRemoved(null)
     } catch (error) {
       setEditorError(formatApiError(error, '无法切换编辑方式。'))
@@ -173,6 +185,7 @@ export function IndustryRulesSection() {
 
   async function save() {
     if (!activeDraft || !dirty || savingRef.current) return
+    const visit = visitRef.current
     const name = rulesetName
     const section = activeSection
     const revision = getAuthSessionRevision()
@@ -184,9 +197,18 @@ export function IndustryRulesSection() {
       getAuthSessionRevision() === revision &&
       queryClient.getQueryCache().find({ queryKey: key, exact: true }) === origin
     const canPublish = () => visitRef.current === visit && savingRef.current === operation && canUpdateCache()
-    // Keep invalid editor input associated with its field.
+    let submit: () => ReturnType<typeof industryRulesApi.updateGlossary>
     try {
-      draftValue(section, activeDraft)
+      if (section === 'glossary') {
+        const glossary = draftValue('glossary', activeDraft)
+        submit = () => industryRulesApi.updateGlossary(name, { glossary })
+      } else if (section === 'patterns') {
+        const patterns = draftValue('patterns', activeDraft)
+        submit = () => industryRulesApi.updatePatterns(name, { patterns })
+      } else {
+        const intents = draftValue('intents', activeDraft)
+        submit = () => industryRulesApi.updateIntents(name, { intents })
+      }
     } catch (error) {
       setEditorError(formatApiError(error, '请检查规则内容。'))
       return
@@ -195,11 +217,7 @@ export function IndustryRulesSection() {
       savingRef.current = operation
       setSaving(true)
       setEditorError(null)
-      if (section === 'glossary')
-        await industryRulesApi.updateGlossary(name, { glossary: draftValue('glossary', activeDraft) })
-      else if (section === 'patterns')
-        await industryRulesApi.updatePatterns(name, { patterns: draftValue('patterns', activeDraft) })
-      else await industryRulesApi.updateIntents(name, { intents: draftValue('intents', activeDraft) })
+      await submit()
       if (!canUpdateCache()) return
       if (!canPublish()) {
         await queryClient.invalidateQueries({ predicate: (query) => query === origin || query === rulesetsOrigin })
@@ -217,7 +235,7 @@ export function IndustryRulesSection() {
         await queryClient.invalidateQueries({ predicate: (query) => query === origin || query === rulesetsOrigin })
         return
       }
-      const savedValue = response.ruleset[section] ?? (section === 'glossary' ? {} : [])
+      const savedValue = response.ruleset[section]
       setDrafts((previous) =>
         previous[name]?.[section] !== activeDraft
           ? previous
@@ -247,7 +265,9 @@ export function IndustryRulesSection() {
   }
 
   async function testGlossary() {
-    if (!current || !testQuery.trim() || glossaryDirty || testingRef.current || savingRef.current) return
+    const query = testQuery.trim()
+    if (!current || query === '' || glossaryDirty || testingRef.current || savingRef.current) return
+    const visit = visitRef.current
     const revision = getAuthSessionRevision()
     const key = queryKeys.industryRules.ruleset(rulesetName)
     const origin: object = queryClient.getQueryCache().build(queryClient, { queryKey: key })
@@ -262,7 +282,7 @@ export function IndustryRulesSection() {
     setPreviewError(null)
     setPreview(null)
     try {
-      const result = await industryRulesApi.previewRewrite({ ruleset: rulesetName, query: testQuery.trim() })
+      const result = await industryRulesApi.previewRewrite({ ruleset: rulesetName, query })
       if (canPublish()) setPreview(result)
     } catch (error) {
       if (canPublish()) setPreviewError(formatApiError(error, '测试失败，请重试。'))
@@ -288,6 +308,7 @@ export function IndustryRulesSection() {
             onValueChange={(name) => {
               setSelection(name)
               setFilter('')
+              setFocusTarget(null)
               setEditorError(null)
               setPreviewError(null)
             }}
@@ -345,9 +366,14 @@ export function IndustryRulesSection() {
       ) : (
         <div className={styles.integrationLayout}>
           <div className="min-w-0">
-            <Tabs value={activeSection} onValueChange={(value) => changeSection(value as RuleSection)}>
+            <Tabs
+              value={activeSection}
+              onValueChange={(value) => {
+                if (isRuleSection(value)) changeSection(value)
+              }}
+            >
               <TabsList className={styles.ruleTabs} aria-label="规则类型">
-                {sections.map((section) => (
+                {RULE_SECTIONS.map((section) => (
                   <TabsTrigger key={section} value={section} className={styles.ruleTab} disabled={saving}>
                     <span>{meta[section].title}</span>
                     <span data-rule-count className="text-[13px] font-normal tabular-nums text-muted-foreground">
@@ -361,7 +387,7 @@ export function IndustryRulesSection() {
                   </TabsTrigger>
                 ))}
               </TabsList>
-              {sections.map((section) => {
+              {RULE_SECTIONS.map((section) => {
                 const draft = current[section]
                 return (
                   <TabsContent key={section} value={section} className={styles.rulePanel}>
@@ -387,7 +413,7 @@ export function IndustryRulesSection() {
                                 const row = createRuleRow(randomBase36Id(10))
                                 updateDraft(section, (previous) => ({ ...previous, rows: [...previous.rows, row] }))
                                 setFilter('')
-                                setFocusRowId(row.id)
+                                setFocusTarget({ rowId: row.id })
                               }}
                             >
                               <Plus className="size-4" />
@@ -398,24 +424,16 @@ export function IndustryRulesSection() {
                             section={section}
                             rows={draft.rows}
                             filter={filter}
-                            focusRowId={focusRowId}
+                            focusTarget={focusTarget}
                             onChange={(id, patch) =>
                               updateDraft(section, (previous) => ({
                                 ...previous,
                                 rows: previous.rows.map((row) => (row.id === id ? { ...row, ...patch } : row)),
                               }))
                             }
-                            onRemove={(id) => {
-                              const index = draft.rows.findIndex((row) => row.id === id)
-                              const next = draft.rows[index + 1] ?? draft.rows[index - 1]
-                              setFocusRowId(next?.id ?? null)
-                              if (!next) document.getElementById(`industry-add-${section}`)?.focus()
-                              setRemoved({ ruleset: rulesetName, section, row: draft.rows[index], index })
-                              updateDraft(section, (previous) => ({
-                                ...previous,
-                                rows: previous.rows.filter((row) => row.id !== id),
-                              }))
-                            }}
+                            onRemove={(row, index, nextVisibleRowId) =>
+                              removeRule(section, row, index, nextVisibleRowId)
+                            }
                           />
                         </>
                       ) : (
@@ -458,7 +476,6 @@ export function IndustryRulesSection() {
                   className="h-11 px-0 text-[13px] sm:h-9"
                   disabled={saving}
                   onClick={() => {
-                    if (!removed) return
                     updateDraft(activeSection, (previous) => {
                       const rows = [...previous.rows]
                       rows.splice(removed.index, 0, removed.row)

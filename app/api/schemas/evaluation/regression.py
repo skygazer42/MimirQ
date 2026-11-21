@@ -12,12 +12,16 @@ from uuid import UUID
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.api.schemas.base import OrmModel
-from app.core.config import settings
-from app.core.model_execution import reject_retired_provider, reject_retired_retrieval_profile
-from app.rag.core.retrieval_modes import normalize_retrieval_mode
+from app.infrastructure.config import settings
+from app.infrastructure.model_policy import (
+    reject_retired_provider,
+    reject_retired_retrieval_options,
+    reject_retired_retrieval_profile,
+)
+from app.rag.retrieval.configuration.profiles import normalize_retrieval_mode
 
 HIERARCHY_FAMILY_AGGREGATION_VALUES = ("frequency", "score", "combined")
-FUSION_OVERRIDE_CHANNELS = {"vector", "bm25", "lexical", "sparse"}
+FUSION_OVERRIDE_CHANNELS = {"vector", "bm25", "lexical"}
 
 
 class RagasRegressionCaseListQuery(BaseModel):
@@ -94,12 +98,31 @@ def _validate_numeric_fusion_override(
             raise ValueError(f"{field_name} values must be in [0,{max_value}]")
 
 
-class ReferenceSource(BaseModel):
-    """A human-verified evidence pointer for a regression case."""
+class StoredReferenceSource(BaseModel):
+    """Read stored evidence metadata without applying authoring text budgets."""
 
     document_id: UUID = Field(description="Evidence document id")
     chunk_id: UUID = Field(description="Evidence chunk id")
     chunk_index: int | None = Field(default=None, ge=0, description="0-based chunk index (optional)")
+    family_collapse_key: str | None = None
+    hierarchy_family_key: str | None = None
+    page_number: int | None = Field(default=None, ge=1, description="1-based page number (optional)")
+    start_char: int | None = Field(default=None, ge=0, description="Start character offset (optional)")
+    end_char: int | None = Field(default=None, ge=0, description="End character offset (optional)")
+    doc_pipeline_key: str | None = None
+    pipeline_hash: str | None = None
+    record_identity: dict[str, Any] | None = Field(
+        default=None,
+        description="Plugin-defined stable record identity for record-level recall across re-chunking",
+    )
+    semantic_keys: list[str] = Field(default_factory=list)
+    quote: str | None = None
+    label: str | None = None
+
+
+class ReferenceSource(StoredReferenceSource):
+    """A human-verified evidence pointer for a regression case."""
+
     # Optional hierarchy-aware keys (best-effort; used for family-level recall metrics).
     family_collapse_key: str | None = Field(
         default=None,
@@ -113,19 +136,12 @@ class ReferenceSource(BaseModel):
     )
 
     # Optional audit/debug fields (best-effort; do not gate correctness).
-    page_number: int | None = Field(default=None, ge=1, description="1-based page number (optional)")
-    start_char: int | None = Field(default=None, ge=0, description="Start character offset (optional)")
-    end_char: int | None = Field(default=None, ge=0, description="End character offset (optional)")
     doc_pipeline_key: str | None = Field(
         default=None,
         max_length=128,
         description="Composite key `${document_id}:${pipeline_hash}` (optional, for audit/debug)",
     )
     pipeline_hash: str | None = Field(default=None, max_length=64, description="Chunk pipeline hash (optional)")
-    record_identity: dict[str, Any] | None = Field(
-        default=None,
-        description="Plugin-defined stable record identity for record-level recall across re-chunking",
-    )
     semantic_keys: list[str] = Field(
         default_factory=list,
         max_length=200,
@@ -282,10 +298,10 @@ class RagasRegressionCaseOut(OrmModel):
     document_ids: list[UUID] = Field(default_factory=list)
     question: str
     expected_answer: str | None = None
-    reference_sources: list[ReferenceSource] = Field(default_factory=list)
+    reference_sources: list[StoredReferenceSource] = Field(default_factory=list)
     tags: list[str] = Field(default_factory=list)
     reasoning_hops: list[str] = Field(default_factory=list)
-    evidence_chain: list[ReferenceSource] = Field(default_factory=list)
+    evidence_chain: list[StoredReferenceSource] = Field(default_factory=list)
     extra: dict[str, Any] = Field(default_factory=dict)
     created_by: str | None = None
     created_at: datetime
@@ -301,6 +317,14 @@ class RagasRegressionRunCreateRequest(BaseModel):
     case_ids: list[UUID] = Field(
         default_factory=list, description="Case IDs to run (if empty, select by filter criteria)"
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _reject_retired_retrieval_options(cls, value: Any) -> Any:
+        if isinstance(value, dict):
+            reject_retired_retrieval_options(value)
+        return value
+
     dataset_id: UUID = Field(description="Run cases under this dataset (required)")
     metrics: list[str] = Field(
         default_factory=lambda: ["faithfulness", "response_relevancy"],
@@ -344,10 +368,6 @@ class RagasRegressionRunCreateRequest(BaseModel):
     query_rewrite_strategy: str | None = Field(default=None, description="Override query rewrite strategy id")
     query_rewrite_temperature: float | None = Field(default=None, ge=0.0, le=2.0)
     query_rewrite_max_chars: int | None = Field(default=None, ge=0, le=2000)
-    sparse_retrieval_enabled: bool | None = Field(default=None, description="Enable sparse retrieval channel")
-    sparse_retrieval_provider: str | None = Field(
-        default=None, description="Sparse provider: deterministic (test implementation)"
-    )
     # NOTE: default to 20 so retrieval-only gates can enforce Recall@20/Hit@20 without
     # requiring callers (CI scripts) to pass explicit rag_params.
     top_k: int = Field(default=20, ge=1, le=50)
@@ -372,7 +392,7 @@ class RagasRegressionRunCreateRequest(BaseModel):
     )
     reranker_provider: str = Field(
         default_factory=lambda: settings.RERANKER_PROVIDER,
-        description="Reranker provider: llm | pc | colbert | openai | dashscope | none",
+        description="Reranker provider: llm | pc | openai | dashscope | none",
     )
     reranker_top_n: int = Field(
         default_factory=lambda: settings.RERANKER_TOP_N,
@@ -437,19 +457,6 @@ class RagasRegressionRunCreateRequest(BaseModel):
             return None
         raw = v.strip()
         return raw if raw else None
-
-    @field_validator("sparse_retrieval_provider", mode="after")
-    @classmethod
-    def _normalize_sparse_retrieval_provider(cls, v: str | None) -> str | None:
-        if v is None:
-            return None
-        raw = v.strip().lower()
-        if not raw:
-            return None
-        reject_retired_provider(raw, capability="sparse")
-        if raw != "deterministic":
-            raise ValueError("sparse_retrieval_provider must be deterministic")
-        return raw
 
     @field_validator("reranker_provider")
     @classmethod

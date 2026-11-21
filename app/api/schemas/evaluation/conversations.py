@@ -118,6 +118,7 @@ class TestGenFromDocsRequest(BaseModel):
     num_questions: int = Field(default=10, ge=1, le=50, description="Number of questions to generate")
     question_types: list[str] = Field(
         default_factory=lambda: ["factual", "multi_hop", "comparison"],
+        min_length=1,
         description=(
             "Question types: factual, multi_hop (reasoning), comparison, conditional, unanswerable. "
             "Back-compat: 'reasoning' is treated as 'multi_hop'."
@@ -151,7 +152,7 @@ class GeneratedQuestion(BaseModel):
     expected_answer: str | None = Field(default=None, description="Expected answer")
     context: str | None = Field(default=None, description="Question source context")
     source_type: str = Field(description="Source type: document or conversation")
-    source_id: str = Field(description="Source ID")
+    source_id: str | None = Field(default=None, description="Single source ID when the generator provides one")
     metadata: dict[str, Any] = Field(default_factory=dict, description="Additional metadata")
 
 

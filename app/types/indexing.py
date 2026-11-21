@@ -1,19 +1,26 @@
-"""
-Internal type definitions for indexing/ingestion pipeline (not API Schema)
-
-Notes:
-- These dataclasses/Enums are used by internal modules like services/rag/parsing
-- To avoid triggering ORM/Settings initialization at import time, ORM models are not directly imported at runtime
-"""
+"""Records and metadata keys shared by ingestion, indexing, and retrieval."""
 
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
+RETRIEVAL_TEXT_METADATA_KEY = "_retrieval_text"
+RETRIEVAL_DISPLAY_CONTENT_METADATA_KEY = "_retrieval_display_content"
+INDEXED_METADATA_KEY = "_indexed_metadata"
+DISPLAY_METADATA_KEY = "_display_metadata"
+EVALUABLE_METADATA_KEY = "_evaluable_metadata"
+RECORD_IDENTITY_METADATA_KEY = "_record_identity"
+METADATA_SCHEMA_VIEW_KEYS = (
+    INDEXED_METADATA_KEY,
+    DISPLAY_METADATA_KEY,
+    EVALUABLE_METADATA_KEY,
+    RECORD_IDENTITY_METADATA_KEY,
+)
+
 if TYPE_CHECKING:  # pragma: no cover
-    from app.models.document import DocumentChunk
-    from app.rag.kg.models import KgEntity, KgSourceEvent
+    from app.models.documents.records import DocumentChunk
+    from app.models.knowledge_graph.entities import KgEntity, KgSourceEvent
 
 
 class IndexKind(str, Enum):
@@ -126,6 +133,13 @@ class IndexBatchResult:
 
 
 __all__ = [
+    "DISPLAY_METADATA_KEY",
+    "EVALUABLE_METADATA_KEY",
+    "INDEXED_METADATA_KEY",
+    "METADATA_SCHEMA_VIEW_KEYS",
+    "RECORD_IDENTITY_METADATA_KEY",
+    "RETRIEVAL_DISPLAY_CONTENT_METADATA_KEY",
+    "RETRIEVAL_TEXT_METADATA_KEY",
     "ChunkInput",
     "EventEntityInput",
     "EventInput",

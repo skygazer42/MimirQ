@@ -9,16 +9,11 @@ function readSource(relativePath: string) {
 }
 
 describe('evaluation support surfaces stay flat', () => {
-  it('avoids glass panels and glow overlays in queryset health and radar widgets', () => {
+  it('avoids glass panels and glow overlays in queryset health', () => {
     const querysetHealthSrc = readSource('./queryset-health-tab-client.tsx')
-    const radarSrc = readSource('./holographic-radar-client.tsx')
 
     expect(querysetHealthSrc).not.toContain('variant="glass"')
     expect(querysetHealthSrc).not.toContain('backdrop-blur')
-
-    expect(radarSrc).not.toContain('backdrop-blur')
-    expect(radarSrc).not.toContain('blur-2xl')
-    expect(radarSrc).not.toContain('shadow-strong')
   })
 
   it('removes decorative empty-state bubbles and gradients from ablation workflows', () => {

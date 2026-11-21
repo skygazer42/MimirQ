@@ -1,12 +1,22 @@
 'use client'
 import { FeedbackToast } from '@/components/feedback-toast'
 
-import { type ReactNode, type RefObject, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
+import {
+  type ReactNode,
+  type RefObject,
+  useCallback,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from 'react'
 import {
   Archive,
   ArrowRight,
   ChevronDown,
-  CircleAlert,
   Cloud,
   Database,
   Dataset as DatasetIcon,
@@ -36,20 +46,23 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTr
 import { Textarea } from '@/components/ui/textarea'
 import { connectorApi } from '@/lib/api/connectors'
 import { datasetApi } from '@/lib/api/datasets'
+import {
+  DOCUMENT_UPLOAD_BATCH_LIMIT,
+  getUploadFilename,
+  getUploadReceiptKey,
+  matchUploadReceipts,
+} from '@/lib/api/document-helpers'
 import { documentApi } from '@/lib/api/documents'
 import { settingsApi } from '@/lib/api/settings'
 import { formatApiError } from '@/lib/api-errors'
-import { getAuthSessionRevision } from '@/lib/auth-storage'
+import { getAuthSessionRevision, subscribeAuthSession } from '@/lib/auth-storage'
 import { readClientStorage } from '@/lib/client-storage'
 import { getParserOption, PARSER_BACKEND_REGISTRY_OPTIONS } from '@/lib/parser-options'
+import { readNonEmptyString } from '@/lib/primitive-text'
+import { queryKeys } from '@/lib/query-keys'
+import { createCodePointToUtf16Converter } from '@/lib/text-offsets'
 import { cn, detachPromise, formatFileSize } from '@/lib/utils'
-import type {
-  Dataset,
-  Document,
-  DocumentBatchUploadResponse,
-  DocumentFolderNode,
-  DocumentPipelineOptions,
-} from '@/types'
+import type { Dataset, Document, DocumentFolderNode, DocumentPipelineOptions } from '@/types'
 
 import { IngestionViewSwitch } from './view-switch'
 import styles from './operation.module.css'
@@ -62,9 +75,14 @@ const EMPTY_FILES: File[] = []
 type UploadSource = 'local' | 'folder' | 'url' | 'object' | 'api'
 type ParserBackend = 'auto' | 'docling' | 'markitdown' | 'deepdoc' | 'csv' | 'json' | 'markdown'
 type ChunkStrategy = 'semantic' | 'langchain_recursive' | 'markdown' | 'by_title'
-type IngestMode = 'append' | 'replace' | 'skip_duplicates'
 type IngestExecutionMode = 'upload_only' | 'parse_only' | 'full_index'
 type TaskStatus = 'idle' | 'prechecking' | 'uploading' | 'completed' | 'failed'
+type UploadReceipt = {
+  datasetId: string
+  authRevision: number
+  files: readonly File[]
+  response: Awaited<ReturnType<typeof documentApi.uploadBatch>>
+}
 type SelectOption<T extends string> = {
   value: T
   title: string
@@ -75,7 +93,6 @@ type SelectOption<T extends string> = {
 type DraftState = {
   datasetId: string
   syncDataset: boolean
-  ingestMode: IngestMode
   executionMode: IngestExecutionMode
   parserBackend: ParserBackend
   chunkStrategy: ChunkStrategy
@@ -94,7 +111,6 @@ type DatasetIngestContext = Pick<DraftState, 'tags' | 'collection'>
 const DEFAULT_DRAFT: DraftState = {
   datasetId: '',
   syncDataset: false,
-  ingestMode: 'append',
   executionMode: 'upload_only',
   parserBackend: 'auto',
   chunkStrategy: 'semantic',
@@ -151,26 +167,6 @@ const SOFT_CONTROL_CLASS = styles.control
 const CONFIG_INPUT_CLASS = styles.control
 const SELECT_MENU_CLASS = styles.menu
 const SELECT_OPTION_CLASS = styles.menuOption
-const INGEST_MODE_OPTIONS: Array<SelectOption<IngestMode>> = [
-  {
-    value: 'append',
-    title: '追加导入',
-    description: '保留现有数据，只写入本次文件。',
-    badge: '默认',
-  },
-  {
-    value: 'skip_duplicates',
-    title: '跳过重复',
-    description: '发现重复文件时跳过，适合批量补充。',
-    badge: '稳妥',
-  },
-  {
-    value: 'replace',
-    title: '替换同名',
-    description: '同名文件用新版本覆盖，适合重传修订。',
-    badge: '谨慎',
-  },
-]
 const EXECUTION_MODE_OPTIONS: Array<SelectOption<IngestExecutionMode>> = [
   {
     value: 'upload_only',
@@ -194,18 +190,13 @@ const EXECUTION_MODE_OPTIONS: Array<SelectOption<IngestExecutionMode>> = [
 const DEDUP_OPTIONS: Array<SelectOption<string>> = [
   {
     value: 'content_hash',
-    title: '内容哈希',
-    description: '相同内容自动跳过，推荐默认使用。',
+    title: '启用',
+    description: '按当前管线处理相似内容。',
     badge: '推荐',
   },
   {
-    value: 'filename',
-    title: '文件名',
-    description: '按同名文件判断重复。',
-  },
-  {
     value: 'none',
-    title: '不检查',
+    title: '关闭',
     description: '直接写入，适合临时或隔离数据。',
   },
 ]
@@ -220,6 +211,7 @@ function loadDraft(): DraftState {
     if (!raw) return DEFAULT_DRAFT
     const parsed = JSON.parse(raw) as Partial<DraftState>
     const draft = { ...DEFAULT_DRAFT, ...parsed }
+    draft.dedupStrategy = draft.dedupStrategy === 'none' ? 'none' : DEFAULT_DRAFT.dedupStrategy
     if (!Object.prototype.hasOwnProperty.call(parsed, 'executionMode') || !isIngestExecutionMode(draft.executionMode)) {
       draft.executionMode = DEFAULT_DRAFT.executionMode
       draft.syncDataset = DEFAULT_DRAFT.syncDataset
@@ -231,16 +223,11 @@ function loadDraft(): DraftState {
 }
 
 function fileKey(file: File) {
-  const path = (file as File & { webkitRelativePath?: string }).webkitRelativePath || file.name
-  return `${path}:${file.size}:${file.lastModified}`
-}
-
-function fileUploadName(file: File) {
-  return String((file as File & { webkitRelativePath?: string }).webkitRelativePath || file.name)
+  return `${getUploadFilename(file)}:${file.size}:${file.lastModified}`
 }
 
 function fileRelativeFolder(file: File) {
-  const path = fileUploadName(file)
+  const path = getUploadFilename(file)
   if (!path.includes('/')) return ''
   return path.split('/').slice(0, -1).join('/').trim()
 }
@@ -252,10 +239,6 @@ function formatFileType(file: File) {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
-}
-
-function normalizeOption(value: unknown) {
-  return String(value || '').trim()
 }
 
 function normalizeListText(value: string) {
@@ -270,7 +253,6 @@ function getSelectOptionTitle<T extends string>(options: Array<SelectOption<T>>,
 }
 
 type SelectOptionBodyProps = {
-  badge?: string
   description: string
   title: string
 }
@@ -290,7 +272,7 @@ function DatasetOptionBody({ dataset }: Readonly<DatasetOptionBodyProps>) {
   return (
     <span className={styles.optionBody}>
       <strong>{dataset.name}</strong>
-      <small>{datasetShortId(dataset)}</small>
+      <small>{dataset.id.slice(0, 18).toUpperCase()}</small>
     </span>
   )
 }
@@ -301,7 +283,10 @@ function getDocumentUserTags(document: Document): string[] {
   const user = metadata.user
   const rawTags = isRecord(user) ? user.tags : metadata.tags
   if (Array.isArray(rawTags)) {
-    return rawTags.map(normalizeOption).filter(Boolean)
+    return rawTags
+      .filter((tag): tag is string => typeof tag === 'string')
+      .map((tag) => tag.trim())
+      .filter((tag) => tag !== '')
   }
   if (typeof rawTags === 'string') return normalizeListText(rawTags)
   return []
@@ -319,13 +304,13 @@ function collectTagOptions(documents: Document[], draftTags: string): string[] {
 function collectFolderPaths(root?: DocumentFolderNode | null): string[] {
   if (!root) return []
   const out: string[] = []
-  const stack = [...(root.children || [])].reverse()
+  const stack = [...(root.children ?? [])].reverse()
   while (stack.length) {
     const node = stack.pop()
     if (!node) continue
-    const path = normalizeOption(node.path)
-    if (path) out.push(path)
-    for (const child of [...(node.children || [])].reverse()) stack.push(child)
+    const path = node.path.trim()
+    if (path !== '') out.push(path)
+    for (const child of [...(node.children ?? [])].reverse()) stack.push(child)
   }
   return out
 }
@@ -341,7 +326,7 @@ function collectCollectionOptions(
     const folder = fileRelativeFolder(file)
     if (folder) options.add(folder)
   }
-  const normalizedCurrent = normalizeOption(currentCollection)
+  const normalizedCurrent = currentCollection.trim()
   if (normalizedCurrent) options.add(normalizedCurrent)
   return Array.from(options).sort((a, b) => {
     if (a === DEFAULT_COLLECTION) return -1
@@ -351,7 +336,7 @@ function collectCollectionOptions(
 }
 
 function getFileIcon(file: File) {
-  return getFileTypeMeta({ filename: file.name, file_type: '' }).icon
+  return getFileTypeMeta({ filename: file.name }).icon
 }
 
 function shouldBuildIndexes(draft: DraftState) {
@@ -379,14 +364,10 @@ function normalizeChunkStrategy(strategy: ChunkStrategy) {
   return strategy
 }
 
-function datasetShortId(dataset?: Dataset | null) {
-  return dataset?.id ? String(dataset.id).slice(0, 18).toUpperCase() : '--'
-}
-
-function parseLineList(raw: string, max = 100) {
+function parseLineList(raw: string, max: number, separator: RegExp) {
   const seen = new Set<string>()
   const values: string[] = []
-  for (const item of raw.split(/[\n,;]+/)) {
+  for (const item of raw.split(separator)) {
     const value = item.trim()
     if (!value || seen.has(value)) continue
     seen.add(value)
@@ -397,11 +378,11 @@ function parseLineList(raw: string, max = 100) {
 }
 
 function parseUrlList(raw: string) {
-  return parseLineList(raw, 50).filter((value) => /^https?:\/\//i.test(value))
+  return parseLineList(raw, 50, /\r?\n/).filter((value) => /^https?:\/\//i.test(value))
 }
 
 function parseExtensions(raw: string) {
-  const extensions = parseLineList(raw, 20)
+  const extensions = parseLineList(raw, 20, /[\n,;]+/)
     .map((value) => value.toLowerCase())
     .map((value) => (value.startsWith('.') ? value : `.${value}`))
     .filter((value) => /^\.[a-z0-9]{1,12}$/i.test(value))
@@ -413,14 +394,15 @@ function apiPayloadFileType(filename: string) {
   return ext || 'json'
 }
 
-export default function KnowledgeIngestionOperationPage() {
+export default function KnowledgeIngestionOperationPage({ active = true }: Readonly<{ active?: boolean }>) {
   const router = useRouter()
   const queryClient = useQueryClient()
+  const authRevision = useSyncExternalStore(subscribeAuthSession, getAuthSessionRevision, getAuthSessionRevision)
   const searchParams = useSearchParams()
-  const routeDatasetId = searchParams.get('datasetId') || ''
+  const routeDatasetId = searchParams.get('datasetId')
+  const activeRef = useRef(active)
   const inputRef = useRef<HTMLInputElement | null>(null)
   const folderInputRef = useRef<HTMLInputElement | null>(null)
-  const previousDatasetIdRef = useRef<string | null>(null)
   const observedRouteDatasetIdRef = useRef(routeDatasetId)
   const appliedRouteDatasetIdRef = useRef<string | null>(null)
   const submissionRef = useRef<{ authRevision: number } | null>(null)
@@ -438,9 +420,16 @@ export default function KnowledgeIngestionOperationPage() {
   const [apiContent, setApiContent] = useState('')
   const [dragging, setDragging] = useState(false)
   const [status, setStatus] = useState<TaskStatus>('idle')
-  const [uploadResponse, setUploadResponse] = useState<DocumentBatchUploadResponse | null>(null)
+  const [uploadReceipt, setUploadReceipt] = useState<UploadReceipt | null>(null)
+  const currentReceipt =
+    uploadReceipt?.authRevision === authRevision && uploadReceipt.datasetId === draft.datasetId ? uploadReceipt : null
+  const uploadResponse = currentReceipt?.response
   const [submissionError, setSubmissionError] = useState<string | null>(null)
   const [configurationOpen, setConfigurationOpen] = useState(false)
+
+  useLayoutEffect(() => {
+    activeRef.current = active
+  }, [active])
 
   useEffect(() => {
     const nextDraft = loadDraft()
@@ -456,28 +445,33 @@ export default function KnowledgeIngestionOperationPage() {
   }, [])
 
   const datasetsQuery = useQuery({
-    queryKey: ['knowledge-ingestion-operation-datasets'],
-    queryFn: () => datasetApi.listAll(),
+    queryKey: queryKeys.datasets.exhaustive(),
+    queryFn: ({ signal }) => datasetApi.listAll(undefined, { signal }),
     staleTime: 30_000,
   })
 
   const datasets = useMemo(() => datasetsQuery.data ?? [], [datasetsQuery.data])
 
   useEffect(() => {
+    if (!active) {
+      observedRouteDatasetIdRef.current = routeDatasetId
+      appliedRouteDatasetIdRef.current = routeDatasetId
+      return
+    }
     if (observedRouteDatasetIdRef.current !== routeDatasetId) {
       observedRouteDatasetIdRef.current = routeDatasetId
       appliedRouteDatasetIdRef.current = null
     }
-    const routeDatasetExists = routeDatasetId && datasets.some((dataset) => dataset.id === routeDatasetId)
+    const routeDataset = datasets.find((dataset) => dataset.id === routeDatasetId)
     const fallbackDatasetId = datasets[0]?.id
-    const applyRoute = routeDatasetExists && appliedRouteDatasetIdRef.current !== routeDatasetId
-    if (!routeDatasetId || applyRoute) appliedRouteDatasetIdRef.current = routeDatasetId
+    const applyRoute = routeDataset !== undefined && appliedRouteDatasetIdRef.current !== routeDataset.id
+    if (applyRoute) appliedRouteDatasetIdRef.current = routeDataset.id
     setDraft((current) => {
-      if (applyRoute && current.datasetId !== routeDatasetId) return { ...current, datasetId: routeDatasetId }
+      if (applyRoute && current.datasetId !== routeDataset.id) return { ...current, datasetId: routeDataset.id }
       if (current.datasetId || !fallbackDatasetId) return current
       return { ...current, datasetId: fallbackDatasetId }
     })
-  }, [datasets, routeDatasetId])
+  }, [active, datasets, routeDatasetId])
 
   const selectedDataset = useMemo(
     () => datasets.find((dataset) => dataset.id === draft.datasetId) ?? null,
@@ -486,23 +480,14 @@ export default function KnowledgeIngestionOperationPage() {
   const activeFileBucketKey = draft.datasetId || NO_DATASET_FILE_BUCKET
   const files = filesByDatasetId[activeFileBucketKey] ?? EMPTY_FILES
 
-  useEffect(() => {
+  useLayoutEffect(() => {
+    setUploadReceipt(null)
+    setSubmissionError(null)
+    setStatus('idle')
     return () => {
       submissionRef.current = null
     }
-  }, [draft.datasetId])
-
-  useEffect(() => {
-    if (previousDatasetIdRef.current === null) {
-      previousDatasetIdRef.current = draft.datasetId
-      return
-    }
-    if (previousDatasetIdRef.current === draft.datasetId) return
-    previousDatasetIdRef.current = draft.datasetId
-    setUploadResponse(null)
-    setSubmissionError(null)
-    setStatus('idle')
-  }, [draft.datasetId])
+  }, [authRevision, draft.datasetId])
 
   useEffect(() => {
     if (!draft.datasetId) return
@@ -542,7 +527,7 @@ export default function KnowledgeIngestionOperationPage() {
 
   const foldersQuery = useQuery({
     queryKey: ['knowledge-ingestion-operation-folders', draft.datasetId],
-    queryFn: () => documentApi.folders({ dataset_id: draft.datasetId, max_depth: 20 }),
+    queryFn: ({ signal }) => documentApi.folders({ dataset_id: draft.datasetId, max_depth: 20 }, { signal }),
     enabled: Boolean(draft.datasetId),
     staleTime: 10_000,
   })
@@ -614,7 +599,7 @@ export default function KnowledgeIngestionOperationPage() {
             ...current,
             [draft.datasetId]: {
               ...previous,
-              [key]: String(value || ''),
+              [key]: String(value),
             },
           }
         })
@@ -652,7 +637,7 @@ export default function KnowledgeIngestionOperationPage() {
       ...current,
       [activeFileBucketKey]: [],
     }))
-    setUploadResponse(null)
+    setUploadReceipt(null)
     setSubmissionError(null)
     setStatus('idle')
   }, [activeFileBucketKey])
@@ -682,7 +667,7 @@ export default function KnowledgeIngestionOperationPage() {
     const ownsSubmission = () =>
       submissionRef.current === submission && submission.authRevision === getAuthSessionRevision()
     setStatus('uploading')
-    setUploadResponse(null)
+    setUploadReceipt(null)
     setSubmissionError(null)
     try {
       const sharedConfig = {
@@ -697,7 +682,7 @@ export default function KnowledgeIngestionOperationPage() {
               dataset_id: draft.datasetId,
               config: {
                 urls: parsedUrls,
-                filename: urlFilename.trim() || undefined,
+                filename: readNonEmptyString(urlFilename),
                 ...sharedConfig,
               },
             })
@@ -705,8 +690,8 @@ export default function KnowledgeIngestionOperationPage() {
               connector_id: 'minio_bucket',
               dataset_id: draft.datasetId,
               config: {
-                bucket: objectBucket.trim() || undefined,
-                prefix: objectPrefix.trim() || undefined,
+                bucket: readNonEmptyString(objectBucket),
+                prefix: readNonEmptyString(objectPrefix),
                 include_extensions: parsedObjectExtensions,
                 max_objects: objectMaxObjects,
                 ...sharedConfig,
@@ -715,9 +700,11 @@ export default function KnowledgeIngestionOperationPage() {
       if (submission.authRevision === getAuthSessionRevision()) await refreshDataset(draft.datasetId, false)
       if (!ownsSubmission()) return
       setStatus(run.status === 'failed' || run.status === 'cancelled' ? 'failed' : 'completed')
-      toast.success(`连接器任务已创建：${String(run.id).slice(0, 8)}`)
+      toast.success(`连接器任务已创建：${run.id.slice(0, 8)}`)
       if (run.status !== 'failed' && shouldOpenExecutionMonitor(draft, 'ingest')) {
-        router.push('/knowledge/ingestion?mode=execution-monitor')
+        if (activeRef.current) {
+          router.push(`/knowledge/ingestion?mode=execution-monitor&datasetId=${encodeURIComponent(draft.datasetId)}`)
+        }
       }
     } catch (error) {
       if (!ownsSubmission()) return
@@ -806,11 +793,11 @@ export default function KnowledgeIngestionOperationPage() {
       const ownsSubmission = () =>
         submissionRef.current === submission && submission.authRevision === getAuthSessionRevision()
       setStatus('uploading')
-      setUploadResponse(null)
+      setUploadReceipt(null)
       setSubmissionError(null)
       try {
         if (source === 'api') {
-          const filename = apiFilename.trim() || 'api-payload.json'
+          const filename = readNonEmptyString(apiFilename) ?? 'api-payload.json'
           const document = await documentApi.createFromChunks({
             dataset_id: draft.datasetId,
             filename,
@@ -824,14 +811,13 @@ export default function KnowledgeIngestionOperationPage() {
                 .split(',')
                 .map((tag) => tag.trim())
                 .filter(Boolean),
-              ingest_mode: draft.ingestMode,
             },
             chunks: [
               {
                 content: apiContent,
                 page_number: 1,
                 start_char: 0,
-                end_char: apiContent.length,
+                end_char: createCodePointToUtf16Converter(apiContent).codePointLength,
                 metadata: {
                   source: 'api',
                   collection: draft.collection,
@@ -841,18 +827,17 @@ export default function KnowledgeIngestionOperationPage() {
           })
           if (submission.authRevision === getAuthSessionRevision()) await refreshDataset(draft.datasetId)
           if (!ownsSubmission()) return
-          setUploadResponse({
-            total: 1,
-            successful_count: 1,
-            failed_count: 0,
-            successful: [
-              {
-                document_id: document.id,
-                filename,
-                status: String(document.status || 'completed'),
-              },
-            ],
-            failed: [],
+          setUploadReceipt({
+            datasetId: draft.datasetId,
+            authRevision: submission.authRevision,
+            files: [],
+            response: {
+              total: 1,
+              successful_count: 1,
+              failed_count: 0,
+              successful: [{ document_id: document.id, filename, status: document.status }],
+              failed: [],
+            },
           })
           setStatus('completed')
           toast.success(`API 导入已写入：${filename}`)
@@ -867,31 +852,45 @@ export default function KnowledgeIngestionOperationPage() {
           max_concurrent: 4,
           user_metadata_map: Object.fromEntries(
             uploadTargets.map((file) => [
-              fileUploadName(file),
+              getUploadFilename(file),
               {
                 tags: draft.tags
                   .split(',')
                   .map((tag) => tag.trim())
                   .filter(Boolean),
                 collection: draft.collection,
-                ingest_mode: draft.ingestMode,
                 source,
               },
             ]),
           ),
         }
-        const response = await documentApi.uploadBatch(files, uploadOptions)
+        const response = await documentApi.uploadBatch(uploadTargets, uploadOptions)
         if (submission.authRevision === getAuthSessionRevision()) await refreshDataset(draft.datasetId)
         if (!ownsSubmission()) return
-        setUploadResponse(response)
+        setUploadReceipt({
+          datasetId: draft.datasetId,
+          authRevision: submission.authRevision,
+          files: uploadTargets,
+          response,
+        })
         setStatus(response.failed_count > 0 ? 'failed' : 'completed')
+        if (response.successful_count === 0) {
+          toast.error(`文件提交失败：${response.failed_count} 个文件`)
+          return
+        }
+        if (response.failed_count > 0) {
+          toast.warning(`已提交 ${response.successful_count} 个文件，失败 ${response.failed_count} 个`)
+          return
+        }
         toast.success(
           mode === 'upload_only'
-            ? `已登记到知识库：成功 ${response.successful_count} / 失败 ${response.failed_count}`
-            : `入库任务已提交：成功 ${response.successful_count} / 失败 ${response.failed_count}`,
+            ? `已登记 ${response.successful_count} 个文件`
+            : `已提交 ${response.successful_count} 个文件`,
         )
-        if (response.successful_count > 0 && shouldOpenExecutionMonitor(draft, mode)) {
-          router.push('/knowledge/ingestion?mode=execution-monitor')
+        if (shouldOpenExecutionMonitor(draft, mode)) {
+          if (activeRef.current) {
+            router.push(`/knowledge/ingestion?mode=execution-monitor&datasetId=${encodeURIComponent(draft.datasetId)}`)
+          }
         }
       } catch (error) {
         if (!ownsSubmission()) return
@@ -936,7 +935,9 @@ export default function KnowledgeIngestionOperationPage() {
     draft.executionMode === 'upload_only' ? 1 : draft.executionMode === 'parse_only' ? 2 : OPERATION_STAGES.length
   const sourceExecutionBlocked =
     draft.executionMode === 'upload_only' && (source === 'url' || source === 'object' || source === 'api')
-  const operationReady = canStartIngest && !sourceExecutionBlocked
+  const isFileSource = source === 'local' || source === 'folder'
+  const exceedsBatchLimit = isFileSource && files.length > DOCUMENT_UPLOAD_BATCH_LIMIT
+  const operationReady = canStartIngest && !sourceExecutionBlocked && !exceedsBatchLimit
   const actionLabel =
     draft.executionMode === 'upload_only'
       ? '登记文件'
@@ -951,23 +952,18 @@ export default function KnowledgeIngestionOperationPage() {
         : source === 'object'
           ? '请配置对象存储范围'
           : '请填写 API 导入内容'
-  const preflightMessage = !draft.datasetId
-    ? '请选择目标数据集'
-    : connectorSourceBlocked
-      ? '当前环境未启用 URL/对象存储导入'
-      : sourceExecutionBlocked
-        ? '当前来源不支持“仅登记”'
-        : pendingSourceCount === 0
-          ? emptySourceMessage
-          : '0 阻断 · 可以提交'
+  let preflightMessage = emptySourceMessage
+  if (selectedDataset === null) preflightMessage = '请选择可用的数据集'
+  else if (connectorSourceBlocked) preflightMessage = '当前环境未启用 URL/对象存储导入'
+  else if (sourceExecutionBlocked) preflightMessage = '当前来源不支持“仅登记”'
+  else if (exceedsBatchLimit) preflightMessage = `一次最多提交 ${DOCUMENT_UPLOAD_BATCH_LIMIT} 个文件，请分批提交`
   const submissionSummary = uploadResponse
     ? `上次提交：成功 ${uploadResponse.successful_count} · 失败 ${uploadResponse.failed_count}`
     : pendingSourceCount === 0
-      ? `${emptySourceMessage}，完成后即可提交`
+      ? emptySourceMessage
       : `将 ${pendingSourceCount} 项内容写入 ${selectedDataset?.name ?? '目标数据集'}，按“${getSelectOptionTitle(EXECUTION_MODE_OPTIONS, draft.executionMode)}”处理`
 
   const isSubmitting = status === 'uploading'
-  const isFileSource = source === 'local' || source === 'folder'
   const executionPath = OPERATION_STAGES.slice(0, activeStageCount)
     .map((stage) => stage.label)
     .join(' → ')
@@ -993,12 +989,12 @@ export default function KnowledgeIngestionOperationPage() {
           <PageTitleIcon name="ingestion-operation" className={styles.titleIcon} />
           <h1>入库管理</h1>
         </div>
-        <IngestionViewSwitch variant="tabs" className={styles.viewSwitch} />
+        <IngestionViewSwitch className={styles.viewSwitch} />
         <div className={styles.headerActions}>
           <Button variant="ghost" className={styles.quietButton} onClick={() => router.push('/knowledge')}>
             查看文档
           </Button>
-          <Sheet open={configurationOpen} onOpenChange={setConfigurationOpen}>
+          <Sheet open={active && configurationOpen} onOpenChange={setConfigurationOpen}>
             <SheetTrigger asChild>
               <Button variant="ghost" className={cn(styles.quietButton, styles.configTrigger)}>
                 <Settings2 className="size-4" />
@@ -1059,6 +1055,7 @@ export default function KnowledgeIngestionOperationPage() {
               multiple
               className="sr-only"
               aria-label="选择待入库文件"
+              tabIndex={-1}
               accept={ACCEPTED_EXTENSIONS.join(',')}
               disabled={isSubmitting}
               onChange={(event) => {
@@ -1079,7 +1076,7 @@ export default function KnowledgeIngestionOperationPage() {
               onClear={clearFiles}
               onRemove={removeFile}
               disabled={isSubmitting}
-              response={uploadResponse}
+              receipt={currentReceipt}
             />
           ) : (
             <div className={styles.emptyQueue}>
@@ -1089,10 +1086,10 @@ export default function KnowledgeIngestionOperationPage() {
               </strong>
               <p>
                 {source === 'url'
-                  ? '填写文件链接后，确认右侧处理方式并提交。'
+                  ? '填写文件链接，选好处理方式后提交。'
                   : source === 'object'
                     ? '按上方的前缀和扩展名选择待导入对象。'
-                    : '提交上方内容，在目标数据集中创建文档。'}
+                    : '提交后会在目标数据集中创建一份文档。'}
               </p>
             </div>
           )}
@@ -1190,7 +1187,7 @@ function UploadDropArea({
       onDrop={(event) => {
         event.preventDefault()
         onDragState(false)
-        if (!disabled) onFiles(Array.from(event.dataTransfer.files ?? []))
+        if (!disabled) onFiles(Array.from(event.dataTransfer.files))
       }}
     >
       <UploadCloud aria-hidden="true" />
@@ -1276,6 +1273,7 @@ function SourceConfiguration({
           multiple
           className="sr-only"
           aria-label="选择待入库文件夹"
+          tabIndex={-1}
           accept={ACCEPTED_EXTENSIONS.join(',')}
           onChange={(event) => {
             onFiles(Array.from(event.target.files ?? []))
@@ -1389,9 +1387,18 @@ type SelectedFilesTableProps = {
   dragging: boolean
   onDragState: (dragging: boolean) => void
   onFiles: (files: File[]) => void
-  onChoose: () => void
   onClear: () => void
   onRemove: (key: string) => void
+  disabled: boolean
+  receipt: UploadReceipt | null
+}
+
+const FILE_SUBMISSION_LABELS = {
+  pending: '待提交',
+  uploading: '提交中',
+  submitted: '已提交',
+  failed: '提交失败',
+  unconfirmed: '结果未确认',
 }
 
 function SelectedFilesTable({
@@ -1404,21 +1411,25 @@ function SelectedFilesTable({
   onClear,
   onRemove,
   disabled,
-  response,
-}: Readonly<{
-  rows: Array<{ file: File; Icon: PlatformIcon; key: string }>
-  totalBytes: number
-  sourceName: string
-  dragging: boolean
-  onDragState: (dragging: boolean) => void
-  onFiles: (files: File[]) => void
-  onClear: () => void
-  onRemove: (key: string) => void
-  disabled: boolean
-  response: DocumentBatchUploadResponse | null
-}>) {
-  const submittedNames = useMemo(() => new Set(response?.successful?.map((item) => item.filename)), [response])
-  const failedNames = useMemo(() => new Set(response?.failed?.map((item) => item.filename)), [response])
+  receipt,
+}: Readonly<SelectedFilesTableProps>) {
+  const statesByFile = useMemo(() => {
+    const states = new Map<File, keyof typeof FILE_SUBMISSION_LABELS>()
+    if (receipt === null) return states
+
+    const { files, response } = receipt
+    const matches = matchUploadReceipts(files, [...response.successful, ...response.failed])
+    for (const file of files) states.set(file, 'unconfirmed')
+    for (const uploaded of response.successful) {
+      const file = matches.get(uploaded)
+      if (file !== undefined) states.set(file, 'submitted')
+    }
+    for (const failure of response.failed) {
+      const file = matches.get(failure)
+      if (file !== undefined) states.set(file, 'failed')
+    }
+    return states
+  }, [receipt])
 
   return (
     <div data-ingestion-file-staging-workspace="true" data-selected-files-table="stable" className={styles.fileStaging}>
@@ -1464,10 +1475,8 @@ function SelectedFilesTable({
             </thead>
             <tbody>
               {rows.map(({ file, Icon, key }, index) => {
-                const uploadName = fileUploadName(file)
-                const submitted = submittedNames.has(uploadName)
-                const failed = failedNames.has(uploadName)
-                const label = failed ? '提交失败' : submitted ? '已提交' : disabled ? '提交中' : '待提交'
+                const uploadName = getUploadFilename(file)
+                const state = statesByFile.get(file) ?? (disabled ? 'uploading' : 'pending')
                 return (
                   <tr key={key}>
                     <td className={styles.rowIndex}>{String(index + 1).padStart(2, '0')}</td>
@@ -1485,11 +1494,8 @@ function SelectedFilesTable({
                     <td className={styles.fileFormat}>{formatFileType(file)}</td>
                     <td className={styles.numeric}>{formatFileSize(file.size)}</td>
                     <td>
-                      <span
-                        className={styles.fileState}
-                        data-state={failed ? 'failed' : submitted ? 'submitted' : 'pending'}
-                      >
-                        {label}
+                      <span className={styles.fileState} data-state={state}>
+                        {FILE_SUBMISSION_LABELS[state]}
                       </span>
                     </td>
                     <td>
@@ -1523,13 +1529,25 @@ function SelectedFilesTable({
           onDrop={(event) => {
             event.preventDefault()
             onDragState(false)
-            if (!disabled) onFiles(Array.from(event.dataTransfer.files ?? []))
+            if (!disabled) onFiles(Array.from(event.dataTransfer.files))
           }}
         >
           <UploadCloud aria-hidden="true" />
           <strong>将文件拖到这里</strong>
           <p>支持 PDF、Word、Markdown、表格、文本与压缩包</p>
         </div>
+      )}
+      {receipt !== null && receipt.response.failed.length > 0 && (
+        <details className="px-4 py-2 text-sm text-muted-foreground">
+          <summary className="cursor-pointer">查看失败文件</summary>
+          <ol className="max-h-36 list-decimal overflow-y-auto pl-5">
+            {receipt.response.failed.map((failure, index) => (
+              <li key={index} className="wrap-anywhere">
+                {getUploadReceiptKey(failure)} · {failure.error}
+              </li>
+            ))}
+          </ol>
+        </details>
       )}
     </div>
   )
@@ -1683,7 +1701,7 @@ function IngestionConfiguration({
             </Select>
           </div>
           <div className={styles.inlineField}>
-            <label htmlFor={dedupId}>重复处理</label>
+            <label htmlFor={dedupId}>近重复检测</label>
             <Select
               value={draft.dedupStrategy}
               onValueChange={(value) => updateDraft('dedupStrategy', value)}
@@ -1739,30 +1757,11 @@ function AdvancedIngestSettings({
       <summary>
         <span>
           <strong>高级设置</strong>
-          <small>导入方式、标签与目录</small>
+          <small>标签与目录</small>
         </span>
         <ChevronDown aria-hidden="true" />
       </summary>
       <div className={styles.advancedFields}>
-        <FieldBlock label="入库模式">
-          <Select value={draft.ingestMode} onValueChange={(value) => updateDraft('ingestMode', value as IngestMode)}>
-            <SelectTrigger className={SOFT_CONTROL_CLASS} aria-label="入库模式">
-              <span className="truncate">{getSelectOptionTitle(INGEST_MODE_OPTIONS, draft.ingestMode)}</span>
-            </SelectTrigger>
-            <SelectContent className={SELECT_MENU_CLASS}>
-              {INGEST_MODE_OPTIONS.map((option) => (
-                <SelectItem
-                  key={option.value}
-                  value={option.value}
-                  textValue={option.title}
-                  className={SELECT_OPTION_CLASS}
-                >
-                  <SelectOptionBody {...option} />
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </FieldBlock>
         <FieldBlock label="标签">
           <Input
             list={tagListId}

@@ -65,8 +65,7 @@ type PipelineChoice = {
   label: string
   description: string
   icon: PlatformIcon
-  disabled: boolean
-  disabledReason?: string
+  unavailable?: { label: '待确认' | '不可用'; reason: string }
 }
 
 function PipelineChoiceList({
@@ -83,17 +82,19 @@ function PipelineChoiceList({
   const name = useId()
   const firstChoices = choices.slice(0, 6)
   const additionalChoices = choices.slice(6)
-  const [expanded, setExpanded] = useState(() => additionalChoices.some((choice) => choice.value === value))
+  const [expanded, setExpanded] = useState<boolean>()
+  const showAdditionalChoices = expanded ?? additionalChoices.some((choice) => choice.value === value)
   const renderChoice = (choice: PipelineChoice) => {
     const selected = choice.value === value
+    const isUnavailable = choice.unavailable !== undefined
     const Icon = choice.icon
     return (
       <label
         key={choice.value}
         className={styles.choice}
         data-selected={selected}
-        data-disabled={choice.disabled}
-        title={choice.disabled ? choice.disabledReason : undefined}
+        data-disabled={isUnavailable}
+        title={choice.unavailable?.reason}
       >
         <input
           className="sr-only"
@@ -101,7 +102,7 @@ function PipelineChoiceList({
           name={name}
           value={choice.value}
           checked={selected}
-          disabled={choice.disabled}
+          disabled={isUnavailable}
           onChange={() => onChange(choice.value)}
         />
         <Icon className="size-[18px] shrink-0" />
@@ -114,8 +115,8 @@ function PipelineChoiceList({
           </span>
           <span className={cn(styles.choiceDescription, 'block')}>{choice.description}</span>
         </span>
-        {choice.disabled ? (
-          <span className={styles.availability}>未启用</span>
+        {choice.unavailable ? (
+          <span className={styles.availability}>{choice.unavailable.label}</span>
         ) : selected ? (
           <Check className="size-[18px] shrink-0" />
         ) : null}
@@ -126,7 +127,11 @@ function PipelineChoiceList({
     <div role="radiogroup" aria-label={label} className={styles.choices}>
       {firstChoices.map(renderChoice)}
       {additionalChoices.length > 0 ? (
-        <details className={styles.more} open={expanded} onToggle={(event) => setExpanded(event.currentTarget.open)}>
+        <details
+          className={styles.more}
+          open={showAdditionalChoices}
+          onToggle={(event) => setExpanded(event.currentTarget.open)}
+        >
           <summary className={cn(styles.moreSummary, 'focus-ring')}>
             <span>
               更多{label}（{additionalChoices.length}）
@@ -147,31 +152,43 @@ export function FrontendPreferencesSection({
   setChunkStrategy,
 }: Readonly<FrontendPreferencesSectionProps>) {
   const [inspector, setInspector] = useState<'parser' | 'chunk'>('parser')
-  const { capabilities, loading, error, refresh, parserBackendAvailable, chunkStrategyAvailable } =
-    usePipelineCapabilities()
+  const { capabilities, loading, error, refresh, parserBackendAvailable } = usePipelineCapabilities()
   const selectedParser = getParserOption(parserBackend)
   const ParserIcon = PARSER_ICONS[selectedParser.icon]
   const catalog = buildChunkStrategyCatalog(capabilities?.chunk_strategies)
+  const normalizedChunkStrategy = chunkStrategy.trim().toLowerCase()
   const selectedChunk =
-    catalog.find((choice) => choice.value === chunkStrategy) || getChunkStrategyOption(chunkStrategy)
+    catalog.find((choice) => choice.value === normalizedChunkStrategy) ?? getChunkStrategyOption(chunkStrategy)
   const ChunkIcon = CHUNK_ICONS[selectedChunk.icon]
   const parserChoices: PipelineChoice[] = PARSER_BACKEND_OPTIONS.map((option) => {
-    const available =
-      option.value === 'auto' || option.value === 'basic' || parserBackendAvailable(option.value) === true
-    const info = capabilities?.pdf_backends?.find((item) => normalizeParserBackendName(item.name) === option.value)
-    return {
+    const choice = {
       ...option,
-      description: PARSER_DESCRIPTIONS[option.value] || option.description,
+      description: PARSER_DESCRIPTIONS[option.value] ?? option.description,
       icon: PARSER_ICONS[option.icon],
-      disabled: !available,
-      disabledReason: info?.notes || '后端未启用此解析器',
+    }
+    if (option.value === 'auto' || option.value === 'basic') return choice
+
+    const available = parserBackendAvailable(option.value)
+    if (available) return choice
+    if (available === undefined) {
+      return { ...choice, unavailable: { label: '待确认', reason: '尚未读取到该解析器的可用状态' } }
+    }
+
+    const notes = capabilities?.pdf_backends
+      .find((item) => normalizeParserBackendName(item.name) === option.value)
+      ?.notes?.trim()
+    return {
+      ...choice,
+      unavailable: { label: '不可用', reason: notes ? notes : '后端报告此解析器不可用' },
     }
   })
   const chunkChoices: PipelineChoice[] = catalog.map((option) => ({
     ...option,
     icon: CHUNK_ICONS[option.icon],
-    disabled: Boolean(option.disabled) || chunkStrategyAvailable(option.value) === false,
-    disabledReason: '后端未启用此切块策略',
+    unavailable:
+      option.disabled === true || option.available === false
+        ? { label: '不可用', reason: '当前无法使用此切块策略' }
+        : undefined,
   }))
 
   return (

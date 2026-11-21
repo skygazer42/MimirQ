@@ -2,10 +2,11 @@
 
 import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
   callback: undefined as ((metric: Record<string, unknown>) => void) | undefined,
+  pathname: '/datasets',
   report: vi.fn().mockResolvedValue(undefined),
 }))
 
@@ -14,20 +15,19 @@ vi.mock('next/web-vitals', () => ({
     mocks.callback = callback
   },
 }))
-vi.mock('@/i18n/navigation', () => ({ usePathname: () => '/datasets' }))
+vi.mock('@/i18n/navigation', () => ({ usePathname: () => mocks.pathname }))
 vi.mock('@/lib/auth-headers', () => ({ getAuthHeaders: () => ({ Authorization: 'Bearer token' }) }))
-vi.mock('@/lib/api', () => ({ observabilityApi: { reportFrontendVital: mocks.report } }))
+vi.mock('@/lib/api/observability', () => ({ observabilityApi: { reportFrontendVital: mocks.report } }))
 
-import {
-  WebVitalsReporter,
-  canReportWebVital,
-  normalizeWebVitalMetric,
-  shouldReportWebVital,
-} from './web-vitals-reporter'
+import { WebVitalsReporter, canReportWebVital, shouldReportWebVital } from './web-vitals-reporter'
 
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
 describe('web vitals policy', () => {
+  beforeEach(() => {
+    mocks.pathname = '/datasets'
+  })
+
   afterEach(() => {
     vi.clearAllMocks()
     mocks.callback = undefined
@@ -39,24 +39,7 @@ describe('web vitals policy', () => {
     expect(shouldReportWebVital('TTFB')).toBe(false)
     expect(canReportWebVital('/datasets', { Authorization: 'Bearer token' })).toBe(true)
     expect(canReportWebVital('/auth/login', { Authorization: 'Bearer token' })).toBe(false)
-  })
-
-  it('normalizes optional metric fields', () => {
-    expect(
-      normalizeWebVitalMetric({
-        id: 'v1',
-        name: 'INP',
-        value: 42,
-        rating: 'good',
-        navigationType: 'navigate',
-      } as never),
-    ).toEqual({
-      id: 'v1',
-      name: 'INP',
-      value: 42,
-      rating: 'good',
-      navigation_type: 'navigate',
-    })
+    expect(canReportWebVital('/datasets', {})).toBe(false)
   })
 
   it('reports each supported metric id once', async () => {
@@ -64,16 +47,42 @@ describe('web vitals policy', () => {
     const root = createRoot(container)
     act(() => root.render(React.createElement(WebVitalsReporter)))
 
-    const metric = { id: 'v1', name: 'LCP', value: 42, rating: 'good' }
+    const metric = { id: 'v1', name: 'LCP', value: 42, rating: 'good', navigationType: 'navigate' }
     mocks.callback?.(metric)
     mocks.callback?.(metric)
     await Promise.resolve()
 
     expect(mocks.report).toHaveBeenCalledOnce()
     expect(mocks.report).toHaveBeenCalledWith(
-      { id: 'v1', name: 'LCP', value: 42, rating: 'good', page: '/datasets' },
+      { id: 'v1', name: 'LCP', value: 42, rating: 'good', navigation_type: 'navigate', page: '/datasets' },
       { keepalive: true },
     )
+    act(() => root.unmount())
+  })
+
+  it('keeps one collector callback while reading the current route and skipping auth pages', async () => {
+    const container = document.createElement('div')
+    const root = createRoot(container)
+    act(() => root.render(React.createElement(WebVitalsReporter)))
+    const callback = mocks.callback!
+
+    mocks.pathname = '/history'
+    act(() => root.render(React.createElement(WebVitalsReporter)))
+    expect(mocks.callback).toBe(callback)
+
+    callback({ id: 'route-change', name: 'INP', value: 0, rating: 'good', navigationType: 'navigate' })
+    await Promise.resolve()
+    expect(mocks.report).toHaveBeenLastCalledWith(
+      { id: 'route-change', name: 'INP', value: 0, rating: 'good', navigation_type: 'navigate', page: '/history' },
+      { keepalive: true },
+    )
+
+    mocks.pathname = '/auth/login'
+    act(() => root.render(React.createElement(WebVitalsReporter)))
+    expect(mocks.callback).toBe(callback)
+    callback({ id: 'auth-page', name: 'LCP', value: 42, rating: 'good', navigationType: 'navigate' })
+    await Promise.resolve()
+    expect(mocks.report).toHaveBeenCalledOnce()
     act(() => root.unmount())
   })
 })

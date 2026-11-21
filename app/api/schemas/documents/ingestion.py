@@ -5,8 +5,8 @@ from uuid import UUID
 from fastapi import UploadFile
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from app.api.schemas.documents.models import DocumentPipelineOptions
-from app.core.config import settings
+from app.api.schemas.documents.document import DocumentPipelineOptions, _ChunkStrategy, _ParserBackend
+from app.infrastructure.config import settings
 
 
 class UrlUploadRequest(BaseModel):
@@ -22,8 +22,8 @@ class UrlUploadRequest(BaseModel):
     # Optional: authenticated fetch (cookie/bearer/basic) for private pages.
     fetch_headers: dict[str, str] | None = None
     user_agent: str | None = Field(default=None, max_length=200)
-    parser_backend: str = settings.DEFAULT_PARSER_BACKEND
-    chunk_strategy: str = settings.DEFAULT_CHUNK_STRATEGY
+    parser_backend: _ParserBackend = settings.DEFAULT_PARSER_BACKEND
+    chunk_strategy: _ChunkStrategy = Field(default=settings.DEFAULT_CHUNK_STRATEGY, validate_default=True)
     pipeline: DocumentPipelineOptions | None = None
 
 
@@ -40,8 +40,8 @@ class LocalHtmlIngestRequest(BaseModel):
     filename: str | None = Field(
         default=None, max_length=500, description="Optional override filename (used for extension + display)"
     )
-    parser_backend: str = settings.DEFAULT_PARSER_BACKEND
-    chunk_strategy: str = settings.DEFAULT_CHUNK_STRATEGY
+    parser_backend: _ParserBackend = settings.DEFAULT_PARSER_BACKEND
+    chunk_strategy: _ChunkStrategy = Field(default=settings.DEFAULT_CHUNK_STRATEGY, validate_default=True)
     pipeline: DocumentPipelineOptions | None = None
 
 
@@ -76,8 +76,8 @@ class DocumentPreviewForm(BaseModel):
 
     model_config = ConfigDict(extra="ignore")
 
-    parser_backend: str = settings.DEFAULT_PARSER_BACKEND
-    chunk_strategy: str = settings.DEFAULT_CHUNK_STRATEGY
+    parser_backend: _ParserBackend = settings.DEFAULT_PARSER_BACKEND
+    chunk_strategy: _ChunkStrategy = Field(default=settings.DEFAULT_CHUNK_STRATEGY, validate_default=True)
     dataset_id: str | None = None
     pipeline: str | None = None
     governance_enabled: bool | None = None
@@ -110,8 +110,8 @@ class UploadDocumentFormFields(PipelineOptionOverrides):
 
     model_config = ConfigDict(extra="ignore")
 
-    parser_backend: str = settings.DEFAULT_PARSER_BACKEND
-    chunk_strategy: str = settings.DEFAULT_CHUNK_STRATEGY
+    parser_backend: _ParserBackend = settings.DEFAULT_PARSER_BACKEND
+    chunk_strategy: _ChunkStrategy = Field(default=settings.DEFAULT_CHUNK_STRATEGY, validate_default=True)
     pipeline: str | None = None
     dataset_id: UUID | None = None
     user_metadata: str | None = None
@@ -123,8 +123,8 @@ class UploadDocumentsBatchFormFields(PipelineOptionOverrides):
 
     model_config = ConfigDict(extra="ignore")
 
-    parser_backend: str = settings.DEFAULT_PARSER_BACKEND
-    chunk_strategy: str = settings.DEFAULT_CHUNK_STRATEGY
+    parser_backend: _ParserBackend = settings.DEFAULT_PARSER_BACKEND
+    chunk_strategy: _ChunkStrategy = Field(default=settings.DEFAULT_CHUNK_STRATEGY, validate_default=True)
     pipeline: str | None = None
     dataset_id: UUID | None = None
     precheck_first: bool = False

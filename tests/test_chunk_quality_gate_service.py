@@ -1,5 +1,5 @@
 def test_chunk_quality_gate_service_returns_structured_reasons() -> None:
-    from app.services.chunk_quality_gate import compute_chunk_quality_gate
+    from app.services.chunking.quality_gate import compute_chunk_quality_gate
 
     gate, _recs, _patches = compute_chunk_quality_gate(
         stats={

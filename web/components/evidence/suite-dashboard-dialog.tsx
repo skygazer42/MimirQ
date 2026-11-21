@@ -1,19 +1,17 @@
 'use client'
 
-import { workspaceStyles as ws } from '@/components/ui/operational-workspace'
-import type { ReactNode } from 'react'
-import { Loader2, RefreshCw } from '@/components/icons'
-
-import type { EvidenceCoverageHeatmap, EvidenceSuite, EvidenceSuiteDashboard } from '@/types'
+import { RefreshCw } from '@/components/icons'
+import type { EvidenceSuite } from '@/types'
+import type { CoverageHeatmap, SuiteDashboard, SuiteDashboardSnapshot } from '@/lib/evidence-dashboard'
 import { cn } from '@/lib/utils'
-
 import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { LoadingButton } from '@/components/ui/loading-button'
 import { Panel } from '@/components/ui/panel'
-import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
+import { Skeleton } from '@/components/ui/skeleton'
+import { WorkspaceNotice, workspaceStyles as ws } from '@/components/ui/operational-workspace'
 
 type SuiteDashboardDialogProps = {
   open: boolean
@@ -22,7 +20,7 @@ type SuiteDashboardDialogProps = {
   includeArchived: boolean
   loading: boolean
   error: string | null
-  dashboard: EvidenceSuiteDashboard | null
+  snapshot: SuiteDashboardSnapshot | null
   onOpenChange: (open: boolean) => void
   onIncludeArchivedChange: (value: boolean) => void
   onRefresh: () => void
@@ -36,81 +34,148 @@ function heatmapCellBg(value: number, ratio: number): string {
   return 'bg-primary/5'
 }
 
-function renderLanguageXFileTypeHeatmap(heatmap: EvidenceCoverageHeatmap | null | undefined): ReactNode {
-  const x = Array.isArray(heatmap?.x) ? heatmap.x : []
-  const y = Array.isArray(heatmap?.y) ? heatmap.y : []
-  const z = Array.isArray(heatmap?.z) ? heatmap.z : []
-
-  let max = 0
-  for (const row of z) {
-    if (!Array.isArray(row)) continue
+function LanguageFileTypeHeatmap({ heatmap }: { heatmap: CoverageHeatmap }) {
+  if (heatmap.x.length === 0 || heatmap.y.length === 0) {
+    return <p className={ws.muted}>暂无语言与文件类型交叉统计。</p>
+  }
+  let maximum = 0
+  for (const row of heatmap.z) {
     for (const value of row) {
-      const next = Number(value) || 0
-      if (next > max) max = next
+      if (value > maximum) maximum = value
     }
   }
-
-  const xNodes: ReactNode[] = []
-  for (const fileType of x) {
-    const label = String(fileType ?? '')
-    xNodes.push(
-      <div key={`hm-x:${label}`} className="bg-muted/40 px-2 py-1 text-[11px] font-mono truncate">
-        {label}
-      </div>,
-    )
-  }
-
-  const rowNodes: ReactNode[] = []
-  for (let rowIndex = 0; rowIndex < y.length; rowIndex++) {
-    const languageLabel = String(y[rowIndex] ?? '')
-    const row = Array.isArray(z[rowIndex]) ? z[rowIndex] : []
-    const cellNodes: ReactNode[] = []
-    for (let colIndex = 0; colIndex < x.length; colIndex++) {
-      const fileTypeLabel = String(x[colIndex] ?? '')
-      const value = Number(row?.[colIndex] ?? 0) || 0
-      const ratio = max > 0 ? value / max : 0
-      const cellBg = heatmapCellBg(value, ratio)
-      cellNodes.push(
-        <div
-          key={`hm-cell:${languageLabel}:${fileTypeLabel}`}
-          className={cn('px-2 py-1 text-[11px] font-mono tabular-nums text-center', cellBg)}
-        >
-          {value}
-        </div>,
-      )
-    }
-
-    rowNodes.push(
-      <div key={`hm-row:${languageLabel}`} className="contents">
-        <div className="bg-muted/30 px-2 py-1 text-[11px] font-mono text-muted-foreground truncate">
-          {languageLabel}
-        </div>
-        {cellNodes}
-      </div>,
-    )
-  }
-
   return (
-    <div
-      className="grid gap-px rounded-lg overflow-hidden border border-border/60 bg-border/60"
-      style={{ gridTemplateColumns: `120px repeat(${x.length}, minmax(72px, 1fr))` }}
-    >
-      <div className="bg-muted/40 px-2 py-1 text-[11px] font-mono text-muted-foreground">lang \\ ft</div>
-      {xNodes}
-      {rowNodes}
+    <div className="overflow-x-auto" tabIndex={0} role="region" aria-label="语言与文件类型热图">
+      <table className="w-full border-collapse text-xs font-mono" aria-label="语言与文件类型覆盖">
+        <caption className="sr-only">language × file_type · {heatmap.metric}</caption>
+        <thead>
+          <tr>
+            <th scope="col" className="min-w-[120px] border border-border/60 bg-muted/40 px-2 py-1 text-left">
+              language / file_type
+            </th>
+            {heatmap.x.map((fileType) => (
+              <th key={fileType} scope="col" className="min-w-[72px] border border-border/60 bg-muted/40 px-2 py-1">
+                {fileType}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {heatmap.z.map((row, rowIndex) => (
+            <tr key={heatmap.y[rowIndex]}>
+              <th
+                scope="row"
+                className="border border-border/60 bg-muted/30 px-2 py-1 text-left font-normal text-muted-foreground"
+              >
+                {heatmap.y[rowIndex]}
+              </th>
+              {row.map((value, columnIndex) => (
+                <td
+                  key={heatmap.x[columnIndex]}
+                  className={cn(
+                    'border border-border/60 px-2 py-1 text-center tabular-nums',
+                    heatmapCellBg(value, maximum === 0 ? 0 : value / maximum),
+                  )}
+                >
+                  {value}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   )
 }
 
-function formatDurationSec(value: unknown): string {
-  const seconds = Number(value)
-  if (!Number.isFinite(seconds) || seconds <= 0) return '-'
-  const mins = seconds / 60
-  if (mins < 60) return `${Math.round(mins)}m`
-  const hours = mins / 60
+function formatDurationSec(value: number | null | undefined): string {
+  if (value === undefined || value === null) return '未提供'
+  if (value < 60) return `${value}s`
+  const minutes = value / 60
+  if (minutes < 60) return `${Math.round(minutes)}m`
+  const hours = minutes / 60
   if (hours < 48) return `${hours.toFixed(1)}h`
-  const days = hours / 24
-  return `${days.toFixed(1)}d`
+  return `${(hours / 24).toFixed(1)}d`
+}
+
+function LeadTimePanel({ title, stats }: { title: string; stats: SuiteDashboard['throughput']['draft_to_reviewed'] }) {
+  return (
+    <Panel className="p-3">
+      <h3 className="mb-1 text-xs font-medium text-muted-foreground">{title}</h3>
+      <div className="text-xs text-muted-foreground font-mono tabular-nums">n {stats.count}</div>
+      <div className="mt-1 text-xs font-mono tabular-nums">
+        p50 {formatDurationSec(stats.p50_sec)} · p90 {formatDurationSec(stats.p90_sec)} · mean{' '}
+        {formatDurationSec(stats.mean_sec)}
+      </div>
+    </Panel>
+  )
+}
+
+function CoveragePanel({ title, buckets }: { title: string; buckets: SuiteDashboard['coverage']['language'] }) {
+  return (
+    <Panel className="p-3">
+      <h3 className="mb-2 text-xs font-medium text-muted-foreground">{title}</h3>
+      <div className="space-y-1">
+        {buckets.length === 0 ? (
+          <p className={ws.muted}>暂无覆盖记录。</p>
+        ) : (
+          buckets.map((bucket) => (
+            <div key={bucket.key} className="flex items-center justify-between gap-3 text-xs">
+              <div className="min-w-0 truncate font-mono">{bucket.key}</div>
+              <div className="flex items-center gap-3 font-mono tabular-nums text-muted-foreground">
+                <span>refs {bucket.references}</span>
+                <span>items {bucket.items}</span>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+    </Panel>
+  )
+}
+
+function DashboardContent({ snapshot }: { snapshot: SuiteDashboardSnapshot }) {
+  const { throughput, coverage } = snapshot.data
+  const heatmap = coverage.heatmaps.language_x_file_type
+  return (
+    <div className="space-y-4">
+      <p className={ws.muted}>当前统计：{snapshot.includeArchived ? '包含已归档条目' : '不含已归档条目'}</p>
+      <section className="space-y-3" aria-label="条目流转统计">
+        <h2 className="text-xs font-medium text-muted-foreground">Throughput (last {throughput.window_days}d)</h2>
+        <div className="flex flex-wrap gap-2 text-xs">
+          <Badge variant="outline" className="font-mono tabular-nums">
+            created {throughput.last_window.created}
+          </Badge>
+          <Badge variant="secondary" className="font-mono tabular-nums">
+            reviewed {throughput.last_window.reviewed}
+          </Badge>
+          <Badge variant="soft" className="font-mono tabular-nums">
+            approved {throughput.last_window.approved}
+          </Badge>
+        </div>
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+          <LeadTimePanel title="draft → reviewed" stats={throughput.draft_to_reviewed} />
+          <LeadTimePanel title="reviewed → approved" stats={throughput.reviewed_to_approved} />
+          <LeadTimePanel title="draft → approved" stats={throughput.draft_to_approved} />
+        </div>
+      </section>
+      <Separator />
+      <section className="grid grid-cols-1 gap-3 md:grid-cols-2" aria-label="引用覆盖统计">
+        <CoveragePanel title="Language coverage" buckets={coverage.language} />
+        <CoveragePanel title="File type coverage" buckets={coverage.file_type} />
+        <CoveragePanel title="Quality bucket coverage" buckets={coverage.quality_bucket} />
+        <CoveragePanel title="Channel (hit_type) coverage" buckets={coverage.channel} />
+      </section>
+      <Panel className="p-3">
+        <h2 className="mb-2 text-xs font-medium text-muted-foreground">Heatmap: language × file_type</h2>
+        {heatmap === undefined ? (
+          <p className={ws.muted}>暂无交叉统计。</p>
+        ) : (
+          <LanguageFileTypeHeatmap heatmap={heatmap} />
+        )}
+      </Panel>
+    </div>
+  )
 }
 
 export function SuiteDashboardDialog({
@@ -120,237 +185,80 @@ export function SuiteDashboardDialog({
   includeArchived,
   loading,
   error,
-  dashboard,
+  snapshot,
   onOpenChange,
   onIncludeArchivedChange,
   onRefresh,
 }: Readonly<SuiteDashboardDialogProps>) {
-  const throughput = dashboard?.throughput
-  const coverage = dashboard?.coverage
-  const suiteDescription = selectedSuite ? (
-    <>
-      Suite <span className="font-mono">{String(selectedSuite.id).slice(0, 8)}</span> 路{' '}
-      <span className="font-medium">{selectedSuite.name}</span>
-    </>
-  ) : (
-    '请选择一个 Suite'
-  )
-  const generatedSummary = dashboard ? (
-    <div className="text-xs text-muted-foreground font-mono tabular-nums">
-      generated{' '}
-      {String(dashboard.generated_at || '')
-        .slice(0, 19)
-        .replaceAll('T', ' ')}
-    </div>
-  ) : null
-
-  let throughputSection: ReactNode
-  if (throughput) {
-    throughputSection = (
-      <div>
-        <div className="mb-2 text-xs font-medium text-muted-foreground">
-          Throughput (last {throughput.window_days}d)
-        </div>
-        <div className="flex flex-wrap gap-2 text-xs">
-          <Badge variant="outline" className="font-mono tabular-nums">
-            created {throughput.last_window?.created ?? 0}
-          </Badge>
-          <Badge variant="secondary" className="font-mono tabular-nums">
-            reviewed {throughput.last_window?.reviewed ?? 0}
-          </Badge>
-          <Badge variant="soft" className="font-mono tabular-nums">
-            approved {throughput.last_window?.approved ?? 0}
-          </Badge>
-        </div>
-
-        <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-3">
-          <Panel className="p-3">
-            <div className="mb-1 text-xs font-medium text-muted-foreground">draft → reviewed</div>
-            <div className="text-xs text-muted-foreground font-mono tabular-nums">
-              n {throughput.draft_to_reviewed?.count ?? 0}
-            </div>
-            <div className="mt-1 text-xs font-mono tabular-nums">
-              p50 {formatDurationSec(throughput.draft_to_reviewed?.p50_sec ?? 0)} · p90{' '}
-              {formatDurationSec(throughput.draft_to_reviewed?.p90_sec ?? 0)} · mean{' '}
-              {formatDurationSec(throughput.draft_to_reviewed?.mean_sec ?? 0)}
-            </div>
-          </Panel>
-
-          <Panel className="p-3">
-            <div className="mb-1 text-xs font-medium text-muted-foreground">reviewed → approved</div>
-            <div className="text-xs text-muted-foreground font-mono tabular-nums">
-              n {throughput.reviewed_to_approved?.count ?? 0}
-            </div>
-            <div className="mt-1 text-xs font-mono tabular-nums">
-              p50 {formatDurationSec(throughput.reviewed_to_approved?.p50_sec ?? 0)} · p90{' '}
-              {formatDurationSec(throughput.reviewed_to_approved?.p90_sec ?? 0)} · mean{' '}
-              {formatDurationSec(throughput.reviewed_to_approved?.mean_sec ?? 0)}
-            </div>
-          </Panel>
-
-          <Panel className="p-3">
-            <div className="mb-1 text-xs font-medium text-muted-foreground">draft → approved</div>
-            <div className="text-xs text-muted-foreground font-mono tabular-nums">
-              n {throughput.draft_to_approved?.count ?? 0}
-            </div>
-            <div className="mt-1 text-xs font-mono tabular-nums">
-              p50 {formatDurationSec(throughput.draft_to_approved?.p50_sec ?? 0)} · p90{' '}
-              {formatDurationSec(throughput.draft_to_approved?.p90_sec ?? 0)} · mean{' '}
-              {formatDurationSec(throughput.draft_to_approved?.mean_sec ?? 0)}
-            </div>
-          </Panel>
-        </div>
-      </div>
-    )
-  } else {
-    throughputSection = <div className="text-sm text-muted-foreground text-pretty">No throughput data.</div>
-  }
-
-  let coverageSection: ReactNode
-  if (coverage) {
-    coverageSection = (
-      <>
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-          <Panel className="p-3">
-            <div className="mb-2 text-xs font-medium text-muted-foreground">Language coverage</div>
-            <div className="space-y-1">
-              {(coverage.language || []).map((bucket) => (
-                <div key={`lang:${bucket.key}`} className="flex items-center justify-between gap-3 text-xs">
-                  <div className="min-w-0 truncate font-mono">{bucket.key}</div>
-                  <div className="flex items-center gap-3 font-mono tabular-nums text-muted-foreground">
-                    <span>refs {bucket.references}</span>
-                    <span>items {bucket.items}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </Panel>
-
-          <Panel className="p-3">
-            <div className="mb-2 text-xs font-medium text-muted-foreground">File type coverage</div>
-            <div className="space-y-1">
-              {(coverage.file_type || []).map((bucket) => (
-                <div key={`ft:${bucket.key}`} className="flex items-center justify-between gap-3 text-xs">
-                  <div className="min-w-0 truncate font-mono">{bucket.key}</div>
-                  <div className="flex items-center gap-3 font-mono tabular-nums text-muted-foreground">
-                    <span>refs {bucket.references}</span>
-                    <span>items {bucket.items}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </Panel>
-
-          <Panel className="p-3">
-            <div className="mb-2 text-xs font-medium text-muted-foreground">Quality bucket coverage</div>
-            <div className="space-y-1">
-              {(coverage.quality_bucket || []).map((bucket) => (
-                <div key={`qb:${bucket.key}`} className="flex items-center justify-between gap-3 text-xs">
-                  <div className="min-w-0 truncate font-mono">{bucket.key}</div>
-                  <div className="flex items-center gap-3 font-mono tabular-nums text-muted-foreground">
-                    <span>refs {bucket.references}</span>
-                    <span>items {bucket.items}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </Panel>
-
-          <Panel className="p-3">
-            <div className="mb-2 text-xs font-medium text-muted-foreground">Channel (hit_type) coverage</div>
-            <div className="space-y-1">
-              {(coverage.channel || []).map((bucket) => (
-                <div key={`ch:${bucket.key}`} className="flex items-center justify-between gap-3 text-xs">
-                  <div className="min-w-0 truncate font-mono">{bucket.key}</div>
-                  <div className="flex items-center gap-3 font-mono tabular-nums text-muted-foreground">
-                    <span>refs {bucket.references}</span>
-                    <span>items {bucket.items}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </Panel>
-        </div>
-
-        <Panel className="p-3">
-          <div className="mb-2 text-xs font-medium text-muted-foreground">
-            Heatmap: language × file_type (unique items)
-          </div>
-          {coverage.heatmaps?.language_x_file_type ? (
-            <div className="overflow-x-auto">
-              {renderLanguageXFileTypeHeatmap(coverage.heatmaps.language_x_file_type)}
-            </div>
-          ) : (
-            <div className="text-xs text-muted-foreground">No heatmap data.</div>
-          )}
-        </Panel>
-      </>
-    )
-  } else {
-    coverageSection = <div className="text-sm text-muted-foreground text-pretty">No coverage data.</div>
-  }
-
-  let dashboardContent: ReactNode
-  if (loading) {
-    dashboardContent = (
-      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <Loader2 className="size-4 animate-spin motion-reduce:animate-none" aria-hidden="true" />
-        loading…
-      </div>
-    )
-  } else if (dashboard) {
-    dashboardContent = (
-      <>
-        {throughputSection}
-        <Separator />
-        {coverageSection}
-      </>
-    )
-  } else {
-    dashboardContent = <div className="text-sm text-muted-foreground text-pretty">No dashboard data.</div>
-  }
-
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className={`${ws.dialog} ${ws.wideDialog}`}>
         <DialogHeader className={ws.dialogHeader}>
           <DialogTitle>Suite Dashboard</DialogTitle>
-          <DialogDescription className="text-pretty">{suiteDescription}</DialogDescription>
+          <DialogDescription className="text-pretty">
+            {selectedSuite === null ? (
+              '请选择一个 Suite'
+            ) : (
+              <>
+                Suite <span className="font-mono">{selectedSuite.id.slice(0, 8)}</span> · {selectedSuite.name}
+              </>
+            )}{' '}
+            统计最近更新的最多 10,000 个条目。
+          </DialogDescription>
         </DialogHeader>
         <div className={ws.dialogBody}>
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-            <div className="inline-flex items-center gap-2 select-none text-xs text-muted-foreground">
+          <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center">
+            <label className="inline-flex items-center gap-2 text-xs text-muted-foreground">
               <Checkbox
                 checked={includeArchived}
-                onCheckedChange={(value) => onIncludeArchivedChange(Boolean(value))}
+                onCheckedChange={(value) => onIncludeArchivedChange(value === true)}
                 aria-label="Include archived items"
               />
               include archived items
-            </div>
-
-            <div className="flex items-center gap-2 sm:ml-auto">
-              {generatedSummary}
-              <Button
+            </label>
+            <div className="flex flex-wrap items-center gap-2 sm:ml-auto">
+              {snapshot !== null ? (
+                <span className="text-xs font-mono tabular-nums text-muted-foreground">
+                  generated {snapshot.data.generated_at.slice(0, 19).replaceAll('T', ' ')}
+                </span>
+              ) : null}
+              <LoadingButton
+                loading={loading}
                 variant="outline"
                 size="sm"
-                className="gap-2"
                 onClick={onRefresh}
-                disabled={!selectedSuiteId || loading}
+                disabled={!selectedSuiteId}
               >
-                <RefreshCw
-                  className={cn('size-4', loading ? 'animate-spin motion-reduce:animate-none' : '')}
-                  aria-hidden="true"
-                />
+                <RefreshCw className="size-4" aria-hidden="true" />
                 refresh
-              </Button>
+              </LoadingButton>
             </div>
           </div>
-
-          {error ? <div className="text-xs text-destructive text-pretty">{error}</div> : null}
-
-          <ScrollArea className="max-h-[70vh] pr-3">
-            <div className="space-y-4">{dashboardContent}</div>
-          </ScrollArea>
+          {error !== null ? (
+            <WorkspaceNotice retry={onRefresh} pending={loading}>
+              {error}
+            </WorkspaceNotice>
+          ) : null}
+          <div aria-busy={loading}>
+            {snapshot !== null ? (
+              <DashboardContent snapshot={snapshot} />
+            ) : loading ? (
+              <div className="space-y-3" role="status" aria-label="正在读取统计">
+                <Skeleton className="h-6 w-40" />
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                  <Skeleton className="h-20" />
+                  <Skeleton className="h-20" />
+                  <Skeleton className="h-20" />
+                </div>
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                  <Skeleton className="h-24" />
+                  <Skeleton className="h-24" />
+                </div>
+              </div>
+            ) : error === null ? (
+              <p className={ws.muted}>点击 refresh 加载统计。</p>
+            ) : null}
+          </div>
         </div>
       </DialogContent>
     </Dialog>

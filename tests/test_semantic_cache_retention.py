@@ -6,7 +6,7 @@ import pytest
 
 
 def _configure_semantic_cache(monkeypatch: pytest.MonkeyPatch) -> None:
-    from app.core.config import settings
+    from app.infrastructure.config import settings
 
     monkeypatch.setattr(settings, "SEMANTIC_CACHE_ENABLED", True, raising=False)
     monkeypatch.setattr(settings, "SEMANTIC_CACHE_TTL_SEC", 60, raising=False)
@@ -113,7 +113,7 @@ class _FakeAdapter:
 def test_semantic_cache_lookup_skips_expired_vector_before_redis_fetch(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.services.semantic_cache as semantic_cache
+    import app.services.retrieval.semantic_cache as semantic_cache
 
     _configure_semantic_cache(monkeypatch)
     now_epoch = int(time.time())
@@ -168,7 +168,7 @@ def test_semantic_cache_lookup_skips_expired_vector_before_redis_fetch(
 def test_semantic_cache_lookup_bounds_orphan_cleanup(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.services.semantic_cache as semantic_cache
+    import app.services.retrieval.semantic_cache as semantic_cache
 
     _configure_semantic_cache(monkeypatch)
     monkeypatch.setattr(semantic_cache, "_LOOKUP_CLEANUP_MAX_DELETE", 2, raising=False)
@@ -246,7 +246,7 @@ def test_semantic_cache_lookup_bounds_orphan_cleanup(
 def test_semantic_cache_sweep_deletes_expired_and_legacy_orphans(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.services.semantic_cache as semantic_cache
+    import app.services.retrieval.semantic_cache as semantic_cache
 
     _configure_semantic_cache(monkeypatch)
     tenant_id = str(uuid.uuid4())
@@ -289,7 +289,7 @@ def test_semantic_cache_sweep_deletes_expired_and_legacy_orphans(
 def test_semantic_cache_sweep_budget_caps_per_invocation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.services.semantic_cache as semantic_cache
+    import app.services.retrieval.semantic_cache as semantic_cache
 
     _configure_semantic_cache(monkeypatch)
     adapter = _FakeAdapter(
@@ -322,7 +322,7 @@ def test_semantic_cache_sweep_budget_caps_per_invocation(
 def test_semantic_cache_sweep_continues_past_fresh_first_page(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.services.semantic_cache as semantic_cache
+    import app.services.retrieval.semantic_cache as semantic_cache
 
     _configure_semantic_cache(monkeypatch)
     tenant_id = "tenant-1"
@@ -361,7 +361,7 @@ def test_semantic_cache_sweep_continues_past_fresh_first_page(
 def test_semantic_cache_sweep_marks_scan_limit_when_not_exhausted(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.services.semantic_cache as semantic_cache
+    import app.services.retrieval.semantic_cache as semantic_cache
 
     _configure_semantic_cache(monkeypatch)
     adapter = _FakeAdapter(
@@ -392,7 +392,7 @@ def test_semantic_cache_sweep_marks_scan_limit_when_not_exhausted(
 def test_semantic_cache_sweep_reports_adapter_failure(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.services.semantic_cache as semantic_cache
+    import app.services.retrieval.semantic_cache as semantic_cache
     from app.storage.vector.milvus import MilvusMaintenanceError
 
     _configure_semantic_cache(monkeypatch)
@@ -414,7 +414,7 @@ def test_semantic_cache_sweep_reports_adapter_failure(
 def test_semantic_cache_sweep_reports_iterator_next_failure_and_closes(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.services.semantic_cache as semantic_cache
+    import app.services.retrieval.semantic_cache as semantic_cache
     from app.storage.vector.milvus import MilvusMaintenanceError
 
     _configure_semantic_cache(monkeypatch)
@@ -442,7 +442,7 @@ def test_semantic_cache_sweep_reports_iterator_next_failure_and_closes(
 def test_semantic_cache_sweep_reports_iterator_close_failure(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.services.semantic_cache as semantic_cache
+    import app.services.retrieval.semantic_cache as semantic_cache
     from app.storage.vector.milvus import MilvusMaintenanceError
 
     _configure_semantic_cache(monkeypatch)
@@ -468,7 +468,7 @@ def test_semantic_cache_sweep_reports_iterator_close_failure(
 def test_legacy_semantic_cache_row_remains_readable_until_payload_expires(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.services.semantic_cache as semantic_cache
+    import app.services.retrieval.semantic_cache as semantic_cache
 
     _configure_semantic_cache(monkeypatch)
     payload_bytes = json.dumps([{"chunk_id": "chunk-1"}]).encode("utf-8")

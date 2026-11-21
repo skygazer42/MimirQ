@@ -110,20 +110,6 @@ def _safe_float(v: object) -> float | None:
     return f
 
 
-def _normalize_threshold_entry(value: Any) -> dict[str, float]:
-    if isinstance(value, (int, float)) and not isinstance(value, bool):
-        return {"min": float(value)}
-    if not isinstance(value, dict):
-        return {}
-
-    entry: dict[str, float] = {}
-    for bound in ("min", "max"):
-        numeric = _safe_float(value.get(bound))
-        if numeric is not None:
-            entry[bound] = numeric
-    return entry
-
-
 def normalize_thresholds(raw: Any) -> dict[str, dict[str, float]]:
     """
     Normalize thresholds into: { metric: { min?: float, max?: float } }.
@@ -134,11 +120,23 @@ def normalize_thresholds(raw: Any) -> dict[str, dict[str, float]]:
     if not isinstance(raw, dict):
         return {}
     out: dict[str, dict[str, float]] = {}
-    for k, v in raw.items():
-        metric = str(k).strip()
+    for key, value in raw.items():
+        metric = str(key).strip()
         if not metric:
             continue
-        entry = _normalize_threshold_entry(v)
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            value = {"min": value}
+        if not isinstance(value, dict):
+            continue
+
+        entry: dict[str, float] = {}
+        for bound in ("min", "max"):
+            if bound not in value:
+                continue
+            limit = _safe_float(value[bound])
+            if limit is None:
+                raise ValueError(f"threshold '{metric}.{bound}' must be a finite number")
+            entry[bound] = limit
         if entry:
             out[metric] = entry
     return out
@@ -169,54 +167,17 @@ def _check_threshold(
     value: float | None,
     threshold: dict[str, float],
 ) -> GateViolation | None:
+    minimum = threshold.get("min")
+    maximum = threshold.get("max")
     if value is None:
-        return GateViolation(
-            area=area,
-            metric=metric,
-            value=None,
-            threshold=threshold,
-            message="missing value",
-        )
-
-    if "min" in threshold:
-        try:
-            if float(value) < float(threshold["min"]):
-                return GateViolation(
-                    area=area,
-                    metric=metric,
-                    value=float(value),
-                    threshold=threshold,
-                    message=f"value {value} < min {threshold['min']}",
-                )
-        except Exception:
-            return GateViolation(
-                area=area,
-                metric=metric,
-                value=float(value),
-                threshold=threshold,
-                message="failed to compare to min threshold",
-            )
-
-    if "max" in threshold:
-        try:
-            if float(value) > float(threshold["max"]):
-                return GateViolation(
-                    area=area,
-                    metric=metric,
-                    value=float(value),
-                    threshold=threshold,
-                    message=f"value {value} > max {threshold['max']}",
-                )
-        except Exception:
-            return GateViolation(
-                area=area,
-                metric=metric,
-                value=float(value),
-                threshold=threshold,
-                message="failed to compare to max threshold",
-            )
-
-    return None
+        message = "missing value"
+    elif minimum is not None and value < minimum:
+        message = f"value {value} < min {minimum}"
+    elif maximum is not None and value > maximum:
+        message = f"value {value} > max {maximum}"
+    else:
+        return None
+    return GateViolation(area=area, metric=metric, value=value, threshold=threshold, message=message)
 
 
 def _http_get_json(
@@ -331,37 +292,28 @@ def _probe_chat_traffic(
 def _poll_rag_trace_count(
     *,
     client: httpx.Client,
-    base_url: str,
+    url: str,
     headers: dict[str, str],
-    window_minutes: int,
-    want_increase_by: int,
+    params: dict[str, Any],
+    target_count: int,
     poll_sec: float,
     timeout_sec: float,
 ) -> dict[str, Any]:
-    url = _join_url(base_url, "/observability/rag-metrics/summary")
-    params = {"window_minutes": int(window_minutes), "max_bytes": 5_000_000}
-    start = time.time()
-
-    baseline = 0
-    try:
-        snap0 = _http_get_json(client, url, headers=headers, params=params)
-        baseline = int((snap0 or {}).get("rag_trace_count") or 0)
-    except Exception:
-        baseline = 0
-
-    want_total = baseline + max(0, int(want_increase_by))
+    deadline = time.monotonic() + max(0.0, float(timeout_sec))
+    interval = max(0.05, float(poll_sec))
     last: dict[str, Any] = {}
-    while True:
-        if (time.time() - start) > max(0.0, float(timeout_sec)):
-            return last
+    while time.monotonic() < deadline:
         try:
-            last = _http_get_json(client, url, headers=headers, params=params) or {}
-            cur = int(last.get("rag_trace_count") or 0)
-            if cur >= want_total:
-                return last
-        except Exception:
+            snapshot = _http_get_json(client, url, headers=headers, params=params)
+            count = int(snapshot["rag_trace_count"])
+        except (httpx.HTTPError, KeyError, TypeError, ValueError, OverflowError):
             pass
-        time.sleep(max(0.05, float(poll_sec)))
+        else:
+            last = snapshot
+            if count >= target_count:
+                break
+        time.sleep(min(interval, max(0.0, deadline - time.monotonic())))
+    return last
 
 
 def _warn_note(message: str) -> str:
@@ -425,7 +377,7 @@ def _gate_slo_window(
     *,
     area: str,
     snapshot: dict[str, Any] | None,
-    threshold_config: dict[str, Any],
+    thresholds: dict[str, dict[str, float]],
     min_count: int,
     policy: str,
     violations: list[GateViolation],
@@ -460,7 +412,7 @@ def _gate_slo_window(
         )
         return
 
-    for metric, threshold in normalize_thresholds(threshold_config).items():
+    for metric, threshold in thresholds.items():
         violation = _check_threshold(
             area=area,
             metric=metric,
@@ -495,12 +447,13 @@ def _gate_slo_snapshot(
             wmin = int(str(wkey).strip())
         except Exception:
             continue
-        if not normalize_thresholds(th_raw):
+        thresholds = normalize_thresholds(th_raw)
+        if not thresholds:
             continue
         _gate_slo_window(
             area=f"slo:{wmin}m",
             snapshot=windows_by_min.get(wmin),
-            threshold_config=th_raw,
+            thresholds=thresholds,
             min_count=min_count,
             policy=on_insufficient,
             violations=violations,
@@ -516,43 +469,6 @@ def _gate_cost(
     cost_raw = budgets.get("cost") if isinstance(budgets.get("cost"), dict) else {}
     on_insufficient = _policy(cost_raw.get("on_insufficient_data"), default="fail")
     min_count = int(cost_raw.get("min_rag_trace_count") or 0)
-
-    notes: list[str] = []
-    violations: list[GateViolation] = []
-
-    rag_trace_count = int(summary.get("rag_trace_count") or 0)
-    if min_count > 0 and rag_trace_count < min_count:
-        msg = f"insufficient rag_trace_count: {rag_trace_count} < {min_count}"
-        if on_insufficient == "fail":
-            violations.append(
-                GateViolation(
-                    area="cost",
-                    metric="rag_trace_count",
-                    value=float(rag_trace_count),
-                    threshold={"min": float(min_count)},
-                    message=msg,
-                )
-            )
-        else:
-            notes.append(f"[release_gate] WARN: {msg}")
-            return violations, notes, {}
-
-    llm_prompt_tokens = int(summary.get("llm_prompt_tokens") or 0)
-    llm_completion_tokens = int(summary.get("llm_completion_tokens") or 0)
-    llm_total_tokens = int(summary.get("llm_total_tokens") or 0)
-    embed_query_tokens = int(summary.get("embed_query_tokens") or 0)
-    embed_query_count = int(summary.get("embed_query_count") or 0)
-    retrieval_query_count = int(summary.get("retrieval_query_count") or 0)
-
-    computed: dict[str, float] = {}
-    if rag_trace_count > 0:
-        computed["llm_prompt_tokens_avg"] = float(llm_prompt_tokens) / float(rag_trace_count)
-        computed["llm_completion_tokens_avg"] = float(llm_completion_tokens) / float(rag_trace_count)
-        computed["llm_total_tokens_avg"] = float(llm_total_tokens) / float(rag_trace_count)
-        computed["retrieval_query_count_avg"] = float(retrieval_query_count) / float(rag_trace_count)
-    if embed_query_count > 0:
-        computed["embed_query_tokens_avg"] = float(embed_query_tokens) / float(embed_query_count)
-
     thresholds = normalize_thresholds(cost_raw.get("thresholds"))
     if not thresholds:
         # Back-compat: allow thresholds at top-level of "cost" object.
@@ -564,18 +480,45 @@ def _gate_cost(
             }
         )
 
+    notes: list[str] = []
+    violations: list[GateViolation] = []
+
+    rag_trace_count = int(summary.get("rag_trace_count") or 0)
+    if min_count > 0 and rag_trace_count < min_count:
+        _handle_missing_snapshot(
+            area="cost",
+            metric="rag_trace_count",
+            message=f"insufficient rag_trace_count: {rag_trace_count} < {min_count}",
+            policy=on_insufficient,
+            notes=notes,
+            violations=violations,
+            threshold={"min": float(min_count)},
+            value=float(rag_trace_count),
+        )
+        if on_insufficient != "fail":
+            return violations, notes, {}
+
+    embed_query_count = int(summary.get("embed_query_count") or 0)
+    computed: dict[str, float] = {}
+    for metric, count in (
+        ("llm_prompt_tokens", rag_trace_count),
+        ("llm_completion_tokens", rag_trace_count),
+        ("llm_total_tokens", rag_trace_count),
+        ("retrieval_query_count", rag_trace_count),
+        ("embed_query_tokens", embed_query_count),
+    ):
+        total = _safe_float(summary.get(metric))
+        if count > 0 and total is not None:
+            computed[f"{metric}_avg"] = total / count
+
     for metric, threshold in thresholds.items():
         v = computed.get(metric)
         if v is None:
             # Also allow gating on raw summary keys directly.
             v = _safe_float(summary.get(metric))
         viol = _check_threshold(area="cost", metric=metric, value=v, threshold=threshold)
-        if viol is None:
-            continue
-        if viol.value is None and on_insufficient != "fail":
-            notes.append(f"[release_gate] WARN: {viol.area}.{viol.metric}: {viol.message}")
-            continue
-        violations.append(viol)
+        if viol is not None:
+            _handle_optional_violation(violations=violations, notes=notes, violation=viol, policy=on_insufficient)
 
     return violations, notes, computed
 
@@ -1305,7 +1248,11 @@ def _collect_probe_signal(
     if not questions:
         print("[release_gate] ERROR: probe requires question fields in cases items", file=sys.stderr)
         return 1
+    metrics_url = _join_url(base_url, "/observability/rag-metrics/summary")
+    metrics_params = {"window_minutes": args.probe_window_minutes, "max_bytes": 5_000_000}
     try:
+        baseline = _http_get_json(client, metrics_url, headers=headers, params=metrics_params)
+        baseline_count = int(baseline["rag_trace_count"])
         request_ids = _probe_chat_traffic(
             client=client,
             base_url=base_url,
@@ -1319,17 +1266,17 @@ def _collect_probe_signal(
         )
     except Exception as exc:
         print(
-            f"[release_gate] ERROR: probe chat traffic failed: {type(exc).__name__}: {exc}",
+            f"[release_gate] ERROR: probe failed: {type(exc).__name__}: {exc}",
             file=sys.stderr,
         )
         return 1
 
     snapshot = _poll_rag_trace_count(
         client=client,
-        base_url=base_url,
+        url=metrics_url,
         headers=headers,
-        window_minutes=args.probe_window_minutes,
-        want_increase_by=args.probe_chat_requests,
+        params=metrics_params,
+        target_count=baseline_count + args.probe_chat_requests,
         poll_sec=args.probe_poll_sec,
         timeout_sec=args.probe_timeout_sec,
     )

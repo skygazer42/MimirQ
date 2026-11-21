@@ -1,8 +1,7 @@
 import pytest
 
-from app.rag.retrieval.orchestration.channel_budget import resolve_channel_budget_policy_overrides
-from app.rag.retrieval.orchestration.query_contracts import SparseQuerySettings
-from app.rag.retrieval.orchestration.query_routing import resolve_query_routing
+from app.rag.retrieval.configuration.channel_budget import resolve_channel_budget_policy_overrides
+from app.rag.retrieval.planning.routing import resolve_query_routing
 
 
 @pytest.mark.parametrize("profile,expected", [(None, None), ("", ""), (" FAST ", "fast")])
@@ -41,7 +40,6 @@ def test_query_routing_keeps_absent_profile_consistent_in_budget_diagnostics() -
             "retrieval_mode": "vector",
             "channel_budget_policy": {"profiles": {"vector": {"fusion_budgets": {"vector": 3}}}},
         },
-        sparse=SparseQuerySettings(enabled=False, provider="deterministic"),
     )
 
     assert decision.normalization.profile_norm is None

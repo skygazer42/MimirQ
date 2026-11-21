@@ -1,5 +1,5 @@
 'use client'
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import dynamic from 'next/dynamic'
 import { useQuery } from '@tanstack/react-query'
 import { Loader2 } from '@/components/icons'
@@ -12,42 +12,21 @@ import { OperationalWorkspace, WorkspaceNotice, workspaceStyles as ws } from '@/
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { fitNebulaCamera } from './nebula-camera'
 import { useMediaQuery } from '@/hooks/use-media-query'
+import { useResizeObserver } from '@/hooks/use-resize-observer'
 import { Link } from '@/i18n/navigation'
 import { formatApiError } from '@/lib/api-errors'
 import { documentApi } from '@/lib/api/documents'
 import { getCssHslColor } from '@/lib/css-vars'
 import { queryKeys } from '@/lib/query-keys'
 
-const THREE_CLOCK_DEPRECATION_WARNING = 'THREE.THREE.Clock'
-
-function isThreeClockDeprecationWarning(args: unknown[]): boolean {
-  return args.some((arg) => typeof arg === 'string' && arg.includes(THREE_CLOCK_DEPRECATION_WARNING))
-}
-
-async function withSuppressedThreeClockWarning<T>(action: () => Promise<T>): Promise<T> {
-  const originalWarn = console.warn
-  console.warn = (...args: unknown[]) => {
-    if (isThreeClockDeprecationWarning(args)) return
-    originalWarn(...args)
-  }
-  try {
-    return await action()
-  } finally {
-    console.warn = originalWarn
-  }
-}
-
-const ForceGraph3D = dynamic(
-  () => withSuppressedThreeClockWarning(() => import('./nebula-graph').then((module) => module.NebulaGraph)),
-  {
-    ssr: false,
-    loading: () => (
-      <div className="flex h-full w-full items-center justify-center bg-background">
-        <Loader2 className="h-8 w-8 animate-spin text-primary motion-reduce:animate-none" />
-      </div>
-    ),
-  },
-)
+const ForceGraph3D = dynamic(() => import('./nebula-graph').then((module) => module.NebulaGraph), {
+  ssr: false,
+  loading: () => (
+    <div className="flex h-full w-full items-center justify-center bg-background">
+      <Loader2 className="h-8 w-8 animate-spin text-primary motion-reduce:animate-none" />
+    </div>
+  ),
+})
 
 type ClusterVisualStyle = {
   spread: number
@@ -81,7 +60,8 @@ type NebulaNode = {
   content: string
   documentId: string
   documentName: string
-  chunkIndex: number | null
+  chunkId: string
+  chunkIndex: number
   style: ClusterVisualStyle
 }
 
@@ -104,7 +84,7 @@ type DocumentChunkItem = Pick<DocumentChunk, 'id' | 'content' | 'chunk_index'>
 
 const EMPTY_NEBULA: NebulaData = { nodes: [], links: [], clusters: [] }
 
-const TYPE_STYLES: Record<string, Omit<ClusterDefinition, 'count' | 'chunkCount' | 'center'>> = {
+const TYPE_STYLES = {
   pdf: {
     label: 'PDF 文档',
     color: '#2563eb',
@@ -153,7 +133,7 @@ const TYPE_STYLES: Record<string, Omit<ClusterDefinition, 'count' | 'chunkCount'
       shapeLabel: '紫色云核',
     },
   },
-}
+} satisfies Record<string, Omit<ClusterDefinition, 'count' | 'chunkCount' | 'center'>>
 
 function hashString(value: string): number {
   let hash = 2166136261
@@ -168,11 +148,13 @@ function unitFromHash(value: string, salt: string): number {
   return (hashString(`${salt}:${value}`) % 10000) / 10000
 }
 
-function getDocumentType(document: DocumentListItem): string {
-  const rawType = String(document.file_type || document.filename?.split('.').pop() || 'default').toLowerCase()
-  if (rawType.includes('pdf')) return 'pdf'
-  if (rawType.includes('xls') || rawType.includes('csv')) return 'xlsx'
-  if (rawType.includes('html') || rawType.includes('htm')) return 'html'
+function getDocumentType(document: DocumentListItem): keyof typeof TYPE_STYLES {
+  const fileType = document.file_type
+  const type = fileType === undefined || fileType === '' ? document.filename?.split('.').pop() : fileType
+  const normalizedType = type?.toLowerCase()
+  if (normalizedType?.includes('pdf')) return 'pdf'
+  if (normalizedType?.includes('xls') || normalizedType?.includes('csv')) return 'xlsx'
+  if (normalizedType?.includes('htm')) return 'html'
   return 'default'
 }
 
@@ -197,38 +179,28 @@ export function buildNebula(
   documents: DocumentListItem[],
   chunksByDocument: Map<string, DocumentChunkItem[]>,
 ): NebulaData {
-  const clusterKeys = Array.from(new Set(documents.map(getDocumentType)))
-  const clusterByKey = new Map<string, ClusterDefinition>()
-
-  clusterKeys.forEach((key, index) => {
-    const style = TYPE_STYLES[key] || TYPE_STYLES.default
-    const docs = documents.filter((document) => getDocumentType(document) === key)
-    clusterByKey.set(key, {
-      ...style,
-      count: docs.length,
-      chunkCount: docs.reduce((sum, document) => sum + (chunksByDocument.get(document.id)?.length ?? 0), 0),
-      center: clusterCenter(index),
-    })
-  })
-
+  const clusterByKey = new Map<keyof typeof TYPE_STYLES, ClusterDefinition>()
   const nodes: NebulaNode[] = []
   const links: NebulaLink[] = []
 
   for (const document of documents) {
     const clusterKey = getDocumentType(document)
-    const cluster = clusterByKey.get(clusterKey) || {
-      ...TYPE_STYLES.default,
-      count: 1,
-      chunkCount: 0,
-      center: clusterCenter(clusterByKey.size),
+    let cluster = clusterByKey.get(clusterKey)
+    if (cluster === undefined) {
+      cluster = { ...TYPE_STYLES[clusterKey], count: 0, chunkCount: 0, center: clusterCenter(clusterByKey.size) }
+      clusterByKey.set(clusterKey, cluster)
     }
-    const chunks = chunksByDocument.get(document.id) || []
+    cluster.count += 1
+
+    const chunks = chunksByDocument.get(document.id)
+    if (chunks === undefined) continue
+    cluster.chunkCount += chunks.length
+    const documentName = document.filename === undefined || document.filename === '' ? document.id : document.filename
     chunks.forEach((chunk, index) => {
       const [minSize, maxSize] = cluster.style.sizeRange
-      const id = String(chunk.id)
       const spread = cluster.style.spread
-      const nodeId = `${document.id}:${id}`
-      const sizeByLength = Math.min(1, Math.max(0.15, (chunk.content || '').length / 1600))
+      const nodeId = `${document.id}:${chunk.id}`
+      const sizeByLength = Math.min(1, Math.max(0.15, chunk.content.length / 1600))
       nodes.push({
         id: nodeId,
         group: cluster.label,
@@ -239,8 +211,9 @@ export function buildNebula(
         z: cluster.center.z + (unitFromHash(nodeId, 'z') - 0.5) * spread,
         content: chunk.content,
         documentId: document.id,
-        documentName: document.filename || document.id,
-        chunkIndex: Number.isFinite(chunk.chunk_index) ? chunk.chunk_index : index,
+        documentName,
+        chunkId: chunk.id,
+        chunkIndex: chunk.chunk_index,
         style: cluster.style,
       })
 
@@ -262,43 +235,35 @@ export function buildNebula(
   }
 }
 
-async function loadVectorNebulaData(): Promise<NebulaData> {
-  const documentList = await documentApi.list({ limit: 24, status: 'completed' })
-  const documents = documentList.items || []
-  const chunksByDocument = new Map<string, DocumentChunkItem[]>()
-
-  const sampledDocuments = documents.slice(0, 8)
-  await Promise.all(
-    sampledDocuments.map(async (document) => {
-      const chunkList = await documentApi.listChunks(document.id, { limit: 80 })
-      chunksByDocument.set(document.id, chunkList.items)
+async function loadVectorNebulaData(signal: AbortSignal): Promise<NebulaData> {
+  const { items: documents } = await documentApi.list({ limit: 8, status: 'completed' }, { signal })
+  const chunksByDocument = await Promise.all(
+    documents.map(async (document) => {
+      const { items: chunks } = await documentApi.listChunks(document.id, { limit: 80 }, { signal })
+      return [document.id, chunks] as const
     }),
   )
-  return buildNebula(sampledDocuments, chunksByDocument)
+  return buildNebula(documents, new Map(chunksByDocument))
 }
 
 export function VectorNebula() {
   const fgRef = useRef<ForceGraphMethods | undefined>(undefined)
   const viewportRef = useRef<HTMLDivElement>(null)
-  const [size, setSize] = useState({ width: 0, height: 0 })
+  const size = useResizeObserver(viewportRef)
   const [canvasColor, setCanvasColor] = useState('#ffffff')
   const [linkColor, setLinkColor] = useState('#64748b')
   const [panel, setPanel] = useState<'legend' | 'node' | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const reducedMotion = useMediaQuery('(prefers-reduced-motion: reduce)')
-  const nebulaQuery = useQuery({ queryKey: queryKeys.documents.nebula, queryFn: loadVectorNebulaData })
+  const nebulaQuery = useQuery({
+    queryKey: queryKeys.documents.nebula,
+    queryFn: ({ signal }) => loadVectorNebulaData(signal),
+  })
   const data = nebulaQuery.data ?? EMPTY_NEBULA
   const loading = nebulaQuery.isFetching
   const error = nebulaQuery.error ? formatApiError(nebulaQuery.error, '语义星云数据读取失败') : null
   const selectedNode = data.nodes.find((node) => node.id === selectedId)
-  const totalDocuments = useMemo(() => data.clusters.reduce((sum, cluster) => sum + cluster.count, 0), [data.clusters])
-  useLayoutEffect(() => {
-    const element = viewportRef.current!
-    const observer = new ResizeObserver(() => setSize({ width: element.clientWidth, height: element.clientHeight }))
-    observer.observe(element)
-    setSize({ width: element.clientWidth, height: element.clientHeight })
-    return () => observer.disconnect()
-  }, [])
+  const totalDocuments = data.clusters.reduce((sum, cluster) => sum + cluster.count, 0)
   useLayoutEffect(() => {
     const update = () => {
       setCanvasColor(getCssHslColor('--background', '#ffffff'))
@@ -318,16 +283,6 @@ export function VectorNebula() {
       if (panel === 'node') setPanel(null)
     }
   }, [data.nodes, selectedId, panel])
-  useEffect(() => {
-    const originalWarn = console.warn
-    const patchedWarn = (...args: unknown[]) => {
-      if (!isThreeClockDeprecationWarning(args)) originalWarn(...args)
-    }
-    console.warn = patchedWarn
-    return () => {
-      if (console.warn === patchedWarn) console.warn = originalWarn
-    }
-  }, [])
   const fitCamera = useCallback(() => {
     const graph = fgRef.current
     if (!graph || !size.width || !size.height) return
@@ -419,7 +374,7 @@ export function VectorNebula() {
             nodeLabel={(raw: unknown) => {
               const node = raw as NebulaNode
               const label = document.createElement('span')
-              label.textContent = `${node.documentName} · 切片 ${node.chunkIndex ?? '—'}`
+              label.textContent = `${node.documentName} · 切片 ${node.chunkIndex}`
               return label.outerHTML
             }}
             nodeColor="color"
@@ -471,7 +426,7 @@ export function VectorNebula() {
               <article>
                 <h2 className="break-words text-base font-semibold leading-7">{selectedNode.documentName}</h2>
                 <p className="mt-2 text-[13px] text-muted-foreground">
-                  {selectedNode.group} · 切片 {selectedNode.chunkIndex ?? '—'}
+                  {selectedNode.group} · 切片 {selectedNode.chunkIndex}
                 </p>
                 <p className="mt-5 whitespace-pre-wrap break-words text-sm leading-7">{selectedNode.content}</p>
                 <details className="mt-5 border-t border-border pt-4 text-[13px]">
@@ -479,7 +434,7 @@ export function VectorNebula() {
                   <p className="mt-3 break-all font-mono text-xs leading-6">
                     {selectedNode.documentId}
                     <br />
-                    {selectedNode.id}
+                    {selectedNode.chunkId}
                   </p>
                 </details>
               </article>
@@ -517,7 +472,7 @@ export function VectorNebula() {
                     <option value="">选择文档与切片</option>
                     {data.nodes.map((node) => (
                       <option value={node.id} key={node.id}>
-                        {node.documentName} · 切片 {node.chunkIndex ?? '—'}
+                        {node.documentName} · 切片 {node.chunkIndex}
                       </option>
                     ))}
                   </select>
@@ -542,7 +497,7 @@ export function VectorNebula() {
 function renderNebulaNode(rawNode: unknown) {
   const node = rawNode as NebulaNode
   const [minSize] = node.style.sizeRange
-  const coreSize = Math.max(node.val ?? minSize, minSize)
+  const coreSize = Math.max(node.val, minSize)
   const coreGeometry = createClusterGeometry(node.style.geometry, coreSize)
   const coreMaterial = new THREE.MeshBasicMaterial({ color: node.color })
   const coreMesh = new THREE.Mesh(coreGeometry, coreMaterial)

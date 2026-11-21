@@ -5,6 +5,13 @@ import { createRoot, hydrateRoot } from 'react-dom/client'
 import { renderToString } from 'react-dom/server'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import chatMessages from '@/i18n/messages/zh-CN/chat'
+import type { ReadyResponse } from '@/types/backend'
+
+const backendReadyState = vi.hoisted((): { data: ReadyResponse | null; isError: boolean } => ({
+  data: null,
+  isError: false,
+}))
+const backendHealthMock = vi.hoisted(() => vi.fn(() => ({ data: undefined })))
 
 const routerMocks = vi.hoisted(() => ({
   pathname: '/knowledge/similarity',
@@ -120,11 +127,15 @@ vi.mock('@/hooks/use-backend-meta', () => ({
 
 vi.mock('@/hooks/use-backend-ready', () => ({
   useBackendReady: () => ({
-    data: null,
+    data: backendReadyState.data,
     dataUpdatedAt: 0,
     errorUpdatedAt: 0,
-    isError: false,
+    isError: backendReadyState.isError,
   }),
+}))
+
+vi.mock('@/hooks/use-backend-health', () => ({
+  useBackendHealth: backendHealthMock,
 }))
 
 vi.mock('@/hooks/use-tenant-access', () => ({
@@ -133,10 +144,6 @@ vi.mock('@/hooks/use-tenant-access', () => ({
 
 vi.mock('@/store/command-menu', () => ({
   useCommandMenuState: (selector: (state: typeof commandMenuStore) => unknown) => selector(commandMenuStore),
-}))
-
-vi.mock('@/components/mode-toggle', () => ({
-  ModeToggle: () => React.createElement('div', { 'data-testid': 'mode-toggle' }),
 }))
 
 vi.mock('@/components/theme-customizer', () => ({
@@ -186,6 +193,8 @@ function renderComponent(element: React.ReactElement) {
 describe('Navbar behavior', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    backendReadyState.data = null
+    backendReadyState.isError = false
     linkStatusMock.pending = false
     routerMocks.pathname = '/knowledge/similarity'
     commandMenuStore.open = false
@@ -210,6 +219,27 @@ describe('Navbar behavior', () => {
 
   afterEach(() => {
     vi.restoreAllMocks()
+  })
+
+  it('keeps public readiness visible without diagnostic permissions', () => {
+    tenantAccessMock.current = { data: { ...adminTenantAccess, role: 'viewer', permissions: [] } }
+    backendReadyState.data = { ok: true, status: 'ready' }
+    const view = renderComponent(React.createElement(Navbar))
+    expect(backendHealthMock).toHaveBeenLastCalledWith({ enabled: false })
+    expect(view.container.querySelector('button[aria-label="deps.openStatus"]')?.textContent).toContain(
+      'deps.statusReady',
+    )
+    view.unmount()
+  })
+
+  it('does not report readiness from old data after the latest check fails', () => {
+    backendReadyState.data = { ok: true, status: 'ready' }
+    backendReadyState.isError = true
+    const view = renderComponent(React.createElement(Navbar))
+    expect(view.container.querySelector('button[aria-label="deps.openStatus"]')?.textContent).toContain(
+      'deps.statusNotReady',
+    )
+    view.unmount()
   })
 
   it('keeps the advanced similarity route out of the primary sidebar', () => {
@@ -281,7 +311,6 @@ describe('Navbar behavior', () => {
     expect(appearance?.textContent).toContain('5 种风格')
     expect(appearanceButton?.getAttribute('aria-label')).toBe('界面外观')
     expect(appearanceButton?.getAttribute('title')).toBe('界面外观')
-    expect(view.container.querySelector('[data-testid="mode-toggle"]')).not.toBeNull()
 
     view.unmount()
   })
@@ -291,7 +320,6 @@ describe('Navbar behavior', () => {
 
     const appearance = view.container.querySelector('[data-testid="appearance-customizer"]')
     expect(appearance?.querySelector('button')?.getAttribute('aria-label')).toBe('界面外观')
-    expect(view.container.querySelector('[data-testid="mode-toggle"]')).not.toBeNull()
 
     view.unmount()
   })

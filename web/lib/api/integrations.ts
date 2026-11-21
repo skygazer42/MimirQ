@@ -11,7 +11,10 @@ export const integrationApi = {
   async ingestConversationHistory(
     payload: ExternalConversationIngestRequest,
   ): Promise<ExternalConversationIngestResponse> {
-    const { data } = await apiClient.post('/integrations/conversations/ingest', payload)
+    const { data } = await apiClient.post<ExternalConversationIngestResponse>(
+      '/integrations/conversations/ingest',
+      payload,
+    )
     return data
   },
 }

@@ -12,10 +12,7 @@ def _stable_rank(*, quarter_key: str, sample_id: str) -> str:
 
 
 def _normalize_ratio(value: float | int | None) -> float:
-    try:
-        ratio = float(value if value is not None else 0.2)
-    except Exception:
-        ratio = 0.2
+    ratio = float(value) if value is not None else 0.2
     return max(0.0, min(1.0, ratio))
 
 
@@ -43,20 +40,13 @@ def plan_quarterly_refresh(
         refresh_count = max(1, round(total * ratio))
         refresh_count = min(refresh_count, total)
 
-    refresh_rows: list[dict[str, Any]] = []
-    stable_rows: list[dict[str, Any]] = []
-    for idx, row in enumerate(ranked):
-        row_copy = dict(row)
-        if idx < refresh_count:
-            tags = list(row_copy["tags"])
-            if "quarterly_refresh" not in tags:
-                tags.append("quarterly_refresh")
-            row_copy["tags"] = tags
-            row_copy["refresh_quarter"] = quarter
-            row_copy["refresh_action"] = "regenerate"
-            refresh_rows.append(row_copy)
-        else:
-            stable_rows.append(row_copy)
+    refresh_rows = ranked[:refresh_count]
+    stable_rows = ranked[refresh_count:]
+    for row in refresh_rows:
+        if "quarterly_refresh" not in row["tags"]:
+            row["tags"].append("quarterly_refresh")
+        row["refresh_quarter"] = quarter
+        row["refresh_action"] = "regenerate"
 
     return {
         "schema": QUARTERLY_REFRESH_SCHEMA_V1,

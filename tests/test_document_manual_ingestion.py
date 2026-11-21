@@ -4,8 +4,8 @@ from uuid import uuid4
 import pytest
 from fastapi import BackgroundTasks
 
-from app.api.schemas.document import ManualChunkCreate, ManualDocumentCreate
-from app.api.v1 import document_manual
+from app.api.schemas.documents.document import ManualChunkCreate, ManualDocumentCreate
+from app.api.v1.documents import manual as document_manual
 
 
 def _manual_request() -> ManualDocumentCreate:
@@ -18,7 +18,6 @@ def _manual_request() -> ManualDocumentCreate:
 
 
 def test_manual_document_route_delegates_to_ingestion_service(monkeypatch: pytest.MonkeyPatch) -> None:
-    from app.services import document_manual_ingestion
 
     request = _manual_request()
     background_tasks = BackgroundTasks()
@@ -32,13 +31,7 @@ def test_manual_document_route_delegates_to_ingestion_service(monkeypatch: pytes
         captured.update(kwargs)
         return result
 
-    monkeypatch.setattr(
-        document_manual,
-        "_documents_module",
-        lambda: pytest.fail("manual route reached the documents facade"),
-        raising=False,
-    )
-    monkeypatch.setattr(document_manual_ingestion, "create_manual_document", create_manual_document)
+    monkeypatch.setattr(document_manual, "create_manual_document", create_manual_document)
 
     assert (
         document_manual.create_document_with_manual_chunks(
@@ -60,7 +53,7 @@ def test_manual_document_route_delegates_to_ingestion_service(monkeypatch: pytes
 
 
 def test_manual_worker_uses_and_closes_its_owned_session(monkeypatch: pytest.MonkeyPatch) -> None:
-    from app.services import document_manual_ingestion
+    from app.services.documents import manual_ingestion as document_manual_ingestion
 
     document = SimpleNamespace(id=uuid4(), tenant_id=uuid4(), dataset_id=uuid4(), status="processing")
     dataset = SimpleNamespace(id=document.dataset_id, dataset_metadata={})
@@ -107,7 +100,7 @@ def test_manual_worker_uses_and_closes_its_owned_session(monkeypatch: pytest.Mon
 
 
 def test_cancelled_manual_worker_closes_its_session_without_processing(monkeypatch: pytest.MonkeyPatch) -> None:
-    from app.services import document_manual_ingestion
+    from app.services.documents import manual_ingestion as document_manual_ingestion
 
     document = SimpleNamespace(id=uuid4(), tenant_id=uuid4(), dataset_id=uuid4(), status="cancelled")
 

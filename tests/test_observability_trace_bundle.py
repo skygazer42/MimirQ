@@ -6,9 +6,8 @@ import uuid
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from app.api.dependencies.auth import get_current_account_id
-from app.api.dependencies.tenant import get_tenant_id
-from app.core.database import get_db
+from app.api.dependencies import get_current_account_id, get_tenant_id
+from app.infrastructure.database.connection import get_db
 
 
 class _DummyDB:
@@ -26,9 +25,9 @@ def _short_hash(text: str) -> str:
 
 
 def test_observability_trace_bundle_export(monkeypatch, tmp_path):  # noqa: ANN001
-    import app.api.v1.observability as obs_mod
-    from app.api.v1.observability import get_rag_trace_bundle
-    from app.core.config import settings
+    import app.api.v1.system.observability as obs_mod
+    from app.api.v1.system.observability import get_rag_trace_bundle
+    from app.infrastructure.config import settings
 
     # Bypass role checks.
     monkeypatch.setattr(obs_mod, "_ensure_admin", lambda *_args, **_kwargs: None, raising=True)
@@ -125,9 +124,9 @@ def test_observability_trace_bundle_export(monkeypatch, tmp_path):  # noqa: ANN0
 
 
 def test_observability_trace_bundle_404(monkeypatch, tmp_path):  # noqa: ANN001
-    import app.api.v1.observability as obs_mod
-    from app.api.v1.observability import get_rag_trace_bundle
-    from app.core.config import settings
+    import app.api.v1.system.observability as obs_mod
+    from app.api.v1.system.observability import get_rag_trace_bundle
+    from app.infrastructure.config import settings
 
     monkeypatch.setattr(obs_mod, "_ensure_admin", lambda *_args, **_kwargs: None, raising=True)
 

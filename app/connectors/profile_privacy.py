@@ -47,12 +47,8 @@ def sanitize_db_profile_snapshot(profile: Mapping[str, Any] | None, *, min_rows:
     else:
         raw.pop("row_count_estimate", None)
 
-    out: dict[str, Any] = {}
-    for key, value in raw.items():
-        if key in _ALWAYS_DROP_KEYS:
-            continue
-        if isinstance(value, (list, dict)):
-            continue
-        out[key] = value
-
-    return out
+    return {
+        key: value
+        for key, value in raw.items()
+        if key not in _ALWAYS_DROP_KEYS and (value is None or isinstance(value, (str, int, float)))
+    }

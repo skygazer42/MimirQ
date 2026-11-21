@@ -2,12 +2,12 @@
 Recall stage: 8-step pipeline (query -> keys -> events -> weights).
 """
 
+import logging
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
-from app.core.config import settings
-from app.rag.core.logging import get_logger
+from app.infrastructure.config import settings
 from app.rag.kg.loading.processor import generate_embedding
 from app.rag.kg.repository import AliasRepository, EntityRepository, EventRepository, RelationRepository, get_session
 from app.rag.kg.search import graph_embeddings as graph_embeddings_mod
@@ -20,9 +20,9 @@ from app.rag.kg.search.utils import confidence_bucket, cosine_similarity
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
 
-    from app.rag.kg.models import KgEventEntity, KgRelation
+    from app.models.knowledge_graph.entities import KgEventEntity, KgRelation
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 _SKILL_TYPES = {"Skill", "SkillTag", "SkillCategory"}
 
@@ -181,11 +181,8 @@ def _empty_scope_result() -> RecallResult:
     )
 
 
-def _tenant_uuid(value: object) -> UUID | None:
-    try:
-        return UUID(str(value))
-    except Exception:
-        return None
+def _tenant_uuid(value: object) -> UUID:
+    return UUID(str(value))
 
 
 def _query_reason_codes(config: SearchConfig) -> set[str]:
@@ -224,7 +221,7 @@ def _build_recall_limits(config: SearchConfig) -> _RecallLimits:
         query_mode_reason_codes=list(config.query_mode_reason_codes or []),
     )
     mode_reason_codes = [str(item) for item in (mode_overrides.get("reason_codes") or []) if str(item).strip()]
-    max_events = int(mode_overrides.get("max_events") or config.recall.max_events)
+    max_events = int(mode_overrides["max_events"])
     max_candidates = max(0, int(settings.KG_SEARCH_MAX_RERANK_CANDIDATES))
     if max_candidates > 0:
         max_events = min(max_events, max_candidates)
@@ -247,11 +244,9 @@ def _build_recall_limits(config: SearchConfig) -> _RecallLimits:
             mode_reason_codes=mode_reason_codes,
             query_reason_codes=_query_reason_codes(config),
         ),
-        max_entities=int(mode_overrides.get("max_entities") or config.recall.max_entities),
-        final_entity_count=int(mode_overrides.get("final_entity_count") or config.recall.final_entity_count),
-        entity_weight_threshold=float(
-            mode_overrides.get("entity_weight_threshold") or config.recall.entity_weight_threshold
-        ),
+        max_entities=int(mode_overrides["max_entities"]),
+        final_entity_count=int(mode_overrides["final_entity_count"]),
+        entity_weight_threshold=float(mode_overrides["entity_weight_threshold"]),
         target_max_events=target_max_events,
         candidate_max_events=candidate_max_events,
         serving_enabled=serving_enabled,
@@ -267,14 +262,11 @@ def _match_alias_hits(
     tenant_id: object,
     max_entities: int,
 ) -> list[dict[str, Any]]:
-    try:
-        return alias_repo.match_aliases(
-            query=query,
-            tenant_id=tenant_id,
-            limit=max(0, int(max_entities)),
-        )
-    except Exception:
-        return []
+    return alias_repo.match_aliases(
+        query=query,
+        tenant_id=tenant_id,
+        limit=max(0, int(max_entities)),
+    )
 
 
 def _expand_query_with_alias_hits(query: str, alias_hits: list[dict[str, Any]]) -> str:
@@ -307,23 +299,21 @@ def _lexical_first_event_results(
 ) -> list[dict[str, Any]]:
     if not enabled:
         return []
-    try:
-        return event_repo.search_events_lexical(
-            query=config.query,
-            tenant_id=tenant_id,
-            k=config.recall.vector_candidates,
-            document_ids=config.document_ids,
-            dataset_id=config.dataset_id,
-            account_id=config.account_id,
-        )
-    except Exception:
-        return []
+    return event_repo.search_events_lexical(
+        query=config.query,
+        tenant_id=tenant_id,
+        k=config.recall.vector_candidates,
+        document_ids=config.document_ids,
+        dataset_id=config.dataset_id,
+        account_id=config.account_id,
+    )
 
 
 async def _query_embedding(expanded_query: str) -> list[float]:
     try:
         return await generate_embedding(expanded_query)
     except Exception:
+        logger.warning("Optional KG query embedding failed; using lexical recall", exc_info=True)
         return []
 
 
@@ -336,14 +326,11 @@ def _vector_entity_hits(
 ) -> list[dict[str, Any]]:
     if not query_vec:
         return []
-    try:
-        return entity_repo.search_similar(
-            query_vector=query_vec,
-            tenant_id=tenant_id,
-            k=vector_candidates,
-        )
-    except Exception:
-        return []
+    return entity_repo.search_similar(
+        query_vector=query_vec,
+        tenant_id=tenant_id,
+        k=vector_candidates,
+    )
 
 
 def _merge_alias_hits(
@@ -387,17 +374,14 @@ def _lexical_entity_fallback(
 ) -> None:
     if raw_entities or alias_hits:
         return
-    try:
-        lexical_entities = entity_repo.search_lexical(
-            query=config.query,
-            tenant_id=tenant_id,
-            k=max_entities,
-            document_ids=config.document_ids,
-            dataset_id=config.dataset_id,
-            account_id=config.account_id,
-        )
-    except Exception:
-        lexical_entities = []
+    lexical_entities = entity_repo.search_lexical(
+        query=config.query,
+        tenant_id=tenant_id,
+        k=max_entities,
+        document_ids=config.document_ids,
+        dataset_id=config.dataset_id,
+        account_id=config.account_id,
+    )
     if not lexical_entities:
         return
     raw_entities.extend(lexical_entities)
@@ -472,31 +456,25 @@ def _graph_relation_edges(
     session: "Session",
     *,
     config: SearchConfig,
-    tenant_uuid: UUID | None,
+    tenant_uuid: UUID,
     kept_entity_ids: set[str],
     max_relations: int,
 ) -> list[tuple[str, str]]:
-    if tenant_uuid is None or max_relations <= 0 or not kept_entity_ids:
+    if max_relations <= 0 or not kept_entity_ids:
         return []
     if not bool(settings.KG_RELATION_ENABLED):
         return []
-    try:
-        min_conf = float(settings.KG_SEARCH_RELATION_MIN_CONFIDENCE)
-    except Exception:
-        min_conf = 0.0
+    min_conf = float(settings.KG_SEARCH_RELATION_MIN_CONFIDENCE)
     ent_list = sorted(kept_entity_ids)[: min(len(kept_entity_ids), 300)]
-    try:
-        rel_rows = RelationRepository(session).list_relations_for_entities(
-            ent_list,
-            tenant_id=tenant_uuid,
-            document_ids=config.document_ids,
-            dataset_id=config.dataset_id,
-            account_id=config.account_id,
-            min_confidence=min_conf if min_conf > 0 else None,
-            limit=max_relations,
-        )
-    except Exception:
-        rel_rows = []
+    rel_rows = RelationRepository(session).list_relations_for_entities(
+        ent_list,
+        tenant_id=tenant_uuid,
+        document_ids=config.document_ids,
+        dataset_id=config.dataset_id,
+        account_id=config.account_id,
+        min_confidence=min_conf if min_conf > 0 else None,
+        limit=max_relations,
+    )
     relation_edges: list[tuple[str, str]] = []
     ordered_rows = sorted(
         rel_rows or [],
@@ -537,10 +515,7 @@ def _graph_candidate_hits(
         candidate_entity_ids.append(entity_id)
         if seed_key.startswith("ent:"):
             hit_seed_by_entity[entity_id] = seed_key.split(":", 1)[1]
-        try:
-            hit_sim_by_entity[entity_id] = float(hit.get("similarity", 0.0) or 0.0)
-        except Exception:
-            hit_sim_by_entity[entity_id] = 0.0
+        hit_sim_by_entity[entity_id] = float(hit.get("similarity", 0.0) or 0.0)
     return candidate_entity_ids, hit_seed_by_entity, hit_sim_by_entity
 
 
@@ -611,74 +586,69 @@ def _apply_graph_embedding_recall(
         return
     if vector_recall_enabled and query_vec:
         return
-    try:
-        tenant_uuid = _tenant_uuid(tenant_id)
-        if tenant_uuid is None:
-            return
-        if graph_settings.top_k <= 0 or graph_settings.max_events <= 0 or graph_settings.max_entities <= 0:
-            return
-        seed_entity_ids, seed_nodes, existing_ids, seed_entity_map = _graph_seed_maps(alias_key_ids, raw_entities)
-        event_ids = event_repo.search_events_by_entities(
-            seed_entity_ids,
-            tenant_id=tenant_id,
-            limit=graph_settings.max_events,
-            document_ids=config.document_ids,
-            dataset_id=config.dataset_id,
-            account_id=config.account_id,
-        )
-        event_id_strs = [str(event_id) for event_id in (event_ids or []) if event_id is not None]
-        assoc_map = event_repo.get_event_entities(event_ids or [], tenant_id=tenant_uuid)
-        kept_entity_ids = _graph_kept_entity_ids(
-            seed_entity_ids,
-            assoc_map,
-            max_entities=graph_settings.max_entities,
-        )
-        adjacency = graph_embeddings_mod.build_entity_event_adjacency(
-            seed_entity_ids=seed_entity_ids,
-            event_ids=event_id_strs,
-            event_entity_links={str(key): list(value or []) for key, value in (assoc_map or {}).items()},
-            kept_entity_ids=kept_entity_ids,
-            relation_edges=_graph_relation_edges(
-                session,
-                config=config,
-                tenant_uuid=tenant_uuid,
-                kept_entity_ids=kept_entity_ids,
-                max_relations=graph_settings.max_relations,
-            ),
-        )
-        params = graph_embeddings_mod.WalkHashParams(
-            dim=int(settings.KG_SEARCH_GRAPH_EMBEDDINGS_DIM),
-            num_walks=int(settings.KG_SEARCH_GRAPH_EMBEDDINGS_NUM_WALKS),
-            walk_length=int(settings.KG_SEARCH_GRAPH_EMBEDDINGS_WALK_LENGTH),
-            window_size=int(settings.KG_SEARCH_GRAPH_EMBEDDINGS_WINDOW_SIZE),
-            seed=int(settings.KG_SEARCH_GRAPH_EMBEDDINGS_SEED),
-        )
-        hits = graph_embeddings_mod.recall_similar_entity_nodes(
-            adjacency=adjacency,
-            seed_entity_node_keys=seed_nodes,
-            params=params,
-            top_k=graph_settings.top_k,
-            min_similarity=graph_settings.min_similarity,
-            entity_prefix="ent:",
-        )
-        candidate_entity_ids, hit_seed_by_entity, hit_sim_by_entity = _graph_candidate_hits(
-            hits,
-            existing_ids=existing_ids,
-        )
-        _append_graph_entities(
-            tracker,
-            entity_repo,
+    tenant_uuid = _tenant_uuid(tenant_id)
+    if graph_settings.top_k <= 0 or graph_settings.max_events <= 0 or graph_settings.max_entities <= 0:
+        return
+    seed_entity_ids, seed_nodes, existing_ids, seed_entity_map = _graph_seed_maps(alias_key_ids, raw_entities)
+    event_ids = event_repo.search_events_by_entities(
+        seed_entity_ids,
+        tenant_id=tenant_id,
+        limit=graph_settings.max_events,
+        document_ids=config.document_ids,
+        dataset_id=config.dataset_id,
+        account_id=config.account_id,
+    )
+    event_id_strs = [str(event_id) for event_id in (event_ids or []) if event_id is not None]
+    assoc_map = event_repo.get_event_entities(event_ids or [], tenant_id=tenant_uuid)
+    kept_entity_ids = _graph_kept_entity_ids(
+        seed_entity_ids,
+        assoc_map,
+        max_entities=graph_settings.max_entities,
+    )
+    adjacency = graph_embeddings_mod.build_entity_event_adjacency(
+        seed_entity_ids=seed_entity_ids,
+        event_ids=event_id_strs,
+        event_entity_links={str(key): list(value or []) for key, value in (assoc_map or {}).items()},
+        kept_entity_ids=kept_entity_ids,
+        relation_edges=_graph_relation_edges(
+            session,
+            config=config,
             tenant_uuid=tenant_uuid,
-            tenant_id=tenant_id,
-            raw_entities=raw_entities,
-            existing_ids=existing_ids,
-            candidate_entity_ids=candidate_entity_ids,
-            hit_seed_by_entity=hit_seed_by_entity,
-            hit_sim_by_entity=hit_sim_by_entity,
-            seed_entity_map=seed_entity_map,
-        )
-    except Exception as exc:
-        logger.debug("Graph embedding recall failed; continuing KG search without it: %s", exc)
+            kept_entity_ids=kept_entity_ids,
+            max_relations=graph_settings.max_relations,
+        ),
+    )
+    params = graph_embeddings_mod.WalkHashParams(
+        dim=int(settings.KG_SEARCH_GRAPH_EMBEDDINGS_DIM),
+        num_walks=int(settings.KG_SEARCH_GRAPH_EMBEDDINGS_NUM_WALKS),
+        walk_length=int(settings.KG_SEARCH_GRAPH_EMBEDDINGS_WALK_LENGTH),
+        window_size=int(settings.KG_SEARCH_GRAPH_EMBEDDINGS_WINDOW_SIZE),
+        seed=int(settings.KG_SEARCH_GRAPH_EMBEDDINGS_SEED),
+    )
+    hits = graph_embeddings_mod.recall_similar_entity_nodes(
+        adjacency=adjacency,
+        seed_entity_node_keys=seed_nodes,
+        params=params,
+        top_k=graph_settings.top_k,
+        min_similarity=graph_settings.min_similarity,
+        entity_prefix="ent:",
+    )
+    candidate_entity_ids, hit_seed_by_entity, hit_sim_by_entity = _graph_candidate_hits(
+        hits,
+        existing_ids=existing_ids,
+    )
+    _append_graph_entities(
+        tracker,
+        entity_repo,
+        tenant_uuid=tenant_uuid,
+        tenant_id=tenant_id,
+        raw_entities=raw_entities,
+        existing_ids=existing_ids,
+        candidate_entity_ids=candidate_entity_ids,
+        hit_seed_by_entity=hit_seed_by_entity,
+        hit_sim_by_entity=hit_sim_by_entity,
+        seed_entity_map=seed_entity_map,
+    )
 
 
 def _filter_skill_entities(raw_entities: list[dict[str, Any]], *, include_skill_entities: bool) -> list[dict[str, Any]]:
@@ -722,8 +692,8 @@ def _filter_entities_to_scope(
             continue
         try:
             entity_uuid = UUID(str(entity_id))
-        except Exception:
-            get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
+        except ValueError:
+            logger.debug("Ignoring invalid external KG entity identifier: %r", entity_id)
             continue
         if entity_uuid in allowed_entity_ids:
             filtered_entities.append(ent)
@@ -878,8 +848,6 @@ def _apply_relation_expansion(
     if max_neighbors <= 0:
         return [], relation_debug
     tenant_uuid = _tenant_uuid(tenant_id)
-    if tenant_uuid is None:
-        return [], relation_debug
     min_confidence = float(settings.KG_SEARCH_RELATION_MIN_CONFIDENCE)
     max_edges = max(0, int(settings.KG_SEARCH_RELATION_MAX_EDGES)) or 500
     weight_factor = float(settings.KG_SEARCH_RELATION_NEIGHBOR_WEIGHT_FACTOR)
@@ -981,30 +949,24 @@ def _content_results(
 ) -> list[dict[str, Any]]:
     content_results: list[dict[str, Any]] = list(lexical_first_event_results or [])
     if vector_recall_enabled and query_vec:
-        try:
-            content_results = event_repo.search_similar_by_content(
-                query_vector=query_vec,
-                tenant_id=tenant_id,
-                k=config.recall.vector_candidates,
-                document_ids=config.document_ids,
-                dataset_id=config.dataset_id,
-                account_id=config.account_id,
-            )
-        except Exception:
-            content_results = []
-    if content_results:
-        return content_results
-    try:
-        return event_repo.search_events_lexical(
-            query=config.query,
+        content_results = event_repo.search_similar_by_content(
+            query_vector=query_vec,
             tenant_id=tenant_id,
             k=config.recall.vector_candidates,
             document_ids=config.document_ids,
             dataset_id=config.dataset_id,
             account_id=config.account_id,
         )
-    except Exception:
-        return []
+    if content_results:
+        return content_results
+    return event_repo.search_events_lexical(
+        query=config.query,
+        tenant_id=tenant_id,
+        k=config.recall.vector_candidates,
+        document_ids=config.document_ids,
+        dataset_id=config.dataset_id,
+        account_id=config.account_id,
+    )
 
 
 def _select_query_events(
@@ -1188,6 +1150,8 @@ def _serving_layer_debug(
 
 
 async def recall(config: SearchConfig) -> RecallResult:
+    if config.tenant_id is None:
+        raise ValueError("tenant_id is required for KG search")
     tracker = Tracker()
     if config.document_ids is not None and not config.document_ids:
         return _empty_scope_result()
@@ -1197,7 +1161,7 @@ async def recall(config: SearchConfig) -> RecallResult:
         entity_repo = EntityRepository(session)
         alias_repo = AliasRepository(session)
         event_repo = EventRepository(session)
-        tenant_id = config.tenant_id or settings.DEFAULT_TENANT_ID
+        tenant_id = config.tenant_id
         limits = _build_recall_limits(config)
         alias_hits = _match_alias_hits(
             alias_repo,

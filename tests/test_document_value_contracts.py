@@ -1,7 +1,7 @@
 import pytest
 
-from app.services.document_identity import sync_pipeline_execution_identity
-from app.services.pipeline_provenance_service import build_pipeline_version_snapshot
+from app.services.documents.identity import sync_pipeline_execution_identity
+from app.services.pipelines.provenance import build_pipeline_version_snapshot
 
 
 @pytest.mark.parametrize(

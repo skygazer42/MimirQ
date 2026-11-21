@@ -4,14 +4,32 @@ from types import SimpleNamespace
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from app.api.dependencies.auth import get_current_account_id
-from app.api.dependencies.tenant import get_tenant_id
-from app.core.database import get_db
+from app.api.dependencies import get_current_account_id, get_tenant_id
+from app.infrastructure.database.connection import get_db
+from app.services.pipelines.config import resolve_pipeline_options
+from app.types.pipeline_options import PipelineOptions
+
+
+def test_ingestion_preview_preserves_resolved_zero_and_false_settings() -> None:
+    from app.api.v1.pipelines.support.ingestion_preview import _build_ingestion_clean_preview_request
+
+    effective = resolve_pipeline_options(
+        PipelineOptions(
+            governance_max_blank_lines=0,
+            governance_noise_ratio_threshold=0.0,
+            governance_remove_toc_lines=False,
+        )
+    )
+    request = _build_ingestion_clean_preview_request(markdown="# Preview", effective=effective, diff_max_lines=0)
+    assert request.max_blank_lines == 0
+    assert request.noise_ratio_threshold == 0.0
+    assert request.remove_toc_lines is False
+    assert request.diff_max_lines == 0
 
 
 def test_ingestion_preview_accepts_sync_clean_preview(monkeypatch, tmp_path) -> None:
-    import app.api.v1.pipeline as pipeline_module
-    from app.services import dataset_service
+    import app.api.v1.pipelines.routes as pipeline_module
+    from app.services.datasets import management as dataset_service
 
     tenant_id = uuid.uuid4()
     dataset_id = uuid.uuid4()
@@ -20,10 +38,13 @@ def test_ingestion_preview_accepts_sync_clean_preview(monkeypatch, tmp_path) -> 
     monkeypatch.setattr(pipeline_module.settings, "MAX_FILE_SIZE", 1024 * 1024, raising=False)
 
     monkeypatch.setattr(dataset_service, "ensure_member", lambda *_a, **_k: None, raising=True)
-    monkeypatch.setattr(dataset_service, "get_dataset", lambda *_a, **_k: object(), raising=True)
+    monkeypatch.setattr(
+        dataset_service, "get_dataset", lambda *_a, **_k: SimpleNamespace(dataset_metadata={}), raising=True
+    )
     monkeypatch.setattr(dataset_service, "assert_dataset_readable", lambda *_a, **_k: None, raising=True)
 
     async def _fake_save_upload_file(file, path, *, max_bytes):  # noqa: ANN001, ANN202
+        path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(await file.read())
 
     async def _fake_run_subprocess_worker(*, tenant_id, payload, disconnect_check, timeout_sec):  # noqa: ANN001, ANN202
@@ -34,7 +55,6 @@ def test_ingestion_preview_accepts_sync_clean_preview(monkeypatch, tmp_path) -> 
         }
 
     monkeypatch.setattr(pipeline_module, "save_upload_file", _fake_save_upload_file, raising=True)
-    monkeypatch.setattr(pipeline_module, "_dataset_metadata_dict", lambda _dataset: {}, raising=True)
     monkeypatch.setattr(pipeline_module, "parse_ingestion_policy_from_metadata", lambda _meta: None, raising=True)
     monkeypatch.setattr(
         pipeline_module,
@@ -64,7 +84,7 @@ def test_ingestion_preview_accepts_sync_clean_preview(monkeypatch, tmp_path) -> 
     monkeypatch.setattr(
         pipeline_module,
         "resolve_pipeline_effective",
-        lambda **_kwargs: {"governance_enabled": True},
+        lambda **_kwargs: resolve_pipeline_options(PipelineOptions(governance_enabled=True)),
         raising=True,
     )
     monkeypatch.setattr(pipeline_module, "run_subprocess_worker", _fake_run_subprocess_worker, raising=True)
@@ -76,8 +96,8 @@ def test_ingestion_preview_accepts_sync_clean_preview(monkeypatch, tmp_path) -> 
     )
     monkeypatch.setattr(
         pipeline_module,
-        "clean_preview",
-        lambda **_kwargs: pipeline_module.CleanPreviewResponse(
+        "build_clean_preview",
+        lambda _body: pipeline_module.CleanPreviewResponse(
             markdown="Hello",
             applied_rules=0,
             changed=False,

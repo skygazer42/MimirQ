@@ -15,7 +15,10 @@ for a query) instead of running community detection over the entire dataset grap
 latency bounded and avoids ACL/versioning pitfalls.
 """
 
+import math
+from collections.abc import Iterator
 from dataclasses import dataclass
+from itertools import combinations
 from typing import Any
 
 from app.rag.llm.base import BaseLLMClient
@@ -31,9 +34,10 @@ class CommunityEdge:
 
 def _safe_float(v: object, *, default: float = 0.0) -> float:
     try:
-        return float(v)  # type: ignore[arg-type]
-    except Exception:
-        return float(default)
+        value = float(v)  # type: ignore[arg-type]
+    except (TypeError, ValueError, OverflowError):
+        return default
+    return value if math.isfinite(value) else default
 
 
 def _stable_sig(s: str) -> str:
@@ -43,21 +47,21 @@ def _stable_sig(s: str) -> str:
 
 
 def _community_level(report: dict[str, Any]) -> int:
-    value = (report or {}).get("community_level")
+    value = report.get("community_level")
     if value is None:
-        value = (report or {}).get("level")
+        value = report.get("level")
     try:
         return max(0, int(value or 0))
-    except Exception:
+    except (TypeError, ValueError, OverflowError):
         return 0
 
 
 def _community_rank_key(report: dict[str, Any]) -> tuple[float, int, int, str, str]:
     community_id = report["community_id"].strip()
     return (
-        -_safe_float((report or {}).get("score"), default=0.0),
-        -int((report or {}).get("event_count") or 0),
-        -int((report or {}).get("entity_count") or 0),
+        -_safe_float(report.get("score")),
+        -int(report.get("event_count") or 0),
+        -int(report.get("entity_count") or 0),
         _stable_sig(community_id),
         community_id,
     )
@@ -77,11 +81,10 @@ def _dedupe_event_entities(entities: list[str], *, max_entities: int) -> list[st
     return dedup[:limit] if limit and len(dedup) > limit else dedup
 
 
-def _iter_entity_pairs(entities: list[str]):
-    for index, left in enumerate(entities[:-1]):
-        for right in entities[index + 1 :]:
-            if left != right:
-                yield (left, right) if left < right else (right, left)
+def _iter_entity_pairs(entities: list[str]) -> Iterator[tuple[str, str]]:
+    for left, right in combinations(entities, 2):
+        if left != right:
+            yield (left, right) if left < right else (right, left)
 
 
 def _edge_counts(event_entities: dict[str, list[str]], *, max_entities_per_event: int) -> dict[tuple[str, str], float]:
@@ -213,9 +216,8 @@ def _label_adjacency(nodes: list[str], edges: list[CommunityEdge]) -> dict[str, 
         if a in adj and b in adj and a != b and weight > 0:
             adj[a].append((b, weight))
             adj[b].append((a, weight))
-    for node, neighbors in adj.items():
+    for neighbors in adj.values():
         neighbors.sort(key=lambda item: (-item[1], _stable_sig(item[0]), item[0]))
-        adj[node] = neighbors
     return adj
 
 
@@ -299,7 +301,7 @@ def _event_community_scores(
         entity_id = ent.strip()
         label = entity_to_label.get(entity_id)
         if label:
-            weight = float(entity_weights.get(entity_id, 1.0) or 1.0)
+            weight = float(entity_weights.get(entity_id, 1.0))
             scores[label] = scores.get(label, 0.0) + weight
     return scores
 
@@ -320,7 +322,6 @@ def _entity_record(entity: dict[str, Any]) -> tuple[str, dict[str, Any], float] 
 def _index_entities(entities: list[dict[str, Any]]) -> tuple[dict[str, dict[str, Any]], dict[str, float], list[str]]:
     ent_info: dict[str, dict[str, Any]] = {}
     ent_weights: dict[str, float] = {}
-    nodes: list[str] = []
     for entity in entities or []:
         if not isinstance(entity, dict):
             continue
@@ -328,10 +329,9 @@ def _index_entities(entities: list[dict[str, Any]]) -> tuple[dict[str, dict[str,
         if record is None:
             continue
         entity_id, info, weight = record
-        nodes.append(entity_id)
         ent_info[entity_id] = info
         ent_weights[entity_id] = weight
-    return ent_info, ent_weights, sorted(set(nodes), key=lambda item: (_stable_sig(item), item))
+    return ent_info, ent_weights, sorted(ent_info, key=lambda item: (_stable_sig(item), item))
 
 
 def _filter_event_entities(event_entities: dict[str, list[str]], *, node_set: set[str]) -> dict[str, list[str]]:
@@ -461,7 +461,11 @@ def _build_global_summary(reports: list[dict[str, Any]], *, max_chars: int) -> s
             parts.append(f"[Community {report.get('community_id')}] {summary}")
     global_summary = "\n".join(parts).strip()
     limit = max(0, int(max_chars or 0))
-    return global_summary[:limit].rstrip() + "..." if limit and len(global_summary) > limit else global_summary
+    return (
+        global_summary[: max(0, limit - 3)].rstrip() + "." * min(limit, 3)
+        if limit and len(global_summary) > limit
+        else global_summary
+    )
 
 
 def _community_entity_lines(entities: list[Any]) -> list[str]:

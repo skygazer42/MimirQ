@@ -6,16 +6,16 @@ import pytest
 from langchain_core.documents import Document
 from PIL import Image
 
-from app.parsing.enrich.watermark_detector import remove_document_watermark_elements
-from app.parsing.models.manifest import SmallModelManifest, SmallModelSpec
-from app.parsing.models.runtime import SmallModelRuntime
-from app.parsing.parsers.docling_parser import DoclingParser
-from app.parsing.preprocess.paddle_doc_preprocess import preprocess_with_paddle_doc
-from app.parsing.processors.cross_page_merge import merge_cross_page_markdown_pages
-from app.parsing.quality.benchmark import table_cell_f1
-from app.parsing.quality.scorer import _detect_preprocess_info
-from app.rag.retrieval.orchestration.anchors import _apply_metadata_exact_anchor_doc_ordering
-from app.rag.retrieval.plugin_policy import record_retrieval_policy_anchor_binding_scores
+from app.rag.ingestion.parsing.enrich.watermark_detector import remove_document_watermark_elements
+from app.rag.ingestion.parsing.models.manifest import SmallModelManifest, SmallModelSpec
+from app.rag.ingestion.parsing.models.runtime import SmallModelRuntime
+from app.rag.ingestion.parsing.parsers.docling_parser import DoclingParser
+from app.rag.ingestion.parsing.preprocess.paddle_doc_preprocess import preprocess_with_paddle_doc
+from app.rag.ingestion.parsing.processors.cross_page_merge import merge_cross_page_markdown_pages
+from app.rag.ingestion.parsing.quality.benchmark import table_cell_f1
+from app.rag.ingestion.parsing.quality.scorer import _detect_preprocess_info
+from app.rag.retrieval.ranking.anchors import _apply_metadata_exact_anchor_doc_ordering
+from app.rag.retrieval.ranking.policy import record_retrieval_policy_anchor_binding_scores
 from app.rag.workflows.parallelization import ParallelWorkflow
 
 
@@ -121,7 +121,8 @@ def test_docling_parser_parse_converts_tables_without_local_page_images(
     ]
     parser = DoclingParser(extract_images=True, table_mode="markdown")
     monkeypatch.setattr(
-        "app.parsing.parsers.docling_parser.BaseAdvancedParser.parse", lambda self, path, **kwargs: list(base_docs)
+        "app.rag.ingestion.parsing.parsers.docling_parser.BaseAdvancedParser.parse",
+        lambda self, path, **kwargs: list(base_docs),
     )
 
     parsed = parser.parse(tmp_path / "demo.pdf")
@@ -155,7 +156,7 @@ def test_preprocess_with_paddle_doc_uses_model_settings_and_writes_output(
             return [result]
 
     monkeypatch.setattr(
-        "app.parsing.preprocess.paddle_doc_preprocess.get_paddle_doc_preprocessor",
+        "app.rag.ingestion.parsing.preprocess.paddle_doc_preprocess.get_paddle_doc_preprocessor",
         lambda **kwargs: _FakePipeline(),
     )
 
@@ -314,7 +315,7 @@ def test_record_retrieval_policy_anchor_binding_scores_penalizes_slot_only_recor
 async def test_parallel_workflow_run_keeps_partial_results_and_original_state(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from app.core.config import settings
+    from app.infrastructure.config import settings
 
     monkeypatch.setattr(settings, "MIDDLEWARE_ENABLED", False, raising=False)
     workflow = ParallelWorkflow()

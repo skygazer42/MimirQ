@@ -9,6 +9,8 @@ import type { DiagnosticsController } from './use-diagnostics'
 import styles from './diagnostics.module.css'
 
 export function DiagnosticsDialogs({ controller: c }: { controller: DiagnosticsController }) {
+  const servicesUpdatedAt = Math.max(c.ready.dataUpdatedAt, c.deps.dataUpdatedAt, c.health.dataUpdatedAt)
+  const serviceErrors = [c.ready.error, c.deps.error, c.health.error].filter((error) => error !== null)
   return (
     <>
       <Dialog open={c.detailsOpen} onOpenChange={c.setDetailsOpen}>
@@ -46,8 +48,7 @@ export function DiagnosticsDialogs({ controller: c }: { controller: DiagnosticsC
           <DialogHeader>
             <DialogTitle>服务检查</DialogTitle>
             <DialogDescription>
-              快照更新于{' '}
-              {timestamp(Math.max(c.ready.dataUpdatedAt, c.deps.dataUpdatedAt, c.health.dataUpdatedAt) || null)}
+              快照更新于 {timestamp(servicesUpdatedAt === 0 ? null : servicesUpdatedAt)}
             </DialogDescription>
           </DialogHeader>
           <div className={styles.dialogBody}>
@@ -59,12 +60,9 @@ export function DiagnosticsDialogs({ controller: c }: { controller: DiagnosticsC
                 </div>
               ))}
             </div>
-            {c.ready.isError || c.deps.isError || c.health.isError ? (
+            {serviceErrors.length > 0 ? (
               <p className={styles.domainError} role="alert">
-                {[c.ready.error, c.deps.error, c.health.error]
-                  .filter(Boolean)
-                  .map((error) => formatApiError(error, '服务状态获取失败'))
-                  .join('；')}
+                {serviceErrors.map((error) => formatApiError(error, '服务状态获取失败')).join('；')}
               </p>
             ) : null}
             <details className={styles.serviceRaw}>
@@ -80,7 +78,7 @@ export function DiagnosticsDialogs({ controller: c }: { controller: DiagnosticsC
               <pre className={styles.rawContent}>
                 {JSON.stringify(
                   {
-                    health: c.health.data?.payload ?? null,
+                    health: c.health.data ?? null,
                     meta: c.meta.data ?? null,
                     online_quality: c.online.data ?? null,
                   },

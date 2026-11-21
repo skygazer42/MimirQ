@@ -317,7 +317,7 @@ def _append_alias_candidate(
     if key in seen:
         return
     seen.add(key)
-    cleaned_quote = _clean_surface(quote or "") if quote else None
+    cleaned_quote = quote.strip() if quote is not None else None
     out.append(
         AliasCandidate(
             a=first_clean,
@@ -331,6 +331,7 @@ def _append_alias_candidate(
 def _append_alias_matches(
     *,
     text: str,
+    source_text: str,
     pattern: re.Pattern[str],
     method: str,
     out: list[AliasCandidate],
@@ -345,7 +346,7 @@ def _append_alias_matches(
             first=match.group("long"),
             second=match.group("short"),
             method=method,
-            quote=match.group(0),
+            quote=match.group(0) if text == source_text else None,
         )
         if len(out) >= limit:
             break
@@ -357,8 +358,7 @@ def extract_alias_candidates(text: str, *, max_candidates: int = 20) -> list[Ali
 
     This returns unordered pairs (a, b). Direction (alias vs canonical) is decided later.
     """
-    clean = unicodedata.normalize("NFKC", text)
-    if not clean:
+    if not text:
         return []
 
     lim = max(0, int(max_candidates or 0))
@@ -367,32 +367,21 @@ def extract_alias_candidates(text: str, *, max_candidates: int = 20) -> list[Ali
 
     out: list[AliasCandidate] = []
     seen: set[tuple[str, str, str]] = set()
-    _append_alias_matches(
-        text=clean,
-        pattern=_PARENS_RE,
-        method="parentheses",
-        out=out,
-        seen=seen,
-        limit=lim,
-    )
-    if len(out) < lim:
-        _append_alias_matches(
-            text=clean,
-            pattern=_ZH_ABBR_RE,
-            method="zh_abbr",
-            out=out,
-            seen=seen,
-            limit=lim,
-        )
-    if len(out) < lim:
-        _append_alias_matches(
-            text=clean,
-            pattern=_EN_AKA_RE,
-            method="en_aka",
-            out=out,
-            seen=seen,
-            limit=lim,
-        )
+    normalized = unicodedata.normalize("NFKC", text)
+    inputs = [text] if normalized == text else [text, normalized]
+    for pattern, method in ((_PARENS_RE, "parentheses"), (_ZH_ABBR_RE, "zh_abbr"), (_EN_AKA_RE, "en_aka")):
+        for candidate_text in inputs:
+            _append_alias_matches(
+                text=candidate_text,
+                source_text=text,
+                pattern=pattern,
+                method=method,
+                out=out,
+                seen=seen,
+                limit=lim,
+            )
+            if len(out) >= lim:
+                return out
     return out
 
 

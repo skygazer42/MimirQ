@@ -47,6 +47,16 @@
   box-shadow: none;
   font-size: 13px;
 }
+.headerActions button:focus-visible,
+.runbar button:focus-visible,
+.primary:focus-visible,
+.sampleSearch input:focus-visible,
+.readerNav button:focus-visible,
+.dialogToolbar input:focus-visible,
+.numberField input:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 2px;
+}
 .headerActions svg {
   width: 15px;
   height: 15px;
@@ -100,9 +110,6 @@
   overflow-y: auto;
   overscroll-behavior: contain;
 }
-.runbar button {
-  border-radius: 6px;
-}
 .matrixTable tr[data-sample-row] {
   height: 72px;
 }
@@ -128,6 +135,7 @@
   height: 34px;
   gap: 7px;
   font-size: 13px;
+  border-radius: 6px;
   box-shadow: none;
 }
 .runbar svg {
@@ -1016,9 +1024,6 @@
   }
   .runActions button {
     padding: 0 8px;
-  }
-  .runActions > button[aria-label='导出结果'] {
-    display: none;
   }
   .runbar .conversationPicker {
     font-size: 14px;

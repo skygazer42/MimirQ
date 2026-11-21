@@ -1,47 +1,40 @@
 from types import SimpleNamespace
+from uuid import uuid4
 
 import pytest
-from langchain_core.messages import HumanMessage
+from pydantic import ValidationError
 
-from app.rag.checkpointer.time_travel import TimeTravel
-from app.rag.memory.short_term import _message_to_tokens, trim_messages
-
-
-def test_history_message_conversion_requires_the_content_key():
-    with pytest.raises(KeyError, match="content"):
-        trim_messages([{"role": "human"}], max_tokens=100)
+from app.api.schemas.conversations.chat import HistoryMessage
+from app.api.v1.conversations import memory
 
 
-def test_text_content_blocks_require_their_text_key():
-    with pytest.raises(KeyError, match="text"):
-        _message_to_tokens(HumanMessage(content=[{"type": "text"}]))
+def test_history_message_requires_content_at_the_request_boundary():
+    with pytest.raises(ValidationError, match="content"):
+        HistoryMessage(role="user")
 
 
-def test_checkpoint_history_requires_the_persisted_checkpoint_id():
-    state = SimpleNamespace(
-        config={"configurable": {"thread_id": "thread-1"}},
-        parent_config=None,
-        metadata={},
-        values={},
-        next=(),
-    )
-    graph = SimpleNamespace(checkpointer=object(), get_state_history=lambda *args, **kwargs: [state])
-    with pytest.raises(KeyError, match="checkpoint_id"):
-        TimeTravel(graph).get_history("thread-1")
+def test_history_message_rejects_untyped_content_blocks():
+    with pytest.raises(ValidationError, match="content"):
+        HistoryMessage(role="user", content=[{"type": "text"}])
 
 
-def test_checkpoint_history_does_not_hide_store_failures():
+@pytest.mark.parametrize("missing", ["checkpoint_id", "checkpoint_ns"])
+def test_checkpoint_payload_requires_the_persisted_identity(missing):
+    configurable = {"thread_id": "thread-1", "checkpoint_id": "checkpoint-1", "checkpoint_ns": ""}
+    configurable.pop(missing)
+    snapshot = SimpleNamespace(config={"configurable": configurable})
+    with pytest.raises(KeyError, match=missing):
+        memory._checkpoint_payload(snapshot, include_values=False)
+
+
+def test_checkpoint_history_does_not_hide_store_failures(monkeypatch):
+    from app.rag.runtime.graph import workflow
+
     def unavailable_history(*args, **kwargs):
         raise RuntimeError("checkpoint store unavailable")
 
-    graph = SimpleNamespace(checkpointer=object(), get_state_history=unavailable_history)
+    graph = SimpleNamespace(get_state_history=unavailable_history)
+    monkeypatch.setattr(workflow, "build_rag_graph", lambda: graph)
+    monkeypatch.setattr(memory, "_ensure_conversation_access", lambda *args, **kwargs: None)
     with pytest.raises(RuntimeError, match="checkpoint store unavailable"):
-        TimeTravel(graph).get_history("thread-1")
-
-
-def test_checkpoint_fork_requires_the_new_checkpoint_identity():
-    graph = SimpleNamespace(
-        checkpointer=object(), update_state=lambda *args, **kwargs: {"configurable": {"thread_id": "thread-1"}}
-    )
-    with pytest.raises(KeyError, match="checkpoint_id"):
-        TimeTravel(graph).fork("thread-1", "checkpoint-1", {}, continue_execution=False)
+        memory.list_conversation_checkpoints(uuid4(), tenant_id=uuid4(), account_id="member", db=object())

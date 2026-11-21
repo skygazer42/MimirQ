@@ -13,10 +13,10 @@ def _to_float(value: Any) -> float | None:
         if value is None or isinstance(value, bool):
             return None
         out = float(value)
-        if math.isnan(out):
+        if not math.isfinite(out):
             return None
         return out
-    except Exception:
+    except (OverflowError, TypeError, ValueError):
         return None
 
 

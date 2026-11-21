@@ -20,7 +20,7 @@ class FalsyDateTime(datetime):
 @pytest.mark.parametrize("provided", [False, True])
 @pytest.mark.parametrize("denied", [False, True])
 def test_dataset_selection_preserves_both_asset_authorization_checks(monkeypatch, provided, denied) -> None:
-    from app.services import document_asset_access as service
+    from app.services.documents import asset_access as service
 
     class Dataset(SimpleNamespace):
         def __bool__(self):
@@ -62,7 +62,7 @@ def test_dataset_selection_preserves_both_asset_authorization_checks(monkeypatch
 
 
 def test_provenance_upsert_preserves_falsy_metadata_and_snapshot(monkeypatch) -> None:
-    from app.services import pipeline_provenance_service as service
+    from app.services.pipelines import provenance as service
 
     monkeypatch.setattr(service, "_now_iso", lambda: "2026-11-07T00:00:00+00:00")
     metadata = FalsyMapping(preserved=0, enabled=False)
@@ -77,7 +77,7 @@ def test_provenance_upsert_preserves_falsy_metadata_and_snapshot(monkeypatch) ->
 
 
 def test_provenance_snapshot_preserves_zero_false_and_privacy_projection() -> None:
-    from app.services.pipeline_provenance_service import build_pipeline_version_snapshot
+    from app.services.pipelines.provenance import build_pipeline_version_snapshot
 
     result = build_pipeline_version_snapshot(
         meta=FalsyMapping(
@@ -98,7 +98,7 @@ def test_provenance_snapshot_preserves_zero_false_and_privacy_projection() -> No
 
 
 def test_parse_quality_schema_preserves_falsy_evidence_mapping() -> None:
-    from app.parsing.processors.parse_quality_schema import ParseQualityGateDecision
+    from app.rag.ingestion.parsing.processors.parse_quality_gate import ParseQualityGateDecision
 
     result = ParseQualityGateDecision(
         grade="pass", needs_review=False, flags={}, actions={}, evidence=FalsyMapping(score=0, enabled=False)
@@ -107,7 +107,7 @@ def test_parse_quality_schema_preserves_falsy_evidence_mapping() -> None:
 
 
 def test_parse_quality_gate_preserves_falsy_document_metadata() -> None:
-    from app.parsing.processors.parse_quality_gate import apply_parse_quality_gate_metadata
+    from app.rag.ingestion.parsing.processors.parse_quality_gate import apply_parse_quality_gate_metadata
 
     result = apply_parse_quality_gate_metadata(FalsyMapping(pipeline_hash="pipeline", parse_quality={"score": 0}))
     assert result["pipeline_hash"] == "pipeline"
@@ -117,7 +117,7 @@ def test_parse_quality_gate_preserves_falsy_document_metadata() -> None:
 
 @pytest.mark.parametrize("enabled", [False, True])
 def test_vlm_decision_keeps_a_zero_score_in_a_falsy_mapping(enabled) -> None:
-    from app.parsing.processors.vlm_correction import should_apply_vlm_correction
+    from app.rag.ingestion.parsing.processors.vlm_correction import should_apply_vlm_correction
 
     result = should_apply_vlm_correction(
         enabled=enabled, pdf_quality=FalsyMapping(table_quality_score=0), min_table_score=0.5
@@ -126,7 +126,7 @@ def test_vlm_decision_keeps_a_zero_score_in_a_falsy_mapping(enabled) -> None:
 
 
 def test_hit_frequency_uses_the_explicit_clock(monkeypatch, tmp_path) -> None:
-    from app.services import document_retrieval_hit_frequency as service
+    from app.services.documents import retrieval_hit_frequency as service
 
     tenant, document = uuid4(), uuid4()
     path = tmp_path / "metrics.jsonl"
@@ -157,7 +157,7 @@ def test_hit_frequency_uses_the_explicit_clock(monkeypatch, tmp_path) -> None:
 
 @pytest.mark.parametrize("provided", [False, True])
 def test_index_channel_uses_the_supplied_status_timestamp(monkeypatch, provided) -> None:
-    from app.services import document_index_channel_service as service
+    from app.rag.ingestion.indexing import index_channels as service
 
     class Query:
         def filter(self, *args):

@@ -32,6 +32,24 @@ export type IngestionPolicyTemplate = {
   rules: Array<Omit<IngestionRule, 'id'>>
 }
 
+const TABLE_STORE_AUTO_ROUTING = {
+  table_store_enabled: true,
+  table_store_auto_route: true,
+  table_store_auto_row_threshold: 5000,
+  table_store_auto_col_threshold: 80,
+  table_store_auto_sheet_threshold: 5,
+  table_store_auto_file_bytes_threshold: 5000000,
+} satisfies IngestionRule['pipeline_patch']
+
+const LEGAL_DOCUMENT_REDACTION = {
+  governance_pii_anonymize: true,
+  governance_pii_mode: 'mask',
+  governance_pii_mask: '[REDACTED]',
+  governance_secrets_redact: true,
+  governance_secrets_mode: 'mask',
+  governance_secrets_mask: '[SECRET]',
+} satisfies IngestionRule['pipeline_patch']
+
 export const INGESTION_POLICY_TEMPLATES: IngestionPolicyTemplate[] = [
   {
     key: 'recommended:kb_general',
@@ -288,7 +306,7 @@ export const INGESTION_POLICY_TEMPLATES: IngestionPolicyTemplate[] = [
         pipeline_patch: {},
       },
       {
-        name: 'JSON / JSONL（pretty-print）',
+        name: 'JSON（格式化）',
         enabled: true,
         match: { extensions: ['.json'], filename_regex: null },
         preprocess: {
@@ -328,14 +346,7 @@ export const INGESTION_POLICY_TEMPLATES: IngestionPolicyTemplate[] = [
         parser_backend: 'auto',
         chunk_strategy: null,
         governance_profile_ref: 'builtin:structured_data',
-        pipeline_patch: {
-          table_store_enabled: true,
-          table_store_auto_route: true,
-          table_store_auto_row_threshold: 5000,
-          table_store_auto_col_threshold: 80,
-          table_store_auto_sheet_threshold: 5,
-          table_store_auto_file_bytes_threshold: 5000000,
-        },
+        pipeline_patch: { ...TABLE_STORE_AUTO_ROUTING },
       },
       {
         name: '表格 XLS/XLSX（自动分流）',
@@ -345,14 +356,7 @@ export const INGESTION_POLICY_TEMPLATES: IngestionPolicyTemplate[] = [
         parser_backend: 'auto',
         chunk_strategy: null,
         governance_profile_ref: 'builtin:structured_data',
-        pipeline_patch: {
-          table_store_enabled: true,
-          table_store_auto_route: true,
-          table_store_auto_row_threshold: 5000,
-          table_store_auto_col_threshold: 80,
-          table_store_auto_sheet_threshold: 5,
-          table_store_auto_file_bytes_threshold: 5000000,
-        },
+        pipeline_patch: { ...TABLE_STORE_AUTO_ROUTING },
       },
     ],
   },
@@ -418,7 +422,7 @@ export const INGESTION_POLICY_TEMPLATES: IngestionPolicyTemplate[] = [
             { id: 'text.normalize_newlines', params: {} },
           ],
         },
-        parser_backend: 'auto',
+        parser_backend: 'html',
         chunk_strategy: null,
         governance_profile_ref: 'builtin:html_xpath_main',
         pipeline_patch: {},
@@ -457,14 +461,7 @@ export const INGESTION_POLICY_TEMPLATES: IngestionPolicyTemplate[] = [
         parser_backend: 'auto',
         chunk_strategy: 'integrated_laws',
         governance_profile_ref: 'builtin:pdf_text',
-        pipeline_patch: {
-          governance_pii_anonymize: true,
-          governance_pii_mode: 'mask',
-          governance_pii_mask: '[REDACTED]',
-          governance_secrets_redact: true,
-          governance_secrets_mode: 'mask',
-          governance_secrets_mask: '[SECRET]',
-        },
+        pipeline_patch: { ...LEGAL_DOCUMENT_REDACTION },
       },
       {
         name: '法律 DOCX（integrated_laws）',
@@ -474,14 +471,7 @@ export const INGESTION_POLICY_TEMPLATES: IngestionPolicyTemplate[] = [
         parser_backend: 'markitdown',
         chunk_strategy: 'integrated_laws',
         governance_profile_ref: 'builtin:kb_default',
-        pipeline_patch: {
-          governance_pii_anonymize: true,
-          governance_pii_mode: 'mask',
-          governance_pii_mask: '[REDACTED]',
-          governance_secrets_redact: true,
-          governance_secrets_mode: 'mask',
-          governance_secrets_mask: '[SECRET]',
-        },
+        pipeline_patch: { ...LEGAL_DOCUMENT_REDACTION },
       },
     ],
   },

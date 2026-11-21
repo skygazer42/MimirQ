@@ -7,12 +7,12 @@ const MANAGED_DATASET_RAG_FIELDS = [
 ] as const satisfies ReadonlyArray<readonly [keyof DatasetRagViewConfig, keyof DatasetRagDefaults]>
 
 function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
 function toFiniteNumber(value: unknown): number | undefined {
   if (typeof value === 'number' && Number.isFinite(value)) return value
-  if (typeof value === 'string') {
+  if (typeof value === 'string' && value.trim() !== '') {
     const parsed = Number(value)
     return Number.isFinite(parsed) ? parsed : undefined
   }
@@ -24,12 +24,10 @@ function toOptionalBoolean(value: unknown): boolean | undefined {
 }
 
 function toOptionalString(value: unknown): string | undefined {
-  return typeof value === 'string' && value.trim() ? value : undefined
+  return typeof value === 'string' && value.trim() !== '' ? value : undefined
 }
 
-export function hasDatasetRagContract(
-  value: DatasetRagDefaults | Record<string, unknown> | null | undefined,
-): value is DatasetRagDefaults {
+export function hasDatasetRagContract(value: DatasetRagDefaults | null | undefined): value is DatasetRagDefaults {
   return isRecord(value) && Object.keys(value).length > 0
 }
 
@@ -75,10 +73,10 @@ export function buildDatasetRagDefaultsForUpdate(args: {
   draftRag: DatasetRagViewConfig
 }): DatasetRagDefaults | null {
   const { currentDefaults, draftRag, savedRag } = args
-  const base = hasDatasetRagContract(currentDefaults) ? { ...currentDefaults } : null
+  const base = hasDatasetRagContract(currentDefaults) ? currentDefaults : null
 
   let changed = false
-  const next: DatasetRagDefaults = { ...(base ?? {}) }
+  const next: DatasetRagDefaults = { ...base }
 
   for (const [ragKey, datasetKey] of MANAGED_DATASET_RAG_FIELDS) {
     const savedValue = savedRag[ragKey]
@@ -94,7 +92,7 @@ export function buildDatasetRagDefaultsForUpdate(args: {
     changed = true
   }
 
-  if (!base && !changed) return null
+  if (base === null && !changed) return null
   return next
 }
 
@@ -106,13 +104,4 @@ export function buildRetrievalConfigHashRequest(
     rag_config: { ...defaults },
     include_runtime_defaults: true,
   }
-}
-
-export function datasetRagContractModeLabel(defaults?: DatasetRagDefaults | null): string {
-  if (!hasDatasetRagContract(defaults)) return '未配置'
-
-  const profile = toOptionalString(defaults.retrieval_profile)
-  const mode = toOptionalString(defaults.retrieval_mode)
-  if (profile && mode) return `${profile} · ${mode}`
-  return profile || mode || '已配置'
 }

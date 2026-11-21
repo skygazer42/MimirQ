@@ -27,20 +27,17 @@ class _EntityTypeDelta(TypedDict):
 
 
 def _to_int(v: Any) -> int:
-    try:
-        return int(v) if v is not None else 0
-    except Exception:
-        return 0
+    return int(v) if v is not None else 0
 
 
 def _type_counts(snapshot: dict[str, Any]) -> dict[str, int]:
-    raw = snapshot.get("entity_types") or []
+    raw = snapshot.get("entity_types", [])
     if not isinstance(raw, list):
-        return {}
+        raise ValueError("Snapshot entity_types must be an array")
     out: dict[str, int] = {}
     for item in raw:
         if not isinstance(item, dict):
-            continue
+            raise ValueError("Snapshot entity_types entries must be objects")
         typ = str(item.get("type") or "").strip() or "unknown"
         out[typ] = _to_int(item.get("count"))
     return out
@@ -53,40 +50,35 @@ def canonical_json_hash(value: Any) -> str:
     sha256 is in the stdlib and sufficient for product-level content addressing
     here; avoiding blake3 keeps the KG snapshot path dependency-free.
     """
-    try:
-        payload = json.dumps(value, sort_keys=True, ensure_ascii=False, separators=(",", ":"), default=str)
-    except Exception:
-        payload = str(value)
-    return hashlib.sha256(payload.encode("utf-8", errors="ignore")).hexdigest()
-
-
-def _detail_items(snapshot: dict[str, Any], key: str) -> list[dict[str, Any]]:
-    raw = snapshot.get(key) or []
-    if not isinstance(raw, list):
-        return []
-    out: list[dict[str, Any]] = []
-    for item in raw:
-        if not isinstance(item, dict):
-            continue
-        item_id = str(item.get("id") or "").strip()
-        if not item_id:
-            continue
-        normalized = dict(item)
-        normalized["id"] = item_id
-        normalized["props_hash"] = str(
-            normalized.get("props_hash") or canonical_json_hash({k: v for k, v in normalized.items() if k != "id"})
-        )
-        out.append(normalized)
-    out.sort(key=lambda x: x["id"])
-    return out
+    payload = json.dumps(value, sort_keys=True, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
 def _detail_index(snapshot: dict[str, Any], key: str) -> dict[str, dict[str, Any]]:
-    return {item["id"]: item for item in _detail_items(snapshot, key)}
-
-
-def _sample(items: list[dict[str, Any]], limit: int = KG_SNAPSHOT_DIFF_SAMPLE_LIMIT) -> list[dict[str, Any]]:
-    return items[: max(0, int(limit))]
+    raw = snapshot.get(key, [])
+    if not isinstance(raw, list):
+        raise ValueError(f"Snapshot {key} must be an array")
+    out: dict[str, dict[str, Any]] = {}
+    for item in raw:
+        if not isinstance(item, dict):
+            raise ValueError(f"Snapshot {key} entries must be objects")
+        item_id = str(item.get("id") or "").strip()
+        if not item_id:
+            raise ValueError(f"Snapshot {key} entries must have an id")
+        if item_id in out:
+            raise ValueError(f"Snapshot {key} contains duplicate id {item_id}")
+        normalized = dict(item)
+        normalized["id"] = item_id
+        props_hash = normalized.get("props_hash")
+        if props_hash is not None and (not isinstance(props_hash, str) or not props_hash):
+            raise ValueError(f"Snapshot {key} props_hash must be a nonempty string")
+        normalized["props_hash"] = (
+            canonical_json_hash({k: v for k, v in normalized.items() if k != "id"})
+            if props_hash is None
+            else props_hash
+        )
+        out[item_id] = normalized
+    return out
 
 
 def _changed_items(
@@ -94,7 +86,7 @@ def _changed_items(
     b_items: dict[str, dict[str, Any]],
 ) -> list[dict[str, Any]]:
     changed: list[dict[str, Any]] = []
-    for item_id in sorted(set(a_items) & set(b_items)):
+    for item_id in sorted(a_items.keys() & b_items.keys()):
         before = a_items[item_id]
         after = b_items[item_id]
         before_hash = before["props_hash"]
@@ -114,37 +106,24 @@ def _changed_items(
 
 
 def _append_exact_detail_diff(out: dict[str, Any], a0: dict[str, Any], b0: dict[str, Any]) -> None:
-    node_a = _detail_index(a0, "nodes")
-    node_b = _detail_index(b0, "nodes")
-    edge_a = _detail_index(a0, "edges")
-    edge_b = _detail_index(b0, "edges")
-
-    nodes_added = [node_b[k] for k in sorted(set(node_b) - set(node_a))]
-    nodes_removed = [node_a[k] for k in sorted(set(node_a) - set(node_b))]
-    nodes_changed = _changed_items(node_a, node_b)
-
-    edges_added = [edge_b[k] for k in sorted(set(edge_b) - set(edge_a))]
-    edges_removed = [edge_a[k] for k in sorted(set(edge_a) - set(edge_b))]
-    edges_changed = _changed_items(edge_a, edge_b)
-
-    out["node_diff"] = {
-        "added_count": len(nodes_added),
-        "removed_count": len(nodes_removed),
-        "changed_count": len(nodes_changed),
-        "sample_limit": KG_SNAPSHOT_DIFF_SAMPLE_LIMIT,
-    }
-    out["edge_diff"] = {
-        "added_count": len(edges_added),
-        "removed_count": len(edges_removed),
-        "changed_count": len(edges_changed),
-        "sample_limit": KG_SNAPSHOT_DIFF_SAMPLE_LIMIT,
-    }
-    out["nodes_added"] = _sample(nodes_added)
-    out["nodes_removed"] = _sample(nodes_removed)
-    out["nodes_changed"] = _sample(nodes_changed)
-    out["edges_added"] = _sample(edges_added)
-    out["edges_removed"] = _sample(edges_removed)
-    out["edges_changed"] = _sample(edges_changed)
+    samples: dict[str, list[dict[str, Any]]] = {}
+    limit = KG_SNAPSHOT_DIFF_SAMPLE_LIMIT
+    for singular, plural in (("node", "nodes"), ("edge", "edges")):
+        before = _detail_index(a0, plural)
+        after = _detail_index(b0, plural)
+        added = [after[key] for key in sorted(after.keys() - before.keys())]
+        removed = [before[key] for key in sorted(before.keys() - after.keys())]
+        changed = _changed_items(before, after)
+        out[f"{singular}_diff"] = {
+            "added_count": len(added),
+            "removed_count": len(removed),
+            "changed_count": len(changed),
+            "sample_limit": limit,
+        }
+        samples[f"{plural}_added"] = added[:limit]
+        samples[f"{plural}_removed"] = removed[:limit]
+        samples[f"{plural}_changed"] = changed[:limit]
+    out.update(samples)
 
 
 def diff_kg_snapshots(a: dict[str, Any], b: dict[str, Any]) -> dict[str, Any]:
@@ -160,10 +139,11 @@ def diff_kg_snapshots(a: dict[str, Any], b: dict[str, Any]) -> dict[str, Any]:
         "entity_types_delta": [{"type":"Skill","delta":+3}, ...]
       }
     """
-    a0 = a if isinstance(a, dict) else {}
-    b0 = b if isinstance(b, dict) else {}
+    if not isinstance(a, dict) or not isinstance(b, dict):
+        raise ValueError("Snapshots must be objects")
+    a0, b0 = a, b
 
-    has_detail_diff = bool(a0.get("nodes") or a0.get("edges") or b0.get("nodes") or b0.get("edges"))
+    has_detail_diff = any(key in snapshot for snapshot in (a0, b0) for key in ("nodes", "edges"))
 
     out: dict[str, Any] = {
         "schema": KG_SNAPSHOT_DIFF_SCHEMA_V2 if has_detail_diff else KG_SNAPSHOT_DIFF_SCHEMA_V1,

@@ -7,6 +7,11 @@
 - `docker/docker-compose.infra.yml`：仅基础设施（暴露端口，便于本地后端调试）
 - `docker/docker-compose.parsers.yml`：可选外部解析服务（Docling Serve/Marker/PaddleOCR-VL/olmOCR/Qianfan-OCR/MinerU/ETL4LLM/MagicPDF），用 `-f` 叠加并通过 `--profile` 按需启用
 
+主栈、lite、infra 和 retrieval-dev 的 Redis 默认使用 `maxmemory=512mb`、`maxmemory-policy=noeviction`。
+任务队列与缓存共用 Redis 时，不要把 `REDIS_MAXMEMORY_POLICY` 改为 `allkeys-lru` 等淘汰策略，否则任务正文、
+队列和锁也会被删除。达到内存上限时写入会明确失败，需释放缓存或调高 `REDIS_MAXMEMORY` 后重试。
+需要 LRU 缓存时使用另一个 Redis 实例；同一实例中的不同逻辑数据库仍共享内存淘汰策略。
+
 主栈的 `mimirq-api` 与 `mimirq-worker` 会只读挂载 `mineru_cache` 到
 `/opt/mimirq-model-cache`，用于复用 MinerU / PDF-Extract-Kit 模型缓存。MagicPDF 通过
 `mimirq-magicpdf` 独立服务运行；默认 API / worker 镜像不安装与主运行时依赖冲突的

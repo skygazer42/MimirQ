@@ -6,6 +6,7 @@ import {
   Chunking,
   DataGovernance,
   Dataset,
+  BarChart,
   Diagnostics,
   Feedback,
   RuleSet,
@@ -28,6 +29,7 @@ import {
   RetrievalAblation,
   Settings,
   Usage,
+  Table2,
 } from './index'
 
 export const PAGE_TITLE_ICONS = {
@@ -37,6 +39,7 @@ export const PAGE_TITLE_ICONS = {
   'chunk-preview': Chunking,
   'data-governance': DataGovernance,
   dataset: Dataset,
+  'dataset-profile': BarChart,
   diagnostics: Diagnostics,
   'feedback-quality': Feedback,
   'governance-config': RuleSet,
@@ -60,4 +63,5 @@ export const PAGE_TITLE_ICONS = {
   'retrieval-ablation': RetrievalAblation,
   settings: Settings,
   'usage-quota': Usage,
+  'table-assets': Table2,
 } as const

@@ -3,6 +3,8 @@
  */
 
 import type { ChunkPreviewResponse, JsonObject } from '@/types'
+import type { ChunkPreviewRequestParams } from '@/lib/api/document-helpers'
+import type { documentApi } from '@/lib/api/documents'
 
 export type ChunkOverride = {
   content?: string
@@ -11,6 +13,7 @@ export type ChunkOverride = {
   updatedAt?: number
 }
 
+/** Keys are ChunkPreviewItem.index, independently of the item's position in the source array. */
 export type ChunkOverrides = Record<number, ChunkOverride>
 export type ChunkPreviewProcessedStatus = 'pending' | 'processing' | 'success' | 'error'
 
@@ -22,11 +25,14 @@ export type ChunkPreviewProps = {
 export type ChunkPreviewFileItem = {
   id: string
   file: File
+  /** Client identity for this immutable File input; one document can have multiple content revisions. */
+  fileRevision: string
   displayName: string
   originalFileType?: string
   originalFileSize?: number
-  addedAt?: number
-  source?: 'local_upload' | 'example' | 'parsing_workspace' | 'knowledge_base'
+  /** Known source time in milliseconds: remote update, saved parse, or local import time. */
+  sourceTimeMs?: number
+  source: 'local_upload' | 'example' | 'parsing_workspace' | 'knowledge_base'
   datasetId?: string | null
   datasetName?: string | null
   documentId?: string | null
@@ -54,13 +60,16 @@ export type ChunkPreviewState = {
   submitSuccess: boolean
   error: string | null
   processedStatus: Record<string, ChunkPreviewProcessedStatus>
-  selectedIngestFileIds: Set<string>
+  selectedIngestFileIds: ReadonlySet<string>
   createdDocumentId: string | null
 
   // 预览数据
   previewData: ChunkPreviewResponse | null
+  /** Immutable File that produced previewData, independently of a later currentFile revision. */
+  previewSourceFile: File | null
   // Optional per-chunk overrides (frontend-only): used for editing content/metadata before ingestion/export.
   chunkOverrides: ChunkOverrides
+  /** Source-array positions; URL selection and original-view callbacks use the same positions. */
   hoveredChunkIndex: number | null
   selectedChunkIndex: number | null
   lastPreviewAt: number | null
@@ -70,6 +79,7 @@ export type ChunkPreviewState = {
   autoPreviewEnabled: boolean
   runHistory: Array<{
     id: string
+    fileId: string
     fileName: string
     parserBackend: string
     strategy: string
@@ -86,7 +96,7 @@ export type ChunkPreviewState = {
   chunkSize: number
   chunkOverlap: number
   strategy: string
-  // 预览性能/载荷控制（仅影响预览，不影响入库）
+  // 预览载荷控制；手动入库不接受截断结果。
   includeOriginalText: boolean
   originalTextMaxChars: number
   maxChunks: number
@@ -108,7 +118,7 @@ export type ChunkPreviewRunSettings = Partial<
   Pick<ChunkPreviewState, 'chunkSize' | 'chunkOverlap' | 'strategy' | 'parserBackend'>
 >
 
-export type ChunkPreviewActions = {
+type ChunkPreviewActions = {
   // 文件操作
   addFiles: (files: File[]) => void
   removeFile: (index: number) => void
@@ -117,11 +127,12 @@ export type ChunkPreviewActions = {
 
   // 数据集
   setDatasetId: (datasetId: string) => void
+  reloadScopeDocuments: () => void
 
   // UI 操作
   setIsDragging: (isDragging: boolean) => void
-  setHoveredChunkIndex: (index: number | null) => void
-  setSelectedChunkIndex: (index: number | null) => void
+  setHoveredChunkIndex: (position: number | null) => void
+  setSelectedChunkIndex: (position: number | null) => void
   updateChunkOverride: (index: number, override: ChunkOverride) => void
   toggleChunkDisabled: (index: number) => void
   setChunksDisabled: (indices: number[], disabled: boolean) => void
@@ -139,6 +150,12 @@ export type ChunkPreviewActions = {
   handleDrop: (e: React.DragEvent) => Promise<void>
 
   // 数据操作
+  buildChunkPreviewRequestParams: (settings?: ChunkPreviewRunSettings) => ChunkPreviewRequestParams
+  buildIngestPayload: (
+    preview: ChunkPreviewResponse,
+    file: ChunkPreviewFileItem,
+    overrides: ChunkOverrides,
+  ) => Parameters<typeof documentApi.createFromChunks>[0]
   runPreview: (options?: { force?: boolean; settings?: ChunkPreviewRunSettings }) => Promise<void>
   cancelPreview: () => void
   submitChunks: () => Promise<void>

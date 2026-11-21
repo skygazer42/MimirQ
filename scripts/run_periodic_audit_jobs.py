@@ -103,10 +103,10 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 2
 
-    from app.core.config import settings
-    from app.core.database import SessionLocal
-    from app.models.tenant import Tenant
-    from app.services.periodic_audit_jobs import (
+    from app.infrastructure.config import settings
+    from app.infrastructure.database.connection import SessionLocal
+    from app.models.identity.workspaces import Tenant
+    from app.services.observability.periodic_audits import (
         run_daily_access_review_summary,
         run_daily_embedding_drift_report,
         run_daily_evidence_drift_audit_report,

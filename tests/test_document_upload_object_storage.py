@@ -5,10 +5,10 @@ from types import SimpleNamespace
 import pytest
 from fastapi import BackgroundTasks, HTTPException
 
-import app.services.document_ingestion as upload_owner
-import app.services.document_processing_dispatch as document_dispatch
-import app.services.document_source_persistence as source_owner
-from app.api.v1 import documents as documents_module
+import app.services.documents.ingestion as upload_owner
+import app.services.documents.processing_dispatch as document_dispatch
+import app.services.documents.source_persistence as source_owner
+from app.api.v1.documents import routes as documents_module
 
 document_upload = documents_module.document_upload
 

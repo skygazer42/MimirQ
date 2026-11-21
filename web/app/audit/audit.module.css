@@ -58,11 +58,22 @@
   border-radius: 6px;
   box-shadow: none;
 }
-.headerActions button[data-slot='dropdown-menu-trigger'] {
-  width: 30px;
-  padding: 0;
+.headerActions button:focus-visible,
+.filters > button:focus-visible,
+.timePopover form > button:focus-visible,
+.tableToolbar button:focus-visible,
+.rowActions button:focus-visible,
+.pageSize:focus-visible,
+.footer > button:focus-visible,
+.empty > button:focus-visible,
+.dialogFooter button:focus-visible,
+.filterFields input:focus-visible,
+.numberFields input:focus-visible,
+.confirmDialog button:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 2px;
 }
-.headerActions button > svg {
+.headerActions button svg {
   width: 15px;
   height: 15px;
   flex: none;
@@ -72,6 +83,13 @@
 }
 .spacer {
   flex: 1;
+}
+.snapshotNotice {
+  border-bottom: 1px solid hsl(var(--border));
+  padding: 12px 28px;
+  color: hsl(var(--muted-foreground));
+  font-size: 13px;
+  line-height: 22px;
 }
 .filters {
   display: flex;
@@ -1013,7 +1031,7 @@
   border-radius: 6px;
   box-shadow: none;
 }
-.confirmDialog button > svg {
+.confirmDialog button svg {
   width: 15px;
   height: 15px;
 }
@@ -1135,10 +1153,10 @@
     border: 0;
     background: transparent;
   }
-  .headerActions button span {
+  .headerActions .actionLabel {
     display: none;
   }
-  .headerActions button > svg {
+  .headerActions button svg {
     height: 16px;
     width: 16px;
   }

@@ -2,7 +2,8 @@ from dataclasses import dataclass
 from typing import Any
 from uuid import UUID
 
-from app.core.config import parse_object_storage_region_profiles, settings
+from app.infrastructure.config import settings
+from app.infrastructure.config_validation import parse_object_storage_region_profiles
 from app.storage.object.factory import (
     get_object_store,
     normalize_object_store_provider,
@@ -27,10 +28,7 @@ class ObjectStorageRef:
 def is_object_storage_uri(value: str | None) -> bool:
     if value is None:
         return False
-    raw = value.strip()
-    if not raw:
-        return False
-    scheme, separator, _remainder = raw.partition("://")
+    scheme, separator, _ = value.strip().partition("://")
     return bool(separator) and scheme.strip().lower() in _OBJECT_STORAGE_SCHEMES
 
 
@@ -44,9 +42,9 @@ def parse_object_storage_uri(uri: str) -> ObjectStorageRef:
         provider = "s3_compatible"
     if not separator:
         raise ValueError("invalid_object_storage_uri")
-    bucket, slash, object_name = remainder.partition("/")
+    bucket, _, object_name = remainder.partition("/")
     bucket = bucket.strip()
-    object_name = object_name.lstrip("/").strip() if slash else ""
+    object_name = object_name.lstrip("/").strip()
     if not bucket or not object_name:
         raise ValueError("invalid_object_storage_uri")
     return ObjectStorageRef(provider=provider, bucket=bucket, object_name=object_name)

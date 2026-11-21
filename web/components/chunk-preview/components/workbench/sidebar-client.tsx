@@ -18,6 +18,7 @@ import {
   Database,
   Globe,
   Filter,
+  RotateCcw,
   type PlatformIcon,
 } from '@/components/icons'
 import { useTranslations } from 'next-intl'
@@ -32,18 +33,18 @@ import { cn, formatFileSize } from '@/lib/utils'
 import { useChunkPreview } from '@/components/chunk-preview/context'
 
 import { usePipelineOptions } from '@/contexts/pipeline-options-context'
-import { datasetApi, evaluationApi, pipelineApi } from '@/lib/api'
+import { useDatasets } from '@/hooks/use-datasets'
+import { evaluationApi, pipelineApi } from '@/lib/api'
 import { getAuthCacheScope, getAuthSessionRevision } from '@/lib/auth-storage'
 import { queryKeys } from '@/lib/query-keys'
 import { SEPARATOR_PRESET_OPTIONS } from '@/components/chunk-preview/constants'
 import { IngestionPreviewDetailsDialog } from '@/components/chunk-preview/components/ingestion-preview-details-dialog'
 
 import { formatPreviewWarningMessage } from '@/components/chunk-preview/utils/preview-warnings'
-import { decodeSeparatorInput, getPresetSeparator } from '../../utils/separators'
+import { getPresetSeparator } from '../../utils/separators'
 import type {
   ChunkPreviewHistogramBin,
   ChunkPreviewRecommendationPatch,
-  Dataset,
   DocumentPipelineOptions,
   IngestionPreviewResponse,
   JsonObject,
@@ -81,7 +82,7 @@ type EmptyFileListLabels = {
   emptyAll: string
 }
 
-type PluginReadinessCheck = NonNullable<NonNullable<PipelinePluginChunkReportResponse['readiness']>['checks']>[number]
+type PluginReadinessCheck = PipelinePluginChunkReportResponse['readiness']['checks'][number]
 
 const SIDEBAR_BASE_TONE: SidebarToneStyle = {
   chip: 'border-foreground/10 bg-background/82 text-muted-foreground antialiased shadow-none',
@@ -139,22 +140,13 @@ function getPluginParams(value: unknown): Record<string, unknown> {
   return value as Record<string, unknown>
 }
 
-function getReportNumber(value: Record<string, unknown> | undefined, key: string): number {
-  const n = Number(value?.[key] ?? 0)
-  return Number.isFinite(n) ? n : 0
-}
-
 function getFailedReadinessChecks(report: PipelinePluginChunkReportResponse | null): PluginReadinessCheck[] {
-  const checks = report?.readiness?.checks
-  if (!Array.isArray(checks)) return []
-  return checks.filter((check) => check.required !== false && check.passed === false)
+  if (report === null) return []
+  return report.readiness.checks.filter((check) => check.required && !check.passed)
 }
 
 function getReadinessErrorReason(check: PluginReadinessCheck): string {
-  const errors = Array.isArray(check.errors) ? check.errors : []
-  for (const error of errors) {
-    if (!error || typeof error !== 'object' || Array.isArray(error)) continue
-    const reason = (error as Record<string, unknown>).reason
+  for (const { reason } of check.errors) {
     if (typeof reason === 'string' && reason.trim()) return reason.trim()
   }
   return '-'
@@ -237,11 +229,7 @@ function SidebarSectionHeader({
   )
 }
 
-function SidebarPanel({
-  tone: _tone = 'sky',
-  className,
-  children,
-}: Readonly<{ tone?: AccentTone; className?: string; children: ReactNode }>) {
+function SidebarPanel({ className, children }: Readonly<{ className?: string; children: ReactNode }>) {
   return <section className={cn(styles.configurationSection, className)}>{children}</section>
 }
 
@@ -252,7 +240,6 @@ export function Sidebar({ variant = 'panel', section = 'all' }: SidebarProps = {
     fileList,
     currentFileIndex,
     currentFile,
-    currentFileItem,
     datasetId,
     scopeSyncLoading,
     scopeSyncError,
@@ -273,10 +260,12 @@ export function Sidebar({ variant = 'panel', section = 'all' }: SidebarProps = {
     setCurrentFileIndex,
     removeFile,
     setDatasetId,
+    reloadScopeDocuments,
     updateSettings,
     updatePerfSettings,
     updateSeparatorSettings,
     updateParentChildSettings,
+    buildChunkPreviewRequestParams,
     runPreview,
     submitSelectedFiles,
     toggleIngestFileSelection,
@@ -296,7 +285,11 @@ export function Sidebar({ variant = 'panel', section = 'all' }: SidebarProps = {
   const minMaxStatLabel = isTokenStrategy ? t('sidebar.stats.minMaxTokens') : t('sidebar.stats.minMaxLength')
   const histogramTitle = isTokenStrategy ? t('sidebar.stats.histogramTokens') : t('sidebar.stats.histogramLength')
 
-  const sortedFileList = [...fileList].sort((a, b) => (b.addedAt || 0) - (a.addedAt || 0))
+  const sortedFileList = [...fileList].sort((a, b) => {
+    if (a.sourceTimeMs === undefined) return b.sourceTimeMs === undefined ? 0 : 1
+    if (b.sourceTimeMs === undefined) return -1
+    return b.sourceTimeMs - a.sourceTimeMs
+  })
 
   const currentFileId = fileList[currentFileIndex]?.id
   const selectedIngestCount = selectedIngestFileIds.size
@@ -307,10 +300,10 @@ export function Sidebar({ variant = 'panel', section = 'all' }: SidebarProps = {
     const serverBins = previewData?.stats?.histogram
     if (Array.isArray(serverBins) && serverBins.length) {
       return serverBins.map((bin: ChunkPreviewHistogramBin): HistogramDatum => ({
-        label: String(bin.label ?? ''),
-        min: typeof bin.min === 'number' ? Math.trunc(bin.min) : null,
-        max: typeof bin.max === 'number' ? Math.trunc(bin.max) : null,
-        count: Math.max(0, Math.trunc(Number(bin.count ?? 0) || 0)),
+        label: bin.label,
+        min: bin.min ?? null,
+        max: bin.max ?? null,
+        count: bin.count,
       }))
     }
     return []
@@ -362,16 +355,10 @@ export function Sidebar({ variant = 'panel', section = 'all' }: SidebarProps = {
   ])
 
   const effectiveSeparator = useMemo(() => {
-    if (!isSeparatorStrategy) return null
-
-    if (separatorPreset && separatorPreset !== 'custom') {
-      return getPresetSeparator(separatorPreset)
-    }
-
-    const raw = String(separatorCustom || '').trim()
-    if (!raw) return '\n\n'
-    return decodeSeparatorInput(raw)
-  }, [isSeparatorStrategy, separatorCustom, separatorPreset])
+    if (!isSeparatorStrategy) return undefined
+    if (separatorPreset === 'custom') return buildChunkPreviewRequestParams().separator
+    return getPresetSeparator(separatorPreset)
+  }, [buildChunkPreviewRequestParams, isSeparatorStrategy, separatorPreset])
 
   const separatorPresetOptions = useMemo(() => {
     return SEPARATOR_PRESET_OPTIONS.map((opt) => {
@@ -429,40 +416,20 @@ export function Sidebar({ variant = 'panel', section = 'all' }: SidebarProps = {
       }
     })
   }, [t])
+  const selectedSeparatorPreset = separatorPresetOptions.find((option) => option.value === separatorPreset)
 
   const parentChildEffective = useMemo(() => {
     if (!isParentChildStrategy) return null
-    const sp = previewData?.params?.strategy_params
-    const ratio =
-      typeof sp?.child_ratio === 'number' && Number.isFinite(sp.child_ratio) ? sp.child_ratio : parentChildRatio
-    const minSize =
-      typeof sp?.min_child_size === 'number' && Number.isFinite(sp.min_child_size)
-        ? sp.min_child_size
-        : parentChildMinChildSize
-    const childSize =
-      typeof sp?.child_size === 'number' && Number.isFinite(sp.child_size)
-        ? sp.child_size
-        : Math.max(Math.trunc(chunkSize * ratio), Math.trunc(minSize))
-    const childOverlap =
-      typeof sp?.child_overlap === 'number' && Number.isFinite(sp.child_overlap)
-        ? sp.child_overlap
-        : Math.min(Math.trunc(chunkOverlap * ratio), Math.max(0, Math.trunc(childSize / 4)))
+    const minSize = Math.min(parentChildMinChildSize, chunkSize)
+    const childSize = Math.max(Math.trunc(chunkSize * parentChildRatio), minSize)
+    const childOverlap = Math.min(Math.trunc(chunkOverlap * parentChildRatio), Math.trunc(childSize / 4))
+    return { ratio: parentChildRatio, minSize, childSize, childOverlap }
+  }, [chunkOverlap, chunkSize, isParentChildStrategy, parentChildMinChildSize, parentChildRatio])
 
-    return {
-      ratio: Number(ratio),
-      minSize: Math.trunc(minSize),
-      childSize: Math.trunc(childSize),
-      childOverlap: Math.trunc(childOverlap),
-    }
-  }, [chunkOverlap, chunkSize, isParentChildStrategy, parentChildMinChildSize, parentChildRatio, previewData?.params])
-
-  const [datasets, setDatasets] = useState<Dataset[]>([])
-  const [datasetsLoading, setDatasetsLoading] = useState(false)
-  const [datasetsError, setDatasetsError] = useState<string | null>(null)
-  const selectedDataset = useMemo(
-    () => (datasetId ? datasets.find((ds) => ds.id === datasetId) || null : null),
-    [datasetId, datasets],
-  )
+  const { datasets, isFetching: datasetsLoading, error: datasetsQueryError, refreshDatasets } = useDatasets()
+  const datasetsError =
+    datasetsQueryError === null ? null : getErrorMessage(datasetsQueryError, t('sidebar.dataset.loadError'))
+  const selectedDataset = datasets.find((dataset) => dataset.id === datasetId) ?? null
 
   const [ingestionPreview, setIngestionPreview] = useState<IngestionPreviewResponse | null>(null)
   const [ingestionLoading, setIngestionLoading] = useState(false)
@@ -506,7 +473,7 @@ export function Sidebar({ variant = 'panel', section = 'all' }: SidebarProps = {
 
   const applyPipelinePatch = (
     patch: DocumentPipelineOptions | JsonObject | null | undefined,
-    options?: { successMessage?: string; errorMessage?: string },
+    options?: { successMessage?: string },
   ) => {
     if (!patch || typeof patch !== 'object') return false
 
@@ -521,12 +488,35 @@ export function Sidebar({ variant = 'panel', section = 'all' }: SidebarProps = {
     )
 
     if (!result.ok) {
-      toast.error(result.error || options?.errorMessage || t('sidebar.errors.applyPipelinePatch'))
+      toast.error(result.error)
       return false
     }
 
     if (options?.successMessage) toast.success(options.successMessage)
     return true
+  }
+
+  const recommendationPatches = previewData?.recommendation_patches ?? []
+
+  function applyAllRecommendations() {
+    let pipelinePatch: JsonObject = {}
+    let previewSettings: Parameters<typeof updateSettings>[0] = {}
+    let perfSettings: Parameters<typeof updatePerfSettings>[0] = {}
+    for (const item of recommendationPatches) {
+      const { patch } = item
+      if (patch === undefined) continue
+      if (item.target === 'pipeline') pipelinePatch = { ...pipelinePatch, ...patch }
+      else if (item.target === 'perf') perfSettings = { ...perfSettings, ...buildPerfSettingsPatch(patch) }
+      else previewSettings = { ...previewSettings, ...buildPreviewSettingsPatch(patch) }
+    }
+
+    const hasPipeline = Object.keys(pipelinePatch).length > 0
+    const hasPreview = Object.keys(previewSettings).length > 0
+    const hasPerf = Object.keys(perfSettings).length > 0
+    if (hasPipeline && !applyPipelinePatch(pipelinePatch)) return
+    if (hasPreview) updateSettings(previewSettings)
+    if (hasPerf) updatePerfSettings(perfSettings)
+    if (hasPipeline || hasPreview || hasPerf) toast.success(t('sidebar.recommendations.applyAllSuccess'))
   }
 
   const pythonPluginActive = Boolean(
@@ -556,23 +546,20 @@ export function Sidebar({ variant = 'panel', section = 'all' }: SidebarProps = {
   )
   const kgPluginListed = kgPluginOptions.some((plugin) => plugin.refs.kg === pipelineCtx.options.kg_python_plugin)
   const selectedChunkPlugin = useMemo(
-    () => chunkPluginOptions.find((plugin) => plugin.refs.chunk === pipelineCtx.options.chunk_python_plugin) || null,
+    () => chunkPluginOptions.find((plugin) => plugin.refs.chunk === pipelineCtx.options.chunk_python_plugin),
     [chunkPluginOptions, pipelineCtx.options.chunk_python_plugin],
   )
   const selectedGovernancePlugin = useMemo(
     () =>
-      governancePluginOptions.find(
-        (plugin) => plugin.refs.governance === pipelineCtx.options.governance_python_plugin,
-      ) || null,
+      governancePluginOptions.find((plugin) => plugin.refs.governance === pipelineCtx.options.governance_python_plugin),
     [governancePluginOptions, pipelineCtx.options.governance_python_plugin],
   )
   const selectedKgPlugin = useMemo(
-    () => kgPluginOptions.find((plugin) => plugin.refs.kg === pipelineCtx.options.kg_python_plugin) || null,
+    () => kgPluginOptions.find((plugin) => plugin.refs.kg === pipelineCtx.options.kg_python_plugin),
     [kgPluginOptions, pipelineCtx.options.kg_python_plugin],
   )
   const selectedGoldenPlugin = selectedChunkPlugin?.contract?.golden?.enabled ? selectedChunkPlugin : null
-  const selectedGoldenPluginRef = selectedChunkPlugin?.refs.chunk || ''
-  const selectedChunkPluginRef = selectedGoldenPluginRef
+  const selectedChunkPluginRef = selectedChunkPlugin?.refs.chunk
   useEffect(() => {
     reportRequestRef.current = null
     setPluginChunkReport(null)
@@ -584,26 +571,21 @@ export function Sidebar({ variant = 'panel', section = 'all' }: SidebarProps = {
     setGoldenImportLoading(false)
     setGoldenRegressionLoading(false)
     setLastGoldenRegressionRun(null)
-  }, [datasetId, selectedGoldenPluginRef])
-  const selectedAuditPlugin = selectedChunkPlugin || selectedGovernancePlugin || selectedKgPlugin
-  const selectedAuditPackageHash = String(selectedAuditPlugin?.package_hash || '').trim()
+  }, [datasetId, selectedChunkPluginRef])
+  const selectedPipelinePlugin = selectedChunkPlugin ?? selectedGovernancePlugin ?? selectedKgPlugin
+  const selectedAuditPackageHash = selectedPipelinePlugin?.package_hash?.trim()
   const selectedAuditReportOwner =
-    selectedAuditPlugin?.test_report?.plugin_id && selectedAuditPlugin?.test_report?.version
-      ? `${selectedAuditPlugin.test_report.plugin_id}@${selectedAuditPlugin.test_report.version}`
-      : ''
-  const selectedAuditTestedAt = String(selectedAuditPlugin?.test_report?.tested_at || '').trim()
-  const selectedAuditGoldenTotal = selectedAuditPlugin?.test_report?.golden_draft?.items_total
+    selectedPipelinePlugin?.test_report?.plugin_id && selectedPipelinePlugin?.test_report?.version
+      ? `${selectedPipelinePlugin.test_report.plugin_id}@${selectedPipelinePlugin.test_report.version}`
+      : undefined
+  const selectedAuditTestedAt = selectedPipelinePlugin?.test_report?.tested_at?.trim()
+  const selectedAuditGoldenTotal = selectedPipelinePlugin?.test_report?.golden_draft?.items_total
   const failedReadinessChecks = useMemo(() => getFailedReadinessChecks(pluginChunkReport), [pluginChunkReport])
   const pluginChunkReportReadinessPassed =
-    Boolean(pluginChunkReport?.passed) && pluginChunkReport?.readiness?.status === 'passed'
+    pluginChunkReport !== null && pluginChunkReport.passed && pluginChunkReport.readiness.status === 'passed'
   const canImportGoldenDraft = Boolean(
-    datasetId &&
-    selectedGoldenPluginRef &&
-    selectedGoldenPlugin?.executable &&
-    selectedGoldenPlugin.contract?.golden?.enabled &&
-    !goldenImportLoading,
+    datasetId && selectedChunkPluginRef && selectedGoldenPlugin?.executable && !goldenImportLoading,
   )
-  const selectedPipelinePlugin = selectedChunkPlugin || selectedGovernancePlugin || selectedKgPlugin
   const selectedPluginProcessingTemplates = Array.isArray(selectedPipelinePlugin?.processing_templates?.templates)
     ? selectedPipelinePlugin.processing_templates.templates.filter((template) => template.key && template.name)
     : []
@@ -633,7 +615,6 @@ export function Sidebar({ variant = 'panel', section = 'all' }: SidebarProps = {
   }
 
   const clearPythonPlugins = () => {
-    pipelineCtx.setEnabled(true)
     pipelineCtx.updateOption('governance_python_plugin', undefined)
     pipelineCtx.updateOption('governance_python_params', undefined)
     pipelineCtx.updateOption('chunk_python_plugin', undefined)
@@ -648,7 +629,7 @@ export function Sidebar({ variant = 'panel', section = 'all' }: SidebarProps = {
       toast.error(t('sidebar.pythonPlugins.importGoldenSelectDataset'))
       return
     }
-    if (!selectedGoldenPluginRef) {
+    if (!selectedChunkPluginRef) {
       toast.error(t('sidebar.pythonPlugins.importGoldenNoPlugin'))
       return
     }
@@ -672,13 +653,13 @@ export function Sidebar({ variant = 'panel', section = 'all' }: SidebarProps = {
     try {
       const result = await pipelineApi.generateAndImportPluginGoldenDraft({
         dataset_id: datasetId,
-        plugin_ref: selectedGoldenPluginRef,
+        plugin_ref: selectedChunkPluginRef,
         max_items: 500,
         overwrite: false,
       })
       if (!isSessionCurrent()) return
       invalidateOriginalEvaluationLists(originalCases)
-      const caseIds = result.import_result.case_ids ?? []
+      const caseIds = result.import_result.case_ids
       const imported = caseIds.length
       if (result.draft.items_total <= 0 || imported <= 0) {
         if (canPublish()) toast.info(t('sidebar.pythonPlugins.importGoldenEmpty'))
@@ -844,57 +825,34 @@ export function Sidebar({ variant = 'panel', section = 'all' }: SidebarProps = {
   }
 
   useEffect(() => {
-    let alive = true
+    const request = new AbortController()
     setPipelinePluginsLoading(true)
     setPipelinePluginsError(null)
     pipelineApi
-      .listPipelinePlugins()
+      .listPipelinePlugins({ signal: request.signal })
       .then((res) => {
-        if (!alive) return
-        setPipelinePlugins(res.items || [])
-        setPipelinePluginRegistryErrors(res.errors || [])
+        if (request.signal.aborted) return
+        setPipelinePlugins(res.items)
+        setPipelinePluginRegistryErrors(res.errors)
       })
       .catch((error: unknown) => {
-        if (!alive) return
+        if (request.signal.aborted) return
         setPipelinePluginsError(getErrorMessage(error, t('sidebar.pythonPlugins.loadError')))
         setPipelinePluginRegistryErrors([])
       })
       .finally(() => {
-        if (!alive) return
+        if (request.signal.aborted) return
         setPipelinePluginsLoading(false)
       })
     return () => {
-      alive = false
-    }
-  }, [t])
-
-  useEffect(() => {
-    let alive = true
-    setDatasetsLoading(true)
-    setDatasetsError(null)
-    datasetApi
-      .list({ limit: 100 })
-      .then((res) => {
-        if (!alive) return
-        setDatasets(res.items || [])
-      })
-      .catch((error: unknown) => {
-        if (!alive) return
-        setDatasetsError(getErrorMessage(error, t('sidebar.dataset.loadError')))
-      })
-      .finally(() => {
-        if (!alive) return
-        setDatasetsLoading(false)
-      })
-    return () => {
-      alive = false
+      request.abort()
     }
   }, [t])
 
   const content = (
     <div className={section === 'settings' ? configStyles.shell : cn(styles.drawerBody, 'space-y-5')}>
       {section !== 'settings' && (
-        <SidebarPanel tone="sky" className="relative overflow-hidden p-0">
+        <SidebarPanel className="relative overflow-hidden p-0">
           <div data-dataset-scope-header="true" className="flex items-center px-3 py-3">
             <div className="flex min-w-0 items-center gap-2.5">
               <div className={cn(SIDEBAR_LEAD_ICON_FRAME_CLASS, 'border-primary/20 bg-background')}>
@@ -915,7 +873,7 @@ export function Sidebar({ variant = 'panel', section = 'all' }: SidebarProps = {
           <div data-dataset-scope-selector="true" className="border-t border-foreground/10 px-3 py-3">
             <div className="relative group/select">
               <Select
-                value={datasetId || DATASET_DEFAULT_VALUE}
+                value={datasetId === '' ? DATASET_DEFAULT_VALUE : datasetId}
                 onValueChange={(value) => {
                   setIngestionPreview(null)
                   setIngestionError(null)
@@ -923,6 +881,7 @@ export function Sidebar({ variant = 'panel', section = 'all' }: SidebarProps = {
                 }}
               >
                 <SelectTrigger
+                  aria-label={t('sidebar.datasetScope.title')}
                   className={cn(
                     'h-9 rounded-md border-input/70 bg-background/70 px-3 text-[13px] font-medium text-foreground shadow-none transition-colors',
                     'hover:border-info/30 hover:bg-background',
@@ -950,6 +909,11 @@ export function Sidebar({ variant = 'panel', section = 'all' }: SidebarProps = {
                     </div>
                   </SelectItem>
                   <div className="mx-1 my-1 h-px bg-border/40" />
+                  {datasetId !== '' && selectedDataset === null ? (
+                    <SelectItem value={datasetId} disabled>
+                      {datasetId}
+                    </SelectItem>
+                  ) : null}
                   {datasets.map((ds) => (
                     <SelectItem
                       key={ds.id}
@@ -962,7 +926,7 @@ export function Sidebar({ variant = 'panel', section = 'all' }: SidebarProps = {
                         >
                           <Database className={SIDEBAR_LEAD_ICON_CLASS} strokeWidth={2.5} />
                         </div>
-                        <span className="truncate">{ds.name}</span>
+                        <span className="truncate">{ds.name === '' ? ds.id : ds.name}</span>
                       </div>
                     </SelectItem>
                   ))}
@@ -986,16 +950,41 @@ export function Sidebar({ variant = 'panel', section = 'all' }: SidebarProps = {
               </div>
             )}
 
-            {(datasetsError || scopeSyncError) && (
+            {(datasetsError !== null || scopeSyncError !== null) && (
               <SidebarNote tone="amber" className="py-2.5 border-warning/20 bg-warning/5 shadow-sm">
-                <div className="flex items-start gap-2.5">
+                <div role="alert" className="flex items-start gap-2.5">
                   <div className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-warning/10 text-warning">
                     <AlertCircle className="h-3 w-3" strokeWidth={3} />
                   </div>
-                  <span className="font-medium text-[13px] leading-relaxed text-warning">
-                    {datasetsError || scopeSyncError}
-                  </span>
+                  <div className="min-w-0 space-y-1 break-words font-medium text-[13px] leading-relaxed text-warning">
+                    {datasetsError !== null ? <p>{datasetsError}</p> : null}
+                    {scopeSyncError !== null ? <p>{scopeSyncError}</p> : null}
+                  </div>
                 </div>
+                {datasetsError !== null ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="mt-2 h-7 px-2 text-[13px]"
+                    onClick={() => void refreshDatasets()}
+                    disabled={datasetsLoading}
+                  >
+                    重新读取数据集目录
+                  </Button>
+                ) : null}
+                {scopeSyncError !== null ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="mt-2 h-7 px-2 text-[13px]"
+                    onClick={reloadScopeDocuments}
+                    disabled={scopeSyncLoading}
+                  >
+                    {t('sidebar.datasetScope.retryDocuments')}
+                  </Button>
+                ) : null}
               </SidebarNote>
             )}
           </div>
@@ -1007,6 +996,18 @@ export function Sidebar({ variant = 'panel', section = 'all' }: SidebarProps = {
                 label={t('sidebar.fileList.title', { count: fileList.length })}
                 tone="sky"
               />
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7 shrink-0"
+                onClick={reloadScopeDocuments}
+                disabled={scopeSyncLoading}
+                aria-label={t('sidebar.datasetScope.reloadDocuments')}
+                title={t('sidebar.datasetScope.reloadDocuments')}
+              >
+                <RotateCcw className="h-3.5 w-3.5" />
+              </Button>
             </div>
 
             <div
@@ -1034,22 +1035,23 @@ export function Sidebar({ variant = 'panel', section = 'all' }: SidebarProps = {
                 sortedFileList.map((f) => {
                   const isActive = currentFileId === f.id
                   const isSelectedForIngest = selectedIngestFileIds.has(f.id)
-                  const displayTime = f.addedAt
-                    ? new Date(f.addedAt).toLocaleString([], {
-                        month: '2-digit',
-                        day: '2-digit',
-                        hour: '2-digit',
-                        minute: '2-digit',
-                      })
-                    : ''
+                  const displayTime =
+                    f.sourceTimeMs === undefined
+                      ? null
+                      : new Date(f.sourceTimeMs).toLocaleString([], {
+                          month: '2-digit',
+                          day: '2-digit',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })
                   const fileIndex = fileList.findIndex((item) => item.id === f.id)
-                  const fileTypeLabel = f.originalFileType ? String(f.originalFileType).toUpperCase() : null
+                  const fileTypeLabel = f.originalFileType ? f.originalFileType.toUpperCase() : null
                   const fileSizeLabel =
                     typeof f.originalFileSize === 'number' ? formatFileSize(f.originalFileSize) : null
-                  const fileSourceLabel = f.source ? t(`sidebar.datasetScope.sources.${f.source}`) : null
+                  const fileSourceLabel = t(`sidebar.datasetScope.sources.${f.source}`)
                   const fileMetaLabel = [
                     fileTypeLabel,
-                    displayTime || t('sidebar.fileList.timeFallback'),
+                    displayTime ?? t('sidebar.fileList.timeFallback'),
                     fileSizeLabel,
                     fileSourceLabel,
                   ]
@@ -1233,7 +1235,6 @@ export function Sidebar({ variant = 'panel', section = 'all' }: SidebarProps = {
                     onClick={() => {
                       applyPipelinePatch(selectedDataset.pipeline, {
                         successMessage: t('sidebar.dataset.applyPipelineSuccess'),
-                        errorMessage: t('sidebar.dataset.applyPipelineError'),
                       })
                     }}
                   >
@@ -1364,11 +1365,7 @@ export function Sidebar({ variant = 'panel', section = 'all' }: SidebarProps = {
               onOpenChange={setIngestionDetailsOpen}
               preview={ingestionPreview}
               datasetId={datasetId}
-              onApplyPipelinePatch={(patch) => {
-                applyPipelinePatch(patch, {
-                  errorMessage: t('sidebar.ingestionPreview.applySuggestedPipelinePatchError'),
-                })
-              }}
+              onApplyPipelinePatch={applyPipelinePatch}
             />
           </div>
         </SidebarPanel>
@@ -1427,7 +1424,7 @@ export function Sidebar({ variant = 'panel', section = 'all' }: SidebarProps = {
                       {governancePluginOptions.map((plugin) => (
                         <SelectItem
                           key={`${plugin.id}@${plugin.version}:governance`}
-                          value={plugin.refs.governance || ''}
+                          value={plugin.refs.governance ?? ''}
                           disabled={!plugin.executable}
                         >
                           {plugin.name} v{plugin.version}
@@ -1463,7 +1460,7 @@ export function Sidebar({ variant = 'panel', section = 'all' }: SidebarProps = {
                       {chunkPluginOptions.map((plugin) => (
                         <SelectItem
                           key={`${plugin.id}@${plugin.version}:chunk`}
-                          value={plugin.refs.chunk || ''}
+                          value={plugin.refs.chunk ?? ''}
                           disabled={!plugin.executable}
                         >
                           {plugin.name} v{plugin.version}
@@ -1499,7 +1496,7 @@ export function Sidebar({ variant = 'panel', section = 'all' }: SidebarProps = {
                       {kgPluginOptions.map((plugin) => (
                         <SelectItem
                           key={`${plugin.id}@${plugin.version}:kg`}
-                          value={plugin.refs.kg || ''}
+                          value={plugin.refs.kg ?? ''}
                           disabled={!plugin.executable}
                         >
                           {plugin.name} v{plugin.version}
@@ -1527,7 +1524,7 @@ export function Sidebar({ variant = 'panel', section = 'all' }: SidebarProps = {
                     })}
                   </SidebarNote>
                 ) : null}
-                {selectedAuditPlugin ? (
+                {selectedPipelinePlugin ? (
                   <div
                     data-python-pipeline-plugin-audit
                     className="grid gap-1 rounded-lg border border-border/40 bg-muted/12 px-2 py-1.5 text-[13px] font-medium leading-6 text-muted-foreground"
@@ -1619,9 +1616,9 @@ export function Sidebar({ variant = 'panel', section = 'all' }: SidebarProps = {
                         ) : null}
                         <div className="font-semibold text-foreground">
                           {t('sidebar.pythonPlugins.chunkReportSummary', {
-                            records: getReportNumber(pluginChunkReport.summary, 'governed_records'),
-                            chunks: getReportNumber(pluginChunkReport.summary, 'chunks'),
-                            kgEvents: getReportNumber(pluginChunkReport.summary, 'kg_events'),
+                            records: pluginChunkReport.summary.governed_records,
+                            chunks: pluginChunkReport.summary.chunks,
+                            kgEvents: pluginChunkReport.summary.kg_events,
                           })}
                         </div>
                         <div className="flex flex-wrap gap-1">
@@ -1630,7 +1627,7 @@ export function Sidebar({ variant = 'panel', section = 'all' }: SidebarProps = {
                               key={section.knowledge_section}
                               className="rounded-full border border-border/35 bg-background/65 px-1.5 py-0.5 font-mono text-[13px] text-muted-foreground"
                             >
-                              {section.knowledge_section || '-'} · {section.chunks}
+                              {section.knowledge_section} · {section.chunks}
                             </span>
                           ))}
                         </div>
@@ -1771,7 +1768,7 @@ export function Sidebar({ variant = 'panel', section = 'all' }: SidebarProps = {
           strategySettings={
             <>
               {isSeparatorStrategy ? (
-                <SidebarPanel tone="cyan" className="space-y-3">
+                <SidebarPanel className="space-y-3">
                   <div className="flex items-center justify-between gap-2">
                     <div className="text-[13px] font-semibold text-foreground/82">{t('sidebar.separator.title')}</div>
                     <SidebarChip tone="cyan">分隔</SidebarChip>
@@ -1785,14 +1782,12 @@ export function Sidebar({ variant = 'panel', section = 'all' }: SidebarProps = {
                       variant="outline"
                       className="h-7 px-2 text-[13px]"
                       onClick={() => {
-                        const preset = separatorPreset || 'paragraph'
+                        const params = buildChunkPreviewRequestParams()
                         const patch: ChunkStrategyParams = {
-                          separator_preset: preset,
-                          keep_separator: !!keepSeparator,
-                          separator_max_chunk_size: Number(separatorMaxChunkSize) || 0,
-                        }
-                        if (preset === 'custom') {
-                          patch.separator = effectiveSeparator || '\n\n'
+                          separator_preset: params.separator_preset,
+                          separator: params.separator,
+                          keep_separator: params.keep_separator,
+                          separator_max_chunk_size: params.separator_max_chunk_size,
                         }
                         pipelineCtx.setEnabled(true)
                         pipelineCtx.updateOption('chunk_strategy_params', patch)
@@ -1824,7 +1819,10 @@ export function Sidebar({ variant = 'panel', section = 'all' }: SidebarProps = {
                       value={separatorPreset}
                       onValueChange={(value) => updateSeparatorSettings({ separatorPreset: value })}
                     >
-                      <SelectTrigger className="h-8 bg-background text-[13px]">
+                      <SelectTrigger
+                        aria-label={t('sidebar.separator.presetLabel')}
+                        className="h-8 bg-background text-[13px]"
+                      >
                         <SelectValue placeholder={t('sidebar.separator.presetPlaceholder')} />
                       </SelectTrigger>
                       <SelectContent>
@@ -1835,15 +1833,15 @@ export function Sidebar({ variant = 'panel', section = 'all' }: SidebarProps = {
                         ))}
                       </SelectContent>
                     </Select>
-                    <SidebarNote tone="cyan" className="py-1.5">
-                      {separatorPresetOptions.find((o) => o.value === separatorPreset)?.hint || ''}
-                    </SidebarNote>
-                    {effectiveSeparator ? (
+                    {selectedSeparatorPreset !== undefined ? (
+                      <SidebarNote tone="cyan" className="py-1.5">
+                        {selectedSeparatorPreset.hint}
+                      </SidebarNote>
+                    ) : null}
+                    {effectiveSeparator !== undefined ? (
                       <div className="text-[13px] text-muted-foreground font-mono">
                         {t('sidebar.separator.effectiveSeparator', {
-                          value:
-                            JSON.stringify(effectiveSeparator).slice(1, -1) ||
-                            t('sidebar.separator.currentPipelineEmpty'),
+                          value: JSON.stringify(effectiveSeparator).slice(1, -1),
                           length: effectiveSeparator.length,
                         })}
                       </div>
@@ -1916,7 +1914,7 @@ export function Sidebar({ variant = 'panel', section = 'all' }: SidebarProps = {
                 </SidebarPanel>
               ) : null}
               {isParentChildStrategy ? (
-                <SidebarPanel tone="emerald" className="space-y-3">
+                <SidebarPanel className="space-y-3">
                   <div className="text-[13px] font-semibold text-foreground/84">{t('sidebar.parentChild.title')}</div>
 
                   <div className="flex items-center justify-between gap-2">
@@ -1927,9 +1925,10 @@ export function Sidebar({ variant = 'panel', section = 'all' }: SidebarProps = {
                       variant="outline"
                       className="h-6 px-2 text-[13px]"
                       onClick={() => {
+                        const params = buildChunkPreviewRequestParams()
                         const patch: ChunkStrategyParams = {
-                          child_ratio: Number(parentChildRatio),
-                          min_child_size: Number(parentChildMinChildSize),
+                          child_ratio: params.child_ratio,
+                          min_child_size: params.min_child_size,
                         }
                         pipelineCtx.setEnabled(true)
                         pipelineCtx.updateOption('chunk_strategy_params', patch)
@@ -2111,120 +2110,96 @@ export function Sidebar({ variant = 'panel', section = 'all' }: SidebarProps = {
                       <span>{histogramMax || serverStats.max}</span>
                     </div>
                   </div>
-                  {previewData?.recommendations?.length || previewData?.recommendation_patches?.length ? (
+                  {previewData?.recommendations?.length || recommendationPatches.length > 0 ? (
                     <div className="col-span-2 border-b border-border py-3">
                       <div className="flex items-center justify-between gap-2">
                         <div className="text-[13px] text-muted-foreground uppercase  font-medium">
                           {t('sidebar.recommendations.title')}
                         </div>
-                        {previewData?.recommendation_patches?.length ? (
+                        {recommendationPatches.length > 0 ? (
                           <Button
                             type="button"
                             size="sm"
                             variant="outline"
                             className="h-7 px-2 text-[13px]"
-                            onClick={() => {
-                              for (const item of previewData.recommendation_patches || []) {
-                                const target = item.target || 'preview'
-                                const patch = item.patch || {}
-                                if (target === 'preview') {
-                                  const next = buildPreviewSettingsPatch(patch)
-                                  if (Object.keys(next).length) updateSettings(next)
-                                } else if (target === 'pipeline') {
-                                  applyPipelinePatch(patch, {
-                                    errorMessage: t('sidebar.recommendations.applyAllPipelineError'),
-                                  })
-                                } else if (target === 'perf') {
-                                  const next = buildPerfSettingsPatch(patch)
-                                  if (Object.keys(next).length) updatePerfSettings(next)
-                                }
-                              }
-                              toast.success(t('sidebar.recommendations.applyAllSuccess'))
-                            }}
+                            onClick={applyAllRecommendations}
                           >
                             {t('sidebar.recommendations.applyAll')}
                           </Button>
                         ) : null}
                       </div>
 
-                      {previewData?.recommendation_patches?.length ? (
+                      {recommendationPatches.length > 0 ? (
                         <div className="mt-2 space-y-2">
-                          {(previewData.recommendation_patches || [])
-                            .slice(0, 6)
-                            .map((patchItem: ChunkPreviewRecommendationPatch) => {
-                              const title =
-                                patchItem.title || patchItem.id || t('sidebar.recommendations.patchFallback')
-                              const desc = patchItem.description || ''
-                              const target = patchItem.target || 'preview'
-                              const patch = patchItem.patch || {}
-                              const targetLabel = getRecommendationTargetLabel(target, {
-                                preview: t('sidebar.recommendations.targets.preview'),
-                                pipeline: t('sidebar.recommendations.targets.pipeline'),
-                                perf: t('sidebar.recommendations.targets.perf'),
-                              })
-                              return (
-                                <div
-                                  key={patchItem.id || title}
-                                  className="rounded-lg border border-border/60 bg-background p-2"
-                                >
-                                  <div className="flex items-center justify-between gap-2">
-                                    <div className="min-w-0">
-                                      <div className="text-[13px] font-medium text-foreground/90">{title}</div>
-                                      {desc ? (
-                                        <div className="mt-0.5 text-[13px] text-muted-foreground">{desc}</div>
-                                      ) : null}
-                                    </div>
-                                    <Button
-                                      type="button"
-                                      size="sm"
-                                      className="h-7 px-2 text-[13px]"
-                                      onClick={() => {
-                                        if (target === 'preview') {
-                                          const next = buildPreviewSettingsPatch(patch)
-                                          if (Object.keys(next).length) {
-                                            updateSettings(next)
-                                            toast.success(t('sidebar.recommendations.applyPreviewSuccess'))
-                                          }
-                                          return
-                                        }
-                                        if (target === 'pipeline') {
-                                          if (
-                                            applyPipelinePatch(patch, {
-                                              errorMessage: t('sidebar.recommendations.applyPipelineError'),
-                                            })
-                                          ) {
-                                            toast.success(t('sidebar.recommendations.applyPipelineSuccess'))
-                                          }
-                                          return
-                                        }
-                                        if (target === 'perf') {
-                                          const next = buildPerfSettingsPatch(patch)
-                                          if (Object.keys(next).length) {
-                                            updatePerfSettings(next)
-                                            toast.success(t('sidebar.recommendations.applyPerfSuccess'))
-                                          }
-                                        }
-                                      }}
-                                      title={Object.keys(patch || {}).length ? JSON.stringify(patch) : undefined}
-                                    >
-                                      {t('sidebar.recommendations.apply')}
-                                    </Button>
+                          {recommendationPatches.slice(0, 6).map((patchItem: ChunkPreviewRecommendationPatch) => {
+                            const title = patchItem.title || patchItem.id || t('sidebar.recommendations.patchFallback')
+                            const description = patchItem.description
+                            const target = patchItem.target || 'preview'
+                            const patch = patchItem.patch || {}
+                            const targetLabel = getRecommendationTargetLabel(target, {
+                              preview: t('sidebar.recommendations.targets.preview'),
+                              pipeline: t('sidebar.recommendations.targets.pipeline'),
+                              perf: t('sidebar.recommendations.targets.perf'),
+                            })
+                            return (
+                              <div
+                                key={patchItem.id || title}
+                                className="rounded-lg border border-border/60 bg-background p-2"
+                              >
+                                <div className="flex items-center justify-between gap-2">
+                                  <div className="min-w-0">
+                                    <div className="text-[13px] font-medium text-foreground/90">{title}</div>
+                                    {description ? (
+                                      <div className="mt-0.5 text-[13px] text-muted-foreground">{description}</div>
+                                    ) : null}
                                   </div>
-                                  <div className="mt-1 text-[13px] text-muted-foreground font-mono">
-                                    {t('sidebar.recommendations.target', { value: targetLabel })}
-                                  </div>
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    className="h-7 px-2 text-[13px]"
+                                    onClick={() => {
+                                      if (target === 'preview') {
+                                        const next = buildPreviewSettingsPatch(patch)
+                                        if (Object.keys(next).length) {
+                                          updateSettings(next)
+                                          toast.success(t('sidebar.recommendations.applyPreviewSuccess'))
+                                        }
+                                        return
+                                      }
+                                      if (target === 'pipeline') {
+                                        if (applyPipelinePatch(patch)) {
+                                          toast.success(t('sidebar.recommendations.applyPipelineSuccess'))
+                                        }
+                                        return
+                                      }
+                                      if (target === 'perf') {
+                                        const next = buildPerfSettingsPatch(patch)
+                                        if (Object.keys(next).length) {
+                                          updatePerfSettings(next)
+                                          toast.success(t('sidebar.recommendations.applyPerfSuccess'))
+                                        }
+                                      }
+                                    }}
+                                    title={Object.keys(patch || {}).length ? JSON.stringify(patch) : undefined}
+                                  >
+                                    {t('sidebar.recommendations.apply')}
+                                  </Button>
                                 </div>
-                              )
-                            })}
+                                <div className="mt-1 text-[13px] text-muted-foreground font-mono">
+                                  {t('sidebar.recommendations.target', { value: targetLabel })}
+                                </div>
+                              </div>
+                            )
+                          })}
                         </div>
                       ) : null}
 
                       {previewData?.recommendations?.length ? (
                         <div className="mt-2 space-y-1 text-[13px] text-muted-foreground">
-                          {(previewData.recommendations || []).slice(0, 8).map((r) => (
-                            <div key={String(r)} className="flex gap-2">
+                          {previewData.recommendations.slice(0, 8).map((recommendation) => (
+                            <div key={recommendation} className="flex gap-2">
                               <span className="font-mono text-muted-foreground/70">-</span>
-                              <span className="flex-1">{String(r)}</span>
+                              <span className="flex-1">{recommendation}</span>
                             </div>
                           ))}
                         </div>

@@ -8,18 +8,19 @@ Pattern: Split -> [Task1, Task2, ...] (parallel) -> Aggregate -> Result
 """
 
 import asyncio
+import logging
 from collections.abc import Awaitable, Callable
 from typing import Any
 
-from app.rag.core.hashing import stable_hash
-from app.rag.core.logging import get_logger
+from app.infrastructure.hashing import stable_hash
 from app.rag.workflows.base import (
     BaseWorkflow,
     WorkflowMode,
     WorkflowResult,
+    cancel_and_drain_tasks,
 )
 
-logger = get_logger("rag.workflows.parallelization")
+logger = logging.getLogger("rag.workflows.parallelization")
 
 
 class ParallelTask:
@@ -144,36 +145,40 @@ class ParallelWorkflow(BaseWorkflow):
         results: list[dict[str, Any]] = []
         errors: list[str] = []
         completed_tasks: list[str] = []
-        if self.fail_fast:
-            tasks: list[asyncio.Task[dict[str, Any]]] = []
-            try:
-                for task in self._tasks:
-                    task_coro = self._execute_task(task, dict(state), semaphore)
-                    try:
-                        tasks.append(asyncio.create_task(task_coro))
-                    except BaseException:
-                        task_coro.close()
-                        raise
-                results = await asyncio.gather(*tasks)
-            except BaseException:
-                for task in tasks:
-                    if not task.cancelling():
-                        task.cancel()
-                await asyncio.gather(*tasks, return_exceptions=True)
-                raise
-            completed_tasks = [task.name for task in self._tasks]
-            return results, errors, completed_tasks
+        configured_tasks = list(self._tasks)
+        tasks: list[asyncio.Task[dict[str, Any]]] = []
+        pending_error: BaseException | None = None
+        try:
+            for task in configured_tasks:
+                task_coro = self._execute_task(task, dict(state), semaphore)
+                try:
+                    tasks.append(asyncio.create_task(task_coro))
+                except BaseException:
+                    task_coro.close()
+                    raise
 
-        task_coroutines = [self._execute_task(task, dict(state), semaphore) for task in self._tasks]
-        task_results = await asyncio.gather(*task_coroutines, return_exceptions=True)
-        for task, result in zip(self._tasks, task_results, strict=False):
-            if isinstance(result, Exception):
-                errors.append(f"{task.name}: {str(result)}")
-                logger.error("Task %s failed: %s", task.name, result)
-                continue
-            results.append(result)
-            completed_tasks.append(task.name)
-        return results, errors, completed_tasks
+            pending = set(tasks)
+            while pending:
+                done, pending = await asyncio.wait(pending, return_when=asyncio.FIRST_COMPLETED)
+                for completed in done:
+                    if completed.cancelled() or self.fail_fast:
+                        completed.result()
+
+            for task, future in zip(configured_tasks, tasks, strict=True):
+                try:
+                    result = future.result()
+                except Exception as error:
+                    errors.append(f"{task.name}: {error}")
+                    logger.error("Task %s failed: %s", task.name, error)
+                    continue
+                results.append(result)
+                completed_tasks.append(task.name)
+            return results, errors, completed_tasks
+        except BaseException as operation_error:
+            pending_error = operation_error
+            raise
+        finally:
+            await cancel_and_drain_tasks(tasks, pending_error=pending_error)
 
     async def _aggregate_results(
         self,
@@ -186,13 +191,14 @@ class ParallelWorkflow(BaseWorkflow):
     ) -> WorkflowResult:
         aggregated_state = await self._aggregator(results)
         for key, value in state.items():
-            if key not in aggregated_state:
-                aggregated_state[key] = value
+            aggregated_state.setdefault(key, value)
         aggregated_state["parallel_tasks"] = completed_tasks
         if errors:
             aggregated_state["parallel_errors"] = errors
-        success = len(results) > 0
-        error_msg = "; ".join(errors) if errors and not results else None
+        error_msg = aggregated_state.get("error")
+        success = bool(results) and not bool(error_msg)
+        if error_msg is None and errors and not results:
+            error_msg = "; ".join(errors)
         return self.create_result(
             aggregated_state,
             success=success,
@@ -269,7 +275,7 @@ class ParallelWorkflow(BaseWorkflow):
                 elif key in merged and isinstance(merged[key], list) and isinstance(value, list):
                     merged[key].extend(value)
                 else:
-                    merged[key] = value
+                    merged[key] = list(value) if isinstance(value, list) else value
 
         if all_contexts:
             merged["contexts"] = all_contexts

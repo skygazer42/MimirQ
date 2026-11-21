@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react'
-import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
+import { skipToken, useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import { AlertCircle, Check, ChevronDown, FileText, Loader2, Play, RefreshCw } from '@/components/icons'
 import { Button } from '@/components/ui/button'
 import { FeedbackToast } from '@/components/feedback-toast'
@@ -12,7 +12,7 @@ import { MarkdownRenderer } from '@/components/markdown/markdown-renderer'
 import { Link } from '@/i18n/navigation'
 import { parsingApi, pipelineApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
-import { getAuthCacheScope } from '@/lib/auth-storage'
+import { getAuthCacheScope, getAuthSessionKey } from '@/lib/auth-storage'
 import { buildCleanPreviewRequestFromGovernanceProfile } from '@/lib/governance-profile-utils'
 import { useParsedFiles } from '@/store/use-parsed-files-store'
 import type { CleanPreviewResponse, GovernanceProfilePayload } from '@/types'
@@ -36,17 +36,18 @@ function DocumentPicker({
   const list = useInfiniteQuery({
     queryKey: ['governance', 'preview-documents', source.scope],
     initialPageParam: 0,
-    queryFn: ({ pageParam }) => parsingApi.listDocuments({ status: 'completed', skip: pageParam, limit: 200 }),
-    getNextPageParam: (last, pages) => {
-      const loaded = pages.reduce((count, page) => count + page.items.length, 0)
-      return last.items.length && loaded < last.total ? loaded : undefined
+    queryFn: ({ pageParam, signal }) =>
+      parsingApi.listDocuments({ status: 'completed', skip: pageParam, limit: 200 }, { signal }),
+    getNextPageParam: (lastPage, _pages, offset) => {
+      const nextOffset = offset + lastPage.items.length
+      return lastPage.items.length > 0 && nextOffset < lastPage.total ? nextOffset : undefined
     },
     enabled: open,
     retry: false,
   })
   const documents = useMemo(() => {
     const byId = new Map<string, PreviewDocument>()
-    for (const page of list.data?.pages || [])
+    for (const page of list.data?.pages ?? [])
       for (const file of page.items) {
         if (file.status === 'completed') byId.set(file.id, remotePreviewDocument(file))
       }
@@ -56,9 +57,8 @@ function DocumentPicker({
     }
     return [...byId.values()]
   }, [list.data, localFiles])
-  const filtered = documents.filter((document) =>
-    document.filename.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()),
-  )
+  const searchQuery = search.trim().toLocaleLowerCase()
+  const filtered = documents.filter((document) => document.filename.toLocaleLowerCase().includes(searchQuery))
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
@@ -68,7 +68,7 @@ function DocumentPicker({
           aria-label={source.document ? `更换预览文档，当前 ${source.document.filename}` : '选择已解析文档'}
         >
           <FileText className="icon-ink-source" />
-          <span>{source.document?.filename || '选择已解析文档'}</span>
+          <span>{source.document?.filename ?? '选择已解析文档'}</span>
           <ChevronDown />
         </Button>
       </PopoverTrigger>
@@ -99,7 +99,15 @@ function DocumentPicker({
           {list.isError && (
             <div className={styles.sourceError} role="alert">
               <p>{formatApiError(list.error, '文档列表读取失败')}</p>
-              <Button variant="ghost" size="sm" onClick={() => void list.refetch()}>
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={list.isFetching}
+                onClick={() => {
+                  if (list.isFetchNextPageError) void list.fetchNextPage({ cancelRefetch: false })
+                  else void list.refetch()
+                }}
+              >
                 重试文档列表
               </Button>
             </div>
@@ -126,18 +134,24 @@ function DocumentPicker({
               {source.document?.id === document.id && <Check />}
             </button>
           ))}
-          {!list.isPending && !list.isError && !filtered.length && (
+          {!list.isPending && !list.isError && filtered.length === 0 && (
             <div className={styles.sourceEmpty}>
-              <p>{search ? '没有找到匹配的文档' : '还没有已解析文档'}</p>
-              {!search && <Link href="/parsing">前往文档解析</Link>}
+              <p>
+                {list.hasNextPage
+                  ? '已加载的文档中没有匹配项'
+                  : searchQuery === ''
+                    ? '还没有已解析文档'
+                    : '没有找到匹配的文档'}
+              </p>
+              {searchQuery === '' && !list.hasNextPage && <Link href="/parsing">前往文档解析</Link>}
             </div>
           )}
           {list.hasNextPage && (
             <Button
               variant="ghost"
               className="w-full"
-              disabled={list.isFetchingNextPage}
-              onClick={() => void list.fetchNextPage()}
+              disabled={list.isFetching}
+              onClick={() => void list.fetchNextPage({ cancelRefetch: false })}
             >
               {list.isFetchingNextPage ? '正在读取…' : '加载更多文档'}
             </Button>
@@ -158,53 +172,62 @@ export function CleaningPreview({ payload, source, onSourceChange }: Readonly<Pr
   const [result, setResult] = useState<CleanPreviewResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [running, setRunning] = useState(false)
-  const request = useRef(0)
+  const previewControllerRef = useRef<AbortController | null>(null)
   const document = source.document
   const content = useQuery({
     queryKey: ['governance', 'preview-content', source.scope, document?.source, document?.id],
-    queryFn: () => readPreviewDocument(document!, source.scope),
-    enabled: Boolean(document),
+    queryFn: document === null ? skipToken : ({ signal }) => readPreviewDocument(document, source.scope, { signal }),
     staleTime: 30_000,
     retry: false,
   })
-  const loading = Boolean(document && (content.isPending || content.isFetching))
-  const input = document ? (!loading ? content.data?.text || '' : '') : source.manualInput
+  const loading = document !== null && content.isPending
+  const reading = document !== null && content.isFetching
+  const input = document === null ? source.manualInput : (content.data?.text ?? '')
   const formats: Array<'markdown' | 'html'> = payload.input_formats.length ? payload.input_formats : ['markdown']
   const format = document ? 'markdown' : formats.includes(source.manualFormat) ? source.manualFormat : formats[0]
   const disabled = payload.pipeline_patch.governance_enabled === false
+  const cancelPreview = useCallback(() => {
+    previewControllerRef.current?.abort()
+    previewControllerRef.current = null
+  }, [])
   const clearResult = useCallback(() => {
-    request.current += 1
+    cancelPreview()
     setResult(null)
     setError(null)
     setRunning(false)
-  }, [])
+  }, [cancelPreview])
   const run = useCallback(async () => {
-    if (!input.trim() || disabled || loading) return
-    const version = ++request.current
-    const scope = source.scope
+    if (disabled || input.trim() === '' || getAuthCacheScope() !== source.scope) return
+    if (previewControllerRef.current !== null) return
+
+    const controller = new AbortController()
+    previewControllerRef.current = controller
+    const sessionKey = getAuthSessionKey()
+    const isCurrent = () => !controller.signal.aborted && getAuthSessionKey() === sessionKey
     setRunning(true)
     setError(null)
     setResult(null)
     try {
       const response = await pipelineApi.cleanPreview(
         buildCleanPreviewRequestFromGovernanceProfile(payload, input, { inputFormat: format, includeDiff: true }),
+        { signal: controller.signal },
       )
-      if (request.current === version && getAuthCacheScope() === scope) setResult(response)
+      if (isCurrent()) setResult(response)
     } catch (cause) {
-      if (request.current === version && getAuthCacheScope() === scope)
-        setError(formatApiError(cause, '清洗预览失败，请重试'))
+      if (isCurrent()) setError(formatApiError(cause, '清洗预览失败，请重试'))
     } finally {
-      if (request.current === version) setRunning(false)
+      if (previewControllerRef.current === controller) {
+        previewControllerRef.current = null
+        setRunning(false)
+      }
     }
-  }, [disabled, format, input, loading, payload, source.scope])
+  }, [disabled, format, input, payload, source.scope])
 
   useEffect(() => {
     clearResult()
-    if (document && content.data && !content.isError && !loading) void run()
-    return () => {
-      request.current += 1
-    }
-  }, [document, content.data, content.dataUpdatedAt, content.isError, loading, run, clearResult])
+    if (document !== null && content.data !== undefined) void run()
+    return cancelPreview
+  }, [document, content.data, content.dataUpdatedAt, run, clearResult, cancelPreview])
 
   return (
     <section
@@ -239,7 +262,7 @@ export function CleaningPreview({ payload, source, onSourceChange }: Readonly<Pr
           <Button
             variant="outline"
             onClick={() => void run()}
-            disabled={running || !input.trim() || disabled || loading || Boolean(document && content.isError)}
+            disabled={running || input.trim() === '' || disabled || reading || loading}
           >
             {running ? <Loader2 className="animate-spin motion-reduce:animate-none" /> : <Play />}
             {running ? '正在预览…' : document ? '重新预览' : '运行预览'}
@@ -260,13 +283,10 @@ export function CleaningPreview({ payload, source, onSourceChange }: Readonly<Pr
               variant="ghost"
               size="icon"
               aria-label="重新读取文档"
-              disabled={loading}
-              onClick={() => {
-                clearResult()
-                void content.refetch()
-              }}
+              disabled={reading}
+              onClick={() => void content.refetch()}
             >
-              <RefreshCw className={loading ? 'animate-spin motion-reduce:animate-none' : undefined} />
+              <RefreshCw className={reading ? 'animate-spin motion-reduce:animate-none' : undefined} />
             </Button>
             <Button
               variant="ghost"
@@ -295,7 +315,10 @@ export function CleaningPreview({ payload, source, onSourceChange }: Readonly<Pr
       {document && content.isError && (
         <div className={styles.sourceError} role="alert">
           <AlertCircle />
-          <p>{formatApiError(content.error, '文档内容读取失败')}</p>
+          <p>
+            {formatApiError(content.error, '文档内容读取失败')}
+            {content.data !== undefined && '。仍显示上次取得的文档内容。'}
+          </p>
           <Button variant="outline" onClick={() => void content.refetch()}>
             重试读取文档
           </Button>
@@ -313,13 +336,13 @@ export function CleaningPreview({ payload, source, onSourceChange }: Readonly<Pr
       <FeedbackToast type="error" message={error} id="profile-cleaning-preview-feedback" />
       {result?.dropped && (
         <p className={styles.warning} role="status">
-          文档被当前规则过滤：{result.drop_reason || '未达到内容质量要求'}
+          文档被当前规则过滤：{result.drop_reason ?? '未达到内容质量要求'}
         </p>
       )}
       <div className={styles.previewPair}>
         <div className={styles.previewColumn}>
           <label htmlFor="profile-preview-input">
-            清洗前{document && <span>{content.data?.origin || '文档内容'}</span>}
+            清洗前{document && <span>{content.data?.origin ?? '文档内容'}</span>}
           </label>
           <Textarea
             id="profile-preview-input"

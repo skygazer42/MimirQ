@@ -2,37 +2,9 @@
  * Evaluation, evidence, and similarity workbench types re-exported by `@/types`.
  */
 
-import type { OpenApiSchema } from './backend'
 import type { JsonObject } from './common'
 
 // ==================== 批量上传相关类型 ====================
-
-export type BatchFileInfo = {
-  name: string
-  data_id: string
-}
-
-export type BatchUploadRequest = {
-  files: BatchFileInfo[]
-}
-
-export type BatchUploadResponse = {
-  batch_id: string
-  file_urls: string[]
-  files: BatchFileInfo[]
-  message: string
-}
-
-export type BatchTaskStatus = {
-  batch_id: string
-  status: string
-  total_files: number
-  completed_files: number
-  failed_files: number
-  progress: number
-  result_url?: string | null
-  error?: string | null
-}
 
 export type DocumentBatchUploadSuccess = import('./backend').DocumentBatchUploadSuccess
 export type DocumentBatchUploadFailure = import('./backend').DocumentBatchUploadFailure
@@ -40,43 +12,16 @@ export type DocumentBatchUploadResponse = import('./backend').DocumentBatchUploa
 
 // ==================== RAGAS 回归测试相关类型 ====================
 
-export type ReferenceSource = {
-  document_id: string
-  chunk_id: string
-  chunk_index?: number
-  page_number?: number
-  start_char?: number
-  end_char?: number
-  doc_pipeline_key?: string
-  pipeline_hash?: string
-  quote?: string
-  label?: string
-}
+export type ReferenceSource = import('@/lib/regression-case-schema').RegressionReferenceSource
 
-// Alias kept for UI components that use the older naming.
-export type RegressionReferenceSource = ReferenceSource
-
-export type RegressionCase = {
-  id: string
-  tenant_id: string
-  dataset_id?: string
-  document_ids: string[]
-  question: string
-  expected_answer?: string
-  reference_sources: ReferenceSource[]
-  tags: string[]
-  extra: JsonObject
-  created_by?: string
-  created_at: string
-  updated_at: string
-}
+export type RegressionCase = import('@/lib/regression-case-schema').RegressionCase
 
 export type RegressionCaseCreate = {
   question: string
-  dataset_id?: string
+  dataset_id: string
   document_ids?: string[]
   expected_answer?: string
-  reference_sources?: ReferenceSource[]
+  reference_sources: ReferenceSource[]
   tags?: string[]
   extra?: JsonObject
 }
@@ -90,37 +35,12 @@ export type RegressionCasePatch = {
   extra?: JsonObject
 }
 
-export type RegressionCaseBundleItem = {
-  question: string
-  expected_answer?: string | null
-  tags: string[]
-  reference_sources: ReferenceSource[]
-  reasoning_hops?: string[]
-  evidence_chain?: ReferenceSource[]
-  extra?: JsonObject
-}
+export type RegressionCaseBundleItem = import('@/lib/regression-case-schema').RegressionCaseBundleItem
+export type RegressionCaseBundleV1 = import('@/lib/regression-case-schema').RegressionCaseBundleV1
+export type RegressionCaseImportRequest = import('@/lib/regression-case-schema').RegressionCaseImportRequest
+export type RegressionCaseImportResponse = import('@/lib/regression-case-schema').RegressionCaseImportResponse
 
-export type RegressionCaseBundleV1 = {
-  schema: 'mimirq.regression_cases.v1'
-  dataset_id: string
-  items: RegressionCaseBundleItem[]
-}
-
-export type RegressionCaseImportResponse = {
-  created: number
-  updated: number
-  skipped: number
-  errors: JsonObject[]
-  created_case_ids: string[]
-  updated_case_ids: string[]
-  skipped_case_ids: string[]
-  case_ids: string[]
-}
-
-export type RegressionCaseList = {
-  total: number
-  items: RegressionCase[]
-}
+export type RegressionCaseList = import('@/lib/regression-case-schema').RegressionCaseList
 
 // ==================== Evidence Workbench（Ground Truth 证据库） ====================
 
@@ -158,216 +78,44 @@ export type EvidenceReferenceRepairResponse = import('./backend').EvidenceRefere
 export type EvidenceHardcaseCandidate = import('./backend').EvidenceHardcaseCandidate
 export type EvidenceHardcaseDiscovery = import('./backend').EvidenceHardcaseDiscovery
 
-export type WhyMissedReferenceStatus = 'retrieved' | 'missing' | 'drifted' | 'unknown'
+export type GeneratedQuestion = import('@/lib/question-generation-schema').GeneratedQuestion
+export type TestGenFromDocsRequest = import('@/lib/question-generation-schema').TestGenFromDocsRequest
+export type TestGenFromConversationsRequest = import('@/lib/question-generation-schema').TestGenFromConversationsRequest
+export type TestGenResponse = import('@/lib/question-generation-schema').TestGenResponse
 
-export type WhyMissedReferenceHints = {
-  /** Rank (1-based) of the first citation matching the reference document. */
-  document_hit_rank?: number
-  /** Rank (1-based) of the first citation matching the document and chunk index. */
-  chunk_index_hit_rank?: number
-  /** Rank (1-based) of the first citation matching the reference hierarchy family. */
-  family_hit_rank?: number
-}
+export type RagasRun = import('@/lib/ragas-conversation-schema').RagasRun
+export type RagasItem = import('@/lib/ragas-conversation-schema').RagasItem
+export type RagasRunDetail = import('@/lib/ragas-conversation-schema').RagasRunDetail
+export type RagasRunList = import('@/lib/ragas-conversation-schema').RagasRunList
+export type RagasRunCreateRequest = import('@/lib/ragas-conversation-schema').RagasRunCreateRequest
+export type RagasConversationReadinessRequest =
+  import('@/lib/ragas-conversation-schema').RagasConversationReadinessRequest
+export type RagasConversationReadinessItem = import('@/lib/ragas-conversation-schema').RagasConversationReadinessItem
+export type RagasConversationReadinessResponse =
+  import('@/lib/ragas-conversation-schema').RagasConversationReadinessResponse
 
-export type WhyMissedRetrievalInfo = {
-  rank: number
-  hit_type?: string
-  score?: number
-}
+export type KGHardcaseMode = import('@/lib/kg-diagnostics-schema').KGHardcaseMode
+export type KGSearchDiagnosticsRequest = import('@/lib/kg-diagnostics-schema').KGSearchDiagnosticsRequest
+export type KGSearchDiagnosticsItem = import('@/lib/kg-diagnostics-schema').KGSearchDiagnosticsItem
+export type KGSearchDiagnosticsSummary = import('@/lib/kg-diagnostics-schema').KGSearchDiagnosticsSummary
+export type KGSearchDiagnosticsResponse = import('@/lib/kg-diagnostics-schema').KGSearchDiagnosticsResponse
+export type KGSearchDiagnosticsRunOut = import('@/lib/kg-diagnostics-schema').KGSearchDiagnosticsRunOut
+export type KGSearchDiagnosticsRunList = import('@/lib/kg-diagnostics-schema').KGSearchDiagnosticsRunList
+export type KGQualityReport = import('@/lib/kg-diagnostics-schema').KGQualityReport
+export type SyntheticHardcaseGenerateRequest = import('@/lib/evaluation-ops-schema').SyntheticHardcaseGenerateRequest
+export type SyntheticHardcaseGenerateResponse = import('@/lib/evaluation-ops-schema').SyntheticHardcaseGenerateResponse
+export type RegressionRunPurgeRequest = import('@/lib/evaluation-ops-schema').RegressionRunPurgeRequest
+export type RegressionRunPurgeResponse = import('@/lib/evaluation-ops-schema').RegressionRunPurgeResponse
 
-export type WhyMissedDriftInfo = {
-  reason: string
-  expected?: unknown
-  observed?: unknown
-}
+export type KGSearchDiagnosticsRunListParams = import('@/lib/kg-diagnostics-schema').KGSearchDiagnosticsRunListParams
 
-export type WhyMissedReferenceReportRow = {
-  document_id: string | null
-  chunk_id: string
-  chunk_index?: number
-  label?: string | null
-  status: WhyMissedReferenceStatus
-  retrieval?: WhyMissedRetrievalInfo
-  drift?: WhyMissedDriftInfo
-  hints?: WhyMissedReferenceHints
-}
+export type KGSearchDiagnosticsRunDetail = import('@/lib/kg-diagnostics-schema').KGSearchDiagnosticsRunDetail
 
-export type WhyMissedSummary = {
-  total_references: number
-  retrieved_references: number
-  missing_references: number
-  drifted_references: number
-  unknown_references: number
-}
-
-export type WhyMissedReport = {
-  summary: WhyMissedSummary
-  references: WhyMissedReferenceReportRow[]
-}
-
-export type GeneratedQuestion = {
-  question: string
-  expected_answer?: string
-  context?: string
-  source_type: 'document' | 'conversation'
-  source_id: string
-  metadata: JsonObject
-}
-
-export type TestGenFromDocsRequest = {
-  dataset_id?: string
-  document_ids?: string[]
-  num_questions?: number
-  question_types?: string[]
-  auto_save_as_cases?: boolean
-}
-
-export type TestGenFromConversationsRequest = {
-  conversation_ids: string[]
-  num_questions?: number
-  quality_threshold?: number
-  auto_save_as_cases?: boolean
-}
-
-export type TestGenResponse = {
-  status: string
-  generated_questions: GeneratedQuestion[]
-  saved_case_ids: string[]
-  error_message?: string
-}
-
-export type RagasRun = {
-  id: string
-  conversation_id?: string
-  status: string
-  metrics: string[]
-  params: JsonObject
-  summary: JsonObject
-  error_message?: string
-  created_at: string
-  started_at?: string
-  finished_at?: string
-}
-
-export type RagasItem = {
-  id: string
-  run_id: string
-  turn_index: number
-  user_message_id?: string
-  assistant_message_id?: string
-  user_input: string
-  response: string
-  retrieved_contexts?: string[] | null
-  citations: unknown[]
-  scores: JsonObject
-  created_at: string
-}
-
-export type RagasRunDetail = {
-  run: RagasRun
-  items: RagasItem[]
-}
-
-export type RagasRunList = {
-  total: number
-  items: RagasRun[]
-}
-
-export type RagasRunCreateRequest = {
-  conversation_id: string
-  metrics?: string[]
-  max_turns?: number
-  skip_empty_contexts?: boolean
-  include_contexts_in_response?: boolean
-}
-
-export type RagasConversationReadinessRequest = {
-  conversation_ids: string[]
-}
-
-export type RagasConversationReadinessItem = {
-  conversation_id: string
-  assistant_turns: number
-  evaluable_turns: number
-  citations_count: number
-  is_evaluable: boolean
-}
-
-export type RagasConversationReadinessResponse = {
-  total: number
-  items: RagasConversationReadinessItem[]
-}
-
-export type KGHardcaseMode = 'off' | 'deterministic' | 'llm'
-
-export type KGSearchDiagnosticsRequest = {
-  dataset_id: string
-  case_ids?: string[]
-  max_cases?: number
-  k?: number
-  auto_extract_kg?: boolean
-  extract_skills?: boolean | null
-  extract_relations?: boolean | null
-  hardcase_mode?: KGHardcaseMode
-  hardcases_per_failed_case?: number
-  max_failed_cases_for_hardcase?: number
-  llm_temperature?: number
-  persist_run?: boolean
-}
-
-export type KGSearchDiagnosticsItem = OpenApiSchema<'KGSearchDiagnosticsItem'>
-export type KGSearchDiagnosticsSummary = OpenApiSchema<'KGSearchDiagnosticsSummary'>
-
-export type KGSearchDiagnosticsResponse = {
-  run_id?: string | null
-  summary: KGSearchDiagnosticsSummary
-  items?: KGSearchDiagnosticsItem[]
-}
-
-export type KGSearchDiagnosticsRunOut = {
-  id: string
-  tenant_id: string
-  account_id?: string | null
-  dataset_id: string
-  status: string
-  params?: JsonObject
-  summary?: JsonObject
-  created_at: string
-}
-
-export type KGSearchDiagnosticsRunList = {
-  total: number
-  items: KGSearchDiagnosticsRunOut[]
-}
-
-export type KGSearchDiagnosticsRunListParams = {
-  dataset_id: string
-  limit?: number
-}
-
-export type KGSearchDiagnosticsRunDetail = {
-  run: KGSearchDiagnosticsRunOut
-  items?: JsonObject[]
-}
-
-export type RegressionRun = {
-  id: string
-  tenant_id: string
-  account_id?: string
-  dataset_id?: string
-  status: string
-  metrics: string[]
-  params: JsonObject
-  summary: JsonObject
-  error_message?: string
-  created_at: string
-  started_at?: string
-  finished_at?: string
-}
+export type RegressionRun = import('@/lib/regression-run-schema').RegressionRun
 
 export type RegressionRunCreate = {
   case_ids?: string[]
-  dataset_id?: string
+  dataset_id: string
   metrics?: string[]
   use_llm_judge?: boolean
   skip_empty_contexts?: boolean
@@ -391,8 +139,6 @@ export type RegressionRunCreate = {
   query_rewrite_strategy?: string | null
   query_rewrite_temperature?: number | null
   query_rewrite_max_chars?: number | null
-  sparse_retrieval_enabled?: boolean | null
-  sparse_retrieval_provider?: string | null
   top_k?: number
   score_threshold?: number
   retrieval_mode?: string
@@ -421,106 +167,20 @@ export type RegressionAblationBatchRequest = RegressionRunCreate & {
   ablation_label_prefix?: string | null
 }
 
-export type RegressionAblationBatchResponse = {
-  ablation_id: string
-  total: number
-  run_ids: string[]
-  variants: JsonObject[]
-  status: string
-}
+export type RegressionAblationBatchResponse = import('@/lib/regression-run-schema').RegressionAblationBatchResponse
 
-export type RegressionRunList = {
-  total: number
-  items: RegressionRun[]
-}
+export type RegressionRunList = import('@/lib/regression-run-schema').RegressionRunList
+export type RegressionRunLeaderboard = import('@/lib/regression-run-schema').RegressionRunLeaderboard
+export type RegressionItem = import('@/lib/regression-run-schema').RegressionItem
+export type RegressionRunDetail = import('@/lib/regression-run-schema').RegressionRunDetail
 
-export type RegressionItem = {
-  id: string
-  run_id: string
-  case_id: string
-  question: string
-  response: string
-  retrieved_contexts?: string[]
-  citations: unknown[]
-  scores: JsonObject
-  meta?: JsonObject
-  created_at: string
-}
-
-export type RegressionRunDetail = {
-  run: RegressionRun
-  items: RegressionItem[]
-}
-
-export type RegressionRunMetricDiff = {
-  key: string
-  before?: unknown
-  after?: unknown
-  delta?: number | null
-}
-
-export type RegressionRunDiffScore = {
-  version: string
-  used_metric_keys: string[]
-  weights: Record<string, number>
-  base_score?: number | null
-  target_score?: number | null
-  delta?: number | null
-  base_metrics: Record<string, number>
-  target_metrics: Record<string, number>
-}
-
-export type RegressionRunSliceBucketDiff = {
-  key: string
-  items_before: number
-  items_after: number
-  metrics: RegressionRunMetricDiff[]
-}
-
-export type RegressionRunSliceDiff = {
-  truncated_before: boolean
-  truncated_after: boolean
-  buckets: RegressionRunSliceBucketDiff[]
-}
-
-export type RegressionRunCaseDiff = {
-  case_id: string
-  question: string
-  metric_diffs: RegressionRunMetricDiff[]
-  mean_delta?: number | null
-  label: string
-}
-
-export type RegressionRunMetricSignificance = {
-  key: string
-  compared: number
-  base_mean?: number | null
-  target_mean?: number | null
-  delta_mean?: number | null
-  bootstrap_ci_low?: number | null
-  bootstrap_ci_high?: number | null
-  p_value?: number | null
-  p_value_method?: string | null
-  p_value_bh?: number | null
-  wilcoxon_p_value?: number | null
-  mcnemar_p_value?: number | null
-  cohen_d?: number | null
-  significant: boolean
-}
-
-export type RagasRegressionRunDiffResponse = {
-  base_run_id: string
-  target_run_id: string
-  generated_at: string
-  base_params: JsonObject
-  target_params: JsonObject
-  metric_diffs: RegressionRunMetricDiff[]
-  diff_score?: RegressionRunDiffScore | null
-  slice_diffs: Record<string, RegressionRunSliceDiff>
-  significance: RegressionRunMetricSignificance[]
-  case_diffs: RegressionRunCaseDiff[]
-  significance_summary: JsonObject
-}
+export type RegressionRunMetricDiff = import('@/lib/regression-diff-schema').RegressionRunMetricDiff
+export type RegressionRunDiffScore = import('@/lib/regression-diff-schema').RegressionRunDiffScore
+export type RegressionRunSliceBucketDiff = import('@/lib/regression-diff-schema').RegressionRunSliceBucketDiff
+export type RegressionRunSliceDiff = import('@/lib/regression-diff-schema').RegressionRunSliceDiff
+export type RegressionRunCaseDiff = import('@/lib/regression-diff-schema').RegressionRunCaseDiff
+export type RegressionRunMetricSignificance = import('@/lib/regression-diff-schema').RegressionRunMetricSignificance
+export type RagasRegressionRunDiffResponse = import('@/lib/regression-diff-schema').RagasRegressionRunDiffResponse
 
 // ==================== RAGViz（相似度热力图） ====================
 
@@ -564,7 +224,7 @@ export type RagvizSimilarityMatrixResult = {
   y_data: JsonObject[]
   x_available_fields: string[]
   y_available_fields: string[]
-  stats: RagvizSimilarityStats
+  stats?: Partial<RagvizSimilarityStats> | null
   metadata: JsonObject
 }
 

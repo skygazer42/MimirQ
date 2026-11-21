@@ -1,6 +1,3 @@
-/**
- * ChunkingHelpDialog - 切块预览帮助（参数建议 / 策略速查 / 快捷键）
- */
 'use client'
 
 import { ExternalLink, Keyboard, Scissors, Settings2, Sparkles } from '@/components/icons'
@@ -33,10 +30,10 @@ export function ChunkingHelpDialog({
         <ScrollArea className="max-h-[70vh] pr-4">
           <div className="space-y-6 text-sm">
             <section className="rounded-xl border border-border/60 bg-card/60 p-4">
-              <div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground uppercase ">
+              <h3 className="flex items-center gap-2 text-xs font-semibold text-muted-foreground uppercase">
                 <Sparkles className="w-3.5 h-3.5" />
                 {t('help.workflow.title')}
-              </div>
+              </h3>
               <div className="mt-3 grid gap-2 text-[13px] text-muted-foreground">
                 <div>{t('help.workflow.steps.parsing')}</div>
                 <div>{t('help.workflow.steps.governance')}</div>
@@ -46,10 +43,10 @@ export function ChunkingHelpDialog({
             </section>
 
             <section className="rounded-xl border border-border/60 bg-card/60 p-4">
-              <div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground uppercase ">
+              <h3 className="flex items-center gap-2 text-xs font-semibold text-muted-foreground uppercase">
                 <Settings2 className="w-3.5 h-3.5" />
                 {t('help.parameters.title')}
-              </div>
+              </h3>
               <div className="mt-3 grid gap-2 text-[13px] text-muted-foreground">
                 <div>
                   <span className="font-mono text-foreground/90">chunk_size</span>：{t('help.parameters.chunkSize')}
@@ -63,10 +60,10 @@ export function ChunkingHelpDialog({
             </section>
 
             <section className="rounded-xl border border-border/60 bg-card/60 p-4">
-              <div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground uppercase ">
+              <h3 className="flex items-center gap-2 text-xs font-semibold text-muted-foreground uppercase">
                 <Scissors className="w-3.5 h-3.5" />
                 {t('help.strategies.title')}
-              </div>
+              </h3>
               <div className="mt-3 grid gap-2 text-[13px] text-muted-foreground">
                 <div>
                   <span className="font-mono text-foreground/90">auto / langchain_recursive</span>：
@@ -114,10 +111,10 @@ export function ChunkingHelpDialog({
             </section>
 
             <section className="rounded-xl border border-border/60 bg-card/60 p-4">
-              <div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground uppercase ">
+              <h3 className="flex items-center gap-2 text-xs font-semibold text-muted-foreground uppercase">
                 <Keyboard className="w-3.5 h-3.5" />
                 {t('help.shortcuts.title')}
-              </div>
+              </h3>
               <div className="mt-3 grid gap-2 text-[13px] text-muted-foreground">
                 <div>
                   <span className="font-mono text-foreground/90">Ctrl/Cmd + Enter</span>：
@@ -126,19 +123,6 @@ export function ChunkingHelpDialog({
                 <div>
                   <span className="font-mono text-foreground/90">Ctrl/Cmd + S</span>：
                   {t('help.shortcuts.confirmIngest')}
-                </div>
-                <div>
-                  <span className="font-mono text-foreground/90">↑/↓ 或 J/K</span>：{t('help.shortcuts.navigateList')}
-                </div>
-                <div>
-                  <span className="font-mono text-foreground/90">/</span>：{t('help.shortcuts.focusSearch')}
-                </div>
-                <div>
-                  <span className="font-mono text-foreground/90">Esc</span>：{t('help.shortcuts.clearLock')}
-                </div>
-                <div>
-                  <span className="font-mono text-foreground/90">G / Shift+G（或 Home/End）</span>：
-                  {t('help.shortcuts.jumpEdges')}
                 </div>
               </div>
             </section>

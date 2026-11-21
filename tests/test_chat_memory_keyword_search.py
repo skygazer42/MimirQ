@@ -41,8 +41,8 @@ def _insert(db, table, tenant, conversation, content, minute=0):
 
 
 def test_memory_keyword_query_enforces_tenant_conversation_and_no_match(memory_db, monkeypatch):
-    from app.core.config import settings
-    from app.services.chat_memory_runtime import _retrieve_long_term_messages
+    from app.infrastructure.config import settings
+    from app.services.chat.memory_runtime import _retrieve_long_term_messages
 
     db, table = memory_db
     tenant, conversation = uuid4(), uuid4()
@@ -58,8 +58,8 @@ def test_memory_keyword_query_enforces_tenant_conversation_and_no_match(memory_d
 
 
 def test_memory_recent_window_applies_before_keyword_ranking(memory_db, monkeypatch):
-    from app.core.config import settings
-    from app.services.chat_memory_runtime import _retrieve_long_term_messages
+    from app.infrastructure.config import settings
+    from app.services.chat.memory_runtime import _retrieve_long_term_messages
 
     db, table = memory_db
     tenant, conversation = uuid4(), uuid4()
@@ -73,8 +73,8 @@ def test_memory_recent_window_applies_before_keyword_ranking(memory_db, monkeypa
 
 
 def test_memory_chinese_matches_and_wildcards_are_literal(memory_db, monkeypatch):
-    from app.core.config import settings
-    from app.services import chat_memory_runtime as memory
+    from app.infrastructure.config import settings
+    from app.services.chat import memory_runtime as memory
 
     db, table = memory_db
     tenant, conversation = uuid4(), uuid4()
@@ -91,6 +91,6 @@ def test_memory_chinese_matches_and_wildcards_are_literal(memory_db, monkeypatch
 
 
 def test_empty_memory_query_does_not_open_a_database_query():
-    from app.services.chat_memory_runtime import _retrieve_long_term_messages
+    from app.services.chat.memory_runtime import _retrieve_long_term_messages
 
     assert _retrieve_long_term_messages(None, uuid4(), uuid4(), " ") == []

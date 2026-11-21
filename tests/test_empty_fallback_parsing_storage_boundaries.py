@@ -4,8 +4,8 @@ from types import SimpleNamespace
 import pytest
 from PIL import Image
 
-from app.parsing.enrich.image_understanding import _decode_with_opencv_qr
-from app.parsing.utils.document_elements import normalize_document_elements
+from app.rag.ingestion.parsing.enrich.image_understanding import _decode_with_opencv_qr
+from app.rag.ingestion.parsing.utils.document_elements import normalize_document_elements
 from app.storage.object.runtime import object_store_backend_config
 from app.storage.vector.milvus import MilvusVectorStore
 
@@ -43,9 +43,17 @@ def test_normalized_document_elements_reject_non_text_page_content(value):
 
 
 def test_normalized_image_keeps_text_when_optional_code_text_is_none():
-    elements = normalize_document_elements([
-        {"page_content": "QR image", "metadata": {"element_kind": "image", "element_attributes": {"visual_kind": "qr", "image_code_text": None}}}
-    ])
+    elements = normalize_document_elements(
+        [
+            {
+                "page_content": "QR image",
+                "metadata": {
+                    "element_kind": "image",
+                    "element_attributes": {"visual_kind": "qr", "image_code_text": None},
+                },
+            }
+        ]
+    )
 
     assert elements[0]["text"] == "QR image"
 

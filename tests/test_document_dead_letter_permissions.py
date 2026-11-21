@@ -12,16 +12,16 @@ from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
-from app.api.dependencies.auth import get_current_account_id
-from app.api.dependencies.tenant import get_tenant_id
-from app.api.v1.document_dead_letters import router
-from app.core.database import Base, get_db
-from app.models.dataset import Dataset, DatasetPermission, DatasetPermissionEnum
-from app.models.document import Document, DocumentPermission
-from app.models.group_permissions import DatasetGroupPermission, DocumentGroupPermission
-from app.models.ingest_dead_letter import IngestDeadLetter
-from app.models.tenant import Tenant, TenantMember
-from app.models.tenant_group import TenantGroup, TenantGroupMember
+from app.api.dependencies import get_current_account_id, get_tenant_id
+from app.api.schemas.datasets.dataset import DatasetPermissionEnum
+from app.api.v1.documents.dead_letters import router
+from app.infrastructure.database.connection import Base, get_db
+from app.models.datasets.access import DatasetGroupPermission, DatasetPermission
+from app.models.datasets.records import Dataset
+from app.models.documents.access import DocumentGroupPermission, DocumentPermission
+from app.models.documents.ingestion import IngestDeadLetter
+from app.models.documents.records import Document
+from app.models.identity.workspaces import Tenant, TenantGroup, TenantGroupMember, TenantMember
 
 
 @compiles(JSONB, "sqlite")
@@ -259,9 +259,9 @@ def test_dead_letter_list_filters_acl_before_pagination(
 
 
 def test_dead_letter_replay_uses_lifecycle_write_gate(monkeypatch: pytest.MonkeyPatch) -> None:
-    import app.api.v1.document_dead_letters as document_dead_letters
-    import app.api.v1.document_processing as document_processing
-    from app.models.document import Document as DBDocument
+    import app.api.v1.documents.dead_letters as document_dead_letters
+    from app.models.documents.records import Document as DBDocument
+    from app.services.documents import processing as document_processing_operations
 
     tenant_id = uuid4()
     document_id = uuid4()
@@ -289,6 +289,12 @@ def test_dead_letter_replay_uses_lifecycle_write_gate(monkeypatch: pytest.Monkey
             return self.item
 
     class _DB:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
         def query(self, model):  # noqa: ANN001
             if model is IngestDeadLetter:
                 return _Query(dead_letter)
@@ -314,7 +320,8 @@ def test_dead_letter_replay_uses_lifecycle_write_gate(monkeypatch: pytest.Monkey
         _deny_lifecycle,
         raising=True,
     )
-    monkeypatch.setattr(document_processing, "retry_document_processing", _unexpected_retry, raising=True)
+    monkeypatch.setattr(document_processing_operations, "retry_document", _unexpected_retry, raising=True)
+    monkeypatch.setattr(document_dead_letters, "SessionLocal", _DB)
 
     with pytest.raises(HTTPException) as exc:
         import asyncio

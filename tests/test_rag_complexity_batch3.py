@@ -4,14 +4,14 @@ from types import SimpleNamespace
 import pytest
 from langchain_core.documents import Document
 
-from app.rag.chunking.strategies.gitlab_ci import GitLabCIChunker
-from app.rag.chunking.strategies.policy_manual_structured import PolicyManualStructuredChunker
-from app.rag.chunking.strategies.terraform_hcl import TerraformHCLChunker
-from app.rag.chunking.strategies.terraform_plan import TerraformPlanChunker
-from app.rag.evaluation.agent_redteam import evaluate_agent_redteam_case
+from app.rag.agents.middleware import tool_logging
+from app.rag.evaluation.agents.agent_redteam import evaluate_agent_redteam_case
 from app.rag.industry_rules import runtime as industry_runtime
+from app.rag.ingestion.chunking.strategies.config.gitlab_ci import GitLabCIChunker
+from app.rag.ingestion.chunking.strategies.config.terraform_hcl import TerraformHCLChunker
+from app.rag.ingestion.chunking.strategies.config.terraform_plan import TerraformPlanChunker
+from app.rag.ingestion.chunking.strategies.documents.policy_manual_structured import PolicyManualStructuredChunker
 from app.rag.kg.extraction.evidence import EvidenceSpan, coerce_evidence, find_evidence_span
-from app.rag.middleware import tool_logging
 from app.rag.pipeline_plugins import reports as report_mod
 
 
@@ -58,15 +58,7 @@ def test_policy_manual_structured_chunker_emits_parent_and_child_chunks() -> Non
 
 
 def test_terraform_hcl_chunker_falls_back_when_no_blocks_match() -> None:
-    text = (
-        "# terraform config\n"
-        'resource "aws_instance" "web" {\n'
-        '  ami = "ami-1"\n'
-        "}\n"
-        '\nmodule "network" {\n'
-        '  source = "./network"\n'
-        "}\n"
-    )
+    text = "# terraform config\nThis file describes deployment requirements without HCL blocks.\n"
     chunker = TerraformHCLChunker(chunk_size=10_000, chunk_overlap=0)
 
     chunks = chunker.split_documents([Document(page_content=text, metadata={"source": "main.tf"})])
@@ -150,13 +142,7 @@ def test_apply_industry_rules_query_expansion_tracks_aliases_and_errors(
             raise RuntimeError("bad ruleset")
         return SimpleNamespace(glossary={"budget": ["capex", "spend"], "other": ["unused"]})
 
-    def fake_expand(query: str, glossary: dict[str, list[str]]) -> str:
-        if "budget" in query:
-            return f"{query} expanded-by-ruleset"
-        return query
-
     monkeypatch.setattr(industry_runtime, "load_ruleset", fake_load_ruleset, raising=True)
-    monkeypatch.setattr(industry_runtime, "expand_query_terms", fake_expand, raising=True)
 
     expanded, meta = industry_runtime.apply_industry_rules_query_expansion(
         "budget status",
@@ -195,7 +181,13 @@ def test_tool_call_logging_middleware_sync_adds_preview_and_metrics(
     metrics: list[dict[str, object]] = []
 
     monkeypatch.setattr(tool_logging, "pii_redaction_enabled", lambda: True, raising=True)
-    monkeypatch.setattr(tool_logging, "redact_text", lambda text: f"redacted:{text}", raising=True)
+    redacted_values = []
+
+    def redact(text):
+        redacted_values.append(text)
+        return f"redacted:{text}"
+
+    monkeypatch.setattr(tool_logging, "redact_text", redact, raising=True)
     monkeypatch.setattr(tool_logging, "log_metrics", lambda payload: metrics.append(payload), raising=True)
 
     middleware = tool_logging.ToolCallLoggingMiddleware(
@@ -218,7 +210,8 @@ def test_tool_call_logging_middleware_sync_adds_preview_and_metrics(
     assert tool_meta["tool_name"] == "lookup"
     assert tool_meta["arguments_keys"] == ["q"]
     assert tool_meta["result_type"] == "str"
-    assert tool_meta["result_preview"] == "redacted:secret..."
+    assert redacted_values == ["secret-value"]
+    assert tool_meta["result_preview"] == "redact..."
     assert metrics[0]["event"] == "tool_call"
 
 

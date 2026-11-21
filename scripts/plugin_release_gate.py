@@ -156,9 +156,8 @@ def _safe_failure_reason(prefix: str, exc: BaseException) -> str:
 
 
 def _declared_stages(descriptor: PipelinePluginDescriptor, stages: Sequence[str] | None) -> list[str]:
-    if stages:
-        return [stage for stage in _STAGE_ORDER if stage in set(stages)]
-    return [stage for stage in _STAGE_ORDER if stage in descriptor.entries]
+    selected = set(stages) if stages else descriptor.entries
+    return [stage for stage in _STAGE_ORDER if stage in selected]
 
 
 def build_plugin_release_gate_report(
@@ -273,15 +272,16 @@ def build_plugin_release_gate_report(
         )
 
     golden_declared = (descriptor.golden_rules or {}).get("schema") == "mimirq.golden_rules.v1"
-    golden_summary = (_summarize_local_test(local_report).get("golden_draft") if local_report else {}) or {}
-    golden_passed = golden_summary.get("passed") is True and int(golden_summary.get("items_total") or 0) > 0
+    local_summary = _summarize_local_test(local_report)
+    golden_summary = local_summary["golden_draft"]
+    golden_passed = golden_summary["passed"] and golden_summary["items_total"] > 0
     checks.append(
         _check(
             "golden_draft_available",
             passed=golden_passed if golden_declared else True,
             required=golden_declared,
             status="passed" if golden_passed else ("not_declared" if not golden_declared else "failed"),
-            details={"items_total": int(golden_summary.get("items_total") or 0)} if golden_declared else None,
+            details={"items_total": golden_summary["items_total"]} if golden_declared else None,
         )
     )
 
@@ -293,7 +293,7 @@ def build_plugin_release_gate_report(
         "summary": _gate_summary(checks),
         "plugin": _descriptor_payload(descriptor_after),
         "checks": checks,
-        "local_test": _summarize_local_test(local_report),
+        "local_test": local_summary,
         "chunk_report": chunk_summary,
     }
 

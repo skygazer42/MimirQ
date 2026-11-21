@@ -5,14 +5,13 @@ from datetime import datetime, timedelta, timezone
 import pytest
 from fastapi import HTTPException
 
-from app.api.v1 import feedback as feedback_api
-from app.models.chat import Conversation, Message
-from app.models.evaluation import RagasRegressionCase
-from app.models.feedback import MessageFeedback
+from app.api.v1.conversations import feedback as feedback_api
+from app.models.conversations.chat import Conversation, Message, MessageFeedback
+from app.models.evaluation.results import RagasRegressionCase
 from app.rag.feedback_loop.candidates import build_feedback_loop_candidates
 from app.rag.feedback_loop.dispatcher import dispatch_feedback_loop_batch
-from app.rag.trace_schema import RagTrace, RagTraceListResponse
-from app.services import feedback_service
+from app.rag.tracing.schemas import RagTrace, RagTraceListResponse
+from app.services.chat import feedback as feedback_service
 
 
 class _FakeQuery:
@@ -693,14 +692,16 @@ def test_eval_case_candidate_falls_back_to_trace_citations() -> None:
 
 def test_feedback_loop_dispatcher_exposes_eval_case_review_queue() -> None:
     out = dispatch_feedback_loop_batch(
-        rows=[
-            {
-                "id": "feedback-1",
-                "rating": 1,
-                "question": "What changed?",
-                "expected_answer": "The MCU configuration changed.",
-            }
-        ],
+        candidate_payload=build_feedback_loop_candidates(
+            [
+                {
+                    "id": "feedback-1",
+                    "rating": 1,
+                    "question": "What changed?",
+                    "expected_answer": "The MCU configuration changed.",
+                }
+            ]
+        ),
         dry_run=True,
     )
 

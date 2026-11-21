@@ -28,7 +28,14 @@ export function createPlatformIcon(
     },
     ref,
   ) {
-    const named = Boolean(props['aria-label'] || props['aria-labelledby'])
+    const hasAccessibleName = Boolean(props['aria-label']?.trim() || props['aria-labelledby']?.trim())
+    const coloredIcon = appearance === 'color' ? colored : undefined
+    let renderedStrokeWidth = strokeWidth
+    if (absoluteStrokeWidth) {
+      const numericSize = Number(size)
+      const scale = Number.isFinite(numericSize) && numericSize > 0 ? numericSize : 24
+      renderedStrokeWidth = (Number(strokeWidth) * 24) / scale
+    }
 
     return (
       <svg
@@ -39,23 +46,23 @@ export function createPlatformIcon(
         viewBox="0 0 24 24"
         fill="none"
         stroke="currentColor"
-        strokeWidth={absoluteStrokeWidth ? (Number(strokeWidth) * 24) / (Number(size) || 24) : strokeWidth}
+        strokeWidth={renderedStrokeWidth}
         strokeLinecap="round"
         strokeLinejoin="round"
         focusable="false"
-        role={named ? 'img' : undefined}
-        aria-hidden={named ? undefined : true}
+        role={hasAccessibleName ? 'img' : undefined}
+        aria-hidden={hasAccessibleName ? undefined : true}
         data-platform-icon={name}
-        data-icon-appearance={colored && appearance === 'color' ? 'color' : undefined}
-        data-icon-tone={colored && appearance === 'color' ? colored.tone : undefined}
+        data-icon-appearance={coloredIcon === undefined ? undefined : 'color'}
+        data-icon-tone={coloredIcon?.tone}
         className={cn('shrink-0', className)}
         {...props}
       >
-        {colored && appearance === 'color' ? (
+        {coloredIcon !== undefined && (
           <g data-icon-fill="true" opacity="0.12" stroke="none">
-            {colored.fill}
+            {coloredIcon.fill}
           </g>
-        ) : null}
+        )}
         {geometry}
         {children}
       </svg>

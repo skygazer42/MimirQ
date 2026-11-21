@@ -80,11 +80,8 @@
   bottom: 0;
   left: 0;
   height: 2px;
-  background: currentColor;
+  background: hsl(var(--ring));
   content: '';
-}
-.queueToggle {
-  margin-left: auto;
 }
 .queueScroll {
   flex: 1;
@@ -233,6 +230,11 @@
   border-radius: 6px;
   padding: 0 14px;
   font-size: 13px;
+  background: hsl(var(--accent));
+  color: hsl(var(--accent-foreground));
+}
+.continueButton:hover {
+  background: hsl(var(--accent) / 0.9);
 }
 .messagesViewport {
   min-height: 0;

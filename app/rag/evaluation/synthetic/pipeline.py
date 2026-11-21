@@ -2,6 +2,7 @@ from collections import Counter
 from datetime import UTC, datetime
 from typing import Any
 
+from app.rag.evaluation.datasets.schema import EVAL_DATASET_MANIFEST_SCHEMA_V1
 from app.rag.evaluation.synthetic.critic import (
     evaluate_synthetic_sample_acceptance,
     normalize_synthetic_sample_critique,
@@ -28,7 +29,7 @@ def generate_stage2_synthetic_dataset(
             "rows": [],
             "manifest": {
                 "dataset_name": "stage2-synthetic",
-                "schema_version": "mimirq.eval.dataset.manifest.v1",
+                "schema_version": EVAL_DATASET_MANIFEST_SCHEMA_V1,
                 "dataset_version": datetime.now(UTC).strftime("%Y.%m.%d"),
                 "sample_count": 0,
                 "source_type_counts": {},
@@ -44,19 +45,16 @@ def generate_stage2_synthetic_dataset(
     attempted = 0
     rejection_reasons: Counter[str] = Counter()
 
-    idx = 0
     while len(generated) < target and attempted < attempts_limit:
-        seed = seeds[idx % len(seeds)]
+        seed = seeds[attempted % len(seeds)]
         synthetic_index = attempted + 1
         sample = generator_fn(seed_row=seed, synthetic_index=synthetic_index)
         sample = critic_fn(sample)
         attempted += 1
-        idx += 1
 
         keep, failures = evaluate_synthetic_sample_acceptance(sample)
         if not keep:
-            for reason in failures:
-                rejection_reasons[str(reason)] += 1
+            rejection_reasons.update(failures)
             continue
         generated.append(sample)
 
@@ -70,7 +68,7 @@ def generate_stage2_synthetic_dataset(
     }
     manifest = {
         "dataset_name": "stage2-synthetic",
-        "schema_version": "mimirq.eval.dataset.manifest.v1",
+        "schema_version": EVAL_DATASET_MANIFEST_SCHEMA_V1,
         "dataset_version": datetime.now(UTC).strftime("%Y.%m.%d"),
         "sample_count": len(generated),
         "source_type_counts": dict(source_counts),

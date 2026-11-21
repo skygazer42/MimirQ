@@ -469,6 +469,23 @@
   line-height: 24px;
   color: hsl(var(--muted-foreground));
 }
+.header .back:focus-visible,
+.headerActions button:focus-visible,
+.toolbar button:focus-visible,
+.table td:last-child button:focus-visible,
+.footer button:focus-visible,
+.empty button:focus-visible,
+.tabsList button:focus-visible,
+.field input:focus-visible,
+.field > button:focus-visible,
+.jsonInput:focus-visible,
+.dialogFooter button:focus-visible,
+.templateFooter > button:focus-visible,
+.previewSource > button:focus-visible,
+.previewDraftNotice button:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 2px;
+}
 .tabsList button[data-state='active'] {
   border-bottom-color: hsl(var(--primary));
   background: transparent;

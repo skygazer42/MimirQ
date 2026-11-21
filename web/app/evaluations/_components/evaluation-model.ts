@@ -1,5 +1,4 @@
-import type { RagasItem, RagasRunDetail } from '@/lib/api/evaluation'
-import type { JsonObject } from '@/types/common'
+import type { RagasItem } from '@/types/evaluation'
 
 export const LOW_SCORE_THRESHOLD = 0.8
 const LABELS: Record<string, string> = {
@@ -8,64 +7,59 @@ const LABELS: Record<string, string> = {
   context_precision: '上下文精准度',
 }
 export function metricName(key: string) {
-  return LABELS[key] || key
+  return Object.hasOwn(LABELS, key) ? LABELS[key] : key
 }
 export function numericScore(value: unknown): number | null {
   return typeof value === 'number' && Number.isFinite(value) ? value : null
 }
-export function hasLowScore(item: RagasItem, metrics: string[]) {
+export function hasLowScore(item: RagasItem, metrics: readonly string[]) {
   return metrics.some((key) => {
-    const value = numericScore(item.scores?.[key])
+    const value = numericScore(item.scores[key])
     return value !== null && value < LOW_SCORE_THRESHOLD
   })
 }
-export function metricStatistics(detail: RagasRunDetail | null, metrics: string[]) {
+export function metricStatistics(items: readonly RagasItem[], metrics: readonly string[]) {
   return metrics.map((key) => {
-    const values = (detail?.items || [])
+    const values = items
       .flatMap((item) => {
-        const score = numericScore(item.scores?.[key])
+        const score = numericScore(item.scores[key])
         return score === null ? [] : [score]
       })
       .sort((a, b) => a - b)
-    const percentile = (p: number) =>
-      values.length ? values[Math.min(values.length - 1, Math.floor((p / 100) * (values.length - 1)))] : null
+    const label = metricName(key)
+    const scoredCount = values.length
+    if (scoredCount === 0) {
+      return { key, label, scoredCount, mean: null, p50: null, p90: null, passRate: null }
+    }
+
+    const percentile = (percent: number) => values[Math.floor((percent / 100) * (scoredCount - 1))]
     return {
       key,
-      label: metricName(key),
-      mean:
-        numericScore(detail?.run.summary?.[key]) ??
-        (values.length ? values.reduce((a, b) => a + b, 0) / values.length : null),
+      label,
+      scoredCount,
+      mean: values.reduce((sum, value) => sum + value, 0) / scoredCount,
       p50: percentile(50),
       p90: percentile(90),
-      passRate: values.length ? values.filter((value) => value >= LOW_SCORE_THRESHOLD).length / values.length : null,
+      passRate: values.filter((value) => value >= LOW_SCORE_THRESHOLD).length / scoredCount,
     }
   })
 }
 export function itemContexts(item: RagasItem) {
-  const contexts = (item.retrieved_contexts || []).filter((text) => typeof text === 'string' && text.trim())
-  if (contexts.length) return contexts
-  return (item.citations || []).flatMap((citation) => {
-    if (!citation || typeof citation !== 'object') return []
-    const data = citation as JsonObject
-    const value = data.content || data.text || data.quote
-    return typeof value === 'string' && value.trim() ? [value] : []
+  return item.retrieved_contexts === null ? [] : item.retrieved_contexts
+}
+export function displayDate(value: string | null | undefined) {
+  if (value === null || value === undefined) return '—'
+  const date = new Date(value)
+  return date.toLocaleString('zh-CN', {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
   })
 }
-export function displayDate(value: string | undefined) {
-  if (!value) return '—'
-  const date = new Date(value)
-  return Number.isNaN(date.getTime())
-    ? '—'
-    : date.toLocaleString('zh-CN', {
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-        hour12: false,
-      })
-}
-export function runDuration(start?: string, end?: string) {
-  if (!start || !end) return null
-  const ms = new Date(end).getTime() - new Date(start).getTime()
-  return Number.isFinite(ms) && ms >= 0 ? `${(ms / 1000).toFixed(1)} 秒` : null
+export function runDuration(start: string | null | undefined, end: string | null | undefined) {
+  if (start === null || start === undefined || end === null || end === undefined) return null
+  const durationMs = new Date(end).getTime() - new Date(start).getTime()
+  return `${(durationMs / 1000).toFixed(1)} 秒`
 }

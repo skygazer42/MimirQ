@@ -53,23 +53,18 @@ def _citation_source_values(citation: dict[str, Any]) -> list[str]:
 
 def _collect_present_source_keys(
     citations: list[dict[str, Any]] | None,
-) -> tuple[set[str], dict[str, str]]:
-    present: set[str] = set()
+) -> dict[str, str]:
     display: dict[str, str] = {}
     for item in citations or []:
         if not isinstance(item, dict):
             continue
         for raw in _citation_source_values(item):
-            folded = raw.casefold()
-            if folded not in present:
-                display[folded] = raw
-            present.add(folded)
-    return present, display
+            display.setdefault(raw.casefold(), raw)
+    return display
 
 
 def _match_required_source_keys(
     expected: list[str],
-    present: set[str],
     display: dict[str, str],
 ) -> tuple[list[str], list[str], dict[str, str]]:
     missing: list[str] = []
@@ -77,7 +72,7 @@ def _match_required_source_keys(
     matched_by_required: dict[str, str] = {}
     for exp in expected:
         folded = exp.casefold()
-        if folded not in present:
+        if folded not in display:
             missing.append(exp)
             continue
         matched_display = display[folded]
@@ -106,8 +101,8 @@ def evaluate_required_source_keys(
             "passed": True,
         }
 
-    present, display = _collect_present_source_keys(citations)
-    missing, matched, matched_by_required = _match_required_source_keys(expected, present, display)
+    display = _collect_present_source_keys(citations)
+    missing, matched, matched_by_required = _match_required_source_keys(expected, display)
 
     present_out = [display[k] for k in sorted(display)[:200]]
     required_n = len(expected)

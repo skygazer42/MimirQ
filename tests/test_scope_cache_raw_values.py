@@ -3,8 +3,8 @@ from uuid import UUID, uuid4
 import pytest
 from pydantic import ValidationError
 
-from app.api.schemas.dataset import DatasetEmbeddingDefaults
-from app.api.schemas.regression import RagasRegressionRunCreateRequest
+from app.api.schemas.datasets.dataset import DatasetEmbeddingDefaults
+from app.api.schemas.evaluation.regression import RagasRegressionRunCreateRequest
 from app.rag.kg import pipeline
 from app.rag.kg.provenance import build_kg_path_provenance
 from app.rag.kg.search.cache import KGSearchCache, build_kg_community_summary_cache_key, build_kg_search_cache_key

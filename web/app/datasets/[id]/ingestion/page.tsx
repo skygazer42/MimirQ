@@ -1,9 +1,6 @@
-'use client'
-
-import { useParams } from 'next/navigation'
 import PolicyWorkspace from './policy-workspace'
 
-export default function DatasetIngestionPolicyPage() {
-  const { id } = useParams<{ id: string }>()
+export default async function DatasetIngestionPolicyPage({ params }: Readonly<{ params: Promise<{ id: string }> }>) {
+  const { id } = await params
   return <PolicyWorkspace key={id} datasetId={id} />
 }

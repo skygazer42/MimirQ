@@ -7,6 +7,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { setAccessToken, setAuthSession } from '@/lib/auth-storage'
 import type { Document } from '@/types'
 
+vi.hoisted(() => vi.stubGlobal('BroadcastChannel', undefined))
+
 const routerMock = vi.hoisted(() => ({
   replace: vi.fn(),
 }))

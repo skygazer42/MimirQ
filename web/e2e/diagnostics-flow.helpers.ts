@@ -154,7 +154,7 @@ export async function diagnosticFixture(page: Page, theme: 'light' | 'dark' = 'l
             ? { detail: '链路详情暂不可用' }
             : {
                 channels: {
-                  counts: { vector_candidates: 32, bm25_candidates: 28, graph_candidates: 3, sparse_candidates: 0 },
+                  counts: { vector_candidates: 32, bm25_candidates: 28, graph_candidates: 3 },
                   timing: { vector_elapsed_sec: 0.15 },
                   retrieval_degraded: false,
                   retrieval_degraded_reasons: [],

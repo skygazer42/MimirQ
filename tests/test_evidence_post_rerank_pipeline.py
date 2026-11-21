@@ -1,4 +1,3 @@
-import json
 from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any
@@ -6,9 +5,10 @@ from typing import Any
 import pytest
 from langchain_core.documents import Document
 
-from app.core.config import settings
-from app.rag.reranker.base import BaseReranker
-from app.rag.reranker.types import RerankCandidate, RerankResult
+from app.infrastructure.config import settings
+from app.infrastructure.model_policy import PostRerankStageConfig
+from app.rag.retrieval.reranking.base import BaseReranker
+from app.rag.retrieval.reranking.types import RerankCandidate, RerankResult
 
 
 @dataclass
@@ -41,6 +41,10 @@ class _FakeRetriever:
 
 def test_orchestrator_evidence_post_rerank_pipeline_applies_stages(monkeypatch: pytest.MonkeyPatch) -> None:
     import app.rag.retrieval.orchestrator as orch_mod
+    from app.rag.retrieval.stages import followup as followup_stage
+    from app.rag.retrieval.stages import post_rerank as post_rerank_stage
+    from app.rag.retrieval.stages import preparation as preparation_stage
+    from app.rag.retrieval.stages import requirements as requirements_stage
 
     # Deterministic: no extra LLM features.
     monkeypatch.setattr(settings, "ENABLE_QUERY_REWRITE", False, raising=False)
@@ -62,19 +66,28 @@ def test_orchestrator_evidence_post_rerank_pipeline_applies_stages(monkeypatch: 
     monkeypatch.setattr(settings, "EVIDENCE_POST_RERANK_PROVIDER", "none", raising=False)
     monkeypatch.setattr(settings, "EVIDENCE_POST_RERANK_TOP_N", 10, raising=False)
     monkeypatch.setattr(settings, "EVIDENCE_POST_RERANK_PIPELINE_ENABLED", True, raising=False)
+    monkeypatch.setattr(settings, "EVIDENCE_POST_RERANK_CACHE_ENABLED", False)
+    monkeypatch.setattr(
+        post_rerank_stage,
+        "_resolve_post_rerank_corpus_cache_token",
+        lambda state: pytest.fail("disabled rerank cache must not resolve a corpus token"),
+    )
 
     pipeline = [
-        {"provider": "stage1", "top_n": 3},
-        {"provider": "stage2", "top_n": 2},
+        PostRerankStageConfig(provider="stage1", top_n=3),
+        PostRerankStageConfig(provider="stage2", top_n=2),
     ]
-    monkeypatch.setattr(settings, "EVIDENCE_POST_RERANK_PIPELINE", json.dumps(pipeline), raising=False)
+    monkeypatch.setattr(settings, "EVIDENCE_POST_RERANK_PIPELINE", pipeline, raising=False)
 
     # Retriever returns a->b->c initially.
     doc_id = "00000000-0000-0000-0000-000000000001"
     d1 = Document(page_content="a", id="a", metadata={"document_id": doc_id, "chunk_id": "a", "score": 0.1})
     d2 = Document(page_content="b", id="b", metadata={"document_id": doc_id, "chunk_id": "b", "score": 0.1})
     d3 = Document(page_content="c", id="c", metadata={"document_id": doc_id, "chunk_id": "c", "score": 0.1})
-    monkeypatch.setattr(orch_mod, "hybrid_retriever", _FakeRetriever(docs=[d1, d2, d3]), raising=True)
+    retriever_port = _FakeRetriever(docs=[d1, d2, d3])
+    monkeypatch.setattr(preparation_stage, "hybrid_retriever", retriever_port, raising=True)
+    monkeypatch.setattr(followup_stage, "hybrid_retriever", retriever_port, raising=True)
+    monkeypatch.setattr(requirements_stage, "hybrid_retriever", retriever_port, raising=True)
 
     # Stage1 reorders (b, a, c). Stage2 runs only on top-2 and swaps back to (a, b).
     def _fake_get_reranker(provider: str, **_kwargs: Any) -> BaseReranker:  # noqa: ANN001
@@ -84,7 +97,7 @@ def test_orchestrator_evidence_post_rerank_pipeline_applies_stages(monkeypatch: 
             return _StubReranker(provider_id="stage2", ordered=["a", "b"], expected_candidates=["b", "a"])
         raise AssertionError(f"unexpected provider: {provider}")
 
-    monkeypatch.setattr(orch_mod, "get_reranker", _fake_get_reranker, raising=True)
+    monkeypatch.setattr(post_rerank_stage, "get_reranker_for_retrieval", _fake_get_reranker, raising=True)
 
     out = orch_mod.run_retrieval(
         {

@@ -4,15 +4,17 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { usePipelineCapabilities } from '@/contexts/pipeline-capabilities-context'
 import { formatApiError } from '@/lib/api-errors'
-import { AUTH_SCOPE_CHANGED_EVENT, getAuthSessionRevision } from '@/lib/auth-storage'
+import { AUTH_SCOPE_CHANGED_EVENT, getAuthSessionKey } from '@/lib/auth-storage'
 import { metaApi, type BackendMetaDetails } from '@/lib/api/meta'
 import { settingsApi } from '@/lib/api/settings'
 import {
   type CacheConfig,
   type ChatConfig,
   type DifyExternalKnowledgeConfig,
+  type DoclingConfig,
   type Etl4LlmConfig,
   type FeatureFlags,
+  type GovernanceConfig,
   type LangGraphConfig,
   type MagicPDFConfig,
   type MarkerConfig,
@@ -20,27 +22,22 @@ import {
   type NavigationConfig,
   type ObservabilityConfig,
   type PaddleVLConfig,
+  type RAGConfig,
   type SafetyConfig,
   type SystemSettings,
   type SystemStatus,
   type TextInConfig,
 } from '@/types/settings'
-import { MODEL_PROVIDERS, type ModelProvider, type ProviderCategory, type ProviderConfig } from '@/types/models'
+import {
+  MODEL_PROVIDERS,
+  type ModelConfigSubmission,
+  type ModelProvider,
+  type ProviderCategory,
+  type ProviderConfig,
+} from '@/types/models'
 
 type EditableSettings = Partial<Omit<SystemSettings, 'url_ingest' | 'minio'>>
 const AUTOSAVE_DELAY_MS = 500
-
-type RagSettings = NonNullable<SystemSettings['rag']>
-type GovernanceSettings = NonNullable<SystemSettings['governance']>
-type DifyExternalKnowledgeSettings = NonNullable<SystemSettings['dify_external_knowledge']>
-type DoclingConfig = NonNullable<SystemSettings['docling']>
-
-function mergeConfig<T extends object>(current: T, patch: Partial<T>): T {
-  return {
-    ...current,
-    ...patch,
-  }
-}
 
 function mergeWithDefaults<T extends object>(
   defaults: T,
@@ -62,8 +59,8 @@ function retireSubmittedSettings(current: Partial<SystemSettings>, submitted: Pa
   return next
 }
 
-function isCurrentPageSession(owner: { active: boolean }, revision: number): boolean {
-  return owner.active && revision === getAuthSessionRevision()
+function isCurrentPageSession(owner: { active: boolean }, sessionKey: string): boolean {
+  return owner.active && sessionKey === getAuthSessionKey()
 }
 
 const DEFAULT_OBSERVABILITY: ObservabilityConfig = {
@@ -102,7 +99,7 @@ const DEFAULT_DIFY_EXTERNAL_KNOWLEDGE: DifyExternalKnowledgeConfig = {
   tenant_id: '',
   account_id: 'system:dify',
   knowledge_map_json: '',
-  top_k_max: 50,
+  top_k_max: 5,
   endpoint_path: '/api/v1/integrations/dify/retrieval',
 }
 
@@ -128,7 +125,7 @@ const DEFAULT_FEATURE_FLAGS: FeatureFlags = {
   magicpdf_enabled: false,
 }
 
-const DEFAULT_RAG: RagSettings = {
+const DEFAULT_RAG: RAGConfig = {
   chunk_size: 1000,
   chunk_overlap: 200,
   chunk_min_chars: 30,
@@ -144,7 +141,7 @@ const DEFAULT_RAG: RagSettings = {
   image_append_max: 3,
 }
 
-const DEFAULT_GOVERNANCE: GovernanceSettings = {
+const DEFAULT_GOVERNANCE: GovernanceConfig = {
   enabled: false,
   pii_anonymize: false,
   secrets_redact: false,
@@ -161,7 +158,7 @@ const DEFAULT_MAGICPDF: MagicPDFConfig = {
   debug: false,
   timeout_sec: 600,
   models_dir: '',
-  device_mode: 'cpu',
+  device_mode: '',
   keep_artifacts: false,
 }
 
@@ -219,38 +216,18 @@ const DEFAULT_TEXTIN: TextInConfig = {
   page_count: 0,
 }
 
-function trimmedPrimitiveString(value: unknown): string {
-  if (typeof value === 'string') return value.trim()
-  if (typeof value === 'number' || typeof value === 'boolean' || typeof value === 'bigint') {
-    return String(value).trim()
-  }
-  return ''
-}
-
-function normalizeApiBase(value: unknown): string {
-  return trimmedPrimitiveString(value).toLowerCase()
-}
-
-function providerHasModel(provider: ModelProvider, modelName: string): boolean {
-  const target = String(modelName || '')
-    .trim()
-    .toLowerCase()
-  if (!target) return false
-  return provider.models.some(
-    (model) =>
-      String(model.name || '')
-        .trim()
-        .toLowerCase() === target,
-  )
-}
-
 function findProviderIdByModel(
   providers: ModelProvider[],
   category: ProviderCategory,
   modelName: string,
 ): string | null {
+  const target = modelName.trim().toLowerCase()
+  if (target === '') return null
   return (
-    providers.find((provider) => provider.category === category && providerHasModel(provider, modelName))?.id ?? null
+    providers.find(
+      (provider) =>
+        provider.category === category && provider.models.some((model) => model.name.trim().toLowerCase() === target),
+    )?.id ?? null
   )
 }
 
@@ -259,24 +236,24 @@ function resolveLlmProviderId(
   llm: SystemSettings['llm'] | null | undefined,
 ): string | null {
   if (!llm) return null
-  const base = normalizeApiBase(llm.api_base)
-  const model = trimmedPrimitiveString(llm.model)
+  if (llm.api_base !== undefined) {
+    const base = llm.api_base.trim().toLowerCase()
+    if (base.includes('dashscope.aliyuncs.com')) return 'qwen'
+    if (base.includes('api.openai.com')) return 'openai'
+    if (base.includes('anthropic.com')) return 'anthropic'
+    if (base.includes('api.deepseek.com')) return 'deepseek'
+    if (base.includes('bigmodel.cn')) return 'zhipu'
+    if (base.includes('moonshot.cn')) return 'moonshot'
+    if (base.includes('volces.com')) return 'ark'
+    if (base.includes('lingyiwanwu.com')) return 'lingyiwanwu'
+    if (base.includes('baidubce.com')) return 'qianfan'
+    if (base.includes('siliconflow.cn')) return 'siliconflow'
+    if (base.includes('openrouter.ai')) return 'openrouter'
+    if (base.includes('together.xyz')) return 'together'
+    if (base.includes('localhost:11434')) return 'ollama'
+  }
 
-  if (base.includes('dashscope.aliyuncs.com')) return 'qwen'
-  if (base.includes('api.openai.com')) return 'openai'
-  if (base.includes('anthropic.com')) return 'anthropic'
-  if (base.includes('api.deepseek.com')) return 'deepseek'
-  if (base.includes('bigmodel.cn')) return 'zhipu'
-  if (base.includes('moonshot.cn')) return 'moonshot'
-  if (base.includes('volces.com')) return 'ark'
-  if (base.includes('lingyiwanwu.com')) return 'lingyiwanwu'
-  if (base.includes('baidubce.com')) return 'qianfan'
-  if (base.includes('siliconflow.cn')) return 'siliconflow'
-  if (base.includes('openrouter.ai')) return 'openrouter'
-  if (base.includes('together.xyz')) return 'together'
-  if (base.includes('localhost:11434')) return 'ollama'
-
-  return findProviderIdByModel(providers, 'model', model)
+  return findProviderIdByModel(providers, 'model', llm.model)
 }
 
 function resolveEmbeddingProviderId(
@@ -284,9 +261,8 @@ function resolveEmbeddingProviderId(
   embedding: SystemSettings['embedding'] | null | undefined,
 ): string | null {
   if (!embedding) return null
-  const base = normalizeApiBase(embedding.api_base)
-  const provider = trimmedPrimitiveString(embedding.provider).toLowerCase()
-  const model = trimmedPrimitiveString(embedding.model)
+  const base = embedding.api_base.trim().toLowerCase()
+  const provider = embedding.provider.trim().toLowerCase()
 
   if (provider === 'local') return null
   if (provider === 'ollama') return 'ollama-embedding'
@@ -296,42 +272,54 @@ function resolveEmbeddingProviderId(
   if (base.includes('api.openai.com')) return 'openai-embedding'
 
   return (
-    findProviderIdByModel(providers, 'embedding', model) ??
+    findProviderIdByModel(providers, 'embedding', embedding.model) ??
     (provider === 'openai' || provider === 'openai_compatible' ? 'openai-embedding' : null)
   )
 }
 
 function hydrateProvidersFromSettings(providers: ModelProvider[], settings: SystemSettings | null): ModelProvider[] {
-  const next: ModelProvider[] = providers.map((provider) => ({
+  const next = providers.map<ModelProvider>((provider) => ({
     ...provider,
     isConfigured: false,
-    config: undefined as ProviderConfig | undefined,
+    config: undefined,
   }))
 
   if (!settings) return next
 
-  const llmProviderId = resolveLlmProviderId(next, settings.llm)
-  if (llmProviderId) {
-    const llmConfig: ProviderConfig = {
-      apiKey: settings.llm.api_key || '',
-      apiBase: settings.llm.api_base || '',
-      model: settings.llm.model || '',
-      temperature: settings.llm.temperature,
-      timeout: settings.llm.timeout,
-    }
-    const provider = next.find((item) => item.id === llmProviderId)
+  const llmConfig: ProviderConfig = {
+    apiKey: settings.llm.api_key,
+    apiBase: settings.llm.api_base,
+    model: settings.llm.model,
+    temperature: settings.llm.temperature,
+    timeout: settings.llm.timeout,
+  }
+  if (settings.llm.model !== '' || settings.llm.api_base !== '' || settings.llm.api_key !== '') {
+    const providerId = resolveLlmProviderId(next, settings.llm)
+    const provider = next.find((item) => item.id === providerId)
     if (provider) {
-      provider.isConfigured = Boolean(llmConfig.model || llmConfig.apiBase || llmConfig.apiKey)
+      provider.isConfigured = true
       provider.config = llmConfig
+    } else {
+      next.unshift({
+        id: 'custom-chat',
+        name: '自定义聊天模型',
+        description: '当前保存的聊天模型配置',
+        icon: 'model',
+        color: 'slate',
+        category: 'model',
+        isConfigured: true,
+        models: [],
+        config: llmConfig,
+      })
     }
   }
 
   const embeddingProviderId = resolveEmbeddingProviderId(next, settings.embedding)
   if (embeddingProviderId) {
     const embeddingConfig: ProviderConfig = {
-      apiKey: settings.embedding.api_key || '',
-      apiBase: settings.embedding.api_base || '',
-      model: settings.embedding.model || '',
+      apiKey: settings.embedding.api_key,
+      apiBase: settings.embedding.api_base,
+      model: settings.embedding.model,
     }
     const provider = next.find((item) => item.id === embeddingProviderId)
     if (provider) {
@@ -344,9 +332,7 @@ function hydrateProvidersFromSettings(providers: ModelProvider[], settings: Syst
 }
 
 function resolveEmbeddingProvider(providerId: string): string {
-  const pid = String(providerId || '')
-    .trim()
-    .toLowerCase()
+  const pid = providerId.trim().toLowerCase()
   if (pid === 'qwen-embedding') return 'dashscope'
   if (pid === 'ollama-embedding') return 'ollama'
   if (pid === 'local-embedding') throw new Error('本地模型推理已停用，请选择向量模型服务')
@@ -356,12 +342,13 @@ function resolveEmbeddingProvider(providerId: string): string {
 export function useSettingsPageState() {
   const { refresh: refreshCapabilities } = usePipelineCapabilities()
 
-  const [providers, setProviders] = useState<ModelProvider[]>(MODEL_PROVIDERS)
   const [selectedProvider, setSelectedProvider] = useState<ModelProvider | null>(null)
   const [dialogOpen, setDialogOpen] = useState(false)
 
   const [settings, setSettings] = useState<SystemSettings | null>(null)
   const [status, setStatus] = useState<SystemStatus | null>(null)
+  const [statusError, setStatusError] = useState<string | null>(null)
+  const [statusLoading, setStatusLoading] = useState(false)
   const [backendMeta, setBackendMeta] = useState<BackendMetaDetails | null>(null)
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -373,8 +360,10 @@ export function useSettingsPageState() {
   const requestRunning = useRef<symbol | null>(null)
   const saveFailed = useRef(false)
   const pageOwnerRef = useRef({ active: false })
-  const settingsLoadRef = useRef<symbol | null>(null)
+  const settingsLoadRef = useRef<AbortController | null>(null)
+  const statusReadRef = useRef<AbortController | null>(null)
 
+  const providers = useMemo(() => hydrateProvidersFromSettings(MODEL_PROVIDERS, settings), [settings])
   const ragMerged = useMemo(
     () => mergeWithDefaults(DEFAULT_RAG, settings?.rag, editedSettings.rag),
     [settings?.rag, editedSettings.rag],
@@ -450,47 +439,92 @@ export function useSettingsPageState() {
   const isSecretsRedactEnabled = governanceMerged.secrets_redact
   const isQuarantineOnDropEnabled = governanceMerged.quarantine_on_drop
 
-  const loadSettings = useCallback(async () => {
-    const owner = pageOwnerRef.current
-    if (!owner.active) return
-    const revision = getAuthSessionRevision()
-    const load = Symbol()
-    settingsLoadRef.current = load
-    const isCurrent = () => settingsLoadRef.current === load && isCurrentPageSession(owner, revision)
-    setLoading(true)
-    setLoadError(null)
+  const refreshSystemStatus = useCallback(async (owner: { active: boolean }, sessionKey: string) => {
+    if (!isCurrentPageSession(owner, sessionKey)) return
+    statusReadRef.current?.abort()
+    const read = new AbortController()
+    statusReadRef.current = read
+    const isCurrent = () => statusReadRef.current === read && isCurrentPageSession(owner, sessionKey)
+    setStatusLoading(true)
+    setStatusError(null)
     try {
-      const [settingsData, statusData, metaData] = await Promise.all([
-        settingsApi.get(),
-        settingsApi.getStatus().catch(() => null),
-        metaApi.details().catch(() => null),
-      ])
-      if (!isCurrent()) return
-      setSettings(settingsData)
-      setStatus(statusData)
-      setBackendMeta(metaData)
+      const nextStatus = await settingsApi.getStatus({ signal: read.signal })
+      if (isCurrent()) setStatus(nextStatus)
     } catch (error) {
-      if (isCurrent()) setLoadError(formatApiError(error, '加载失败'))
+      if (isCurrent()) setStatusError(formatApiError(error, '读取服务状态失败'))
     } finally {
-      if (owner.active && settingsLoadRef.current === load) {
-        settingsLoadRef.current = null
-        setLoading(false)
+      if (isCurrent()) {
+        statusReadRef.current = null
+        setStatusLoading(false)
       }
     }
   }, [])
 
-  useEffect(() => {
-    setProviders(hydrateProvidersFromSettings(MODEL_PROVIDERS, settings))
-  }, [settings])
+  const startSettingsRead = useCallback(() => {
+    settingsLoadRef.current?.abort()
+    const load = new AbortController()
+    settingsLoadRef.current = load
+    return load
+  }, [])
+
+  const loadSettings = useCallback(async () => {
+    const owner = pageOwnerRef.current
+    if (!owner.active) return
+    const sessionKey = getAuthSessionKey()
+    const load = startSettingsRead()
+    const isCurrent = () => settingsLoadRef.current === load && isCurrentPageSession(owner, sessionKey)
+    setLoading(true)
+    setLoadError(null)
+    void refreshSystemStatus(owner, sessionKey)
+    void metaApi.details({ signal: load.signal }).then(
+      (metadata) => {
+        if (isCurrent()) setBackendMeta(metadata)
+      },
+      () => {
+        if (isCurrent()) setBackendMeta(null)
+      },
+    )
+    try {
+      const settingsData = await settingsApi.get({ signal: load.signal })
+      if (!isCurrent()) return
+      setSettings(settingsData)
+    } catch (error) {
+      if (isCurrent()) setLoadError(formatApiError(error, '加载失败'))
+    } finally {
+      if (isCurrent()) setLoading(false)
+    }
+  }, [refreshSystemStatus, startSettingsRead])
+
+  const reloadAfterSave = useCallback(
+    async (canPublish: () => boolean) => {
+      if (!canPublish()) return
+      const load = startSettingsRead()
+      const isCurrent = () => settingsLoadRef.current === load && canPublish()
+      try {
+        const confirmed = await settingsApi.get({ signal: load.signal })
+        if (isCurrent()) {
+          setSettings(confirmed)
+          setLoadError(null)
+        }
+      } catch (error) {
+        if (isCurrent()) {
+          setLoadError(`配置已保存，读取最新配置失败。${formatApiError(error, '请求未返回最新配置')}`)
+        }
+      } finally {
+        if (isCurrent()) setLoading(false)
+      }
+    },
+    [startSettingsRead],
+  )
 
   const flushSettings = useCallback(async () => {
     if (requestRunning.current || Object.keys(pendingSettings.current).length === 0) return
     const owner = pageOwnerRef.current
-    const revision = getAuthSessionRevision()
+    const sessionKey = getAuthSessionKey()
     const write = Symbol()
     requestRunning.current = write
     const canPersist = () =>
-      requestRunning.current === write && pageOwnerRef.current === owner && getAuthSessionRevision() === revision
+      requestRunning.current === write && pageOwnerRef.current === owner && getAuthSessionKey() === sessionKey
     const canPublish = () => canPersist() && owner.active
     saveFailed.current = false
     if (canPublish()) {
@@ -502,28 +536,20 @@ export function useSettingsPageState() {
         const submitted = pendingSettings.current
         const result = await settingsApi.update(submitted)
         if (!canPersist()) return
-        if (!result.success) throw new Error(result.message || '保存失败')
-        const confirmed = owner.active ? await settingsApi.get() : null
+        if (!result.success) throw new Error(result.message)
+        await reloadAfterSave(canPublish)
         if (!canPersist()) return
 
         // A newer edit creates a new group object. Acknowledge only the groups
         // that still match this request, leaving later edits in the queue.
         const remaining = retireSubmittedSettings(pendingSettings.current, submitted)
         pendingSettings.current = remaining
-        if (canPublish() && confirmed) {
-          setSettings(confirmed)
-          setEditedSettings(remaining)
-        }
+        if (canPublish()) setEditedSettings(remaining)
         if (saveTimer.current) break
       }
       if (canPublish()) {
-        void settingsApi
-          .getStatus()
-          .then((value) => {
-            if (isCurrentPageSession(owner, revision)) setStatus(value)
-          })
-          .catch(() => null)
-        void refreshCapabilities().catch(() => null)
+        void refreshSystemStatus(owner, sessionKey)
+        void refreshCapabilities()
       }
     } catch (error) {
       if (!canPersist()) return
@@ -537,16 +563,22 @@ export function useSettingsPageState() {
         if (owner.active) setSaving(false)
       }
     }
-  }, [refreshCapabilities])
+  }, [refreshCapabilities, refreshSystemStatus, reloadAfterSave])
 
   useEffect(() => {
+    const cancelReads = () => {
+      settingsLoadRef.current?.abort()
+      settingsLoadRef.current = null
+      statusReadRef.current?.abort()
+      statusReadRef.current = null
+    }
     pageOwnerRef.current = { active: true }
     void loadSettings()
     const onScopeChanged = () => {
       pageOwnerRef.current.active = false
       if (saveTimer.current) clearTimeout(saveTimer.current)
       saveTimer.current = null
-      settingsLoadRef.current = null
+      cancelReads()
       requestRunning.current = null
       pendingSettings.current = {}
       saveFailed.current = false
@@ -567,6 +599,7 @@ export function useSettingsPageState() {
       saveTimer.current = null
       if (!saveFailed.current) void flushSettings()
       pageOwnerRef.current.active = false
+      cancelReads()
       window.removeEventListener(AUTH_SCOPE_CHANGED_EVENT, onScopeChanged)
     }
   }, [flushSettings, loadSettings])
@@ -597,7 +630,7 @@ export function useSettingsPageState() {
     queueSettingsEdit(
       (prev) => ({
         ...prev,
-        [key]: mergeConfig(mergeWithDefaults(defaults, settings?.[key], prev[key]), patch),
+        [key]: { ...mergeWithDefaults(defaults, settings?.[key], prev[key]), ...patch },
       }),
       Object.values(patch).some((value) => typeof value === 'boolean' || Array.isArray(value)),
     )
@@ -622,12 +655,8 @@ export function useSettingsPageState() {
     }, true)
   }
 
-  const getFeatureValue = (key: keyof FeatureFlags): boolean => {
-    if (editedSettings.feature_flags && key in editedSettings.feature_flags) {
-      return editedSettings.feature_flags[key]
-    }
-    return settings?.feature_flags?.[key] ?? false
-  }
+  const getFeatureValue = (key: keyof FeatureFlags): boolean =>
+    editedSettings.feature_flags?.[key] ?? settings?.feature_flags?.[key] ?? DEFAULT_FEATURE_FLAGS[key]
 
   const updateObservability = (patch: Partial<ObservabilityConfig>) => {
     updateSection('observability', DEFAULT_OBSERVABILITY, patch)
@@ -645,7 +674,7 @@ export function useSettingsPageState() {
     updateSection('navigation', DEFAULT_NAVIGATION, patch)
   }
 
-  const updateDifyExternalKnowledge = (patch: Partial<DifyExternalKnowledgeSettings>) => {
+  const updateDifyExternalKnowledge = (patch: Partial<DifyExternalKnowledgeConfig>) => {
     updateSection('dify_external_knowledge', DEFAULT_DIFY_EXTERNAL_KNOWLEDGE, patch)
   }
 
@@ -685,11 +714,11 @@ export function useSettingsPageState() {
     updateSection('textin', DEFAULT_TEXTIN, patch)
   }
 
-  const updateRag = (patch: Partial<RagSettings>) => {
+  const updateRag = (patch: Partial<RAGConfig>) => {
     updateSection('rag', DEFAULT_RAG, patch)
   }
 
-  const updateGovernance = (patch: Partial<GovernanceSettings>) => {
+  const updateGovernance = (patch: Partial<GovernanceConfig>) => {
     updateSection('governance', DEFAULT_GOVERNANCE, patch)
   }
 
@@ -720,73 +749,62 @@ export function useSettingsPageState() {
     setDialogOpen(true)
   }
 
-  const handleSaveConfig = async (providerId: string, config: ProviderConfig) => {
+  const handleSaveConfig = async (providerId: string, config: ModelConfigSubmission) => {
     const provider = providers.find((item) => item.id === providerId)
-    if (!provider || requestRunning.current || !pageOwnerRef.current.active) return
+    if (!provider || settings === null || !pageOwnerRef.current.active) {
+      throw new Error('当前模型配置已变化，请重新打开对话框')
+    }
+    if (requestRunning.current) return
 
     if (provider.category === 'model' || provider.category === 'embedding') {
+      const connection = {
+        api_key: config.apiKey,
+        api_base: config.apiBase,
+        model: config.model,
+      }
       const payload: EditableSettings =
         provider.category === 'model'
           ? {
               llm: {
-                api_key: config.apiKey || '',
-                api_base: config.apiBase || '',
-                model: config.model || '',
-                temperature: config.temperature ?? 0.7,
-                timeout: config.timeout ?? 60,
-                max_retries: 3,
+                ...connection,
+                temperature: config.temperature ?? settings.llm.temperature,
+                timeout: config.timeout ?? settings.llm.timeout,
+                max_retries: settings.llm.max_retries,
               },
             }
           : {
               embedding: {
+                ...connection,
                 provider: resolveEmbeddingProvider(provider.id),
-                model: config.model || '',
-                api_key: config.apiKey || '',
-                api_base: config.apiBase || '',
               },
             }
 
       const owner = pageOwnerRef.current
-      const revision = getAuthSessionRevision()
+      const sessionKey = getAuthSessionKey()
       const operation = Symbol()
       requestRunning.current = operation
-      const isCurrent = () => requestRunning.current === operation && isCurrentPageSession(owner, revision)
+      const isCurrent = () => requestRunning.current === operation && isCurrentPageSession(owner, sessionKey)
       setSaving(true)
-      setSaveError(null)
-      let failed = false
       try {
         const result = await settingsApi.update(payload)
         if (!isCurrent()) return
-        if (!result.success) throw new Error(result.message || '保存失败')
-        const confirmed = await settingsApi.get()
+        if (!result.success) throw new Error(result.message)
+        await reloadAfterSave(isCurrent)
         if (!isCurrent()) return
-        setSettings(confirmed)
-        void settingsApi
-          .getStatus()
-          .then((value) => {
-            if (isCurrentPageSession(owner, revision)) setStatus(value)
-          })
-          .catch(() => null)
-        void refreshCapabilities().catch(() => null)
+        setDialogOpen(false)
+        void refreshSystemStatus(owner, sessionKey)
+        void refreshCapabilities()
       } catch (error) {
-        if (!isCurrent()) return
-        failed = true
-        saveFailed.current = true
-        if (saveTimer.current) clearTimeout(saveTimer.current)
-        saveTimer.current = null
-        pendingSettings.current = { ...payload, ...pendingSettings.current }
-        setEditedSettings(pendingSettings.current)
-        setSaveError(formatApiError(error, '保存失败'))
+        if (isCurrent()) throw error
       } finally {
         if (requestRunning.current === operation) {
           requestRunning.current = null
           if (owner.active) setSaving(false)
           if (
-            !failed &&
             !saveFailed.current &&
             !saveTimer.current &&
             pageOwnerRef.current === owner &&
-            getAuthSessionRevision() === revision
+            getAuthSessionKey() === sessionKey
           )
             void flushSettings()
         }
@@ -818,7 +836,7 @@ export function useSettingsPageState() {
     governanceMerged,
     groupedProviders,
     retiredEmbeddingModel:
-      settings?.embedding.provider.trim().toLowerCase() === 'local' ? settings.embedding.model || '未指定模型' : null,
+      settings?.embedding.provider.trim().toLowerCase() === 'local' ? settings.embedding.model : null,
     handleConfigure,
     handleSaveConfig,
     hasChanges,
@@ -828,6 +846,7 @@ export function useSettingsPageState() {
     isSecretsRedactEnabled,
     langGraphMerged,
     loadError,
+    loadSettings,
     loading,
     magicPdfMerged,
     markerMerged,
@@ -843,6 +862,9 @@ export function useSettingsPageState() {
     selectedProvider,
     setDialogOpen,
     status,
+    statusError,
+    statusLoading,
+    reloadStatus: () => refreshSystemStatus(pageOwnerRef.current, getAuthSessionKey()),
     toggleFeature,
     updateCache,
     updateChat,

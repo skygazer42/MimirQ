@@ -100,7 +100,7 @@ def test_raw_text_search_pushes_tenant_dataset_and_document_scope_to_milvus():
 
 
 def test_metadata_trimming_refills_the_bounded_native_candidate_window(monkeypatch):
-    from app.core.config import settings
+    from app.infrastructure.config import settings
 
     tenant, dataset, document = uuid4(), uuid4(), uuid4()
     hits = [_hit(tenant, dataset, document, tag="denied") for _ in range(35)]

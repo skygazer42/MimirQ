@@ -1,19 +1,14 @@
-import { AppBackground } from '@/components/ui/app-background'
+import type { ReactNode } from 'react'
+
 import { cn } from '@/lib/utils'
 
 type FullScreenFrameProps = {
-  children: React.ReactNode
+  children: ReactNode
   className?: string
   mainClassName?: string
-  showBackground?: boolean
 }
 
-export function FullScreenFrame({
-  children,
-  className,
-  mainClassName,
-  showBackground = true,
-}: Readonly<FullScreenFrameProps>) {
+export function FullScreenFrame({ children, className, mainClassName }: Readonly<FullScreenFrameProps>) {
   return (
     <div
       className={cn(
@@ -21,7 +16,6 @@ export function FullScreenFrame({
         className,
       )}
     >
-      {showBackground && <AppBackground />}
       <main
         id="main-content"
         tabIndex={-1}

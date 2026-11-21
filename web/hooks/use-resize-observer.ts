@@ -15,7 +15,8 @@ export function useResizeObserver<T extends HTMLElement>(ref: RefObject<T | null
     if (!observeTarget) return
 
     let rafId: number | null = null
-    let pending: { width: number; height: number } | null = null
+    const rect = observeTarget.getBoundingClientRect()
+    let pending: { width: number; height: number } = rect
 
     const commit = (width: number, height: number) => {
       if (width <= 0 || height <= 0) return
@@ -27,14 +28,11 @@ export function useResizeObserver<T extends HTMLElement>(ref: RefObject<T | null
       if (rafId != null) return
       rafId = requestAnimationFrame(() => {
         rafId = null
-        if (!pending) return
         commit(pending.width, pending.height)
-        pending = null
       })
     }
 
     // Initial measure (if still 0, ResizeObserver will update later).
-    const rect = observeTarget.getBoundingClientRect()
     commit(rect.width, rect.height)
 
     const resizeObserver = new ResizeObserver((entries) => {
@@ -52,7 +50,6 @@ export function useResizeObserver<T extends HTMLElement>(ref: RefObject<T | null
         resizeObserver.disconnect()
         if (rafId != null) cancelAnimationFrame(rafId)
         rafId = null
-        pending = null
       },
     }
   })

@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Copy, Loader2, RefreshCw, Save } from '@/components/icons'
 import { toast } from 'sonner'
 import { useTranslations } from 'next-intl'
@@ -15,55 +15,18 @@ import { chunkPresetApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
 import { getAuthCacheScope, getAuthSessionRevision } from '@/lib/auth-storage'
 import { useChunkPreview } from '@/components/chunk-preview/context'
-import { usePipelineOptions } from '@/contexts/pipeline-options-context'
-import type { ChunkPreset, DocumentPipelineOptions, JsonObject } from '@/types'
-import { decodeSeparatorInput, getPresetSeparator } from '../utils/separators'
-
-function clampInt(value: number, min: number, max: number) {
-  return Math.min(max, Math.max(min, Math.trunc(value)))
-}
-
-type ChunkPresetPayload = JsonObject & {
-  dataset_id?: string
-  parser_backend?: string
-  chunk_strategy?: string
-  chunk_size?: number
-  chunk_overlap?: number
-  separator_preset?: string
-  separator?: string
-  keep_separator?: boolean
-  separator_max_chunk_size?: number
-  pipeline?: DocumentPipelineOptions
-}
-
-function isRecord(value: unknown): value is JsonObject {
-  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
-}
+import { useChunkPreviewConfig } from '@/components/chunk-preview/use-chunk-preview-config'
+import type { ChunkPreset } from '@/types/processing'
 
 export function ChunkPresetPanel({ className }: Readonly<{ className?: string }>) {
-  const pipelineCtx = usePipelineOptions()
   const t = useTranslations('ChunkPreview')
   const commonT = useTranslations('Common')
+  const { datasetId } = useChunkPreview()
+  const { buildConfig, applyConfig } = useChunkPreviewConfig('preset')
 
-  const {
-    datasetId,
-    setDatasetId,
-    parserBackend,
-    setParserBackend,
-    chunkStrategy,
-    chunkSize,
-    chunkOverlap,
-    separatorPreset,
-    separatorCustom,
-    keepSeparator,
-    separatorMaxChunkSize,
-    updateSettings,
-    updateSeparatorSettings,
-  } = useChunkPreview()
-
-  const [items, setItems] = useState<ChunkPreset[]>([])
+  const [presetList, setPresetList] = useState<{ datasetId: string; items: ChunkPreset[] } | null>(null)
   const [loading, setLoading] = useState(false)
-  const [selectedId, setSelectedId] = useState<string>('')
+  const [selectedId, setSelectedId] = useState<string | null>(null)
 
   const [saveAsOpen, setSaveAsOpen] = useState(false)
   const [saveAsName, setSaveAsName] = useState('')
@@ -75,7 +38,7 @@ export function ChunkPresetPanel({ className }: Readonly<{ className?: string }>
   const saveRef = useRef<{ sessionRevision: number } | null>(null)
   const draftRevisionRef = useRef(0)
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     mountedRef.current = true
     setSaving(false)
     return () => {
@@ -86,82 +49,8 @@ export function ChunkPresetPanel({ className }: Readonly<{ className?: string }>
     }
   }, [datasetId])
 
-  const selectedPreset = useMemo(() => items.find((p) => p.id === selectedId) || null, [items, selectedId])
-
-  const effectiveSeparator = useMemo(() => {
-    if (separatorPreset && separatorPreset !== 'custom') {
-      return getPresetSeparator(separatorPreset)
-    }
-
-    const raw = String(separatorCustom || '').trim()
-    if (!raw) return '\n\n'
-    return decodeSeparatorInput(raw) || '\n\n'
-  }, [separatorCustom, separatorPreset])
-
-  const buildPayload = (): ChunkPresetPayload => {
-    const payload: ChunkPresetPayload = {
-      dataset_id: datasetId || undefined,
-      parser_backend: parserBackend,
-      chunk_strategy: chunkStrategy,
-      chunk_size: chunkSize,
-      chunk_overlap: chunkOverlap,
-      pipeline: pipelineCtx.enabled ? pipelineCtx.options : undefined,
-    }
-
-    if (chunkStrategy === 'separator') {
-      payload.separator_preset = separatorPreset || 'paragraph'
-      payload.keep_separator = Boolean(keepSeparator)
-      payload.separator_max_chunk_size = Number(separatorMaxChunkSize) || 0
-      if ((separatorPreset || '') === 'custom') {
-        payload.separator = effectiveSeparator || '\n\n'
-      }
-    }
-
-    return payload
-  }
-
-  const applyPayload = async (payload: unknown) => {
-    const parsed = isRecord(payload) ? payload : {}
-
-    if (typeof parsed.dataset_id === 'string') setDatasetId(String(parsed.dataset_id))
-    else if (parsed.dataset_id == null) setDatasetId('')
-
-    if (typeof parsed.parser_backend === 'string') setParserBackend(String(parsed.parser_backend))
-
-    const nextStrategy = typeof parsed.chunk_strategy === 'string' ? String(parsed.chunk_strategy) : undefined
-    const nextSize = Number(parsed.chunk_size)
-    const nextOverlap = Number(parsed.chunk_overlap)
-
-    updateSettings({
-      ...(nextStrategy ? { strategy: nextStrategy } : {}),
-      ...(Number.isFinite(nextSize) ? { chunkSize: clampInt(nextSize, 50, 4000) } : {}),
-      ...(Number.isFinite(nextOverlap) ? { chunkOverlap: clampInt(nextOverlap, 0, 1000) } : {}),
-    })
-
-    if (typeof parsed.separator_preset === 'string') {
-      updateSeparatorSettings({ separatorPreset: String(parsed.separator_preset) })
-    }
-    if (typeof parsed.separator === 'string') {
-      updateSeparatorSettings({ separatorCustom: String(parsed.separator) })
-    }
-    if (typeof parsed.keep_separator === 'boolean') {
-      updateSeparatorSettings({ keepSeparator: Boolean(parsed.keep_separator) })
-    }
-    if (Number.isFinite(Number(parsed.separator_max_chunk_size))) {
-      updateSeparatorSettings({
-        separatorMaxChunkSize: clampInt(Number(parsed.separator_max_chunk_size), 0, 20000),
-      })
-    }
-
-    const pipeline = parsed.pipeline
-    if (isRecord(pipeline)) {
-      pipelineCtx.setEnabled(true)
-      const importResult = pipelineCtx.importJson(JSON.stringify(pipeline))
-      if (!importResult.ok) {
-        toast.error(importResult.error || t('chunkPresetPanel.applyPipelineConfigFailed'))
-      }
-    }
-  }
+  const items = presetList?.datasetId === datasetId ? presetList.items : []
+  const selectedPreset = items.find((preset) => preset.id === selectedId)
 
   const refresh = useCallback(async () => {
     const request = ++listRequestRef.current
@@ -174,15 +63,14 @@ export function ChunkPresetPanel({ className }: Readonly<{ className?: string }>
       getAuthSessionRevision() === sessionRevision
     setLoading(true)
     try {
-      const ds = (datasetId || '').trim()
+      const scopeDatasetId = datasetId.trim()
       const res = await chunkPresetApi.list({
         limit: 200,
-        ...(ds ? { dataset_id: ds, include_global: true } : {}),
+        ...(scopeDatasetId.length > 0 ? { dataset_id: scopeDatasetId, include_global: true } : {}),
       })
       if (!isCurrent()) return
-      const next = res?.items || []
-      setItems(next)
-      setSelectedId((previous) => (previous && !next.some((preset) => preset.id === previous) ? '' : previous))
+      setPresetList({ datasetId, items: res.items })
+      setSelectedId((previous) => (res.items.some((preset) => preset.id === previous) ? previous : null))
     } catch (error: unknown) {
       if (isCurrent()) toast.error(formatApiError(error, t('chunkPresetPanel.loadFailed')))
     } finally {
@@ -193,6 +81,15 @@ export function ChunkPresetPanel({ className }: Readonly<{ className?: string }>
   useEffect(() => {
     detachPromise(refresh())
   }, [refresh])
+
+  function acceptSavedPreset(preset: ChunkPreset) {
+    listRequestRef.current += 1
+    setLoading(false)
+    setPresetList((current) => {
+      const remaining = current?.datasetId === datasetId ? current.items.filter((item) => item.id !== preset.id) : []
+      return { datasetId, items: [preset, ...remaining] }
+    })
+  }
 
   const onSave = async () => {
     const sessionRevision = getAuthSessionRevision()
@@ -215,15 +112,15 @@ export function ChunkPresetPanel({ className }: Readonly<{ className?: string }>
       getAuthSessionRevision() === sessionRevision
     setSaving(true)
     try {
-      const payload = buildPayload()
-      await chunkPresetApi.update(selectedPreset.id, {
+      const payload = buildConfig()
+      const updated = await chunkPresetApi.update(selectedPreset.id, {
         name: selectedPreset.name,
         description: selectedPreset.description ?? null,
         payload,
       })
       if (!isCurrent()) return
-      await refresh()
-      if (isCurrent()) toast.success(t('chunkPresetPanel.updated'))
+      acceptSavedPreset(updated)
+      toast.success(t('chunkPresetPanel.updated'))
     } catch (error: unknown) {
       if (isCurrent()) toast.error(formatApiError(error, t('chunkPresetPanel.saveFailed')))
     } finally {
@@ -237,8 +134,8 @@ export function ChunkPresetPanel({ className }: Readonly<{ className?: string }>
   const onSaveAs = async () => {
     const sessionRevision = getAuthSessionRevision()
     if (saveRef.current?.sessionRevision === sessionRevision) return
-    const name = (saveAsName || '').trim()
-    if (!name) {
+    const name = saveAsName.trim()
+    if (name.length === 0) {
       toast.error(t('chunkPresetPanel.nameRequired'))
       return
     }
@@ -255,15 +152,16 @@ export function ChunkPresetPanel({ className }: Readonly<{ className?: string }>
       getAuthSessionRevision() === sessionRevision
     setSaving(true)
     try {
-      const payload = buildPayload()
+      const payload = buildConfig()
+      const description = saveAsDescription.trim()
       const created = await chunkPresetApi.create({
         name,
-        description: (saveAsDescription || '').trim() || null,
+        description: description.length === 0 ? null : description,
         payload,
       })
       if (!isCurrent()) return
-      await refresh()
-      if (!isCurrent() || draftRevisionRef.current !== draftRevision) return
+      acceptSavedPreset(created)
+      if (draftRevisionRef.current !== draftRevision) return
       setSelectedId(created.id)
       setSaveAsOpen(false)
       toast.success(t('chunkPresetPanel.createdAndSelected'))
@@ -282,16 +180,23 @@ export function ChunkPresetPanel({ className }: Readonly<{ className?: string }>
     <section className={cn(styles.presetBar, className)} aria-label="切块预设">
       <span className={styles.presetLabel}>参数预设</span>
       <Select
-        value={selectedId || '__none__'}
+        value={selectedPreset?.id ?? '__none__'}
         onValueChange={(value) => {
           draftRevisionRef.current += 1
-          const nextId = value === '__none__' ? '' : value
-          setSelectedId(nextId)
-          const preset = items.find((item) => item.id === nextId)
-          if (preset?.payload) {
-            detachPromise(applyPayload(preset.payload))
-            toast.success(t('chunkPresetPanel.applied', { name: preset.name }))
+          if (value === '__none__') {
+            setSelectedId(null)
+            return
           }
+          const preset = items.find((item) => item.id === value)
+          if (preset === undefined) return
+
+          const result = applyConfig(preset.payload)
+          if (!result.ok) {
+            toast.error(result.error)
+            return
+          }
+          setSelectedId(preset.id)
+          toast.success(t('chunkPresetPanel.applied', { name: preset.name }))
         }}
       >
         <SelectTrigger aria-label="选择切块预设" className={styles.presetSelect}>
@@ -329,7 +234,7 @@ export function ChunkPresetPanel({ className }: Readonly<{ className?: string }>
           onClick={() => {
             draftRevisionRef.current += 1
             setSaveAsName(`${selectedPreset.name} ${t('chunkPresetPanel.copySuffix')}`)
-            setSaveAsDescription(selectedPreset.description || '')
+            setSaveAsDescription(selectedPreset.description ?? '')
             setSaveAsOpen(true)
           }}
         >

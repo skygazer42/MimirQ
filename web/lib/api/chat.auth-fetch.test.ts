@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { createChatStreamFixture } from '@/test/chat-stream-fixture'
 
 const auth = vi.hoisted(() => ({
   clear: vi.fn(),
@@ -46,13 +47,11 @@ describe('chatApi.streamChat auth retry', () => {
   })
 
   it('refreshes and retries once after a session JWT 401', async () => {
-    const encoder = new TextEncoder()
-    const body = new ReadableStream<Uint8Array>({
-      start(controller) {
-        controller.enqueue(encoder.encode('data: {"type":"done","data":{}}\n\n'))
-        controller.close()
-      },
-    })
+    const run = createChatStreamFixture({ requestId: 'req-stream-401' })
+    const expectedEvents: string[] = []
+    run.start((event) => expectedEvents.push(event))
+    run.finish((event) => expectedEvents.push(event))
+    const body = expectedEvents.map((event) => `data: ${event}\n\n`).join('')
 
     const fetchMock = vi
       .fn()
@@ -69,14 +68,19 @@ describe('chatApi.streamChat auth retry', () => {
     globalThis.fetch = fetchMock as typeof fetch
 
     const events: string[] = []
-    const result = await chatApi.streamChat({ message: 'hello', stream: true } as never, (json) => events.push(json))
+    const result = await chatApi.streamChat({ message: 'hello', stream: true }, (json) => events.push(json))
 
     expect(fetchMock).toHaveBeenCalledTimes(2)
     expect(new Headers(fetchMock.mock.calls[0]?.[1]?.headers).get('Authorization')).toBe('Bearer old-token')
     expect(new Headers(fetchMock.mock.calls[1]?.[1]?.headers).get('Authorization')).toBe('Bearer new-token')
     expect(oidc.refresh).toHaveBeenCalledTimes(1)
     expect(auth.clear).not.toHaveBeenCalled()
-    expect(events).toEqual(['{"type":"done","data":{}}'])
-    expect(result).toEqual({ requestId: 'req-stream-401', conversationId: undefined })
+    expect(fetchMock.mock.calls[0]?.[1]?.body).toBe(fetchMock.mock.calls[1]?.[1]?.body)
+    expect(events).toEqual(expectedEvents)
+    expect(result).toMatchObject({
+      requestId: 'req-stream-401',
+      conversationId: expect.any(String),
+      runId: expect.any(String),
+    })
   })
 })

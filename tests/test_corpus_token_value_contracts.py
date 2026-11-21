@@ -1,6 +1,6 @@
 from datetime import UTC, datetime
 
-from app.services.corpus_cache_tokens import (
+from app.services.retrieval.corpus_tokens import (
     build_dataset_scope_corpus_cache_token,
     build_document_scope_corpus_cache_token,
 )

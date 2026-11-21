@@ -14,6 +14,8 @@ const AUTH_SYNC_CHANNEL_NAME = 'mimirq:auth-sync'
 const AUTH_SYNC_CLEAR_TYPE = 'session-cleared'
 
 export const AUTH_SCOPE_CHANGED_EVENT = 'mimirq:auth-scope-changed'
+// Explicit session replacement/clear; token rotation stays in the current session.
+export const AUTH_SESSION_CHANGED_EVENT = 'mimirq:auth-session-changed'
 const AUTH_SCOPE_STORAGE_KEYS = new Set([USER_ID_KEY, TENANT_ID_KEY])
 
 type AuthSyncMessage = {
@@ -52,16 +54,6 @@ function hasStoredAccessToken(): boolean {
   return Boolean(readStoredAccessToken())
 }
 
-function getAuthScopeTenantId(): string | null {
-  if (!hasStoredAccessToken()) return getEnvTenantId()
-  return readClientStorage(TENANT_ID_KEY) || getEnvTenantId()
-}
-
-function getAuthScopeUserId(): string | null {
-  if (!hasStoredAccessToken()) return null
-  return readClientStorage(USER_ID_KEY)
-}
-
 function buildAuthCacheScope(tenantId: string | null, userId: string | null): string {
   return `${encodeURIComponent(tenantId || 'default')}:${encodeURIComponent(userId || 'anonymous')}`
 }
@@ -93,6 +85,7 @@ function handleRemoteSessionClear() {
   const previousScope = getAuthCacheScope()
   removeStoredAccessToken()
   notifyAuthScopeChanged(previousScope, true)
+  globalThis.window.dispatchEvent(new Event(AUTH_SESSION_CHANGED_EVENT))
 }
 
 function handleAuthSyncMessage(message: AuthSyncMessage) {
@@ -206,11 +199,26 @@ export function getStoredUserId(): string | null {
 }
 
 export function getAuthCacheScope(): string {
-  return buildAuthCacheScope(getAuthScopeTenantId(), getAuthScopeUserId())
+  return buildAuthCacheScope(getTenantId(), getStoredUserId())
 }
 
 export function getAuthSessionRevision(): number {
   return authSessionRevision
+}
+
+/** Stable primitive identity; ordinary token rotation keeps the same session. */
+export function getAuthSessionKey(): string {
+  return [getAuthSessionRevision(), getAuthCacheScope()].join(':')
+}
+
+/** Browser subscription; React reads the server snapshot without subscribing. */
+export function subscribeAuthSession(onStoreChange: () => void): () => void {
+  window.addEventListener(AUTH_SCOPE_CHANGED_EVENT, onStoreChange)
+  window.addEventListener(AUTH_SESSION_CHANGED_EVENT, onStoreChange)
+  return () => {
+    window.removeEventListener(AUTH_SCOPE_CHANGED_EVENT, onStoreChange)
+    window.removeEventListener(AUTH_SESSION_CHANGED_EVENT, onStoreChange)
+  }
 }
 
 export function getStoredUser(): UserProfile | null {
@@ -240,6 +248,7 @@ export function setAuthSession(params: { token: AuthToken; user: UserProfile }) 
   const expiresAt = Date.now() + token.expires_in * 1000
   persistTokenValue(TOKEN_EXPIRES_AT_KEY, String(expiresAt))
   notifyAuthScopeChanged(previousScope)
+  globalThis.window.dispatchEvent(new Event(AUTH_SESSION_CHANGED_EVENT))
 }
 
 export function setAccessToken(token: AuthToken) {
@@ -266,5 +275,6 @@ export function clearAuthSession() {
   removeClientStorage(USER_ID_KEY)
   removeClientStorage(TENANT_ID_KEY)
   notifyAuthScopeChanged(previousScope)
+  globalThis.window.dispatchEvent(new Event(AUTH_SESSION_CHANGED_EVENT))
   broadcastSessionCleared()
 }

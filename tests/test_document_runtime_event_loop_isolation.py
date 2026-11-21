@@ -1,10 +1,12 @@
 import asyncio
 import threading
 import time
+from pathlib import Path
+from uuid import uuid4
 
 import pytest
 
-from app.services import document_lifecycle_service
+from app.services.documents import lifecycle as document_lifecycle_service
 from app.tasks import jobs as jobs_module
 
 
@@ -28,11 +30,13 @@ async def test_document_processing_helper_offloads_async_processor_off_event_loo
             heartbeat_count += 1
             await asyncio.sleep(0.01)
 
-    monkeypatch.setattr(jobs_module.document_processor, "process_document", _process, raising=True)
+    monkeypatch.setattr(jobs_module, "process_document", _process, raising=True)
 
     heartbeat_task = asyncio.create_task(_heartbeat())
     try:
-        result = await jobs_module._run_document_processing_without_blocking_event_loop("doc-1")
+        result = await jobs_module._run_document_processing_without_blocking_event_loop(
+            file_path=Path("doc-1"), document_id=uuid4(), tenant_id=uuid4(), parser_backend=None, chunk_strategy=None
+        )
     finally:
         stop_heartbeat.set()
         await heartbeat_task
@@ -58,9 +62,13 @@ async def test_document_processing_helper_waits_for_worker_completion_before_rai
         worker_finished.set()
         return "ok"
 
-    monkeypatch.setattr(jobs_module.document_processor, "process_document", _process, raising=True)
+    monkeypatch.setattr(jobs_module, "process_document", _process, raising=True)
 
-    task = asyncio.create_task(jobs_module._run_document_processing_without_blocking_event_loop("doc-1"))
+    task = asyncio.create_task(
+        jobs_module._run_document_processing_without_blocking_event_loop(
+            file_path=Path("doc-1"), document_id=uuid4(), tenant_id=uuid4(), parser_backend=None, chunk_strategy=None
+        )
+    )
     assert await asyncio.to_thread(worker_started.wait, 1.0)
 
     task.cancel()

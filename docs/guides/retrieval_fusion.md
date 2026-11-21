@@ -1,27 +1,25 @@
 # Retrieval Fusion (Multi-Channel)
 
-This project supports multiple retrieval channels (dense + lexical + sparse). A **fusion strategy** merges those channel outputs into a single ranked candidate list.
+This project supports multiple retrieval channels (dense + Milvus BM25 + PostgreSQL lexical). A **fusion strategy** merges those channel outputs into a single ranked candidate list.
 
 Why this matters for a retrieval-only “evidence” platform:
 - Different channels excel at different query types.
   - Dense (vector): semantic similarity, paraphrases.
   - BM25: keyword-heavy queries.
   - Lexical DB (FTS/pg_trgm): codes, numbers, exact phrases.
-  - Sparse (SPLADE-style): term expansion / “semantic lexical”.
 - Raw scores are not directly comparable across channels, so fusion must be explicit, deterministic, and observable.
 
 ## Channels
 
-The `HybridRetriever` merges up to four channels:
-- `vector`: dense embedding search (Milvus/Qdrant/pgvector)
-- `bm25`: in-memory BM25 over scoped corpus
+The `HybridRetriever` merges three channels:
+- `vector`: dense embedding search (Milvus; explicit memory backend for development)
+- `bm25`: native Milvus BM25 over the requested tenant, dataset, and document scope
 - `lexical_db`: Postgres FTS / pg_trgm fallback
-- `sparse`: optional SPLADE-style retrieval
 
 ## Fusion Strategies
 
 The fusion strategy is controlled by:
-- Global default: `RETRIEVAL_FUSION_STRATEGY` in `app/core/config.py`
+- Global default: `RETRIEVAL_FUSION_STRATEGY` in `app/infrastructure/config.py`
 - Per-request override (recommended for ablations): `rag_config.fusion_strategy` on Evidence API / LangGraph path
 
 Supported values:
@@ -31,7 +29,7 @@ Supported values:
 - Min-max normalize each channel to `[0,1]`.
 - Compute a fused score:
   - If both dense + keyword channels present: `alpha * vector + (1-alpha) * keyword`
-  - Keyword score is `max(bm25, lexical_db, sparse)` per candidate.
+  - Keyword score is `max(bm25, lexical_db)` per candidate.
 
 Good baseline when channel scores are stable and calibrated.
 
@@ -54,7 +52,7 @@ Mechanics:
 3. Sort the selected prefix by fused score and append the remaining candidates.
 
 Extra observability fields are attached per candidate:
-- `vector_rank_score`, `bm25_rank_score`, `lexical_rank_score`, `sparse_rank_score`
+- `vector_rank_score`, `bm25_rank_score`, `lexical_rank_score`
   - Each is `1/rank` within that channel (0.0 if the candidate is absent from the channel).
 
 #### Defaults
@@ -62,7 +60,6 @@ Extra observability fields are attached per candidate:
 If no per-request budgets are provided, `budgeted_rrf` uses a small heuristic for the top-k prefix:
 - `vector`: ~50% of `top_k`
 - remaining “keyword” quota split evenly across `bm25` and `lexical`
-- `sparse`: 0 by default (set explicitly if you want it in the prefix)
 
 #### Request Overrides (Evidence API / LangGraph)
 
@@ -84,7 +81,7 @@ Example:
     "top_k": 50,
     "score_threshold": 0.0,
     "fusion_strategy": "budgeted_rrf",
-    "fusion_budgets": { "vector": 25, "bm25": 10, "lexical": 10, "sparse": 5 },
+    "fusion_budgets": { "vector": 25, "bm25": 10, "lexical": 10 },
     "fusion_min_scores": { "lexical": 0.5 }
   }
 }
@@ -100,7 +97,7 @@ Weighted fusion is a deterministic alternative to `linear` when you want explici
 
 - Min-max normalize each channel to `[0,1]` (same normalization pass used by other fusion paths).
 - Compute a fused score per candidate:
-  - `score = w_vector * vector + w_bm25 * bm25 + w_lexical * lexical + w_sparse * sparse`
+  - `score = w_vector * vector + w_bm25 * bm25 + w_lexical * lexical`
 - Weights are normalized to sum=1 (missing keys are treated as 0).
 - If weights are missing/invalid, the retriever falls back to `linear` fusion (safe default).
 
@@ -108,7 +105,7 @@ Weighted fusion is a deterministic alternative to `linear` when you want explici
 
 In the request `rag_config` you can override:
 - `fusion_strategy`: `weighted`
-- `fusion_weights`: per-channel weights (keys: `vector`, `bm25`, `lexical`, `sparse`)
+- `fusion_weights`: per-channel weights (keys: `vector`, `bm25`, `lexical`)
 
 Example:
 
@@ -122,7 +119,7 @@ Example:
     "retrieval_mode": "hybrid",
     "top_k": 50,
     "fusion_strategy": "weighted",
-    "fusion_weights": { "vector": 0.55, "bm25": 0.25, "lexical": 0.15, "sparse": 0.05 }
+    "fusion_weights": { "vector": 0.55, "bm25": 0.25, "lexical": 0.15 }
   }
 }
 ```
@@ -135,7 +132,7 @@ You can persist per-dataset defaults under `datasets.metadata.rag_defaults` (rec
 {
   "rag_defaults": {
     "fusion_strategy": "weighted",
-    "fusion_weights": { "vector": 0.55, "bm25": 0.25, "lexical": 0.15, "sparse": 0.05 }
+    "fusion_weights": { "vector": 0.55, "bm25": 0.25, "lexical": 0.15 }
   }
 }
 ```
@@ -244,7 +241,7 @@ To compare multiple variants in one run, pass a matrix JSON:
       "label": "budgeted_rrf_quotas",
       "rag_config": {
         "fusion_strategy": "budgeted_rrf",
-        "fusion_budgets": { "vector": 25, "bm25": 10, "lexical": 10, "sparse": 5 },
+        "fusion_budgets": { "vector": 25, "bm25": 10, "lexical": 10 },
         "fusion_min_scores": { "lexical": 0.5 }
       }
     }

@@ -63,7 +63,10 @@ function result(
 ): TestGenResponse {
   return {
     status: 'completed',
-    generated_questions: [{ question, source_type: sourceType, source_id: sourceId, metadata: {} }],
+    error_message: null,
+    generated_questions: [
+      { question, expected_answer: null, context: null, source_type: sourceType, source_id: sourceId, metadata: {} },
+    ],
     saved_case_ids: savedCaseIds,
   }
 }
@@ -78,7 +81,10 @@ function savedCase(question: string): RegressionCase {
     expected_answer: 'A supported expected answer',
     reference_sources: [{ document_id: DOC_A, chunk_id: CASE_A }],
     tags: ['golden_draft'],
+    reasoning_hops: [],
+    evidence_chain: [],
     extra: {},
+    created_by: null,
     created_at: '2026-11-05T12:00:00Z',
     updated_at: '2026-11-05T12:00:00Z',
   }
@@ -107,7 +113,7 @@ function GenerationSurface({ conversation = false }: Readonly<{ conversation?: b
     <>
       <CaptureClient />
       <section aria-label="Case library">
-        <TestCaseManager datasetId={DATASET_A} />
+        <TestCaseManager datasetId={DATASET_A} onRunTests={() => {}} />
       </section>
       <RunHistory />
       <button
@@ -386,6 +392,30 @@ describe('test generation session and persisted case ownership through actual Re
       auto_save_as_cases: true,
     })
     expect(dialog().textContent).toContain('Conversation generated question')
+  })
+
+  it('does not report another consumer dataset failure while the generation dialog is closed', async () => {
+    await mount()
+    act(() => dialog().dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })))
+    await waitForAssertion(() => expect(document.querySelector('[role="dialog"]')).toBeNull())
+    controlled.toast.error.mockClear()
+    const failure = new Error('Dataset catalog unavailable elsewhere')
+
+    await act(async () => {
+      await expect(
+        capturedClient.fetchQuery({
+          queryKey: queryKeys.datasets.exhaustive(),
+          queryFn: async () => {
+            throw failure
+          },
+          staleTime: 0,
+          retry: false,
+        }),
+      ).rejects.toBe(failure)
+    })
+
+    expect(controlled.toast.error).not.toHaveBeenCalled()
+    expect(document.querySelector('[role="dialog"]')).toBeNull()
   })
 
   it('preserves current API failure feedback and releases the generation control', async () => {

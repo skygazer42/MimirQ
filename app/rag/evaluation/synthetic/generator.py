@@ -10,9 +10,11 @@ def generate_synthetic_sample(*, seed_row: dict[str, Any], synthetic_index: int)
             **seed,
             "sample_id": f"synthetic-{synthetic_index:04d}",
             "source_type": "synthetic",
-            "construction_method": "llm_generate",
+            "construction_method": "seed_copy",
             "parent_sample_ids": [seed["sample_id"]],
-            "critique": {"grounded": True},
+            "critique": {},
+            "annotation_status": "todo",
+            "review_status": "pending",
         }
     )
     return sample

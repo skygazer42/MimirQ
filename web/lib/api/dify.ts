@@ -9,7 +9,7 @@ export type DifyExternalKnowledgeResponse = OpenApiSchema<'DifyExternalKnowledge
 
 export const difyExternalKnowledgeApi = {
   async retrieve(payload: DifyExternalKnowledgeRequest): Promise<DifyExternalKnowledgeResponse> {
-    const { data } = await apiClient.post('/integrations/dify/retrieval', payload)
+    const { data } = await apiClient.post<DifyExternalKnowledgeResponse>('/integrations/dify/retrieval', payload)
     return data
   },
 }

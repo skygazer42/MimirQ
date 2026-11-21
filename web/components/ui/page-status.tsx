@@ -38,7 +38,9 @@ export function PageStatus({
           {icon}
         </div>
         <h1 className="m-0 text-[24px] font-semibold leading-[34px]">{title}</h1>
-        <div className="mt-3 text-[14px] leading-[26px] text-muted-foreground">{description}</div>
+        {description ? (
+          <div className="mt-3 text-[14px] leading-[26px] text-muted-foreground">{description}</div>
+        ) : null}
         <div className="mt-6 flex flex-wrap items-center gap-2.5">{actions}</div>
         {metadata ? (
           <div className="mt-7 border-t border-border pt-4 text-[12px] leading-[22px] text-muted-foreground">

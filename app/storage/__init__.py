@@ -1,14 +1,4 @@
-"""
-Storage module
-
-Provides vector storage and object storage functionality.
-
-Main components:
-- vector: Milvus and the existing in-process development backends
-- object: MinIO and S3-compatible object storage
-
-Note: Hybrid retrieval has been moved to app.rag.retriever module.
-"""
+"""Object and vector storage backends."""
 
 from typing import Any
 

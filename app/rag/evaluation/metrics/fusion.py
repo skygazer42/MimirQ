@@ -1,6 +1,5 @@
+import logging
 from typing import Any
-
-from app.rag.core.logging import get_logger
 
 
 def compute_fusion_metrics(rows: list[dict[str, Any]]) -> dict[str, Any]:
@@ -17,8 +16,8 @@ def compute_fusion_metrics(rows: list[dict[str, Any]]) -> dict[str, Any]:
             retrieval = float(row.get("retrieval_score") or 0.0)
             kg = float(row.get("kg_score") or 0.0)
             hybrid = float(row.get("hybrid_score") or 0.0)
-        except Exception:
-            get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
+        except (OverflowError, TypeError, ValueError):
+            logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
             continue
         gains.append(hybrid - max(retrieval, kg))
 

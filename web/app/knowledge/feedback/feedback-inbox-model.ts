@@ -1,8 +1,7 @@
-import { feedbackApi } from '@/lib/api'
-import type { Message, MessageFeedbackEnriched } from '@/types'
+import type { MessageFeedbackEnriched } from '@/types'
 
 export type FeedbackView = 'all' | 'pending' | 'priority' | 'archived'
-export type FeedbackKind = 'positive' | 'negative' | 'neutral'
+type FeedbackKind = 'positive' | 'negative' | 'neutral'
 export type FeedbackRange = 'all' | '7d' | '30d' | '90d'
 export type FeedbackSource = 'all' | 'web' | 'mobile' | 'enterprise' | 'api' | 'benchmark' | 'other'
 
@@ -22,77 +21,79 @@ export const RANGE_LABELS: Record<FeedbackRange, string> = {
   '90d': '最近 90 天',
 }
 
-export function displayText(...values: unknown[]): string {
-  for (const value of values) {
-    if (typeof value === 'string' && value.trim()) return value.trim()
-    if (typeof value === 'number') return String(value)
-  }
-  return ''
-}
-export function feedbackKind(item: MessageFeedbackEnriched): FeedbackKind {
+export function getFeedbackKind(item: MessageFeedbackEnriched): FeedbackKind {
   return item.rating >= 4 ? 'positive' : item.rating > 0 && item.rating <= 2 ? 'negative' : 'neutral'
 }
-export function archived(item: MessageFeedbackEnriched): boolean {
-  return item.extra?.archived === true
+export function isFeedbackArchived(item: MessageFeedbackEnriched): boolean {
+  return item.extra.archived === true
 }
-export function feedbackStatus(item: MessageFeedbackEnriched): string {
-  return archived(item) ? '已归档' : feedbackKind(item) === 'negative' ? '优先分析' : '待分析'
+export function getFeedbackStatus(item: MessageFeedbackEnriched): string {
+  return isFeedbackArchived(item) ? '已归档' : getFeedbackKind(item) === 'negative' ? '优先分析' : '待分析'
 }
-export function feedbackQuestion(item: MessageFeedbackEnriched): string {
-  return displayText(item.extra?.query, item.extra?.question, item.conversation_title) || '未命名会话'
+export function getFeedbackQuestion(item: MessageFeedbackEnriched): string | undefined {
+  const { query, question } = item.extra
+  if (typeof query === 'string') return query
+  return typeof question === 'string' ? question : undefined
 }
-export function feedbackIssue(item: MessageFeedbackEnriched): string {
-  if (item.category)
+export function getFeedbackLabel(item: MessageFeedbackEnriched): string {
+  const question = getFeedbackQuestion(item)
+  if (question !== undefined) return question.length === 0 ? '提问内容为空' : question
+  if (item.conversation_title !== null) return `会话：${item.conversation_title}`
+  return `反馈 ${item.id}`
+}
+export function getFeedbackIssue(item: MessageFeedbackEnriched): string {
+  if (item.category !== null)
     return {
       retrieval_miss: '未命中知识库',
       wrong_answer: '回答错误',
       out_of_scope: '超出知识范围',
       other: '其他问题',
     }[item.category]
-  return (
-    displayText(item.extra?.feedback_issue, item.extra?.quality_label) ||
-    (feedbackKind(item) === 'positive' ? '有帮助' : '未分类')
-  )
+  if (typeof item.extra.feedback_issue === 'string') return item.extra.feedback_issue
+  if (typeof item.extra.quality_label === 'string') return item.extra.quality_label
+  return getFeedbackKind(item) === 'positive' ? '有帮助' : '未分类'
 }
-export function feedbackSource(item: MessageFeedbackEnriched): Exclude<FeedbackSource, 'all'> {
-  const source =
-    `${displayText(item.extra?.source, item.extra?.benchmark_source)} ${item.account_id} ${(item.tags || []).join(' ')}`.toLowerCase()
-  if (/benchmark|评测/.test(source)) return 'benchmark'
-  if (/mobile|ios|android|app|移动/.test(source)) return 'mobile'
-  if (/api/.test(source)) return 'api'
-  if (/wecom|wx|enterprise|企业微信/.test(source)) return 'enterprise'
-  if (/web|console|browser/.test(source)) return 'web'
+export function getFeedbackSource(item: MessageFeedbackEnriched): Exclude<FeedbackSource, 'all'> {
+  const source = item.extra.source
+  if (typeof source !== 'string') return 'other'
+  switch (source.trim().toLowerCase()) {
+    case 'benchmark':
+    case '评测':
+      return 'benchmark'
+    case 'mobile':
+    case 'ios':
+    case 'android':
+    case 'app':
+    case '移动':
+      return 'mobile'
+    case 'api':
+      return 'api'
+    case 'wecom':
+    case 'wx':
+    case 'enterprise':
+    case '企业微信':
+      return 'enterprise'
+    case 'web':
+    case 'console':
+    case 'browser':
+      return 'web'
+  }
   return 'other'
 }
-export function feedbackTime(value: string, full = false): string {
+export function formatFeedbackTime(value: string, full = false): string {
   const date = new Date(value)
-  return Number.isFinite(date.getTime())
-    ? date.toLocaleString('zh-CN', {
-        ...(full ? { year: 'numeric' as const } : {}),
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-        hour12: false,
-      })
-    : '—'
-}
-
-// Load every API page so local filters and counts include older feedback.
-export async function loadFeedback(signal: AbortSignal) {
-  const items: MessageFeedbackEnriched[] = []
-  let total = 0
-  do {
-    const page = await feedbackApi.listEnriched({ skip: items.length, limit: 200 }, { signal })
-    total = page.total
-    if (!page.items.length) break
-    items.push(...page.items)
-  } while (items.length < total)
-  return { items, total }
+  return date.toLocaleString('zh-CN', {
+    ...(full ? { year: 'numeric' as const } : {}),
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  })
 }
 
 export function filterFeedback(
-  items: MessageFeedbackEnriched[],
+  items: readonly MessageFeedbackEnriched[],
   filters: {
     view: FeedbackView
     rating: string
@@ -104,33 +105,35 @@ export function filterFeedback(
   now = Date.now(),
 ) {
   const query = filters.search.trim().toLowerCase()
+  const rating = filters.rating === 'all' ? undefined : Number(filters.rating)
+  const windowMs = filters.range === 'all' ? undefined : Number.parseInt(filters.range, 10) * 86_400_000
   return items.filter((item) => {
-    if (filters.view === 'pending' && archived(item)) return false
-    if (filters.view === 'archived' && !archived(item)) return false
-    if (filters.view === 'priority' && (archived(item) || feedbackKind(item) !== 'negative')) return false
-    if (filters.rating !== 'all' && item.rating !== Number(filters.rating)) return false
-    if (filters.kind !== 'all' && feedbackKind(item) !== filters.kind) return false
-    if (filters.source !== 'all' && feedbackSource(item) !== filters.source) return false
-    if (filters.range !== 'all') {
+    const archived = isFeedbackArchived(item)
+    const kind = getFeedbackKind(item)
+    if (filters.view === 'pending' && archived) return false
+    if (filters.view === 'archived' && !archived) return false
+    if (filters.view === 'priority' && (archived || kind !== 'negative')) return false
+    if (rating !== undefined && item.rating !== rating) return false
+    if (filters.kind !== 'all' && kind !== filters.kind) return false
+    if (filters.source !== 'all' && getFeedbackSource(item) !== filters.source) return false
+    if (windowMs !== undefined) {
       const age = now - new Date(item.created_at).getTime()
-      if (!Number.isFinite(age) || age < 0 || age > parseInt(filters.range, 10) * 86_400_000) return false
+      if (!Number.isFinite(age) || age < 0 || age > windowMs) return false
     }
     return (
       !query ||
-      [feedbackQuestion(item), item.message_content, item.reason, item.account_id, item.id, ...(item.tags || [])]
+      [
+        getFeedbackQuestion(item),
+        item.conversation_title,
+        item.message_content,
+        item.reason,
+        item.account_id,
+        item.id,
+        ...item.tags,
+      ]
         .join(' ')
         .toLowerCase()
         .includes(query)
     )
   })
-}
-
-export function feedbackContext(messages: Message[], messageId: string) {
-  const index = messages.findIndex((message) => message.id === messageId && message.role === 'assistant')
-  if (index < 0) return null
-  const question = messages
-    .slice(0, index)
-    .reverse()
-    .find((message) => message.role === 'user')?.content
-  return { answer: messages[index], question }
 }

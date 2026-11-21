@@ -1,6 +1,6 @@
 import pytest
 
-from app.core.regex_safety import (
+from app.infrastructure.regex.validation import (
     RegexRulesValidationError,
     looks_like_nested_quantifier,
     validate_regex_rules,

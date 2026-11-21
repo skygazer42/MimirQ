@@ -79,6 +79,7 @@ const SETTINGS_SECTION_GROUPS = [
   { id: 'integrations', label: '外部集成' },
   { id: 'operations', label: '治理与运行' },
 ] as const
+const DEFAULT_SECTION_ID = 'sec-frontend'
 
 const SETTINGS_SECTIONS: readonly SettingsSectionDefinition[] = [
   {
@@ -143,7 +144,7 @@ const SETTINGS_SECTIONS: readonly SettingsSectionDefinition[] = [
     icon: AuditLog,
     adminOnly: true,
   },
-  { id: 'sec-runtime', label: '运行控制', hint: '聊天、缓存、安全和流程编排', group: 'operations', icon: Gauge },
+  { id: 'sec-runtime', label: '运行控制', hint: '聊天、缓存、安全和子图编排', group: 'operations', icon: Gauge },
 ] as const
 
 const SETTINGS_SECTION_BY_ID = Object.fromEntries(SETTINGS_SECTIONS.map((section) => [section.id, section])) as Record<
@@ -163,13 +164,12 @@ type SettingsContentProps = {
   setChunkStrategy: ChunkStrategyPreference['setChunkStrategy']
 }
 
-function RetrievalEnhancementSection({ state }: Readonly<{ state: SettingsPageState }>) {
-  const enabled = Boolean(state.ragMerged?.bm25_index_enabled)
+function RetrievalEnhancementSection({ enabled, onToggle }: Readonly<{ enabled: boolean; onToggle: () => void }>) {
   return (
     <button
       type="button"
       aria-pressed={enabled}
-      onClick={() => state.updateRag({ bm25_index_enabled: !enabled })}
+      onClick={onToggle}
       className="flex min-h-16 w-full items-center justify-between gap-4 border-b border-border/50 py-3 text-left transition-colors hover:bg-muted/40 focus-ring"
     >
       <span className="flex min-w-0 items-start gap-3">
@@ -197,6 +197,12 @@ function SettingsSectionFrame({
   className?: string
   hidden?: boolean
 }>) {
+  const [hasBeenVisible, setHasBeenVisible] = useState(!hidden)
+
+  useEffect(() => {
+    if (!hidden) setHasBeenVisible(true)
+  }, [hidden])
+
   return (
     <section
       id={section.id}
@@ -210,7 +216,7 @@ function SettingsSectionFrame({
         </h2>
         <p className={styles.sectionHint}>{section.hint}</p>
       </header>
-      <div className={cn(styles.sectionBody, 'space-y-5')}>{children}</div>
+      <div className={cn(styles.sectionBody, 'space-y-5')}>{!hidden || hasBeenVisible ? children : null}</div>
     </section>
   )
 }
@@ -247,6 +253,7 @@ function SettingsPageContent() {
       <ModelConfigDialog
         provider={state.selectedProvider}
         open={state.dialogOpen}
+        saving={state.saving}
         onClose={() => state.setDialogOpen(false)}
         onSave={state.handleSaveConfig}
       />
@@ -264,17 +271,18 @@ function SettingsContent({
   setChunkStrategy,
 }: Readonly<SettingsContentProps>) {
   const sectionIds = useMemo(() => visibleSections.map((section) => section.id), [visibleSections])
-  const [selectedId, setSelectedId] = useState('sec-frontend')
+  const [selectedId, setSelectedId] = useState(DEFAULT_SECTION_ID)
   useEffect(() => {
     const readSection = () => {
       const id = window.location.hash.slice(1)
-      if (sectionIds.includes(id)) setSelectedId(id)
+      setSelectedId(sectionIds.includes(id) ? id : DEFAULT_SECTION_ID)
     }
     readSection()
     window.addEventListener('hashchange', readSection)
     return () => window.removeEventListener('hashchange', readSection)
   }, [sectionIds])
-  const activeId = sectionIds.includes(selectedId) ? selectedId : sectionIds[0]
+  const activeSection = visibleSections.find((section) => section.id === selectedId) ?? visibleSections[0]
+  const activeId = activeSection.id
   const sectionGroups = useMemo(
     () =>
       SETTINGS_SECTION_GROUPS.map((group) => ({
@@ -286,7 +294,6 @@ function SettingsContent({
   const directoryRef = useRef<HTMLElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const { isDevMode, user } = useAuth()
-  const activeSection = SETTINGS_SECTION_BY_ID[activeId] || visibleSections[0]
   const activeGroup = SETTINGS_SECTION_GROUPS.find((group) => group.id === activeSection.group)
 
   useEffect(() => {
@@ -421,19 +428,6 @@ function SettingsContent({
             </SelectContent>
           </Select>
         </div>
-        {state.loadError ? (
-          <div className={cn(styles.alerts, 'space-y-2')}>
-            {state.loadError ? (
-              <Alert variant="destructive" className="rounded-md border-destructive/25 bg-destructive/10 shadow-none">
-                <XCircle className="size-4" />
-                <div>
-                  <AlertTitle>加载失败</AlertTitle>
-                  <AlertDescription>{state.loadError}</AlertDescription>
-                </div>
-              </Alert>
-            ) : null}
-          </div>
-        ) : null}
         <FeedbackToast
           type="error"
           id="settings-save-error"
@@ -448,16 +442,45 @@ function SettingsContent({
             <div className={styles.loading}>
               <RefreshCw className="size-7 animate-spin motion-reduce:animate-none" aria-label="正在加载设置" />
             </div>
+          ) : state.loadError !== null ? (
+            <div className={styles.alerts}>
+              <Alert variant="destructive" className="rounded-md border-destructive/25 bg-destructive/10 shadow-none">
+                <XCircle className="size-4" />
+                <div>
+                  <AlertTitle>加载失败</AlertTitle>
+                  <AlertDescription>{state.loadError}</AlertDescription>
+                  <Button type="button" variant="outline" className="mt-3" onClick={() => void state.loadSettings()}>
+                    重新读取设置
+                  </Button>
+                </div>
+              </Alert>
+            </div>
           ) : (
             <>
               <SettingsSectionFrame section={SETTINGS_SECTION_BY_ID['sec-status']} hidden={activeId !== 'sec-status'}>
+                {state.statusError != null && (
+                  <Alert variant="destructive">
+                    <AlertTitle>读取服务状态失败</AlertTitle>
+                    <AlertDescription>{state.statusError}</AlertDescription>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="mt-3"
+                      disabled={state.statusLoading}
+                      onClick={() => void state.reloadStatus()}
+                    >
+                      重试服务状态
+                    </Button>
+                  </Alert>
+                )}
                 {state.status ? (
                   <SystemStatusSection status={state.status} backendMeta={state.backendMeta} />
-                ) : (
+                ) : state.statusError == null ? (
                   <p role="status" className="text-[13px] leading-5 text-muted-foreground">
-                    暂时无法读取服务状态。
+                    {state.statusLoading ? '正在读取服务状态…' : '暂时无法读取服务状态。'}
                   </p>
-                )}
+                ) : null}
               </SettingsSectionFrame>
 
               <SettingsSectionFrame section={SETTINGS_SECTION_BY_ID['sec-models']} hidden={activeId !== 'sec-models'}>
@@ -473,7 +496,10 @@ function SettingsContent({
                 hidden={activeId !== 'sec-flags'}
                 className="[&>div:last-child]:space-y-3"
               >
-                <RetrievalEnhancementSection state={state} />
+                <RetrievalEnhancementSection
+                  enabled={state.ragMerged.bm25_index_enabled}
+                  onToggle={() => state.updateRag({ bm25_index_enabled: !state.ragMerged.bm25_index_enabled })}
+                />
                 <FeatureFlagsSection getFeatureValue={state.getFeatureValue} toggleFeature={state.toggleFeature} />
               </SettingsSectionFrame>
 

@@ -8,8 +8,8 @@ const mocks = vi.hoisted(() => ({
   getDocument: vi.fn(),
   getChunk: vi.fn(),
   getParsedContent: vi.fn(),
-  fetchAsset: vi.fn(),
-  saveContent: vi.fn(),
+  cacheContent: vi.fn(),
+  warning: vi.fn(),
 }))
 
 const handleAuthScopeChanged = () => {
@@ -37,26 +37,76 @@ vi.mock('./doc-content-cache', () => ({
     scopeGuard.scope === mocks.scope &&
     scopeGuard.authGeneration === mocks.generation &&
     scopeGuard.scopeWriteGeneration === mocks.generation,
-  saveDocContentToCache: mocks.saveContent,
+  cacheDocContentIfMissing: mocks.cacheContent,
 }))
-vi.mock('./image-auth-proxy', () => ({ fetchAuthAssetUrl: mocks.fetchAsset }))
+vi.mock('./client-logging', () => ({ reportClientWarning: mocks.warning }))
 
 import { getPrefetchedChunk, getPrefetchedDocument, prefetchDocumentView } from './document-view-prefetch'
 
 describe('document view prefetch auth scope', () => {
   beforeEach(() => {
     mocks.scope = 'tenant:user-a'
-    mocks.generation = 0
+    mocks.generation += 1
+    window.dispatchEvent(new Event('mimirq:auth-scope-changed'))
     mocks.getDocument.mockReset().mockResolvedValue({ id: 'doc-1' })
     mocks.getChunk.mockReset().mockResolvedValue({ id: 'chunk-1', document_id: 'doc-1' })
     mocks.getParsedContent.mockReset().mockResolvedValue({ available: false })
-    mocks.fetchAsset.mockReset().mockResolvedValue('https://example.test/file')
-    mocks.saveContent.mockReset()
+    mocks.cacheContent.mockReset()
+    mocks.warning.mockReset()
     window.addEventListener('mimirq:auth-scope-changed', handleAuthScopeChanged)
   })
 
   afterEach(() => {
     window.removeEventListener('mimirq:auth-scope-changed', handleAuthScopeChanged)
+  })
+
+  it.each(['markdown_truncated', 'original_markdown_truncated'] as const)(
+    'does not put a preview with %s into the complete content cache',
+    async (field) => {
+      mocks.getParsedContent.mockResolvedValue({
+        available: true,
+        markdown_content: 'Preview only',
+        original_markdown_content: 'Original preview',
+        markdown_truncated: false,
+        original_markdown_truncated: false,
+        [field]: true,
+      })
+      prefetchDocumentView({ documentId: `truncated-${field}` })
+      await Promise.resolve()
+      await Promise.resolve()
+      expect(mocks.cacheContent).not.toHaveBeenCalled()
+    },
+  )
+
+  it('caches an available complete empty response without substituting content', async () => {
+    mocks.getParsedContent.mockResolvedValue({
+      available: true,
+      markdown_content: '',
+      original_markdown_content: '',
+      markdown_truncated: false,
+      original_markdown_truncated: false,
+    })
+    prefetchDocumentView({ documentId: 'complete-empty' })
+    await vi.waitFor(() =>
+      expect(mocks.cacheContent).toHaveBeenCalledWith(
+        {
+          id: 'complete-empty',
+          markdownContent: '',
+          originalMarkdownContent: '',
+        },
+        expect.objectContaining({ scope: 'tenant:user-a' }),
+      ),
+    )
+  })
+
+  it('records an optional prefetch failure without publishing a result', async () => {
+    const error = new Error('Prefetch is unavailable')
+    mocks.getParsedContent.mockRejectedValue(error)
+    prefetchDocumentView({ documentId: 'prefetch-error' })
+    await vi.waitFor(() =>
+      expect(mocks.warning).toHaveBeenCalledWith('Failed to prefetch parsed document content', error),
+    )
+    expect(mocks.cacheContent).not.toHaveBeenCalled()
   })
 
   it('does not expose one user cache to another user', async () => {
@@ -173,33 +223,6 @@ describe('document view prefetch auth scope', () => {
     await Promise.resolve()
     await Promise.resolve()
 
-    expect(mocks.saveContent).not.toHaveBeenCalled()
-  })
-
-  it('allows a replacement raw-file prefetch after same-scope invalidation', async () => {
-    let resolveFirstFetch!: (value: string) => void
-    let resolveReplacementFetch!: (value: string) => void
-    mocks.fetchAsset
-      .mockReturnValueOnce(
-        new Promise((resolve) => {
-          resolveFirstFetch = resolve
-        }),
-      )
-      .mockReturnValueOnce(
-        new Promise((resolve) => {
-          resolveReplacementFetch = resolve
-        }),
-      )
-
-    prefetchDocumentView({ documentId: 'doc-file', rawFileUrl: '/files/doc-file' })
-    window.dispatchEvent(new Event('mimirq:auth-scope-changed'))
-    prefetchDocumentView({ documentId: 'doc-file', rawFileUrl: '/files/doc-file' })
-
-    resolveFirstFetch('https://example.test/stale')
-    await Promise.resolve()
-    await Promise.resolve()
-
-    expect(mocks.fetchAsset).toHaveBeenCalledTimes(2)
-    resolveReplacementFetch('https://example.test/fresh')
+    expect(mocks.cacheContent).not.toHaveBeenCalled()
   })
 })

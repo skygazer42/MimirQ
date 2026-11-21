@@ -1,7 +1,7 @@
 import asyncio
 import threading
 
-from app.core.async_bridge import run_coroutine_sync
+from app.infrastructure.runtime.async_bridge import run_coroutine_sync
 
 
 def test_run_coroutine_sync_without_running_loop() -> None:

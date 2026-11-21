@@ -2,9 +2,9 @@ from uuid import UUID
 
 import pytest
 
-from app.models.document import DocumentChunk
-from app.rag.kg.extraction.processor import EventProcessor, _collect_event_entities
+from app.models.documents.records import DocumentChunk
 from app.rag.kg.extraction.entity_verifier import EntityCandidate, EntityVerifier
+from app.rag.kg.extraction.processor import EventProcessor, _collect_event_entities
 from app.rag.kg.extraction.relation_processor import CandidateEntity, RelationProcessor
 from app.rag.kg.extraction.relation_verifier import RelationCandidate, RelationVerifier
 from app.rag.kg.extraction.skill_processor import SkillProcessor, _coerce_str_list
@@ -133,7 +133,13 @@ async def test_relation_extraction_keeps_valid_siblings():
 async def test_relation_verification_keeps_valid_siblings():
     result = await RelationVerifier(
         StructuredClient(
-            {"kept": [{"rid": None}, {"rid": "R1", "predicate": []}, {"rid": "R2", "predicate": "uses", "evidence_quote": None}]}
+            {
+                "kept": [
+                    {"rid": None},
+                    {"rid": "R1", "predicate": []},
+                    {"rid": "R2", "predicate": "uses", "evidence_quote": None},
+                ]
+            }
         )
     ).verify(
         text="entity1 uses entity2",

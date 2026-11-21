@@ -245,8 +245,8 @@ def test_legacy_regionless_metadata_fails_closed_when_region_profile_is_missing(
 
 
 def test_runtime_settings_refresh_object_store_and_readiness_cache(monkeypatch: pytest.MonkeyPatch) -> None:
-    from app.api.v1 import health as health_api
-    from app.api.v1 import settings as settings_api
+    from app.api.v1.system import settings as settings_api
+    from app.services.runtime import readiness_cache as health_readiness
 
     reset_object_store_cache()
     monkeypatch.setattr(runtime.settings, "OBJECT_STORAGE_ENABLED", True, raising=False)
@@ -257,7 +257,9 @@ def test_runtime_settings_refresh_object_store_and_readiness_cache(monkeypatch: 
     monkeypatch.setattr(runtime.settings, "OBJECT_STORAGE_SECRET_KEY", "secret-a", raising=False)
     monkeypatch.setattr(runtime.settings, "OBJECT_STORAGE_BUCKET_NAME", "documents", raising=False)
     first = runtime.get_document_object_store()
-    health_api._ready_cache.update({"ts": 1.0, "payload": {"ok": True}, "status": 200, "key": ("old",)})
+    monkeypatch.setattr(health_readiness, "_READY_CACHE_TTL_SEC", 60.0)
+    health_readiness.store_ready_cache({"ok": True}, 200, ("old",))
+    assert health_readiness.get_ready_cache(("old",)) == ({"ok": True}, 200)
 
     settings_api._apply_runtime_settings(
         {
@@ -271,7 +273,7 @@ def test_runtime_settings_refresh_object_store_and_readiness_cache(monkeypatch: 
     assert runtime.settings.OBJECT_STORAGE_ENDPOINT == "s3-b.example.test:443"
     assert runtime.settings.OBJECT_STORAGE_SECRET_KEY == "secret-b"
     assert second is not first
-    assert health_api._ready_cache["payload"] is None
+    assert health_readiness.get_ready_cache(("old",)) is None
     reset_object_store_cache()
 
 

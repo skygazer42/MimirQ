@@ -1,7 +1,8 @@
+import math
 from collections import defaultdict
 from typing import Any
 
-from app.rag.core.hashing import stable_hash
+from app.infrastructure.hashing import stable_hash
 
 
 def _to_float(value: Any) -> float | None:
@@ -9,10 +10,10 @@ def _to_float(value: Any) -> float | None:
         if value is None or isinstance(value, bool):
             return None
         num = float(value)
-        if num != num:
+        if not math.isfinite(num):
             return None
         return num
-    except (TypeError, ValueError):
+    except (OverflowError, TypeError, ValueError):
         return None
 
 
@@ -29,7 +30,7 @@ def assign_ab_variant(
     user_id: str,
     variants: list[str],
 ) -> dict[str, Any]:
-    normalized_variants = [str(item).strip() for item in variants or [] if str(item).strip()]
+    normalized_variants = [normalized for item in variants if (normalized := item.strip())]
     if not normalized_variants:
         raise ValueError("variants_empty")
 
@@ -50,16 +51,16 @@ def summarize_ab_results(rows: list[dict[str, Any]]) -> dict[str, Any]:
     grouped: dict[str, dict[str, list[float]]] = defaultdict(lambda: {"faithfulness": [], "latency_ms": []})
     counts: dict[str, int] = defaultdict(int)
 
-    for row in rows or []:
-        raw_variant = (row or {}).get("variant")
+    for row in rows:
+        raw_variant = row.get("variant")
         if raw_variant is None:
             continue
         variant = str(raw_variant).strip()
         if not variant:
             continue
         counts[variant] += 1
-        faithfulness = _to_float((row or {}).get("faithfulness"))
-        latency_ms = _to_float((row or {}).get("latency_ms"))
+        faithfulness = _to_float(row.get("faithfulness"))
+        latency_ms = _to_float(row.get("latency_ms"))
         if faithfulness is not None:
             grouped[variant]["faithfulness"].append(faithfulness)
         if latency_ms is not None:

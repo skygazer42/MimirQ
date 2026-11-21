@@ -1,24 +1,31 @@
 import pytest
 
-from app.parsing.enrich.table_structure_adapter import table_extraction_from_text_grid
-from app.parsing.quality.grits import compute_table_grits
+from app.rag.ingestion.parsing.enrich.table_structure_adapter import table_extraction_from_text_grid
+from app.rag.ingestion.parsing.quality.grits import compute_table_grits
 
 
-@pytest.mark.parametrize("cell, expected", [(None, []), (0, [["0"]]), (False, [["False"]]), (1, [["1"]]), (True, [["True"]])])
+@pytest.mark.parametrize(
+    "cell, expected", [(None, []), (0, [["0"]]), (False, [["False"]]), (1, [["1"]]), (True, [["True"]])]
+)
 def test_normalized_table_text_grid_preserves_scalar_values(cell, expected):
     table = table_extraction_from_text_grid(columns=["value"], rows=[[cell]])
 
     assert table.rows == expected
 
 
-@pytest.mark.parametrize("cell, rendered, expected", [(None, "", None), (0, "0", 1.0), (False, "false", 1.0), (1, "1", 1.0), (True, "true", 1.0)])
+@pytest.mark.parametrize(
+    "cell, rendered, expected",
+    [(None, "", None), (0, "0", 1.0), (False, "false", 1.0), (1, "1", 1.0), (True, "true", 1.0)],
+)
 def test_table_quality_scoring_compares_scalar_cell_text(cell, rendered, expected):
     assert compute_table_grits(pred_table=[[cell]], gold_table=[[rendered]])["content"] == expected
 
 
 def test_table_quality_scoring_does_not_treat_zero_as_a_blank_cell():
     assert compute_table_grits(pred_table=[[0]], gold_table=[[""]]) == {
-        "topology": 1.0, "content": 0.0, "f1": 0.5,
+        "topology": 1.0,
+        "content": 0.0,
+        "f1": 0.5,
     }
 
 

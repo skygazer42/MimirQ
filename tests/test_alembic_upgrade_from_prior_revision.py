@@ -10,7 +10,7 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.exc import IntegrityError
 
 from alembic import command
-from app.core.config import settings
+from app.infrastructure.config import settings
 
 
 def _integration_enabled() -> bool:

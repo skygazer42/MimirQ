@@ -44,7 +44,7 @@ export function SnapshotNodeDetailsRail({
             {[
               ['名称', selectedNode.label],
               ['类型', selectedNode.type],
-              ['描述', selectedNode.description || '—'],
+              ['描述', selectedNode.description === '' ? '—' : selectedNode.description],
             ].map(([label, value]) => (
               <div key={label} className="grid grid-cols-[48px_minmax(0,1fr)] gap-3">
                 <dt className="text-muted-foreground">{label}</dt>
@@ -56,9 +56,9 @@ export function SnapshotNodeDetailsRail({
         <section className="border-t border-border pt-5">
           <h3 className="text-sm font-semibold">预览中关联（{selectedNode.relations.length}）</h3>
           <div className="mt-3 divide-y divide-border">
-            {selectedNode.relations.map((relation) => (
+            {selectedNode.relations.map((relation, index) => (
               <button
-                key={`${relation.label}:${relation.target}`}
+                key={JSON.stringify([relation.targetId, relation.label, index])}
                 type="button"
                 className="flex w-full items-center justify-between gap-3 py-3 text-left text-[13px] hover:text-primary"
                 onClick={() => onSelectRelationTarget(relation.targetId)}

@@ -3,11 +3,11 @@
 import pytest
 from pydantic import ValidationError
 
-from app.api.schemas.settings import EmbeddingConfig, RAGConfig, UpdateSettingsRequest
+from app.api.schemas.system.settings import EmbeddingConfig, RAGConfig, UpdateSettingsRequest
+from app.infrastructure.model_policy import reject_retired_provider
 from app.rag.embedding.adapter import create_langchain_embeddings_from_config
-from app.rag.preprocessing.keyword import get_keyword_extractor
-from app.rag.reranker.factory import get_reranker
-from app.rag.retrieval.sparse import resolve_sparse_provider_capability
+from app.rag.ingestion.governance.tagging.keyword import get_keyword_extractor
+from app.rag.retrieval.reranking.factory import get_reranker
 
 
 def test_saved_local_embedding_is_readable_but_cannot_be_submitted() -> None:
@@ -39,32 +39,26 @@ def test_hanlp_is_rejected_before_import_or_model_download() -> None:
 
 def test_retired_splade_is_not_replaced_by_test_vectors() -> None:
     with pytest.raises(ValueError, match="retired"):
-        resolve_sparse_provider_capability(requested_provider="splade", sparse_enabled=True)
+        reject_retired_provider("splade", capability="sparse")
 
 
 def test_regression_request_rejects_retired_reranking_before_running_cases() -> None:
     from uuid import uuid4
 
-    from app.api.schemas.regression import RagasRegressionRunCreateRequest
+    from app.api.schemas.evaluation.regression import RagasRegressionRunCreateRequest
 
     with pytest.raises(ValidationError, match="retired"):
         RagasRegressionRunCreateRequest(dataset_id=uuid4(), reranker_provider="cross_encoder")
 
 
-@pytest.mark.parametrize("kind", ["retrieval", "rerank"])
-def test_hf_colbert_cannot_fall_back_to_test_vectors(kind: str) -> None:
-    from app.rag.reranker.colbert import get_token_embedder
-    from app.rag.retrieval.colbert_ann import get_dense_embedder
-
+@pytest.mark.parametrize("provider", ["colbert", "late_interaction"])
+def test_colbert_cannot_fall_back_to_test_vectors(provider: str) -> None:
     with pytest.raises(ValueError, match="retired"):
-        if kind == "retrieval":
-            get_dense_embedder(provider="hf")
-        else:
-            get_token_embedder(provider_name="hf")
+        get_reranker(provider)
 
 
 def test_legacy_image_query_is_explicitly_rejected() -> None:
-    from app.api.v1.rag import RetrievePreviewRequest
+    from app.api.v1.retrieval.routes import RetrievePreviewRequest
 
     with pytest.raises(ValidationError, match="retired"):
         RetrievePreviewRequest(query="chart", query_image="find a chart")
@@ -74,7 +68,7 @@ def test_legacy_image_query_is_explicitly_rejected() -> None:
 async def test_retrieved_local_image_still_loads_after_metadata_normalization(tmp_path, monkeypatch) -> None:
     from uuid import uuid4
 
-    from app.rag.core import vision_reader
+    from app.rag.llm import vision_reader
 
     tenant_id, image_id = uuid4(), uuid4()
     folder = tmp_path / str(tenant_id) / "images"
@@ -98,15 +92,15 @@ def test_kg_model_extraction_is_not_silently_replaced_by_llm(provider: str) -> N
 
 
 def test_auto_annotation_does_not_accept_gliner() -> None:
-    from app.api.schemas.pipeline import AutoAnnotationRequest
+    from app.api.schemas.pipelines.preview import AutoAnnotationRequest
 
     with pytest.raises(ValidationError):
         AutoAnnotationRequest(text="policy", providers=["gliner"])
 
 
 def test_saved_dataset_reranker_is_not_ignored_as_an_invalid_default() -> None:
-    from app.api.schemas.chat import ChatRAGConfig
-    from app.services.rag_defaults import merge_rag_config_with_dataset_defaults
+    from app.api.schemas.conversations.chat import ChatRAGConfig
+    from app.services.retrieval.defaults import merge_rag_config_with_dataset_defaults
 
     with pytest.raises(ValueError, match="retired"):
         merge_rag_config_with_dataset_defaults(
@@ -117,8 +111,8 @@ def test_saved_dataset_reranker_is_not_ignored_as_an_invalid_default() -> None:
 
 
 def test_saved_dataset_embedding_requires_an_explicit_service_choice(monkeypatch) -> None:
-    from app.core.config import settings
-    from app.services.dataset_embedding_config import resolve_dataset_embedding_runtime
+    from app.infrastructure.config import settings
+    from app.services.datasets.embedding_config import resolve_dataset_embedding_runtime
 
     monkeypatch.setattr(settings, "VECTOR_BACKEND", "milvus")
     with pytest.raises(ValueError, match="retired"):
@@ -132,7 +126,7 @@ def test_saved_dataset_embedding_requires_an_explicit_service_choice(monkeypatch
 
 @pytest.mark.parametrize("flag", ["IMAGE_EMBEDDING_ENABLED", "KG_GLINER_ENABLED"])
 def test_enabled_legacy_model_flags_fail_configuration_validation(flag: str) -> None:
-    from app.core.config import Settings
+    from app.infrastructure.config import Settings
 
     with pytest.raises(ValueError, match="retired"):
         Settings(_env_file=None, **{flag: True})
@@ -143,7 +137,7 @@ def test_old_image_index_endpoint_reports_retirement() -> None:
 
     from fastapi import HTTPException
 
-    from app.api.v1.rag import index_image_embeddings
+    from app.api.v1.retrieval.routes import index_image_embeddings
 
     with pytest.raises(HTTPException) as failure:
         index_image_embeddings(tenant_id=uuid4(), account_id="test-member")
@@ -154,7 +148,7 @@ def test_old_image_index_endpoint_reports_retirement() -> None:
 def test_image_reader_uses_existing_document_evidence() -> None:
     from langchain_core.documents import Document
 
-    from app.rag.core.vision_reader import select_image_evidence
+    from app.rag.llm.vision_reader import select_image_evidence
 
     text = Document(page_content="text", metadata={"chunk_type": "text"})
     image = Document(page_content="chart OCR", metadata={"image_id": "a" * 32})
@@ -173,8 +167,8 @@ async def test_stream_selects_existing_image_evidence_without_duplicate_retrieva
 
     from langchain_core.documents import Document
 
-    from app.rag.engine_support.standard_stream_retrieval import boost_kg_and_select_images
-    from app.services import document_asset_access
+    from app.rag.runtime.streaming.retrieval import boost_kg_and_select_images
+    from app.services.documents import asset_access as document_asset_access
 
     monkeypatch.setattr(
         document_asset_access, "resolve_preview_image", lambda **_kwargs: tmp_path / "owned-preview.png"
@@ -206,7 +200,7 @@ async def test_stream_selects_existing_image_evidence_without_duplicate_retrieva
 
 
 def test_reranking_profile_requires_an_explicit_provider() -> None:
-    from app.rag.core.retrieval_profiles import apply_retrieval_profile_overrides
+    from app.rag.retrieval.configuration.profiles import apply_retrieval_profile_overrides
 
     with pytest.raises(ValueError, match="explicitly configured"):
         apply_retrieval_profile_overrides(profile="hybrid_ce", top_k=5, score_threshold=0.0)
@@ -221,7 +215,7 @@ def test_reranking_profile_requires_an_explicit_provider() -> None:
 async def test_retrieved_image_reference_cannot_read_another_tenant(monkeypatch) -> None:
     from uuid import uuid4
 
-    from app.rag.core import vision_reader
+    from app.rag.llm import vision_reader
 
     foreign_tenant, request_tenant = uuid4(), uuid4()
     monkeypatch.setattr(
@@ -239,7 +233,7 @@ async def test_retrieved_image_reference_cannot_read_another_tenant(monkeypatch)
 def test_saved_dataset_model_defaults_remain_visible_for_correction() -> None:
     from types import SimpleNamespace
 
-    from app.api.v1.datasets import _dataset_embedding_defaults_out, _dataset_rag_defaults_out
+    from app.api.v1.datasets.routes import _dataset_embedding_defaults_out, _dataset_rag_defaults_out
 
     stored = SimpleNamespace(
         dataset_metadata={
@@ -260,7 +254,7 @@ def test_saved_dataset_model_defaults_remain_visible_for_correction() -> None:
     ],
 )
 def test_dataset_writes_reject_retired_execution(request_name: str, field: str, value: dict) -> None:
-    from app.api.schemas import dataset
+    from app.api.schemas.datasets import dataset
 
     request_model = getattr(dataset, request_name)
     with pytest.raises(ValidationError, match="retired"):
@@ -270,14 +264,14 @@ def test_dataset_writes_reject_retired_execution(request_name: str, field: str, 
 def test_saved_hanlp_pipeline_is_readable_but_cannot_be_written_or_activated() -> None:
     from types import SimpleNamespace
 
-    from app.api.v1.datasets import _dataset_pipeline_out
-    from app.services.pipeline_config import (
+    from app.api.v1.datasets.routes import _dataset_pipeline_out
+    from app.services.pipelines.config import (
         build_pipeline_metadata,
         resolve_pipeline_effective,
         upsert_pipeline_metadata,
         validate_pipeline_execution,
     )
-    from app.types.pipeline import PipelineOptions
+    from app.types.pipeline_options import PipelineOptions
 
     options = PipelineOptions(governance_keywords_provider="hanlp")
     saved = {"pipeline": build_pipeline_metadata(options)}
@@ -295,9 +289,9 @@ def test_service_retirement_errors_use_the_existing_http_error_layer() -> None:
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
 
-    from app.core.exceptions import register_exception_handlers
-    from app.services.pipeline_config import upsert_pipeline_metadata
-    from app.types.pipeline import PipelineOptions
+    from app.infrastructure.exceptions import register_exception_handlers
+    from app.services.pipelines.config import upsert_pipeline_metadata
+    from app.types.pipeline_options import PipelineOptions
 
     api = FastAPI()
     register_exception_handlers(api)
@@ -314,8 +308,8 @@ def test_service_retirement_errors_use_the_existing_http_error_layer() -> None:
 
 
 def test_profile_payloads_remain_readable_and_only_reject_retired_choices_on_write() -> None:
-    from app.api.schemas.governance_profile import GovernanceProfilePayload
-    from app.services.governance_profiles import validate_and_normalize_payload
+    from app.api.schemas.pipelines.governance import GovernanceProfilePayload
+    from app.services.pipelines.profiles import validate_and_normalize_payload
 
     assert validate_and_normalize_payload(GovernanceProfilePayload()).pipeline_patch == {}
     old = GovernanceProfilePayload(pipeline_patch={"governance_keywords_provider": "hanlp"})
@@ -325,7 +319,7 @@ def test_profile_payloads_remain_readable_and_only_reject_retired_choices_on_wri
 
 
 def test_hf_colbert_is_not_advertised_by_capability_discovery() -> None:
-    from app.rag.reranker.capabilities import get_reranker_capabilities
+    from app.rag.retrieval.reranking.providers import get_reranker_capabilities
 
     with pytest.raises(ValueError, match="retired"):
         get_reranker_capabilities("colbert", provider_name="hf")

@@ -1,33 +1,12 @@
 from datetime import UTC, datetime
 from typing import Any
 
-from app.rag.core.logging import get_logger
-from app.rag.evaluation.poc_runner.telemetry import _coerce_datetime, _safe_str, feedback_polarity_from_score
-
-
-def _coerce_mapping(value: Any) -> dict[str, Any]:
-    if value is None:
-        return {}
-    if isinstance(value, dict):
-        return dict(value)
-    if hasattr(value, "model_dump"):
-        try:
-            return dict(value.model_dump(mode="json"))
-        except Exception:
-            return {}
-    out: dict[str, Any] = {}
-    for key in dir(value):
-        if key.startswith("_"):
-            continue
-        try:
-            current = getattr(value, key)
-        except Exception:
-            get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
-            continue
-        if callable(current):
-            continue
-        out[key] = current
-    return out
+from app.rag.evaluation.poc_runner.telemetry import (
+    _coerce_datetime,
+    _coerce_mapping,
+    _safe_str,
+    feedback_polarity_from_score,
+)
 
 
 def _assistant_request_id(message: dict[str, Any]) -> str | None:
@@ -102,11 +81,11 @@ def _index_feedback(
     for raw in feedback_rows or []:
         row = _coerce_mapping(raw)
         request_id = _feedback_request_id(row)
-        if request_id is not None and request_id not in feedback_by_request_id:
-            feedback_by_request_id[request_id] = row
+        if request_id is not None:
+            feedback_by_request_id.setdefault(request_id, row)
         message_id = _safe_str(row.get("message_id"), max_len=255)
-        if message_id is not None and message_id not in feedback_by_message_id:
-            feedback_by_message_id[message_id] = row
+        if message_id is not None:
+            feedback_by_message_id.setdefault(message_id, row)
         conversation_id = _safe_str(row.get("conversation_id"), max_len=255)
         if conversation_id is not None:
             feedback_by_conversation_id.setdefault(conversation_id, []).append(row)
@@ -180,13 +159,17 @@ def _match_user_message(
     if assistant_message is None:
         return candidates[-1]
     assistant_datetime = _coerce_datetime(assistant_message.get("created_at"))
+    if assistant_datetime is None:
+        return candidates[-1]
     minimum = datetime.min.replace(tzinfo=UTC)
-    preceding = [
-        item
-        for item in candidates
-        if assistant_datetime is None or (_coerce_datetime(item.get("created_at")) or minimum) <= assistant_datetime
-    ]
-    return preceding[-1] if preceding else candidates[-1]
+    return next(
+        (
+            item
+            for item in reversed(candidates)
+            if (_coerce_datetime(item.get("created_at")) or minimum) <= assistant_datetime
+        ),
+        candidates[-1],
+    )
 
 
 def build_dataset_analysis_sources(

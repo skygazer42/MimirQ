@@ -1,4 +1,4 @@
-from app.parsing.processors.support.recovery import _document_questions_enabled
+from app.rag.ingestion.indexing.support.recovery import _document_questions_enabled
 from app.rag.kg.extraction_job_options import build_kg_extraction_job_options
 from app.tasks.jobs import _kg_extraction_runtime
 
@@ -24,7 +24,7 @@ def test_kg_worker_keeps_the_frozen_absent_plugin_selection():
 
 
 def test_document_question_numeric_zero_disables_the_default_enabled_flag(monkeypatch):
-    from app.core.config import settings
+    from app.infrastructure.config import settings
 
     monkeypatch.setattr(settings, "DOCUMENT_QUESTIONS_ENABLED", True)
 

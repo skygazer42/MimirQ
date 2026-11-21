@@ -18,6 +18,7 @@ type GraphPageHeaderProps = Readonly<{
   dataSource: 'live' | 'file'
   graphNodeCount: number
   isLoading: boolean
+  isExportingGraphML: boolean
   includeEntityLinks: boolean
   includeRelationLinks: boolean
   minSharedEvents: number
@@ -40,6 +41,7 @@ export function GraphPageHeader({
   dataSource,
   graphNodeCount,
   isLoading,
+  isExportingGraphML,
   includeEntityLinks,
   includeRelationLinks,
   minSharedEvents,
@@ -56,14 +58,15 @@ export function GraphPageHeader({
   manualKgFileInputRef,
   onManualKgFileUpload,
 }: GraphPageHeaderProps) {
+  const scopeLabel = dataSource === 'live' && fileName === '知识图谱' ? '全部数据' : (fileName ?? '尚未选择图谱')
   return (
     <header className={styles.header}>
       <div className={styles.heading}>
         <PageTitleIcon name="knowledge-graph" />
         <h1>知识图谱</h1>
       </div>
-      <span className={styles.scopeLabel} title={fileName || '尚未选择图谱'}>
-        {fileName === '知识图谱' ? '全部数据' : fileName || '尚未选择图谱'}
+      <span className={styles.scopeLabel} title={scopeLabel}>
+        {scopeLabel}
       </span>
       <div className={styles.headerActions}>
         <Button variant="outline" onClick={onOpenGraphPicker}>
@@ -71,9 +74,15 @@ export function GraphPageHeader({
           <span>选择图谱</span>
         </Button>
         {dataSource === 'live' && graphNodeCount > 0 ? (
-          <Button variant="outline" onClick={onExportGraphML} disabled={isLoading} aria-label="导出 GraphML">
+          <Button
+            variant="outline"
+            onClick={onExportGraphML}
+            disabled={isLoading || isExportingGraphML}
+            aria-busy={isExportingGraphML}
+            aria-label="导出 GraphML"
+          >
             <FileCode />
-            <span className={styles.buttonLabel}>导出</span>
+            <span className={styles.buttonLabel}>{isExportingGraphML ? '导出中…' : '导出'}</span>
           </Button>
         ) : null}
         <Popover>

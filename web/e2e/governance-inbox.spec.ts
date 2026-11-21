@@ -94,6 +94,7 @@ async function fixture(page: Page) {
         parser_backend: 'text',
         markdown_content: markdown,
         original_markdown_content: markdown,
+        edited: false,
       })
     }
     if (route.request().method() === 'GET' && /\/documents\/?$/.test(url.pathname))
@@ -194,7 +195,7 @@ test('governance checks, cleans, retains failed saves and reloads saved content 
       .evaluate((element: HTMLTextAreaElement) => element.value.slice(element.selectionStart, element.selectionEnd)),
   ).toBe(duplicate)
   await page.getByRole('button', { name: '预览', exact: true }).click()
-  await page.getByRole('tab', { name: '智能清洗' }).click()
+  await page.getByRole('tab', { name: '文档清洗', exact: true }).click()
   state.failClean = true
   await page.getByRole('button', { name: '运行清洗', exact: true }).click()
   await expect(reader.getByRole('alert')).toBeVisible()
@@ -268,7 +269,7 @@ test('governance binds delayed operations to the initiating document and preserv
   state.holdClean = new Promise((resolve) => {
     finishClean = resolve
   })
-  await page.getByRole('tab', { name: '智能清洗' }).click()
+  await page.getByRole('tab', { name: '文档清洗', exact: true }).click()
   await page.getByRole('button', { name: '运行清洗', exact: true }).click()
   await expect(page.getByRole('button', { name: '正在清洗…' })).toBeVisible()
   await page.getByRole('button', { name: '编辑', exact: true }).click()
@@ -294,7 +295,7 @@ test('governance supports phone navigation, themes, search, configuration and co
   await noOverflow(page)
   await page.screenshot({ path: path.join(evidence, 'laptop.png') })
   await page.setViewportSize({ width: 390, height: 844 })
-  await page.getByRole('button', { name: '收起侧边栏', exact: true }).click()
+  await expect(page.getByRole('button', { name: '展开侧边栏', exact: true })).toBeVisible()
   await expect
     .poll(async () => page.locator('#mimirq-sidebar').evaluate((element) => element.getBoundingClientRect().right))
     .toBeLessThanOrEqual(0)
@@ -389,7 +390,7 @@ test('annotation results separate document attributes, keywords and long text wh
   await expect(records.getByRole('listitem')).toHaveCount(8)
   await page.screenshot({ path: path.join(evidence, 'annotation-records.png') })
   await page.setViewportSize({ width: 390, height: 844 })
-  await page.getByRole('button', { name: '收起侧边栏', exact: true }).click()
+  await expect(page.getByRole('button', { name: '展开侧边栏', exact: true })).toBeVisible()
   await expect
     .poll(async () => page.locator('#mimirq-sidebar').evaluate((element) => element.getBoundingClientRect().right))
     .toBeLessThanOrEqual(0)
@@ -527,7 +528,7 @@ test('classification uses tag values, separates long text and retains manual edi
   await page.keyboard.press('Escape')
   await page.screenshot({ path: path.join(evidence, 'classifier-earth.png') })
   await page.setViewportSize({ width: 390, height: 844 })
-  await page.getByRole('button', { name: '收起侧边栏', exact: true }).click()
+  await expect(page.getByRole('button', { name: '展开侧边栏', exact: true })).toBeVisible()
   await expect
     .poll(async () => page.locator('#mimirq-sidebar').evaluate((element) => element.getBoundingClientRect().right))
     .toBeLessThanOrEqual(0)

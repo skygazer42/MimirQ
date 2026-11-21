@@ -48,22 +48,6 @@ test('独立 UX：手机从健康诊断找到准备资料的下一步', async ({
   await evidence(page, 'mobile-isolated-intake-config')
 })
 
-test('独立 UX：手机选择工作流节点后打开详情', async ({ page }) => {
-  const state = await realDatasetFixture(page)
-  await page.goto(`/datasets/${state.dataset_id}/workflow`, { waitUntil: 'domcontentloaded' })
-  await expect(page.getByRole('heading', { name: '工作流配置', exact: true })).toBeVisible({ timeout: 60_000 })
-  await expect(page.getByText('已同步', { exact: true }).first()).toBeVisible({ timeout: 60_000 })
-  await evidence(page, 'mobile-isolated-workflow')
-  await page.getByText('处理流程', { exact: true }).tap()
-  await page.getByRole('button', { name: '节点详情', exact: true }).tap()
-  await expect(page.getByRole('dialog')).toBeVisible()
-  await expect(page.getByRole('dialog').getByText('未单独配置，继承默认策略', { exact: true })).toBeVisible()
-  await evidence(page, 'mobile-isolated-workflow-detail')
-  await page.getByRole('dialog').getByRole('button', { name: 'Close', exact: true }).tap()
-  await expect(page.getByRole('dialog')).toBeHidden()
-  await evidence(page, 'mobile-isolated-workflow-detail-closed')
-})
-
 test('独立 UX：手机读回复核证据集并检查创建表单', async ({ page }) => {
   const state = await realDatasetFixture(page)
   await page.goto(`/datasets/${state.dataset_id}/evidence`, { waitUntil: 'domcontentloaded' })

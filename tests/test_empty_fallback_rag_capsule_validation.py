@@ -1,6 +1,6 @@
 import pytest
 
-from app.rag.core.evidence_capsule_builder import validate_evidence_capsule
+from app.rag.retrieval.evidence.capsule import validate_evidence_capsule
 
 
 @pytest.mark.parametrize("value", [1, True, ["hash"], {"value": "hash"}, 0, False])

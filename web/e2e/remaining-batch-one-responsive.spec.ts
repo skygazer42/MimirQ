@@ -13,7 +13,6 @@ for (const variant of [
     for (const [route, title] of [
       ['profile', '数据画像'],
       ['health', '健康概览'],
-      ['workflow', '工作流配置'],
       ['tables', '表格资产'],
       ['db-catalog', '数据库目录'],
       ['evidence', '证据库'],

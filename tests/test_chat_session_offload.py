@@ -8,6 +8,70 @@ import pytest
 from fastapi import BackgroundTasks
 
 
+@pytest.fixture(autouse=True)
+def _offline_stream_models(monkeypatch):
+    from langchain_core.language_models.fake_chat_models import FakeListChatModel
+
+    from app.infrastructure import tokens
+    from app.infrastructure.config import settings
+    from app.rag.runtime import engine
+    from app.services.chat import response_cache
+
+    pool = SimpleNamespace(get_external_sync_client=lambda: None, get_external_async_client=lambda: None)
+    monkeypatch.setattr(engine, "get_http_client_pool", lambda: pool)
+    monkeypatch.setattr(
+        engine.RAGEngine,
+        "_build_llm",
+        lambda *_args, **_kwargs: FakeListChatModel(responses=[settings.LLM_MOCK_RESPONSE]),
+    )
+    monkeypatch.setattr(tokens, "_get_encoder", lambda: False)
+    monkeypatch.setattr(response_cache, "_get_redis_client", lambda: None)
+
+
+@pytest.fixture
+def managed_worker_sessions(monkeypatch):
+    from app.services.runtime import retrieval_limiter as rag_runtime_limiter
+
+    sessions = []
+
+    class WorkerSession:
+        closed = False
+
+        def close(self):
+            self.closed = True
+
+    def session_factory():
+        session = WorkerSession()
+        sessions.append(session)
+        return session
+
+    monkeypatch.setattr(rag_runtime_limiter, "SessionLocal", session_factory)
+    yield sessions
+    assert all(session.closed for session in sessions)
+
+
+def _cache_lookup_options():
+    from app.services.chat.cache_flow import ChatCacheLookupInput
+
+    return ChatCacheLookupInput(
+        db=SimpleNamespace(rollback=lambda: None),
+        tenant_id=uuid.uuid4(),
+        account_id="member-1",
+        dataset_id=uuid.uuid4(),
+        document_ids=[],
+        history=[],
+        enable_long_term_memory=False,
+        long_term_messages=[],
+        enable_structured_memory=False,
+        question="where",
+        rag_config={},
+        prompt_config={},
+        structured_output=False,
+        structured_preset=None,
+        use_graph=False,
+    )
+
+
 class _TransientDistributedSingleflightHarness:
     def __init__(self, key: str) -> None:
         self.key = key
@@ -235,7 +299,7 @@ async def _assert_generation_waits_with_released_session(
 async def test_managed_retrieval_offload_owns_session_and_releases_request_session(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.services.rag_runtime_limiter as limiter
+    import app.services.runtime.retrieval_limiter as limiter
 
     events: list[str] = []
     loop_thread_id = threading.get_ident()
@@ -262,7 +326,7 @@ async def test_managed_retrieval_offload_owns_session_and_releases_request_sessi
 async def test_managed_retrieval_offload_closes_worker_session_after_failure(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.services.rag_runtime_limiter as limiter
+    import app.services.runtime.retrieval_limiter as limiter
 
     closed = 0
 
@@ -293,7 +357,7 @@ async def test_managed_retrieval_offload_closes_worker_session_after_failure(
 async def test_managed_retrieval_offload_accepts_no_request_session(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.services.rag_runtime_limiter as limiter
+    import app.services.runtime.retrieval_limiter as limiter
 
     worker_db = SimpleNamespace(close_calls=0)
 
@@ -316,7 +380,7 @@ async def test_managed_retrieval_offload_accepts_no_request_session(
 async def test_managed_retrieval_offload_tolerates_request_rollback_failure(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.services.rag_runtime_limiter as limiter
+    import app.services.runtime.retrieval_limiter as limiter
 
     worker_db = SimpleNamespace(close=lambda: None)
     monkeypatch.setattr(limiter, "SessionLocal", lambda: worker_db)
@@ -335,9 +399,10 @@ async def test_managed_retrieval_offload_tolerates_request_rollback_failure(
 @pytest.mark.asyncio
 async def test_retrieval_explain_replaces_request_session_before_offload(
     monkeypatch: pytest.MonkeyPatch,
+    managed_worker_sessions,
 ) -> None:
-    import app.api.v1.retrieval_explain as explain
-    from app.api.v1 import rag as rag_api
+    import app.api.v1.retrieval.explain as explain
+    from app.services.retrieval import scope as retrieval_scope
 
     events: list[str] = []
     request_db = SimpleNamespace(rollback=lambda: events.append("request_rollback"))
@@ -347,7 +412,7 @@ async def test_retrieval_explain_replaces_request_session_before_offload(
     monkeypatch.setattr(explain.dataset_service, "ensure_member", lambda *_args: None)
     monkeypatch.setattr(explain.dataset_service, "get_dataset", lambda *_args: object())
     monkeypatch.setattr(explain.dataset_service, "assert_dataset_readable", lambda *_args: None)
-    monkeypatch.setattr(rag_api, "_enforce_non_empty_retrieval_scope", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(retrieval_scope, "_enforce_non_empty_retrieval_scope", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(explain, "build_rag_state", lambda **kwargs: dict(kwargs))
 
     def fake_retrieval(state):  # noqa: ANN001, ANN202
@@ -383,10 +448,11 @@ async def test_retrieval_explain_replaces_request_session_before_offload(
 @pytest.mark.asyncio
 async def test_retrieval_explain_uses_chat_rag_defaults_when_rag_config_omitted(
     monkeypatch: pytest.MonkeyPatch,
+    managed_worker_sessions,
 ) -> None:
-    import app.api.v1.retrieval_explain as explain
-    from app.api.schemas.chat import ChatRAGConfig
-    from app.api.v1 import rag as rag_api
+    import app.api.v1.retrieval.explain as explain
+    from app.api.schemas.conversations.chat import ChatRAGConfig
+    from app.services.retrieval import scope as retrieval_scope
 
     captured: dict[str, object] = {}
     request_db = SimpleNamespace(rollback=lambda: None)
@@ -396,7 +462,7 @@ async def test_retrieval_explain_uses_chat_rag_defaults_when_rag_config_omitted(
     monkeypatch.setattr(explain.dataset_service, "ensure_member", lambda *_args: None)
     monkeypatch.setattr(explain.dataset_service, "get_dataset", lambda *_args: object())
     monkeypatch.setattr(explain.dataset_service, "assert_dataset_readable", lambda *_args: None)
-    monkeypatch.setattr(rag_api, "_enforce_non_empty_retrieval_scope", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(retrieval_scope, "_enforce_non_empty_retrieval_scope", lambda *_args, **_kwargs: None)
 
     def fake_build_rag_state(**kwargs):  # noqa: ANN001, ANN202
         captured.update(kwargs)
@@ -477,7 +543,7 @@ async def test_multi_agent_concurrent_retrieval_uses_distinct_closed_sessions(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     import app.rag.agents.multi_agent as multi_agent
-    import app.services.rag_runtime_limiter as limiter
+    import app.services.runtime.retrieval_limiter as limiter
 
     class WorkerSession:
         def __init__(self) -> None:
@@ -553,7 +619,11 @@ async def test_multi_agent_fanout_rolls_back_request_session_once(
         return {"docs": [], "citations": [], "metrics": {"retrieval_mode": "hybrid"}}
 
     monkeypatch.setattr(runner, "_decompose", decompose)
-    monkeypatch.setattr(multi_agent, "build_rag_state", lambda **kwargs: dict(kwargs))
+    monkeypatch.setattr(
+        multi_agent,
+        "build_agentic_rag_state",
+        lambda request, *, history: {"question": request.question, "history": history},
+    )
     monkeypatch.setattr(multi_agent, "run_retrieval", fake_retrieval)
     monkeypatch.setattr(
         multi_agent,
@@ -640,12 +710,14 @@ async def test_agentic_round_replaces_request_session(
 @pytest.mark.asyncio
 async def test_chat_singleflight_follower_reacquires_after_leader_cancellation(
     monkeypatch: pytest.MonkeyPatch,
+    managed_worker_sessions,
 ) -> None:
-    import app.services.chat_cache_runtime as cache_runtime
-    import app.services.chat_response_cache as cache
+    import app.services.chat.cache_flow as cache_runtime
+    import app.services.chat.response_cache as cache
 
     key = "chat-cancel-retry"
     cache.clear_inflight_chat_responses()
+    monkeypatch.setattr(cache, "_get_redis_client", lambda: None)
     monkeypatch.setattr(
         cache_runtime,
         "prepare_chat_cache_lookup",
@@ -657,7 +729,7 @@ async def test_chat_singleflight_follower_reacquires_after_leader_cancellation(
 
     monkeypatch.setattr(cache_runtime, "get_cached_chat_response_async", _get_cached)
     monkeypatch.setattr(cache_runtime.settings, "CHAT_RESPONSE_SINGLEFLIGHT_ENABLED", True)
-    options = SimpleNamespace()
+    options = _cache_lookup_options()
 
     try:
         leader_state = await cache_runtime.prepare_non_streaming_chat_cache_state(options=options)
@@ -681,10 +753,11 @@ async def test_chat_singleflight_follower_reacquires_after_leader_cancellation(
 @pytest.mark.asyncio
 async def test_chat_singleflight_repeated_leader_cancellation_respects_total_wait_timeout(
     monkeypatch: pytest.MonkeyPatch,
+    managed_worker_sessions,
 ) -> None:
-    import app.services.chat_cache_runtime as cache_runtime
-    import app.services.chat_response_cache as cache
-    from app.services.rag_runtime_limiter import RetrievalAdmissionTimeoutError
+    import app.services.chat.cache_flow as cache_runtime
+    import app.services.chat.response_cache as cache
+    from app.services.runtime.retrieval_limiter import RetrievalAdmissionTimeoutError
 
     async def _get_cached(_key: str):  # noqa: ANN202
         return None
@@ -711,7 +784,7 @@ async def test_chat_singleflight_repeated_leader_cancellation_respects_total_wai
 
     with pytest.raises(RetrievalAdmissionTimeoutError):
         await asyncio.wait_for(
-            cache_runtime.prepare_non_streaming_chat_cache_state(options=SimpleNamespace()),
+            cache_runtime.prepare_non_streaming_chat_cache_state(options=_cache_lookup_options()),
             timeout=0.2,
         )
 
@@ -719,7 +792,7 @@ async def test_chat_singleflight_repeated_leader_cancellation_respects_total_wai
 def test_prepare_chat_cache_lookup_keeps_singleflight_key_when_cache_disabled(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.services.chat_cache_runtime as cache_runtime
+    import app.services.chat.cache_flow as cache_runtime
 
     monkeypatch.setattr(cache_runtime.settings, "CHAT_RESPONSE_CACHE_ENABLED", False, raising=False)
     monkeypatch.setattr(cache_runtime.settings, "CHAT_RESPONSE_SINGLEFLIGHT_ENABLED", True, raising=False)
@@ -759,7 +832,7 @@ def test_prepare_chat_cache_lookup_keeps_singleflight_key_when_cache_disabled(
 async def test_chat_distributed_singleflight_waits_for_redis_payload(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.services.chat_response_cache as cache
+    import app.services.chat.response_cache as cache
 
     key = "chat-distributed"
     state = {
@@ -824,7 +897,7 @@ async def test_chat_distributed_singleflight_waits_for_redis_payload(
 async def test_chat_distributed_singleflight_uses_transient_result_when_cache_ttl_zero(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.services.chat_response_cache as cache
+    import app.services.chat.response_cache as cache
 
     key = "chat-distributed-transient"
     harness = _TransientDistributedSingleflightHarness(key)
@@ -871,7 +944,7 @@ async def test_chat_distributed_singleflight_uses_transient_result_when_cache_tt
 async def test_chat_singleflight_reject_does_not_publish_transient_result(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.services.chat_response_cache as cache
+    import app.services.chat.response_cache as cache
 
     key = "chat-distributed-reject"
     writes: list[str] = []
@@ -916,8 +989,8 @@ async def test_chat_singleflight_reject_does_not_publish_transient_result(
 async def test_chat_singleflight_wait_timeout_preserves_inflight_future(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.services.chat_response_cache as cache
-    from app.services.rag_runtime_limiter import RetrievalAdmissionTimeoutError
+    import app.services.chat.response_cache as cache
+    from app.services.runtime.retrieval_limiter import RetrievalAdmissionTimeoutError
 
     key = "chat-local-timeout"
     cache.clear_inflight_chat_responses()
@@ -955,8 +1028,8 @@ async def test_chat_singleflight_wait_timeout_preserves_inflight_future(
 async def test_chat_distributed_singleflight_wait_timeout_returns_retryable_503(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.services.chat_response_cache as cache
-    from app.services.rag_runtime_limiter import RetrievalAdmissionTimeoutError
+    import app.services.chat.response_cache as cache
+    from app.services.runtime.retrieval_limiter import RetrievalAdmissionTimeoutError
 
     key = "chat-distributed-timeout"
 
@@ -997,7 +1070,7 @@ async def test_chat_distributed_singleflight_wait_timeout_returns_retryable_503(
 async def test_set_cached_chat_response_schedules_async_write_in_event_loop(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.services.chat_response_cache as cache
+    import app.services.chat.response_cache as cache
 
     written = asyncio.Event()
 
@@ -1028,7 +1101,7 @@ async def test_set_cached_chat_response_schedules_async_write_in_event_loop(
 async def test_chat_singleflight_releases_lease_after_cache_write(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.services.chat_response_cache as cache
+    import app.services.chat.response_cache as cache
 
     key = "chat-write-before-release"
     allow_write = asyncio.Event()
@@ -1080,11 +1153,12 @@ async def test_chat_singleflight_releases_lease_after_cache_write(
 @pytest.mark.asyncio
 async def test_chat_cancelled_or_overloaded_leader_releases_singleflight_for_retry(
     monkeypatch: pytest.MonkeyPatch,
+    managed_worker_sessions,
 ) -> None:
-    import app.api.v1.chat as chat_api
-    import app.services.chat_response_cache as cache
-    from app.api.schemas.chat import ChatRequest
-    from app.services.rag_runtime_limiter import RetrievalAdmissionTimeoutError
+    import app.api.v1.conversations.routes as chat_api
+    import app.services.chat.response_cache as cache
+    from app.api.schemas.conversations.chat import ChatRequest
+    from app.services.runtime.retrieval_limiter import RetrievalAdmissionTimeoutError
 
     key = "chat-endpoint-cancel"
     cache.clear_inflight_chat_responses()
@@ -1111,16 +1185,27 @@ async def test_chat_cancelled_or_overloaded_leader_releases_singleflight_for_ret
     )
 
     async def _fake_enforce_tenant_qps_quota_async(**_kwargs):  # noqa: ANN202
-        return {}
+        return {"enabled": False, "mode": "block", "rps": 0.0, "burst": 0, "allowed": True, "retry_after": 0.0}
 
     monkeypatch.setattr(
-        "app.services.tenant_quota_service.enforce_tenant_qps_quota_async",
+        "app.services.identity.tenant_quotas.enforce_tenant_qps_quota_async",
         _fake_enforce_tenant_qps_quota_async,
     )
-    monkeypatch.setattr(chat_api, "check_chat_assistant_token_quota", lambda *_args, **_kwargs: {})
     monkeypatch.setattr(
         chat_api,
-        "_prepare_chat_turn_session",
+        "check_chat_assistant_token_quota",
+        lambda *_args, **_kwargs: {
+            "enabled": False,
+            "limit": 0,
+            "used": 0,
+            "window_hours": 24,
+            "exceeded": False,
+            "mode": "block",
+        },
+    )
+    monkeypatch.setattr(
+        chat_api,
+        "prepare_chat_turn_session",
         lambda **_kwargs: SimpleNamespace(
             conversation_id=conversation_id,
             scope_dataset_id=dataset_id,
@@ -1128,7 +1213,7 @@ async def test_chat_cancelled_or_overloaded_leader_releases_singleflight_for_ret
             long_term_messages=[],
         ),
     )
-    monkeypatch.setattr(chat_api, "_prepare_chat_request_runtime", lambda **_kwargs: runtime)
+    monkeypatch.setattr(chat_api, "prepare_chat_request_runtime", lambda **_kwargs: runtime)
 
     acquired_future: asyncio.Future[dict] | None = None
 
@@ -1151,7 +1236,7 @@ async def test_chat_cancelled_or_overloaded_leader_releases_singleflight_for_ret
             structured_data=None,
         )
 
-    monkeypatch.setattr(chat_api, "_prepare_non_streaming_chat_cache_state", prepare_cache)
+    monkeypatch.setattr(chat_api, "prepare_non_streaming_chat_cache_state", prepare_cache)
 
     async def cancelled_offload(*_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
         raise asyncio.CancelledError
@@ -1221,12 +1306,12 @@ async def test_chat_cancelled_or_overloaded_leader_releases_singleflight_for_ret
 async def test_langchain_engine_releases_session_and_propagates_admission_timeout(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.rag.engine as engine_mod
     import app.rag.policy.modality_router as modality_router
-    import app.services.chat_tag_service as tag_service
-    from app.core.config import settings
-    from app.rag.engine import RAGEngine
-    from app.services.rag_runtime_limiter import RetrievalAdmissionTimeoutError
+    import app.rag.runtime.engine as engine_mod
+    import app.services.tables.chat_context as tag_service
+    from app.infrastructure.config import settings
+    from app.rag.runtime.engine import RAGEngine
+    from app.services.runtime.retrieval_limiter import RetrievalAdmissionTimeoutError
 
     _patch_disabled_langchain_features(monkeypatch, settings)
 
@@ -1246,7 +1331,7 @@ async def test_langchain_engine_releases_session_and_propagates_admission_timeou
         request_db.checked_out = True
         return [], {"enabled": True, "used": False, "reason": "test"}
 
-    monkeypatch.setattr(engine_mod, "hybrid_retriever", _StaticRetriever())
+    monkeypatch.setattr("app.rag.runtime.streaming.retrieval.hybrid_retriever", _StaticRetriever())
     monkeypatch.setattr(engine_mod, "run_blocking_retrieval_call", limited_call, raising=False)
     monkeypatch.setattr(modality_router, "classify_query_modality", lambda _query: ("table", ["test"]))
     monkeypatch.setattr(tag_service, "build_chat_tag_context_docs", build_tag_context)

@@ -36,13 +36,6 @@ def _safe_int(value: Any, default: int) -> int:
         return int(default)
 
 
-def _safe_float(value: Any, default: float) -> float:
-    try:
-        return float(value)
-    except Exception:
-        return float(default)
-
-
 def _normalize_expected_ids(raw: Any) -> list[str]:
     if not isinstance(raw, list):
         return []
@@ -299,15 +292,14 @@ def run_benchmark(
     output_path: Path,
     top_k: int | None,
     retrieval_mode: str | None,
-    sparse_retrieval_enabled: bool = False,
-    sparse_retrieval_provider: str = "deterministic",
-    colbert_retrieval_enabled: bool | None = None,
-    colbert_retrieval_provider: str | None = None,
 ) -> dict[str, Any]:
-    from app.core.config import settings as app_settings
-    from app.rag.core.hashing import stable_hash
-    from app.rag.retrieval.sparse import normalize_sparse_provider_name
-    from app.rag.retriever import HybridRetriever
+    if fixture_path.resolve() == output_path.resolve():
+        raise ValueError("fixture and benchmark report paths must be distinct")
+
+    from app.infrastructure.config import settings as app_settings
+    from app.infrastructure.hashing import stable_hash
+    from app.rag.retrieval.corpus import get_corpus_index
+    from app.rag.retrieval.recall.retriever import HybridRetriever
 
     fixture_raw = fixture_path.read_text(encoding="utf-8")
     fixture_obj = json.loads(fixture_raw)
@@ -320,51 +312,21 @@ def run_benchmark(
     default_mode = str(defaults.get("retrieval_mode") or "keyword").strip().lower() or "keyword"
     effective_top_k = max(1, int(top_k if top_k is not None else default_top_k))
     effective_mode = str(retrieval_mode or default_mode).strip().lower() or "keyword"
-    default_colbert_enabled = bool(defaults.get("colbert_retrieval_enabled"))
-    default_colbert_provider = str(defaults.get("colbert_retrieval_provider") or "deterministic").strip().lower()
-    effective_colbert_enabled = (
-        bool(colbert_retrieval_enabled) if colbert_retrieval_enabled is not None else default_colbert_enabled
-    )
-    effective_colbert_provider = (
-        str(colbert_retrieval_provider or default_colbert_provider or "deterministic").strip().lower()
-    )
-    if effective_colbert_provider not in {"deterministic", "hf"}:
-        effective_colbert_provider = "deterministic"
-
-    settings_keys = (
-        "VECTOR_BACKEND",
-        "BM25_INDEX_ENABLED",
-        "LEXICAL_DB_ENABLED",
-        "SPARSE_RETRIEVAL_ENABLED",
-        "SPARSE_RETRIEVAL_PROVIDER",
-        "COLBERT_RETRIEVAL_ENABLED",
-        "COLBERT_RETRIEVAL_PROVIDER",
-        "COLBERT_RETRIEVAL_INDEX_PERSIST_ENABLED",
-        "ENABLE_QUERY_REWRITE",
-        "ENABLE_MULTI_QUERY",
-        "ENABLE_HYDE",
-        "ENABLE_QUERY_DECOMPOSITION",
-        "RETRIEVAL_QUERY_PARALLELISM",
-    )
-    previous: dict[str, Any] = {k: getattr(app_settings, k) for k in settings_keys}
-    sparse_provider = normalize_sparse_provider_name(str(sparse_retrieval_provider or "deterministic"))
-    if sparse_provider not in {"deterministic", "splade"}:
-        sparse_provider = "deterministic"
+    # Deterministic local profile for OSS/dev reproducibility.
+    overrides = {
+        "VECTOR_BACKEND": "memory",
+        "BM25_INDEX_ENABLED": True,
+        "LEXICAL_DB_ENABLED": False,
+        "ENABLE_QUERY_REWRITE": False,
+        "ENABLE_MULTI_QUERY": False,
+        "ENABLE_HYDE": False,
+        "ENABLE_QUERY_DECOMPOSITION": False,
+        "RETRIEVAL_QUERY_PARALLELISM": 1,
+    }
+    previous = {key: getattr(app_settings, key) for key in overrides}
     try:
-        # Deterministic local profile for OSS/dev reproducibility.
-        app_settings.VECTOR_BACKEND = "memory"
-        app_settings.BM25_INDEX_ENABLED = True
-        app_settings.LEXICAL_DB_ENABLED = False
-        app_settings.SPARSE_RETRIEVAL_ENABLED = bool(sparse_retrieval_enabled)
-        app_settings.SPARSE_RETRIEVAL_PROVIDER = sparse_provider
-        app_settings.COLBERT_RETRIEVAL_ENABLED = effective_colbert_enabled
-        app_settings.COLBERT_RETRIEVAL_PROVIDER = effective_colbert_provider
-        app_settings.COLBERT_RETRIEVAL_INDEX_PERSIST_ENABLED = False
-        app_settings.ENABLE_QUERY_REWRITE = False
-        app_settings.ENABLE_MULTI_QUERY = False
-        app_settings.ENABLE_HYDE = False
-        app_settings.ENABLE_QUERY_DECOMPOSITION = False
-        app_settings.RETRIEVAL_QUERY_PARALLELISM = 1
+        for key, value in overrides.items():
+            setattr(app_settings, key, value)
 
         tenant_id = _uuid_from_seed("tenant")
         # This gate measures fixture ranking, not database-backed dataset runtime resolution.
@@ -385,10 +347,8 @@ def run_benchmark(
         retriever = HybridRetriever(
             tenant_id=tenant_id,
             enable_reranker=False,
-            sparse_enabled=bool(sparse_retrieval_enabled),
-            sparse_provider=sparse_provider,
         )
-        retriever.upsert_bm25_documents(docs, tenant_id=tenant_id)
+        get_corpus_index().upsert(None, tenant_id=tenant_id, documents=docs)
 
         cases: list[dict[str, Any]] = []
         q_rows = fixture_obj.get("queries") or []
@@ -441,12 +401,6 @@ def run_benchmark(
         "llm_mock_env": llm_mock_env,
         "retrieval_mode": effective_mode,
         "top_k": effective_top_k,
-        "runtime": {
-            "sparse_retrieval_enabled": bool(sparse_retrieval_enabled),
-            "sparse_retrieval_provider": sparse_provider,
-            "colbert_retrieval_enabled": effective_colbert_enabled,
-            "colbert_retrieval_provider": effective_colbert_provider,
-        },
         "summary": {
             "cases_total": len(cases),
             "hit_at_k": round(sum(hits) / len(hits), 6) if hits else 0.0,
@@ -491,27 +445,6 @@ def main(argv: list[str] | None = None) -> int:
         choices=["keyword", "vector", "hybrid", "mmr"],
         help="Override retrieval_mode from fixture defaults",
     )
-    parser.add_argument(
-        "--enable-sparse-retrieval",
-        action="store_true",
-        help="Enable sparse retrieval channel for this benchmark run.",
-    )
-    parser.add_argument(
-        "--sparse-retrieval-provider",
-        default="deterministic",
-        help="Sparse retrieval provider (deterministic|splade; unknown values fallback to deterministic).",
-    )
-    parser.add_argument(
-        "--enable-colbert-retrieval",
-        action=argparse.BooleanOptionalAction,
-        default=None,
-        help="Enable ColBERT ANN fallback retrieval for this benchmark run.",
-    )
-    parser.add_argument(
-        "--colbert-retrieval-provider",
-        default=None,
-        help="ColBERT retrieval provider (deterministic|hf; unknown values fallback to deterministic).",
-    )
     args = parser.parse_args(argv)
 
     fixture_path = Path(str(args.fixture)).expanduser().resolve()
@@ -522,10 +455,6 @@ def main(argv: list[str] | None = None) -> int:
         output_path=out_path,
         top_k=args.top_k,
         retrieval_mode=args.retrieval_mode,
-        sparse_retrieval_enabled=bool(args.enable_sparse_retrieval),
-        sparse_retrieval_provider=str(args.sparse_retrieval_provider or "deterministic"),
-        colbert_retrieval_enabled=args.enable_colbert_retrieval,
-        colbert_retrieval_provider=args.colbert_retrieval_provider,
     )
     summary = report.get("summary") if isinstance(report.get("summary"), dict) else {}
     print(

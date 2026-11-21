@@ -2,7 +2,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.rag.preprocessing import diagnostics
+from app.rag.ingestion.governance import diagnostics
 
 
 def _artifact_rich_text() -> str:

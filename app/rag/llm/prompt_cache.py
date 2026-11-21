@@ -1,6 +1,6 @@
 from typing import Any, TypedDict
 
-from app.core.config import settings
+from app.infrastructure.config import settings
 
 _CACHE_CONTROL = {"type": "ephemeral"}
 
@@ -25,20 +25,14 @@ def message_content_to_text(content: Any) -> str | None:
         for item in content:
             if isinstance(item, str):
                 parts.append(item)
-                continue
-            if not isinstance(item, dict):
-                continue
-            if item.get("type") != "text":
-                continue
-            parts.append(item["text"])
+            elif isinstance(item, dict) and item.get("type") == "text":
+                parts.append(item["text"])
         return "".join(parts)
     return str(content) if content is not None else None
 
 
 def should_cache_message(*, role: str, content: Any, anthropic_compatible: bool) -> bool:
-    if content is None or not settings.PROMPT_CACHE_ENABLED:
-        return False
-    if not bool(anthropic_compatible):
+    if content is None or not settings.PROMPT_CACHE_ENABLED or not anthropic_compatible:
         return False
     role_norm = role.strip().lower()
     if role_norm in {"system", "developer"}:
@@ -65,6 +59,7 @@ def annotate_prompt_cache_content(*, role: str, content: Any, anthropic_compatib
                 annotated.append(item)
         if applied:
             return annotated, True
+        return content, False
 
     return [{"type": "text", "text": message_content_to_text(content), "cache_control": dict(_CACHE_CONTROL)}], True
 

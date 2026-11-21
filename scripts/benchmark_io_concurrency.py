@@ -25,7 +25,7 @@ from typing import Any
 # Add project root to Python path.
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from app.core.config import settings
+from app.infrastructure.config import settings
 from app.rag.embedding.base import BaseEmbeddingModel
 from app.rag.embedding.factory import select_embedding_model
 

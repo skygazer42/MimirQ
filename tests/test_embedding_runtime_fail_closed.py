@@ -4,14 +4,14 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.rag.retrieval.hybrid import channel_collection
+from app.rag.retrieval.recall import channel_collection
 
 if not hasattr(_datetime, "UTC"):
     _datetime.UTC = _datetime.timezone.utc
 
 
 def _runtime(*, dataset_scoped: bool, space: str = "space-a", collection: str = "documents_emb_space_a"):
-    from app.services.dataset_embedding_config import DatasetEmbeddingRuntimeConfig
+    from app.services.datasets.embedding_config import DatasetEmbeddingRuntimeConfig
 
     return DatasetEmbeddingRuntimeConfig(
         provider="openai_compatible",
@@ -25,7 +25,7 @@ def _runtime(*, dataset_scoped: bool, space: str = "space-a", collection: str = 
 
 
 def _configure_retrieval(monkeypatch: pytest.MonkeyPatch) -> None:
-    from app.core.config import settings
+    from app.infrastructure.config import settings
 
     for name, value in {
         "BM25_INDEX_ENABLED": False,
@@ -45,9 +45,9 @@ def _configure_retrieval(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_index_chunks_raises_when_scoped_document_runtime_cannot_be_resolved(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.services.indexer as indexer_module
-    from app.models.dataset import Dataset as DBDataset
-    from app.models.document import Document as DBDocument
+    import app.rag.ingestion.indexing.indexer as indexer_module
+    from app.models.datasets.records import Dataset as DBDataset
+    from app.models.documents.records import Document as DBDocument
     from app.types.indexing import ChunkInput
 
     tenant_id = uuid.uuid4()
@@ -98,8 +98,8 @@ def test_index_chunks_raises_when_scoped_document_runtime_cannot_be_resolved(
 def test_retriever_dataset_scope_raises_when_runtime_lookup_fails(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.rag.retriever as retriever_module
-    from app.rag.retriever import HybridRetriever
+    import app.rag.retrieval.recall.retriever as retriever_module
+    from app.rag.retrieval.recall.retriever import HybridRetriever
 
     _configure_retrieval(monkeypatch)
     tenant_id = uuid.uuid4()
@@ -150,8 +150,8 @@ def test_retriever_dataset_scope_raises_when_runtime_lookup_fails(
 def test_retriever_dataset_scope_rejects_malformed_runtime_metadata(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.rag.retriever as retriever_module
-    from app.rag.retriever import HybridRetriever
+    import app.rag.retrieval.recall.retriever as retriever_module
+    from app.rag.retrieval.recall.retriever import HybridRetriever
 
     tenant_id = uuid.uuid4()
     dataset_id = uuid.uuid4()
@@ -179,7 +179,7 @@ def test_retriever_dataset_scope_rejects_malformed_runtime_metadata(
 def test_retriever_document_scope_raises_when_dataset_runtime_is_missing(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from app.rag.retriever import HybridRetriever
+    from app.rag.retrieval.recall.retriever import HybridRetriever
 
     _configure_retrieval(monkeypatch)
     tenant_id = uuid.uuid4()

@@ -21,6 +21,8 @@ import { ParserDropdown } from '@/components/business/parser-dropdown'
 import { DocumentFolderTree, type DocumentTreeFileItem } from '@/components/document-library/folder-tree'
 import { ParsingActiveFilePane } from './parsing-active-file-pane'
 import { ParsingLibraryPreviewPane } from './parsing-library-preview-pane'
+import { getParsingGovernanceTargets } from './parsing-governance'
+import { getParsingRunStatistics } from './parsing-page-utils'
 import { Button } from '@/components/ui/button'
 import { FileTypeIcon } from '@/components/ui/file-type-icon'
 import { PageTitleIcon } from '@/components/ui/page-title-icon'
@@ -28,7 +30,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Switch } from '@/components/ui/switch'
 import { WorkbenchPanelDialog } from '@/components/workbench'
-import { documentApi } from '@/lib/api/documents'
 import { formatApiError } from '@/lib/api-errors'
 import type { ParsingElement } from '@/lib/api/parsing'
 import { getParserLabel } from '@/lib/parser-options'
@@ -37,7 +38,6 @@ import { UPLOAD_ACCEPT, UPLOAD_ACCEPT_WITH_ZIP } from '@/lib/upload-extensions'
 import { cn, detachPromise } from '@/lib/utils'
 import type { ParsingBlock } from '@/lib/parsing-positions'
 import { type FolderNode, ROOT_FOLDER_ID, type ParsedFileData } from '@/store/use-parsed-files-store'
-import { getLibraryStatusBadge } from './parsing-page-utils'
 import type { ParsedFile, ParseRun, ParsingLibrarySourceStatus } from './parsing-types'
 import styles from './parsing-compare.module.css'
 
@@ -50,16 +50,27 @@ type ParsingWorkbenchShellProps = {
   activeLibraryFile: ParsedFileData | null
   activeLibraryFileId: string | null
   activeLibrarySourceStatus: ParsingLibrarySourceStatus
+  activeLibrarySourceError: Error | null
+  isLibrarySourceChecking: boolean
+  retryLibrarySource: () => void
   activeMarkdown: string
+  activeLibraryContentError: Error | null
+  isLibraryContentLoading: boolean
+  hasLibraryContent: boolean
+  retryLibraryContent: () => void
   availableDatasets: DatasetScopeOption[]
+  datasetsError: Error | null
+  librarySyncError: Error | null
+  isLibrarySyncing: boolean
+  retryLibrarySync: () => void
   activeElements: ParsingElement[]
   activePdfQuality: unknown
   activeQualityGate: unknown
   activeRun: ParseRun | null
+  isRunUnavailable: boolean
   copied: boolean
   copyMarkdown: () => Promise<void>
   currentFolderId: string
-  dragOverFolderId: string | null
   downloadMarkdown: () => void
   editedContent: string
   fileInputRef: RefObject<HTMLInputElement | null>
@@ -68,28 +79,28 @@ type ParsingWorkbenchShellProps = {
   folderPathById: Record<string, string>
   folders: FolderNode[]
   handleCancelEdit: () => void
-  handleDeleteFolder: (folderIds: string[]) => void
+  handleDeleteFolder: (folderIds: string[], fileIds: string[]) => void
   handleFileDragStart: (event: ReactDragEvent<HTMLElement>, fileId: string) => void
   handleFileSelect: (event: ReactChangeEvent<HTMLInputElement>) => Promise<void>
-  handleFolderDragLeave: () => void
-  handleFolderDragOver: (event: ReactDragEvent<HTMLElement>, folderId: string) => void
-  handleFolderDrop: (event: ReactDragEvent<HTMLElement>, folderId: string) => void
+  handleFolderDrop: (event: ReactDragEvent<HTMLElement>, folderId: string) => Promise<void>
   handleRebindFileSelect: (event: ReactChangeEvent<HTMLInputElement>) => Promise<void>
   handleSaveEdit: () => Promise<void>
   handleSelectRun: (runId: string) => void
   handleStartEdit: () => void
-  handleSubmitToGovernance: () => void
+  handleSubmitToGovernance: () => Promise<void>
   hoveredBlockId: string | null
   imageCaptionEnabled: boolean
   imageOcrEnabled: boolean
   inspectorOpen: boolean
   isEditing: boolean
+  isSubmittingGovernance: boolean
   isLibraryLoaded: boolean
+  libraryLoadError: unknown
+  retryLibraryLoad: () => void
   isPdf: boolean
   isQueueRehydrating: boolean
-  isSidebarCollapsed: boolean
   libraryFiles: ParsedFileData[]
-  moveFileToFolder: (fileId: string, folderId: string) => void
+  moveFileToFolder: (fileId: string, folderId: string) => Promise<void>
   parseAllPending: () => Promise<void>
   parseFile: (fileId: string, backend?: string) => void
   parserBackend: string
@@ -97,7 +108,7 @@ type ParsingWorkbenchShellProps = {
   previewMode: 'raw' | 'rendered'
   queueOpen: boolean
   rebindInputRef: RefObject<HTMLInputElement | null>
-  removeFile: (fileId: string) => void
+  removeFile: (fileId: string) => Promise<void>
   requestRebindForLibraryFile: (libraryId: string, autoParse: boolean) => void
   requestUploadFolder: (folderId: string) => void
   requestUploadToFolder: (folderId: string) => void
@@ -112,7 +123,6 @@ type ParsingWorkbenchShellProps = {
   setImageCaptionEnabled: (enabled: boolean) => void
   setImageOcrEnabled: (enabled: boolean) => void
   setInspectorOpen: (open: boolean) => void
-  setIsSidebarCollapsed: (collapsed: boolean) => void
   setParserBackend: (backend: string) => void
   setPdfPreviewResetToken: Dispatch<SetStateAction<number>>
   setPreviewMode: (mode: 'raw' | 'rendered') => void
@@ -121,13 +131,13 @@ type ParsingWorkbenchShellProps = {
   setRightPanelMode: (mode: 'blocks' | 'markdown') => void
   selectedGovernanceFileIds: ReadonlySet<string>
   selectedDatasetId: string | null
+  startKnowledgeParsing: (libraryId: string, backend: string) => Promise<void>
   setVlmCorrectionEnabled: (enabled: boolean) => void
-  onSubmitSelectedToGovernance: () => void
+  onSubmitSelectedToGovernance: () => Promise<void>
   onToggleGovernanceFileSelection: (fileId: string) => void
   onDatasetScopeChange: (datasetId: string | null) => void
   tocEnabled: boolean
-  updateParsedFile: (id: string, updates: Partial<Omit<ParsedFileData, 'id'>>) => void
-  visibleLibraryOnlyFiles: ParsedFileData[]
+  updateParsedFile: (id: string, updates: Partial<Omit<ParsedFileData, 'id'>>) => Promise<void>
   visibleQueueFiles: ParsedFile[]
   vlmCorrectionEnabled: boolean
 }
@@ -146,12 +156,24 @@ export function ParsingWorkbenchShell({
   activeLibraryFile,
   activeLibraryFileId,
   activeLibrarySourceStatus,
+  activeLibrarySourceError,
+  isLibrarySourceChecking,
+  retryLibrarySource,
   activeMarkdown,
+  activeLibraryContentError,
+  isLibraryContentLoading,
+  hasLibraryContent,
+  retryLibraryContent,
   availableDatasets,
+  datasetsError,
+  librarySyncError,
+  isLibrarySyncing,
+  retryLibrarySync,
   activeElements,
   activePdfQuality,
   activeQualityGate,
   activeRun,
+  isRunUnavailable,
   copied,
   copyMarkdown,
   currentFolderId,
@@ -167,8 +189,6 @@ export function ParsingWorkbenchShell({
   handleDeleteFolder,
   handleFileDragStart,
   handleFileSelect,
-  handleFolderDragLeave,
-  handleFolderDragOver,
   handleFolderDrop,
   handleRebindFileSelect,
   handleSaveEdit,
@@ -180,7 +200,10 @@ export function ParsingWorkbenchShell({
   imageOcrEnabled,
   inspectorOpen,
   isEditing,
+  isSubmittingGovernance,
   isLibraryLoaded,
+  libraryLoadError,
+  retryLibraryLoad,
   isPdf,
   isQueueRehydrating,
 
@@ -201,7 +224,7 @@ export function ParsingWorkbenchShell({
   rightPanelMode,
   setActiveBlockId,
   setActiveFileId,
-
+  setActiveFolderId,
   setActiveLibraryFileId,
   setEditedContent,
   setHoveredBlockId,
@@ -218,91 +241,80 @@ export function ParsingWorkbenchShell({
   setVlmCorrectionEnabled,
   selectedGovernanceFileIds,
   selectedDatasetId,
+  startKnowledgeParsing,
   onSubmitSelectedToGovernance,
   onToggleGovernanceFileSelection,
   onDatasetScopeChange,
 
   updateParsedFile,
-  visibleLibraryOnlyFiles,
   visibleQueueFiles,
   vlmCorrectionEnabled,
 }: Readonly<ParsingWorkbenchShellProps>) {
   const t = useTranslations('ParsingWorkbench')
+  const librarySourceFeedback =
+    activeLibrarySourceError === null ? null : (
+      <div role="alert" className="break-words text-sm text-destructive">
+        <p>{formatApiError(activeLibrarySourceError, '无法读取原文件状态')}</p>
+        <Button size="sm" variant="ghost" disabled={isLibrarySourceChecking} onClick={retryLibrarySource}>
+          重试检查原文件
+        </Button>
+      </div>
+    )
+  const libraryContentFeedback =
+    activeLibraryContentError !== null ? (
+      <div role="alert" className="shrink-0 break-words border-b border-border px-4 py-2 text-xs text-destructive">
+        {formatApiError(activeLibraryContentError, '读取解析正文失败')}
+        <Button size="sm" variant="ghost" disabled={isLibraryContentLoading} onClick={retryLibraryContent}>
+          重试读取正文
+        </Button>
+      </div>
+    ) : null
+  const librarySyncFeedback =
+    librarySyncError !== null && libraryLoadError === undefined ? (
+      <div role="alert" className="shrink-0 break-words border-b border-border px-4 py-2 text-xs text-destructive">
+        <p>{formatApiError(librarySyncError, '文档目录同步失败')}</p>
+        <Button size="sm" variant="ghost" disabled={isLibrarySyncing} onClick={retryLibrarySync}>
+          重试同步目录
+        </Button>
+      </div>
+    ) : null
   const bumpPdfPreviewResetToken = () => setPdfPreviewResetToken((prev) => prev + 1)
-  const pendingCount = visibleQueueFiles.filter((file) => file.status === 'pending').length
-  const parsingCount = visibleQueueFiles.filter((file) => file.status === 'parsing').length
-  const parsedCount = visibleQueueFiles.filter((file) => file.status === 'parsed').length
   const parseableCount = visibleQueueFiles.filter(
     (file) => file.librarySource !== 'knowledge_base' && (file.status === 'pending' || file.status === 'error'),
   ).length
-  const currentFolderFileCount = visibleQueueFiles.length + visibleLibraryOnlyFiles.length
-  const readyGovernanceFileIds = useMemo(
-    () => [
-      ...visibleQueueFiles.filter((file) => file.governanceStatus === 'ready').map((file) => file.id),
-      ...visibleLibraryOnlyFiles.filter((file) => file.governanceStatus === 'ready').map((file) => file.id),
-    ],
-    [visibleLibraryOnlyFiles, visibleQueueFiles],
+  const governanceTargets = useMemo(
+    () => getParsingGovernanceTargets(files, libraryFiles, selectedDatasetId),
+    [files, libraryFiles, selectedDatasetId],
   )
-  const readyGovernanceCount = readyGovernanceFileIds.length
-  const selectedReadyGovernanceCount = readyGovernanceFileIds.filter((fileId) =>
-    selectedGovernanceFileIds.has(fileId),
+  const readyGovernanceFileIds = useMemo(
+    () => new Set(governanceTargets.map((target) => target.selectionId)),
+    [governanceTargets],
+  )
+  const readyGovernanceCount = governanceTargets.length
+  const selectedReadyGovernanceCount = governanceTargets.filter((target) =>
+    selectedGovernanceFileIds.has(target.selectionId),
+  ).length
+  const selectedOtherFolderCount = governanceTargets.filter(
+    (target) =>
+      selectedGovernanceFileIds.has(target.selectionId) && (target.file.folderId ?? ROOT_FOLDER_ID) !== currentFolderId,
   ).length
 
   const activeFolderPathLabel = folderPathById[activeFolderId || ROOT_FOLDER_ID] || t('rootFolder')
-  const activeLibraryFolderId = activeLibraryFile?.folderId || ROOT_FOLDER_ID
-  const activeLibraryFolderPathLabel = folderPathById[activeLibraryFolderId] || t('rootFolder')
-  const activeLibraryFolderName =
-    (activeLibraryFolderPathLabel.split('/').pop() || '').trim() || activeLibraryFolderPathLabel
-  const activeLibraryStatusBadge = activeLibraryFile?.status ? getLibraryStatusBadge(t, activeLibraryFile.status) : null
-  const filename = String(activeLibraryFile?.filename || '')
-  const activeLibraryMarkdownAvailable = Boolean(
-    (activeLibraryFile?.markdownContent || activeLibraryFile?.originalMarkdownContent || '').trim(),
-  )
+  const activeStats = activeRun === null ? activeFile?.stats : getParsingRunStatistics(activeRun)
+  const activeLibraryMarkdown = activeLibraryFile?.markdownContent || activeLibraryFile?.originalMarkdownContent
+  const activeLibraryMarkdownAvailable = Boolean(activeLibraryMarkdown?.trim())
   const shouldAutoRestoreLibraryPdf =
     !activeFile &&
     activeLibraryFile?.status === 'parsed' &&
     activeLibraryMarkdownAvailable &&
-    filename.toLowerCase().endsWith('.pdf')
+    activeLibraryFile.filename.toLowerCase().endsWith('.pdf')
 
   const handleReprocessKnowledgeFile = useCallback(
     async (backend: string) => {
       if (!activeLibraryFile || activeLibraryFile.source !== 'knowledge_base') return
-
-      const resolved = resolveParserBackendForFilename(activeLibraryFile.filename, backend)
-      const parserLabel = getParserLabel(resolved.backend)
-
-      updateParsedFile(activeLibraryFile.id, {
-        error: undefined,
-        markdownContent: '',
-        originalMarkdownContent: '',
-        parser: parserLabel,
-        parserBackend: resolved.backend,
-        status: 'parsing',
-      })
-
-      try {
-        await documentApi.patchPipeline(activeLibraryFile.id, {
-          patch: {
-            persist_parsed_content: true,
-            persist_parsed_content_max_chars: 2_000_000,
-          },
-          replace: false,
-        })
-        await documentApi.retry(activeLibraryFile.id, {
-          force: true,
-          parser_backend: resolved.backend,
-        })
-        toast.success('已开始解析')
-      } catch (err: unknown) {
-        const message = formatApiError(err, '开始解析失败')
-        updateParsedFile(activeLibraryFile.id, {
-          error: message,
-          status: 'error',
-        })
-        toast.error(message)
-      }
+      await startKnowledgeParsing(activeLibraryFile.id, backend)
     },
-    [activeLibraryFile, updateParsedFile],
+    [activeLibraryFile, startKnowledgeParsing],
   )
 
   useEffect(() => {
@@ -354,8 +366,9 @@ export function ParsingWorkbenchShell({
       pageCount: file.stats?.pageCount,
       governanceStatus: file.governanceStatus,
       isActive: activeFileId === file.id,
-      isSelectable: file.governanceStatus === 'ready',
-      isSelected: selectedGovernanceFileIds.has(file.id),
+      isSelectable: readyGovernanceFileIds.has(file.libraryId ?? file.id),
+      isSelected: selectedGovernanceFileIds.has(file.libraryId ?? file.id),
+      canRemove: file.status !== 'parsing' || file.libraryId !== undefined,
     }))
 
     for (const file of libraryFilesForScope) {
@@ -370,18 +383,28 @@ export function ParsingWorkbenchShell({
         duration: file.durationSec,
         governanceStatus: file.governanceStatus,
         isActive: activeLibraryFileId === file.id,
-        isSelectable: file.governanceStatus === 'ready',
+        isSelectable: readyGovernanceFileIds.has(file.id),
         isSelected: selectedGovernanceFileIds.has(file.id),
         readOnly: file.source === 'knowledge_base',
       })
     }
 
     return merged
-  }, [activeFileId, activeLibraryFileId, files, libraryFiles, selectedGovernanceFileIds, selectedDatasetId])
+  }, [
+    activeFileId,
+    activeLibraryFileId,
+    files,
+    libraryFiles,
+    readyGovernanceFileIds,
+    selectedGovernanceFileIds,
+    selectedDatasetId,
+  ])
 
   const selectFile = (fileId: string) => {
     if (isEditing) return
     bumpPdfPreviewResetToken()
+    const sidebarFile = sidebarFileItems.find((file) => file.id === fileId)
+    if (sidebarFile !== undefined) setActiveFolderId(sidebarFile.folderId ?? ROOT_FOLDER_ID)
     const queueMatch = files.find((file) => file.id === fileId || file.libraryId === fileId)
     if (queueMatch) {
       setActiveLibraryFileId(null)
@@ -392,11 +415,14 @@ export function ParsingWorkbenchShell({
     }
     setQueueOpen(false)
   }
+  const pendingCount = sidebarFileItems.filter((file) => file.status === 'pending').length
+  const parsingCount = sidebarFileItems.filter((file) => file.status === 'parsing').length
+  const parsedCount = sidebarFileItems.filter((file) => file.status === 'parsed').length
   const activeId = activeFile?.id || activeLibraryFile?.id
   const fileIndex = sidebarFileItems.findIndex((file) => file.id === activeId)
   const selectedFile = activeFile || activeLibraryFile
-  const selectedFilename = activeFile?.name || activeLibraryFile?.filename || ''
-  const selectedSize = activeFile?.file.size ?? activeLibraryFile?.fileSize
+  const selectedFilename = activeFile?.name ?? activeLibraryFile?.filename
+  const selectedSize = activeFile?.size ?? activeLibraryFile?.fileSize
   const selectedStatus = activeFile?.status || activeLibraryFile?.status
   const statusLabel = selectedStatus
     ? { pending: '待解析', parsing: '解析中', parsed: '已解析', error: '解析失败' }[selectedStatus] || selectedStatus
@@ -460,6 +486,20 @@ export function ParsingWorkbenchShell({
             </DropdownMenu>
           </div>
         </header>
+        {libraryLoadError !== undefined && !queueOpen && (
+          <div role="alert" className="shrink-0 break-words border-b border-border px-4 py-2 text-xs text-destructive">
+            <p>本地文档记录读取失败：{formatApiError(libraryLoadError, '无法读取文档目录')}</p>
+            <Button size="sm" variant="ghost" onClick={retryLibraryLoad}>
+              重试读取文档
+            </Button>
+          </div>
+        )}
+        {datasetsError ? (
+          <p role="alert" className="shrink-0 break-words border-b border-border px-4 py-2 text-xs text-destructive">
+            {formatApiError(datasetsError, '加载数据集失败')}
+          </p>
+        ) : null}
+        {!queueOpen && librarySyncFeedback}
 
         <div className={styles.documentBar}>
           <button
@@ -482,7 +522,9 @@ export function ParsingWorkbenchShell({
                 {selectedFile ? (
                   <>
                     {selectedSize != null ? formatFileSize(selectedSize) + ' · ' : ''}
-                    {activeFile?.stats?.pageCount ? activeFile.stats.pageCount + ' 页 · ' : ''}
+                    {!isRunUnavailable && activeStats?.pageCount !== undefined
+                      ? `${activeStats.pageCount} 页 · `
+                      : null}
                     {activeFolderPathLabel}
                     <span className={styles.optionalLabel}> · {sidebarFileItems.length} 个文件</span>
                   </>
@@ -520,12 +562,20 @@ export function ParsingWorkbenchShell({
                 <fieldset className={styles.parserPicker} disabled={isEditing || selectedStatus === 'parsing'}>
                   <ParserDropdown
                     value={activeBackend}
-                    filename={selectedFilename}
+                    filename={activeFile.name}
                     compact
                     side="top"
-                    onChange={(backend) =>
-                      setQueueFileParserBackend({ fileId: activeFile.id, filename: selectedFilename, backend })
-                    }
+                    onChange={(backend) => {
+                      if (activeFile.librarySource === 'knowledge_base' && activeLibraryFile !== null) {
+                        const resolved = resolveParserBackendForFilename(activeFile.name, backend)
+                        void updateParsedFile(activeLibraryFile.id, {
+                          parserBackend: resolved.backend,
+                          parser: getParserLabel(resolved.backend),
+                        }).catch((error) => toast.error(formatApiError(error, '更新解析器失败')))
+                      } else {
+                        setQueueFileParserBackend({ fileId: activeFile.id, filename: activeFile.name, backend })
+                      }
+                    }}
                   />
                 </fieldset>
                 {selectedStatus === 'parsed' || selectedStatus === 'error' ? (
@@ -535,7 +585,13 @@ export function ParsingWorkbenchShell({
                     aria-label={selectedStatus === 'error' ? '重试解析' : '重新解析'}
                     disabled={isEditing}
                     className="gap-1.5"
-                    onClick={() => parseFile(activeFile.id, activeFile.parserBackend)}
+                    onClick={() => {
+                      if (activeFile.librarySource === 'knowledge_base') {
+                        void handleReprocessKnowledgeFile(activeFile.parserBackend)
+                      } else {
+                        void parseFile(activeFile.id, activeFile.parserBackend)
+                      }
+                    }}
                   >
                     <RotateCcw className="size-3.5" />
                     <span className={styles.optionalLabel}>{selectedStatus === 'error' ? '重试解析' : '重新解析'}</span>
@@ -573,13 +629,15 @@ export function ParsingWorkbenchShell({
           </div>
         </div>
 
-        <main className={styles.main} data-testid="parsing-main-panel">
+        <section className={styles.main} data-testid="parsing-main-panel" aria-label="解析工作区">
           {activeFile ? (
             <ParsingActiveFilePane
               key={activeFile.id}
               activeFile={activeFile}
               activeRun={activeRun}
+              isRunUnavailable={isRunUnavailable}
               activeMarkdown={activeMarkdown}
+              contentFeedback={libraryContentFeedback}
               activeElements={activeElements}
               activeQualityGate={activeQualityGate}
               activePdfQuality={activePdfQuality}
@@ -588,6 +646,7 @@ export function ParsingWorkbenchShell({
               previewMode={previewMode}
               rightPanelMode={rightPanelMode}
               isEditing={isEditing}
+              isSubmittingGovernance={isSubmittingGovernance}
               editedContent={editedContent}
               copied={copied}
               activeBlockId={activeBlockId}
@@ -598,9 +657,15 @@ export function ParsingWorkbenchShell({
               onStartEdit={handleStartEdit}
               onCancelEdit={handleCancelEdit}
               onSaveEdit={handleSaveEdit}
-              onCopyMarkdown={() => detachPromise(copyMarkdown())}
+              onCopyMarkdown={() => void copyMarkdown()}
               onDownloadMarkdown={downloadMarkdown}
-              onParseFile={parseFile}
+              onParseFile={(fileId, backend) => {
+                if (activeFile.librarySource === 'knowledge_base') {
+                  void handleReprocessKnowledgeFile(backend ?? activeFile.parserBackend)
+                } else {
+                  void parseFile(fileId, backend)
+                }
+              }}
               pdfPreviewResetToken={pdfPreviewResetToken}
               onSubmitToGovernance={handleSubmitToGovernance}
               onEditedContentChange={setEditedContent}
@@ -612,12 +677,15 @@ export function ParsingWorkbenchShell({
               key={activeLibraryFile.id}
               file={activeLibraryFile}
               activeMarkdown={activeMarkdown}
-              folderName={activeLibraryFolderName}
-              folderPathLabel={activeLibraryFolderPathLabel}
               sourceStatus={activeLibrarySourceStatus}
+              sourceFeedback={librarySourceFeedback}
+              isSourceChecking={isLibrarySourceChecking}
+              contentFeedback={libraryContentFeedback}
+              isContentLoading={isLibraryContentLoading}
+              hasContent={hasLibraryContent}
+              qualityGate={activeQualityGate}
+              pdfQuality={activePdfQuality}
               defaultParserBackend={parserBackend}
-              statusBadge={activeLibraryStatusBadge}
-              onClose={() => setActiveLibraryFileId(null)}
               onUpdateParser={(backend) => {
                 const resolved = resolveParserBackendForFilename(activeLibraryFile.filename, backend)
                 updateParsedFile(activeLibraryFile.id, {
@@ -634,8 +702,7 @@ export function ParsingWorkbenchShell({
           ) : (
             <div
               className={cn(styles.empty, isQueueRehydrating && styles.loading)}
-              onDragOver={(event) => handleFolderDragOver(event, currentFolderId)}
-              onDragLeave={handleFolderDragLeave}
+              onDragOver={(event) => event.preventDefault()}
               onDrop={(event) => handleFolderDrop(event, currentFolderId)}
             >
               {isQueueRehydrating ? (
@@ -647,10 +714,10 @@ export function ParsingWorkbenchShell({
                 {isQueueRehydrating
                   ? '正在恢复文件'
                   : sidebarFileItems.length
-                    ? '选择文档，查看解析结果'
-                    : '上传文档，开始解析'}
+                    ? '选择文档查看解析结果'
+                    : '上传待解析的文档'}
               </h2>
-              <p>{sidebarFileItems.length ? '打开文件目录，选择需要核对的文档。' : '支持 PDF、Word、表格和图片。'}</p>
+              {!isQueueRehydrating && sidebarFileItems.length === 0 ? <p>支持 PDF、Word、表格和图片。</p> : null}
               <Button
                 onClick={() => (sidebarFileItems.length ? setQueueOpen(true) : requestUploadToFolder(currentFolderId))}
                 className="gap-2"
@@ -661,7 +728,7 @@ export function ParsingWorkbenchShell({
               </Button>
             </div>
           )}
-        </main>
+        </section>
       </div>
 
       <input
@@ -694,17 +761,28 @@ export function ParsingWorkbenchShell({
       <WorkbenchPanelDialog open={queueOpen} onOpenChange={setQueueOpen} title="文件目录" className={styles.fileDialog}>
         <div className={styles.directoryTools}>
           <span>
-            {currentFolderFileCount} 个文件 · {parsedCount} 已解析{parsingCount ? ' · ' + parsingCount + ' 解析中' : ''}
+            {sidebarFileItems.length} 个文件 · {parsedCount} 已解析
+            {parsingCount ? ' · ' + parsingCount + ' 解析中' : ''}
             {pendingCount ? ' · ' + pendingCount + ' 待解析' : ''}
           </span>
           {parseableCount > 0 ? (
             <Button size="sm" variant="outline" onClick={() => detachPromise(parseAllPending())}>
-              解析待处理文件 ({parseableCount})
+              {selectedDatasetId === null ? '解析当前文件夹待处理文件' : '解析当前数据范围待处理文件'} ({parseableCount}
+              )
             </Button>
           ) : null}
         </div>
         <div className={styles.tree}>
-          {isLibraryLoaded ? (
+          {librarySyncFeedback}
+          {libraryLoadError !== undefined && (
+            <div className={styles.empty} role="alert">
+              <p>本地文档记录读取失败：{formatApiError(libraryLoadError, '无法读取文档目录')}</p>
+              <Button size="sm" variant="ghost" onClick={retryLibraryLoad}>
+                重试读取文档
+              </Button>
+            </div>
+          )}
+          {isLibraryLoaded || libraryFiles.length > 0 ? (
             <DocumentFolderTree
               fileItems={sidebarFileItems}
               showFiles="expanded"
@@ -718,26 +796,31 @@ export function ParsingWorkbenchShell({
               onRemoveFile={removeFile}
               onFileDragStart={handleFileDragStart}
             />
-          ) : (
+          ) : libraryLoadError === undefined ? (
             <div className={styles.empty}>
               <Loader2 className="size-5 animate-spin" />
               正在加载文件目录
             </div>
-          )}
+          ) : null}
         </div>
         {readyGovernanceCount > 0 ? (
           <div className={styles.directoryTools}>
             <span>
               {selectedReadyGovernanceCount} / {readyGovernanceCount} 个待治理文件已选
+              {selectedOtherFolderCount > 0 ? `（其中 ${selectedOtherFolderCount} 个在其他文件夹）` : ''}
             </span>
             <Button
               size="sm"
               className="gap-2"
-              disabled={!selectedReadyGovernanceCount}
-              onClick={onSubmitSelectedToGovernance}
+              disabled={!selectedReadyGovernanceCount || isSubmittingGovernance}
+              onClick={() => void onSubmitSelectedToGovernance()}
             >
-              <ShieldCheck className="size-4" />
-              提交所选文件
+              {isSubmittingGovernance ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <ShieldCheck className="size-4" />
+              )}
+              {isSubmittingGovernance ? '正在移交' : '提交所选文件'}
             </Button>
           </div>
         ) : null}
@@ -752,7 +835,7 @@ export function ParsingWorkbenchShell({
         <div className={styles.settingsBody}>
           <div className={styles.settingGroup}>
             <h2>默认解析器</h2>
-            <p>用于后续上传的文件，当前文档可单独切换。</p>
+            <p>适用于新上传的文档。已上传的文档可单独更改。</p>
             <ParserDropdown value={parserBackend} onChange={setParserBackend} />
           </div>
           <div className={styles.settingGroup}>

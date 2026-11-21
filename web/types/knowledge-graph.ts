@@ -3,26 +3,14 @@
  */
 
 import type { JsonObject } from './common'
+import type { OpenApiSchema } from './backend'
 
 // ==================== KG 相关类型 ====================
 
-export type KGExtractResponse = {
-  document_id: string
-  chunk_count: number
-  event_count: number
-  message: string
-}
+export type KGExtractResponse = OpenApiSchema<'KGExtractResponse'>
 
-export type KGSearchRequest = {
-  query: string
-  tenant_id?: string
-  document_ids?: string[]
-}
-
-export type KGSearchResponse = {
-  result: JsonObject
-  query: string
-}
+export type KGSearchRequest = OpenApiSchema<'KGSearchRequest'>
+export type KGSearchResponse = OpenApiSchema<'KGSearchResponse'>
 
 export type KGGraphNode = {
   id: string
@@ -74,6 +62,7 @@ export type KGEventEntityItem = {
   entity: KGEntityItem
   weight?: number
   role?: string | null
+  extra_data?: JsonObject
 }
 
 export type KGEventDetailResponse = {

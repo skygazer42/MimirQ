@@ -1,0 +1,303 @@
+"""
+Deterministic contextual follow-up query builder.
+
+Goal:
+- Use already retrieved document context to derive one bounded second-pass query.
+- No LLM calls.
+- Keep output auditable and low variance.
+"""
+
+import re
+from typing import Any
+
+from langchain_core.documents import Document
+
+_TOKEN_RE = re.compile(r"[A-Za-z][A-Za-z0-9_./:-]{2,63}|[\u4e00-\u9fff]{2,16}")
+
+# Small, deterministic stop-word set for keyword-like extraction.
+_STOPWORDS = {
+    "the",
+    "and",
+    "for",
+    "with",
+    "from",
+    "that",
+    "this",
+    "into",
+    "onto",
+    "your",
+    "you",
+    "are",
+    "was",
+    "were",
+    "have",
+    "has",
+    "had",
+    "will",
+    "would",
+    "can",
+    "could",
+    "should",
+    "about",
+    "what",
+    "when",
+    "where",
+    "which",
+    "why",
+    "how",
+    "issue",
+    "error",
+    "errors",
+    "debug",
+    "help",
+    "please",
+    "query",
+    "docs",
+    "doc",
+}
+
+_META_FIELDS = (
+    ("keywords", 1.8),
+    ("tags", 1.6),
+    ("title", 1.4),
+    ("heading", 1.3),
+    ("section", 1.3),
+    ("table_id", 1.2),
+    ("source_key", 1.2),
+    ("source", 1.0),
+)
+
+
+def _sig(value: str) -> str:
+    s = value.strip()
+    if not s:
+        return ""
+    return s.casefold() if s.isascii() else s
+
+
+def _extract_terms(text: str, *, min_chars: int, max_chars: int) -> list[str]:
+    out: list[str] = []
+    for m in _TOKEN_RE.finditer(text):
+        tok = m.group(0)
+        if len(tok) < min_chars or (max_chars > 0 and len(tok) > max_chars):
+            continue
+        sig = _sig(tok)
+        if sig in _STOPWORDS:
+            continue
+        out.append(tok)
+    return out
+
+
+def _iter_meta_values(raw: Any) -> list[str]:
+    if raw is None:
+        return []
+    if isinstance(raw, str):
+        return [raw]
+    if isinstance(raw, (list, tuple, set)):
+        out: list[str] = []
+        for v in raw:
+            if v is None:
+                continue
+            s = str(v).strip()
+            if not s:
+                continue
+            out.append(s)
+            if len(out) >= 16:
+                break
+        return out
+    return []
+
+
+def _dedupe_terms(values: list[str], *, max_items: int) -> list[str]:
+    out: list[str] = []
+    seen: set[str] = set()
+    for raw in values:
+        term = raw.strip()
+        if not term:
+            continue
+        sig = _sig(term)
+        if not sig or sig in seen:
+            continue
+        seen.add(sig)
+        out.append(term)
+        if len(out) >= max_items:
+            break
+    return out
+
+
+def _unused_followup_result(
+    *,
+    query: str,
+    reason_code: str,
+    terms_considered: int = 0,
+    docs_considered: int = 0,
+) -> dict[str, Any]:
+    return {
+        "query": query,
+        "used": False,
+        "reason_codes": [reason_code],
+        "selected_terms": [],
+        "terms_considered": terms_considered,
+        "docs_considered": docs_considered,
+    }
+
+
+def _extract_gap_terms(
+    *,
+    evidence_gap: dict[str, Any] | None,
+    query_terms: set[str],
+    min_chars: int,
+    max_chars: int,
+    max_terms: int,
+) -> tuple[list[str], list[str]]:
+    if evidence_gap is None:
+        return [], []
+    gap_reason_codes: list[str] = []
+    gap_terms_raw: list[str] = []
+    missing_source_keys = [str(v) for v in (evidence_gap.get("missing_source_keys") or []) if str(v).strip()][:20]
+    if missing_source_keys:
+        for key in missing_source_keys:
+            gap_terms_raw.extend(_extract_terms(key, min_chars=min_chars, max_chars=max_chars))
+        gap_reason_codes.append("gap_missing_source_keys")
+    if int(evidence_gap.get("anchor_missing_any") or 0) > 0:
+        gap_reason_codes.append("gap_missing_anchor_fields")
+    gap_terms = _dedupe_terms(
+        [term for term in gap_terms_raw if _sig(term) not in query_terms],
+        max_items=max_terms,
+    )
+    return gap_terms, gap_reason_codes
+
+
+def _score_terms_from_docs(
+    *,
+    docs: list[Document],
+    query_terms: set[str],
+    min_chars: int,
+    max_chars: int,
+) -> tuple[dict[str, float], dict[str, str], int]:
+    score_by_sig: dict[str, float] = {}
+    term_by_sig: dict[str, str] = {}
+    considered = 0
+    for doc in docs:
+        meta = doc.metadata
+        for field, weight in _META_FIELDS:
+            for raw in _iter_meta_values(meta.get(field)):
+                for token in _extract_terms(raw, min_chars=min_chars, max_chars=max_chars):
+                    sig = _sig(token)
+                    if sig in query_terms:
+                        continue
+                    considered += 1
+                    score_by_sig[sig] = score_by_sig.get(sig, 0.0) + weight
+                    term_by_sig.setdefault(sig, token)
+        for token in _extract_terms(doc.page_content[:2000], min_chars=min_chars, max_chars=max_chars):
+            sig = _sig(token)
+            if sig in query_terms:
+                continue
+            considered += 1
+            score_by_sig[sig] = score_by_sig.get(sig, 0.0) + 1.0
+            term_by_sig.setdefault(sig, token)
+    return score_by_sig, term_by_sig, considered
+
+
+def _select_followup_terms(
+    *,
+    gap_terms: list[str],
+    score_by_sig: dict[str, float],
+    term_by_sig: dict[str, str],
+    max_terms: int,
+) -> list[str]:
+    selected_terms = list(gap_terms)
+    if len(selected_terms) >= max_terms:
+        return selected_terms
+    selected_sigs = {_sig(value) for value in selected_terms}
+    for sig in sorted(score_by_sig, key=lambda key: (-score_by_sig[key], term_by_sig[key])):
+        if sig in selected_sigs:
+            continue
+        selected_terms.append(term_by_sig[sig])
+        selected_sigs.add(sig)
+        if len(selected_terms) >= max_terms:
+            break
+    return selected_terms
+
+
+def build_contextual_followup_query(
+    *,
+    query: str,
+    docs: list[Document],
+    evidence_gap: dict[str, Any] | None = None,
+    max_docs: int = 4,
+    max_terms: int = 4,
+    min_term_chars: int = 4,
+    max_term_chars: int = 40,
+    max_query_chars: int = 500,
+) -> dict[str, Any]:
+    base = " ".join(query.strip().split())
+    if not base:
+        return _unused_followup_result(query="", reason_code="empty_query")
+
+    max_docs_n = max(0, max_docs)
+    max_terms_n = max(0, max_terms)
+    min_chars = max(2, min_term_chars)
+    max_chars = max(0, max_term_chars)
+    max_query_chars_n = max(0, max_query_chars)
+
+    if not docs:
+        return _unused_followup_result(query=base, reason_code="no_docs")
+    if max_docs_n <= 0:
+        return _unused_followup_result(query=base, reason_code="max_docs_le_0")
+    if max_terms_n <= 0:
+        return _unused_followup_result(
+            query=base,
+            reason_code="max_terms_le_0",
+            docs_considered=min(len(docs), max_docs_n),
+        )
+
+    query_terms = {_sig(term) for term in _extract_terms(base, min_chars=min_chars, max_chars=max_chars or 64)}
+    gap_terms, gap_reason_codes = _extract_gap_terms(
+        evidence_gap=evidence_gap,
+        query_terms=query_terms,
+        min_chars=min_chars,
+        max_chars=max_chars or 64,
+        max_terms=max_terms_n,
+    )
+    score_by_sig, term_by_sig, considered = _score_terms_from_docs(
+        docs=docs[:max_docs_n],
+        query_terms=query_terms,
+        min_chars=min_chars,
+        max_chars=max_chars,
+    )
+
+    if not score_by_sig and not gap_terms:
+        return _unused_followup_result(
+            query=base,
+            reason_code="no_new_terms",
+            terms_considered=considered,
+            docs_considered=min(len(docs), max_docs_n),
+        )
+
+    selected_terms = _select_followup_terms(
+        gap_terms=gap_terms,
+        score_by_sig=score_by_sig,
+        term_by_sig=term_by_sig,
+        max_terms=max_terms_n,
+    )
+
+    followup = f"{base} {' '.join(selected_terms)}".strip()
+    if max_query_chars_n > 0 and len(followup) > max_query_chars_n:
+        followup = followup[:max_query_chars_n].rstrip()
+
+    used = followup != base
+    reason_codes = list(gap_reason_codes)
+    reason_codes.append("selected_terms" if used else "followup_equals_base")
+
+    return {
+        "query": followup,
+        "used": used,
+        "reason_codes": reason_codes,
+        "selected_terms": selected_terms[:max_terms_n],
+        "terms_considered": considered,
+        "docs_considered": min(len(docs), max_docs_n),
+    }
+
+
+__all__ = ["build_contextual_followup_query"]

@@ -659,8 +659,8 @@ async def test_document_job_marks_failed_on_final_coordination_retry_without_byp
     monkeypatch.setattr(jobs, "get_retry_exc", lambda: FakeRetryError, raising=True)
     monkeypatch.setattr(jobs, "tenant_acquire", _tenant_retry, raising=True)
     monkeypatch.setattr(jobs, "_acquire_task_lock_or_retry", _unexpected_lock, raising=True)
-    monkeypatch.setattr(jobs.document_processor, "process_document", _unexpected_process, raising=True)
-    monkeypatch.setattr(jobs.document_processor, "_update_status", _update_status, raising=True)
+    monkeypatch.setattr(jobs, "process_document", _unexpected_process, raising=True)
+    monkeypatch.setattr(jobs, "update_document_status", _update_status, raising=True)
     monkeypatch.setattr(jobs.settings, "TASK_DOCUMENT_JOB_MAX_TRIES", 5, raising=False)
     monkeypatch.setattr(jobs.settings, "TASK_TENANT_MAX_CONCURRENCY_DOC", 2, raising=False)
     monkeypatch.setattr(jobs.settings, "TASK_DATASET_MAX_CONCURRENCY_DOC", 3, raising=False)
@@ -723,7 +723,7 @@ async def test_document_job_propagates_failed_processor_result(
     monkeypatch.setattr(jobs, "release_lock", _release, raising=True)
     monkeypatch.setattr(jobs, "dataset_release", _release, raising=True)
     monkeypatch.setattr(jobs, "tenant_release", _release, raising=True)
-    monkeypatch.setattr(jobs.document_processor, "process_document", _process, raising=True)
+    monkeypatch.setattr(jobs, "process_document", _process, raising=True)
 
     result = await jobs.process_document_job(
         {"job_try": 1, "redis": object()},
@@ -797,7 +797,7 @@ async def test_document_job_downloads_generic_object_storage_source(
         lambda *_args, **_kwargs: (_Store(), SimpleNamespace(bucket="bucket", object_name="documents/t/d/source.pdf")),
         raising=True,
     )
-    monkeypatch.setattr(jobs.document_processor, "process_document", _process, raising=True)
+    monkeypatch.setattr(jobs, "process_document", _process, raising=True)
 
     result = await jobs.process_document_job(
         {"job_try": 1, "redis": object()},
@@ -1113,11 +1113,11 @@ async def test_extract_kg_job_fails_closed_when_selected_pipeline_has_no_matchin
     monkeypatch.setattr(jobs, "dataset_release", _release, raising=True)
     monkeypatch.setattr(jobs, "tenant_release", _release, raising=True)
     monkeypatch.setattr(
-        "app.services.pipeline_config.resolve_pipeline_effective",
+        "app.services.pipelines.config.resolve_pipeline_effective",
         lambda **_kwargs: SimpleNamespace(kg_python_plugin="", kg_python_params={}),
         raising=True,
     )
-    monkeypatch.setattr("app.services.pipeline_config.build_indexing_options", lambda *_a, **_k: None, raising=True)
+    monkeypatch.setattr("app.services.pipelines.config.build_indexing_options", lambda *_a, **_k: None, raising=True)
     monkeypatch.setattr(
         "app.rag.pipeline_plugins.registry.derive_registered_stage_plugin_ref",
         lambda *_args, **_kwargs: "",
@@ -1213,11 +1213,11 @@ async def test_extract_kg_job_invalidates_dataset_cache_after_success(monkeypatc
     monkeypatch.setattr(jobs, "dataset_release", _release, raising=True)
     monkeypatch.setattr(jobs, "tenant_release", _release, raising=True)
     monkeypatch.setattr(
-        "app.services.pipeline_config.resolve_pipeline_effective",
+        "app.services.pipelines.config.resolve_pipeline_effective",
         lambda **_kwargs: SimpleNamespace(kg_python_plugin="plugin:changed", kg_python_params={"changed": True}),
         raising=True,
     )
-    monkeypatch.setattr("app.services.pipeline_config.build_indexing_options", lambda *_a, **_k: None, raising=True)
+    monkeypatch.setattr("app.services.pipelines.config.build_indexing_options", lambda *_a, **_k: None, raising=True)
     monkeypatch.setattr(
         "app.rag.pipeline_plugins.registry.derive_registered_stage_plugin_ref",
         lambda *_args, **_kwargs: "",
@@ -1225,7 +1225,7 @@ async def test_extract_kg_job_invalidates_dataset_cache_after_success(monkeypatc
     )
     monkeypatch.setattr("app.rag.kg.pipeline.extract_events", _extract_events, raising=True)
     monkeypatch.setattr(
-        "app.services.corpus_cache_tokens.invalidate_dataset_cache_namespace",
+        "app.services.retrieval.corpus_tokens.invalidate_dataset_cache_namespace",
         lambda _db, *, tenant_id, dataset_id: (
             cache_invalidations.append((tenant_id, dataset_id)) or {"dataset_id": str(dataset_id)}
         ),
@@ -1313,12 +1313,12 @@ async def test_extract_kg_job_does_not_mark_terminal_status_before_retryable_fai
     monkeypatch.setattr(jobs, "dataset_release", _release, raising=True)
     monkeypatch.setattr(jobs, "tenant_release", _release, raising=True)
     monkeypatch.setattr(
-        "app.services.pipeline_config.resolve_pipeline_effective",
+        "app.services.pipelines.config.resolve_pipeline_effective",
         lambda **_kwargs: SimpleNamespace(kg_python_plugin="", chunk_python_plugin="", kg_python_params={}),
         raising=True,
     )
     monkeypatch.setattr(
-        "app.services.pipeline_config.build_indexing_options",
+        "app.services.pipelines.config.build_indexing_options",
         lambda *_args, **_kwargs: SimpleNamespace(event_vector_enabled=True, entity_vector_enabled=True),
         raising=True,
     )
@@ -1400,12 +1400,12 @@ async def test_extract_kg_job_marks_ready_and_skipped_channels_when_no_events(
     monkeypatch.setattr(jobs, "dataset_release", _release, raising=True)
     monkeypatch.setattr(jobs, "tenant_release", _release, raising=True)
     monkeypatch.setattr(
-        "app.services.pipeline_config.resolve_pipeline_effective",
+        "app.services.pipelines.config.resolve_pipeline_effective",
         lambda **_kwargs: SimpleNamespace(kg_python_plugin="", chunk_python_plugin="", kg_python_params={}),
         raising=True,
     )
     monkeypatch.setattr(
-        "app.services.pipeline_config.build_indexing_options",
+        "app.services.pipelines.config.build_indexing_options",
         lambda *_args, **_kwargs: SimpleNamespace(event_vector_enabled=True, entity_vector_enabled=True),
         raising=True,
     )
@@ -1416,7 +1416,7 @@ async def test_extract_kg_job_marks_ready_and_skipped_channels_when_no_events(
     )
     monkeypatch.setattr("app.rag.kg.pipeline.extract_events", _extract_events, raising=True)
     monkeypatch.setattr(
-        "app.services.corpus_cache_tokens.invalidate_dataset_cache_namespace",
+        "app.services.retrieval.corpus_tokens.invalidate_dataset_cache_namespace",
         lambda *_args, **_kwargs: {"dataset_id": str(dataset_id)},
         raising=True,
     )
@@ -1477,7 +1477,7 @@ async def test_rebuild_indexes_job_scopes_reconcile_to_document(monkeypatch: pyt
     monkeypatch.setattr(jobs, "_acquire_task_lock_or_retry", _acquire, raising=True)
     monkeypatch.setattr(jobs, "release_lock", _release, raising=True)
     monkeypatch.setattr(jobs, "tenant_release", _release, raising=True)
-    monkeypatch.setattr("app.services.indexer.Indexer", _Indexer, raising=True)
+    monkeypatch.setattr("app.rag.ingestion.indexing.indexer.Indexer", _Indexer, raising=True)
 
     result = await jobs.rebuild_indexes_job(
         {"job_try": 1, "redis": object()},
@@ -1530,7 +1530,7 @@ async def test_reconcile_index_audit_job_reports_candidates_in_dry_run(monkeypat
     monkeypatch.setattr(jobs, "release_lock", _release, raising=True)
     monkeypatch.setattr(jobs, "tenant_release", _release, raising=True)
     monkeypatch.setattr(
-        "app.services.index_audit_service.plan_index_audit_reconcile",
+        "app.services.indexing.audit.plan_index_audit_reconcile",
         lambda **_kwargs: {
             "schema": "mimirq.index_audit_reconcile_plan.v1",
             "scope": "dataset",
@@ -1549,9 +1549,7 @@ async def test_reconcile_index_audit_job_reports_candidates_in_dry_run(monkeypat
     async def _unexpected_enqueue(**_kwargs):  # noqa: ANN202
         raise AssertionError("dry-run must not enqueue rebuild jobs")
 
-    monkeypatch.setattr(
-        "app.services.index_audit_service.enqueue_index_audit_reconcile", _unexpected_enqueue, raising=True
-    )
+    monkeypatch.setattr("app.services.indexing.audit.enqueue_index_audit_reconcile", _unexpected_enqueue, raising=True)
 
     result = await jobs.reconcile_index_audit_job(
         {"job_try": 1, "redis": object()},
@@ -1601,7 +1599,7 @@ async def test_reconcile_index_audit_job_enqueues_only_pending_error_documents(
     monkeypatch.setattr(jobs, "release_lock", _release, raising=True)
     monkeypatch.setattr(jobs, "tenant_release", _release, raising=True)
     monkeypatch.setattr(
-        "app.services.index_audit_service.plan_index_audit_reconcile",
+        "app.services.indexing.audit.plan_index_audit_reconcile",
         lambda **_kwargs: {
             "schema": "mimirq.index_audit_reconcile_plan.v1",
             "scope": "dataset",
@@ -1631,7 +1629,7 @@ async def test_reconcile_index_audit_job_enqueues_only_pending_error_documents(
             "task_id": (f"job-{len(enqueued)}" if len(enqueued) == 1 else None),
         }
 
-    monkeypatch.setattr("app.services.index_audit_service.enqueue_index_audit_reconcile", _enqueue, raising=True)
+    monkeypatch.setattr("app.services.indexing.audit.enqueue_index_audit_reconcile", _enqueue, raising=True)
 
     result = await jobs.reconcile_index_audit_job(
         {"job_try": 1, "redis": object()},
@@ -1679,7 +1677,7 @@ async def test_document_terminal_state_rolls_back_when_status_update_fails(monke
     async def _fail_status_update(*_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
         raise SQLAlchemyError("commit failed")
 
-    monkeypatch.setattr(jobs.document_processor, "_update_status", _fail_status_update, raising=True)
+    monkeypatch.setattr(jobs, "update_document_status", _fail_status_update, raising=True)
     monkeypatch.setattr(jobs.settings, "TASK_DOCUMENT_JOB_MAX_TRIES", 1, raising=False)
 
     with pytest.raises(RuntimeError, match="failed to persist document task terminal state"):

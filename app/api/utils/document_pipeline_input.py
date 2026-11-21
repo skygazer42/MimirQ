@@ -4,10 +4,10 @@ from fastapi import HTTPException
 from pydantic import ValidationError
 
 from app.api.schemas.documents import DocumentPipelineOptions, PipelineOptionOverrides
-from app.core.config import settings
-from app.core.env import is_production_env
-from app.services.pipeline_config import validate_pipeline_execution
-from app.types.pipeline import PipelineOptions
+from app.infrastructure.config import settings
+from app.infrastructure.env import is_production_env
+from app.services.pipelines.config import validate_pipeline_execution
+from app.types.pipeline_options import PipelineOptions
 
 CHUNK_OVERLAP_LESS_THAN_SIZE_DETAIL = "chunk_overlap must be less than chunk_size"
 

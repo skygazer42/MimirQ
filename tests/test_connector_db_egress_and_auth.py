@@ -1,27 +1,24 @@
-import asyncio
-import datetime as _datetime
-import sys
 import uuid
 from types import SimpleNamespace
 
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from starlette import status as _starlette_status
 
-if not hasattr(_datetime, "UTC"):
-    _datetime.UTC = _datetime.timezone.utc  # type: ignore[attr-defined]
-if not hasattr(_starlette_status, "HTTP_413_CONTENT_TOO_LARGE"):
-    _starlette_status.HTTP_413_CONTENT_TOO_LARGE = 413  # type: ignore[attr-defined]
-if not hasattr(_starlette_status, "HTTP_422_UNPROCESSABLE_CONTENT"):
-    _starlette_status.HTTP_422_UNPROCESSABLE_CONTENT = 422  # type: ignore[attr-defined]
-
-from app.api.dependencies.auth import get_current_account_id
-from app.api.dependencies.tenant import get_tenant_id
-from app.core.database import get_db
+from app.api.dependencies import get_current_account_id, get_tenant_id
+from app.infrastructure.database.connection import get_db
 
 
 class _DummyDB:
+    def close(self) -> None:
+        return None
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_args):
+        return None
+
     def query(self, *_args, **_kwargs):  # noqa: ANN002, ANN003
         raise AssertionError("db.query should not be reached in this test")
 
@@ -48,9 +45,14 @@ class _ConfigDB(_DummyDB):
     def query(self, *_args, **_kwargs):  # noqa: ANN002, ANN003
         return _QueryStub(self._value)
 
+    def close(self) -> None:
+        return None
+
 
 def _build_validation_client(*, monkeypatch: pytest.MonkeyPatch) -> TestClient:
-    import app.api.v1.connectors_validation as validation_api
+    import app.api.v1.connectors.validation as validation_api
+
+    monkeypatch.setattr(validation_api, "SessionLocal", _DummyDB)
 
     tenant_id = uuid.uuid4()
 
@@ -69,7 +71,10 @@ def _build_validation_client(*, monkeypatch: pytest.MonkeyPatch) -> TestClient:
 
 
 def _build_runs_client(*, monkeypatch: pytest.MonkeyPatch) -> TestClient:
-    import app.api.v1.connectors_runs as runs_api
+    import app.api.v1.connectors.runs as runs_api
+    from app.services.runtime import retrieval_limiter
+
+    monkeypatch.setattr(retrieval_limiter, "SessionLocal", _DummyDB)
 
     tenant_id = uuid.uuid4()
 
@@ -88,7 +93,8 @@ def _build_runs_client(*, monkeypatch: pytest.MonkeyPatch) -> TestClient:
 
 
 def _build_configs_client(*, monkeypatch: pytest.MonkeyPatch) -> TestClient:
-    import app.api.v1.connectors_configs as configs_api
+    import app.api.v1.connectors.configs as configs_api
+    from app.services.runtime import retrieval_limiter as rag_runtime_limiter
 
     tenant_id = uuid.uuid4()
 
@@ -105,6 +111,7 @@ def _build_configs_client(*, monkeypatch: pytest.MonkeyPatch) -> TestClient:
         connector_id="mysql_catalog",
         config=_db_payload("db.example.com")["config"],
     )
+    monkeypatch.setattr(rag_runtime_limiter, "SessionLocal", lambda: _ConfigDB(cfg))
 
     def _override_config_db():  # noqa: ANN202
         yield _ConfigDB(cfg)
@@ -131,7 +138,7 @@ def _db_payload(host: str) -> dict[str, object]:
 
 
 def test_db_validate_requires_admin_permission(monkeypatch: pytest.MonkeyPatch) -> None:
-    import app.api.v1.connectors_validation as validation_api
+    import app.api.v1.connectors.validation as validation_api
 
     client = _build_validation_client(monkeypatch=monkeypatch)
 
@@ -148,7 +155,7 @@ def test_db_validate_requires_admin_permission(monkeypatch: pytest.MonkeyPatch) 
 
 
 def test_db_validate_rejects_private_destinations_before_connectivity_check(monkeypatch: pytest.MonkeyPatch) -> None:
-    import app.api.v1.connectors_validation as validation_api
+    import app.api.v1.connectors.validation as validation_api
 
     client = _build_validation_client(monkeypatch=monkeypatch)
 
@@ -170,7 +177,7 @@ def test_db_validate_rejects_private_destinations_before_connectivity_check(monk
 
     monkeypatch.setattr(
         validation_api,
-        "_check_db_connectivity_best_effort",
+        "check_database_connection",
         _unexpected_db_check,
         raising=True,
     )
@@ -188,8 +195,8 @@ def test_db_validate_rejects_private_destinations_before_connectivity_check(monk
 
 
 def test_db_run_creation_requires_admin_permission(monkeypatch: pytest.MonkeyPatch) -> None:
-    import app.services.connector_run_operations as run_operations
-    import app.services.rbac_service as rbac_service
+    import app.services.connectors.runs as run_operations
+    import app.services.identity.rbac as rbac_service
 
     client = _build_runs_client(monkeypatch=monkeypatch)
 
@@ -217,7 +224,7 @@ def test_db_run_creation_requires_admin_permission(monkeypatch: pytest.MonkeyPat
 def test_db_run_creation_reports_blocked_destination_as_client_error(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.services.connector_run_operations as run_operations
+    import app.services.connectors.runs as run_operations
 
     client = _build_runs_client(monkeypatch=monkeypatch)
     monkeypatch.setattr(run_operations, "_validate_connector_run_enabled", lambda *_args, **_kwargs: None)
@@ -243,8 +250,8 @@ def test_db_run_creation_reports_blocked_destination_as_client_error(
 
 
 def test_db_saved_config_run_requires_admin_permission(monkeypatch: pytest.MonkeyPatch) -> None:
-    import app.services.connector_config_operations as config_operations
-    import app.services.rbac_service as rbac_service
+    import app.services.connectors.configs as config_operations
+    import app.services.identity.rbac as rbac_service
 
     client = _build_configs_client(monkeypatch=monkeypatch)
 
@@ -267,7 +274,7 @@ def test_db_saved_config_run_requires_admin_permission(monkeypatch: pytest.Monke
 
 
 def test_db_egress_policy_rejects_private_resolution_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
-    import app.services.connector_egress_policy as policy
+    import app.services.connectors.egress_policy as policy
 
     monkeypatch.setattr(
         policy.socket,
@@ -284,7 +291,7 @@ def test_db_egress_policy_rejects_private_resolution_by_default(monkeypatch: pyt
 
 
 def test_db_egress_policy_allows_private_cidr_when_explicitly_allowlisted(monkeypatch: pytest.MonkeyPatch) -> None:
-    import app.services.connector_egress_policy as policy
+    import app.services.connectors.egress_policy as policy
 
     monkeypatch.setattr(
         policy.socket,
@@ -302,29 +309,22 @@ def test_db_egress_policy_allows_private_cidr_when_explicitly_allowlisted(monkey
 
 
 def test_mysql_connection_revalidates_egress_before_network_call(monkeypatch: pytest.MonkeyPatch) -> None:
-    from app.connectors.db.catalog_connectors import MySQLCatalogConnector
+    from app.api.schemas.sources import MySQLCatalogConnectorConfig
+    from app.connectors import connectivity
 
-    calls: list[tuple[str, object]] = []
+    calls = []
 
-    def _fake_connect(**kwargs):  # noqa: ANN003
-        calls.append(("connect", kwargs.get("host")))
-        raise AssertionError("pymysql.connect should not be called for blocked destinations")
+    def unexpected_connect(config):
+        calls.append(config.host)
+        raise AssertionError("blocked destination reached the database driver")
 
-    monkeypatch.setitem(sys.modules, "pymysql", SimpleNamespace(connect=_fake_connect))
-
-    connector = MySQLCatalogConnector()
-    result = asyncio.run(
-        connector.test_connection(
-            {
-                "host": "127.0.0.1",
-                "port": 3306,
-                "database": "analytics",
-                "username": "reader",
-                "password": "secret",
-            }
+    monkeypatch.setattr(connectivity, "_check_mysql_connection", unexpected_connect)
+    check, warnings = connectivity._check_database_connection(
+        MySQLCatalogConnectorConfig(
+            host="127.0.0.1", port=3306, database="analytics", username="reader", password="secret"
         )
     )
-
-    assert result.ok is False
-    assert "127.0.0.1" in str((result.details or {}).get("error") or "")
+    assert check["ok"] is False
+    assert "127.0.0.1" in check["error"]
+    assert warnings[0]["code"] == "db_connectivity_failed"
     assert calls == []

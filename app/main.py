@@ -2,6 +2,7 @@
 FastAPI main entry point.
 """
 
+import asyncio
 import logging
 import os
 import time
@@ -12,7 +13,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
-from app.core.local_proxy import ensure_local_no_proxy
+from app.infrastructure.http.environment import ensure_local_no_proxy
 
 ensure_local_no_proxy()
 
@@ -38,11 +39,12 @@ warnings.filterwarnings(
     category=UserWarning,
 )
 
+import anyio
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
 
-import app.models._all  # noqa: F401
+import app.models.registry  # noqa: F401
 from app import __version__
 from app.api.dependencies import bind_route_context
 from app.api.middleware.request_context import RequestContextMiddleware, RequestTimingMiddleware
@@ -51,21 +53,26 @@ from app.api.middleware.response_headers import (
     ResponseSecurityHeadersMiddleware,
 )
 from app.api.v1 import get_router
-from app.core.config import settings
-from app.core.database import Base, SessionLocal, engine
-from app.core.env import is_production_env
-from app.core.exceptions import register_exception_handlers
-from app.core.http_client import close_http_client_pool
-from app.core.logging_config import configure_logging
-from app.core.migrations import apply_runtime_migrations
-from app.core.otel import init_otel, instrument_fastapi, instrument_httpx, shutdown_otel
-from app.core.sentry import init_sentry
-from app.core.utils import parse_csv
-from app.rag.tools.mcp_client import close_mcp_client
-from app.services.initial_admin_service import (
-    InitialAdminBootstrapError,
-    bootstrap_initial_admin_if_configured,
+from app.infrastructure.config import settings
+from app.infrastructure.database.connection import Base, SessionLocal, engine
+from app.infrastructure.database.migrations import apply_runtime_migrations
+from app.infrastructure.env import is_production_env, parse_csv
+from app.infrastructure.exceptions import register_exception_handlers
+from app.infrastructure.http.client import close_http_client_pool
+from app.infrastructure.observability.logging import configure_logging
+from app.infrastructure.observability.opentelemetry import (
+    init_otel,
+    instrument_fastapi,
+    instrument_httpx,
+    shutdown_otel,
 )
+from app.infrastructure.observability.sentry import init_sentry
+from app.rag.agents.tools.mcp_client import close_mcp_client
+from app.rag.retrieval.reranking.factory import reset_reranker_caches
+from app.rag.runtime.engine import reset_rag_engine
+from app.rag.tracing.langsmith import close_tracing
+from app.services.identity.initial_admin import InitialAdminBootstrapError, bootstrap_initial_admin_if_configured
+from app.services.runtime.retrieval_limiter import drain_blocking_retrieval_workers
 from app.tasks.queue import close_queue, init_queue
 
 logger = logging.getLogger("mimirq")
@@ -109,9 +116,7 @@ def _expand_dev_cors_origins(origins: list[str]) -> list[str]:
     - http://127.0.0.1:3100 (Playwright local prod-server checks)
     while backend env only allows http://localhost:3000.
     """
-    if not origins:
-        return origins
-    if "*" in origins:
+    if not origins or "*" in origins:
         return origins
 
     expanded = {origin for raw in origins if (origin := raw.strip().rstrip("/"))}
@@ -130,9 +135,9 @@ def _expand_dev_cors_origins(origins: list[str]) -> list[str]:
         if port is not None:
             local_ports.add(port)
 
-    for scheme in sorted(local_schemes):
-        for port in sorted(local_ports | _DEV_LOCAL_CORS_PORTS):
-            for host in sorted(_LOCAL_DEV_HOSTS):
+    for scheme in local_schemes:
+        for port in local_ports | _DEV_LOCAL_CORS_PORTS:
+            for host in _LOCAL_DEV_HOSTS:
                 expanded.add(f"{scheme}://{host}:{port}")
 
     return sorted(expanded)
@@ -179,7 +184,7 @@ def _warmup_retrieval_tokenizer() -> None:
     if not settings.BM25_INDEX_ENABLED:
         return
 
-    from app.rag.preprocessing.tokenization import warmup_lexical_tokenizer
+    from app.rag.ingestion.governance.text.tokenization import warmup_lexical_tokenizer
 
     started_at = time.perf_counter()
     warmup_lexical_tokenizer()
@@ -189,7 +194,7 @@ def _warmup_retrieval_tokenizer() -> None:
 def _start_runtime_warmup() -> None:
     if not settings.RAG_RUNTIME_WARMUP_ENABLED:
         return
-    from app.services.rag_runtime_warmup import start_rag_runtime_warmup
+    from app.services.runtime.model_warmup import start_rag_runtime_warmup
 
     start_rag_runtime_warmup()
 
@@ -224,7 +229,7 @@ def _setup_langsmith_tracing() -> None:
     if not settings.LANGSMITH_TRACING_ENABLED:
         return
     try:
-        from app.rag.tracing import setup_tracing
+        from app.rag.tracing.langsmith import setup_tracing
 
         setup_tracing()
     except Exception as exc:  # noqa: BLE001
@@ -269,7 +274,7 @@ def _start_task_queue_observability_poller() -> None:
     if not settings.PROMETHEUS_ENABLED:
         return
     try:
-        from app.services.task_queue_observability_service import start_task_queue_observability_poller
+        from app.services.observability.task_queue import start_task_queue_observability_poller
 
         start_task_queue_observability_poller()
     except Exception as exc:  # noqa: BLE001
@@ -278,7 +283,7 @@ def _start_task_queue_observability_poller() -> None:
 
 def _schedule_dify_external_knowledge_warmup() -> None:
     try:
-        from app.api.v1.integrations_dify import start_dify_external_knowledge_warmup
+        from app.services.dify.warmup import start_dify_external_knowledge_warmup
 
         start_dify_external_knowledge_warmup()
     except Exception as exc:  # noqa: BLE001
@@ -289,7 +294,7 @@ async def _stop_task_queue_observability_poller() -> None:
     if not settings.PROMETHEUS_ENABLED:
         return
     try:
-        from app.services.task_queue_observability_service import stop_task_queue_observability_poller
+        from app.services.observability.task_queue import stop_task_queue_observability_poller
 
         await stop_task_queue_observability_poller()
     except Exception as exc:  # noqa: BLE001
@@ -305,35 +310,68 @@ def _dispose_database_engine() -> None:
 
 
 # Lifespan management
+async def _stop_background_warmups() -> None:
+    """Stop both schedulers before waiting for their actual outstanding work."""
+    from app.services.dify.warmup import stop_dify_external_knowledge_warmup
+    from app.services.runtime.model_warmup import stop_runtime_warmup
+
+    results = await asyncio.gather(
+        stop_runtime_warmup(),
+        stop_dify_external_knowledge_warmup(),
+        return_exceptions=True,
+    )
+    errors = [result for result in results if isinstance(result, BaseException)]
+    if errors:
+        raise BaseExceptionGroup("Background warmup shutdown failed", errors)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Operations on app startup and shutdown."""
     logger.info("Starting Ragvia backend...")
-    async with AsyncExitStack() as resources:
-        # Exit callbacks run in reverse order, including failed startup and cancellation.
+    resources = AsyncExitStack()
+    pending_error: BaseException | None = None
+    try:
+        # LIFO: stop borrowers, release their services, forget cached models,
+        # then close the shared HTTP pool and the database engine.
         resources.callback(shutdown_otel)
         resources.callback(_dispose_database_engine)
-        resources.push_async_callback(close_queue)
-        resources.push_async_callback(_stop_task_queue_observability_poller)
         resources.push_async_callback(close_http_client_pool)
+        resources.callback(reset_reranker_caches)
+        resources.callback(reset_rag_engine)
+        resources.push_async_callback(close_queue)
         resources.push_async_callback(close_mcp_client)
-        try:
-            _ensure_startup_directories()
-            _ensure_optional_log_directories()
-            _setup_langsmith_tracing()
-            _initialize_database_for_startup()
-            _bootstrap_initial_admin()
-            await _initialize_task_queue()
-            _start_task_queue_observability_poller()
+        resources.push_async_callback(asyncio.to_thread, close_tracing)
+        resources.push_async_callback(drain_blocking_retrieval_workers)
+        resources.push_async_callback(_stop_task_queue_observability_poller)
+        resources.push_async_callback(_stop_background_warmups)
+        _ensure_startup_directories()
+        _ensure_optional_log_directories()
+        _setup_langsmith_tracing()
+        _initialize_database_for_startup()
+        _bootstrap_initial_admin()
+        await _initialize_task_queue()
+        _start_task_queue_observability_poller()
 
-            # Complete the process-local tokenizer before exposing readiness.
-            _warmup_retrieval_tokenizer()
-            _start_runtime_warmup()
-            _schedule_dify_external_knowledge_warmup()
-            yield
-        finally:
-            logger.info("Shutting down Ragvia backend...")
-    logger.info("HTTP client pool closed")
+        # Complete the process-local tokenizer before exposing readiness.
+        _warmup_retrieval_tokenizer()
+        _start_runtime_warmup()
+        _schedule_dify_external_knowledge_warmup()
+        yield
+    except BaseException as operation_error:
+        pending_error = operation_error
+        raise
+    finally:
+        logger.info("Shutting down Ragvia backend...")
+        try:
+            # Only resource exit is shielded; request/startup work stays cancellable.
+            with anyio.CancelScope(shield=True):
+                await resources.aclose()
+        except BaseException as close_error:
+            if pending_error is None:
+                raise
+            pending_error.add_note(f"Application resource shutdown failed: {type(close_error).__name__}")
+            logger.error("Application resource shutdown failed while propagating an error", exc_info=True)
 
 
 # Create FastAPI app
@@ -434,8 +472,8 @@ if settings.GZIP_ENABLED:
 
 # Prometheus metrics (optional).
 if settings.PROMETHEUS_ENABLED:
-    from app.api.v1.metrics import router as metrics_router
-    from app.core.metrics import PrometheusMiddleware
+    from app.api.v1.system.metrics import router as metrics_router
+    from app.infrastructure.observability.metrics import PrometheusMiddleware
 
     app.include_router(metrics_router, tags=["Metrics"])
     app.add_middleware(

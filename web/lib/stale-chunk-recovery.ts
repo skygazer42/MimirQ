@@ -20,7 +20,7 @@ function primitiveErrorText(value: unknown): string {
 
 function getErrorText(error: unknown): string {
   if (error instanceof Error) {
-    const digest = 'digest' in error ? primitiveErrorText((error as Error & { digest?: unknown }).digest) : ''
+    const digest = 'digest' in error ? primitiveErrorText(error.digest) : undefined
     return [error.name, error.message, error.stack, digest].filter(Boolean).join('\n')
   }
   if (typeof error === 'string') return error
@@ -32,7 +32,7 @@ function getErrorText(error: unknown): string {
   }
 }
 
-export function isLikelyStaleChunkError(error: unknown) {
+function isLikelyStaleChunkError(error: unknown) {
   const text = getErrorText(error)
   return STALE_CHUNK_PATTERNS.some((pattern) => pattern.test(text))
 }
@@ -47,18 +47,21 @@ export function reloadOnceForStaleChunk(error: unknown) {
       globalThis.window.location.pathname,
       globalThis.window.location.search,
     ].join('')
-    const lastReloadedAt = Number(globalThis.window.sessionStorage.getItem(storageKey) || 0)
+    const storedReloadTime = globalThis.window.sessionStorage.getItem(storageKey)
     const now = Date.now()
-    if (
-      Number.isFinite(lastReloadedAt) &&
-      lastReloadedAt > 0 &&
-      now - lastReloadedAt < STALE_CHUNK_RELOAD_COOLDOWN_MS
-    ) {
-      return false
+    if (storedReloadTime !== null) {
+      const lastReloadedAt = Number(storedReloadTime)
+      if (
+        Number.isFinite(lastReloadedAt) &&
+        lastReloadedAt > 0 &&
+        now - lastReloadedAt < STALE_CHUNK_RELOAD_COOLDOWN_MS
+      ) {
+        return false
+      }
     }
     globalThis.window.sessionStorage.setItem(storageKey, String(now))
   } catch {
-    // If storage is unavailable, still prefer one hard reload over a stale chunk error page.
+    return false
   }
 
   globalThis.window.location.reload()

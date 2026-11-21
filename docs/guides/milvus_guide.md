@@ -126,7 +126,7 @@ index_params = {
 
 ### 1. 切换索引类型
 
-编辑 `app/core/constants.py`（`METRIC_TYPE` / `INDEX_TYPE` / `NLIST` / `NPROBE` 等索引与搜索参数集中于此）:
+编辑 `app/storage/vector/milvus.py`（`METRIC_TYPE` / `INDEX_TYPE` / `NLIST` / `NPROBE` 等索引与搜索参数集中于此）:
 
 #### HNSW 索引（高精度，慢速）
 

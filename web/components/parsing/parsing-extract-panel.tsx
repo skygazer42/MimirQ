@@ -1,43 +1,67 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { ChevronDown, ChevronUp, Loader2, WandSparkles } from '@/components/icons'
+import { useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type FormEvent } from 'react'
+import { ChevronDown, ChevronUp, WandSparkles } from '@/components/icons'
 
 import { parsingApi } from '@/lib/api/parsing'
 import type {
   ParsingElement,
   ParsingExtractEvidence,
+  ParsingExtractFieldSpec,
   ParsingExtractRequest,
   ParsingExtractResponse,
 } from '@/lib/api/parsing'
 import { formatApiError } from '@/lib/api-errors'
+import { getAuthSessionKey, subscribeAuthSession } from '@/lib/auth-storage'
 import { cn } from '@/lib/utils'
-import { Button } from '@/components/ui/button'
-import { FeedbackToast } from '@/components/feedback-toast'
+import { formatParsingPages, getParsingElementVisualKind, getParsingPages } from '@/lib/parsing-elements'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { LoadingButton } from '@/components/ui/loading-button'
 import { Textarea } from '@/components/ui/textarea'
 
-type ParsingExtractPanelProps = {
+export type ParsingEvidenceSelection = Readonly<{
+  fieldName: string
+  evidence: ParsingExtractEvidence
+}>
+
+type ParsingExtractPanelProps = Readonly<{
   documentId?: string | null
-  activeElements: ParsingElement[]
-  onSelectEvidence?: (payload: { fieldName: string; evidence: ParsingExtractEvidence }) => void
+  activeElements: readonly ParsingElement[]
+  onSelectEvidence: (selection: ParsingEvidenceSelection) => void
   className?: string
+}>
+
+type ExtractionMode = ParsingExtractRequest['mode']
+type ExtractionDraft = {
+  fieldName: string
+  sourceKind: string
+  sourceVisualKind: string
+  aliases: string
+  prompt: string
+}
+type ExtractionResult = {
+  response: ParsingExtractResponse
+  fingerprint: string
 }
 
-function primitiveText(value: unknown, fallback = ''): string {
-  if (typeof value === 'string') return value
-  if (typeof value === 'number' || typeof value === 'boolean') return String(value)
-  return fallback
-}
+const SOURCE_KIND_LABELS = new Map([
+  ['heading', '标题'],
+  ['paragraph', '正文'],
+  ['list', '列表'],
+  ['table', '表格'],
+  ['image', '图片'],
+  ['equation', '公式'],
+  ['seal', '印章'],
+  ['unknown', '未知类型'],
+])
 
-function suggestDefaults(elements: ParsingElement[]) {
+function suggestDefaults(elements: readonly ParsingElement[]): ExtractionDraft {
   const imageVisualKinds = new Set(
     elements
       .filter((item) => item.kind === 'image')
-      .map((item) =>
-        primitiveText(item.visual_kind || (item.attributes as Record<string, unknown> | null)?.visual_kind).trim(),
-      )
-      .filter(Boolean),
+      .map(getParsingElementVisualKind)
+      .filter((kind): kind is string => kind !== null && kind.length > 0),
   )
   const hasSeal = elements.some((item) => item.kind === 'seal')
   if (hasSeal) {
@@ -59,12 +83,7 @@ function suggestDefaults(elements: ParsingElement[]) {
       prompt: '提取主要公式',
     }
   }
-  const hasChartImage = elements.some(
-    (item) =>
-      item.kind === 'image' &&
-      primitiveText((item.attributes as Record<string, unknown> | null)?.visual_kind).trim() === 'chart',
-  )
-  if (hasChartImage) {
+  if (imageVisualKinds.has('chart')) {
     return {
       fieldName: 'chart_summary',
       sourceKind: 'image',
@@ -112,7 +131,7 @@ function suggestDefaults(elements: ParsingElement[]) {
 function parseAliases(value: string): string[] {
   return Array.from(
     new Set(
-      String(value || '')
+      value
         .split(/[,\n，]+/)
         .map((item) => item.trim())
         .filter(Boolean),
@@ -120,157 +139,124 @@ function parseAliases(value: string): string[] {
   )
 }
 
-function formatBbox(bbox: ParsingElement['bbox']): string {
-  if (!bbox) return ''
+function formatBbox(bbox: NonNullable<ParsingElement['bbox']>): string {
   return `${bbox.x0},${bbox.y0},${bbox.x1},${bbox.y1}`
 }
 
-function formatEvidencePages(evidence: ParsingExtractEvidence): string {
-  const pages = Array.isArray(evidence.pages)
-    ? evidence.pages.filter((value) => Number.isInteger(value) && value > 0)
-    : []
-  if (pages.length >= 2) {
-    if (pages.length === 2 && pages[1] === pages[0] + 1) {
-      return `跨页 ${pages[0]}-${pages[1]}`
-    }
-    return `跨页 ${pages.join(',')}`
-  }
-  if (typeof evidence.page === 'number') {
-    return `页 ${evidence.page}`
-  }
-  return ''
+function buildExtractionRequest(mode: ExtractionMode, draft: ExtractionDraft): ParsingExtractRequest {
+  const field: ParsingExtractFieldSpec = { type: 'string', aliases: parseAliases(draft.aliases) }
+  const sourceKind = draft.sourceKind.trim()
+  const sourceVisualKind = draft.sourceVisualKind.trim()
+  if (sourceKind.length > 0) field.source_kind = sourceKind
+  if (sourceVisualKind.length > 0) field.source_visual_kind = sourceVisualKind
+  const fieldName = draft.fieldName.trim()
+  if (mode === 'schema') return { mode, schema_: { [fieldName]: field }, max_evidence: 3 }
+  return { mode, prompt: draft.prompt.trim(), field_hints: { [fieldName]: field }, max_evidence: 3 }
 }
 
-export function ParsingExtractPanel({
+function getSourceKindLabel(kind: string): string {
+  if (kind.length === 0) return '自动'
+  const label = SOURCE_KIND_LABELS.get(kind)
+  return label === undefined ? kind : label
+}
+
+export function ParsingExtractPanel(props: ParsingExtractPanelProps) {
+  const sessionKey = useSyncExternalStore(subscribeAuthSession, getAuthSessionKey, getAuthSessionKey)
+  return <ParsingExtractForm key={JSON.stringify([props.documentId, sessionKey])} {...props} sessionKey={sessionKey} />
+}
+
+function ParsingExtractForm({
   documentId,
   activeElements,
   onSelectEvidence,
   className,
-}: Readonly<ParsingExtractPanelProps>) {
+  sessionKey,
+}: ParsingExtractPanelProps & { sessionKey: string }) {
+  const formId = useId()
   const [isCollapsed, setIsCollapsed] = useState(true)
-  const [mode, setMode] = useState<'schema' | 'prompt'>('schema')
-  const [schemaFieldName, setSchemaFieldName] = useState('')
-  const [schemaSourceKind, setSchemaSourceKind] = useState('')
-  const [schemaSourceVisualKind, setSchemaSourceVisualKind] = useState('')
-  const [schemaAliases, setSchemaAliases] = useState('')
-  const [promptFieldName, setPromptFieldName] = useState('')
-  const [promptSourceKind, setPromptSourceKind] = useState('')
-  const [promptSourceVisualKind, setPromptSourceVisualKind] = useState('')
-  const [promptAliases, setPromptAliases] = useState('')
-  const [promptText, setPromptText] = useState('')
-  const [result, setResult] = useState<ParsingExtractResponse | null>(null)
+  const [mode, setMode] = useState<ExtractionMode>('schema')
+  const defaults = useMemo(() => suggestDefaults(activeElements), [activeElements])
+  const [drafts, setDrafts] = useState<Partial<Record<ExtractionMode, ExtractionDraft>>>({})
+  const savedDraft = drafts[mode]
+  const draft = savedDraft === undefined ? defaults : savedDraft
+  const payload = useMemo(() => buildExtractionRequest(mode, draft), [draft, mode])
+  const fingerprint = JSON.stringify(payload)
+  const [result, setResult] = useState<ExtractionResult | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [isRunning, setIsRunning] = useState(false)
-  const mountedRef = useRef(false)
-  const requestRef = useRef<object | null>(null)
+  const requestRef = useRef<AbortController | null>(null)
+  const hasDocument = documentId !== undefined && documentId !== null && documentId.length > 0
+  const hasPreviousResult = result !== null && (isRunning || error !== null || result.fingerprint !== fingerprint)
 
-  useEffect(() => {
-    mountedRef.current = true
-    return () => {
-      mountedRef.current = false
+  useLayoutEffect(
+    () => () => {
+      requestRef.current?.abort()
       requestRef.current = null
-    }
-  }, [])
+    },
+    [],
+  )
 
   const availableKinds = useMemo(() => {
-    const values = new Set<string>(['', 'seal', 'equation', 'table', 'image', 'heading', 'paragraph'])
-    for (const element of activeElements || []) {
-      const kind = String(element.kind || '').trim()
-      if (kind) values.add(kind)
-    }
+    const values = new Set(['', 'seal', 'equation', 'table', 'image', 'heading', 'paragraph'])
+    for (const element of activeElements) values.add(element.kind)
+    if (draft.sourceKind.length > 0) values.add(draft.sourceKind)
     return Array.from(values)
-  }, [activeElements])
+  }, [activeElements, draft.sourceKind])
+
   const availableVisualKinds = useMemo(() => {
-    const values = new Set<string>([''])
-    for (const element of activeElements || []) {
-      const visualKind = primitiveText(
-        element.visual_kind || (element.attributes as Record<string, unknown> | null)?.visual_kind,
-      ).trim()
-      if (visualKind) values.add(visualKind)
+    const values = new Set([''])
+    for (const element of activeElements) {
+      const kind = getParsingElementVisualKind(element)
+      if (kind !== null && kind.length > 0) values.add(kind)
     }
+    if (draft.sourceVisualKind.length > 0) values.add(draft.sourceVisualKind)
     return Array.from(values)
-  }, [activeElements])
-  const currentSourceKind = mode === 'schema' ? schemaSourceKind.trim() : promptSourceKind.trim()
+  }, [activeElements, draft.sourceVisualKind])
   const showVisualKindField =
-    (currentSourceKind === '' || currentSourceKind === 'image') && availableVisualKinds.length > 1
+    (draft.sourceKind === '' || draft.sourceKind === 'image') && availableVisualKinds.length > 1
 
-  useEffect(() => {
-    if (showVisualKindField) return
-    setSchemaSourceVisualKind('')
-    setPromptSourceVisualKind('')
-  }, [showVisualKindField])
-
-  useEffect(() => {
-    requestRef.current = null
-    setIsRunning(false)
-    const defaults = suggestDefaults(activeElements)
-    setSchemaFieldName(defaults.fieldName)
-    setSchemaSourceKind(defaults.sourceKind)
-    setSchemaSourceVisualKind(defaults.sourceVisualKind)
-    setSchemaAliases(defaults.aliases)
-    setPromptFieldName(defaults.fieldName)
-    setPromptSourceKind(defaults.sourceKind)
-    setPromptSourceVisualKind(defaults.sourceVisualKind)
-    setPromptAliases(defaults.aliases)
-    setPromptText(defaults.prompt)
-    setResult(null)
+  function changeDraft(change: Partial<ExtractionDraft>) {
+    setDrafts((current) => {
+      const existing = current[mode]
+      return { ...current, [mode]: { ...(existing === undefined ? defaults : existing), ...change } }
+    })
     setError(null)
-    setMode('schema')
-    setIsCollapsed(true)
-  }, [activeElements, documentId])
+  }
 
-  const handleRun = async () => {
-    if (!documentId || requestRef.current) return
-    const request = {}
+  function changeSourceKind(sourceKind: string) {
+    const sourceVisualKind = sourceKind === '' || sourceKind === 'image' ? draft.sourceVisualKind : ''
+    changeDraft({ sourceKind, sourceVisualKind })
+  }
+
+  function changeMode(nextMode: ExtractionMode) {
+    setMode(nextMode)
+    setError(null)
+  }
+
+  async function runExtraction(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (documentId === undefined || documentId === null || documentId.length === 0 || requestRef.current !== null)
+      return
+    if (getAuthSessionKey() !== sessionKey) return
+    if (draft.fieldName.trim().length === 0) {
+      setError('请输入字段名。')
+      return
+    }
+    const request = new AbortController()
     requestRef.current = request
-    const isCurrent = () => mountedRef.current && requestRef.current === request
+    const isCurrent = () => requestRef.current === request && getAuthSessionKey() === sessionKey
+    setDrafts((current) => (current[mode] === undefined ? { ...current, [mode]: draft } : current))
     setIsRunning(true)
     setError(null)
-
     try {
-      let payload: ParsingExtractRequest
-      if (mode === 'schema') {
-        const fieldName = schemaFieldName.trim() || 'field'
-        payload = {
-          mode: 'schema',
-          schema: {
-            [fieldName]: {
-              type: 'string',
-              source_kind: schemaSourceKind.trim() || null,
-              source_visual_kind: schemaSourceVisualKind.trim() || null,
-              aliases: parseAliases(schemaAliases),
-            },
-          },
-          max_evidence: 3,
-        }
-      } else {
-        const fieldName = promptFieldName.trim() || 'prompt_result'
-        payload = {
-          mode: 'prompt',
-          prompt: promptText.trim(),
-          field_hints: {
-            [fieldName]: {
-              type: 'string',
-              source_kind: promptSourceKind.trim() || null,
-              source_visual_kind: promptSourceVisualKind.trim() || null,
-              aliases: parseAliases(promptAliases),
-            },
-          },
-          max_evidence: 3,
-        }
-      }
-
-      const response = await parsingApi.extract(documentId, payload)
-      if (!isCurrent()) return
-      setResult(response)
-    } catch (err) {
-      if (!isCurrent()) return
-      setError(formatApiError(err, '抽取失败'))
-      setResult(null)
+      const response = await parsingApi.extract(documentId, payload, { signal: request.signal })
+      if (isCurrent()) setResult({ response, fingerprint })
+    } catch (error) {
+      if (isCurrent()) setError(formatApiError(error, '抽取失败'))
     } finally {
       if (requestRef.current === request) {
         requestRef.current = null
-        if (mountedRef.current) setIsRunning(false)
+        setIsRunning(false)
       }
     }
   }
@@ -280,23 +266,35 @@ export function ParsingExtractPanel({
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground">结构化抽取</div>
-          <div className="mt-1 text-[12px] leading-5 text-muted-foreground/80">
-            基于当前解析结果快速抽取字段，并返回页码与 bbox 证据。
-          </div>
+          <p className="mt-1 text-[12px] leading-5 text-muted-foreground/80">
+            使用服务器当前保存的解析结果抽取字段，并返回对应文字、页码和区域。
+          </p>
         </div>
         <div className="flex items-center gap-2">
           <button
             type="button"
+            aria-expanded={!isCollapsed}
+            aria-controls={`${formId}-content`}
             onClick={() => setIsCollapsed((current) => !current)}
             className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2 text-xs text-muted-foreground transition-colors duration-150 hover:text-foreground/80"
           >
-            {isCollapsed ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronUp className="h-3.5 w-3.5" />}
+            {isCollapsed ? (
+              <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" />
+            ) : (
+              <ChevronUp className="h-3.5 w-3.5" aria-hidden="true" />
+            )}
             {isCollapsed ? '展开' : '收起'}
           </button>
-          <div className="inline-flex items-center rounded-lg border border-border bg-card p-1">
+          <div
+            role="group"
+            aria-label="抽取方式"
+            className="inline-flex items-center rounded-lg border border-border bg-card p-1"
+          >
             <button
               type="button"
-              onClick={() => setMode('schema')}
+              aria-pressed={mode === 'schema'}
+              disabled={isRunning}
+              onClick={() => changeMode('schema')}
               className={cn(
                 'rounded-md px-3 py-1.5 text-xs transition-colors duration-150',
                 mode === 'schema'
@@ -304,11 +302,13 @@ export function ParsingExtractPanel({
                   : 'text-muted-foreground hover:text-foreground/80',
               )}
             >
-              Schema
+              按字段
             </button>
             <button
               type="button"
-              onClick={() => setMode('prompt')}
+              aria-pressed={mode === 'prompt'}
+              disabled={isRunning}
+              onClick={() => changeMode('prompt')}
               className={cn(
                 'rounded-md px-3 py-1.5 text-xs transition-colors duration-150',
                 mode === 'prompt'
@@ -316,145 +316,168 @@ export function ParsingExtractPanel({
                   : 'text-muted-foreground hover:text-foreground/80',
               )}
             >
-              Prompt
+              按提示词
             </button>
           </div>
         </div>
       </div>
 
-      {isCollapsed ? null : (
-        <div className="mt-3 grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(280px,360px)]">
-          <div className="rounded-xl border border-border/60 bg-card p-3">
-            <div className="grid gap-3 sm:grid-cols-2">
+      {!isCollapsed ? (
+        <div id={`${formId}-content`} className="mt-3 grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(280px,360px)]">
+          <form onSubmit={runExtraction} className="rounded-xl border border-border/60 bg-card p-3">
+            <fieldset disabled={isRunning} className="min-w-0 space-y-3">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <Label htmlFor={`${formId}-field`} className="text-[11px] text-muted-foreground">
+                    字段名
+                  </Label>
+                  <Input
+                    id={`${formId}-field`}
+                    name="fieldName"
+                    required
+                    value={draft.fieldName}
+                    onChange={(event) => changeDraft({ fieldName: event.target.value })}
+                    placeholder="company_name"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor={`${formId}-kind`} className="text-[11px] text-muted-foreground">
+                    来源类型
+                  </Label>
+                  <select
+                    id={`${formId}-kind`}
+                    name="sourceKind"
+                    value={draft.sourceKind}
+                    onChange={(event) => changeSourceKind(event.target.value)}
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground shadow-sm"
+                  >
+                    {availableKinds.map((kind) => (
+                      <option key={kind} value={kind}>
+                        {getSourceKindLabel(kind)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              {showVisualKindField ? (
+                <div className="space-y-1.5">
+                  <Label htmlFor={`${formId}-visual-kind`} className="text-[11px] text-muted-foreground">
+                    图片子类
+                  </Label>
+                  <select
+                    id={`${formId}-visual-kind`}
+                    name="sourceVisualKind"
+                    value={draft.sourceVisualKind}
+                    onChange={(event) => changeDraft({ sourceVisualKind: event.target.value })}
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground shadow-sm"
+                  >
+                    {availableVisualKinds.map((kind) => (
+                      <option key={kind} value={kind}>
+                        {kind.length === 0 ? '自动' : kind}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ) : null}
               <div className="space-y-1.5">
-                <div className="text-[11px] font-medium text-muted-foreground">字段名</div>
+                <Label htmlFor={`${formId}-aliases`} className="text-[11px] text-muted-foreground">
+                  别名
+                </Label>
                 <Input
-                  value={mode === 'schema' ? schemaFieldName : promptFieldName}
-                  onChange={(event) =>
-                    mode === 'schema' ? setSchemaFieldName(event.target.value) : setPromptFieldName(event.target.value)
-                  }
-                  placeholder="company_name"
+                  id={`${formId}-aliases`}
+                  name="aliases"
+                  value={draft.aliases}
+                  onChange={(event) => changeDraft({ aliases: event.target.value })}
+                  placeholder="公司, 公章"
                 />
               </div>
-              <div className="space-y-1.5">
-                <div className="text-[11px] font-medium text-muted-foreground">来源 kind</div>
-                <select
-                  value={mode === 'schema' ? schemaSourceKind : promptSourceKind}
-                  onChange={(event) =>
-                    mode === 'schema'
-                      ? setSchemaSourceKind(event.target.value)
-                      : setPromptSourceKind(event.target.value)
-                  }
-                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground shadow-sm"
-                >
-                  {availableKinds.map((kind) => (
-                    <option key={kind || 'auto'} value={kind}>
-                      {kind || '自动'}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            {showVisualKindField ? (
-              <div className="mt-3 space-y-1.5">
-                <div className="text-[11px] font-medium text-muted-foreground">来源 visual kind</div>
-                <select
-                  value={mode === 'schema' ? schemaSourceVisualKind : promptSourceVisualKind}
-                  onChange={(event) =>
-                    mode === 'schema'
-                      ? setSchemaSourceVisualKind(event.target.value)
-                      : setPromptSourceVisualKind(event.target.value)
-                  }
-                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground shadow-sm"
-                >
-                  {availableVisualKinds.map((visualKind) => (
-                    <option key={visualKind || 'auto'} value={visualKind}>
-                      {visualKind || '自动'}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            ) : null}
-
-            <div className="mt-3 space-y-1.5">
-              <div className="text-[11px] font-medium text-muted-foreground">别名</div>
-              <Input
-                value={mode === 'schema' ? schemaAliases : promptAliases}
-                onChange={(event) =>
-                  mode === 'schema' ? setSchemaAliases(event.target.value) : setPromptAliases(event.target.value)
-                }
-                placeholder="公司, 公章"
-              />
-            </div>
-
-            {mode === 'prompt' ? (
-              <div className="mt-3 space-y-1.5">
-                <div className="text-[11px] font-medium text-muted-foreground">提示词</div>
-                <Textarea
-                  value={promptText}
-                  onChange={(event) => setPromptText(event.target.value)}
-                  className="min-h-[96px]"
-                  placeholder="提取主要公式"
-                />
-              </div>
-            ) : null}
-
+              {mode === 'prompt' ? (
+                <div className="space-y-1.5">
+                  <Label htmlFor={`${formId}-prompt`} className="text-[11px] text-muted-foreground">
+                    提示词（可选）
+                  </Label>
+                  <Textarea
+                    id={`${formId}-prompt`}
+                    name="prompt"
+                    value={draft.prompt}
+                    onChange={(event) => changeDraft({ prompt: event.target.value })}
+                    className="min-h-[96px]"
+                    placeholder="提取主要公式"
+                  />
+                </div>
+              ) : null}
+            </fieldset>
             <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-              <div className="text-[11px] text-muted-foreground/80">
-                {documentId ? `doc: ${documentId}` : '当前文件尚未持久化，无法抽取'}
-              </div>
-              <Button
-                type="button"
-                disabled={!documentId || isRunning}
-                onClick={() => void handleRun()}
-                className="gap-2"
-              >
-                {isRunning ? <Loader2 className="h-4 w-4 animate-spin" /> : <WandSparkles className="h-4 w-4" />}
+              <p className="text-[11px] text-muted-foreground/80">
+                {hasDocument ? '抽取基于已保存的结果。' : '请先解析并保存当前文件。'}
+              </p>
+              <LoadingButton type="submit" loading={isRunning} disabled={!hasDocument} className="gap-2">
+                <WandSparkles className="h-4 w-4" aria-hidden="true" />
                 运行抽取
-              </Button>
+              </LoadingButton>
             </div>
-            <FeedbackToast type="error" message={error} id="parsing-extract-feedback" />
-          </div>
+            {error !== null ? (
+              <p role="alert" className="mt-3 text-sm text-destructive">
+                {error}
+              </p>
+            ) : null}
+          </form>
 
           <div className="rounded-xl border border-border/60 bg-card p-3">
-            <div className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground">抽取结果</div>
-            {result ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground">抽取结果</div>
+              {hasPreviousResult ? <span className="text-[11px] text-muted-foreground">上次成功结果</span> : null}
+            </div>
+            {result === null ? (
+              <p className="mt-3 text-sm text-muted-foreground">
+                {isRunning ? '正在抽取字段…' : '运行抽取后显示字段值与证据。'}
+              </p>
+            ) : Object.keys(result.response.result).length === 0 ? (
+              <p className="mt-3 text-sm text-muted-foreground">未抽取到字段。</p>
+            ) : (
               <div className="mt-2 space-y-2">
-                {Object.entries(result.result || {}).map(([fieldName, field]) => (
+                {Object.entries(result.response.result).map(([fieldName, field]) => (
                   <div key={fieldName} className="rounded-lg border border-border/60 bg-muted/10 p-2.5">
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="text-[11px] font-medium text-foreground">{fieldName}</span>
-                      <span className="rounded-full border border-border/60 px-2 py-0.5 text-[11px] text-muted-foreground">
-                        {field.strategy || 'unknown'}
-                      </span>
+                      {field.strategy ? (
+                        <span className="rounded-full border border-border/60 px-2 py-0.5 text-[11px] text-muted-foreground">
+                          {field.strategy}
+                        </span>
+                      ) : null}
                       {typeof field.confidence === 'number' ? (
                         <span className="font-mono text-[11px] text-muted-foreground">
                           {field.confidence.toFixed(2)}
                         </span>
                       ) : null}
                     </div>
-                    <div className="mt-1 text-sm font-medium text-foreground">{field.value || '无结果'}</div>
-                    {(field.evidence || []).length > 0 ? (
+                    <div className="mt-1 text-sm font-medium text-foreground">
+                      {field.value === undefined || field.value === null
+                        ? '无结果'
+                        : field.value.length === 0
+                          ? '空文本'
+                          : field.value}
+                    </div>
+                    {field.evidence.length > 0 ? (
                       <div className="mt-2 space-y-1">
-                        {(field.evidence || []).map((evidence, index) => (
+                        {field.evidence.map((evidence, index) => (
                           <button
-                            key={`${fieldName}:${String(evidence.element_id || index)}`}
+                            key={`${fieldName}:${evidence.element_id ?? index}`}
                             type="button"
-                            onClick={() => onSelectEvidence?.({ fieldName, evidence })}
+                            onClick={() => onSelectEvidence({ fieldName, evidence })}
                             data-testid="extract-evidence-button"
                             className="w-full rounded-md border border-border/60 bg-card px-2 py-1 text-left text-[11px] text-muted-foreground transition-colors hover:border-primary/40 hover:bg-primary/5"
                           >
-                            <div className="flex flex-wrap items-center gap-2">
-                              {formatEvidencePages(evidence) ? <span>{formatEvidencePages(evidence)}</span> : null}
+                            <span className="flex flex-wrap items-center gap-2">
+                              <span>{formatParsingPages(getParsingPages(evidence))}</span>
                               {evidence.kind ? <span>{evidence.kind}</span> : null}
                               {evidence.visual_kind ? <span>{evidence.visual_kind}</span> : null}
                               {evidence.element_id ? <span>{evidence.element_id}</span> : null}
-                            </div>
+                            </span>
                             {evidence.bbox ? (
-                              <div className="mt-0.5 font-mono text-[11px] text-muted-foreground/85">
+                              <span className="mt-0.5 block font-mono text-[11px] text-muted-foreground/85">
                                 bbox {formatBbox(evidence.bbox)}
-                              </div>
+                              </span>
                             ) : null}
                           </button>
                         ))}
@@ -463,14 +486,10 @@ export function ParsingExtractPanel({
                   </div>
                 ))}
               </div>
-            ) : (
-              <div className="mt-3 text-sm text-muted-foreground/80">
-                运行抽取后，这里会显示 value、confidence 和 evidence。
-              </div>
             )}
           </div>
         </div>
-      )}
+      ) : null}
     </div>
   )
 }

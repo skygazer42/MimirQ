@@ -28,7 +28,7 @@
     "after_line": 49
   },
   {
-    "file": "app/rag/chunking/strategies/rst_sections.py",
+    "file": "app/rag/ingestion/chunking/strategies/rst_sections.py",
     "old": "_is_adornment",
     "new": "_detect_adornment_character",
     "before_line": 69,
@@ -56,42 +56,42 @@
     "after_line": 65
   },
   {
-    "file": "app/rag/preprocessing/tokenization.py",
+    "file": "app/rag/ingestion/governance/tokenization.py",
     "old": "_tokenize_for_bm25_cached",
     "new": "_tokenize_lexical_text_cached",
     "before_line": 22,
     "after_line": 23
   },
   {
-    "file": "app/rag/preprocessing/tokenization.py",
+    "file": "app/rag/ingestion/governance/tokenization.py",
     "old": "_normalize_for_bm25",
     "new": "_normalize_lexical_text",
     "before_line": 34,
     "after_line": 35
   },
   {
-    "file": "app/rag/preprocessing/tokenization.py",
+    "file": "app/rag/ingestion/governance/tokenization.py",
     "old": "_tokenize_for_bm25_ascii",
     "new": "_tokenize_ascii_text",
     "before_line": 181,
     "after_line": 182
   },
   {
-    "file": "app/rag/preprocessing/tokenization.py",
+    "file": "app/rag/ingestion/governance/tokenization.py",
     "old": "_tokenize_for_bm25_impl",
     "new": "_tokenize_lexical_text_impl",
     "before_line": 258,
     "after_line": 259
   },
   {
-    "file": "app/rag/preprocessing/tokenization.py",
+    "file": "app/rag/ingestion/governance/tokenization.py",
     "old": "tokenize_for_bm25",
     "new": "tokenize_lexical_text",
     "before_line": 299,
     "after_line": 300
   },
   {
-    "file": "app/rag/preprocessing/tokenization.py",
+    "file": "app/rag/ingestion/governance/tokenization.py",
     "old": "warmup_bm25_tokenizer",
     "new": "warmup_lexical_tokenizer",
     "before_line": 316,

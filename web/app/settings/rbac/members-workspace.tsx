@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { AppFrame } from '@/components/app-frame'
 import {
   ChevronLeft,
@@ -37,28 +37,30 @@ import {
   removalRestriction,
   roleChangeRestriction,
   roleLabel,
-  type MemberRole,
-  type MemberScope,
 } from './members-model'
 import { MembersConfirmations, IdentityToolsDialog, RoleHelpDialog } from './members-dialogs'
 import { useMembers, type MembersController } from './use-members'
 import styles from './members.module.css'
 
 function RoleCell({ member, c }: { member: TenantMember; c: MembersController }) {
+  const roleTrigger = useRef<HTMLButtonElement>(null)
   const tone = MEMBER_ROLES.find((role) => role.key === member.role)?.tone ?? 'neutral'
   const saving = c.busy?.kind === 'role' && c.busy.id === member.id
+  const roleValue = member.role === '' ? 'unassigned' : member.role
   return (
     <div className={styles.roleCell} data-tone={tone}>
       {c.canManage && member.user_id ? (
         <Select
-          value={member.role || 'unassigned'}
+          value={roleValue}
           disabled={c.blocked}
           onValueChange={(desired) => {
-            const trigger = document.querySelector<HTMLElement>(`[data-member-role="${member.id}"]`)
-            if (trigger) c.requestRole(member, desired as MemberRole, trigger)
+            const role = MEMBER_ROLES.find((item) => item.key === desired)
+            const trigger = roleTrigger.current
+            if (role !== undefined && trigger !== null) c.requestRole(member, role.key, trigger)
           }}
         >
           <SelectTrigger
+            ref={roleTrigger}
             aria-label={`角色 ${memberIdentity(member).name}`}
             data-member-role={member.id}
             className={styles.roleTrigger}
@@ -68,7 +70,7 @@ function RoleCell({ member, c }: { member: TenantMember; c: MembersController })
           </SelectTrigger>
           <SelectContent align="start">
             {!MEMBER_ROLES.some((role) => role.key === member.role) ? (
-              <SelectItem value={member.role || 'unassigned'} disabled>
+              <SelectItem value={roleValue} disabled>
                 {roleLabel(member.role)}
               </SelectItem>
             ) : null}
@@ -124,12 +126,13 @@ function MembersTable({ c }: { c: MembersController }) {
               current = isCurrentAccount(member, c.accountId),
               emailSeparator = who.email.lastIndexOf('@')
             const reason = removalRestriction(member, c.accountId, c.admins)
+            const accountId = member.user_id
             return (
               <tr
                 key={member.id}
                 data-member-id={member.id}
-                data-current={current || undefined}
-                data-updated={c.updatedId === member.id || undefined}
+                data-current={current ? true : undefined}
+                data-updated={c.updatedId === member.id ? true : undefined}
                 onAnimationEnd={() => {
                   if (c.updatedId === member.id) c.setUpdatedId('')
                 }}
@@ -163,15 +166,16 @@ function MembersTable({ c }: { c: MembersController }) {
                   </div>
                 </th>
                 <td className={styles.idColumn}>
-                  {member.user_id ? (
+                  {accountId ? (
                     <button
+                      type="button"
                       className={styles.idCopy}
-                      aria-label={`复制成员 ID ${member.user_id}`}
+                      aria-label={`复制成员 ID ${accountId}`}
                       onClick={() => {
-                        void c.copyId(member.user_id!)
+                        void c.copyId(accountId)
                       }}
                     >
-                      {member.user_id}
+                      {accountId}
                       <Copy />
                     </button>
                   ) : (
@@ -208,10 +212,10 @@ function MembersTable({ c }: { c: MembersController }) {
                         if (c.deletion) event.preventDefault()
                       }}
                     >
-                      {member.user_id ? (
+                      {accountId ? (
                         <DropdownMenuItem
                           onSelect={() => {
-                            void c.copyId(member.user_id!)
+                            void c.copyId(accountId)
                           }}
                         >
                           <Copy />
@@ -263,7 +267,10 @@ export default function MembersWorkspace() {
   const c = useMembers(),
     [helpOpen, setHelpOpen] = useState(false),
     [identityOpen, setIdentityOpen] = useState(false)
-  const hasFilters = Boolean(c.query || c.role !== 'all' || c.scope !== 'all')
+  const hasFilters = c.query.trim() !== '' || c.role !== 'all' || c.scope !== 'all'
+  const waitingForNetwork = c.membersQuery.isPending && c.membersQuery.isPaused
+  const refreshing = c.membersQuery.isFetching || c.access.isFetching
+  const tenantId = c.access.data?.tenant_id
   return (
     <AppFrame>
       <section className={styles.workspace} data-members-workspace>
@@ -277,7 +284,13 @@ export default function MembersWorkspace() {
               <HelpCircle />
               <span>角色说明</span>
             </Button>
-            <Button variant="outline" aria-label="身份接入" data-members-identity onClick={() => setIdentityOpen(true)}>
+            <Button
+              variant="outline"
+              aria-label="身份接入"
+              data-members-identity
+              disabled={tenantId === undefined}
+              onClick={() => setIdentityOpen(true)}
+            >
               <KeyRound />
               <span>身份接入</span>
             </Button>
@@ -309,7 +322,10 @@ export default function MembersWorkspace() {
           </Select>
           <Select
             value={c.scope}
-            onValueChange={(scope) => c.setScope(scope as MemberScope)}
+            onValueChange={(scope) => {
+              if (scope === 'all' || scope === 'current' || scope === 'others' || scope === 'unassigned')
+                c.setScope(scope)
+            }}
             disabled={Boolean(c.busy)}
           >
             <SelectTrigger className={styles.filter} aria-label="筛选成员范围">
@@ -336,16 +352,13 @@ export default function MembersWorkspace() {
             variant="ghost"
             className={styles.refresh}
             aria-label="刷新成员"
-            disabled={Boolean(c.busy) || c.membersQuery.isFetching}
+            disabled={Boolean(c.busy) || refreshing}
+            aria-busy={refreshing}
             onClick={() => {
               void c.refresh()
             }}
           >
-            {c.membersQuery.isFetching ? (
-              <Loader2 className="animate-spin motion-reduce:animate-none" />
-            ) : (
-              <RefreshCw />
-            )}
+            {refreshing ? <Loader2 className="animate-spin motion-reduce:animate-none" /> : <RefreshCw />}
             <span>刷新</span>
           </Button>
         </div>
@@ -359,6 +372,8 @@ export default function MembersWorkspace() {
           <div className={styles.notice} role="alert">
             <span>权限信息更新失败：{formatApiError(c.access.error, '无法读取权限')}</span>
             <button
+              type="button"
+              disabled={c.access.isFetching}
               onClick={() => {
                 void c.access.refetch()
               }}
@@ -404,8 +419,8 @@ export default function MembersWorkspace() {
         ) : null}
         {c.membersQuery.isPending ? (
           <div className={styles.empty} role="status">
-            <Loader2 className="animate-spin motion-reduce:animate-none" />
-            <p>正在读取成员…</p>
+            {waitingForNetwork ? null : <Loader2 className="animate-spin motion-reduce:animate-none" />}
+            <p>{waitingForNetwork ? '等待网络连接' : '正在读取成员…'}</p>
           </div>
         ) : c.paged.items.length ? (
           <MembersTable c={c} />
@@ -430,9 +445,9 @@ export default function MembersWorkspace() {
               ? hasFilters
                 ? `${c.paged.total} / ${c.members.length} 名成员`
                 : `共 ${c.members.length} 名成员`
-              : c.membersQuery.isPending
-                ? '正在读取'
-                : '未取得成员列表'}
+              : c.membersQuery.isError
+                ? '未取得成员列表'
+                : null}
           </span>
           <span className={styles.spacer} />
           <Select value={String(c.size)} onValueChange={(size) => c.setSize(Number(size))} disabled={Boolean(c.busy)}>
@@ -447,9 +462,11 @@ export default function MembersWorkspace() {
               ))}
             </SelectContent>
           </Select>
-          <span className={styles.pageRange}>
-            {c.paged.start}–{c.paged.end}
-          </span>
+          {c.membersQuery.data !== undefined && (
+            <span className={styles.pageRange}>
+              {c.paged.start}–{c.paged.end}
+            </span>
+          )}
           <Button
             variant="ghost"
             size="icon"
@@ -473,8 +490,8 @@ export default function MembersWorkspace() {
           </Button>
         </footer>
         <RoleHelpDialog open={helpOpen} onOpenChange={setHelpOpen} />
-        {identityOpen ? (
-          <IdentityToolsDialog tenantId={c.access.data?.tenant_id || ''} onClose={() => setIdentityOpen(false)} />
+        {identityOpen && tenantId !== undefined ? (
+          <IdentityToolsDialog tenantId={tenantId} onClose={() => setIdentityOpen(false)} />
         ) : null}
         <MembersConfirmations c={c} />
       </section>

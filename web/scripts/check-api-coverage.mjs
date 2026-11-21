@@ -1,15 +1,23 @@
 import { listFrontendSourceFiles, parseBackendRoutes, parseFrontendRoutes } from './api-contract-lib.mjs'
 
-const FRONTEND_CONTRACT_FILES = listFrontendSourceFiles().filter(
-  (rel) => rel === 'web/lib/api-client.ts' || rel.startsWith('web/lib/api/'),
-)
+const FRONTEND_CONTRACT_FILES = listFrontendSourceFiles().filter((rel) => rel.startsWith('web/lib/api/'))
 
-// Service callbacks and retired HTTP 410 endpoints are not browser capabilities.
+// Service callbacks, offline workflows, and retired endpoints have no browser entrypoint.
 const NON_BROWSER_BACKEND_ROUTES = new Set([
   'POST /auth/saml/bridge/consume',
   'POST /integrations/dify/conversation-turns',
   'POST /rag/image-index',
   'POST /rag/image-search-preview',
+  // The precheck workspace opens files by finding instead of directory prefix.
+  'GET /datasets/{}/precheck/scan-runs/{}/files',
+  // The table workspace uses the query endpoint. The remote table probe uses preview.
+  'GET /datasets/{}/tables/{}/preview',
+  // The browser reads enriched feedback. Tooling reads raw feedback and exports training data.
+  'GET /feedback/messages',
+  'POST /feedback/loop/hard-negatives/export',
+  // Deployment access reviews use the audit CLI.
+  'GET /audit/access-graph/export',
+  'GET /audit/access-graph/summary',
 ])
 
 function main() {

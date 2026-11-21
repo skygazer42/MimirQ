@@ -1,7 +1,7 @@
 import { toTrimmedPrimitiveString } from './primitive-text'
 
 function escapeHtml(raw: string): string {
-  return String(raw)
+  return raw
     .replaceAll('&', '&amp;')
     .replaceAll('<', '&lt;')
     .replaceAll('>', '&gt;')
@@ -9,70 +9,51 @@ function escapeHtml(raw: string): string {
     .replaceAll("'", '&#39;')
 }
 
-function shortId(value: unknown, opts?: { head?: number; tail?: number }): string {
-  const head = Math.max(0, opts?.head ?? 8)
-  const tail = Math.max(0, opts?.tail ?? 4)
-  const s = toTrimmedPrimitiveString(value)
-  if (!s) return ''
-  if (s.length <= head + tail + 3) return s
-  return `${s.slice(0, head)}…${s.slice(-tail)}`
+function shortId(value: string, head = 8, tail = 4): string {
+  if (value.length <= head + tail + 3) return value
+  return `${value.slice(0, head)}…${value.slice(-tail)}`
 }
 
 function formatConfidence(value: unknown): string {
-  if (value == null) return ''
-  const n = Number(value)
-  if (!Number.isFinite(n)) return ''
-  // Keep compact but stable, since this appears in hover tooltips.
-  return n.toFixed(3)
+  const confidence = typeof value === 'string' && value.trim() !== '' ? Number(value) : value
+  return typeof confidence === 'number' && Number.isFinite(confidence) ? confidence.toFixed(3) : ''
 }
 
-function line(label: string, value: string): string {
-  if (!value) return ''
+function tooltipRow(label: string, value: string): string {
+  if (value === '') return ''
   return `<div><span style="opacity:.72">${escapeHtml(label)}:</span> <span style="font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace">${escapeHtml(
     value,
   )}</span></div>`
 }
 
-type GraphLinkRecord = Record<string, unknown> & {
-  readonly meta?: Record<string, unknown>
-}
-
 function isRecord(value: unknown): value is Record<string, unknown> {
-  return !!value && typeof value === 'object' && !Array.isArray(value)
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
-function linkEndpointValue(value: unknown): unknown {
-  if (!isRecord(value)) return value
-  return value.label || value.id
-}
-
-function inferSourceTarget(link: GraphLinkRecord): { source: string; target: string } {
-  const rawSource = link.source
-  const rawTarget = link.target
-
-  const source = linkEndpointValue(rawSource)
-  const target = linkEndpointValue(rawTarget)
-
-  return { source: toTrimmedPrimitiveString(source), target: toTrimmedPrimitiveString(target) }
+function readEndpointLabel(value: unknown): string {
+  if (!isRecord(value)) return toTrimmedPrimitiveString(value)
+  const label = toTrimmedPrimitiveString(value.label)
+  return label === '' ? toTrimmedPrimitiveString(value.id) : label
 }
 
 export function buildGraphLinkProvenanceTooltipHtml(link: unknown): string {
   if (!isRecord(link)) return ''
-  const meta = isRecord(link.meta) ? link.meta : {}
+  const meta = isRecord(link.meta) ? link.meta : undefined
 
-  const kind = toTrimmedPrimitiveString(meta.kind ?? link.kind)
-  const label = toTrimmedPrimitiveString(meta.predicate ?? link.predicate ?? link.label)
-  const conf = formatConfidence(meta.confidence ?? link.confidence ?? link.weight)
-  const { source, target } = inferSourceTarget(link)
+  const kind = toTrimmedPrimitiveString(meta?.kind ?? link.kind)
+  const label = toTrimmedPrimitiveString(meta?.predicate ?? link.predicate ?? link.label)
+  const confidence = formatConfidence(meta?.confidence ?? link.confidence ?? link.weight)
+  const source = readEndpointLabel(link.source)
+  const target = readEndpointLabel(link.target)
 
-  const docId = toTrimmedPrimitiveString(meta.document_id)
-  const chunkId = toTrimmedPrimitiveString(meta.chunk_id)
-  const eventId = toTrimmedPrimitiveString(meta.event_id)
+  const docId = toTrimmedPrimitiveString(meta?.document_id)
+  const chunkId = toTrimmedPrimitiveString(meta?.chunk_id)
+  const eventId = toTrimmedPrimitiveString(meta?.event_id)
 
-  const page = toTrimmedPrimitiveString(meta.page ?? meta.page_number)
-  const chunkIndex = toTrimmedPrimitiveString(meta.chunk_index)
-  const sharedEvents = toTrimmedPrimitiveString(meta.shared_events)
-  const contentHash = toTrimmedPrimitiveString(meta.content_hash)
+  const page = toTrimmedPrimitiveString(meta?.page ?? meta?.page_number)
+  const chunkIndex = toTrimmedPrimitiveString(meta?.chunk_index)
+  const sharedEvents = toTrimmedPrimitiveString(meta?.shared_events)
+  const contentHash = toTrimmedPrimitiveString(meta?.content_hash)
 
   const title = (() => {
     if (kind === 'entity_relation') {
@@ -89,19 +70,17 @@ export function buildGraphLinkProvenanceTooltipHtml(link: unknown): string {
   })()
 
   const bodyLines = [
-    label ? line('label', label) : '',
-    source && target ? line('edge', `${shortId(source)} → ${shortId(target)}`) : '',
-    conf ? line('confidence', conf) : '',
-    sharedEvents ? line('shared_events', sharedEvents) : '',
-    docId ? line('document', shortId(docId)) : '',
-    eventId ? line('event', shortId(eventId)) : '',
-    chunkId ? line('chunk', shortId(chunkId)) : '',
-    chunkIndex ? line('chunk_index', chunkIndex) : '',
-    page ? line('page', page) : '',
-    contentHash ? line('content_hash', shortId(contentHash, { head: 10, tail: 6 })) : '',
-  ]
-    .filter(Boolean)
-    .join('')
+    tooltipRow('label', label),
+    source === '' || target === '' ? '' : tooltipRow('edge', `${shortId(source)} → ${shortId(target)}`),
+    tooltipRow('confidence', confidence),
+    tooltipRow('shared_events', sharedEvents),
+    tooltipRow('document', shortId(docId)),
+    tooltipRow('event', shortId(eventId)),
+    tooltipRow('chunk', shortId(chunkId)),
+    tooltipRow('chunk_index', chunkIndex),
+    tooltipRow('page', page),
+    tooltipRow('content_hash', shortId(contentHash, 10, 6)),
+  ].join('')
 
   if (!bodyLines) {
     return `<div style="font-size:12px;line-height:1.2"><div style="font-weight:600;margin-bottom:4px">${escapeHtml(

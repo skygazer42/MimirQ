@@ -31,9 +31,11 @@ import {
 import type { PromptTemplate } from '@/lib/api/prompts'
 import { cn } from '@/lib/utils'
 import { formatApiError } from '@/lib/api-errors'
-import { PROMPT_SCENARIOS, promptDate, promptPageNumbers, promptScenario, type ScenarioKey } from './prompt-model'
+import { PROMPT_SCENARIOS, promptDate, promptPageNumbers, promptScenario } from './prompt-model'
 import type { PromptsController } from './use-prompt-templates'
 import styles from './prompts.module.css'
+
+const CATEGORY_VALUE_PREFIX = 'category:'
 
 export function PromptStatus({ template }: { template: PromptTemplate }) {
   return (
@@ -43,7 +45,13 @@ export function PromptStatus({ template }: { template: PromptTemplate }) {
     </span>
   )
 }
-export function PromptVariables({ variables, limit = variables.length }: { variables: string[]; limit?: number }) {
+export function PromptVariables({
+  variables,
+  limit = variables.length,
+}: {
+  variables: readonly string[]
+  limit?: number
+}) {
   if (!variables.length) return <span className={styles.muted}>—</span>
   return (
     <span className={styles.variables}>
@@ -65,26 +73,26 @@ export function PromptVariables({ variables, limit = variables.length }: { varia
   )
 }
 
-function PromptActions({ template: t, controller: c }: { template: PromptTemplate; controller: PromptsController }) {
+function PromptActions({ template, controller }: { template: PromptTemplate; controller: PromptsController }) {
   return (
     <div className={styles.rowActions}>
       <Button
         variant="ghost"
         className={styles.previewButton}
-        onClick={() => c.openPreview(t)}
-        aria-label={`预览 ${t.name}`}
+        onClick={() => controller.openPreview(template)}
+        aria-label={`预览 ${template.name}`}
       >
         预览
       </Button>
-      {c.canManage ? (
+      {controller.canManage ? (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button
               variant="ghost"
               size="icon"
               className={styles.moreButton}
-              disabled={Boolean(c.busy)}
-              aria-label={`更多操作 ${t.name}`}
+              disabled={controller.busy !== ''}
+              aria-label={`更多操作 ${template.name}`}
             >
               <MoreHorizontal />
             </Button>
@@ -93,33 +101,35 @@ function PromptActions({ template: t, controller: c }: { template: PromptTemplat
             align="end"
             className={styles.menu}
             onCloseAutoFocus={(event) => {
-              if (c.editorOpen || c.preview || c.deleteTargets.length) event.preventDefault()
+              if (controller.editorOpen || controller.preview !== null || controller.deleteTargets.length > 0) {
+                event.preventDefault()
+              }
             }}
           >
-            <DropdownMenuItem onSelect={() => c.openPreview(t)}>阅读模板</DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => controller.openPreview(template)}>阅读模板</DropdownMenuItem>
             <DropdownMenuItem
               onSelect={() => {
-                void c.duplicate(t)
+                void controller.duplicate(template)
               }}
             >
               <Copy />
               复制为自定义模板
             </DropdownMenuItem>
-            {!t.is_system ? (
+            {!template.is_system ? (
               <>
-                <DropdownMenuItem onSelect={() => c.openEditor(t)}>
+                <DropdownMenuItem onSelect={() => controller.openEditor(template)}>
                   <Edit />
                   编辑模板
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   onSelect={() => {
-                    void c.toggleActive(t)
+                    void controller.toggleActive(template)
                   }}
                 >
-                  {t.is_active ? '停用模板' : '启用模板'}
+                  {template.is_active ? '停用模板' : '启用模板'}
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem className={styles.dangerText} onSelect={() => c.openDelete([t])}>
+                <DropdownMenuItem className={styles.dangerText} onSelect={() => controller.openDelete([template])}>
                   <Trash2 />
                   删除模板
                 </DropdownMenuItem>
@@ -132,28 +142,34 @@ function PromptActions({ template: t, controller: c }: { template: PromptTemplat
   )
 }
 
-export function PromptTable({ controller: c }: { controller: PromptsController }) {
+export function PromptTable({ controller }: { controller: PromptsController }) {
+  const category = controller.filters.category
+  const hasTemplates = controller.query.data !== undefined
+  const waitingForNetwork = controller.query.isPending && controller.query.isPaused
   const hasFilters =
-    c.filters.query.trim() ||
-    c.filters.scenario !== 'all' ||
-    c.filters.status !== 'all' ||
-    c.filters.source !== 'all' ||
-    c.filters.category !== 'all'
-  const quietEmpty = c.query.isSuccess && c.templates.length === 0 && !hasFilters
-  const pageNumbers = promptPageNumbers(c.currentPage, c.totalPages)
-  const activeCount = c.templates.filter((t) => t.is_active).length
+    controller.filters.query.trim() !== '' ||
+    controller.filters.scenario !== 'all' ||
+    controller.filters.status !== 'all' ||
+    controller.filters.source !== 'all' ||
+    category !== null
+  const quietEmpty = controller.query.isSuccess && controller.templates.length === 0 && !hasFilters
+  const pageNumbers = promptPageNumbers(controller.currentPage, controller.totalPages)
+  const activeCount = controller.templates.filter((t) => t.is_active).length
   return (
     <>
       <Tabs
-        value={c.filters.scenario}
-        onValueChange={(value) => c.changeFilter('scenario', value as ScenarioKey)}
+        value={controller.filters.scenario}
+        onValueChange={(value) => {
+          const scenario = PROMPT_SCENARIOS.find((item) => item.key === value)
+          if (scenario !== undefined) controller.changeFilter('scenario', scenario.key)
+        }}
         className={styles.scenarios}
       >
         <TabsList aria-label="提示词场景" className={styles.tabs}>
-          {PROMPT_SCENARIOS.filter((s) => s.key !== 'other' || c.counts.other > 0).map((s) => (
+          {PROMPT_SCENARIOS.filter((s) => s.key !== 'other' || controller.counts.other > 0).map((s) => (
             <TabsTrigger key={s.key} value={s.key} className={styles.tab}>
               {s.label}
-              {quietEmpty ? null : <span>{c.counts[s.key] ?? 0}</span>}
+              {hasTemplates && !quietEmpty ? <span>{controller.counts[s.key]}</span> : null}
             </TabsTrigger>
           ))}
         </TabsList>
@@ -161,16 +177,16 @@ export function PromptTable({ controller: c }: { controller: PromptsController }
       <div className={styles.toolbar}>
         <SearchInput
           aria-label="搜索模板"
-          value={c.filters.query}
-          onValueChange={(value) => c.changeFilter('query', value)}
+          value={controller.filters.query}
+          onValueChange={(value) => controller.changeFilter('query', value)}
           placeholder="搜索名称、内容或标签"
           containerClassName={styles.search}
           inputClassName={styles.searchInput}
         />
         <div className={styles.filters}>
           <Select
-            value={c.filters.status}
-            onValueChange={(value) => c.changeFilter('status', value as typeof c.filters.status)}
+            value={controller.filters.status}
+            onValueChange={(value) => controller.changeFilter('status', value as typeof controller.filters.status)}
           >
             <SelectTrigger aria-label="模板状态" className={styles.filterSelect}>
               <SelectValue />
@@ -182,8 +198,8 @@ export function PromptTable({ controller: c }: { controller: PromptsController }
             </SelectContent>
           </Select>
           <Select
-            value={c.filters.source}
-            onValueChange={(value) => c.changeFilter('source', value as typeof c.filters.source)}
+            value={controller.filters.source}
+            onValueChange={(value) => controller.changeFilter('source', value as typeof controller.filters.source)}
           >
             <SelectTrigger aria-label="模板来源" className={styles.filterSelect}>
               <SelectValue />
@@ -200,7 +216,7 @@ export function PromptTable({ controller: c }: { controller: PromptsController }
                 variant="ghost"
                 size="icon"
                 aria-label="更多筛选与排序"
-                className={cn(styles.filterButton, c.filters.category !== 'all' && styles.filterActive)}
+                className={cn(styles.filterButton, category !== null && styles.filterActive)}
               >
                 <Filter />
               </Button>
@@ -208,14 +224,22 @@ export function PromptTable({ controller: c }: { controller: PromptsController }
             <PopoverContent align="start" className={styles.filterPopover}>
               <div>
                 <Label htmlFor="prompt-category-filter">分类</Label>
-                <Select value={c.filters.category} onValueChange={(value) => c.changeFilter('category', value)}>
+                <Select
+                  value={category === null ? 'all' : `${CATEGORY_VALUE_PREFIX}${category}`}
+                  onValueChange={(value) =>
+                    controller.changeFilter(
+                      'category',
+                      value === 'all' ? null : value.slice(CATEGORY_VALUE_PREFIX.length),
+                    )
+                  }
+                >
                   <SelectTrigger id="prompt-category-filter" aria-label="模板分类">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">全部分类</SelectItem>
-                    {c.categories.map((category) => (
-                      <SelectItem key={category} value={category}>
+                    {controller.categories.map((category) => (
+                      <SelectItem key={category} value={`${CATEGORY_VALUE_PREFIX}${category}`}>
                         {category}
                       </SelectItem>
                     ))}
@@ -225,8 +249,8 @@ export function PromptTable({ controller: c }: { controller: PromptsController }
               <div>
                 <Label htmlFor="prompt-order">排序</Label>
                 <Select
-                  value={c.filters.sort}
-                  onValueChange={(value) => c.changeFilter('sort', value as typeof c.filters.sort)}
+                  value={controller.filters.sort}
+                  onValueChange={(value) => controller.changeFilter('sort', value as typeof controller.filters.sort)}
                 >
                   <SelectTrigger id="prompt-order" aria-label="模板排序">
                     <SelectValue />
@@ -239,49 +263,53 @@ export function PromptTable({ controller: c }: { controller: PromptsController }
                 </Select>
               </div>
               {hasFilters ? (
-                <Button variant="ghost" onClick={c.clearFilters}>
+                <Button variant="ghost" onClick={controller.clearFilters}>
                   清除筛选
                 </Button>
               ) : null}
             </PopoverContent>
           </Popover>
-          {c.filters.category !== 'all' ? (
+          {category !== null ? (
             <Button
               variant="ghost"
               className={styles.categoryChip}
-              onClick={() => c.changeFilter('category', 'all')}
+              onClick={() => controller.changeFilter('category', null)}
               title="清除分类筛选"
             >
-              {c.filters.category}
+              {category}
               <X />
             </Button>
           ) : null}
         </div>
-        {quietEmpty ? null : (
+        {!quietEmpty && (hasTemplates || controller.query.isLoading) ? (
           <span className={styles.collectionCount} role="status">
-            {c.query.isLoading ? '加载中' : c.query.isFetching ? '正在更新' : `共 ${c.filtered.length} 个模板`}
+            {controller.query.isLoading
+              ? '加载中'
+              : controller.query.isFetching
+                ? '正在更新'
+                : `共 ${controller.filtered.length} 个模板`}
           </span>
-        )}
+        ) : null}
       </div>
-      {c.selectedCount > 0 ? (
+      {controller.selectedCount > 0 ? (
         <div className={styles.selectionBar} role="region" aria-label="批量操作">
-          <span>已选择 {c.selectedCount} 个模板</span>
-          {c.selectedCount > c.selectedPageCount ? <small>含其他页的选择</small> : null}
+          <span>已选择 {controller.selectedCount} 个模板</span>
+          {controller.selectedCount > controller.selectedPageCount ? <small>含其他页的选择</small> : null}
           <div>
             <Button
               variant="ghost"
-              disabled={Boolean(c.busy)}
+              disabled={Boolean(controller.busy)}
               onClick={() => {
-                void c.batchActive(true)
+                void controller.batchActive(true)
               }}
             >
               批量启用
             </Button>
             <Button
               variant="ghost"
-              disabled={Boolean(c.busy)}
+              disabled={Boolean(controller.busy)}
               onClick={() => {
-                void c.batchActive(false)
+                void controller.batchActive(false)
               }}
             >
               批量停用
@@ -289,46 +317,46 @@ export function PromptTable({ controller: c }: { controller: PromptsController }
             <Button
               variant="ghost"
               className={styles.dangerText}
-              disabled={Boolean(c.busy)}
-              onClick={() => c.openDelete(c.selectedTemplates)}
+              disabled={Boolean(controller.busy)}
+              onClick={() => controller.openDelete(controller.selectedTemplates)}
             >
               批量删除
             </Button>
             <Button
               variant="ghost"
               size="icon"
-              disabled={Boolean(c.busy)}
+              disabled={Boolean(controller.busy)}
               aria-label="取消选择"
-              onClick={c.clearSelection}
+              onClick={controller.clearSelection}
             >
               <X />
             </Button>
           </div>
         </div>
       ) : null}
-      {c.actionError && !c.editorOpen && !c.deleteTargets.length ? (
+      {controller.actionError && !controller.editorOpen && !controller.deleteTargets.length ? (
         <div className={styles.errorBar} role="alert">
-          <span>{c.actionError}</span>
-          <Button variant="ghost" size="icon" aria-label="关闭操作错误" onClick={() => c.setActionError('')}>
+          <span>{controller.actionError}</span>
+          <Button variant="ghost" size="icon" aria-label="关闭操作错误" onClick={() => controller.setActionError('')}>
             <X />
           </Button>
         </div>
       ) : null}
-      {c.query.isError && c.templates.length > 0 ? (
+      {controller.query.isError && controller.templates.length > 0 ? (
         <div className={styles.errorBar} role="alert">
-          <span>列表更新失败：{formatApiError(c.query.error, '请重试')}</span>
+          <span>列表更新失败：{formatApiError(controller.query.error, '请重试')}</span>
           <Button
             variant="ghost"
-            disabled={c.query.isFetching}
+            disabled={controller.query.isFetching}
             onClick={() => {
-              void c.query.refetch()
+              void controller.query.refetch()
             }}
           >
             重试
           </Button>
         </div>
       ) : null}
-      <div className={styles.tableScroll} aria-busy={c.query.isFetching}>
+      <div className={styles.tableScroll} aria-busy={controller.query.isFetching}>
         {quietEmpty ? null : (
           <table className={styles.table} aria-label="提示词模板">
             <colgroup>
@@ -348,15 +376,15 @@ export function PromptTable({ controller: c }: { controller: PromptsController }
                   <Checkbox
                     aria-label="选择本页自定义模板"
                     title="仅选择本页可编辑的自定义模板"
-                    disabled={!c.canManage || !c.selectablePage.length || Boolean(c.busy)}
+                    disabled={!controller.canManage || !controller.selectablePage.length || Boolean(controller.busy)}
                     checked={
-                      c.selectedPageCount === 0
+                      controller.selectedPageCount === 0
                         ? false
-                        : c.selectedPageCount === c.selectablePage.length
+                        : controller.selectedPageCount === controller.selectablePage.length
                           ? true
                           : 'indeterminate'
                     }
-                    onCheckedChange={c.togglePage}
+                    onCheckedChange={controller.togglePage}
                   />
                 </th>
                 <th className={styles.nameColumn} scope="col">
@@ -386,7 +414,7 @@ export function PromptTable({ controller: c }: { controller: PromptsController }
               </tr>
             </thead>
             <tbody>
-              {c.query.isLoading
+              {controller.query.isLoading
                 ? Array.from({ length: 8 }, (_, i) => (
                     <tr key={i} aria-hidden="true">
                       <td colSpan={9} className={styles.skeletonCell}>
@@ -394,17 +422,17 @@ export function PromptTable({ controller: c }: { controller: PromptsController }
                       </td>
                     </tr>
                   ))
-                : c.pageItems.map((t) => {
-                    const scene = promptScenario(t.category)
+                : controller.pageItems.map((template) => {
+                    const scene = promptScenario(template.category)
                     return (
-                      <tr key={t.id} data-selected={c.selectedIds.has(t.id) || undefined}>
+                      <tr key={template.id} data-selected={controller.selectedIds.has(template.id) ? true : undefined}>
                         <td className={styles.checkColumn}>
                           <Checkbox
-                            checked={c.selectedIds.has(t.id)}
-                            disabled={!c.canManage || t.is_system || Boolean(c.busy)}
-                            title={t.is_system ? '内置模板只读，复制后可修改' : undefined}
-                            aria-label={`选择 ${t.name}`}
-                            onCheckedChange={() => c.toggleOne(t)}
+                            checked={controller.selectedIds.has(template.id)}
+                            disabled={!controller.canManage || template.is_system || Boolean(controller.busy)}
+                            title={template.is_system ? '内置模板只读，复制后可修改' : undefined}
+                            aria-label={`选择 ${template.name}`}
+                            onCheckedChange={() => controller.toggleOne(template)}
                           />
                         </td>
                         <td className={styles.nameColumn}>
@@ -415,17 +443,17 @@ export function PromptTable({ controller: c }: { controller: PromptsController }
                             <div>
                               <button
                                 className={styles.nameButton}
-                                data-prompt-open={t.id}
-                                onClick={() => c.openPreview(t)}
-                                title={t.name}
+                                data-prompt-open={template.id}
+                                onClick={() => controller.openPreview(template)}
+                                title={template.name}
                               >
-                                {t.name}
+                                {template.name}
                               </button>
-                              <p className={styles.templateDescription} title={t.description ?? undefined}>
-                                {t.description || '暂无描述'}
+                              <p className={styles.templateDescription} title={template.description ?? undefined}>
+                                {template.description || '暂无描述'}
                               </p>
                               <span className={styles.mobileMeta}>
-                                {scene.label} · {t.is_system ? '内置' : '自定义'}
+                                {scene.label} · {template.is_system ? '内置' : '自定义'}
                               </span>
                             </div>
                           </div>
@@ -437,24 +465,24 @@ export function PromptTable({ controller: c }: { controller: PromptsController }
                           </span>
                         </td>
                         <td className={styles.sourceColumn}>
-                          <span className={t.is_system ? styles.muted : styles.customSource}>
-                            {t.is_system ? '内置' : '自定义'}
+                          <span className={template.is_system ? styles.muted : styles.customSource}>
+                            {template.is_system ? '内置' : '自定义'}
                           </span>
                         </td>
                         <td className={styles.variablesColumn}>
-                          <PromptVariables variables={t.variables} limit={2} />
+                          <PromptVariables variables={template.variables} limit={2} />
                         </td>
-                        <td className={styles.usageColumn}>{t.usage_count.toLocaleString()}</td>
+                        <td className={styles.usageColumn}>{template.usage_count.toLocaleString()}</td>
                         <td className={styles.dateColumn}>
-                          <time dateTime={t.updated_at} title={promptDate(t.updated_at, true)}>
-                            {promptDate(t.updated_at)}
+                          <time dateTime={template.updated_at} title={promptDate(template.updated_at, true)}>
+                            {promptDate(template.updated_at)}
                           </time>
                         </td>
                         <td className={styles.statusColumn}>
-                          <PromptStatus template={t} />
+                          <PromptStatus template={template} />
                         </td>
                         <td className={styles.actionsColumn}>
-                          <PromptActions template={t} controller={c} />
+                          <PromptActions template={template} controller={controller} />
                         </td>
                       </tr>
                     )
@@ -462,28 +490,30 @@ export function PromptTable({ controller: c }: { controller: PromptsController }
             </tbody>
           </table>
         )}
-        {!c.query.isLoading && !c.pageItems.length ? (
+        {!controller.query.isLoading && !controller.pageItems.length ? (
           <section className={styles.empty}>
-            {c.query.isError ? (
+            {controller.query.isError ? (
               <>
                 <h2>提示词加载失败</h2>
-                <p role="alert">{formatApiError(c.query.error, '请重试')}</p>
+                <p role="alert">{formatApiError(controller.query.error, '请重试')}</p>
                 <Button
                   variant="outline"
-                  disabled={c.query.isFetching}
+                  disabled={controller.query.isFetching}
                   onClick={() => {
-                    void c.query.refetch()
+                    void controller.query.refetch()
                   }}
                 >
                   <RefreshCw />
                   重新加载
                 </Button>
               </>
+            ) : waitingForNetwork ? (
+              <h2>等待网络连接</h2>
             ) : hasFilters ? (
               <>
                 <h2>没有匹配的模板</h2>
                 <p>调整搜索或筛选条件后再试。</p>
-                <Button variant="outline" onClick={c.clearFilters}>
+                <Button variant="outline" onClick={controller.clearFilters}>
                   清除筛选
                 </Button>
               </>
@@ -491,17 +521,19 @@ export function PromptTable({ controller: c }: { controller: PromptsController }
               <>
                 <Prompts appearance="color" className={styles.emptyIcon} />
                 <h2>还没有提示词模板</h2>
-                <p>{c.canManage ? '创建自定义模板，或同步项目内置模板。' : '管理员添加模板后，会显示在这里。'}</p>
-                {c.canManage ? (
+                <p>
+                  {controller.canManage ? '创建自定义模板，或同步项目内置模板。' : '管理员添加模板后，会显示在这里。'}
+                </p>
+                {controller.canManage ? (
                   <Button
                     variant="outline"
-                    disabled={Boolean(c.busy)}
+                    disabled={Boolean(controller.busy)}
                     onClick={() => {
-                      void c.syncBuiltins()
+                      void controller.syncBuiltins()
                     }}
                   >
-                    {c.busy === 'sync' ? <Loader2 className="animate-spin" /> : <RefreshCw />}
-                    {c.busy === 'sync' ? '同步中' : '同步内置模板'}
+                    {controller.busy === 'sync' ? <Loader2 className="animate-spin" /> : <RefreshCw />}
+                    {controller.busy === 'sync' ? '同步中' : '同步内置模板'}
                   </Button>
                 ) : null}
               </>
@@ -509,15 +541,18 @@ export function PromptTable({ controller: c }: { controller: PromptsController }
           </section>
         ) : null}
       </div>
-      {quietEmpty ? null : (
+      {hasTemplates && !quietEmpty ? (
         <footer className={styles.footer}>
           <span className={styles.resultCount}>
             {hasFilters
-              ? `找到 ${c.filtered.length} 个 / 全部 ${c.templates.length} 个`
-              : `共 ${c.templates.length} 个模板 · ${activeCount} 个启用`}
+              ? `找到 ${controller.filtered.length} 个 / 全部 ${controller.templates.length} 个`
+              : `共 ${controller.templates.length} 个模板 · ${activeCount} 个启用`}
           </span>
           <div className={styles.pagination}>
-            <Select value={String(c.pageSize)} onValueChange={(value) => c.changePageSize(Number(value))}>
+            <Select
+              value={String(controller.pageSize)}
+              onValueChange={(value) => controller.changePageSize(Number(value))}
+            >
               <SelectTrigger aria-label="每页模板数" className={styles.pageSize}>
                 <SelectValue />
               </SelectTrigger>
@@ -533,8 +568,8 @@ export function PromptTable({ controller: c }: { controller: PromptsController }
               variant="ghost"
               size="icon"
               aria-label="上一页"
-              disabled={c.currentPage <= 1}
-              onClick={() => c.setPage(c.currentPage - 1)}
+              disabled={controller.currentPage <= 1}
+              onClick={() => controller.setPage(controller.currentPage - 1)}
             >
               <ChevronLeft />
             </Button>
@@ -545,9 +580,9 @@ export function PromptTable({ controller: c }: { controller: PromptsController }
                   <Button
                     variant="ghost"
                     aria-label={`第 ${page} 页`}
-                    aria-current={c.currentPage === page ? 'page' : undefined}
-                    className={c.currentPage === page ? styles.currentPage : undefined}
-                    onClick={() => c.setPage(page)}
+                    aria-current={controller.currentPage === page ? 'page' : undefined}
+                    className={controller.currentPage === page ? styles.currentPage : undefined}
+                    onClick={() => controller.setPage(page)}
                   >
                     {page}
                   </Button>
@@ -555,20 +590,20 @@ export function PromptTable({ controller: c }: { controller: PromptsController }
               ))}
             </div>
             <span className={styles.mobilePage}>
-              第 {c.currentPage} / {c.totalPages} 页
+              第 {controller.currentPage} / {controller.totalPages} 页
             </span>
             <Button
               variant="ghost"
               size="icon"
               aria-label="下一页"
-              disabled={c.currentPage >= c.totalPages}
-              onClick={() => c.setPage(c.currentPage + 1)}
+              disabled={controller.currentPage >= controller.totalPages}
+              onClick={() => controller.setPage(controller.currentPage + 1)}
             >
               <ChevronRight />
             </Button>
           </div>
         </footer>
-      )}
+      ) : null}
     </>
   )
 }

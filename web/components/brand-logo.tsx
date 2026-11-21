@@ -11,20 +11,22 @@ type BrandLogoProps = {
 
 export function BrandLogo({ className, decorative = false, priority = false, variant = 'lockup' }: BrandLogoProps) {
   const isMark = variant === 'mark'
+  const width = isMark ? 64 : 306
+  const height = isMark ? 64 : 96
 
   return (
     <span
       className={cn('block shrink-0 select-none', isMark ? 'aspect-square' : 'aspect-[51/16]', className)}
       role={decorative ? undefined : 'img'}
       aria-label={decorative ? undefined : BRAND_NAME}
-      aria-hidden={decorative || undefined}
+      aria-hidden={decorative ? true : undefined}
     >
       <Image
         src={isMark ? BRAND_ASSETS.mark : BRAND_ASSETS.logo}
         alt=""
         aria-hidden="true"
-        width={isMark ? 64 : 306}
-        height={isMark ? 64 : 96}
+        width={width}
+        height={height}
         priority={priority}
         unoptimized
         className="h-full w-full dark:hidden"
@@ -33,8 +35,8 @@ export function BrandLogo({ className, decorative = false, priority = false, var
         src={isMark ? BRAND_ASSETS.markInverse : BRAND_ASSETS.logoInverse}
         alt=""
         aria-hidden="true"
-        width={isMark ? 64 : 306}
-        height={isMark ? 64 : 96}
+        width={width}
+        height={height}
         priority={priority}
         unoptimized
         className="hidden h-full w-full dark:block"

@@ -1,5 +1,8 @@
-import type { AuditLogItem } from '@/types/chat'
-import { formatApiError } from '@/lib/api-errors'
+import type { AuditLogFilters, AuditLogItem } from '@/types/audit'
+import type { AuditPurgeParameters } from '@/lib/api/audit'
+import { dateTimeSchema } from '@/lib/response-schema'
+
+export { formatApiBlobError as formatAuditError } from '@/lib/api-errors'
 
 export const FILTER_KEYS = [
   'actor_id',
@@ -10,9 +13,10 @@ export const FILTER_KEYS = [
   'since',
   'until',
 ] as const
-export type FilterKey = (typeof FILTER_KEYS)[number]
-export type AuditFilters = Record<FilterKey, string>
+type FilterKey = (typeof FILTER_KEYS)[number]
+export type AuditFilters = Required<AuditLogFilters>
 export type AuditScope = { filters: AuditFilters; page: number; limit: number }
+
 export const FILTER_LABELS: Record<FilterKey, string> = {
   actor_id: '操作者 ID',
   action: '动作代码',
@@ -22,7 +26,15 @@ export const FILTER_LABELS: Record<FilterKey, string> = {
   since: '开始时间',
   until: '结束时间',
 }
+export const FILTER_MAX_LENGTH = {
+  actor_id: 255,
+  action: 128,
+  resource_type: 64,
+  resource_id: 255,
+  request_id: 128,
+} as const
 export const PAGE_SIZES = [20, 50, 100] as const
+const DEFAULT_PAGE_SIZE = PAGE_SIZES[0]
 export const QUICK_ACTIONS = [
   { label: '访问审查', value: 'compliance.access_review.daily' },
   { label: '索引审计', value: 'observability.index_audit.daily' },
@@ -30,121 +42,138 @@ export const QUICK_ACTIONS = [
   { label: '访问回溯', value: 'compliance.access_graph.export' },
 ] as const
 
-export function emptyFilters(): AuditFilters {
+export function createAuditFilterDraft(): AuditFilters {
   return { actor_id: '', action: '', resource_type: '', resource_id: '', request_id: '', since: '', until: '' }
 }
 
-export function cleanFilters(filters: Partial<AuditFilters>): Partial<AuditFilters> {
-  return Object.fromEntries(
-    FILTER_KEYS.flatMap((key) => {
-      const value = typeof filters[key] === 'string' ? filters[key]!.trim() : ''
-      if (!value) return []
-      const date = key === 'since' || key === 'until' ? new Date(value) : null
-      return [[key, date && Number.isFinite(date.getTime()) ? date.toISOString() : value]]
-    }),
-  )
+export function getAuditQueryFilters(filters: AuditLogFilters): AuditLogFilters {
+  const applied: AuditLogFilters = {}
+  for (const key of FILTER_KEYS) {
+    const text = filters[key]?.trim()
+    if (text === undefined || text === '') continue
+    if (
+      (key === 'since' || key === 'until') &&
+      dateTimeSchema.safeParse(text).success &&
+      !/(Z|[+-]\d{2}:\d{2})$/.test(text)
+    ) {
+      applied[key] = new Date(text).toISOString()
+    } else applied[key] = text
+  }
+  return applied
 }
 
-export function validateFilters(filters: Partial<AuditFilters>): string {
-  const limits = { actor_id: 255, action: 128, resource_type: 64, resource_id: 255, request_id: 128 }
-  for (const [key, max] of Object.entries(limits)) {
-    if ((filters[key as FilterKey]?.trim().length ?? 0) > max)
-      return `${FILTER_LABELS[key as FilterKey]}不能超过 ${max} 个字符`
+export function getAuditFilterError(filters: AuditLogFilters): string | undefined {
+  for (const key of FILTER_KEYS) {
+    if (key === 'since' || key === 'until') continue
+    const value = filters[key]
+    if (value !== undefined && value.trim().length > FILTER_MAX_LENGTH[key]) {
+      return `${FILTER_LABELS[key]}不能超过 ${FILTER_MAX_LENGTH[key]} 个字符`
+    }
   }
-  for (const key of ['since', 'until'] as const) {
-    if (filters[key] && !Number.isFinite(new Date(filters[key]!).getTime())) return `${FILTER_LABELS[key]}格式无效`
+  const since = filters.since?.trim()
+  const until = filters.until?.trim()
+  for (const [label, value] of [
+    ['开始时间', since],
+    ['结束时间', until],
+  ]) {
+    if (value !== undefined && value.length > 0 && !dateTimeSchema.safeParse(value).success) return `${label}格式无效`
   }
-  return filters.since && filters.until && new Date(filters.since) > new Date(filters.until)
-    ? '开始时间不能晚于结束时间'
-    : ''
+  if (
+    since !== undefined &&
+    since.length > 0 &&
+    until !== undefined &&
+    until.length > 0 &&
+    new Date(since) > new Date(until)
+  ) {
+    return '开始时间不能晚于结束时间'
+  }
 }
 
 export function parseAuditLocation(search: string): AuditScope {
-  const params = new URLSearchParams(search),
-    page = Number(params.get('page')),
-    size = Number(params.get('page_size'))
-  const filters = emptyFilters()
-  for (const key of FILTER_KEYS) filters[key] = params.get(key)?.trim() ?? ''
+  const params = new URLSearchParams(search)
+  const pageValue = params.get('page')
+  const sizeValue = params.get('page_size')
+  const page = pageValue === null ? 1 : Number(pageValue)
+  const size = sizeValue === null ? DEFAULT_PAGE_SIZE : Number(sizeValue)
+  const filters = createAuditFilterDraft()
+  for (const key of FILTER_KEYS) {
+    const value = params.get(key)
+    if (value !== null) filters[key] = value.trim()
+  }
   return {
     filters,
     page: Number.isSafeInteger(page) && page > 0 ? page : 1,
-    limit: PAGE_SIZES.some((s) => s === size) ? size : 20,
+    limit: PAGE_SIZES.some((value) => value === size) ? size : DEFAULT_PAGE_SIZE,
   }
 }
 
-export function persistScope(scope: AuditScope) {
-  const url = new URL(window.location.href)
+export function buildAuditLocation(href: string, scope: AuditScope): URL {
+  const url = new URL(href)
   for (const key of FILTER_KEYS) {
     const value = scope.filters[key].trim()
-    if (value) url.searchParams.set(key, value)
+    if (value.length > 0) url.searchParams.set(key, value)
     else url.searchParams.delete(key)
   }
   if (scope.page === 1) url.searchParams.delete('page')
   else url.searchParams.set('page', String(scope.page))
-  if (scope.limit === 20) url.searchParams.delete('page_size')
+  if (scope.limit === DEFAULT_PAGE_SIZE) url.searchParams.delete('page_size')
   else url.searchParams.set('page_size', String(scope.limit))
-  window.history.replaceState(window.history.state, '', url)
+  return url
 }
 
-export function localDateTime(iso: string) {
-  if (!iso) return ''
+export function formatAuditLocalDateTime(iso: string) {
+  if (iso.length === 0) return iso
+  if (!dateTimeSchema.safeParse(iso).success) return iso
   const date = new Date(iso)
-  if (!Number.isFinite(date.getTime())) return iso
-  return new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, 16)
-}
-export function isoDateTime(local: string) {
-  if (!local) return ''
-  const date = new Date(local)
-  return Number.isFinite(date.getTime()) ? date.toISOString() : local
+  return new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, -1)
 }
 
-export function stamp(value: string) {
+export function parseAuditLocalDateTime(local: string) {
+  if (local.length === 0) return local
+  if (!dateTimeSchema.safeParse(local).success) throw new Error('时间格式无效')
+  return new Date(local).toISOString()
+}
+
+export function formatAuditTimestamp(value: string) {
   const date = new Date(value)
-  return !value || !Number.isFinite(date.getTime())
-    ? { date: '时间未知', time: '—' }
-    : {
-        date: date.toLocaleDateString('zh-CN'),
-        time: date.toLocaleTimeString('zh-CN', { hour12: false }),
-      }
-}
-export function periodLabel(filters: AuditFilters) {
-  if (!filters.since && !filters.until) return '全部时间'
-  if (validateFilters({ since: filters.since, until: filters.until })) return '时间范围无效'
-  return `${filters.since ? stamp(filters.since).date : '不限开始'} — ${filters.until ? stamp(filters.until).date : '不限结束'}`
+  return {
+    date: date.toLocaleDateString('zh-CN'),
+    time: date.toLocaleTimeString('zh-CN', { hour12: false }),
+  }
 }
 
-type PurgeParameters = Partial<AuditFilters> & {
-  purge_scope: 'retention' | 'filtered'
-  retention_days?: number
-  max_delete: number
-  dry_run: boolean
+export function formatAuditPeriod(filters: AuditFilters) {
+  const applied = getAuditQueryFilters({ since: filters.since, until: filters.until })
+  if (applied.since === undefined && applied.until === undefined) return '全部时间'
+  if (getAuditFilterError(applied) !== undefined) return '时间范围无效'
+  const since = applied.since === undefined ? '不限开始' : formatAuditTimestamp(applied.since).date
+  const until = applied.until === undefined ? '不限结束' : formatAuditTimestamp(applied.until).date
+  return `${since} — ${until}`
 }
-export function purgeParameters(
+
+export function createAuditPurgeParameters(
   filters: AuditFilters,
   scope: 'retention' | 'filtered',
   days: string,
   maximum: string,
   dryRun: boolean,
-): PurgeParameters {
-  const max = Number(maximum),
-    retention = Number(days)
-  if (!/^\d+$/.test(maximum) || !Number.isSafeInteger(max) || max < 1 || max > 1_000_000)
+): AuditPurgeParameters {
+  const max = Number(maximum)
+  if (!/^\d+$/.test(maximum) || !Number.isSafeInteger(max) || max < 1 || max > 1_000_000) {
     throw new Error('最多清理须为 1–1,000,000 的整数')
-  if (
-    scope === 'retention' &&
-    (!/^\d+$/.test(days) || !Number.isSafeInteger(retention) || retention < 1 || retention > 3650)
-  )
-    throw new Error('保留天数须为 1–3,650 的整数')
-  const applied = cleanFilters(filters),
-    error = validateFilters(applied)
-  if (scope === 'filtered' && (error || !Object.keys(applied).length))
-    throw new Error(error || '按当前筛选清理至少需要一个筛选条件')
-  return {
-    purge_scope: scope,
-    ...(scope === 'retention' ? { retention_days: retention } : applied),
-    max_delete: max,
-    dry_run: dryRun,
   }
+  if (scope === 'retention') {
+    const retention = Number(days)
+    if (!/^\d+$/.test(days) || !Number.isSafeInteger(retention) || retention < 1 || retention > 3650) {
+      throw new Error('保留天数须为 1–3,650 的整数')
+    }
+    return { purge_scope: 'retention', retention_days: retention, max_delete: max, dry_run: dryRun }
+  }
+  const applied = getAuditQueryFilters(filters)
+  const error = getAuditFilterError(applied)
+  if (error !== undefined) throw new Error(error)
+  if (Object.keys(applied).length === 0) throw new Error('按当前筛选清理至少需要一个筛选条件')
+  return { ...applied, purge_scope: 'filtered', max_delete: max, dry_run: dryRun }
 }
 
 const ACTION_NAMES: Readonly<Record<string, string>> = {
@@ -186,18 +215,30 @@ const RESOURCE_NAMES: Readonly<Record<string, string>> = {
   document_member_permission: '文档成员权限',
   document_group_permission: '文档组权限',
 }
-export function actionName(action: string | null | undefined) {
-  return action ? (ACTION_NAMES[action] ?? action) : '未记录动作'
+
+export function getAuditActionLabel(action: string) {
+  if (action.length === 0) return '""'
+  return Object.hasOwn(ACTION_NAMES, action) ? ACTION_NAMES[action] : action
 }
-export function resourceTypeName(type: string | null | undefined) {
-  return type ? (RESOURCE_NAMES[type] ?? type) : '未绑定资源'
+
+export function getAuditResourceTypeLabel(type: string | null) {
+  if (type === null) return '未绑定资源'
+  if (type.length === 0) return '""'
+  return Object.hasOwn(RESOURCE_NAMES, type) ? RESOURCE_NAMES[type] : type
 }
-export function resourceLabel(row: Pick<AuditLogItem, 'resource_type' | 'resource_id' | 'details'>) {
-  const type = resourceTypeName(row.resource_type)
-  const name = typeof row.details?.name === 'string' && row.details.name.trim() ? row.details.name.trim() : type
-  return { name, detail: [name === type ? '' : type, row.resource_id].filter(Boolean).join(' · ') }
+
+export function getAuditResourceLabel(row: Pick<AuditLogItem, 'resource_type' | 'resource_id' | 'details'>) {
+  const type = getAuditResourceTypeLabel(row.resource_type)
+  const name = typeof row.details.name === 'string' ? row.details.name : type
+  const detail = row.resource_id === null ? [] : [row.resource_id]
+  if (name !== type) detail.unshift(type)
+  return {
+    name: name.length === 0 ? '""' : name,
+    detail: detail.map((value) => (value.length === 0 ? '""' : value)).join(' · '),
+  }
 }
-export function actionTone(action: string) {
+
+export function getAuditActionTone(action: string) {
   if (/rbac|permission|access_review/.test(action)) return 'permission'
   if (/delete|purge|remove|destroy|revoke|retention/.test(action)) return 'delete'
   if (/quarantine|block|deny|fail|drift|stale|violation/.test(action)) return 'warning'
@@ -207,22 +248,15 @@ export function actionTone(action: string) {
   if (/update|set|change/.test(action)) return 'update'
   return 'neutral'
 }
-export function compactId(value: string | null | undefined) {
-  return !value ? '—' : value.length > 23 ? `${value.slice(0, 6)}…${value.slice(-4)}` : value
-}
-export function pretty(value: unknown) {
-  return JSON.stringify(value, null, 2) ?? 'null'
+
+export function abbreviateAuditIdentifier(value: string | null) {
+  if (value === null) return '—'
+  if (value.length === 0) return '""'
+  return value.length > 23 ? `${value.slice(0, 6)}…${value.slice(-4)}` : value
 }
 
-export async function formatAuditError(error: unknown, fallback: string) {
-  const source = error as { response?: { data?: unknown }; message?: string }
-  if (source?.response?.data instanceof Blob) {
-    try {
-      const data: unknown = JSON.parse(await source.response.data.text())
-      return formatApiError({ ...source, response: { ...source.response, data } }, fallback)
-    } catch {
-      /* Keep the normal formatter for non-JSON downloads. */
-    }
-  }
-  return formatApiError(error, fallback)
+export function formatAuditJson(value: unknown): string {
+  const text = JSON.stringify(value, null, 2)
+  if (text === undefined) throw new TypeError('审计数据未提供，无法序列化 JSON')
+  return text
 }

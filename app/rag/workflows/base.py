@@ -6,14 +6,53 @@ and the WorkflowMode enumeration.
 """
 
 import asyncio
+import logging
 from abc import ABC, abstractmethod
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass, field
 from enum import Enum
 from functools import wraps
 from typing import Any, TypedDict
 
-from app.core.config import settings
+import anyio
+from langchain_core.messages import BaseMessage
+
+from app.infrastructure.config import settings
+
+logger = logging.getLogger("rag.workflows.base")
+_TASK_CLEANUP_TIMEOUT_SEC = 5.0
+
+
+async def cancel_and_drain_tasks(tasks: Sequence[asyncio.Task[Any]], *, pending_error: BaseException | None) -> None:
+    if not tasks:
+        return
+    for task in tasks:
+        if not task.done() and not task.cancelling():
+            task.cancel()
+    try:
+        with anyio.CancelScope(shield=True):
+            done, pending = await asyncio.wait(tasks, timeout=_TASK_CLEANUP_TIMEOUT_SEC)
+            for task in done:
+                if not task.cancelled():
+                    task.exception()
+            if pending:
+                raise TimeoutError("Workflow tasks did not finish cancellation within the cleanup budget")
+    except BaseException as cleanup_error:
+        if pending_error is None or isinstance(pending_error, GeneratorExit):
+            raise
+        pending_error.add_note(f"Workflow task cleanup failed: {type(cleanup_error).__name__}")
+        logger.warning("Workflow task cleanup failed while propagating an error", exc_info=True)
+
+
+def model_response_text(response: Any) -> str:
+    if isinstance(response, str):
+        return response
+    if isinstance(response, BaseMessage):
+        return response.text
+    content = response.content
+    if not isinstance(content, str):
+        raise TypeError("Workflow model response must contain text")
+    return content
 
 
 class WorkflowMode(str, Enum):
@@ -108,7 +147,7 @@ class BaseWorkflow(ABC):
         if not enabled:
             return
 
-        from app.rag.middleware import AgentMiddlewareChain
+        from app.rag.agents.middleware import AgentMiddlewareChain
 
         chain = AgentMiddlewareChain()
         original_run = self.run
@@ -117,7 +156,7 @@ class BaseWorkflow(ABC):
 
         @wraps(original_run)
         async def wrapped(state: dict[str, Any]) -> "WorkflowResult":
-            initial_state = dict(state or {})
+            initial_state = dict(state)
             initial_state["_agent"] = {
                 "workflow": self.name,
                 "mode": self.mode.value,
@@ -126,7 +165,7 @@ class BaseWorkflow(ABC):
 
             result = await original_run(initial_state)
 
-            final_state = dict((result.state or {}))
+            final_state = dict(result.state)
             agent_ctx = dict(final_state.get("_agent") or {})
             agent_ctx.update(
                 {
@@ -144,7 +183,7 @@ class BaseWorkflow(ABC):
 
             result.state = final_state
             if "answer" in final_state:
-                result.answer = final_state.get("answer") or result.answer
+                result.answer = final_state["answer"]
             return result
 
         # Monkey-patch instance method to keep API stable for all workflows.
@@ -179,7 +218,10 @@ class BaseWorkflow(ABC):
         Returns:
             True if valid
         """
-        return "question" in state or "query" in state
+        question = state.get("question")
+        if question is None:
+            question = state.get("query")
+        return isinstance(question, str)
 
     @staticmethod
     def get_question(state: dict[str, Any]) -> str:

@@ -1,4 +1,3 @@
-import asyncio
 import uuid
 from types import SimpleNamespace
 
@@ -6,15 +5,17 @@ import pytest
 from fastapi import BackgroundTasks
 from langchain_core.documents import Document as LCDocument
 
-from app.api.v1 import document_dead_letters, document_processing
-from app.models.document import Document
-from app.models.ingest_dead_letter import IngestDeadLetter
-from app.parsing.processors.processor import (
+from app.api.schemas.documents import DocumentStatus
+from app.api.v1.documents import dead_letters as document_dead_letters
+from app.models.documents.ingestion import IngestDeadLetter
+from app.models.documents.records import Document
+from app.rag.ingestion.indexing.support import recovery as recovery_support
+from app.rag.ingestion.indexing.support.recovery import (
     CheckpointedRetryRequiredError,
-    _indexed_checkpoint_is_reusable,
-    _parsed_checkpoint_is_reusable,
+    indexed_checkpoint_is_reusable,
+    parsed_checkpoint_is_reusable,
 )
-from app.parsing.processors.support import recovery as recovery_support
+from app.services.documents import processing as document_processing_operations
 
 
 class _ReplayQuery:
@@ -35,6 +36,12 @@ class _ReplayDB:
     def query(self, model):  # noqa: ANN001
         return _ReplayQuery(self.items.get(model))
 
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_args):
+        return None
+
 
 def test_truncated_parsed_content_is_not_a_restart_checkpoint() -> None:
     metadata = {
@@ -42,10 +49,10 @@ def test_truncated_parsed_content_is_not_a_restart_checkpoint() -> None:
         "parsed_content_persisted": {"cleaned": {"truncated": False}},
     }
 
-    assert _parsed_checkpoint_is_reusable(metadata) is True
+    assert parsed_checkpoint_is_reusable(metadata) is True
 
     metadata["parsed_content_persisted"]["cleaned"]["truncated"] = True
-    assert _parsed_checkpoint_is_reusable(metadata) is False
+    assert parsed_checkpoint_is_reusable(metadata) is False
 
 
 def test_indexed_checkpoint_requires_matching_stage_and_hashes() -> None:
@@ -60,10 +67,10 @@ def test_indexed_checkpoint_requires_matching_stage_and_hashes() -> None:
         },
     }
 
-    assert _indexed_checkpoint_is_reusable(metadata) is True
+    assert indexed_checkpoint_is_reusable(metadata) is True
 
     metadata["ingest_checkpoint"]["stage"] = "parsed"
-    assert _indexed_checkpoint_is_reusable(metadata) is False
+    assert indexed_checkpoint_is_reusable(metadata) is False
 
 
 class _QuestionDB:
@@ -135,6 +142,7 @@ def _build_indexed_checkpoint_document(*, document_id: uuid.UUID, tenant_id: uui
                 "pipeline_hash": "pipe-1",
                 "file_sha256": "sha-1",
                 "parser_backend": "basic",
+                "parser_backend_resolved": "basic",
                 "chunk_strategy": "langchain_recursive",
                 "ingest_checkpoint": {
                     "version": "1",
@@ -222,7 +230,6 @@ async def test_run_post_completion_kg_marks_ready_and_skipped_channels_when_no_e
         tenant_id=document.tenant_id,
         document_id=document.id,
         chunk_ids=[uuid.uuid4()],
-        db_chunks=[],
         index_options=SimpleNamespace(event_vector_enabled=True, entity_vector_enabled=True),
         pipeline_effective=SimpleNamespace(
             kg_enabled=True,
@@ -283,7 +290,6 @@ async def test_run_post_completion_kg_marks_error_when_extraction_fails(monkeypa
         tenant_id=document.tenant_id,
         document_id=document.id,
         chunk_ids=[uuid.uuid4()],
-        db_chunks=[],
         index_options=SimpleNamespace(event_vector_enabled=True, entity_vector_enabled=True),
         pipeline_effective=SimpleNamespace(
             kg_enabled=True,
@@ -324,7 +330,9 @@ def test_document_questions_generation_is_zero_cost_by_default(monkeypatch: pyte
 async def test_process_document_resumes_from_indexed_checkpoint_without_reindex(
     monkeypatch: pytest.MonkeyPatch, tmp_path
 ) -> None:  # noqa: ANN001
-    from app.parsing.processors import processor
+    from app.rag.ingestion import pipeline
+    from app.services.pipelines.config import resolve_pipeline_effective
+    from app.types.pipeline_options import PipelineOptions
 
     tenant_id = uuid.uuid4()
     document_id = uuid.uuid4()
@@ -337,10 +345,11 @@ async def test_process_document_resumes_from_indexed_checkpoint_without_reindex(
         target_key=target_key,
     )
     indexed_chunks = [
-        type("_Chunk", (), {"id": uuid.uuid4(), "chunk_index": 0, "content": "hello world"})(),
+        SimpleNamespace(
+            id=uuid.uuid4(), chunk_index=0, content="hello world", doc_metadata={"doc_pipeline_key": target_key}
+        ),
     ]
 
-    service = processor.DocumentProcessorService()
     status_updates: list[tuple[str, str]] = []
     kg_calls: list[int] = []
 
@@ -353,20 +362,30 @@ async def test_process_document_resumes_from_indexed_checkpoint_without_reindex(
     async def _run_post_completion_kg(**kwargs):  # noqa: ANN003, ANN202
         kg_calls.append(len(kwargs["chunk_ids"]))
 
-    monkeypatch.setattr(service, "_build_cancel_check", lambda **_kwargs: _cancel_check, raising=True)
-    monkeypatch.setattr(service, "_apply_pending_retry_cleanup", lambda *_args, **_kwargs: "applied", raising=True)
-    monkeypatch.setattr(service, "_update_status", _update_status, raising=True)
-    monkeypatch.setattr(service, "_record_pipeline_effective", lambda *_args, **_kwargs: None, raising=True)
+    monkeypatch.setattr(pipeline, "_build_cancel_check", lambda **_kwargs: _cancel_check, raising=True)
+    monkeypatch.setattr(pipeline, "apply_pending_retry_cleanup", lambda *_args, **_kwargs: "applied", raising=True)
+    monkeypatch.setattr(pipeline, "update_document_status", _update_status, raising=True)
+    monkeypatch.setattr(pipeline, "_record_pipeline_effective", lambda *_args, **_kwargs: None, raising=True)
     monkeypatch.setattr(
-        processor,
+        pipeline,
         "resolve_pipeline_effective",
-        lambda **_kwargs: type("_Cfg", (), {"kg_enabled": False})(),
+        lambda **_kwargs: resolve_pipeline_effective(
+            request_overrides=PipelineOptions(kg_enabled=False, near_dedup_enabled=False)
+        ),
         raising=True,
     )
-    monkeypatch.setattr(processor, "build_indexing_options", lambda _cfg: object(), raising=True)
-    monkeypatch.setattr(processor, "run_post_completion_kg", _run_post_completion_kg, raising=True)
+    monkeypatch.setattr(pipeline, "build_indexing_options", lambda _cfg: object(), raising=True)
+    monkeypatch.setattr(pipeline, "run_post_completion_kg", _run_post_completion_kg, raising=True)
+    monkeypatch.setattr(
+        pipeline,
+        "list_document_index_channels",
+        lambda *_args, **_kwargs: [
+            SimpleNamespace(channel="vector", enabled=True, status="ready"),
+            SimpleNamespace(channel="bm25", enabled=True, status="ready"),
+        ],
+    )
 
-    result = await service.process_document(
+    result = await pipeline.process_document(
         file_path=file_path,
         document_id=document_id,
         tenant_id=tenant_id,
@@ -383,7 +402,7 @@ async def test_process_document_resumes_from_indexed_checkpoint_without_reindex(
 async def test_update_status_persists_retry_boundary_when_required_ingestion_run_sync_fails(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from app.parsing.processors import processor
+    from app.rag.ingestion.indexing import processor
 
     tenant_id = uuid.uuid4()
     document_id = uuid.uuid4()
@@ -430,16 +449,15 @@ async def test_update_status_persists_retry_boundary_when_required_ingestion_run
         def refresh(self, _obj) -> None:  # noqa: ANN001
             return None
 
-    service = processor.DocumentProcessorService()
     monkeypatch.setattr(
-        service,
+        processor,
         "_notify_ingestion_run_status",
         lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("run sync failed")),
         raising=True,
     )
 
     with pytest.raises(CheckpointedRetryRequiredError, match="ingestion_run_status_update_failed"):
-        await service._update_status(
+        await processor.update_document_status(
             _DB(),
             tenant_id,
             document_id,
@@ -457,7 +475,8 @@ async def test_update_status_persists_retry_boundary_when_required_ingestion_run
 @pytest.mark.parametrize(
     ("document_status", "expected_force"), [("failed", False), ("quarantined", False), ("completed", True)]
 )
-def test_dead_letter_replay_only_forces_completed_documents(
+@pytest.mark.asyncio
+async def test_dead_letter_replay_only_forces_completed_documents(
     monkeypatch: pytest.MonkeyPatch,
     document_status: str,
     expected_force: bool,
@@ -479,7 +498,7 @@ def test_dead_letter_replay_only_forces_completed_documents(
 
     async def retry(**kwargs):  # noqa: ANN003
         captured.update(kwargs)
-        return {"status": "queued"}
+        return DocumentStatus(id=document_id, status="pending", processing_progress=0)
 
     monkeypatch.setattr(document_dead_letters.dataset_service, "ensure_member", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(
@@ -489,16 +508,17 @@ def test_dead_letter_replay_only_forces_completed_documents(
         raising=True,
     )
     monkeypatch.setattr(document_dead_letters, "mark_dead_letter_replayed", lambda _db, *, dead_letter: dead_letter)
-    monkeypatch.setattr(document_processing, "retry_document_processing", retry)
+    monkeypatch.setattr(document_processing_operations, "retry_document", retry)
+    monkeypatch.setattr(
+        document_dead_letters, "SessionLocal", lambda: _ReplayDB(dead_letter=dead_letter, document=document)
+    )
 
-    asyncio.run(
-        document_dead_letters.replay_ingest_dead_letter(
-            dead_letter.id,
-            BackgroundTasks(),
-            tenant_id=tenant_id,
-            account_id="editor",
-            db=_ReplayDB(dead_letter=dead_letter, document=document),
-        )
+    await document_dead_letters.replay_ingest_dead_letter(
+        dead_letter.id,
+        BackgroundTasks(),
+        tenant_id=tenant_id,
+        account_id="editor",
+        db=_ReplayDB(dead_letter=dead_letter, document=document),
     )
 
     assert captured["force"] is expected_force

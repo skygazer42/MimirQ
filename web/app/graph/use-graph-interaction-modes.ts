@@ -1,16 +1,22 @@
 'use client'
 
 import type { Dispatch, RefObject, SetStateAction } from 'react'
-import { useCallback, useEffect, useMemo } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 
 import type { LayoutMode } from '@/components/graph/graph-viewer'
 import { findShortestPath } from '@/lib/graph-algorithms'
-import type { GraphData } from '@/lib/graph-parser'
+import type { GraphData } from '@/lib/graph-types'
 import { detachPromise } from '@/lib/utils'
-import type { KGEntityDetailResponse, KGEventDetailResponse, KGStatsResponse, RagTrace } from '@/types'
 import { toast } from 'sonner'
 
-import { buildGraphFromTrace, getGraphLinkEndpointId, type GraphLinkLike, type GraphNodeLike } from './graph-page-utils'
+import {
+  buildGraphFromTrace,
+  getGraphLinkEndpointId,
+  getGraphLinkPredicate,
+  type GraphLinkLike,
+  type GraphNodeLike,
+  type GraphTraceReplay,
+} from './graph-page-utils'
 import type { UseGraphDataLoadingResult } from './use-graph-data-loading'
 import type { UseGraphPageStateResult } from './use-graph-page-state'
 
@@ -25,13 +31,14 @@ type UseGraphInteractionModesParams = Readonly<{
   handleExpandNode: () => void
   handleDeleteNode: (node?: GraphNodeLike) => void
   getActiveGraph: () => GraphViewportApi
-  loadInitialData: UseGraphDataLoadingResult['loadInitialData']
+  loadLiveGraph: UseGraphDataLoadingResult['loadLiveGraph']
   selectedNode: GraphNodeLike | null
   isDetailOpen: boolean
   isLinkDetailOpen: boolean
   isPathMode: boolean
   isConnectMode: boolean
   isExplainMode: boolean
+  explainSteps: UseGraphPageStateResult['explainSteps']
   pathStartNode: GraphNodeLike | null
   pathEndNode: GraphNodeLike | null
   connectSourceNode: GraphNodeLike | null
@@ -40,7 +47,7 @@ type UseGraphInteractionModesParams = Readonly<{
   viewMode: '2d' | '3d'
   layoutMode: LayoutMode
   dataSource: 'live' | 'file'
-  traceReplay: RagTrace | null
+  traceReplay: GraphTraceReplay | null
   graphData: GraphData
   displayGraphData: GraphData
   linksWithIds: GraphLinkLike[]
@@ -67,8 +74,6 @@ type UseGraphInteractionModesParams = Readonly<{
   setViewMode: Dispatch<SetStateAction<'2d' | '3d'>>
   setGraphData: Dispatch<SetStateAction<GraphData>>
   setDataSource: Dispatch<SetStateAction<'live' | 'file'>>
-  setKgStats: Dispatch<SetStateAction<KGStatsResponse | null>>
-  setKgNodeDetail: Dispatch<SetStateAction<KGEntityDetailResponse | KGEventDetailResponse | null>>
   setFileName: Dispatch<SetStateAction<string | null>>
   setLayoutMode: Dispatch<SetStateAction<LayoutMode>>
   setIncludeEntityLinks: Dispatch<SetStateAction<boolean>>
@@ -79,38 +84,34 @@ type UseGraphInteractionModesParams = Readonly<{
   resetExplainMode: () => void
 }>
 
-function buildHeuristicExplainSteps(data: GraphData): UseGraphPageStateResult['explainSteps'] {
-  if (data.nodes.length === 0) return []
+const LAYOUT_LABELS: Record<LayoutMode, string> = { force: '力导向', tree: '树状', radial: '辐射' }
 
-  const trace: GraphNodeLike[] = []
-  const visited = new Set<string>()
-  let current = data.nodes[0] as GraphNodeLike
+function buildGraphPathSteps(data: GraphData): UseGraphPageStateResult['explainSteps'] {
+  const nodeIds = new Set(data.nodes.map((node) => node.id))
+  const edges = data.links
+    .map((link) => ({
+      source: getGraphLinkEndpointId(link.source),
+      target: getGraphLinkEndpointId(link.target),
+      predicate: getGraphLinkPredicate(link),
+    }))
+    .filter(({ source, target }) => source !== target && nodeIds.has(source) && nodeIds.has(target))
+  const [firstEdge] = edges
+  if (firstEdge === undefined) return []
 
-  for (let idx = 0; idx < 4; idx += 1) {
-    trace.push(current)
-    visited.add(current.id)
-
-    const link = data.links.find((candidate) => {
-      const sourceId = getGraphLinkEndpointId(candidate.source)
-      const targetId = getGraphLinkEndpointId(candidate.target)
-      return (sourceId === current.id && !visited.has(targetId)) || (targetId === current.id && !visited.has(sourceId))
-    })
-
-    if (link) {
-      const sourceId = getGraphLinkEndpointId(link.source)
-      const targetId = getGraphLinkEndpointId(link.target)
-      const nextId = sourceId === current.id ? targetId : sourceId
-      current = data.nodes.find((node) => node.id === nextId) || data.nodes[idx + 1]
-    } else {
-      current = data.nodes[Math.min(idx + 5, data.nodes.length - 1)]
-    }
+  let nodeId = firstEdge.source
+  const visited = new Set([nodeId])
+  const steps = [{ node: nodeId, reason: '路径起点' }]
+  while (steps.length < 4) {
+    const edge = edges.find(
+      ({ source, target }) =>
+        (source === nodeId && !visited.has(target)) || (target === nodeId && !visited.has(source)),
+    )
+    if (edge === undefined) break
+    nodeId = edge.source === nodeId ? edge.target : edge.source
+    visited.add(nodeId)
+    steps.push({ node: nodeId, reason: edge.predicate === '' ? '相邻节点' : edge.predicate })
   }
-
-  return trace.map((node, idx) => ({
-    node: node.id,
-    reason:
-      idx === 0 ? '初始查询匹配到的实体' : idx === trace.length - 1 ? '最终推理得出的答案' : '通过关系链召回的相关节点',
-  }))
+  return steps
 }
 
 export function useGraphInteractionModes({
@@ -119,13 +120,14 @@ export function useGraphInteractionModes({
   handleExpandNode,
   handleDeleteNode,
   getActiveGraph,
-  loadInitialData,
+  loadLiveGraph,
   selectedNode,
   isDetailOpen,
   isLinkDetailOpen,
   isPathMode,
   isConnectMode,
   isExplainMode,
+  explainSteps,
   pathStartNode,
   pathEndNode,
   connectSourceNode,
@@ -161,8 +163,6 @@ export function useGraphInteractionModes({
   setViewMode,
   setGraphData,
   setDataSource,
-  setKgStats,
-  setKgNodeDetail,
   setFileName,
   setLayoutMode,
   setIncludeEntityLinks,
@@ -172,43 +172,54 @@ export function useGraphInteractionModes({
   resetConnectMode,
   resetExplainMode,
 }: UseGraphInteractionModesParams) {
-  const animateTrace = useCallback(
-    async (steps: { node: string }[], graphOverride?: GraphData) => {
-      const graph = graphOverride || graphData
-      for (let idx = 0; idx < steps.length; idx += 1) {
-        const step = steps[idx]
-        setCurrentStepIndex(idx)
-        setHighlightedNodeIds((prev) => new Set([...Array.from(prev), step.node]))
+  const zoomTimeoutRef = useRef<number | undefined>(undefined)
+  useEffect(() => () => globalThis.window.clearTimeout(zoomTimeoutRef.current), [])
 
-        getActiveGraph()?.focusNode?.(step.node)
+  useEffect(() => {
+    if (!isExplainMode || explainSteps.length === 0) return
 
-        if (idx > 0) {
-          const prevNode = steps[idx - 1]?.node
-          const currNode = step.node
-          const link = graph.links.find((candidate) => {
-            const sourceId = getGraphLinkEndpointId(candidate.source)
-            const targetId = getGraphLinkEndpointId(candidate.target)
-            return (sourceId === prevNode && targetId === currNode) || (sourceId === currNode && targetId === prevNode)
-          })
+    let stepIndex = 0
+    let stepTimerId: number | undefined
 
-          if (link) {
-            const rawId = link.id
-            const linkIndex = link.index
-            const idxInGraph = graph.links.indexOf(link)
-            const linkId =
-              rawId || (linkIndex === undefined ? (idxInGraph >= 0 ? `link-${idxInGraph}` : null) : `link-${linkIndex}`)
+    function showNextStep() {
+      const step = explainSteps[stepIndex]
+      setCurrentStepIndex(stepIndex)
+      setHighlightedNodeIds((previous) => new Set([...previous, step.node]))
+      getActiveGraph()?.focusNode?.(step.node)
 
-            if (linkId) {
-              setHighlightedLinkIds((prev) => new Set([...Array.from(prev), String(linkId)]))
-            }
-          }
+      if (stepIndex > 0) {
+        const previousNode = explainSteps[stepIndex - 1].node
+        const link = linksWithIds.find((candidate) => {
+          const source = getGraphLinkEndpointId(candidate.source)
+          const target = getGraphLinkEndpointId(candidate.target)
+          return (source === previousNode && target === step.node) || (source === step.node && target === previousNode)
+        })
+        if (link?.id != null) {
+          const linkId = String(link.id)
+          setHighlightedLinkIds((previous) => new Set([...previous, linkId]))
         }
-
-        await new Promise((resolve) => globalThis.window.setTimeout(resolve, 1500))
       }
-    },
-    [getActiveGraph, graphData, setCurrentStepIndex, setHighlightedLinkIds, setHighlightedNodeIds],
-  )
+
+      stepIndex += 1
+      if (stepIndex < explainSteps.length) {
+        stepTimerId = globalThis.window.setTimeout(showNextStep, 1500)
+      }
+    }
+
+    const frameId = globalThis.window.requestAnimationFrame(showNextStep)
+    return () => {
+      globalThis.window.cancelAnimationFrame(frameId)
+      if (stepTimerId !== undefined) globalThis.window.clearTimeout(stepTimerId)
+    }
+  }, [
+    explainSteps,
+    getActiveGraph,
+    isExplainMode,
+    linksWithIds,
+    setCurrentStepIndex,
+    setHighlightedLinkIds,
+    setHighlightedNodeIds,
+  ])
 
   const calculatePath = useCallback(
     (start: GraphNodeLike, end: GraphNodeLike) => {
@@ -315,10 +326,9 @@ export function useGraphInteractionModes({
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if ((event.ctrlKey || event.metaKey) && event.key === 'f') {
-        event.preventDefault()
-        searchInputRef.current?.focus()
-      }
+      if (event.defaultPrevented) return
+      const target = event.target instanceof Element ? event.target : null
+      if (target?.closest('[role="dialog"], [role="alertdialog"]')) return
 
       if (event.key === 'Escape') {
         if (isDetailOpen) setIsDetailOpen(false)
@@ -333,20 +343,17 @@ export function useGraphInteractionModes({
         searchInputRef.current?.blur()
       }
 
-      if (
-        event.key === ' ' &&
-        selectedNode &&
-        isDetailOpen &&
-        !['INPUT', 'TEXTAREA'].includes((event.target as HTMLElement).tagName)
-      ) {
+      if (target?.closest('button, input, textarea, select, a[href]')) return
+      if (target instanceof HTMLElement && target.isContentEditable) return
+      if (!selectedNode || !isDetailOpen) return
+
+      if (event.key === ' ') {
         event.preventDefault()
         handleExpandNode()
       }
 
       if (event.key === 'Delete' || event.key === 'Backspace') {
-        if (selectedNode && isDetailOpen && !['INPUT', 'TEXTAREA'].includes((event.target as HTMLElement).tagName)) {
-          handleDeleteNode()
-        }
+        handleDeleteNode()
       }
     }
 
@@ -376,18 +383,16 @@ export function useGraphInteractionModes({
     setConnectSourceNode(selectedNode)
     setIsConnectMode(true)
     setIsDetailOpen(false)
-    toast(`连线模式：请选择终点节点（起点：${String(selectedNode.label || selectedNode.id || '')}）`)
+    toast(`连线模式：请选择终点节点（起点：${selectedNode.label === '' ? selectedNode.id : selectedNode.label}）`)
   }, [selectedNode, setConnectSourceNode, setIsConnectMode, setIsDetailOpen])
 
   const confirmConnectionLabel = useCallback(() => {
     if (!connectSourceNode || !connectTargetNode) {
-      setConnectLabelOpen(false)
-      setConnectTargetNode(null)
       resetConnectMode()
       return
     }
 
-    const label = connectLabelDraft.trim() || 'related_to'
+    const label = connectLabelDraft.trim()
     setGraphData((prev) => ({
       ...prev,
       links: [
@@ -395,23 +400,13 @@ export function useGraphInteractionModes({
         {
           source: connectSourceNode.id,
           target: connectTargetNode.id,
-          label,
+          label: label === '' ? 'related_to' : label,
         },
       ],
     }))
 
-    setConnectLabelOpen(false)
-    setConnectTargetNode(null)
     resetConnectMode()
-  }, [
-    connectLabelDraft,
-    connectSourceNode,
-    connectTargetNode,
-    resetConnectMode,
-    setConnectLabelOpen,
-    setConnectTargetNode,
-    setGraphData,
-  ])
+  }, [connectLabelDraft, connectSourceNode, connectTargetNode, resetConnectMode, setGraphData])
 
   const startExplainMode = useCallback(() => {
     if (traceReplay) {
@@ -421,14 +416,11 @@ export function useGraphInteractionModes({
         setViewMode('2d')
       }
 
-      const prefix = `rag-trace:${traceReplay.request_id || traceReplay.ts_ms}`
-      const isTraceGraph = graphData.nodes.some((node) => String(node.id || '').startsWith(prefix))
+      const isTraceGraph = graphData.nodes.some((node) => node.id === built.rootId)
       if (!isTraceGraph) {
         setGraphData(built.graph)
         setDataSource('file')
-        setKgStats(null)
-        setKgNodeDetail(null)
-        setFileName(`${prefix}.json`)
+        setFileName(`${built.rootId}.json`)
       }
 
       setHighlightedNodeIds(new Set())
@@ -439,18 +431,14 @@ export function useGraphInteractionModes({
       setIsDetailOpen(false)
       setSelectedNode(null)
 
-      globalThis.window.requestAnimationFrame(() => {
-        detachPromise(animateTrace(built.steps, built.graph))
-      })
       return
     }
 
-    if (displayGraphData.nodes.length < 3) {
-      toast.warning('图谱节点过少，无法演示推理路径')
+    const steps = buildGraphPathSteps(displayGraphData)
+    if (steps.length === 0) {
+      toast.info('当前图谱没有可演示的连接')
       return
     }
-
-    const steps = buildHeuristicExplainSteps(displayGraphData)
 
     setHighlightedNodeIds(new Set())
     setHighlightedLinkIds(new Set())
@@ -459,10 +447,7 @@ export function useGraphInteractionModes({
     setIsExplainMode(true)
     setIsDetailOpen(false)
     setSelectedNode(null)
-
-    detachPromise(animateTrace(steps))
   }, [
-    animateTrace,
     displayGraphData,
     graphData.nodes,
     setCurrentStepIndex,
@@ -474,8 +459,6 @@ export function useGraphInteractionModes({
     setHighlightedNodeIds,
     setIsDetailOpen,
     setIsExplainMode,
-    setKgNodeDetail,
-    setKgStats,
     setSelectedNode,
     setViewMode,
     traceReplay,
@@ -501,49 +484,39 @@ export function useGraphInteractionModes({
       return 'force'
     })
 
-    globalThis.window.setTimeout(() => {
+    globalThis.window.clearTimeout(zoomTimeoutRef.current)
+    zoomTimeoutRef.current = globalThis.window.setTimeout(() => {
       getActiveGraph()?.zoomToFit?.()
     }, 500)
   }, [getActiveGraph, setLayoutMode])
 
-  const layoutLabel = useMemo(() => {
-    switch (layoutMode) {
-      case 'force':
-        return '力导向'
-      case 'tree':
-        return '树状'
-      case 'radial':
-        return '辐射'
-      default:
-        return '力导向'
-    }
-  }, [layoutMode])
+  const layoutLabel = LAYOUT_LABELS[layoutMode]
 
   const toggleEntityLinks = useCallback(() => {
     const next = !includeEntityLinks
     setIncludeEntityLinks(next)
     if (dataSource === 'live') {
-      detachPromise(loadInitialData('live', { includeEntityLinks: next }))
+      detachPromise(loadLiveGraph({ includeEntityLinks: next }))
     }
-  }, [dataSource, includeEntityLinks, loadInitialData, setIncludeEntityLinks])
+  }, [dataSource, includeEntityLinks, loadLiveGraph, setIncludeEntityLinks])
 
   const toggleRelationLinks = useCallback(() => {
     const next = !includeRelationLinks
     setIncludeRelationLinks(next)
     if (dataSource === 'live') {
-      detachPromise(loadInitialData('live', { includeRelationLinks: next }))
+      detachPromise(loadLiveGraph({ includeRelationLinks: next }))
     }
-  }, [dataSource, includeRelationLinks, loadInitialData, setIncludeRelationLinks])
+  }, [dataSource, includeRelationLinks, loadLiveGraph, setIncludeRelationLinks])
 
   const cycleMinSharedEvents = useCallback(() => {
     const options = [1, 2, 3, 4]
     const idx = options.indexOf(minSharedEvents)
-    const next = options[(idx + 1) % options.length] || 2
+    const next = options[(idx + 1) % options.length]
     setMinSharedEvents(next)
     if (dataSource === 'live') {
-      detachPromise(loadInitialData('live', { minSharedEvents: next }))
+      detachPromise(loadLiveGraph({ minSharedEvents: next }))
     }
-  }, [dataSource, loadInitialData, minSharedEvents, setMinSharedEvents])
+  }, [dataSource, loadLiveGraph, minSharedEvents, setMinSharedEvents])
 
   const handleStartPathFromContextNode = useCallback(
     (node: GraphNodeLike) => {
@@ -554,7 +527,7 @@ export function useGraphInteractionModes({
       setPathEndNode(null)
       setHighlightedNodeIds(new Set())
       setHighlightedLinkIds(new Set())
-      toast(`路径模式：请选择终点节点（起点：${String(node.label || node.id || '')}）`)
+      toast(`路径模式：请选择终点节点（起点：${node.label === '' ? node.id : node.label}）`)
     },
     [
       resetConnectMode,
@@ -573,7 +546,7 @@ export function useGraphInteractionModes({
       resetExplainMode()
       setConnectSourceNode(node)
       setIsConnectMode(true)
-      toast(`连线模式：请选择终点节点（起点：${String(node.label || node.id || '')}）`)
+      toast(`连线模式：请选择终点节点（起点：${node.label === '' ? node.id : node.label}）`)
     },
     [resetExplainMode, resetPathMode, setConnectSourceNode, setIsConnectMode],
   )
@@ -597,13 +570,9 @@ export function useGraphInteractionModes({
 
   const handleConnectLabelOpenChange = useCallback(
     (open: boolean) => {
-      setConnectLabelOpen(open)
-      if (!open) {
-        setConnectTargetNode(null)
-        resetConnectMode()
-      }
+      if (!open) resetConnectMode()
     },
-    [resetConnectMode, setConnectLabelOpen, setConnectTargetNode],
+    [resetConnectMode],
   )
 
   return {

@@ -7,11 +7,11 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from app.core.config import Settings
-from app.core.database import Base
-from app.core.request_state import bind_request_state, reset_request_state
-from app.models.tenant import Tenant, TenantMember
-from app.services import dataset_service
+from app.infrastructure.config import Settings
+from app.infrastructure.database.connection import Base
+from app.infrastructure.runtime.request_state import bind_request_state, reset_request_state
+from app.models.identity.workspaces import Tenant, TenantMember
+from app.services.datasets import management as dataset_service
 
 
 def _session_factory():
@@ -28,9 +28,11 @@ def test_default_tenant_bootstrap_requires_implicit_default_tenant_resolution(mo
     engine, test_session = _session_factory()
     tenant_id = uuid4()
     monkeypatch.delenv("ENV", raising=False)
-    monkeypatch.setattr("app.services.dataset_service.settings.AUTH_MODE", "header", raising=False)
-    monkeypatch.setattr("app.services.dataset_service.settings.LOCAL_DEV_TENANT_BOOTSTRAP_ENABLED", True, raising=False)
-    monkeypatch.setattr("app.services.dataset_service.settings.DEFAULT_TENANT_ID", str(tenant_id), raising=False)
+    monkeypatch.setattr("app.services.datasets.management.settings.AUTH_MODE", "header", raising=False)
+    monkeypatch.setattr(
+        "app.services.datasets.management.settings.LOCAL_DEV_TENANT_BOOTSTRAP_ENABLED", True, raising=False
+    )
+    monkeypatch.setattr("app.services.datasets.management.settings.DEFAULT_TENANT_ID", str(tenant_id), raising=False)
 
     token = bind_request_state(SimpleNamespace(tenant_id_source="header", client_host="127.0.0.1"))
     try:
@@ -47,9 +49,11 @@ def test_default_tenant_bootstrap_requires_loopback_header_auth(monkeypatch: pyt
     engine, test_session = _session_factory()
     tenant_id = uuid4()
     monkeypatch.delenv("ENV", raising=False)
-    monkeypatch.setattr("app.services.dataset_service.settings.AUTH_MODE", "header", raising=False)
-    monkeypatch.setattr("app.services.dataset_service.settings.LOCAL_DEV_TENANT_BOOTSTRAP_ENABLED", True, raising=False)
-    monkeypatch.setattr("app.services.dataset_service.settings.DEFAULT_TENANT_ID", str(tenant_id), raising=False)
+    monkeypatch.setattr("app.services.datasets.management.settings.AUTH_MODE", "header", raising=False)
+    monkeypatch.setattr(
+        "app.services.datasets.management.settings.LOCAL_DEV_TENANT_BOOTSTRAP_ENABLED", True, raising=False
+    )
+    monkeypatch.setattr("app.services.datasets.management.settings.DEFAULT_TENANT_ID", str(tenant_id), raising=False)
 
     token = bind_request_state(SimpleNamespace(tenant_id_source="default", client_host="198.51.100.8"))
     try:
@@ -68,9 +72,11 @@ def test_default_tenant_bootstrap_allows_loopback_header_auth_without_client_ten
     engine, test_session = _session_factory()
     tenant_id = uuid4()
     monkeypatch.delenv("ENV", raising=False)
-    monkeypatch.setattr("app.services.dataset_service.settings.AUTH_MODE", "header", raising=False)
-    monkeypatch.setattr("app.services.dataset_service.settings.LOCAL_DEV_TENANT_BOOTSTRAP_ENABLED", True, raising=False)
-    monkeypatch.setattr("app.services.dataset_service.settings.DEFAULT_TENANT_ID", str(tenant_id), raising=False)
+    monkeypatch.setattr("app.services.datasets.management.settings.AUTH_MODE", "header", raising=False)
+    monkeypatch.setattr(
+        "app.services.datasets.management.settings.LOCAL_DEV_TENANT_BOOTSTRAP_ENABLED", True, raising=False
+    )
+    monkeypatch.setattr("app.services.datasets.management.settings.DEFAULT_TENANT_ID", str(tenant_id), raising=False)
 
     token = bind_request_state(SimpleNamespace(tenant_id_source="default", client_host="127.0.0.1"))
     try:
@@ -89,11 +95,11 @@ def test_default_tenant_bootstrap_is_disabled_without_explicit_flag(monkeypatch:
     engine, test_session = _session_factory()
     tenant_id = uuid4()
     monkeypatch.delenv("ENV", raising=False)
-    monkeypatch.setattr("app.services.dataset_service.settings.AUTH_MODE", "header", raising=False)
+    monkeypatch.setattr("app.services.datasets.management.settings.AUTH_MODE", "header", raising=False)
     monkeypatch.setattr(
-        "app.services.dataset_service.settings.LOCAL_DEV_TENANT_BOOTSTRAP_ENABLED", False, raising=False
+        "app.services.datasets.management.settings.LOCAL_DEV_TENANT_BOOTSTRAP_ENABLED", False, raising=False
     )
-    monkeypatch.setattr("app.services.dataset_service.settings.DEFAULT_TENANT_ID", str(tenant_id), raising=False)
+    monkeypatch.setattr("app.services.datasets.management.settings.DEFAULT_TENANT_ID", str(tenant_id), raising=False)
 
     token = bind_request_state(SimpleNamespace(tenant_id_source="default", client_host="127.0.0.1"))
     try:

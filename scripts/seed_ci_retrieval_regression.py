@@ -22,15 +22,16 @@ from uuid import UUID
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
 
-import app.models._all  # noqa: F401
-from app.core.database import Base, SessionLocal, engine
-from app.core.migrations import apply_runtime_migrations
-from app.models.dataset import Dataset, DatasetPermissionEnum
-from app.models.document import Document as DBDocument
-from app.models.document import DocumentChunk
-from app.models.tenant import Tenant, TenantMember
+import app.models.registry  # noqa: F401
+from app.infrastructure.database.connection import Base, SessionLocal, engine
+from app.infrastructure.database.migrations import apply_runtime_migrations
+from app.models.datasets.access import DatasetPermissionEnum
+from app.models.datasets.records import Dataset
+from app.models.documents.records import Document as DBDocument
+from app.models.documents.records import DocumentChunk
+from app.models.identity.workspaces import Tenant, TenantMember
 
-MODEL_REGISTRY = app.models._all.REGISTERED_MODEL_MODULES
+MODEL_REGISTRY = app.models.registry.REGISTERED_MODEL_MODULES
 
 
 def _load_json(path: Path) -> Any:

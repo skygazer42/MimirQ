@@ -4,31 +4,38 @@ import * as React from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { toast } from 'sonner'
 
-import { useResolvedAuthAssetUrl } from '@/components/auth-image'
+import { downloadBlob } from '@/lib/download'
+import { getAuthSessionKey, subscribeAuthSession } from '@/lib/auth-storage'
 import { documentApi, ragApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
 import { reportClientError } from '@/lib/client-logging'
-import { getDocContentFromCache, saveDocContentToCache } from '@/lib/doc-content-cache'
+import { getDocContentFromCache, cacheDocContentIfMissing } from '@/lib/doc-content-cache'
 import { mapDocumentChunksToPreviewItems } from '@/lib/document-chunks'
-import {
-  recoverDocumentPreviewAnchorFromChunkPositions,
-  sanitizeDocumentPreviewAnchor,
-} from '@/lib/document-preview-anchor'
+import { createCodePointToUtf16Converter } from '@/lib/text-offsets'
+import { recoverDocumentPreviewAnchorFromChunkPositions } from '@/lib/document-preview-anchor'
 import { getPrefetchedChunk, getPrefetchedDocument } from '@/lib/document-view-prefetch'
-import { API_V1_BASE_URL, toAbsoluteBackendUrl } from '@/lib/env'
+import { API_V1_BASE_URL } from '@/lib/env'
 import { globalEventBus } from '@/lib/event-bus'
-import { detachPromise } from '@/lib/utils'
-import { useDocumentView, type DocumentViewSourceContext, type DocumentViewTab } from '@/store/document-view'
+import {
+  useDocumentView,
+  type DocumentTextMode,
+  type DocumentViewLayout,
+  type DocumentViewSourceContext,
+  type DocumentViewTab,
+  type HighlightRange,
+} from '@/store/document-view'
 import type {
   Document,
   DocumentChunk,
+  DocumentChunkMatchList,
   DocumentParsedContentResponse,
   DocumentQAGenerateResponse,
 } from '@/types/backend'
 import type { Citation } from '@/types/processing'
 
 import { resolveChunkKeyboardNavigation } from './keyboard-shortcuts'
-import { toCitation } from './document-viewer-panel-utils'
+import { parseRetrievalCitation } from './retrieval-citation'
+import type { CitationSnapshot, DocumentChunkLocation, DocumentViewerHighlight } from './document-viewer-models'
 
 function isTypingTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false
@@ -40,43 +47,59 @@ function isDocumentViewTab(value: string): value is DocumentViewTab {
   return value === 'preview' || value === 'text' || value === 'chunks'
 }
 
-function buildCitationFallbackChunk(params: {
+function buildCitationSnapshot(params: {
   documentId: string
   chunkId: string
   sourceContext: DocumentViewSourceContext | null
-}): DocumentChunk | null {
-  const content = String(params.sourceContext?.chunkContent || '').trim()
-  if (!content) return null
+  range: HighlightRange | null
+}): CitationSnapshot | null {
+  const context = params.sourceContext
+  if (context === null || context.documentId !== params.documentId || context.chunkId !== params.chunkId) return null
+  const content = context.chunkContent
+  if (typeof content !== 'string') return null
 
   return {
-    id: params.chunkId,
+    chunkId: params.chunkId,
     content,
-    page_number: params.sourceContext?.pageNumber ?? null,
-    start_char: null,
-    end_char: null,
-    chunk_index: params.sourceContext?.chunkIndex ?? 0,
-    disabled_at: null,
-    created_at: null,
-    updated_at: null,
-    metadata: {
-      source: 'chat_citation_fallback',
-      document_id: params.documentId,
-      document_name: params.sourceContext?.documentName || undefined,
-      chunk_id: params.chunkId,
-      fallback_reason: 'chunk_not_available',
-    },
+    pageNumber: context.pageNumber,
+    chunkIndex: context.chunkIndex,
+    range: params.range,
   }
 }
 
-function parseOptionalChunkNumber(value: string): number | undefined {
-  const text = (value || '').trim()
-  if (!text) return undefined
-  const next = Number(text)
-  return Number.isFinite(next) ? Math.max(0, Math.trunc(next)) : undefined
+function parseIntegerInput(value: string, { label, min, max }: { label: string; min: number; max: number }): number {
+  const next = Number(value)
+  if (value.trim().length === 0 || !Number.isInteger(next) || next < min || next > max) {
+    throw new Error(`${label}必须为 ${min} 到 ${max} 之间的整数`)
+  }
+  return next
 }
+
+function parseOptionalChunkNumber(value: string, { label, max }: { label: string; max: number }): number | undefined {
+  const text = value.trim()
+  if (text.length === 0) return undefined
+  return parseIntegerInput(text, { label, min: 0, max })
+}
+
+function parseChunkPositions(values: { pageNumber: string; startChar: string; endChar: string }) {
+  const pageNumber = parseOptionalChunkNumber(values.pageNumber, { label: '页码', max: 100_000 })
+  const startChar = parseOptionalChunkNumber(values.startChar, { label: '开始字符位置', max: 10_000_000 })
+  const endChar = parseOptionalChunkNumber(values.endChar, { label: '结束字符位置', max: 10_000_000 })
+  return { page_number: pageNumber, start_char: startChar, end_char: endChar }
+}
+
+type DocumentDownloadRequest = Readonly<{
+  visit: Readonly<{ documentId: string | null }>
+  sessionKey: string
+}>
+
+type DocumentDownloadResult = Readonly<
+  { request: DocumentDownloadRequest } & ({ status: 'processing' } | { status: 'error'; message: string })
+>
 
 export function useDocumentViewerPanelState() {
   const {
+    authScope,
     isOpen,
     documentId,
     highlightChunkId,
@@ -91,46 +114,112 @@ export function useDocumentViewerPanelState() {
     setHighlightChunk,
   } = useDocumentView()
 
-  const [doc, setDoc] = React.useState<Document | null>(null)
+  const [documentResult, setDoc] = React.useState<Document | null>(null)
+  const doc = documentResult?.id === documentId ? documentResult : null
   const [chunks, setChunks] = React.useState<DocumentChunk[]>([])
   const [isLoading, setIsLoading] = React.useState(false)
+  const [documentError, setDocumentError] = React.useState<string | null>(null)
+  const [documentReadAttempt, setDocumentReadAttempt] = React.useState(0)
   const [chunksLoaded, setChunksLoaded] = React.useState(false)
   const [chunksLoading, setChunksLoading] = React.useState(false)
+  const [chunksError, setChunksError] = React.useState<string | null>(null)
+  const [chunksReadAttempt, setChunksReadAttempt] = React.useState(0)
+  const chunksReadControllerRef = React.useRef<AbortController | null>(null)
   const [loadAllChunks, setLoadAllChunks] = React.useState(false)
-  const [highlightChunk, setHighlightChunkState] = React.useState<DocumentChunk | null>(null)
+  const [highlightChunkState, setHighlightChunkState] = React.useState<{
+    documentId: string
+    chunk: DocumentChunk
+  } | null>(null)
+  const highlightChunk =
+    highlightChunkState?.documentId === documentId && highlightChunkState.chunk.id === highlightChunkId
+      ? highlightChunkState.chunk
+      : null
   const [highlightChunkLoading, setHighlightChunkLoading] = React.useState(false)
-  const [parsedContent, setParsedContent] = React.useState<DocumentParsedContentResponse | null>(null)
+  const highlightReadControllerRef = React.useRef<AbortController | null>(null)
+  const [highlightFailure, setHighlightFailure] = React.useState<{
+    documentId: string
+    chunkId: string
+    error: string
+  } | null>(null)
+  const highlightChunkError =
+    highlightFailure?.documentId === documentId && highlightFailure.chunkId === highlightChunkId
+      ? highlightFailure.error
+      : null
+  const highlightContent = React.useMemo<DocumentViewerHighlight | null>(() => {
+    if (highlightChunk !== null) return { kind: 'chunk', chunk: highlightChunk }
+    if (documentId === null || highlightChunkId === null) return null
+    const snapshot = buildCitationSnapshot({
+      documentId,
+      chunkId: highlightChunkId,
+      sourceContext,
+      range: highlightRange,
+    })
+    return snapshot === null ? null : { kind: 'citation', snapshot }
+  }, [documentId, highlightChunkId, highlightChunk, sourceContext, highlightRange])
+  const [highlightReadAttempt, setHighlightReadAttempt] = React.useState(0)
+  const [parsedContentResult, setParsedContent] = React.useState<DocumentParsedContentResponse | null>(null)
+  const parsedContent = parsedContentResult?.document_id === documentId ? parsedContentResult : null
   const [parsedContentLoading, setParsedContentLoading] = React.useState(false)
   const [parsedContentError, setParsedContentError] = React.useState<string | null>(null)
-  const [textMode, setTextMode] = React.useState<'cleaned' | 'original'>('cleaned')
+  const [parsedReadAttempt, setParsedReadAttempt] = React.useState(0)
+  const layout = getDocumentLayout(documentId)
+  const textMode = layout?.textMode ?? 'cleaned'
   const [retrieveQuery, setRetrieveQuery] = React.useState('')
   const latestRetrieveQueryRef = React.useRef(retrieveQuery)
   const [retrieveLoading, setRetrieveLoading] = React.useState(false)
-  const [retrieveError, setRetrieveError] = React.useState<string | null>(null)
-  const [retrieveCitations, setRetrieveCitations] = React.useState<Citation[]>([])
+  const [retrieveResult, setRetrieveResult] = React.useState<{ query: string; citations: Citation[] } | null>(null)
+  const [retrieveFailure, setRetrieveFailure] = React.useState<{ query: string; error: string } | null>(null)
+  const retrieveCitations = retrieveResult?.citations ?? []
+  const retrieveResultQuery = retrieveResult?.query ?? null
+  const retrieveError = retrieveFailure?.error ?? null
+  const retrieveFailedQuery = retrieveFailure?.query ?? null
   const documentVisit = React.useMemo(() => ({ documentId }), [documentId])
   const activeDocumentVisitRef = React.useRef<typeof documentVisit | null>(documentVisit)
+  const authSession = React.useSyncExternalStore(subscribeAuthSession, getAuthSessionKey, getAuthSessionKey)
+  const activeDownloadRef = React.useRef<DocumentDownloadRequest | null>(null)
+  const [downloadResult, setDownloadResult] = React.useState<DocumentDownloadResult | null>(null)
+  const currentDownloadResult =
+    downloadResult?.request.visit === documentVisit && downloadResult.request.sessionKey === authSession
+      ? downloadResult
+      : null
+  const downloadLoading = currentDownloadResult?.status === 'processing'
+  const downloadError = currentDownloadResult?.status === 'error' ? currentDownloadResult.message : null
+  const canDownloadOriginalFile = doc !== null && doc.id === documentId
   const retrieveRequestSeqRef = React.useRef(0)
+  const retrieveReadControllerRef = React.useRef<AbortController | null>(null)
+  const cancelRetrieveRead = React.useCallback(() => {
+    retrieveRequestSeqRef.current += 1
+    retrieveReadControllerRef.current?.abort()
+    retrieveReadControllerRef.current = null
+  }, [])
   const isCurrentDocumentVisit = React.useCallback(
     () => documentVisit === activeDocumentVisitRef.current,
     [documentVisit],
   )
-  const [isExpanded, setIsExpanded] = React.useState(false)
-  const [panelWidthPx, setPanelWidthPxState] = React.useState<number | null>(null)
+  const isExpanded = layout?.isExpanded ?? false
+  const panelWidthPx = layout?.panelWidthPx ?? null
   const chunksListRef = React.useRef<HTMLDivElement>(null)
   const chunkSearchRef = React.useRef<HTMLInputElement>(null)
   const pendingChunksScrollRestoreRef = React.useRef<number | null>(null)
   const pendingTextScrollRestoreRef = React.useRef<number | null>(null)
   const persistedLayoutTimeoutRef = React.useRef<number | null>(null)
-  const persistedLayoutDocIdRef = React.useRef<string | null>(null)
-  const pendingLayoutPatchRef = React.useRef<Record<string, unknown>>({})
+  const pendingLayoutRef = React.useRef<{ authScope: string; documentId: string; patch: DocumentViewLayout } | null>(
+    null,
+  )
   const [chunkQuery, setChunkQuery] = React.useState('')
   const [matchCursor, setMatchCursor] = React.useState(0)
-  const [serverMatchIds, setServerMatchIds] = React.useState<string[]>([])
-  const [serverMatchTotal, setServerMatchTotal] = React.useState(0)
-  const [serverMatchTruncated, setServerMatchTruncated] = React.useState(false)
+  const [serverMatches, setServerMatches] = React.useState<{
+    query: string
+    response: Required<DocumentChunkMatchList>
+  } | null>(null)
+  const [serverMatchFailure, setServerMatchFailure] = React.useState<{ query: string; error: string } | null>(null)
+  const [searchReadAttempt, setSearchReadAttempt] = React.useState(0)
   const [serverMatchLoading, setServerMatchLoading] = React.useState(false)
-  const matchRequestSeqRef = React.useRef(0)
+  const matchReadControllerRef = React.useRef<AbortController | null>(null)
+  const cancelMatchRead = React.useCallback(() => {
+    matchReadControllerRef.current?.abort()
+    matchReadControllerRef.current = null
+  }, [])
   const parsedContentServerKeyRef = React.useRef<string | null>(null)
 
   const [chunkEditorOpen, setChunkEditorOpen] = React.useState(false)
@@ -142,20 +231,25 @@ export function useDocumentViewerPanelState() {
   const [chunkEditorEndChar, setChunkEditorEndChar] = React.useState<string>('')
   const [chunkEditorSubmitting, setChunkEditorSubmitting] = React.useState(false)
   const chunkEditorEpochRef = React.useRef(0)
+  const chunkMutationSeqRef = React.useRef(0)
+  const appliedChunkMutationSeqRef = React.useRef(new Map<string, number>())
   const [chunkDeleteSubmitting, setChunkDeleteSubmitting] = React.useState<string | null>(null)
 
   const [qaDialogOpen, setQaDialogOpen] = React.useState(false)
-  const [qaNumPairs, setQaNumPairs] = React.useState(20)
+  const [qaNumPairsInput, setQaNumPairsInput] = React.useState('20')
   const [qaReplaceExisting, setQaReplaceExisting] = React.useState(true)
   const [qaPreferLlm, setQaPreferLlm] = React.useState(true)
-  const [qaMaxSourceChars, setQaMaxSourceChars] = React.useState(12000)
+  const [qaMaxSourceCharsInput, setQaMaxSourceCharsInput] = React.useState('12000')
   const [qaSubmitting, setQaSubmitting] = React.useState(false)
   const [qaLastResult, setQaLastResult] = React.useState<DocumentQAGenerateResponse | null>(null)
   const qaDialogEpochRef = React.useRef(0)
 
+  const getChunkKey = React.useCallback((index: number) => chunks[index].id, [chunks])
+
   // eslint-disable-next-line react-hooks/incompatible-library
   const rowVirtualizer = useVirtualizer({
     count: chunks.length,
+    getItemKey: getChunkKey,
     getScrollElement: () => chunksListRef.current,
     estimateSize: () => 220,
     overscan: 8,
@@ -170,97 +264,84 @@ export function useDocumentViewerPanelState() {
     activeDocumentVisitRef.current = documentVisit
     return () => {
       activeDocumentVisitRef.current = null
-      retrieveRequestSeqRef.current += 1
-      matchRequestSeqRef.current += 1
+      cancelRetrieveRead()
+      cancelMatchRead()
     }
-  }, [documentVisit])
+  }, [cancelMatchRead, cancelRetrieveRead, documentVisit])
 
-  const flushPersistedLayoutPatch = React.useCallback(
-    (targetDocumentId?: string | null) => {
-      const documentIdToFlush = targetDocumentId || persistedLayoutDocIdRef.current
-      if (!documentIdToFlush) return
-      if (persistedLayoutTimeoutRef.current != null) {
-        globalThis.window.clearTimeout(persistedLayoutTimeoutRef.current)
-        persistedLayoutTimeoutRef.current = null
-      }
-
-      const patch = pendingLayoutPatchRef.current
-      pendingLayoutPatchRef.current = {}
-
-      if (!Object.keys(patch).length) return
-      setDocumentLayout(documentIdToFlush, patch)
-    },
-    [setDocumentLayout],
-  )
+  const flushPersistedLayoutPatch = React.useCallback(() => {
+    if (persistedLayoutTimeoutRef.current !== null) {
+      globalThis.window.clearTimeout(persistedLayoutTimeoutRef.current)
+      persistedLayoutTimeoutRef.current = null
+    }
+    const pending = pendingLayoutRef.current
+    if (pending === null) return
+    pendingLayoutRef.current = null
+    if (pending.authScope !== useDocumentView.getState().authScope) return
+    setDocumentLayout(pending.documentId, pending.patch)
+  }, [setDocumentLayout])
 
   const persistDocumentLayout = React.useCallback(
-    (patch: Record<string, unknown>, immediate = false) => {
+    (patch: DocumentViewLayout, immediate = false) => {
       if (!documentId || !isCurrentDocumentVisit()) return
-
-      if (persistedLayoutDocIdRef.current && persistedLayoutDocIdRef.current !== documentId) {
-        flushPersistedLayoutPatch(persistedLayoutDocIdRef.current)
+      const pending = pendingLayoutRef.current
+      if (pending !== null && pending.authScope === authScope && pending.documentId === documentId) {
+        pending.patch = { ...pending.patch, ...patch }
+      } else {
+        flushPersistedLayoutPatch()
+        pendingLayoutRef.current = { authScope, documentId, patch: { ...patch } }
       }
-
-      persistedLayoutDocIdRef.current = documentId
-      pendingLayoutPatchRef.current = {
-        ...pendingLayoutPatchRef.current,
-        ...patch,
-      }
-
       if (immediate) {
-        flushPersistedLayoutPatch(documentId)
+        flushPersistedLayoutPatch()
         return
       }
-
-      if (persistedLayoutTimeoutRef.current != null) {
+      if (persistedLayoutTimeoutRef.current !== null) {
         globalThis.window.clearTimeout(persistedLayoutTimeoutRef.current)
       }
-      persistedLayoutTimeoutRef.current = globalThis.window.setTimeout(() => {
-        flushPersistedLayoutPatch(documentId)
-      }, 120)
+      persistedLayoutTimeoutRef.current = globalThis.window.setTimeout(flushPersistedLayoutPatch, 120)
     },
-    [documentId, flushPersistedLayoutPatch, isCurrentDocumentVisit],
+    [authScope, documentId, flushPersistedLayoutPatch, isCurrentDocumentVisit],
   )
 
-  React.useEffect(() => {
+  React.useLayoutEffect(() => {
     if (!documentId) return
     const documentLayout = getDocumentLayout(documentId)
     parsedContentServerKeyRef.current = null
     setDoc(null)
+    setDocumentError(null)
     setChunks([])
     setChunksLoaded(false)
     setChunksLoading(false)
+    setChunksError(null)
     setLoadAllChunks(false)
     setHighlightChunkState(null)
+    setHighlightFailure(null)
     setHighlightChunkLoading(false)
     setParsedContent(null)
     setParsedContentLoading(false)
     setParsedContentError(null)
-    setTextMode(documentLayout?.textMode === 'original' ? 'original' : 'cleaned')
     setRetrieveQuery('')
     setRetrieveLoading(false)
-    setRetrieveError(null)
-    setRetrieveCitations([])
+    setRetrieveFailure(null)
+    setRetrieveResult(null)
     setChunkEditorOpen(false)
     setChunkEditorTarget(null)
     setChunkEditorSubmitting(false)
+    appliedChunkMutationSeqRef.current.clear()
     setChunkDeleteSubmitting(null)
     setQaDialogOpen(false)
     setQaSubmitting(false)
     setQaLastResult(null)
-    setIsExpanded(Boolean(documentLayout?.isExpanded))
-    setPanelWidthPxState(typeof documentLayout?.panelWidthPx === 'number' ? documentLayout.panelWidthPx : null)
     setChunkQuery('')
     setMatchCursor(0)
-    setServerMatchIds([])
-    setServerMatchTotal(0)
-    setServerMatchTruncated(false)
+    setServerMatches(null)
+    setServerMatchFailure(null)
     setServerMatchLoading(false)
     pendingChunksScrollRestoreRef.current =
       typeof documentLayout?.chunksScrollTop === 'number' ? documentLayout.chunksScrollTop : 0
     pendingTextScrollRestoreRef.current =
       typeof documentLayout?.textScrollTop === 'number' ? documentLayout.textScrollTop : 0
-    matchRequestSeqRef.current += 1
+    cancelMatchRead()
 
     const raf = globalThis.window.requestAnimationFrame(() => {
       const top = pendingChunksScrollRestoreRef.current ?? 0
@@ -271,7 +352,13 @@ export function useDocumentViewerPanelState() {
       setDoc(prefetchedDoc)
     }
 
-    setIsLoading(!prefetchedDoc)
+    return () => globalThis.window.cancelAnimationFrame(raf)
+  }, [cancelMatchRead, documentId, getDocumentLayout])
+
+  React.useEffect(() => {
+    if (documentId === null) return
+    setDocumentError(null)
+    setIsLoading(true)
     let cancelled = false
     documentApi
       .get(documentId, { includeChunks: false })
@@ -280,7 +367,9 @@ export function useDocumentViewerPanelState() {
         setDoc(data)
       })
       .catch((error: unknown) => {
-        if (!cancelled) reportClientError('Load document detail failed', error)
+        if (cancelled) return
+        reportClientError('Load document detail failed', error)
+        setDocumentError(formatApiError(error, '读取文档信息失败'))
       })
       .finally(() => {
         if (!cancelled) setIsLoading(false)
@@ -288,23 +377,10 @@ export function useDocumentViewerPanelState() {
 
     return () => {
       cancelled = true
-      globalThis.window.cancelAnimationFrame(raf)
     }
-  }, [documentId, getDocumentLayout])
+  }, [documentId, documentReadAttempt])
 
-  React.useEffect(() => {
-    const currentDocumentId = documentId
-    return () => {
-      if (!currentDocumentId) return
-      flushPersistedLayoutPatch(currentDocumentId)
-    }
-  }, [documentId, flushPersistedLayoutPatch])
-
-  React.useEffect(() => {
-    return () => {
-      flushPersistedLayoutPatch()
-    }
-  }, [flushPersistedLayoutPatch])
+  React.useEffect(() => flushPersistedLayoutPatch, [documentId, flushPersistedLayoutPatch])
 
   React.useEffect(() => {
     if (!documentId) return
@@ -313,20 +389,20 @@ export function useDocumentViewerPanelState() {
     ;(async () => {
       try {
         const cached = await getDocContentFromCache(documentId)
-        if (cancelled || !cached) return
+        if (cancelled || cached === null || parsedContentServerKeyRef.current === documentId) return
 
         setParsedContent({
           document_id: documentId,
           available: true,
-          markdown_content: cached.markdownContent || '',
-          original_markdown_content: cached.originalMarkdownContent || '',
+          markdown_content: cached.markdownContent,
+          original_markdown_content: cached.originalMarkdownContent ?? '',
           persisted_meta: {},
           markdown_truncated: false,
           original_markdown_truncated: false,
           max_chars: 0,
         })
-      } catch {
-        // ignore cache errors
+      } catch (error) {
+        if (!cancelled) reportClientError('Read cached document content failed', error)
       }
     })()
 
@@ -337,123 +413,141 @@ export function useDocumentViewerPanelState() {
 
   React.useEffect(() => {
     if (!documentId) return
+    setHighlightFailure(null)
     if (!highlightChunkId) {
       setHighlightChunkState(null)
       setHighlightChunkLoading(false)
       return
     }
 
-    let cancelled = false
+    const controller = new AbortController()
+    highlightReadControllerRef.current = controller
     const prefetchedChunk = getPrefetchedChunk(documentId, highlightChunkId)
     if (prefetchedChunk) {
-      setHighlightChunkState(prefetchedChunk)
+      setHighlightChunkState({ documentId, chunk: prefetchedChunk })
       setHighlightChunkLoading(false)
     } else {
       setHighlightChunkLoading(true)
     }
     documentApi
-      .getChunk(documentId, highlightChunkId)
+      .getChunk(documentId, highlightChunkId, { signal: controller.signal })
       .then((data) => {
-        if (cancelled) return
-        setHighlightChunkState(data)
+        if (controller.signal.aborted) return
+        setHighlightChunkState({ documentId, chunk: data })
       })
       .catch((err) => {
-        if (cancelled) return
-        const fallbackChunk = buildCitationFallbackChunk({ documentId, chunkId: highlightChunkId, sourceContext })
-        if (fallbackChunk) {
-          setHighlightChunkState(fallbackChunk)
-          return
-        }
+        if (controller.signal.aborted) return
         reportClientError('Load highlighted chunk failed', err)
-        setHighlightChunkState(null)
+        setHighlightFailure({ documentId, chunkId: highlightChunkId, error: formatApiError(err, '读取引用切片失败') })
       })
       .finally(() => {
-        if (cancelled) return
+        if (highlightReadControllerRef.current === controller) highlightReadControllerRef.current = null
+        if (controller.signal.aborted) return
         setHighlightChunkLoading(false)
       })
 
     return () => {
-      cancelled = true
+      controller.abort()
+      if (highlightReadControllerRef.current === controller) highlightReadControllerRef.current = null
     }
-  }, [documentId, highlightChunkId, sourceContext])
+  }, [documentId, highlightChunkId, highlightReadAttempt])
 
   React.useEffect(() => {
     if (!documentId) return
     if (activeTab !== 'text') return
-    if (parsedContentServerKeyRef.current === documentId) return
 
-    let cancelled = false
+    const controller = new AbortController()
     setParsedContentError(null)
     setParsedContentLoading(true)
 
     documentApi
-      .getParsedContent(documentId, { max_chars: 200_000 })
+      .getParsedContent(documentId, { max_chars: 200_000 }, { signal: controller.signal })
       .then((data) => {
-        if (cancelled) return
+        if (controller.signal.aborted) return
         parsedContentServerKeyRef.current = documentId
         setParsedContent(data)
-        if (data?.available) {
-          detachPromise(
-            saveDocContentToCache({
-              id: documentId,
-              markdownContent: data.markdown_content || '',
-              originalMarkdownContent: data.original_markdown_content || '',
-            }),
-          )
+        if (data.available && !data.markdown_truncated && !data.original_markdown_truncated) {
+          void cacheDocContentIfMissing({
+            id: documentId,
+            markdownContent: data.markdown_content,
+            originalMarkdownContent: data.original_markdown_content,
+          }).catch((error) => reportClientError('Cache parsed document content failed', error))
         }
       })
       .catch((err) => {
-        if (cancelled) return
+        if (controller.signal.aborted) return
         reportClientError('Load parsed document content failed', err)
-        setParsedContentError('加载解析文本失败')
+        setParsedContentError(formatApiError(err, '读取解析文本失败'))
       })
       .finally(() => {
-        if (cancelled) return
-        setParsedContentLoading(false)
+        if (!controller.signal.aborted) setParsedContentLoading(false)
       })
 
     return () => {
-      cancelled = true
+      controller.abort()
     }
-  }, [documentId, activeTab])
+  }, [documentId, activeTab, parsedReadAttempt])
 
+  const restartPendingChunkRead = React.useCallback(() => {
+    const controller = chunksReadControllerRef.current
+    if (controller === null) return
+    controller.abort()
+    setChunksReadAttempt((attempt) => attempt + 1)
+  }, [])
+
+  const acceptChunkMutation = React.useCallback((chunkId: string, sequence: number) => {
+    const appliedSequence = appliedChunkMutationSeqRef.current.get(chunkId)
+    if (appliedSequence !== undefined && appliedSequence > sequence) return false
+    appliedChunkMutationSeqRef.current.set(chunkId, sequence)
+    return true
+  }, [])
+
+  const cancelHighlightRead = React.useCallback((chunkId: string) => {
+    if (useDocumentView.getState().highlightChunkId !== chunkId) return
+    highlightReadControllerRef.current?.abort()
+    setHighlightChunkLoading(false)
+  }, [])
+
+  const shouldLoadAllChunks =
+    (activeTab === 'chunks' || activeTab === 'text') && (loadAllChunks || highlightChunkId === null)
   React.useEffect(() => {
-    if (!documentId) return
-    if (chunksLoaded) return
-    const shouldLoadAll =
-      (activeTab === 'chunks' && (loadAllChunks || !highlightChunkId)) ||
-      (activeTab === 'text' && (loadAllChunks || !highlightChunkId))
-    if (!shouldLoadAll) return
+    if (documentId === null || chunksLoaded || !shouldLoadAllChunks) {
+      setChunksLoading(false)
+      return
+    }
 
     setChunksLoading(true)
-    let cancelled = false
+    setChunksError(null)
+    const controller = new AbortController()
+    chunksReadControllerRef.current = controller
     ;(async () => {
       const pageSize = 2000
       const all: DocumentChunk[] = []
-      let total = 0
-
-      for (let skip = 0; skip < 50_000; skip += pageSize) {
-        const res = await documentApi.listChunks(documentId, { skip, limit: pageSize })
-        if (cancelled) return
-        total = res.total || 0
-        all.push(...(res.items || []))
+      for (let skip = 0; ; skip += pageSize) {
+        const res = await documentApi.listChunks(documentId, { skip, limit: pageSize }, { signal: controller.signal })
+        if (controller.signal.aborted) return
+        all.push(...res.items)
         setChunks([...all])
-        if (!res.items?.length || (total > 0 && all.length >= total)) break
+        if (res.items.length === 0 || all.length >= res.total) break
       }
 
-      if (!cancelled) setChunksLoaded(true)
+      if (!controller.signal.aborted) setChunksLoaded(true)
     })()
       .catch((error: unknown) => {
-        if (!cancelled) reportClientError('Load document chunks failed', error)
+        if (controller.signal.aborted) return
+        reportClientError('Load document chunks failed', error)
+        setChunksError(formatApiError(error, '读取切片失败'))
       })
       .finally(() => {
-        if (!cancelled) setChunksLoading(false)
+        if (chunksReadControllerRef.current === controller) chunksReadControllerRef.current = null
+        if (!controller.signal.aborted) setChunksLoading(false)
       })
 
     return () => {
-      cancelled = true
+      controller.abort()
+      if (chunksReadControllerRef.current === controller) chunksReadControllerRef.current = null
     }
-  }, [documentId, activeTab, highlightChunkId, loadAllChunks, chunksLoaded])
+  }, [documentId, shouldLoadAllChunks, chunksLoaded, chunksReadAttempt])
 
   const highlightIndex = React.useMemo(() => {
     if (!highlightChunkId) return -1
@@ -463,56 +557,59 @@ export function useDocumentViewerPanelState() {
   const textValue = !parsedContent?.available
     ? ''
     : textMode === 'original'
-      ? String(parsedContent.original_markdown_content || '')
-      : String(parsedContent.markdown_content || '')
+      ? parsedContent.original_markdown_content
+      : parsedContent.markdown_content
 
-  const textChunkItems = React.useMemo(() => {
+  const { items: textChunkItems, unpositionedCount: textUnpositionedChunkCount } = React.useMemo(() => {
     const base = chunksLoaded ? chunks : highlightChunk ? [highlightChunk] : []
-    return mapDocumentChunksToPreviewItems(base)
-  }, [chunks, chunksLoaded, highlightChunk])
+    if (!parsedContent?.available) return { items: [], unpositionedCount: 0 }
+    const items = mapDocumentChunksToPreviewItems(base, parsedContent.markdown_content)
+    return { items, unpositionedCount: base.length - items.length }
+  }, [chunks, chunksLoaded, highlightChunk, parsedContent])
+
+  const textHighlightRange = React.useMemo(() => {
+    if (highlightRange === null || !parsedContent?.available) return null
+    const converter = createCodePointToUtf16Converter(parsedContent.markdown_content)
+    const start = converter.toUtf16(highlightRange.start)
+    const end = converter.toUtf16(highlightRange.end)
+    return start === undefined || end === undefined ? null : { start, end }
+  }, [highlightRange, parsedContent])
 
   const textActiveChunkIndex = React.useMemo(() => {
-    if (!highlightChunk) return null
-    const idx = textChunkItems.findIndex((item) => item.index === highlightChunk.chunk_index)
+    const chunk = chunksLoaded && highlightIndex >= 0 ? chunks[highlightIndex] : highlightChunk
+    if (chunk === null) return null
+    const idx = textChunkItems.findIndex((item) => item.index === chunk.chunk_index)
     return idx >= 0 ? idx : null
-  }, [highlightChunk, textChunkItems])
+  }, [chunks, chunksLoaded, highlightChunk, highlightIndex, textChunkItems])
 
-  const resolvedPreviewAnchor = React.useMemo(
-    () =>
-      recoverDocumentPreviewAnchorFromChunkPositions(
-        sanitizeDocumentPreviewAnchor({
-          ...previewAnchor,
-          pageNumber: previewAnchor?.pageNumber ?? highlightChunk?.page_number ?? undefined,
-          searchText: previewAnchor?.searchText,
-          bbox: previewAnchor?.bbox,
-          bboxPageNumber: previewAnchor?.bboxPageNumber,
-        }),
-        highlightChunk,
-        highlightRange,
-      ),
-    [highlightChunk, highlightRange, previewAnchor],
+  const resolvedPreviewAnchor = React.useMemo(() => {
+    const pageNumber =
+      previewAnchor?.pageNumber ??
+      (highlightRange === null && previewAnchor?.searchText === undefined
+        ? (highlightChunk?.page_number ??
+          (highlightContent?.kind === 'citation' ? (highlightContent.snapshot.pageNumber ?? undefined) : undefined))
+        : undefined)
+    return recoverDocumentPreviewAnchorFromChunkPositions(
+      { ...previewAnchor, pageNumber },
+      highlightChunk,
+      highlightRange,
+    )
+  }, [highlightChunk, highlightContent, highlightRange, previewAnchor])
+
+  const setIsExpanded = React.useCallback(
+    (expanded: boolean) => persistDocumentLayout({ isExpanded: expanded }, true),
+    [persistDocumentLayout],
   )
-
-  React.useEffect(() => {
-    if (!documentId) return
-    persistDocumentLayout({ isExpanded }, true)
-  }, [documentId, isExpanded, persistDocumentLayout])
 
   const setPanelWidthPx = React.useCallback(
-    (nextWidthPx: number) => {
-      if (!isCurrentDocumentVisit()) return
-      if (!Number.isFinite(nextWidthPx)) return
-      const width = Math.round(nextWidthPx)
-      setPanelWidthPxState(width)
-      persistDocumentLayout({ panelWidthPx: width }, true)
-    },
-    [isCurrentDocumentVisit, persistDocumentLayout],
+    (nextWidthPx: number) => persistDocumentLayout({ panelWidthPx: nextWidthPx }, true),
+    [persistDocumentLayout],
   )
 
-  React.useEffect(() => {
-    if (!documentId) return
-    persistDocumentLayout({ textMode }, true)
-  }, [documentId, textMode, persistDocumentLayout])
+  const setTextMode = React.useCallback(
+    (mode: DocumentTextMode) => persistDocumentLayout({ textMode: mode }, true),
+    [persistDocumentLayout],
+  )
 
   React.useEffect(() => {
     if (!documentId) return
@@ -553,67 +650,70 @@ export function useDocumentViewerPanelState() {
 
     const ids: string[] = []
     for (const chunk of chunks) {
-      const text = (chunk.content || '').toLowerCase()
+      const text = chunk.content.toLowerCase()
       if (text.includes(query)) ids.push(chunk.id)
     }
     return ids
   }, [chunks, chunkQuery])
 
   const resetServerMatches = React.useCallback(() => {
-    setServerMatchIds([])
-    setServerMatchTotal(0)
-    setServerMatchTruncated(false)
+    setServerMatches(null)
+    setServerMatchFailure(null)
     setServerMatchLoading(false)
   }, [])
 
   React.useEffect(() => {
     const query = chunkQuery.trim()
-    if (!documentId || !query) {
+    if (!documentId || !query || chunksLoaded) {
       resetServerMatches()
-      matchRequestSeqRef.current += 1
       return
     }
 
-    if (chunksLoaded) {
-      resetServerMatches()
-      matchRequestSeqRef.current += 1
-      return
-    }
-
-    const seq = ++matchRequestSeqRef.current
+    const controller = new AbortController()
+    matchReadControllerRef.current = controller
+    const isCurrentRead = () => !controller.signal.aborted && isCurrentDocumentVisit()
+    setServerMatchFailure(null)
     setServerMatchLoading(true)
     const loadServerMatches = async () => {
-      if (!isCurrentDocumentVisit() || seq !== matchRequestSeqRef.current) return
+      if (!isCurrentRead()) return
       try {
-        const res = await documentApi.getChunkMatches(documentId, { q: query, limit: 5000 })
-        if (seq !== matchRequestSeqRef.current) return
-        const items = res?.items || []
-        setServerMatchIds(items.map((item) => item.id))
-        setServerMatchTotal(Number(res?.total) || 0)
-        setServerMatchTruncated(Boolean(res?.truncated))
+        const response = await documentApi.getChunkMatches(
+          documentId,
+          { q: query, limit: 5000 },
+          { signal: controller.signal },
+        )
+        if (!isCurrentRead()) return
+        setServerMatches({ query, response })
+        setMatchCursor(0)
       } catch (err) {
-        if (seq !== matchRequestSeqRef.current) return
+        if (!isCurrentRead()) return
         reportClientError('Load chunk search matches failed', err)
-        setServerMatchIds([])
-        setServerMatchTotal(0)
-        setServerMatchTruncated(false)
+        setServerMatchFailure({ query, error: formatApiError(err, '搜索切片失败') })
       } finally {
-        if (seq !== matchRequestSeqRef.current) return
-        setServerMatchLoading(false)
+        if (isCurrentRead()) setServerMatchLoading(false)
       }
     }
 
     const timeoutId = globalThis.window.setTimeout(() => {
-      detachPromise(loadServerMatches())
+      void loadServerMatches()
     }, 250)
 
-    return () => globalThis.window.clearTimeout(timeoutId)
-  }, [documentId, chunkQuery, chunksLoaded, isCurrentDocumentVisit, resetServerMatches])
+    return () => {
+      globalThis.window.clearTimeout(timeoutId)
+      controller.abort()
+      if (matchReadControllerRef.current === controller) matchReadControllerRef.current = null
+    }
+  }, [documentId, chunkQuery, chunksLoaded, isCurrentDocumentVisit, resetServerMatches, searchReadAttempt])
+
+  const serverMatchError = serverMatchFailure?.query === chunkQuery.trim() ? serverMatchFailure.error : null
+  const serverMatchTruncated = serverMatches?.query === chunkQuery.trim() && serverMatches.response.truncated
 
   const matchChunkIds = React.useMemo(() => {
     if (!chunkQuery.trim()) return []
-    return chunksLoaded ? localMatchChunkIds : serverMatchIds
-  }, [chunkQuery, chunksLoaded, localMatchChunkIds, serverMatchIds])
+    if (chunksLoaded) return localMatchChunkIds
+    if (serverMatchLoading || serverMatchError !== null || serverMatches?.query !== chunkQuery.trim()) return []
+    return serverMatches.response.items.map((item) => item.id)
+  }, [chunkQuery, chunksLoaded, localMatchChunkIds, serverMatches, serverMatchLoading, serverMatchError])
 
   const chunkSearchPlaceholder = serverMatchLoading
     ? '搜索中…'
@@ -623,9 +723,10 @@ export function useDocumentViewerPanelState() {
 
   const chunkMatchSummary = React.useMemo(() => {
     if (!chunkQuery.trim()) return '—'
-    if (serverMatchLoading) return '…'
+    if (!chunksLoaded && serverMatchError !== null) return '搜索失败'
+    if (!chunksLoaded && (serverMatchLoading || serverMatches?.query !== chunkQuery.trim())) return '…'
     if (matchChunkIds.length) {
-      return `${matchCursor + 1}/${chunksLoaded ? matchChunkIds.length : serverMatchTotal || matchChunkIds.length}${!chunksLoaded && serverMatchTruncated ? '+' : ''}`
+      return `${matchCursor + 1}/${chunksLoaded ? matchChunkIds.length : serverMatches?.response.total}${!chunksLoaded && serverMatchTruncated ? '+' : ''}`
     }
     return '0/0'
   }, [
@@ -634,7 +735,8 @@ export function useDocumentViewerPanelState() {
     matchChunkIds.length,
     matchCursor,
     serverMatchLoading,
-    serverMatchTotal,
+    serverMatchError,
+    serverMatches,
     serverMatchTruncated,
   ])
 
@@ -653,62 +755,51 @@ export function useDocumentViewerPanelState() {
     setMatchCursor(0)
   }, [chunkQuery])
 
-  const rawFileUrl = documentId ? `${API_V1_BASE_URL}/documents/${documentId}/download` : null
+  const fileUrl = documentId === null ? null : `${API_V1_BASE_URL}/documents/${documentId}/download`
 
-  const rawDownloadUrl = React.useMemo(() => {
-    if (!documentId) return null
-    const url = new URL(
-      toAbsoluteBackendUrl(`/api/v1/documents/${documentId}/download`),
-      globalThis.window?.location.origin || 'http://localhost',
-    )
-    url.searchParams.set('inline', '0')
-    return url.toString()
-  }, [documentId])
-
-  const shouldResolveDownloadUrl = isOpen && activeTab === 'preview'
-  const fileUrl = rawFileUrl
-  const downloadUrl = useResolvedAuthAssetUrl(rawDownloadUrl, {
-    enabled: shouldResolveDownloadUrl,
-  })
-
-  const buildChunkLink = React.useCallback(
-    (chunkId: string, range?: { start?: number | null; end?: number | null }) => {
-      if (!documentId) return ''
-      try {
-        const url = new URL('/', globalThis.window.location.origin)
-        url.searchParams.set('doc', documentId)
-        url.searchParams.set('chunk', chunkId)
-        const start = range?.start
-        const end = range?.end
-        if (
-          typeof start === 'number' &&
-          Number.isFinite(start) &&
-          typeof end === 'number' &&
-          Number.isFinite(end) &&
-          end > start
-        ) {
-          url.searchParams.set('start', String(Math.trunc(start)))
-          url.searchParams.set('end', String(Math.trunc(end)))
-        }
-        return url.toString()
-      } catch {
-        return ''
+  const downloadOriginalFile = React.useCallback(async () => {
+    if (documentId === null || doc === null || doc.id !== documentId || !isCurrentDocumentVisit()) return
+    const sessionKey = getAuthSessionKey()
+    if (activeDownloadRef.current?.visit === documentVisit && activeDownloadRef.current.sessionKey === sessionKey)
+      return
+    const request: DocumentDownloadRequest = { visit: documentVisit, sessionKey }
+    activeDownloadRef.current = request
+    setDownloadResult({ request, status: 'processing' })
+    try {
+      const blob = await documentApi.download(documentId, { inline: false })
+      if (
+        !isCurrentDocumentVisit() ||
+        activeDownloadRef.current !== request ||
+        request.sessionKey !== getAuthSessionKey()
+      )
+        return
+      downloadBlob(doc.filename, blob)
+    } catch (error: unknown) {
+      if (
+        isCurrentDocumentVisit() &&
+        activeDownloadRef.current === request &&
+        request.sessionKey === getAuthSessionKey()
+      ) {
+        setDownloadResult({ request, status: 'error', message: formatApiError(error, '下载原文件失败') })
       }
-    },
-    [documentId],
-  )
+    } finally {
+      if (activeDownloadRef.current === request) activeDownloadRef.current = null
+      if (isCurrentDocumentVisit()) {
+        setDownloadResult((previous) =>
+          previous?.request === request && previous.status === 'processing' ? null : previous,
+        )
+      }
+    }
+  }, [documentId, doc, documentVisit, isCurrentDocumentVisit])
 
   const copyText = React.useCallback(
     async (text: string, okMsg: string) => {
       if (!isCurrentDocumentVisit()) return
-      const value = (text || '').trim()
-      if (!value) return
-
       try {
         if (typeof navigator === 'undefined' || !navigator.clipboard?.writeText) {
           throw new Error('Clipboard API unavailable')
         }
-        await navigator.clipboard.writeText(value)
+        await navigator.clipboard.writeText(text)
         if (isCurrentDocumentVisit()) toast.success(okMsg)
       } catch (error) {
         if (!isCurrentDocumentVisit()) return
@@ -719,38 +810,35 @@ export function useDocumentViewerPanelState() {
     [isCurrentDocumentVisit],
   )
 
-  const copyChunkContent = React.useCallback(
-    (content: string) => {
-      detachPromise(copyText(content, '已复制切片内容'))
-    },
-    [copyText],
-  )
+  const copyChunkContent = React.useCallback((content: string) => copyText(content, '已复制切片内容'), [copyText])
 
   const copyChunkLink = React.useCallback(
-    (chunk: DocumentChunk) => {
-      detachPromise(
-        copyText(
-          buildChunkLink(chunk.id, {
-            start: typeof chunk.start_char === 'number' ? chunk.start_char : null,
-            end: typeof chunk.end_char === 'number' ? chunk.end_char : null,
-          }),
-          '已复制定位链接',
-        ),
-      )
+    async (location: DocumentChunkLocation) => {
+      if (documentId === null || !isCurrentDocumentVisit()) return
+      const url = new URL('/', globalThis.window.location.origin)
+      url.searchParams.set('doc', documentId)
+      url.searchParams.set('chunk', location.id)
+      const start = location.start_char
+      const end = location.end_char
+      if (typeof start === 'number' && typeof end === 'number' && end > start) {
+        url.searchParams.set('start', String(start))
+        url.searchParams.set('end', String(end))
+      }
+      await copyText(url.toString(), '已复制定位链接')
     },
-    [buildChunkLink, copyText],
+    [copyText, documentId, isCurrentDocumentVisit],
   )
 
-  const canEditChunks = Boolean(doc && !['pending', 'processing'].includes(String(doc.status || '').toLowerCase()))
-  const canRerunRetrieve = Boolean(retrieveQuery.trim())
+  const canEditChunks = doc !== null && doc.status !== 'pending' && doc.status !== 'processing'
+  const canRerunRetrieve = retrieveQuery.trim() !== ''
 
   const clearRetrievePreview = React.useCallback(() => {
     if (!isCurrentDocumentVisit()) return
-    retrieveRequestSeqRef.current += 1
-    setRetrieveCitations([])
-    setRetrieveError(null)
+    cancelRetrieveRead()
+    setRetrieveResult(null)
+    setRetrieveFailure(null)
     setRetrieveLoading(false)
-  }, [isCurrentDocumentVisit])
+  }, [cancelRetrieveRead, isCurrentDocumentVisit])
 
   const runRetrievePreviewForQuery = React.useCallback(
     async (query: string) => {
@@ -758,29 +846,39 @@ export function useDocumentViewerPanelState() {
       const normalized = query.trim()
       if (!normalized) return
 
-      const requestSeq = ++retrieveRequestSeqRef.current
+      cancelRetrieveRead()
+      const requestSeq = retrieveRequestSeqRef.current
+      const controller = new AbortController()
+      retrieveReadControllerRef.current = controller
       setRetrieveLoading(true)
-      setRetrieveError(null)
+      setRetrieveFailure(null)
       try {
-        const res = await ragApi.retrievePreview({
-          query: normalized,
-          document_ids: [documentId],
-          include_structure_trace: false,
-        })
+        const res = await ragApi.retrievePreview(
+          {
+            query: normalized,
+            document_ids: [documentId],
+            include_structure_trace: false,
+          },
+          { signal: controller.signal },
+        )
         if (requestSeq !== retrieveRequestSeqRef.current) return
-        const raw = Array.isArray(res?.citations) ? res.citations : []
-        const items = raw.map(toCitation).filter((citation): citation is Citation => citation !== null)
-        setRetrieveCitations(items.filter((citation) => citation.document_id === documentId))
+        const items = res.citations.map(parseRetrievalCitation)
+        setRetrieveResult({
+          query: normalized,
+          citations: items.filter((citation) => citation.document_id === documentId),
+        })
       } catch (err) {
         if (requestSeq !== retrieveRequestSeqRef.current) return
         reportClientError('Run retrieve preview failed', err)
-        setRetrieveError('检索测试失败，请稍后重试')
-        setRetrieveCitations([])
+        setRetrieveFailure({ query: normalized, error: '检索测试失败，请稍后重试' })
       } finally {
-        if (requestSeq === retrieveRequestSeqRef.current) setRetrieveLoading(false)
+        if (requestSeq === retrieveRequestSeqRef.current) {
+          retrieveReadControllerRef.current = null
+          setRetrieveLoading(false)
+        }
       }
     },
-    [documentId, isCurrentDocumentVisit],
+    [cancelRetrieveRead, documentId, isCurrentDocumentVisit],
   )
 
   const openCreateChunk = React.useCallback(() => {
@@ -804,7 +902,7 @@ export function useDocumentViewerPanelState() {
       setChunkEditorSubmitting(false)
       setChunkEditorMode('edit')
       setChunkEditorTarget(chunk)
-      setChunkEditorContent(chunk.content || '')
+      setChunkEditorContent(chunk.content)
       setChunkEditorPageNumber(typeof chunk.page_number === 'number' ? String(chunk.page_number) : '')
       setChunkEditorStartChar(typeof chunk.start_char === 'number' ? String(chunk.start_char) : '')
       setChunkEditorEndChar(typeof chunk.end_char === 'number' ? String(chunk.end_char) : '')
@@ -819,35 +917,40 @@ export function useDocumentViewerPanelState() {
       if (!documentId || !isCurrentDocumentVisit()) return
       if (!canEditChunks) return
 
-      const content = (chunkEditorContent || '').trim()
-      if (!content) {
+      const content = chunkEditorContent
+      if (chunkEditorMode === 'create' && content.length === 0) {
         toast.error('切片内容不能为空')
         return
       }
 
-      const pageNumber = parseOptionalChunkNumber(chunkEditorPageNumber)
-      const startChar = parseOptionalChunkNumber(chunkEditorStartChar)
-      const endChar = parseOptionalChunkNumber(chunkEditorEndChar)
-      if (startChar != null && endChar != null && endChar <= startChar) {
-        toast.error('End Char 必须大于 Start Char')
+      let positions: ReturnType<typeof parseChunkPositions>
+      try {
+        positions = parseChunkPositions({
+          pageNumber: chunkEditorPageNumber,
+          startChar: chunkEditorStartChar,
+          endChar: chunkEditorEndChar,
+        })
+      } catch (error) {
+        toast.error(formatApiError(error, '位置输入不正确'))
         return
       }
 
       const previewRequestAtSave = retrieveRequestSeqRef.current
+      const saveSessionKey = getAuthSessionKey()
       const targetChunkId = chunkEditorTarget?.id
       const editorEpoch = ++chunkEditorEpochRef.current
+      const mutationSequence = ++chunkMutationSeqRef.current
       setChunkEditorSubmitting(true)
       try {
         let savedChunk: DocumentChunk | null = null
         if (chunkEditorMode === 'create') {
           const created = await documentApi.createChunk(documentId, {
             content,
-            page_number: pageNumber,
-            start_char: startChar,
-            end_char: endChar,
+            ...positions,
             metadata: {},
           })
-          if (isCurrentDocumentVisit()) {
+          if (isCurrentDocumentVisit() && acceptChunkMutation(created.id, mutationSequence)) {
+            restartPendingChunkRead()
             if (chunkEditorEpochRef.current === editorEpoch) toast.success('切片已创建')
             if (!chunksLoaded) setLoadAllChunks(true)
             setChunks((prev) => [...prev, created])
@@ -867,14 +970,21 @@ export function useDocumentViewerPanelState() {
           if (!target) return
           const updated = await documentApi.updateChunk(documentId, target.id, {
             content,
-            page_number: pageNumber,
-            start_char: startChar,
-            end_char: endChar,
+            ...positions,
           })
-          if (isCurrentDocumentVisit()) {
+          if (isCurrentDocumentVisit() && acceptChunkMutation(updated.id, mutationSequence)) {
+            restartPendingChunkRead()
+            if (!chunksLoaded) {
+              matchReadControllerRef.current?.abort()
+              resetServerMatches()
+              setSearchReadAttempt((attempt) => attempt + 1)
+            }
+            cancelHighlightRead(updated.id)
             if (chunkEditorEpochRef.current === editorEpoch) toast.success('切片已更新')
             setChunks((prev) => prev.map((chunk) => (chunk.id === updated.id ? updated : chunk)))
-            setHighlightChunkState((prev) => (prev?.id === updated.id ? updated : prev))
+            if (useDocumentView.getState().highlightChunkId === updated.id) {
+              setHighlightChunkState({ documentId, chunk: updated })
+            }
             if (chunkEditorEpochRef.current === editorEpoch) setHighlightChunk(updated.id)
           }
           savedChunk = updated
@@ -889,13 +999,14 @@ export function useDocumentViewerPanelState() {
         }
 
         // Finish the accepted write against its original chunk, including requested re-embedding.
-        if (savedChunk && mode !== 'save') {
+        if (savedChunk && mode !== 'save' && getAuthSessionKey() === saveSessionKey) {
           const savedChunkId = savedChunk.id
           try {
             const res = await documentApi.reembedChunks(documentId, {
               chunk_ids: [savedChunkId],
               include_disabled: Boolean(savedChunk.disabled_at),
             })
+            if (res.reembedded !== 1) throw new Error('重嵌入未更新目标切片')
             if (isCurrentDocumentVisit() && chunkEditorEpochRef.current === editorEpoch) {
               toast.success(`已重新嵌入 ${res.reembedded} 个切片`)
             }
@@ -919,7 +1030,7 @@ export function useDocumentViewerPanelState() {
               tags: { document_id: documentId, chunk_id: savedChunkId },
             })
             if (isCurrentDocumentVisit() && chunkEditorEpochRef.current === editorEpoch) {
-              toast.error(formatApiError(err, '切片已保存，但后续重嵌入失败'))
+              toast.warning(`切片已保存，重嵌入失败。 ${formatApiError(err, '请重试向量更新')}`)
             }
           }
         }
@@ -935,6 +1046,8 @@ export function useDocumentViewerPanelState() {
       }
     },
     [
+      acceptChunkMutation,
+      cancelHighlightRead,
       canEditChunks,
       chunkEditorContent,
       chunkEditorEndChar,
@@ -947,21 +1060,26 @@ export function useDocumentViewerPanelState() {
       isCurrentDocumentVisit,
       retrieveQuery,
       rowVirtualizer,
+      restartPendingChunkRead,
+      resetServerMatches,
       runRetrievePreviewForQuery,
       setHighlightChunk,
     ],
   )
 
-  const deleteChunk = React.useCallback(
+  const handleDeleteChunk = React.useCallback(
     async (chunk: DocumentChunk) => {
       if (!documentId || !isCurrentDocumentVisit()) return
       if (!canEditChunks) return
 
       const chunkId = chunk.id
+      const mutationSequence = ++chunkMutationSeqRef.current
       setChunkDeleteSubmitting(chunkId)
       try {
         await documentApi.deleteChunk(documentId, chunkId)
-        if (!isCurrentDocumentVisit()) return
+        if (!isCurrentDocumentVisit() || !acceptChunkMutation(chunkId, mutationSequence)) return
+        restartPendingChunkRead()
+        cancelHighlightRead(chunkId)
         toast.success('切片已删除')
         setChunks((prev) => prev.filter((item) => item.id !== chunkId))
         setDoc((prev) =>
@@ -983,38 +1101,51 @@ export function useDocumentViewerPanelState() {
         })
       } catch (err) {
         reportClientError('Delete chunk failed', err, { tags: { document_id: documentId, chunk_id: chunkId } })
-        if (isCurrentDocumentVisit()) toast.error(formatApiError(err, '切片删除失败'))
+        if (isCurrentDocumentVisit()) throw err
       } finally {
         if (isCurrentDocumentVisit()) {
           setChunkDeleteSubmitting((current) => (current === chunkId ? null : current))
         }
       }
     },
-    [canEditChunks, documentId, isCurrentDocumentVisit, rowVirtualizer, setHighlightChunk],
-  )
-
-  const handleDeleteChunk = React.useCallback(
-    (chunk: DocumentChunk) => {
-      detachPromise(deleteChunk(chunk))
-    },
-    [deleteChunk],
+    [
+      acceptChunkMutation,
+      cancelHighlightRead,
+      canEditChunks,
+      documentId,
+      isCurrentDocumentVisit,
+      restartPendingChunkRead,
+      rowVirtualizer,
+      setHighlightChunk,
+    ],
   )
 
   const runQaGeneration = React.useCallback(async () => {
     if (!documentId || !isCurrentDocumentVisit()) return
     if (!canEditChunks) return
 
+    let numPairs: number
+    let maxSourceChars: number
+    try {
+      numPairs = parseIntegerInput(qaNumPairsInput, { label: '问答数量', min: 1, max: 200 })
+      maxSourceChars = parseIntegerInput(qaMaxSourceCharsInput, { label: '来源字符数', min: 500, max: 200_000 })
+    } catch (error) {
+      toast.error(formatApiError(error, '问答设置不正确'))
+      return
+    }
+
     const qaEpoch = ++qaDialogEpochRef.current
     setQaSubmitting(true)
     try {
       const res = await documentApi.generateQa(documentId, {
-        num_pairs: Math.max(1, Math.trunc(Number(qaNumPairs) || 0)),
+        num_pairs: numPairs,
         replace_existing: qaReplaceExisting,
         prefer_llm: qaPreferLlm,
-        max_source_chars: Math.max(500, Math.trunc(Number(qaMaxSourceChars) || 0)),
+        max_source_chars: maxSourceChars,
         preview_pairs: 5,
       })
       if (!isCurrentDocumentVisit()) return
+      restartPendingChunkRead()
       if (qaDialogEpochRef.current === qaEpoch) {
         setQaLastResult(res)
         toast.success(`Q&A: +${res.created} (-${res.deleted}) [${res.mode}]`)
@@ -1024,7 +1155,7 @@ export function useDocumentViewerPanelState() {
         prev
           ? {
               ...prev,
-              chunk_count: (prev.chunk_count || 0) + (res.created || 0) - (res.deleted || 0),
+              chunk_count: prev.chunk_count + res.created - res.deleted,
             }
           : prev,
       )
@@ -1049,14 +1180,15 @@ export function useDocumentViewerPanelState() {
     canEditChunks,
     documentId,
     isCurrentDocumentVisit,
-    qaMaxSourceChars,
-    qaNumPairs,
+    qaMaxSourceCharsInput,
+    qaNumPairsInput,
     qaPreferLlm,
     qaReplaceExisting,
+    restartPendingChunkRead,
     setHighlightChunk,
   ])
 
-  const canInlinePreview = (doc?.file_type || '').toLowerCase() === 'pdf'
+  const canInlinePreview = doc?.file_type?.toLowerCase() === 'pdf'
 
   const jumpToMatch = React.useCallback(
     (nextIndex: number) => {
@@ -1065,7 +1197,7 @@ export function useDocumentViewerPanelState() {
       const clamped = ((nextIndex % matchChunkIds.length) + matchChunkIds.length) % matchChunkIds.length
       setMatchCursor(clamped)
       setActiveTab('chunks')
-      setHighlightChunk(matchChunkIds[clamped] || null)
+      setHighlightChunk(matchChunkIds[clamped])
     },
     [isCurrentDocumentVisit, matchChunkIds, setActiveTab, setHighlightChunk],
   )
@@ -1090,7 +1222,7 @@ export function useDocumentViewerPanelState() {
   React.useEffect(() => {
     if (!isOpen) return
     const onKeyDown = (event: KeyboardEvent) => {
-      if (!isCurrentDocumentVisit()) return
+      if (event.defaultPrevented || event.isComposing || !isCurrentDocumentVisit()) return
       const noModifier = !event.metaKey && !event.ctrlKey && !event.altKey
       const typingTarget = isTypingTarget(event.target)
 
@@ -1222,6 +1354,29 @@ export function useDocumentViewerPanelState() {
     })
   }, [isCurrentDocumentVisit, sourceContext])
 
+  const retryDocument = React.useCallback(() => {
+    if (isCurrentDocumentVisit()) setDocumentReadAttempt((attempt) => attempt + 1)
+  }, [isCurrentDocumentVisit])
+
+  const retryChunks = React.useCallback(() => {
+    if (!isCurrentDocumentVisit()) return
+    setLoadAllChunks(true)
+    setChunksLoaded(false)
+    setChunksReadAttempt((attempt) => attempt + 1)
+  }, [isCurrentDocumentVisit])
+
+  const retryParsedContent = React.useCallback(() => {
+    if (isCurrentDocumentVisit()) setParsedReadAttempt((attempt) => attempt + 1)
+  }, [isCurrentDocumentVisit])
+
+  const retryChunkSearch = React.useCallback(() => {
+    if (isCurrentDocumentVisit()) setSearchReadAttempt((attempt) => attempt + 1)
+  }, [isCurrentDocumentVisit])
+
+  const retryHighlightedChunk = React.useCallback(() => {
+    if (isCurrentDocumentVisit()) setHighlightReadAttempt((attempt) => attempt + 1)
+  }, [isCurrentDocumentVisit])
+
   return {
     activeTab,
     canEditChunks,
@@ -1244,13 +1399,18 @@ export function useDocumentViewerPanelState() {
     chunksListRef,
     chunksLoaded,
     chunksLoading,
+    chunksError,
     clearRetrievePreview,
     closeDocument,
     copyChunkContent,
     copyChunkLink,
     doc,
+    documentError,
     documentId,
-    downloadUrl,
+    canDownloadOriginalFile,
+    downloadOriginalFile,
+    downloadLoading,
+    downloadError,
     fileUrl,
     handleActiveTabChange,
     handleChunkEditorOpenChange,
@@ -1259,9 +1419,10 @@ export function useDocumentViewerPanelState() {
     handleQaDialogOpenChange,
     handleSelectTextChunkIndex,
     handleTextScrollTopChange,
-    highlightChunk,
+    highlightContent,
     highlightChunkId,
     highlightChunkLoading,
+    highlightChunkError,
     highlightRange: highlightRange ?? null,
     isExpanded,
     isLoading,
@@ -1280,20 +1441,27 @@ export function useDocumentViewerPanelState() {
     previewAnchor: resolvedPreviewAnchor,
     qaDialogOpen,
     qaLastResult,
-    qaMaxSourceChars,
-    qaNumPairs,
+    qaMaxSourceCharsInput,
+    qaNumPairsInput,
     qaPreferLlm,
     qaReplaceExisting,
     qaSubmitting,
-    rawFileUrl,
     retrieveCitations,
     retrieveError,
+    retrieveFailedQuery,
     retrieveLoading,
     retrieveQuery,
+    retrieveResultQuery,
+    retryDocument,
+    retryChunks,
+    retryParsedContent,
+    retryChunkSearch,
+    retryHighlightedChunk,
     rowVirtualizer,
     runQaGeneration,
     runRetrievePreview,
     serverMatchTruncated,
+    serverMatchError,
     sourceContext,
     setChunkEditorContent,
     setChunkEditorEndChar,
@@ -1304,17 +1472,17 @@ export function useDocumentViewerPanelState() {
     setIsExpanded,
     setPanelWidthPx,
     setLoadAllChunks,
-    setQaMaxSourceChars,
-    setQaNumPairs,
+    setQaMaxSourceCharsInput,
+    setQaNumPairsInput,
     setQaPreferLlm,
     setQaReplaceExisting,
-    setRetrieveCitations,
-    setRetrieveError,
     setRetrieveQuery,
     setTextMode,
     submitChunkEditor,
     textActiveChunkIndex,
     textChunkItems,
+    textHighlightRange,
+    textUnpositionedChunkCount,
     textInitialScrollTop: pendingTextScrollRestoreRef.current ?? 0,
     textMode,
     textValue,

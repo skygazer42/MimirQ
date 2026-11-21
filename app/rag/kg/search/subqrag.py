@@ -1,6 +1,6 @@
 from typing import Any
 
-from app.rag.core.text import heuristic_decompose_query
+from app.query.expand import heuristic_decompose_query
 from app.rag.kg.search.method_router import route_kg_search_method
 
 _TRAILING_PUNCT = " \t\r\n,;:!?，。；：！？"
@@ -31,12 +31,13 @@ def build_subqrag_plan(query: str, *, max_subqueries: int = 3) -> dict[str, Any]
             }
         )
 
+    requires_fusion = len(subqueries) > 1
     return {
         "planner": "deterministic_subqrag_proxy",
         "query": root_query,
         "subqueries": subqueries,
-        "requires_fusion": len(subqueries) > 1,
-        "fusion_strategy": ("rank_then_union" if len(subqueries) > 1 else "single_route"),
+        "requires_fusion": requires_fusion,
+        "fusion_strategy": "rank_then_union" if requires_fusion else "single_route",
     }
 
 

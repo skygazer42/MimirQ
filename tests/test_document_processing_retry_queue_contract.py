@@ -1,11 +1,15 @@
 import uuid
+from copy import deepcopy
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 from fastapi import BackgroundTasks, HTTPException
 
-from app.api.v1 import document_processing
+from app.rag.ingestion.indexing import indexer as indexer_module
+from app.rag.ingestion.indexing.support import recovery
+from app.services.documents import processing as document_processing
+from app.services.documents import processing_dispatch as document_dispatch
 
 
 class _Query:
@@ -37,18 +41,42 @@ class _DB:
         self.commits = 0
         self.rollbacks = 0
         self.deletes: list[object] = []
+        self._durable = deepcopy(vars(document))
 
     def query(self, model):  # noqa: ANN001, ANN201
         return _Query(self.document, model=model, deletes=self.deletes)
 
     def commit(self) -> None:
         self.commits += 1
+        self._durable = deepcopy(vars(self.document))
 
     def refresh(self, _obj) -> None:  # noqa: ANN001
-        return None
+        vars(self.document).clear()
+        vars(self.document).update(deepcopy(self._durable))
 
     def rollback(self) -> None:
         self.rollbacks += 1
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_args):
+        return None
+
+
+def _use_fake_retry_dependencies(monkeypatch: pytest.MonkeyPatch, db: _DB) -> None:
+    async def prepare(callback, *, recover_cancelled):
+        return callback(db)
+
+    async def run_blocking(callback, *args, **kwargs):
+        return callback(*args, **kwargs)
+
+    monkeypatch.setattr(document_processing, "prepare_managed_handoff", prepare)
+    monkeypatch.setattr(document_processing, "assert_document_writable_for_lifecycle", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(document_processing.dataset_service, "ensure_member", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(document_processing, "reconcile_document_index_channels", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(document_dispatch, "SessionLocal", lambda: db)
+    monkeypatch.setattr(document_dispatch, "run_blocking_in_thread", run_blocking)
 
 
 class _ScopedCleanupQuery:
@@ -174,6 +202,7 @@ async def test_retry_document_processing_fails_closed_when_queue_handoff_fails(
         filename="retry.txt",
         status="failed",
         processing_progress=100,
+        processing_attempts=1,
         current_stage="failed",
         failed_stage="parse",
         error_code="boom",
@@ -199,35 +228,22 @@ async def test_retry_document_processing_fails_closed_when_queue_handoff_fails(
     async def _no_task(**_kwargs):  # noqa: ANN003, ANN202
         return None
 
-    monkeypatch.setattr(documents_module.settings, "TASK_QUEUE_ENABLED", True, raising=False)
-    monkeypatch.setattr(documents_module.dataset_service, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
+    _use_fake_retry_dependencies(monkeypatch, db)
     monkeypatch.setattr(
-        documents_module.dataset_service,
-        "get_dataset",
-        lambda *_args, **_kwargs: SimpleNamespace(id=document.dataset_id),
-        raising=True,
-    )
-    monkeypatch.setattr(
-        documents_module.dataset_service,
-        "assert_dataset_writable",
-        lambda *_args, **_kwargs: None,
-        raising=True,
-    )
-    monkeypatch.setattr(
-        documents_module,
+        indexer_module,
         "Indexer",
         lambda _db: SimpleNamespace(
             delete_chunk_indexes=lambda **_kwargs: cleanup_calls.append("chunks"),
             delete_event_indexes=lambda **_kwargs: cleanup_calls.append("events"),
         ),
-        raising=False,
+        raising=True,
     )
     monkeypatch.setattr(documents_module, "compute_pipeline_hash", lambda _meta: "stable-pipeline", raising=True)
-    monkeypatch.setattr(documents_module, "enqueue_document_processing", _no_task, raising=True)
+    monkeypatch.setattr(document_dispatch, "enqueue_document_processing", _no_task, raising=True)
     monkeypatch.setattr(documents_module.settings, "TASK_QUEUE_ENABLED", True, raising=True)
 
     with pytest.raises(HTTPException) as exc_info:
-        await document_processing.retry_document_processing(
+        await document_processing.retry_document(
             document_id=document.id,
             background_tasks=BackgroundTasks(),
             force=True,
@@ -237,7 +253,7 @@ async def test_retry_document_processing_fails_closed_when_queue_handoff_fails(
         )
 
     assert exc_info.value.status_code == 503
-    assert exc_info.value.detail == documents_module.document_dispatch.DOCUMENT_PROCESSING_QUEUE_UNAVAILABLE_DETAIL
+    assert exc_info.value.detail == document_dispatch.DOCUMENT_PROCESSING_QUEUE_UNAVAILABLE_DETAIL
     assert document.status == "failed"
     assert document.current_stage == "failed"
     assert document.error_message == "document_processing_schedule_failed"
@@ -269,6 +285,7 @@ async def test_retry_document_processing_hash_ignores_parser_backend_resolved_dr
         filename="retry-stable.txt",
         status="completed",
         processing_progress=100,
+        processing_attempts=1,
         current_stage="completed",
         failed_stage=None,
         error_code=None,
@@ -293,21 +310,8 @@ async def test_retry_document_processing_hash_ignores_parser_backend_resolved_dr
     async def _task(**_kwargs):  # noqa: ANN003, ANN202
         return "task-123"
 
-    monkeypatch.setattr(documents_module.settings, "TASK_QUEUE_ENABLED", True, raising=False)
-    monkeypatch.setattr(documents_module.dataset_service, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
-    monkeypatch.setattr(
-        documents_module.dataset_service,
-        "get_dataset",
-        lambda *_args, **_kwargs: SimpleNamespace(id=document.dataset_id),
-        raising=True,
-    )
-    monkeypatch.setattr(
-        documents_module.dataset_service,
-        "assert_dataset_writable",
-        lambda *_args, **_kwargs: None,
-        raising=True,
-    )
-    monkeypatch.setattr(documents_module, "enqueue_document_processing", _task, raising=True)
+    _use_fake_retry_dependencies(monkeypatch, db)
+    monkeypatch.setattr(document_dispatch, "enqueue_document_processing", _task, raising=True)
     monkeypatch.setattr(documents_module.settings, "TASK_QUEUE_ENABLED", True, raising=True)
     monkeypatch.setattr(
         documents_module,
@@ -319,7 +323,7 @@ async def test_retry_document_processing_hash_ignores_parser_backend_resolved_dr
         {key: value for key, value in document.doc_metadata.items() if key != "parser_backend_resolved"}
     )
 
-    result = await document_processing.retry_document_processing(
+    result = await document_processing.retry_document(
         document_id=document.id,
         background_tasks=BackgroundTasks(),
         force=True,
@@ -328,7 +332,7 @@ async def test_retry_document_processing_hash_ignores_parser_backend_resolved_dr
         db=db,
     )
 
-    assert result["status"] == "pending"
+    assert result.status == "pending"
     assert document.doc_metadata["pipeline_hash"] == expected_hash
     assert document.doc_metadata["pipeline_execution_identity"]["pipeline_hash"] == expected_hash
 
@@ -338,8 +342,6 @@ async def test_retry_document_processing_local_fallback_preserves_then_consumes_
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    from app.parsing.processors import processor
-
     documents_module = document_processing
     source = tmp_path / "retry-local.txt"
     source.write_text("hello", encoding="utf-8")
@@ -352,6 +354,7 @@ async def test_retry_document_processing_local_fallback_preserves_then_consumes_
         filename="retry-local.txt",
         status="failed",
         processing_progress=100,
+        processing_attempts=1,
         current_stage="failed",
         failed_stage="parse",
         error_code="boom",
@@ -396,7 +399,7 @@ async def test_retry_document_processing_local_fallback_preserves_then_consumes_
                 "retry_cleanup_before": dict(document.doc_metadata.get("retry_cleanup") or {}),
             }
         )
-        processor.DocumentProcessorService()._apply_pending_retry_cleanup(
+        recovery.apply_pending_retry_cleanup(
             db,
             db_document=document,
             tenant_id=tenant_id,
@@ -406,27 +409,14 @@ async def test_retry_document_processing_local_fallback_preserves_then_consumes_
     async def _no_task(**_kwargs):  # noqa: ANN003, ANN202
         return None
 
-    monkeypatch.setattr(documents_module.settings, "TASK_QUEUE_ENABLED", False, raising=False)
-    monkeypatch.setattr(documents_module.dataset_service, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
-    monkeypatch.setattr(
-        documents_module.dataset_service,
-        "get_dataset",
-        lambda *_args, **_kwargs: SimpleNamespace(id=document.dataset_id),
-        raising=True,
-    )
-    monkeypatch.setattr(
-        documents_module.dataset_service,
-        "assert_dataset_writable",
-        lambda *_args, **_kwargs: None,
-        raising=True,
-    )
+    _use_fake_retry_dependencies(monkeypatch, db)
     monkeypatch.setattr(documents_module, "compute_pipeline_hash", lambda _meta: "stable-pipeline", raising=True)
-    monkeypatch.setattr(documents_module, "enqueue_document_processing", _no_task, raising=True)
+    monkeypatch.setattr(document_dispatch, "enqueue_document_processing", _no_task, raising=True)
     monkeypatch.setattr(documents_module.settings, "TASK_QUEUE_ENABLED", False, raising=True)
-    monkeypatch.setattr(documents_module.document_dispatch, "run_document_processing_limited", _process, raising=True)
-    monkeypatch.setattr(processor, "Indexer", _Indexer)
+    monkeypatch.setattr(document_dispatch, "run_document_processing_limited", _process, raising=True)
+    monkeypatch.setattr(indexer_module, "Indexer", _Indexer)
 
-    result = await document_processing.retry_document_processing(
+    result = await document_processing.retry_document(
         document_id=document.id,
         background_tasks=background_tasks,
         force=True,
@@ -435,8 +425,8 @@ async def test_retry_document_processing_local_fallback_preserves_then_consumes_
         db=db,
     )
 
-    assert result["status"] == "pending"
-    assert result["current_stage"] == "queued"
+    assert result.status == "pending"
+    assert result.current_stage == "queued"
     assert document.doc_metadata.get("retry_cleanup") == {
         "version": "1",
         "force": True,
@@ -463,8 +453,8 @@ async def test_retry_document_processing_local_fallback_preserves_then_consumes_
         }
     ]
     assert cleanup_calls == ["chunks", "events"]
-    assert processor.DocumentParsedContent in db.deletes
-    assert processor.DocumentChunk in db.deletes
+    assert recovery.DocumentParsedContent in db.deletes
+    assert recovery.DocumentChunk in db.deletes
     assert document.doc_metadata.get("retry_cleanup") is None
     assert document.doc_metadata.get("ingest_checkpoint") is None
     assert document.doc_metadata.get("parsed_content_persisted") is None
@@ -474,8 +464,6 @@ async def test_retry_document_processing_local_fallback_preserves_then_consumes_
 
 
 def test_document_worker_applies_deferred_retry_cleanup(monkeypatch: pytest.MonkeyPatch) -> None:
-    from app.parsing.processors import processor
-
     document = SimpleNamespace(
         doc_metadata={
             "pipeline_hash": "stable-pipeline",
@@ -507,10 +495,10 @@ def test_document_worker_applies_deferred_retry_cleanup(monkeypatch: pytest.Monk
         def delete_event_indexes(self, **_kwargs) -> None:  # noqa: ANN003
             cleanup_calls.append("events")
 
-    monkeypatch.setattr(processor, "Indexer", _Indexer)
+    monkeypatch.setattr(indexer_module, "Indexer", _Indexer)
 
     assert (
-        processor.DocumentProcessorService()._apply_pending_retry_cleanup(
+        recovery.apply_pending_retry_cleanup(
             db,
             db_document=document,
             tenant_id=uuid.uuid4(),
@@ -520,8 +508,8 @@ def test_document_worker_applies_deferred_retry_cleanup(monkeypatch: pytest.Monk
     )
 
     assert cleanup_calls == ["chunks", "events"]
-    assert processor.DocumentParsedContent in db.deletes
-    assert processor.DocumentChunk in db.deletes
+    assert recovery.DocumentParsedContent in db.deletes
+    assert recovery.DocumentChunk in db.deletes
     assert document.doc_metadata.get("retry_cleanup") is None
     assert document.doc_metadata.get("img_ids") is None
     assert document.doc_metadata.get("ingest_checkpoint") is None
@@ -533,8 +521,6 @@ def test_document_worker_applies_deferred_retry_cleanup(monkeypatch: pytest.Monk
 def test_document_worker_scoped_retry_cleanup_only_deletes_target_version(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from app.parsing.processors import processor
-
     document_id = uuid.uuid4()
     tenant_id = uuid.uuid4()
     pipeline_hash = "retry-pipeline"
@@ -563,20 +549,23 @@ def test_document_worker_scoped_retry_cleanup_only_deletes_target_version(
     )
     index_calls: list[tuple[str, object]] = []
     db = _ScopedCleanupDB(
-        document_chunk_model=processor.DocumentChunk,
-        parsed_content_model=processor.DocumentParsedContent,
+        document_chunk_model=recovery.DocumentChunk,
+        parsed_content_model=recovery.DocumentParsedContent,
         target_key=target_key,
         active_key=active_key,
         target_chunk_ids=target_chunk_ids,
         active_chunk_id=active_chunk_id,
     )
-    monkeypatch.setattr(processor, "Indexer", lambda _db: _ScopedCleanupIndexer(index_calls))
+    monkeypatch.setattr(indexer_module, "Indexer", lambda _db: _ScopedCleanupIndexer(index_calls))
 
-    assert processor.DocumentProcessorService()._apply_pending_retry_cleanup(
-        db,
-        db_document=document,
-        tenant_id=tenant_id,
-        document_id=document_id,
+    assert (
+        recovery.apply_pending_retry_cleanup(
+            db,
+            db_document=document,
+            tenant_id=tenant_id,
+            document_id=document_id,
+        )
+        == "applied"
     )
 
     assert db.deleted_parsed_content == 1
@@ -600,8 +589,6 @@ def test_document_worker_preserves_retry_cleanup_when_kg_cleanup_fails(
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    from app.parsing.processors import processor
-
     document = SimpleNamespace(
         doc_metadata={
             "pipeline_hash": "stable-pipeline",
@@ -634,11 +621,11 @@ def test_document_worker_preserves_retry_cleanup_when_kg_cleanup_fails(
             cleanup_calls.append("events")
             raise RuntimeError("kg boom")
 
-    monkeypatch.setattr(processor, "Indexer", _Indexer)
+    monkeypatch.setattr(indexer_module, "Indexer", _Indexer)
 
     with caplog.at_level("WARNING"):
         assert (
-            processor.DocumentProcessorService()._apply_pending_retry_cleanup(
+            recovery.apply_pending_retry_cleanup(
                 db,
                 db_document=document,
                 tenant_id=uuid.uuid4(),
@@ -648,8 +635,8 @@ def test_document_worker_preserves_retry_cleanup_when_kg_cleanup_fails(
         )
 
     assert cleanup_calls == ["chunks", "events"]
-    assert processor.DocumentParsedContent in db.deletes
-    assert processor.DocumentChunk in db.deletes
+    assert recovery.DocumentParsedContent in db.deletes
+    assert recovery.DocumentChunk in db.deletes
     assert any(getattr(model, "__name__", "") == "KgRelation" for model in db.deletes)
     assert document.doc_metadata.get("retry_cleanup") == {
         "version": "1",
@@ -664,7 +651,7 @@ def test_document_worker_preserves_retry_cleanup_when_kg_cleanup_fails(
     assert document.total_characters == 34
     assert db.commits == 0
     assert db.rollbacks == 1
-    assert "keeping retry cleanup marker for a later retry" in caplog.text
+    assert "reloaded durable state for a later retry" in caplog.text
 
 
 @pytest.mark.asyncio
@@ -672,13 +659,12 @@ async def test_document_processing_stops_when_retry_cleanup_is_deferred(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    from app.parsing.processors import processor
+    from app.rag.ingestion import pipeline
 
     document_id = uuid.uuid4()
     tenant_id = uuid.uuid4()
     document = SimpleNamespace(id=document_id, tenant_id=tenant_id, dataset_id=None, doc_metadata={})
     db = _DB(document)
-    service = processor.DocumentProcessorService()
     status_updates: list[tuple[str, str, str | None]] = []
 
     async def _cancel_check(*, force: bool = False) -> bool:
@@ -699,11 +685,11 @@ async def test_document_processing_stops_when_retry_cleanup_is_deferred(
             raise AssertionError("processing must not continue after deferred retry cleanup")
         status_updates.append((status, stage, error_message))
 
-    monkeypatch.setattr(service, "_build_cancel_check", lambda **_kwargs: _cancel_check, raising=True)
-    monkeypatch.setattr(service, "_apply_pending_retry_cleanup", lambda *_args, **_kwargs: "deferred", raising=True)
-    monkeypatch.setattr(service, "_update_status", _update_status, raising=True)
+    monkeypatch.setattr(pipeline, "_build_cancel_check", lambda **_kwargs: _cancel_check, raising=True)
+    monkeypatch.setattr(pipeline, "apply_pending_retry_cleanup", lambda *_args, **_kwargs: "deferred", raising=True)
+    monkeypatch.setattr(pipeline, "update_document_status", _update_status, raising=True)
 
-    result = await service.process_document(
+    result = await pipeline.process_document(
         file_path=tmp_path / "unused.txt",
         document_id=document_id,
         tenant_id=tenant_id,

@@ -4,8 +4,9 @@ from uuid import uuid4
 import pytest
 from fastapi import HTTPException
 
-from app.api.v1 import evaluations, pipeline
-from app.api.v1.pipeline_support import auto_annotations, governance_profiles
+from app.api.v1.evaluation import routes as evaluations
+from app.api.v1.pipelines import routes as pipeline
+from app.api.v1.pipelines.support import auto_annotations, governance_profiles
 
 
 def test_document_question_response_requires_generated_source_id() -> None:

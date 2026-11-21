@@ -62,6 +62,23 @@
   border-radius: 6px;
   box-shadow: none;
 }
+.headerActions button:focus-visible,
+.primary:focus-visible,
+.directorySearch:focus-visible,
+.externalFilter:focus-visible,
+.detailHeading button:focus-visible,
+.membersHeading button:focus-visible,
+.memberSearch:focus-visible,
+.memberTable td:last-child button:focus-visible,
+.footer button:focus-visible,
+.formField input:focus-visible,
+.dialogFooter button:focus-visible,
+.pickerSearch:focus-visible,
+.manualIds textarea:focus-visible,
+.returnToDirectory:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 2px;
+}
 .primary:hover {
   background: hsl(var(--foreground) / 0.88);
 }
@@ -1101,7 +1118,7 @@
   .headerActions button:last-child {
     padding: 0 8px;
   }
-  .headerActions button:last-child svg {
+  .headerActions button[data-groups-create] svg {
     display: none;
   }
   .details {

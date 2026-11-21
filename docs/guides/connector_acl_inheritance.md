@@ -1,6 +1,6 @@
 # Connector ACL 继承（Source ACL → Document ACL）运维指南
 
-本指南面向运维/管理员，说明如何让连接器在导入时**继承源系统权限**（GitHub/Confluence/Jira/Drive 等），并将其映射到 Ragvia 的**文档级 ACL（Security Trimming）**。
+本指南面向运维/管理员，说明如何让连接器在导入时**继承源系统权限**（Confluence/Jira 等），并将其映射到 Ragvia 的**文档级 ACL（Security Trimming）**。
 
 > 前置知识：文档级 ACL 本质上只会“收紧权限”，不会“放宽权限”。详情见：[docs/guides/document_acl.md](./document_acl.md)。
 
@@ -9,11 +9,11 @@
 ## 1) 目标与边界
 
 **目标**
-- 当源系统对象（仓库/页面/文件）在源侧发生权限变化时，导入到 Ragvia 的文档能体现同等“可见范围”（以 tenant groups/doc ACL 的形式）。
+- 当源系统对象（页面/工单/文件）在源侧发生权限变化时，导入到 Ragvia 的文档能体现同等“可见范围”（以 tenant groups/doc ACL 的形式）。
 
 **边界**
 - 当前实现优先覆盖“常见企业权限模式”：**按 group/team 的可见性**。
-- 对于仅按“单个用户”授权的场景（例如 Drive 仅分享给某些个人），系统会倾向于 **fail-closed**（默认 owner-only），避免误放宽权限。
+- 对于仅按“单个用户”授权的场景（例如仅分享给某些个人），系统会倾向于 **fail-closed**（默认 owner-only），避免误放宽权限。
 - 数据集权限仍然是第一道门槛：用户必须先能读数据集，再通过文档级 ACL 才能看到文档。
 
 ---
@@ -42,7 +42,7 @@ curl -X POST "http://localhost:8000/api/v1/groups" \
   -H "Content-Type: application/json" \
   -d '{
     "name": "Engineering",
-    "external_id": "github:team:acme/dev"
+    "external_id": "confluence:group:engineering"
   }'
 ```
 
@@ -84,35 +84,7 @@ curl -X POST "http://localhost:8000/api/v1/groups" \
 
 ## 5) 各连接器 Source Principal Key 约定与示例
 
-### 5.1 GitHub Repo（`github_repo`）
-
-**Key 格式**
-- GitHub 团队（org/team）→ `github:team:<org>/<team_slug>`
-
-示例：
-- `github:team:acme/dev`
-- `github:team:acme/security`
-
-**连接器配置示例**
-
-```json
-{
-  "connector_id": "github_repo",
-  "dataset_id": "00000000-0000-0000-0000-000000000000",
-  "config": {
-    "repo": "acme/demo",
-    "branch": "main",
-    "include_extensions": [".md", ".txt"],
-    "auth": { "type": "bearer", "token": "ghp_xxx" },
-    "source_acl": { "mode": "inherit", "fallback_mode": "partial_members" }
-  }
-}
-```
-
-**常见坑**
-- 需要 GitHub token 具备列出 repo team 的权限（通常需要 `read:org`），否则团队列表可能为空，最终触发 fail-closed（owner-only）。
-
-### 5.2 Confluence Space（`confluence_space`）
+### 5.1 Confluence Space（`confluence_space`）
 
 **Key 格式**
 - Confluence group → `confluence:group:<group_name>`
@@ -142,33 +114,7 @@ curl -X POST "http://localhost:8000/api/v1/groups" \
 }
 ```
 
-### 5.3 Google Drive 文件（`drive_files`）
-
-**Key 格式**
-- Drive group → `drive:group:<email>`
-
-示例：
-- `drive:group:eng@acme.com`
-- `drive:group:all@acme.com`
-
-**连接器配置示例（需 OAuth Bearer token）**
-
-```json
-{
-  "connector_id": "drive_files",
-  "dataset_id": "00000000-0000-0000-0000-000000000000",
-  "config": {
-    "urls": ["https://drive.google.com/file/d/<file_id>/view?usp=sharing"],
-    "auth": { "type": "bearer", "token": "ya29.xxx" },
-    "source_acl": { "mode": "inherit", "fallback_mode": "partial_members" }
-  }
-}
-```
-
-**常见坑**
-- Drive 权限需要通过 Google Drive API 拉取，通常需要 token 具备 `drive.readonly` 类 scope；没有 token 或 scope 不足时，会触发 fail-closed（owner-only）。
-
-### 5.4 Jira Project（`jira_project`）
+### 5.2 Jira Project（`jira_project`）
 
 **Key 格式**
 - Jira issue security level → `jira:policy:security-level/<security_level_id>`
@@ -214,7 +160,7 @@ curl -X POST "http://localhost:8000/api/v1/groups" \
 
 当 `PROMETHEUS_ENABLED=true` 时，会暴露以下指标（示例）：
 
-- `connector_acl_apply_total{connector_id="github_repo",mode="partial_members",shape="groups_only"}`
+- `connector_acl_apply_total{connector_id="confluence_space",mode="partial_members",shape="groups_only"}`
 - `connector_acl_apply_errors_total{connector_id="confluence_space",mode="partial_members"}`
 
 `shape` 用于粗粒度观察 allowlist 形态：

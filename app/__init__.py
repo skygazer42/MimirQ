@@ -1,5 +1,5 @@
 """
-MimirQ backend application.
+Ragvia backend application.
 
 Core backend service for knowledge base management and RAG chat.
 """

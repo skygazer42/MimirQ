@@ -2,8 +2,9 @@ from uuid import uuid4
 
 import pytest
 
-from app.models.prompt_template import PromptTemplate
-from app.rag.evaluation import llm_judge, test_generator
+from app.models.templates.versions import PromptTemplate
+from app.rag.evaluation.generation import test_generator
+from app.rag.evaluation.judging import llm_judge
 from app.rag.kg.extraction.config import ExtractConfig
 
 
@@ -123,7 +124,7 @@ def test_kg_entity_description_is_prepared_before_alias_branch_and_embedding(
 ) -> None:
     from types import SimpleNamespace
 
-    from app.models.document import DocumentChunk
+    from app.models.documents.records import DocumentChunk
     from app.rag.kg.extraction import extractor
 
     monkeypatch.setattr(extractor.settings, "KG_ENTITY_CANONICALIZE_PARENTHESES_ALIAS", canonicalize)
@@ -152,7 +153,7 @@ def test_kg_entity_description_is_prepared_before_alias_branch_and_embedding(
 def test_kg_entity_preparation_exposes_invalid_description_types(
     monkeypatch: pytest.MonkeyPatch, canonicalize: bool
 ) -> None:
-    from app.models.document import DocumentChunk
+    from app.models.documents.records import DocumentChunk
     from app.rag.kg.extraction import extractor
 
     monkeypatch.setattr(extractor.settings, "KG_ENTITY_CANONICALIZE_PARENTHESES_ALIAS", canonicalize)

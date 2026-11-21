@@ -56,17 +56,14 @@ export function DangerZonePanel({
           </div>
           <div className="min-w-0">
             <div className={cn('flex flex-wrap items-center', compact ? 'gap-1.5' : 'gap-2')}>
-              <span className={cn('font-medium tracking-[-0.005em] text-foreground', compact ? 'text-sm' : 'text-sm')}>
-                {title}
-              </span>
+              <span className="text-sm font-medium tracking-[-0.005em] text-foreground">{title}</span>
               {badge ? (
                 <span
                   className={cn(
-                    'rounded-full font-semibold',
+                    'rounded-full px-1.5 py-0.5 text-xs font-semibold',
                     isNeutral
                       ? 'text-muted-foreground'
                       : 'border border-destructive/20 bg-destructive/[0.04] text-destructive',
-                    compact ? 'px-1.5 py-0.5 text-xs' : 'px-1.5 py-0.5 text-xs',
                   )}
                 >
                   {badge}

@@ -6,7 +6,7 @@ from fastapi import HTTPException
 
 
 def test_resolve_scope_applies_strict_inherited_replace_route(monkeypatch: pytest.MonkeyPatch) -> None:
-    from app.services.dify_integration import knowledge_scope
+    from app.services.dify import knowledge_scope
 
     base_dataset = uuid4()
     route_dataset = uuid4()
@@ -38,7 +38,7 @@ def test_resolve_scope_applies_strict_inherited_replace_route(monkeypatch: pytes
 
 
 def test_resolve_scope_rejects_direct_dataset_uuid_in_production(monkeypatch: pytest.MonkeyPatch) -> None:
-    from app.services.dify_integration import knowledge_scope
+    from app.services.dify import knowledge_scope
 
     dataset_id = uuid4()
     monkeypatch.setattr(knowledge_scope.settings, "DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON", "{}", raising=False)
@@ -53,14 +53,15 @@ def test_resolve_scope_rejects_direct_dataset_uuid_in_production(monkeypatch: py
 
 
 def test_policy_fallback_multiplier_uses_default_for_invalid_configured_max() -> None:
-    from app.services.dify_integration.policy_helpers import apply_policy_fallback_candidate_multiplier
+    from app.services.dify.retrieval_policy import apply_policy_fallback_candidate_multiplier
 
     assert apply_policy_fallback_candidate_multiplier(7, multiplier=9, configured_max="bad") == 50
     assert apply_policy_fallback_candidate_multiplier(60, multiplier=1, configured_max="bad") == 60
 
 
 def test_sibling_scope_requires_opt_in_and_a_specific_service_query(monkeypatch: pytest.MonkeyPatch) -> None:
-    from app.services.dify_integration import knowledge_scope, policy_helpers
+    from app.services.dify import knowledge_scope
+    from app.services.dify import retrieval_policy as policy_helpers
 
     base_dataset = uuid4()
     sibling_dataset = uuid4()

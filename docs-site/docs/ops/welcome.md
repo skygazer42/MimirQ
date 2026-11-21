@@ -104,7 +104,7 @@ Arq 队列、PostgreSQL、Milvus、Redis 与 MinIO 的运行状态应结合应�
 | --- | --- |
 | `docker/docker-compose*.yml` | Docker Compose 编排 |
 | `deploy/helm/mimirq/` | Helm Chart 模板 |
-| `.env.example` / `app/core/config.py` | 环境变量模板与应用配置定义 |
+| `.env.example` / `app/infrastructure/config.py` | 环境变量模板与应用配置定义 |
 | `alembic.ini` | 数据库迁移配置 |
 | `.env` / `web/.env.local` | 本地后端与前端环境变量 |
 

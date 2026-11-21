@@ -410,6 +410,7 @@ async function documentFixture(page: Page) {
               ? '# 已保存的清洗稿\n\n这不是解析原文。'
               : '# 第二份资料\n\n第二份正文。',
         original_markdown_content: id === 'parsed-one' ? '重复页眉\n# 设备维护手册\n\n解析完成后的原始正文。' : '',
+        edited: id === 'parsed-one',
       })
     }
     if (state.failList) return json(route, { detail: '解析目录暂不可用' }, 503)

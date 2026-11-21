@@ -1,7 +1,7 @@
 import re
 from typing import Any, TypedDict
 
-from app.core.config import settings
+from app.infrastructure.config import settings
 
 _ALLOWED_MODES = {"auto", "local", "global", "drift"}
 _QUOTE_CHARS = "\"“”'‘’`"

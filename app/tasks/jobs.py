@@ -8,34 +8,31 @@ Notes:
 
 import asyncio
 import contextlib
+import logging
 import time
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from app.core.async_bridge import run_coroutine_in_thread
-from app.core.config import settings
-from app.core.database import SessionLocal
-from app.models.connector import ConnectorRun as DBConnectorRun
-from app.models.dataset_precheck_scan import DatasetPrecheckScanRun as DBDatasetPrecheckScanRun
-from app.models.dataset_profile_scan import DatasetProfileScanRun as DBDatasetProfileScanRun
-from app.models.document import Document as DBDocument
-from app.parsing.processors.processor import update_document_status
-from app.parsing.processors.support.process_document_flow import process_document
-from app.rag.core.logging import get_logger
-from app.services.audit_log_service import audit_log_event
-from app.services.connector_run_executor import execute_connector_run
-from app.services.dataset_precheck_scan_runner import run_dataset_precheck_scan
-from app.services.dataset_profile_scan_runner import run_dataset_profile_deep_scan
-from app.services.evidence_reference_repair_service import (
-    EvidenceSuiteNotFoundError,
-    repair_evidence_suite_reference_sources,
-)
+from app.infrastructure.config import settings
+from app.infrastructure.database.connection import SessionLocal
+from app.infrastructure.runtime.async_bridge import run_blocking_in_thread, run_coroutine_in_thread
+from app.models.connectors.runs import ConnectorRun as DBConnectorRun
+from app.models.datasets.scans import DatasetPrecheckScanRun as DBDatasetPrecheckScanRun
+from app.models.datasets.scans import DatasetProfileScanRun as DBDatasetProfileScanRun
+from app.models.documents.records import Document as DBDocument
+from app.rag.ingestion.indexing.processor import update_document_status
+from app.rag.ingestion.pipeline import process_document
+from app.services.connectors.executor import execute_connector_run
+from app.services.datasets.precheck.scan import run_dataset_precheck_scan
+from app.services.datasets.profile_scan import run_dataset_profile_deep_scan
+from app.services.evidence.reference_repair import EvidenceSuiteNotFoundError, repair_evidence_suite_reference_sources
+from app.services.observability.audit_log import audit_log_event
 from app.storage.object.runtime import is_object_storage_uri, resolve_document_object_reference
 from app.tasks.locks import (
     acquire_lock,
@@ -53,7 +50,7 @@ from app.tasks.locks import (
     task_job_lock_ttl_sec as _task_job_lock_ttl_sec,
 )
 
-logger = get_logger("tasks.jobs")
+logger = logging.getLogger("tasks.jobs")
 
 _TASK_SEMAPHORE_LEASE_TTL_SEC = task_semaphore_lease_ttl_sec()
 _TASK_SEMAPHORE_ACQUIRE_WAIT_SEC = max(0.0, settings.TASK_SEMAPHORE_ACQUIRE_WAIT_SEC)
@@ -104,7 +101,7 @@ def _transition_document_index_channel_best_effort(
     error: str | None = None,
 ) -> None:
     try:
-        from app.services.document_index_channel_service import transition_document_index_channel
+        from app.rag.ingestion.indexing.index_channels import transition_document_index_channel
 
         transition_document_index_channel(
             db,
@@ -147,15 +144,15 @@ async def _record_job_outcome(ctx: dict[str, Any], payload: dict[str, Any]) -> N
         return
 
     try:
-        from app.services.task_queue_observability_service import observe_task_job_outcome
+        from app.services.observability.task_queue import observe_task_job_outcome
 
         await observe_task_job_outcome(
             redis=redis,
             queue_name=settings.TASK_QUEUE_NAME or "mimirq",
             outcome=payload,
         )
-    except Exception:  # noqa: BLE001
-        return
+    except Exception as exc:  # noqa: BLE001 - telemetry cannot change the job outcome.
+        logger.warning("Could not record task job outcome: %s", type(exc).__name__)
 
 
 async def _job_result(
@@ -517,15 +514,17 @@ async def _resolve_object_storage_document_path(
     suffix = f".{doc.file_type.lower()}"
     temp_path = temp_dir / f"{did}.{uuid.uuid4().hex}{suffix}"
     try:
-        await asyncio.to_thread(
+        await run_blocking_in_thread(
             store.download_object_to_path,
             object_name=ref.object_name,
             destination=temp_path,
             max_bytes=settings.MAX_FILE_SIZE,
         )
-    except Exception as exc:  # noqa: BLE001
-        with contextlib.suppress(Exception):
+    except (Exception, asyncio.CancelledError) as exc:
+        with contextlib.suppress(OSError):
             temp_path.unlink(missing_ok=True)
+        if isinstance(exc, asyncio.CancelledError):
+            raise
         return await _fail_document_job_with_status(
             ctx,
             db=db,
@@ -581,7 +580,7 @@ async def _resolve_document_job_file_path(
         )
 
     file_path = Path(raw_path)
-    if file_path.exists() and file_path.is_file():
+    if file_path.is_file():
         return file_path, None
     return await _fail_document_job_with_status(
         ctx,
@@ -941,11 +940,11 @@ async def process_document_job(ctx, tenant_id: str, document_id: str, requested_
                 done=0,
             )
 
-        meta0 = doc.doc_metadata if isinstance(doc.doc_metadata, dict) else {}
-        pipeline_hash = meta0.get("pipeline_hash") or "unknown"
+        metadata = doc.doc_metadata if isinstance(doc.doc_metadata, dict) else {}
+        pipeline_hash = str(metadata.get("pipeline_hash") or "unknown")
         lock_key = f"lock:doc:{tenant_id}:{document_id}:{pipeline_hash}"
-        ingest_lock_key = meta0.get("ingest_lock_key")
-        ingest_lock_val = meta0.get("ingest_lock_value")
+        ingest_lock_key = metadata.get("ingest_lock_key")
+        ingest_lock_val = metadata.get("ingest_lock_value")
         coordination = await _acquire_document_job_coordination(
             ctx,
             db=db,
@@ -956,14 +955,14 @@ async def process_document_job(ctx, tenant_id: str, document_id: str, requested_
             document_id=document_id,
             requested_by=requested_by,
             started_at=t0,
-            pipeline_hash=str(pipeline_hash),
+            pipeline_hash=pipeline_hash,
             lock_key=lock_key,
         )
         if isinstance(coordination, dict):
             return coordination
         redis, sem_key, dataset_sem_key, lock_key, lock_val = coordination
-        parser_backend = (doc.doc_metadata or {}).get("parser_backend")
-        chunk_strategy = (doc.doc_metadata or {}).get("chunk_strategy")
+        parser_backend = metadata.get("parser_backend")
+        chunk_strategy = metadata.get("chunk_strategy")
         path_or_result = await _resolve_document_job_file_path(
             ctx,
             db=db,
@@ -973,7 +972,7 @@ async def process_document_job(ctx, tenant_id: str, document_id: str, requested_
             tenant_id=tenant_id,
             document_id=document_id,
             started_at=t0,
-            pipeline_hash=str(pipeline_hash),
+            pipeline_hash=pipeline_hash,
         )
         if isinstance(path_or_result, dict):
             return path_or_result
@@ -1008,7 +1007,7 @@ async def process_document_job(ctx, tenant_id: str, document_id: str, requested_
             reason=(str(result.get("reason") or result_status or "processing_failed") if not succeeded else None),
             stage="completed" if succeeded else (result_status or "failed"),
             done=1 if succeeded else 0,
-            pipeline_hash=str(pipeline_hash),
+            pipeline_hash=pipeline_hash,
             result=result,
         )
     finally:
@@ -1021,20 +1020,23 @@ async def process_document_job(ctx, tenant_id: str, document_id: str, requested_
         db.close()
 
 
-async def dataset_profile_scan_job(ctx, tenant_id: str, dataset_id: str, scan_run_id: str, requested_by: str) -> dict:  # noqa: ANN001
-    """
-    Dataset profile deep scan job: best-effort backfill missing document metrics and persist a summary.
-
-    Args:
-        tenant_id: tenant UUID string
-        dataset_id: dataset UUID string
-        scan_run_id: scan run UUID string
-        requested_by: account_id (for permission semantics + audit)
-    """
+async def _run_dataset_scan_job(
+    ctx: dict[str, Any],
+    tenant_id: str,
+    dataset_id: str,
+    scan_run_id: str,
+    requested_by: str,
+    *,
+    scan_kind: Literal["profile", "precheck"],
+) -> dict[str, Any]:
     t0 = time.perf_counter()
     tid = UUID(tenant_id)
     dsid = UUID(dataset_id)
     rid = UUID(scan_run_id)
+    precheck = scan_kind == "precheck"
+    run_model = DBDatasetPrecheckScanRun if precheck else DBDatasetProfileScanRun
+    job_name = f"dataset_{scan_kind}_scan_job"
+    scope = {"tenant_id": tenant_id, "dataset_id": dataset_id, "scan_run_id": scan_run_id}
 
     db = SessionLocal()
     redis = None
@@ -1043,47 +1045,35 @@ async def dataset_profile_scan_job(ctx, tenant_id: str, dataset_id: str, scan_ru
     sem_key = None
     retry_defer_sec = _TASK_LOCK_RETRY_DEFER_SEC
     try:
-        # Ensure scan run exists under tenant/dataset.
-        run = (
-            db.query(DBDatasetProfileScanRun)
-            .filter(
-                DBDatasetProfileScanRun.id == rid,
-                DBDatasetProfileScanRun.tenant_id == tid,
-                DBDatasetProfileScanRun.dataset_id == dsid,
-            )
-            .first()
+        run_query = db.query(run_model).filter(
+            run_model.id == rid, run_model.tenant_id == tid, run_model.dataset_id == dsid
         )
+        run = run_query.first()
         if run is None:
             return await _job_result(
                 ctx,
-                job_name="dataset_profile_scan_job",
+                job_name=job_name,
                 ok=False,
                 started_at=t0,
                 reason="scan_run_not_found",
                 progress=_job_progress(stage="missing", done=0, total=1),
-                tenant_id=tenant_id,
-                dataset_id=dataset_id,
-                scan_run_id=scan_run_id,
+                **scope,
             )
         if run.status != "pending":
             return await _job_result(
                 ctx,
-                job_name="dataset_profile_scan_job",
+                job_name=job_name,
                 ok=True,
                 started_at=t0,
                 reason="scan_run_not_pending",
                 progress=_job_progress(stage="skipped", done=1, total=1),
                 skipped="scan_run_not_pending",
-                tenant_id=tenant_id,
-                dataset_id=dataset_id,
-                scan_run_id=scan_run_id,
+                **scope,
             )
 
-        # Idempotent lock: avoid concurrent scans per dataset.
-        lock_key = f"lock:dataset_profile_scan:{tenant_id}:{dataset_id}"
+        lock_key = f"lock:dataset_{scan_kind}_scan:{tenant_id}:{dataset_id}"
         lock_val = make_lock_value(requested_by)
-        lock_ttl = _task_job_lock_ttl_sec()
-
+        lock_ttl = _task_job_lock_ttl_sec(minimum_sec=60 * 60) if precheck else _task_job_lock_ttl_sec()
         try:
             redis = _task_queue_redis_or_retry(ctx, retry_defer_sec=retry_defer_sec)
             sem_key = await tenant_acquire(
@@ -1109,69 +1099,52 @@ async def dataset_profile_scan_job(ctx, tenant_id: str, dataset_id: str, scan_ru
             _mark_run_failed(db, run, reason=reason)
             return await _job_result(
                 ctx,
-                job_name="dataset_profile_scan_job",
+                job_name=job_name,
                 ok=False,
                 started_at=t0,
                 reason=reason,
                 progress=_job_progress(stage="failed", done=0, total=1),
-                tenant_id=tenant_id,
-                dataset_id=dataset_id,
-                scan_run_id=scan_run_id,
+                **scope,
             )
         if not acquired:
-            logger.info("Skip dataset scan job due to active lock: %s", lock_key)
+            logger.info("Skip %s due to active lock: %s", job_name, lock_key)
             return await _job_result(
                 ctx,
-                job_name="dataset_profile_scan_job",
+                job_name=job_name,
                 ok=True,
                 started_at=t0,
                 reason="locked",
                 progress=_job_progress(stage="locked", done=0, total=1),
                 skipped="locked",
-                tenant_id=tenant_id,
-                dataset_id=dataset_id,
-                scan_run_id=scan_run_id,
+                **scope,
             )
 
-        # Execute deep scan (sync, best-effort).
         try:
-            result = run_dataset_profile_deep_scan(
-                db,
-                tenant_id=tid,
-                account_id=requested_by,
-                dataset_id=dsid,
-                scan_run_id=rid,
-            )
-        except Exception as exc:  # noqa: BLE001
-            # Mark run failed.
-            try:
-                run = (
-                    db.query(DBDatasetProfileScanRun)
-                    .filter(
-                        DBDatasetProfileScanRun.id == rid,
-                        DBDatasetProfileScanRun.tenant_id == tid,
-                        DBDatasetProfileScanRun.dataset_id == dsid,
-                    )
-                    .first()
+            if precheck:
+                result = run_dataset_precheck_scan(db, tenant_id=tid, dataset_id=dsid, scan_run_id=rid)
+            else:
+                result = run_dataset_profile_deep_scan(
+                    db, tenant_id=tid, account_id=requested_by, dataset_id=dsid, scan_run_id=rid
                 )
+        except Exception as exc:  # noqa: BLE001
+            try:
+                run = run_query.first()
                 if run is not None:
                     run.status = "failed"
                     run.error_message = str(exc)[:200]
                     run.finished_at = datetime.now(UTC)
                     db.commit()
-            except SQLAlchemyError as exc:
-                logger.debug("Ignoring non-critical task job rollback fallback failure: %s", exc)
+            except SQLAlchemyError as persistence_error:
+                logger.debug("Ignoring non-critical task job rollback fallback failure: %s", persistence_error)
             raise
 
         return await _job_result(
             ctx,
-            job_name="dataset_profile_scan_job",
+            job_name=job_name,
             ok=True,
             started_at=t0,
-            tenant_id=tenant_id,
-            dataset_id=dataset_id,
-            scan_run_id=scan_run_id,
             result=result,
+            **scope,
         )
     finally:
         if redis is not None and lock_key and lock_val:
@@ -1180,158 +1153,18 @@ async def dataset_profile_scan_job(ctx, tenant_id: str, dataset_id: str, scan_ru
         db.close()
 
 
-async def dataset_precheck_scan_job(ctx, tenant_id: str, dataset_id: str, scan_run_id: str, requested_by: str) -> dict:  # noqa: ANN001
-    """
-    Dataset precheck scan job: scan a local folder (before ingestion) and persist a summary.
+async def dataset_profile_scan_job(
+    ctx: dict[str, Any], tenant_id: str, dataset_id: str, scan_run_id: str, requested_by: str
+) -> dict[str, Any]:
+    """Backfill missing document metrics and persist the dataset profile summary."""
+    return await _run_dataset_scan_job(ctx, tenant_id, dataset_id, scan_run_id, requested_by, scan_kind="profile")
 
-    Args:
-        tenant_id: tenant UUID string
-        dataset_id: dataset UUID string
-        scan_run_id: scan run UUID string
-        requested_by: account_id (for audit)
-    """
-    t0 = time.perf_counter()
-    tid = UUID(tenant_id)
-    dsid = UUID(dataset_id)
-    rid = UUID(scan_run_id)
 
-    db = SessionLocal()
-    redis = None
-    lock_key = None
-    lock_val = None
-    sem_key = None
-    retry_defer_sec = _TASK_LOCK_RETRY_DEFER_SEC
-    try:
-        run = (
-            db.query(DBDatasetPrecheckScanRun)
-            .filter(
-                DBDatasetPrecheckScanRun.id == rid,
-                DBDatasetPrecheckScanRun.tenant_id == tid,
-                DBDatasetPrecheckScanRun.dataset_id == dsid,
-            )
-            .first()
-        )
-        if run is None:
-            return await _job_result(
-                ctx,
-                job_name="dataset_precheck_scan_job",
-                ok=False,
-                started_at=t0,
-                reason="scan_run_not_found",
-                progress=_job_progress(stage="missing", done=0, total=1),
-                tenant_id=tenant_id,
-                dataset_id=dataset_id,
-                scan_run_id=scan_run_id,
-            )
-        if run.status != "pending":
-            return await _job_result(
-                ctx,
-                job_name="dataset_precheck_scan_job",
-                ok=True,
-                started_at=t0,
-                reason="scan_run_not_pending",
-                progress=_job_progress(stage="skipped", done=1, total=1),
-                skipped="scan_run_not_pending",
-                tenant_id=tenant_id,
-                dataset_id=dataset_id,
-                scan_run_id=scan_run_id,
-            )
-
-        lock_key = f"lock:dataset_precheck_scan:{tenant_id}:{dataset_id}"
-        lock_val = make_lock_value(requested_by)
-        lock_ttl = _task_job_lock_ttl_sec(minimum_sec=60 * 60)
-
-        try:
-            redis = _task_queue_redis_or_retry(ctx, retry_defer_sec=retry_defer_sec)
-            sem_key = await tenant_acquire(
-                redis,
-                tenant_id=tenant_id,
-                kind="scan",
-                limit=settings.TASK_TENANT_MAX_CONCURRENCY_DOC,
-                ttl_sec=_TASK_SEMAPHORE_LEASE_TTL_SEC,
-                retry_defer_sec=retry_defer_sec,
-                wait_timeout_sec=_TASK_SEMAPHORE_ACQUIRE_WAIT_SEC,
-            )
-            acquired = await _acquire_task_lock_or_retry(
-                redis,
-                key=lock_key,
-                value=lock_val,
-                ttl_sec=lock_ttl,
-                retry_defer_sec=retry_defer_sec,
-            )
-        except Exception as exc:
-            if not _is_retry_error(exc) or _current_job_try(ctx) < _task_job_max_tries():
-                raise
-            reason = _coordination_retry_reason(exc)
-            _mark_run_failed(db, run, reason=reason)
-            return await _job_result(
-                ctx,
-                job_name="dataset_precheck_scan_job",
-                ok=False,
-                started_at=t0,
-                reason=reason,
-                progress=_job_progress(stage="failed", done=0, total=1),
-                tenant_id=tenant_id,
-                dataset_id=dataset_id,
-                scan_run_id=scan_run_id,
-            )
-        if not acquired:
-            logger.info("Skip dataset precheck scan job due to active lock: %s", lock_key)
-            return await _job_result(
-                ctx,
-                job_name="dataset_precheck_scan_job",
-                ok=True,
-                started_at=t0,
-                reason="locked",
-                progress=_job_progress(stage="locked", done=0, total=1),
-                skipped="locked",
-                tenant_id=tenant_id,
-                dataset_id=dataset_id,
-                scan_run_id=scan_run_id,
-            )
-
-        try:
-            result = run_dataset_precheck_scan(
-                db,
-                tenant_id=tid,
-                dataset_id=dsid,
-                scan_run_id=rid,
-            )
-        except Exception as exc:  # noqa: BLE001
-            try:
-                run = (
-                    db.query(DBDatasetPrecheckScanRun)
-                    .filter(
-                        DBDatasetPrecheckScanRun.id == rid,
-                        DBDatasetPrecheckScanRun.tenant_id == tid,
-                        DBDatasetPrecheckScanRun.dataset_id == dsid,
-                    )
-                    .first()
-                )
-                if run is not None:
-                    run.status = "failed"
-                    run.error_message = str(exc)[:200]
-                    run.finished_at = datetime.now(UTC)
-                    db.commit()
-            except SQLAlchemyError as exc:
-                logger.debug("Ignoring non-critical task job rollback fallback failure: %s", exc)
-            raise
-
-        return await _job_result(
-            ctx,
-            job_name="dataset_precheck_scan_job",
-            ok=True,
-            started_at=t0,
-            tenant_id=tenant_id,
-            dataset_id=dataset_id,
-            scan_run_id=scan_run_id,
-            result=result,
-        )
-    finally:
-        if redis is not None and lock_key and lock_val:
-            await release_lock(redis, key=lock_key, value=lock_val)
-        await tenant_release(redis, sem_key)
-        db.close()
+async def dataset_precheck_scan_job(
+    ctx: dict[str, Any], tenant_id: str, dataset_id: str, scan_run_id: str, requested_by: str
+) -> dict[str, Any]:
+    """Scan a local folder and persist its pre-ingestion summary."""
+    return await _run_dataset_scan_job(ctx, tenant_id, dataset_id, scan_run_id, requested_by, scan_kind="precheck")
 
 
 async def _extract_kg_job_result(
@@ -1469,8 +1302,8 @@ def _resolve_kg_job_state(
     extract_skills: bool | None,
     frozen_options: dict[str, Any] | None,
 ) -> dict[str, Any]:
-    from app.core.pipeline_versions import get_active_pipeline_hash
     from app.rag.kg.extraction_job_options import kg_extraction_job_options_fingerprint
+    from app.services.documents.pipeline_versions import get_active_pipeline_hash
 
     doc_pipeline_hash = get_active_pipeline_hash(doc.doc_metadata)
     selected_pipeline_hash = doc_pipeline_hash if requested_pipeline_hash is None else requested_pipeline_hash
@@ -1589,7 +1422,7 @@ def _scope_kg_chunks(
     document_key: str,
     pipeline_scope_required: bool,
 ) -> list[Any]:
-    from app.core.pipeline_versions import get_active_pipeline_hash
+    from app.services.documents.pipeline_versions import get_active_pipeline_hash
 
     if selected_pipeline_hash is None:
         if not pipeline_scope_required:
@@ -1630,7 +1463,7 @@ async def _load_scoped_kg_chunks_or_result(
     document_key: str,
     pipeline_scope_required: bool,
 ) -> list[Any] | dict[str, Any]:
-    from app.models.document import DocumentChunk
+    from app.models.documents.records import DocumentChunk
 
     chunks = (
         db.query(DocumentChunk)
@@ -1682,7 +1515,7 @@ async def _load_scoped_kg_chunks_or_result(
 
 
 def _dataset_metadata_for_kg_job(db: Any, *, doc: DBDocument, tid: UUID) -> dict[str, Any]:
-    from app.models.dataset import Dataset
+    from app.models.datasets.records import Dataset
 
     if not doc.dataset_id:
         return {}
@@ -1740,7 +1573,7 @@ async def _run_kg_extraction(
     extract_skills: bool | None,
 ) -> list[Any]:
     from app.rag.kg.pipeline import extract_events
-    from app.services.pipeline_config import build_indexing_options, resolve_pipeline_effective
+    from app.services.pipelines.config import build_indexing_options, resolve_pipeline_effective
 
     effective = resolve_pipeline_effective(
         dataset_metadata=_dataset_metadata_for_kg_job(db, doc=doc, tid=tid),
@@ -1779,7 +1612,7 @@ async def _finalize_kg_job_success(
     selected_pipeline_hash: str | None,
     events: list[Any],
 ) -> dict[str, Any]:
-    from app.services.corpus_cache_tokens import invalidate_dataset_cache_namespace
+    from app.services.retrieval.corpus_tokens import invalidate_dataset_cache_namespace
 
     _transition_document_index_channel_best_effort(db, document=doc, channel="kg", status="ready")
     if not events:
@@ -1968,7 +1801,7 @@ async def rebuild_indexes_job(
     """
     Rebuild indexes job (currently BM25; can extend to vectors/others).
     """
-    from app.services.indexer import Indexer
+    from app.rag.ingestion.indexing.indexer import Indexer
     from app.types.indexing import IndexKind
 
     t0 = time.perf_counter()
@@ -2160,7 +1993,7 @@ async def _build_reconcile_report_items(
     dry_run: bool,
     plan: dict[str, Any],
 ) -> tuple[list[dict[str, Any]], dict[str, int]]:
-    from app.services.index_audit_service import enqueue_index_audit_reconcile
+    from app.services.indexing.audit import enqueue_index_audit_reconcile
 
     items_out: list[dict[str, Any]] = []
     counts = {"enqueued_count": 0, "already_queued_count": 0, "report_only_count": 0, "unsupported_count": 0}
@@ -2210,7 +2043,7 @@ async def reconcile_index_audit_job(
     This job never scans all tenants. Dataset-only scans are bounded and report-only
     for legacy/no-row documents; rebuild enqueue remains document-scoped.
     """
-    from app.services.index_audit_service import plan_index_audit_reconcile
+    from app.services.indexing.audit import plan_index_audit_reconcile
 
     t0 = time.perf_counter()
     tid = UUID(tenant_id)

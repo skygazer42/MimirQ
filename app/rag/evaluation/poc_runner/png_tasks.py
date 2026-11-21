@@ -1,20 +1,29 @@
 import json
+import logging
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
-from app.core.config import settings
-from app.core.redis_client import LazyRedisClient
-from app.rag.core.logging import get_logger
+from app.infrastructure.config import settings
+from app.infrastructure.redis.client import LazyRedisClient
 
 if TYPE_CHECKING:
     from redis import Redis
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 _COMPARE_SWAP_LUA = """
 if redis.call("GET", KEYS[1]) == ARGV[1] then
   redis.call("SET", KEYS[1], ARGV[2], "EX", ARGV[3])
+  return 1
+end
+return 0
+"""
+
+_COMPLETE_TASK_LUA = """
+if redis.call("GET", KEYS[1]) == ARGV[1] then
+  redis.call("SET", KEYS[2], ARGV[3], "EX", ARGV[4])
+  redis.call("SET", KEYS[1], ARGV[2], "EX", ARGV[4])
   return 1
 end
 return 0
@@ -56,8 +65,7 @@ def _prefix() -> str:
 
 
 def _active_ttl_sec() -> int:
-    stale_after = max(1, int(settings.DATASET_ANALYSIS_PNG_STALE_AFTER_SEC))
-    return max(300, stale_after * 4)
+    return max(300, _stale_after_sec() * 4)
 
 
 def _terminal_ttl_sec() -> int:
@@ -94,7 +102,10 @@ def _deserialize_task(raw: bytes | str | None) -> dict[str, Any]:
         raise KeyError("PNG export task not found")
     if isinstance(raw, bytes):
         raw = raw.decode("utf-8")
-    return dict(json.loads(raw))
+    payload = json.loads(raw)
+    if not isinstance(payload, dict):
+        raise ValueError("PNG export task state must be a JSON object")
+    return payload
 
 
 def _public_task(task: dict[str, Any]) -> dict[str, Any]:
@@ -126,6 +137,7 @@ def _delete_result_best_effort(client: "Redis", task_id: str) -> None:
     try:
         client.delete(_result_key(task_id))
     except Exception:  # noqa: BLE001
+        logger.debug("Failed to remove PNG export result for task %s", task_id, exc_info=True)
         _invalidate_redis_client()
 
 
@@ -171,7 +183,7 @@ def _parse_iso_datetime(value: Any) -> datetime | None:
         text = text[:-1] + "+00:00"
     try:
         parsed = datetime.fromisoformat(text)
-    except Exception:
+    except ValueError:
         return None
     return parsed if parsed.tzinfo is not None else parsed.replace(tzinfo=UTC)
 
@@ -233,10 +245,12 @@ def create_png_export_task(
         "updated_at": _iso_now(),
     }
     try:
-        client.set(_task_key(task_id), _serialize_task(payload), ex=_active_ttl_sec(), nx=True)
+        created = client.set(_task_key(task_id), _serialize_task(payload), ex=_active_ttl_sec(), nx=True)
     except Exception as exc:  # noqa: BLE001
         _invalidate_redis_client()
         raise RuntimeError("Failed to create dataset-analysis PNG task state") from exc
+    if not created:
+        raise RuntimeError("Dataset-analysis PNG task state already exists")
     return _public_task(payload)
 
 
@@ -294,7 +308,10 @@ def complete_png_export_task(
     png_bytes: bytes,
 ) -> dict[str, Any]:
     client = _get_client()
-    if len(bytes(png_bytes or b"")) > _result_max_bytes():
+    if not png_bytes:
+        raise ValueError("Rendered PNG result must not be empty")
+    result_size = len(png_bytes)
+    if result_size > _result_max_bytes():
         return fail_png_export_task(
             task_id,
             tenant_id=tenant_id,
@@ -311,22 +328,29 @@ def complete_png_export_task(
         if current["status"] != "running" or current["owner_token"] != owner_token:
             return _public_task(current)
 
-        try:
-            client.set(_result_key(task_id), bytes(png_bytes or b""), ex=_terminal_ttl_sec())
-        except Exception as exc:  # noqa: BLE001
-            _invalidate_redis_client()
-            raise RuntimeError("Failed to store dataset-analysis PNG task result") from exc
-
         done = dict(current)
         done["status"] = "done"
         done["updated_at"] = _iso_now()
         done["completed_at"] = done["updated_at"]
-        done["result_size_bytes"] = len(bytes(png_bytes or b""))
+        done["result_size_bytes"] = result_size
         done.pop("owner_token", None)
         done.pop("lease_expires_at", None)
-        if _cas_task(client, task_id, current_raw, done, ttl_sec=_terminal_ttl_sec()):
+        try:
+            completed = client.eval(
+                _COMPLETE_TASK_LUA,
+                2,
+                _task_key(task_id),
+                _result_key(task_id),
+                current_raw,
+                _serialize_task(done),
+                png_bytes,
+                _terminal_ttl_sec(),
+            )
+        except Exception as exc:  # noqa: BLE001
+            _invalidate_redis_client()
+            raise RuntimeError("Failed to complete dataset-analysis PNG task") from exc
+        if completed:
             return _public_task(done)
-        _delete_result_best_effort(client, task_id)
     raise RuntimeError("Failed to complete dataset-analysis PNG task")
 
 

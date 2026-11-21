@@ -1,10 +1,10 @@
 import pytest
 
-from app.services.connector_reconcile_service import _normalize_refs
-from app.services.connector_run_operations import _compact_string_list, _normalize_doc_access_mode
-from app.services.connector_sync_state import normalize_boundary_ids, normalize_source_manifest
-from app.services.corpus_cache_tokens import build_dataset_scope_corpus_cache_token
-from app.services.document_identity import normalize_content_sha256
+from app.services.connectors.reconcile import _normalize_refs
+from app.services.connectors.runs import _compact_string_list, _normalize_doc_access_mode
+from app.services.connectors.sync_state import normalize_boundary_ids, normalize_source_manifest
+from app.services.documents.identity import normalize_content_sha256
+from app.services.retrieval.corpus_tokens import build_dataset_scope_corpus_cache_token
 
 
 @pytest.mark.parametrize("value", [0, False])

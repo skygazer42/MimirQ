@@ -1,18 +1,23 @@
 'use client'
 
-import dynamic from 'next/dynamic'
 import { Component, useRef, useEffect, useState, forwardRef, useImperativeHandle, useCallback, useMemo } from 'react'
 import type { ForceGraphMethods } from 'react-force-graph-2d'
 import { useTheme } from 'next-themes'
-import type { GraphEndpointRef, GraphLinkLike, GraphNodeLike } from '@/app/graph/graph-page-utils'
+import {
+  getGraphLinkDisplayWeight,
+  type GraphEndpointRef,
+  type GraphLinkLike,
+  type GraphNodeLike,
+} from '@/app/graph/graph-page-utils'
 import { useResizeObserver } from '@/hooks/use-resize-observer'
 import { getCssHslColor, getCssHslaColor } from '@/lib/css-vars'
 import { decorateLinksForDisplay } from '@/lib/graph-edge-display'
 import { buildGraphLinkProvenanceTooltipHtml } from '@/lib/graph-provenance'
 import { buildGraphViewportLod, type GraphViewportLod, type GraphViewportRect } from '@/lib/graph-viewport-lod'
-import { reportClientError } from '@/lib/client-logging'
+import { reportClientError, reportClientWarning } from '@/lib/client-logging'
 import { buildTypeColorMap, EVENT_COLOR, NODE_COLOR_PALETTE } from './graph-colors'
 import { GraphMinimap } from './graph-minimap'
+import ForceGraph2DWrapper from './force-graph-2d-wrapper'
 import { Loader2 } from '@/components/icons'
 
 export const EDGE_KIND_COLORS: Record<string, string> = {
@@ -44,7 +49,6 @@ type GraphLinkDatum = GraphLinkLike & {
   target: GraphEndpointRef | GraphNodeDatum
   color?: string
   curvature?: number
-  curveRotation?: number
   isSelfLoop?: boolean
 }
 
@@ -123,23 +127,17 @@ function firstGraphDisplayString(...values: unknown[]): string {
 
 function graphEndpointId(endpoint: unknown): string {
   if (endpoint && typeof endpoint === 'object' && 'id' in endpoint) {
-    return firstGraphDisplayString((endpoint as GraphEndpointObject).id)
+    return firstGraphDisplayString(endpoint.id)
   }
   return firstGraphDisplayString(endpoint)
 }
 
 function isGraphEndpointObject(value: unknown): value is GraphEndpointObject {
-  return Boolean(value) && typeof value === 'object'
+  return typeof value === 'object' && value !== null
 }
 
 function getLinkKind(link: GraphLinkDatum): string {
-  return firstGraphDisplayString(link?.meta?.kind, link?.kind)
-}
-
-function getLinkConfidence(link: GraphLinkDatum): number | null {
-  const raw = link?.meta?.confidence ?? link?.confidence ?? link?.weight
-  const num = Number(raw)
-  return Number.isFinite(num) ? num : null
+  return firstGraphDisplayString(link.meta?.kind, link.kind)
 }
 
 function getStableLinkId(link: GraphLinkDatum | null | undefined, index?: number): string {
@@ -172,7 +170,7 @@ function areViewportLodsEqual(left: GraphViewportLod | null, right: GraphViewpor
 
 function confidenceToWidth(confidence: number | null, opts: { isLargeGraph: boolean }): number {
   // Map [0..1] -> stroke width. Keep this bounded so large graphs remain readable.
-  const isLargeGraph = Boolean(opts?.isLargeGraph)
+  const { isLargeGraph } = opts
   const c = confidence == null ? 0.55 : clamp01(confidence)
   const base = isLargeGraph ? 0.45 : 0.75
   const span = isLargeGraph ? 1.35 : 2.25
@@ -182,7 +180,7 @@ function confidenceToWidth(confidence: number | null, opts: { isLargeGraph: bool
 type RgbColor = { r: number; g: number; b: number }
 
 function parseColorToRgb(color: string): RgbColor | null {
-  const value = String(color || '').trim()
+  const value = color.trim()
   if (!value) return null
 
   const hex = value.replace('#', '')
@@ -272,11 +270,11 @@ function graphCursorStyle(isPanning: boolean, hoveredNodeId: string | null, hove
 }
 
 function graphNodeKind(node: GraphNodeDatum): string {
-  return graphDisplayString(node?.meta?.kind)
+  return graphDisplayString(node.meta?.kind)
 }
 
 function graphNodeType(node: GraphNodeDatum): string {
-  return firstGraphDisplayString(node?.meta?.type, node?.type)
+  return firstGraphDisplayString(node.meta?.type, node.type)
 }
 
 function linkEndpointIds(link: GraphLinkDatum) {
@@ -803,7 +801,6 @@ function getPrimaryCanvas(root: ParentNode | null): HTMLCanvasElement | null {
 }
 
 // Dynamically import ForceGraph2D via wrapper to handle Ref correctly
-const ForceGraph2DNoSSR = dynamic(() => import('./force-graph-2d-wrapper'), { ssr: false })
 const LARGE_GRAPH_NODE_THRESHOLD = 600
 const LARGE_GRAPH_LINK_THRESHOLD = 1200
 
@@ -843,6 +840,10 @@ type GraphRenderBoundaryProps = Readonly<{
 type GraphRenderBoundaryState = Readonly<{
   hasError: boolean
 }>
+
+export function reportGraphLayoutCycle(nodeIds: (string | number)[]) {
+  reportClientWarning('Hierarchical graph layout encountered a cycle', { nodeCount: nodeIds.length })
+}
 
 function GraphRenderFallback() {
   return (
@@ -901,8 +902,6 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(function
   const fgRef = useRef<ForceGraphMethods | undefined>(undefined)
   const { width, height } = useResizeObserver(containerRef)
   const [mounted, setMounted] = useState(false)
-  const [fittedView, setFittedView] = useState('')
-  const fittedViewRef = useRef('')
   const [hoveredLinkId, setHoveredLinkId] = useState<string | null>(null)
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null)
   const [isCanvasPanning, setIsCanvasPanning] = useState(false)
@@ -986,16 +985,12 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(function
     }))
 
     // Spread parallel links and draw self-loops deterministically.
-    decorateLinksForDisplay(links as Array<GraphLinkDatum & Record<string, unknown>>)
+    decorateLinksForDisplay(links)
 
     return { nodes, links }
   }, [data])
-  const isLargeGraph = useMemo(
-    () =>
-      sanitizedData.nodes.length > LARGE_GRAPH_NODE_THRESHOLD ||
-      sanitizedData.links.length > LARGE_GRAPH_LINK_THRESHOLD,
-    [sanitizedData.links.length, sanitizedData.nodes.length],
-  )
+  const isLargeGraph =
+    sanitizedData.nodes.length > LARGE_GRAPH_NODE_THRESHOLD || sanitizedData.links.length > LARGE_GRAPH_LINK_THRESHOLD
   const allowEdgeLabels = showEdgeLabels && !isLargeGraph
   const edgeLabelScale = isLargeGraph ? 2.5 : 2
   const nodeRelSize = isLargeGraph ? 4 : 6
@@ -1003,13 +998,15 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(function
   const cooldownTicks = isLargeGraph ? 50 : 100
   const cooldownTime = isLargeGraph ? 4000 : 8000
   const graphRenderResetKey = `${sanitizedData.nodes.length}:${sanitizedData.links.length}:${layoutMode}`
-  const fitKey = useMemo(
-    () => `${width}:${height}:${layoutMode}:${sanitizedData.nodes.map((node) => node.id).join(',')}`,
-    [height, layoutMode, sanitizedData.nodes, width],
+  const fitRequest = useMemo(
+    () => ({ width, height, layoutMode, data: sanitizedData }),
+    [height, layoutMode, sanitizedData, width],
   )
+  const [fittedView, setFittedView] = useState<typeof fitRequest | null>(null)
+  const fittedViewRef = useRef<typeof fitRequest | null>(null)
   useEffect(() => {
     if (appearance === 'diagram') fgRef.current?.d3ReheatSimulation?.()
-  }, [appearance, fitKey])
+  }, [appearance, fitRequest])
   const graphCursor = graphCursorStyle(isCanvasPanning, hoveredNodeId, hoveredLinkId)
   const viewportPinnedNodeIds = useMemo(() => {
     const pinned = new Set<string>(highlightedNodeIds)
@@ -1058,14 +1055,14 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(function
       if (!topLeft || !bottomRight) return
 
       const viewport: GraphViewportRect = {
-        minX: Math.min(Number(topLeft.x), Number(bottomRight.x)),
-        minY: Math.min(Number(topLeft.y), Number(bottomRight.y)),
-        maxX: Math.max(Number(topLeft.x), Number(bottomRight.x)),
-        maxY: Math.max(Number(topLeft.y), Number(bottomRight.y)),
+        minX: Math.min(topLeft.x, bottomRight.x),
+        minY: Math.min(topLeft.y, bottomRight.y),
+        maxX: Math.max(topLeft.x, bottomRight.x),
+        maxY: Math.max(topLeft.y, bottomRight.y),
       }
       if (!Object.values(viewport).every(Number.isFinite)) return
 
-      const zoom = Number(transform?.k ?? graph.zoom?.() ?? 1)
+      const zoom = transform?.k ?? graph.zoom?.() ?? 1
       const next = buildGraphViewportLod({
         nodes: sanitizedData.nodes,
         links: sanitizedData.links,
@@ -1218,6 +1215,7 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(function
 
   // Auto zoom fit on data change
   useEffect(() => {
+    if (appearance === 'diagram') return
     let attempts = 0
     const maxAttempts = 10
     let timeoutId: number | null = null
@@ -1238,14 +1236,14 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(function
         clearTimeout(timeoutId)
       }
     }
-  }, [sanitizedData])
+  }, [appearance, sanitizedData])
 
   // Layout transitions (U9): reheat the simulation so layout changes animate smoothly.
   useEffect(() => {
-    if (fgRef.current) {
+    if (appearance !== 'diagram' && fgRef.current) {
       fgRef.current.d3ReheatSimulation?.()
     }
-  }, [layoutMode])
+  }, [appearance, layoutMode])
 
   useEffect(() => {
     if (!mounted) return
@@ -1278,13 +1276,14 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(function
       if (kind === 'event') return EVENT_COLOR
 
       const type = graphNodeType(node)
-      if (type && typeColorMap.has(type)) return typeColorMap.get(type)!
+      const typeColor = typeColorMap.get(type)
+      if (typeColor !== undefined) return typeColor
 
       if (typeof node.group === 'number' && node.group > 0) {
         return NODE_COLOR_PALETTE[(node.group - 1) % NODE_COLOR_PALETTE.length]
       }
 
-      return NODE_COLOR_PALETTE[hashTypeToIndex(node.id || '')]
+      return NODE_COLOR_PALETTE[hashTypeToIndex(node.id)]
     },
     [highlightedNodeIds, typeColorMap, canvasColors.nodeDim],
   )
@@ -1292,7 +1291,7 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(function
   const isNodeVisibleForViewport = useCallback(
     (node: GraphNodeDatum) => {
       if (!isLargeGraph || !viewportLod) return true
-      const nodeId = String(node?.id ?? '')
+      const nodeId = node.id
       if (!nodeId) return false
       return viewportLod.visibleNodeIds.has(nodeId) || viewportPinnedNodeIds.has(nodeId)
     },
@@ -1326,7 +1325,7 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(function
       ref={containerRef}
       className="relative h-full w-full bg-transparent"
       data-graph-renderer="2d"
-      aria-busy={appearance === 'diagram' && fittedView !== fitKey}
+      aria-busy={appearance === 'diagram' && fittedView !== fitRequest}
     >
       {!mounted || width === 0 || height === 0 ? (
         <div className="absolute inset-0 flex items-center justify-center text-muted-foreground">
@@ -1344,28 +1343,29 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(function
       ) : (
         <GraphRenderBoundary resetKey={graphRenderResetKey}>
           <>
-            <ForceGraph2DNoSSR
+            <ForceGraph2DWrapper
               graphRef={fgRef}
               width={width}
               height={height}
               graphData={sanitizedData}
               backgroundColor="rgba(0,0,0,0)"
               showPointerCursor={false}
-              nodeLabel="label"
+              nodeLabel={(node: GraphNodeDatum) => {
+                const tooltip = document.createElement('span')
+                tooltip.textContent = node.label
+                return tooltip.outerHTML
+              }}
               nodeVisibility={isNodeVisibleForViewport}
               nodeColor={getNodeColor}
               nodeRelSize={nodeRelSize}
               // Layout Config
               dagMode={getDagMode()}
+              onDagError={reportGraphLayoutCycle}
               dagLevelDistance={50}
 
               // Link styling
               linkCurvature={(link: GraphLinkDatum) => {
-                const v = link?.curvature
-                return typeof v === 'number' && Number.isFinite(v) ? v : 0
-              }}
-              linkCurveRotation={(link: GraphLinkDatum) => {
-                const v = link?.curveRotation
+                const v = link.curvature
                 return typeof v === 'number' && Number.isFinite(v) ? v : 0
               }}
               linkColor={(link: GraphLinkDatum) => {
@@ -1397,8 +1397,7 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(function
               }}
               linkWidth={(link: GraphLinkDatum) => {
                 const linkId = getStableLinkId(link)
-                const confidence = getLinkConfidence(link)
-                const baseWidth = confidenceToWidth(confidence, { isLargeGraph })
+                const baseWidth = confidenceToWidth(getGraphLinkDisplayWeight(link), { isLargeGraph })
                 if (highlightedLinkIds.size > 0 && linkId && highlightedLinkIds.has(linkId)) {
                   return 4
                 }
@@ -1412,7 +1411,7 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(function
                 }
                 return Math.min(3.2, Math.max(isLargeGraph ? 0.45 : 0.8, baseWidth * 0.82))
               }}
-              linkDirectionalArrowLength={(link: GraphLinkDatum) => (link?.isSelfLoop ? 0 : arrowLength)}
+              linkDirectionalArrowLength={(link: GraphLinkDatum) => (link.isSelfLoop ? 0 : arrowLength)}
               linkDirectionalArrowRelPos={1}
               linkLabel={(link: GraphLinkDatum) => buildGraphLinkProvenanceTooltipHtml(link)}
               linkVisibility={isLinkVisibleForViewport}
@@ -1421,10 +1420,17 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(function
               onZoomEnd={updateViewportLod}
               onEngineStop={() => {
                 updateViewportLod()
-                if (appearance === 'diagram' && fittedViewRef.current !== fitKey && width > 0 && height > 0) {
-                  fgRef.current?.zoomToFit(0, Math.min(70, width * 0.12, height * 0.12))
-                  fittedViewRef.current = fitKey
-                  setFittedView(fitKey)
+                const graph = fgRef.current
+                if (
+                  graph &&
+                  appearance === 'diagram' &&
+                  fittedViewRef.current !== fitRequest &&
+                  width > 0 &&
+                  height > 0
+                ) {
+                  graph.zoomToFit(0, Math.min(70, width * 0.12, height * 0.12))
+                  fittedViewRef.current = fitRequest
+                  setFittedView(fitRequest)
                 }
               }}
               onNodeClick={handleNodeClick}
@@ -1457,7 +1463,7 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(function
 
               // Custom Node Painting
               nodeCanvasObject={(node: GraphNodeDatum, ctx: CanvasRenderingContext2D, globalScale: number) => {
-                const degree = nodeDegreeMap.get(String(node.id)) || 0
+                const degree = nodeDegreeMap.get(node.id) ?? 0
                 const state = createNodeRenderState({
                   node,
                   globalScale,
@@ -1541,7 +1547,7 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(function
               <div className="absolute bottom-24 right-6 z-10">
                 <GraphMinimap
                   graphRef={fgRef}
-                  data={sanitizedData}
+                  nodes={sanitizedData.nodes}
                   graphWidth={width}
                   graphHeight={height}
                   isDark={isDark}

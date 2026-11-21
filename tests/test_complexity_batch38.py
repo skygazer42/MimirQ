@@ -2,15 +2,15 @@ from copy import deepcopy
 
 import pytest
 
-from app.rag.core import retrieval_profiles
-from app.rag.core.evidence_capsule_builder import (
+from app.rag.evaluation.poc_runner.source_builder import build_dataset_analysis_sources
+from app.rag.evaluation.regression import chunk_diagnostics
+from app.rag.retrieval.configuration import profiles as retrieval_profiles
+from app.rag.retrieval.evidence.capsule import (
     build_evidence_capsule,
     recompute_capsule_hash,
     sign_evidence_capsule,
     validate_evidence_capsule,
 )
-from app.rag.evaluation import chunk_diagnostics
-from app.rag.evaluation.poc_runner.source_builder import build_dataset_analysis_sources
 
 
 def test_evidence_capsule_validation_preserves_hash_anchor_and_signature_reasons(
@@ -42,7 +42,7 @@ def test_evidence_capsule_validation_preserves_hash_anchor_and_signature_reasons
     signed = deepcopy(capsule)
     signed["signature"] = sign_evidence_capsule(signed, secret="secret")
     monkeypatch.setattr(
-        "app.rag.core.evidence_capsule_builder._signing_secret_from_settings",
+        "app.rag.retrieval.evidence.capsule._signing_secret_from_settings",
         lambda: "secret",
     )
     assert validate_evidence_capsule(

@@ -54,20 +54,23 @@ import { usePipelineOptions } from '@/contexts/pipeline-options-context'
 import type { DocumentPipelineOptions } from '@/types'
 import { getAuthCacheScope } from '@/lib/auth-storage'
 import { formatApiError } from '@/lib/api-errors'
+import { listDocumentPages } from '@/lib/api/document-pages'
+import { assertCompleteDocumentContent, hasParsedFileMemoryContent, mergeDocumentLibrary } from '@/lib/document-library'
 import { useSearchParams } from 'next/navigation'
 import { toast } from 'sonner'
 import { useRouter } from '@/i18n/navigation'
 import { ROOT_FOLDER_ID, useParsedFiles, type ParsedFileData } from '@/store/use-parsed-files-store'
 import { cn, formatFileSize } from '@/lib/utils'
-import { saveDocContentToCache, getDocContentFromCache } from '@/lib/doc-content-cache'
+import { getDocContentFromCache } from '@/lib/doc-content-cache'
 import { QualityChecker } from '@/components/data-governance/quality-checker'
 import { DataCleaner } from '@/components/data-governance/data-cleaner'
 import { DataAnnotator } from '@/components/data-governance/data-annotator'
 import { DataClassifier } from '@/components/data-governance/data-classifier'
 import { datasetApi } from '@/lib/api/datasets'
+import { queryKeys } from '@/lib/query-keys'
 import { documentApi } from '@/lib/api/documents'
 import { parsingApi } from '@/lib/api/parsing'
-import { reportClientError, reportClientWarning } from '@/lib/client-logging'
+import { reportClientError } from '@/lib/client-logging'
 import { useParserBackendPreference } from '@/contexts/parser-backend-context'
 import { MarkdownRenderer } from '@/components/markdown/markdown-renderer'
 
@@ -85,30 +88,17 @@ const GOVERNANCE_TAB_CONFIGS = [
 ] as const
 
 type GovernanceTab = (typeof GOVERNANCE_TAB_CONFIGS)[number]['id']
-type DatasetOption = {
-  id: string
-  name: string
-}
-
 type GovernanceDocument = Awaited<ReturnType<typeof documentApi.list>>['items'][number]
 type GovernanceParsingDocument = Awaited<ReturnType<typeof parsingApi.listDocuments>>['items'][number]
 
-async function listAllGovernanceDocuments<T>(
-  requestPage: (skip: number) => Promise<{ total: number; items: T[] }>,
-  signal: AbortSignal,
-): Promise<T[]> {
-  let page = await requestPage(0)
-  const documents = [...page.items]
-  const total = page.total
-  while (page.items.length > 0 && documents.length < total) {
-    signal.throwIfAborted()
-    page = await requestPage(documents.length)
-    documents.push(...page.items)
-  }
-  return documents
-}
-
 const ALL_DATASETS_VALUE = '__all_datasets__'
+
+function getAllowedUploadFileType(filename: string): string | undefined {
+  const extensionStart = filename.lastIndexOf('.')
+  if (extensionStart === -1) return undefined
+  const extension = filename.slice(extensionStart + 1).toLowerCase()
+  return ZIP_ALLOWED_EXTENSIONS.has(extension) ? extension : undefined
+}
 
 function normalizeBackendCandidate(value: unknown): string {
   return typeof value === 'string' && value.trim() ? value.trim() : ''
@@ -129,6 +119,7 @@ function isParsingWorkspaceDocument(doc: GovernanceDocument): boolean {
 
 function mapKnowledgeDocumentToGovernanceFile(
   doc: GovernanceDocument,
+  existing: ParsedFileData | undefined,
   datasetNameById: Map<string, string>,
 ): ParsedFileData {
   const meta = doc.metadata
@@ -136,81 +127,77 @@ function mapKnowledgeDocumentToGovernanceFile(
     normalizeBackendCandidate(meta?.parser_backend) ||
     normalizeBackendCandidate(meta?.parser_backend_requested) ||
     'auto'
-  const resolved = resolveParserBackendForFilename(doc.filename || 'document', backendCandidate)
+  const resolved = resolveParserBackendForFilename(doc.filename, backendCandidate)
   const backend = resolved.backend || backendCandidate
   const datasetId = doc.dataset_id || null
 
   return {
-    id: String(doc.id || '').trim(),
-    filename: doc.filename || 'document',
-    fileType: doc.file_type || '',
-    fileSize: Number(doc.file_size || 0),
-    markdownContent: '',
-    originalMarkdownContent: '',
-    parsedAt: String(doc.updated_at || doc.created_at || new Date().toISOString()),
+    ...existing,
+    id: doc.id,
+    filename: doc.filename,
+    fileType: doc.file_type,
+    fileSize: doc.file_size,
+    markdownContent: existing === undefined ? '' : existing.markdownContent,
+    originalMarkdownContent: existing?.originalMarkdownContent,
+    parsedAt: doc.updated_at,
     parser: getParserLabel(backend),
     parserBackend: backend,
-    folderId: ROOT_FOLDER_ID,
+    folderId: existing?.folderId ?? ROOT_FOLDER_ID,
     datasetId,
     datasetName: datasetId ? datasetNameById.get(datasetId) || datasetId : null,
     source: 'knowledge_base',
     sourcePath: typeof meta?.source_path === 'string' ? meta.source_path : null,
     status: mapBackendStatusToGovernanceStatus(doc.status),
-    error: doc.error_message || undefined,
+    error: doc.error_message === null ? undefined : doc.error_message,
   }
 }
 
-function mapParsingDocumentToGovernanceFile(doc: GovernanceParsingDocument): ParsedFileData {
+function mapParsingDocumentToGovernanceFile(
+  doc: GovernanceParsingDocument,
+  existing: ParsedFileData | undefined,
+): ParsedFileData {
   const meta = doc.metadata
   const backendCandidate =
     normalizeBackendCandidate(meta?.parser_backend) ||
     normalizeBackendCandidate(meta?.parser_backend_requested) ||
     'auto'
-  const resolved = resolveParserBackendForFilename(doc.filename || 'document', backendCandidate)
+  const resolved = resolveParserBackendForFilename(doc.filename, backendCandidate)
   const backend = resolved.backend || backendCandidate
 
   return {
-    id: String(doc.id || '').trim(),
-    filename: doc.filename || 'document',
-    fileType: doc.file_type || '',
-    fileSize: Number(doc.file_size || 0),
-    markdownContent: '',
-    originalMarkdownContent: '',
-    parsedAt: String(doc.updated_at || doc.created_at || new Date().toISOString()),
+    ...existing,
+    id: doc.id,
+    filename: doc.filename,
+    fileType: doc.file_type,
+    fileSize: doc.file_size,
+    markdownContent: existing === undefined ? '' : existing.markdownContent,
+    originalMarkdownContent: existing?.originalMarkdownContent,
+    parsedAt: doc.updated_at,
     parser: getParserLabel(backend),
     parserBackend: backend,
-    folderId: ROOT_FOLDER_ID,
+    folderId: existing?.folderId ?? ROOT_FOLDER_ID,
     datasetId: doc.dataset_id || null,
     datasetName: null,
     source: 'parsing_workspace',
     status: mapBackendStatusToGovernanceStatus(doc.status),
-    error: doc.error_message || undefined,
+    error: doc.error_message === null ? undefined : doc.error_message,
   }
 }
 
 // 文件治理状态
+type GovernanceReview = NonNullable<ParsedFileData['governanceReview']>
+
 type FileGovernanceState = {
   id: string
   originalContent: string
   cleanedContent: string
-  annotations: Array<{
-    id: string
-    text: string
-    type: 'entity' | 'keyword' | 'sensitive' | 'custom'
-    label: string
-    start: number
-    end: number
-  }>
+  contentLoaded: boolean
+  annotations: GovernanceReview['annotations']
   tags: string[]
   category: string | null
   qualityScore: number
   qualityChecked: boolean
-  issues: Array<{
-    id: string
-    type: 'error' | 'warning' | 'info'
-    message: string
-    position?: { start: number; end: number }
-  }>
+  issues: GovernanceReview['issues']
   isModified: boolean
   resetRevision: number
 }
@@ -226,6 +213,7 @@ export function DataGovernancePanel() {
   const setActiveFolderId = useParsedFiles((state) => state.setActiveFolderId)
   const createFolder = useParsedFiles((state) => state.createFolder)
   const isLoaded = useParsedFiles((state) => state.isLoaded)
+  const loadError = useParsedFiles((state) => state.loadError)
   const addParsedFile = useParsedFiles((state) => state.addParsedFile)
   const setParsedFiles = useParsedFiles((state) => state.setParsedFiles)
   const updateParsedFile = useParsedFiles((state) => state.updateParsedFile)
@@ -235,7 +223,6 @@ export function DataGovernancePanel() {
   // UI 状态
   const [activeTab, setActiveTab] = useState<GovernanceTab>('quality')
   const [selectedFileId, setSelectedFileId] = useState<string | null>(null)
-  const [fileSearchQuery, setFileSearchQuery] = useState('')
   const [viewMode, setViewMode] = useState<'edit' | 'preview' | 'original'>('preview')
   const [previewFormat, setPreviewFormat] = useState<'rendered' | 'markdown'>('rendered')
   const [isDragging, setIsDragging] = useState(false)
@@ -245,10 +232,9 @@ export function DataGovernancePanel() {
     id: string
     filename: string
   } | null>(null)
-  const [selectedDatasetId, setSelectedDatasetId] = useState<string | null>(() => {
-    const fromUrl = (searchParams.get('dataset_id') || '').trim()
-    return fromUrl || null
-  })
+  const requestedDatasetId = searchParams.get('dataset_id')?.trim()
+  const inboundDatasetId = requestedDatasetId ? requestedDatasetId : null
+  const [selectedDatasetId, setSelectedDatasetId] = useState(inboundDatasetId)
   const uploadAbortRef = useRef<AbortController | null>(null)
   const headerTitle = t('header.title')
   const governanceTabs = useMemo(
@@ -269,18 +255,10 @@ export function DataGovernancePanel() {
     }
   }, [])
 
-  // Optional deep link from /chunk-preview (best-effort, non-breaking).
   useEffect(() => {
-    const raw = (searchParams.get('tab') || '').trim()
-    if (!raw) return
-    if (governanceTabs.some((tab) => tab.id === raw)) {
-      setActiveTab(raw as GovernanceTab)
-    }
-  }, [governanceTabs, searchParams])
-
-  const inboundDatasetId = useMemo(() => {
-    const datasetId = (searchParams.get('dataset_id') || '').trim()
-    return datasetId || null
+    const requestedTab = searchParams.get('tab')?.trim()
+    const tab = GOVERNANCE_TAB_CONFIGS.find(({ id }) => id === requestedTab)
+    if (tab !== undefined) setActiveTab(tab.id)
   }, [searchParams])
 
   useEffect(() => {
@@ -290,18 +268,13 @@ export function DataGovernancePanel() {
   }, [inboundDatasetId, setActiveFolderId])
 
   const datasetsQuery = useQuery({
-    queryKey: ['data-governance', 'datasets'],
+    queryKey: queryKeys.datasets.exhaustive(),
     enabled: isLoaded,
-    queryFn: async (): Promise<DatasetOption[]> => {
-      const datasets = await datasetApi.listAll()
-      return datasets.map((dataset) => ({
-        id: String(dataset.id),
-        name: dataset.name || String(dataset.id),
-      }))
-    },
+    queryFn: ({ signal }) => datasetApi.listAll(undefined, { signal }),
+    select: (datasets) => datasets.map((dataset) => ({ id: dataset.id, name: dataset.name || dataset.id })),
   })
 
-  const availableDatasets = useMemo(() => datasetsQuery.data || [], [datasetsQuery.data])
+  const availableDatasets = useMemo(() => datasetsQuery.data ?? [], [datasetsQuery.data])
   const datasetNameById = useMemo(
     () => new Map(availableDatasets.map((dataset) => [dataset.id, dataset.name])),
     [availableDatasets],
@@ -312,60 +285,44 @@ export function DataGovernancePanel() {
   )
   const selectedDatasetName = selectedDatasetId ? datasetNameById.get(selectedDatasetId) || selectedDatasetId : null
   const documentSyncQuery = useQuery({
-    queryKey: ['data-governance', 'library-documents', datasetNameSignature, selectedDatasetId],
+    queryKey: ['data-governance', 'library-snapshot', datasetNameSignature],
     enabled: isLoaded,
-    queryFn: async ({ signal }): Promise<ParsedFileData[]> => {
+    queryFn: async ({ signal }) => {
+      const knownFiles = new Map(useParsedFiles.getState().files.map((file) => [file.id, file]))
       const [parsingResult, knowledgeResult] = await Promise.allSettled([
-        listAllGovernanceDocuments((skip) => parsingApi.listDocuments({ skip, limit: 200 }), signal),
-        listAllGovernanceDocuments(
-          (skip) => documentApi.list({ skip, limit: 200, dataset_id: selectedDatasetId }),
-          signal,
+        listDocumentPages((skip) => parsingApi.listDocuments({ skip, limit: 200 }, { signal }), signal).then(
+          (documents) => documents.map((doc) => mapParsingDocumentToGovernanceFile(doc, knownFiles.get(doc.id))),
+        ),
+        listDocumentPages((skip) => documentApi.list({ skip, limit: 200 }, { signal }), signal).then((documents) =>
+          documents
+            .filter((doc) => !isParsingWorkspaceDocument(doc))
+            .map((doc) => mapKnowledgeDocumentToGovernanceFile(doc, knownFiles.get(doc.id), datasetNameById)),
         ),
       ])
-
-      if (parsingResult.status === 'rejected') {
-        reportClientWarning('Failed to sync parsing documents for governance:', parsingResult.reason)
+      signal.throwIfAborted()
+      const errors: unknown[] = []
+      if (parsingResult.status === 'rejected') errors.push(parsingResult.reason)
+      if (knowledgeResult.status === 'rejected') errors.push(knowledgeResult.reason)
+      return {
+        knownFiles,
+        parsingResult,
+        knowledgeResult,
+        error: errors.length === 0 ? null : new AggregateError(errors, '文档队列同步失败，已保留可用记录'),
       }
-      if (knowledgeResult.status === 'rejected') {
-        reportClientWarning('Failed to sync knowledge documents for governance:', knowledgeResult.reason)
-      }
-
-      if (parsingResult.status === 'rejected' && knowledgeResult.status === 'rejected')
-        throw new Error('文档队列加载失败，请检查 API 后重试。')
-
-      const parsingItems = parsingResult.status === 'fulfilled' ? parsingResult.value : []
-      const knowledgeItems = knowledgeResult.status === 'fulfilled' ? knowledgeResult.value : []
-      return [
-        ...parsingItems.map(mapParsingDocumentToGovernanceFile),
-        ...knowledgeItems
-          .filter((doc) => !isParsingWorkspaceDocument(doc))
-          .map((doc) => mapKnowledgeDocumentToGovernanceFile(doc, datasetNameById)),
-      ].filter((file) => file.id)
     },
   })
 
   useEffect(() => {
-    if (!isLoaded || !documentSyncQuery.data) return
+    if (!isLoaded || documentSyncQuery.isFetching || documentSyncQuery.data === undefined) return
+    const current = useParsedFiles.getState().files
+    const merged = mergeDocumentLibrary(current, documentSyncQuery.data)
+    if (merged !== current) setParsedFiles(merged)
+  }, [documentSyncQuery.data, documentSyncQuery.isFetching, isLoaded, setParsedFiles])
 
-    const remoteById = new Map(documentSyncQuery.data.map((file) => [file.id, file]))
-    const currentFiles = useParsedFiles.getState().files || []
-    const merged = currentFiles.map((file) => {
-      const remote = remoteById.get(file.id)
-      if (!remote) return file
-      remoteById.delete(file.id)
-      return {
-        ...remote,
-        markdownContent: file.markdownContent || remote.markdownContent,
-        originalMarkdownContent: file.originalMarkdownContent || remote.originalMarkdownContent,
-        folderId: file.folderId || remote.folderId || ROOT_FOLDER_ID,
-        governanceStatus: file.governanceStatus || remote.governanceStatus,
-        governanceReview: file.governanceReview,
-        chunkStatus: file.chunkStatus || remote.chunkStatus,
-      }
-    })
-
-    setParsedFiles([...merged, ...remoteById.values()])
-  }, [documentSyncQuery.data, isLoaded, setParsedFiles])
+  const documentSyncError =
+    documentSyncQuery.error === null && documentSyncQuery.data !== undefined
+      ? documentSyncQuery.data.error
+      : documentSyncQuery.error
 
   const handleDatasetScopeChange = useCallback(
     (value: string) => {
@@ -427,9 +384,7 @@ export function DataGovernancePanel() {
   const governanceState = selectedFileId ? governanceStates[selectedFileId] : null
 
   const visibleFiles = useMemo(() => {
-    const query = fileSearchQuery.trim().toLowerCase()
-    const matchingFiles = scopedFiles.filter((file) => file.filename.toLowerCase().includes(query))
-    if (!activeFolderId || activeFolderId === ROOT_FOLDER_ID) return matchingFiles
+    if (!activeFolderId || activeFolderId === ROOT_FOLDER_ID) return scopedFiles
 
     const childrenByParentId = new Map<string, string[]>()
     for (const folder of libraryFolders) {
@@ -450,8 +405,8 @@ export function DataGovernancePanel() {
       for (const childId of children) stack.push(childId)
     }
 
-    return matchingFiles.filter((f) => allowedFolderIds.has(f.folderId || ROOT_FOLDER_ID))
-  }, [scopedFiles, activeFolderId, libraryFolders, fileSearchQuery])
+    return scopedFiles.filter((f) => allowedFolderIds.has(f.folderId || ROOT_FOLDER_ID))
+  }, [scopedFiles, activeFolderId, libraryFolders])
 
   const readyChunkFiles = useMemo(() => visibleFiles.filter((file) => file.chunkStatus === 'ready'), [visibleFiles])
   const selectedReadyChunkFiles = useMemo(
@@ -483,25 +438,23 @@ export function DataGovernancePanel() {
       id: string
       markdownContent: string
       originalMarkdownContent?: string
+      contentLoaded?: true
       governanceReview?: ParsedFileData['governanceReview']
     }) => {
       const originalContent = file.originalMarkdownContent ?? file.markdownContent
       const cleanedContent = file.markdownContent
+      const contentLoaded = hasParsedFileMemoryContent(file)
       setGovernanceStates((prev) => {
         const existing = prev[file.id]
         if (existing) {
-          // If we initialized with empty content (e.g., after refresh), backfill once content is loaded.
-          const hasAnyExistingContent = Boolean(
-            (existing.originalContent || '').trim() || (existing.cleanedContent || '').trim(),
-          )
-          const hasIncomingContent = Boolean(originalContent.trim() || cleanedContent.trim())
-          if (existing.isModified || hasAnyExistingContent || !hasIncomingContent) return prev
+          if (existing.isModified || existing.contentLoaded || !contentLoaded) return prev
           return {
             ...prev,
             [file.id]: {
               ...existing,
               originalContent,
               cleanedContent,
+              contentLoaded,
               isModified: false,
             },
           }
@@ -512,12 +465,13 @@ export function DataGovernancePanel() {
             id: file.id,
             originalContent,
             cleanedContent,
-            annotations: file.governanceReview?.annotations || [],
-            tags: file.governanceReview?.tags || [],
-            category: file.governanceReview?.category || null,
+            contentLoaded,
+            annotations: file.governanceReview?.annotations ?? [],
+            tags: file.governanceReview?.tags ?? [],
+            category: file.governanceReview?.category ?? null,
             qualityScore: file.governanceReview?.qualityScore ?? 0,
             qualityChecked: file.governanceReview?.qualityScore != null,
-            issues: file.governanceReview?.issues || [],
+            issues: file.governanceReview?.issues ?? [],
             isModified: false,
             resetRevision: 0,
           },
@@ -527,28 +481,35 @@ export function DataGovernancePanel() {
     [],
   )
 
-  const hasStoredContent = Boolean(selectedFile?.markdownContent || selectedFile?.originalMarkdownContent)
+  const hasStoredContent = selectedFile !== null && hasParsedFileMemoryContent(selectedFile)
   const contentQuery = useQuery({
     queryKey: ['data-governance', 'content', selectedFile?.id, selectedFile?.source],
-    enabled: Boolean(selectedFile && !hasStoredContent),
+    enabled: Boolean(selectedFile && !hasStoredContent && !governanceState?.contentLoaded),
     retry: false,
     queryFn: async () => {
       const file = selectedFile!
-      const cached = await getDocContentFromCache(file.id).catch(() => null)
+      const cached = await getDocContentFromCache(file.id)
       if (cached)
         return {
           id: file.id,
           markdownContent: cached.markdownContent,
           originalMarkdownContent: cached.originalMarkdownContent ?? cached.markdownContent,
         }
-      const remote =
-        file.source === 'knowledge_base'
-          ? await documentApi.getParsedContent(file.id, { max_chars: 2_000_000 })
-          : await parsingApi.getContent(file.id)
+      if (file.source === undefined) throw new Error('本地文档正文未找到，请重新导入文件')
+      if (file.source === 'knowledge_base') {
+        const remote = await documentApi.getParsedContent(file.id, { max_chars: 2_000_000 })
+        assertCompleteDocumentContent(remote)
+        return {
+          id: file.id,
+          markdownContent: remote.markdown_content,
+          originalMarkdownContent: remote.original_markdown_content,
+        }
+      }
+      const remote = await parsingApi.getContent(file.id)
       return {
         id: file.id,
-        markdownContent: remote.markdown_content ?? '',
-        originalMarkdownContent: remote.original_markdown_content ?? remote.markdown_content ?? '',
+        markdownContent: remote.markdown_content,
+        originalMarkdownContent: remote.original_markdown_content,
       }
     },
   })
@@ -556,7 +517,7 @@ export function DataGovernancePanel() {
     if (!selectedFile) return
     if (hasStoredContent) initializeGovernanceState(selectedFile)
     else if (contentQuery.data?.id === selectedFile.id)
-      initializeGovernanceState({ ...selectedFile, ...contentQuery.data })
+      initializeGovernanceState({ ...selectedFile, ...contentQuery.data, contentLoaded: true })
   }, [selectedFile, hasStoredContent, contentQuery.data, initializeGovernanceState])
 
   const handleDeleteFile = useCallback(
@@ -640,7 +601,7 @@ export function DataGovernancePanel() {
           return newId
         }
 
-        const expanded: Array<{ file: File; folderId: string }> = []
+        const expanded: Array<{ file: File; folderId: string; fileType: string }> = []
         let skipped = 0
         let added = 0
 
@@ -658,8 +619,8 @@ export function DataGovernancePanel() {
                 const filename = parts.pop()
                 if (!filename) continue
 
-                const ext = filename.split('.').pop()?.toLowerCase() || ''
-                if (!ZIP_ALLOWED_EXTENSIONS.has(ext)) {
+                const fileType = getAllowedUploadFileType(filename)
+                if (fileType === undefined) {
                   skipped += 1
                   skippedInZip += 1
                   continue
@@ -670,7 +631,7 @@ export function DataGovernancePanel() {
                   folderId = getOrCreateFolder(folderId, segment)
                 }
 
-                expanded.push({ file: item.file, folderId })
+                expanded.push({ file: item.file, folderId, fileType })
                 added += 1
                 addedInZip += 1
               }
@@ -699,41 +660,50 @@ export function DataGovernancePanel() {
             continue
           }
 
-          const ext = file.name.split('.').pop()?.toLowerCase() || ''
-          if (!ZIP_ALLOWED_EXTENSIONS.has(ext)) {
+          const fileType = getAllowedUploadFileType(file.name)
+          if (fileType === undefined) {
             skipped += 1
             continue
           }
 
-          expanded.push({ file, folderId: baseFolderId })
+          expanded.push({ file, folderId: baseFolderId, fileType })
           added += 1
         }
 
-        for (const { file, folderId } of expanded) {
+        for (const { file, folderId, fileType } of expanded) {
           // 使用 preview 接口快速获取 Markdown
           if (controller.signal.aborted || uploadAbortRef.current !== controller) return
-          const data = await documentApi.preview(file, parserBackend, undefined, {
-            signal: controller.signal,
-            dataset_id: selectedDatasetId || undefined,
-          })
+          const data = await documentApi.preview(
+            file,
+            parserBackend,
+            { governance_enabled: false },
+            {
+              signal: controller.signal,
+              dataset_id: selectedDatasetId ?? undefined,
+            },
+          )
           if (controller.signal.aborted || uploadAbortRef.current !== controller) return
 
           // 拼接 segments 获取全文
           const markdownContent = data.segments.map((s) => s.content).join('\n\n')
 
-          const newId = addParsedFile({
-            filename: file.name,
-            fileType: file.name.split('.').pop()?.toLowerCase() || '',
-            fileSize: file.size,
-            markdownContent,
-            parser: data.parser_backend,
-            folderId,
-            datasetId: selectedDatasetId,
-            datasetName: selectedDatasetName,
-          })
+          const newId = await addParsedFile(
+            {
+              filename: file.name,
+              fileType,
+              fileSize: file.size,
+              markdownContent,
+              parser: data.parser_backend,
+              folderId,
+              datasetId: selectedDatasetId,
+              datasetName: selectedDatasetName,
+            },
+            { signal: controller.signal },
+          )
+          if (controller.signal.aborted || uploadAbortRef.current !== controller) return
 
           // 如果是第一个文件，则自动选中
-          initializeGovernanceState({ id: newId, markdownContent })
+          initializeGovernanceState({ id: newId, markdownContent, contentLoaded: true })
           setSelectedFileId((prev) => prev ?? newId)
         }
 
@@ -851,7 +821,7 @@ export function DataGovernancePanel() {
       const source = governanceState?.cleanedContent
       setGovernanceStates((prev) => {
         const current = prev[selectedFileId]
-        if (!current || current.cleanedContent !== source) return prev
+        if (!current || current.cleanedContent !== source || current.cleanedContent === cleanedContent) return prev
         return {
           ...prev,
           [selectedFileId]: {
@@ -945,38 +915,51 @@ export function DataGovernancePanel() {
         const draft = governanceStates[id]
         const file = files.find((file) => file.id === id)
         if (!file) throw new Error('文档已移除，请重新选择。')
-        let markdown = draft?.cleanedContent ?? file.markdownContent
-        let original = draft?.originalContent ?? file.originalMarkdownContent ?? markdown
-        if (!draft && !markdown) {
+        let markdown = draft?.contentLoaded ? draft.cleanedContent : file.markdownContent
+        let original = draft?.contentLoaded ? draft.originalContent : (file.originalMarkdownContent ?? markdown)
+        if (!draft?.contentLoaded && !markdown && !original) {
           const cached = await getDocContentFromCache(id, scope)
           if (!cached) throw new Error('请先打开文档，等待正文加载完成。')
           markdown = cached.markdownContent
           original = cached.originalMarkdownContent ?? markdown
         }
-        // This page must observe durable failure before displaying success or navigating.
-        await saveDocContentToCache({ id, markdownContent: markdown, originalMarkdownContent: original }, scope)
         if (getAuthCacheScope() !== scope || !useParsedFiles.getState().files.some((item) => item.id === id)) {
           throw new Error('当前账户或文档已变更，请重新打开文档。')
         }
-        await updateParsedFile(id, {
-          markdownContent: markdown,
-          originalMarkdownContent: original,
-          governanceStatus: submitted ? 'submitted' : 'ready',
-          chunkStatus: submitted ? 'submitted' : 'ready',
-          ...(draft
+        await updateParsedFile(
+          id,
+          {
+            markdownContent: markdown,
+            originalMarkdownContent: original,
+            governanceStatus: submitted ? 'submitted' : 'ready',
+            chunkStatus: submitted ? 'submitted' : 'ready',
+            ...(draft
+              ? {
+                  governanceReview: {
+                    qualityScore: draft.qualityChecked ? draft.qualityScore : null,
+                    issues: draft.issues,
+                    annotations: draft.annotations,
+                    tags: draft.tags,
+                    category: draft.category,
+                  },
+                }
+              : {}),
+          },
+          { requirePersistence: true },
+        )
+        setGovernanceStates((prev) =>
+          prev[id] === draft && draft
             ? {
-                governanceReview: {
-                  qualityScore: draft.qualityChecked ? draft.qualityScore : null,
-                  issues: draft.issues,
-                  annotations: draft.annotations,
-                  tags: draft.tags,
-                  category: draft.category,
+                ...prev,
+                [id]: {
+                  ...draft,
+                  cleanedContent: markdown,
+                  originalContent: original,
+                  contentLoaded: true,
+                  isModified: false,
                 },
               }
-            : {}),
-        })
-        setGovernanceStates((prev) =>
-          prev[id] === draft && draft ? { ...prev, [id]: { ...draft, isModified: false } } : prev,
+            : prev,
         )
       }
     },
@@ -1008,6 +991,8 @@ export function DataGovernancePanel() {
   const queueFiles = visibleFiles.filter((file) =>
     file.filename.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()),
   )
+  const isLibraryLoading =
+    loadError === undefined && (!isLoaded || (documentSyncQuery.isPending && visibleFiles.length === 0))
   const statusFor = (file: ParsedFileData) => {
     const draft = governanceStates[file.id]
     const score = draft ? (draft.qualityChecked ? draft.qualityScore : null) : file.governanceReview?.qualityScore
@@ -1027,13 +1012,55 @@ export function DataGovernancePanel() {
     if (score != null) return { id: 'review', label: '待核对', tone: styles.warning, score }
     return { id: 'pending', label: '待治理', tone: '', score: null }
   }
-  const loadingContent = Boolean(selectedFile && !hasStoredContent && contentQuery.isPending)
-  const contentError = !hasStoredContent && contentQuery.isError
-  const canUseContent = Boolean(governanceState && !loadingContent && !contentError)
+  const loadingContent = Boolean(selectedFile && !governanceState?.contentLoaded && !contentQuery.isError)
+  const contentError = !governanceState?.contentLoaded && contentQuery.isError
+  const canUseContent = Boolean(governanceState?.contentLoaded)
   const hasText = canUseContent && Boolean(governanceState?.cleanedContent.trim())
+  let saveStateText = '等待检查文档'
+  if (saving) saveStateText = '正在保存…'
+  else if (loadingContent) saveStateText = '等待正文加载'
+  else if (contentError) saveStateText = '正文加载失败'
+  else if (governanceState?.isModified) saveStateText = '修改尚未保存'
+  else if (selectedFile?.governanceStatus === 'ready' || selectedFile?.governanceStatus === 'submitted')
+    saveStateText = '治理结果已保存'
   const currentIndex = queueFiles.findIndex((file) => file.id === selectedFileId)
   const activeIssue = governanceState?.issues.find((issue) => issue.id === activeIssueId)
   const currentStatus = selectedFile ? statusFor(selectedFile) : null
+  const documentActions =
+    selectedFile === null ? null : (
+      <div className={styles.fileActions}>
+        <ConfirmDialog
+          title="重置当前修改？"
+          description="将恢复解析原文，并清除本次检测、标注和分类。重置后仍需保存。"
+          confirmLabel="重置"
+          cancelLabel="取消"
+          onConfirm={handleReset}
+        >
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-8"
+            aria-label="重置文档修改"
+            disabled={!canUseContent || saving}
+          >
+            <RotateCcw className="size-3.5" />
+          </Button>
+        </ConfirmDialog>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="size-8"
+          aria-label="删除当前文档"
+          disabled={saving}
+          onClick={() => {
+            setDeleteFileTarget({ id: selectedFile.id, filename: selectedFile.filename })
+            setDeleteFileOpen(true)
+          }}
+        >
+          <Trash2 className="size-3.5" />
+        </Button>
+      </div>
+    )
   const nextFile = () => {
     const next = queueFiles[(currentIndex + 1) % queueFiles.length]
     if (next) handleSelectFile(next.id)
@@ -1137,6 +1164,11 @@ export function DataGovernancePanel() {
                 ))}
               </SelectContent>
             </Select>
+            {datasetsQuery.error ? (
+              <p role="alert" className="break-words text-xs text-destructive">
+                {formatApiError(datasetsQuery.error, '加载数据集失败')}
+              </p>
+            ) : null}
             <div className={styles.search}>
               <Search />
               <input
@@ -1160,20 +1192,33 @@ export function DataGovernancePanel() {
             <span>文件</span>
             <span>{queueFiles.length}</span>
           </div>
-          {documentSyncQuery.isError && (
+          {loadError !== undefined && (
+            <div className={styles.inlineError} role="alert">
+              <span>本地文档记录读取失败：{formatApiError(loadError, '无法读取文档目录')}</span>
+              <Button size="sm" variant="ghost" onClick={() => void useParsedFiles.persist.rehydrate()}>
+                重试读取文档
+              </Button>
+            </div>
+          )}
+          {documentSyncError !== null && (
             <div className={styles.inlineError} role="alert">
               <span>队列加载失败</span>
-              <Button size="sm" variant="ghost" onClick={() => void documentSyncQuery.refetch()}>
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={documentSyncQuery.isFetching}
+                onClick={() => void documentSyncQuery.refetch()}
+              >
                 重试
               </Button>
             </div>
           )}
           <div className={styles.queueScroll}>
-            {!isLoaded || (documentSyncQuery.isPending && !visibleFiles.length) ? (
+            {isLibraryLoading ? (
               <div className={styles.emptySmall} role="status">
                 正在加载文档…
               </div>
-            ) : !queueFiles.length ? (
+            ) : !queueFiles.length && loadError === undefined && documentSyncError === null ? (
               <div className={styles.emptySmall}>
                 {search ? '没有找到匹配的文档' : '当前范围没有文档'}
                 {search && (
@@ -1274,6 +1319,7 @@ export function DataGovernancePanel() {
                   <ArrowLeft className="size-4" />
                 </Button>
                 <strong title={selectedFile.filename}>{selectedFile.filename}</strong>
+                {documentActions}
               </div>
               <div className={styles.reviewColumns} data-tools-open={toolsOpen}>
                 <section className={styles.documentPane} aria-label="文档正文">
@@ -1296,38 +1342,7 @@ export function DataGovernancePanel() {
                         {canUseContent && <span>{governanceState.cleanedContent.length.toLocaleString()} 字</span>}
                       </div>
                     </div>
-                    <div className={styles.fileActions}>
-                      <ConfirmDialog
-                        title="重置当前修改？"
-                        description="将恢复解析原文，并清除本次检测、标注和分类。重置后仍需保存。"
-                        confirmLabel="重置"
-                        cancelLabel="取消"
-                        onConfirm={handleReset}
-                      >
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="size-8"
-                          aria-label="重置文档修改"
-                          disabled={!canUseContent || saving}
-                        >
-                          <RotateCcw className="size-3.5" />
-                        </Button>
-                      </ConfirmDialog>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="size-8"
-                        aria-label="删除当前文档"
-                        disabled={saving}
-                        onClick={() => {
-                          setDeleteFileTarget({ id: selectedFile.id, filename: selectedFile.filename })
-                          setDeleteFileOpen(true)
-                        }}
-                      >
-                        <Trash2 className="size-3.5" />
-                      </Button>
-                    </div>
+                    {documentActions}
                   </div>
                   <div className={styles.readerScroll} ref={contentScrollRef}>
                     {loadingContent ? (
@@ -1340,7 +1355,12 @@ export function DataGovernancePanel() {
                         <AlertTriangle />
                         <h3>正文加载失败</h3>
                         <p>{formatApiError(contentQuery.error, '请确认文档已经解析，再重试。')}</p>
-                        <Button size="sm" variant="outline" onClick={() => void contentQuery.refetch()}>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={contentQuery.isFetching}
+                          onClick={() => void contentQuery.refetch()}
+                        >
                           重新加载正文
                         </Button>
                       </div>
@@ -1489,8 +1509,8 @@ export function DataGovernancePanel() {
                           )}
                           {activeTab === 'clean' && (
                             <DataCleaner
+                              key={selectedFile.id}
                               content={governanceState.cleanedContent}
-                              cleanedContent={governanceState.cleanedContent}
                               resetRevision={governanceState.resetRevision}
                               onClean={handleClean}
                               disabled={saving || !hasText}
@@ -1575,20 +1595,16 @@ export function DataGovernancePanel() {
               />
               <footer className={styles.footer}>
                 <span className={styles.saveState} role="status">
-                  {saving ? (
+                  {saving || loadingContent ? (
                     <Loader2 className={styles.spinner} />
+                  ) : contentError ? (
+                    <AlertTriangle className="size-3.5 text-destructive" />
                   ) : governanceState.isModified ? (
                     <span className={cn(styles.dot, styles.warning)} />
                   ) : (
                     <Check className="size-3.5" />
                   )}
-                  {saving
-                    ? '正在保存…'
-                    : governanceState.isModified
-                      ? '修改尚未保存'
-                      : selectedFile.governanceStatus === 'ready' || selectedFile.governanceStatus === 'submitted'
-                        ? '治理结果已保存'
-                        : '等待检查文档'}
+                  {saveStateText}
                 </span>
                 <div className={styles.footerActions}>
                   <Button size="sm" variant="ghost" onClick={nextFile} disabled={queueFiles.length < 2 || saving}>
@@ -1614,8 +1630,14 @@ export function DataGovernancePanel() {
           ) : (
             <div className={styles.empty}>
               <FileSearch />
-              <h2>{documentSyncQuery.isPending || !isLoaded ? '正在加载文档…' : '选择需要治理的文档'}</h2>
-              <p>从左侧队列打开文档，或添加文档后开始检测和清洗。</p>
+              <h2>
+                {loadError !== undefined
+                  ? '文档目录暂不可用'
+                  : isLibraryLoading
+                    ? '正在加载文档…'
+                    : '选择需要治理的文档'}
+              </h2>
+              <p>打开队列里的文档，或添加文档后检查和清洗。</p>
               <Button size="sm" variant="outline" onClick={() => fileInputRef.current?.click()} disabled={uploading}>
                 <Plus className="size-4" />
                 添加文档
@@ -1628,7 +1650,7 @@ export function DataGovernancePanel() {
         <SheetContent className={styles.configSheet}>
           <SheetHeader className={styles.configHeader}>
             <SheetTitle>治理配置</SheetTitle>
-            <SheetDescription>选择治理预设，调整当前使用的清洗规则。</SheetDescription>
+            <SheetDescription>选择预设，或手动调整清洗规则。</SheetDescription>
           </SheetHeader>
           <div className={styles.configBody}>
             <section className={styles.configGroup}>
@@ -1655,9 +1677,11 @@ export function DataGovernancePanel() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>{t('dialogs.deleteFile.title')}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {t('dialogs.deleteFile.description', { filename: deleteFileTarget?.filename || '' })}
-            </AlertDialogDescription>
+            {deleteFileTarget !== null && (
+              <AlertDialogDescription>
+                {t('dialogs.deleteFile.description', { filename: deleteFileTarget.filename })}
+              </AlertDialogDescription>
+            )}
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>{t('dialogs.deleteFile.cancel')}</AlertDialogCancel>

@@ -1,7 +1,8 @@
 import pytest
 from langchain_core.documents import Document
 
-from app.rag.chunking.strategies import markdown_hierarchy, text_hierarchy
+from app.rag.ingestion.chunking.strategies.markup import markdown_hierarchy
+from app.rag.ingestion.chunking.strategies.text import text_hierarchy
 
 
 @pytest.mark.parametrize("module", [markdown_hierarchy, text_hierarchy])

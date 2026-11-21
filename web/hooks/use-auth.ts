@@ -2,8 +2,8 @@
 
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback } from 'react'
-import type { UserProfile } from '@/types/backend'
 import { authApi } from '@/lib/api/auth'
+import { extractHttpStatus } from '@/lib/api-errors'
 import {
   clearAuthSession,
   getAccessToken,
@@ -12,12 +12,6 @@ import {
   setStoredUser,
 } from '@/lib/auth-storage'
 import { queryKeys } from '@/lib/query-keys'
-
-function getHttpStatus(error: unknown): number | null {
-  const err = error as { response?: { status?: unknown }; status?: unknown }
-  const status = err?.response?.status ?? err?.status
-  return typeof status === 'number' ? status : null
-}
 
 export function useAuth() {
   const queryClient = useQueryClient()
@@ -29,21 +23,21 @@ export function useAuth() {
     error,
     isFetching,
     refetch,
-  } = useQuery<UserProfile | null>({
+  } = useQuery({
     queryKey: queryKeys.auth.profile,
-    queryFn: async (context) => {
+    queryFn: async ({ signal }) => {
       const token = getAccessToken()
       const sessionRevision = getAuthSessionRevision()
       if (!token) return getStoredUser()
 
       try {
-        const profile = await authApi.me()
-        if (context.signal.aborted || sessionRevision !== getAuthSessionRevision()) return getStoredUser()
+        const profile = await authApi.me({ signal })
+        if (signal.aborted || sessionRevision !== getAuthSessionRevision()) return getStoredUser()
         setStoredUser(profile)
         return profile
       } catch (err) {
-        if (context.signal.aborted || sessionRevision !== getAuthSessionRevision()) return getStoredUser()
-        if (getHttpStatus(err) === 401) {
+        if (signal.aborted || sessionRevision !== getAuthSessionRevision()) return getStoredUser()
+        if (extractHttpStatus(err) === 401) {
           if (getAccessToken() !== token) return getStoredUser()
           clearAuthSession()
           return null

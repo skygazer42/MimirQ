@@ -1,4 +1,4 @@
-from app.rag.chunking.recommendations import decorate_chunk_strategy_note
+from app.rag.ingestion.chunking.recommendations import decorate_chunk_strategy_note
 
 
 def test_chunking_recommendations_label_mainstream_and_specialized_strategies() -> None:

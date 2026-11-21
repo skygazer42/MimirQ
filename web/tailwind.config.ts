@@ -12,7 +12,6 @@ const config = {
     './store/**/*.{ts,tsx}',
     './contexts/**/*.{ts,tsx}',
   ],
-  prefix: '',
   theme: {
     container: {
       center: true,

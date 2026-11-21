@@ -37,33 +37,31 @@ const PRESET_CATEGORY_CONFIGS: Array<{
 ]
 
 function dedupeStrings(values: string[]): string[] {
-  const seen = new Set<string>()
-  const result: string[] = []
+  const unique = new Set<string>()
   for (const value of values) {
     const normalized = value.trim()
-    if (!normalized || seen.has(normalized)) continue
-    seen.add(normalized)
-    result.push(normalized)
+    if (normalized !== '') unique.add(normalized)
   }
-  return result
+  return [...unique]
 }
 
 function getTagText(tag: AutoDocumentTag): string {
-  return String(tag.value || '').trim()
+  return tag.value.trim()
 }
 
 function isLongTag(tag: string): boolean {
   return tag.length > 32 || /[\r\n]/.test(tag)
 }
 
+const SENSITIVITY_LABELS: Readonly<Record<string, string>> = {
+  internal: '内部',
+  public: '公开',
+  restricted: '受限',
+  confidential: '机密',
+}
+
 function displayTag(tag: string): string {
-  const sensitivityLabels: Record<string, string> = {
-    internal: '内部',
-    public: '公开',
-    restricted: '受限',
-    confidential: '机密',
-  }
-  return sensitivityLabels[tag] ?? tag
+  return Object.hasOwn(SENSITIVITY_LABELS, tag) ? SENSITIVITY_LABELS[tag] : tag
 }
 
 function selectCategoryTag(tags: AutoDocumentTag[]): AutoDocumentTag | undefined {
@@ -100,8 +98,9 @@ export function DataClassifier({
   const [suggestedTags, setSuggestedTags] = useState<string[]>([])
   const shortTags = tags.filter((tag) => !isLongTag(tag))
   const longTags = tags.filter(isLongTag)
+  const selectedTagLabels = new Set(tags.map(displayTag))
   const availableSuggestions = dedupeStrings([...suggestedTags, ...suggestedTagLabels]).filter(
-    (tag) => !tags.some((item) => displayTag(item) === displayTag(tag)) && !isLongTag(tag),
+    (tag) => !selectedTagLabels.has(displayTag(tag)) && !isLongTag(tag),
   )
   const activeClassificationRef = useRef<symbol | null>(null)
   const onClassifyRef = useRef(onClassify)
@@ -126,8 +125,8 @@ export function DataClassifier({
   }, [content])
 
   const handleAutoClassify = useCallback(async () => {
-    const source = String(content || '')
-    if (!source.trim() || isAutoClassifying) {
+    if (activeClassificationRef.current !== null) return
+    if (content.trim() === '') {
       toast.warning(t('auto.empty'))
       return
     }
@@ -137,7 +136,7 @@ export function DataClassifier({
     setIsAutoClassifying(true)
     try {
       const response = await pipelineApi.autoAnnotations({
-        text: source,
+        text: content,
         mode: 'document_focus',
         providers: ['cpu'],
         enable_keywords: true,
@@ -149,21 +148,21 @@ export function DataClassifier({
       })
       if (activeClassificationRef.current !== classification) return
       const documentTags = response.document_tags
-      const categoryTag = selectCategoryTag(documentTags)
-      const nextCategory = categoryTag ? getTagText(categoryTag) : t('categories.other.label')
       const backendSuggestedTags = dedupeStrings(documentTags.map(getTagText))
+      setSuggestedTags(backendSuggestedTags)
+      if (backendSuggestedTags.length === 0) {
+        toast.info(t('auto.noTags'))
+        return
+      }
+
+      const categoryTag = selectCategoryTag(documentTags)
+      const nextCategory = categoryTag === undefined ? selectedCategory : getTagText(categoryTag)
       const nextTags = dedupeStrings([...tags, ...backendSuggestedTags])
 
       setSelectedCategory(nextCategory)
-      setSuggestedTags(backendSuggestedTags)
       setTags(nextTags)
-      onClassifyRef.current(nextCategory, nextTags)
-
-      if (backendSuggestedTags.length > 0) {
-        toast.success(t('auto.success', { count: backendSuggestedTags.length }))
-      } else {
-        toast.info(t('auto.noTags'))
-      }
+      onClassifyRef.current(nextCategory ?? '', nextTags)
+      toast.success(t('auto.success', { count: backendSuggestedTags.length }))
     } catch (error) {
       if (activeClassificationRef.current !== classification) return
       reportClientWarning('Backend auto classification failed', error)
@@ -174,7 +173,7 @@ export function DataClassifier({
         setIsAutoClassifying(false)
       }
     }
-  }, [content, isAutoClassifying, t, tags])
+  }, [content, selectedCategory, t, tags])
 
   const handleAddTag = useCallback(
     (tag: string) => {
@@ -183,7 +182,7 @@ export function DataClassifier({
         setIsAutoClassifying(false)
         const updated = [...tags, tag]
         setTags(updated)
-        onClassifyRef.current(selectedCategory || '', updated)
+        onClassifyRef.current(selectedCategory ?? '', updated)
       }
 
       setNewTag('')
@@ -197,7 +196,7 @@ export function DataClassifier({
       setIsAutoClassifying(false)
       const updated = tags.filter((item) => item !== tag)
       setTags(updated)
-      onClassifyRef.current(selectedCategory || '', updated)
+      onClassifyRef.current(selectedCategory ?? '', updated)
     },
     [selectedCategory, tags],
   )
@@ -223,7 +222,7 @@ export function DataClassifier({
             <select
               className={styles.fieldControl}
               id="governance-category"
-              value={selectedCategory || ''}
+              value={selectedCategory ?? ''}
               onChange={(event) => {
                 activeClassificationRef.current = null
                 setIsAutoClassifying(false)

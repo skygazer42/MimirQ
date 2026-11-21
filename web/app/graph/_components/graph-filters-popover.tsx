@@ -8,12 +8,74 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 
-import type { GraphConfBucket } from '../graph-page-utils'
+import { GRAPH_CONFIDENCE_THRESHOLDS, type GraphConfBucket } from '../graph-page-utils'
 
 type GraphFilterOption = Readonly<{
   value: string
   count: number
 }>
+
+const CONFIDENCE_OPTIONS = [
+  ['high', `高（≥${GRAPH_CONFIDENCE_THRESHOLDS.high}）`],
+  ['medium', `中（${GRAPH_CONFIDENCE_THRESHOLDS.medium} ≤ 置信度 < ${GRAPH_CONFIDENCE_THRESHOLDS.high}）`],
+  ['low', `低（<${GRAPH_CONFIDENCE_THRESHOLDS.medium}）`],
+] as const
+
+function GraphFilterOptions({
+  label,
+  query,
+  selected,
+  options,
+  onQueryChange,
+  onCheckedChange,
+  onReset,
+}: Readonly<{
+  label: string
+  query: string
+  selected: readonly string[]
+  options: readonly GraphFilterOption[]
+  onQueryChange: (query: string) => void
+  onCheckedChange: (value: string, checked: boolean) => void
+  onReset: () => void
+}>) {
+  return (
+    <section aria-label={label}>
+      <div className="flex items-center justify-between">
+        <h3 className="text-[11px] font-semibold text-muted-foreground">{label}</h3>
+        {selected.length === 0 ? (
+          <span className="text-[11px] text-muted-foreground">不限</span>
+        ) : (
+          <button type="button" className="text-[11px] text-primary hover:underline" onClick={onReset}>
+            清除{label}筛选
+          </button>
+        )}
+      </div>
+      <Input
+        aria-label={`搜索${label}`}
+        value={query}
+        onChange={(event) => onQueryChange(event.currentTarget.value)}
+        placeholder={`搜索${label}…`}
+        className="mt-2 h-8 text-xs"
+      />
+      <div className="mt-2 max-h-36 space-y-1 overflow-y-auto pr-1 no-scrollbar">
+        {options.length === 0 ? (
+          <p className="text-xs text-muted-foreground">没有匹配的{label}</p>
+        ) : (
+          options.map((option) => (
+            <label key={option.value} className="flex items-center gap-2 rounded-md px-2 py-1 hover:bg-muted/60">
+              <Checkbox
+                checked={selected.includes(option.value)}
+                onCheckedChange={(checked) => onCheckedChange(option.value, checked === true)}
+              />
+              <span className="min-w-0 flex-1 truncate text-xs text-foreground">{option.value}</span>
+              <span className="font-mono text-[11px] text-muted-foreground">{option.count}</span>
+            </label>
+          ))
+        )}
+      </div>
+    </section>
+  )
+}
 
 type GraphFiltersPopoverProps = Readonly<{
   open: boolean
@@ -73,7 +135,7 @@ export function GraphFiltersPopover({
               ? 'bg-primary/10 text-primary hover:text-primary'
               : 'text-muted-foreground hover:text-foreground hover:bg-muted/60'
           }
-          title="图谱筛选：predicate / entity type / confidence bucket"
+          title="筛选实体类型、关系谓词和置信度"
         >
           <SlidersHorizontal className="w-4 h-4 mr-2" />
           筛选
@@ -84,18 +146,22 @@ export function GraphFiltersPopover({
           ) : null}
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="end" className="w-[420px] p-4">
+      <PopoverContent
+        align="end"
+        aria-label="图谱筛选"
+        className="max-h-[var(--radix-popover-content-available-height)] w-[420px] max-w-[var(--radix-popover-content-available-width)] overflow-y-auto p-4"
+      >
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <div className="flex items-center gap-2">
               <SlidersHorizontal className="w-4 h-4 text-muted-foreground" />
-              <div className="text-sm font-semibold text-foreground">图谱筛选</div>
+              <h2 className="text-sm font-semibold text-foreground">图谱筛选</h2>
               <div className="text-[11px] text-muted-foreground font-mono">
-                {graphNodeCount}N / {graphLinkCount}L
+                {graphNodeCount} 个节点 · {graphLinkCount} 条连线
               </div>
             </div>
             <div className="mt-1 text-[11px] text-muted-foreground">
-              Predicate 仅对关系边生效；Type 仅对实体节点生效。
+              实体类型筛选用于实体节点，关系谓词筛选用于关系连线。
             </div>
           </div>
 
@@ -114,144 +180,55 @@ export function GraphFiltersPopover({
         </div>
 
         <div className="mt-4 space-y-5">
-          <div>
-            <div className="flex items-center justify-between">
-              <div className="text-[11px] font-semibold text-muted-foreground uppercase">Entity Type</div>
-              {entityTypeFilters.length === 0 ? (
-                <span className="text-[11px] text-muted-foreground">Any</span>
-              ) : (
-                <button
-                  type="button"
-                  className="text-[11px] text-primary hover:underline"
-                  onClick={onResetEntityTypeFilters}
-                >
-                  Any
-                </button>
-              )}
-            </div>
-            <Input
-              value={entityTypeQuery}
-              onChange={(e) => onEntityTypeQueryChange(e.target.value)}
-              placeholder="Search types…"
-              className="mt-2 h-8 text-xs"
-            />
-            <div className="mt-2 max-h-36 overflow-y-auto overscroll-contain no-scrollbar pr-1 space-y-1">
-              {filteredEntityTypes.length === 0 ? (
-                <div className="text-xs text-muted-foreground">No entity types found</div>
-              ) : (
-                filteredEntityTypes.map((item) => {
-                  const checked = entityTypeFilters.includes(item.value)
-                  return (
-                    <label key={item.value} className="flex items-center gap-2 rounded-md px-2 py-1 hover:bg-muted/60">
-                      <Checkbox
-                        checked={checked}
-                        onCheckedChange={(next) => onEntityTypeCheckedChange(item.value, !!next)}
-                      />
-                      <span className="flex-1 min-w-0 truncate text-xs text-foreground">{item.value}</span>
-                      <span className="text-[11px] font-mono text-muted-foreground">{item.count}</span>
-                    </label>
-                  )
-                })
-              )}
-            </div>
-          </div>
-
-          <div>
-            <div className="flex items-center justify-between">
-              <div className="text-[11px] font-semibold text-muted-foreground uppercase">Predicate</div>
-              {predicateFilters.length === 0 ? (
-                <span className="text-[11px] text-muted-foreground">Any</span>
-              ) : (
-                <button
-                  type="button"
-                  className="text-[11px] text-primary hover:underline"
-                  onClick={onResetPredicateFilters}
-                >
-                  Any
-                </button>
-              )}
-            </div>
-            <Input
-              value={predicateQuery}
-              onChange={(e) => onPredicateQueryChange(e.target.value)}
-              placeholder="Search predicates…"
-              className="mt-2 h-8 text-xs"
-            />
-            <div className="mt-2 max-h-36 overflow-y-auto overscroll-contain no-scrollbar pr-1 space-y-1">
-              {filteredPredicates.length === 0 ? (
-                <div className="text-xs text-muted-foreground">No predicates found</div>
-              ) : (
-                filteredPredicates.map((item) => {
-                  const checked = predicateFilters.includes(item.value)
-                  return (
-                    <label key={item.value} className="flex items-center gap-2 rounded-md px-2 py-1 hover:bg-muted/60">
-                      <Checkbox
-                        checked={checked}
-                        onCheckedChange={(next) => onPredicateCheckedChange(item.value, !!next)}
-                      />
-                      <span className="flex-1 min-w-0 truncate text-xs text-foreground">{item.value}</span>
-                      <span className="text-[11px] font-mono text-muted-foreground">{item.count}</span>
-                    </label>
-                  )
-                })
-              )}
-            </div>
-          </div>
-
-          <div>
-            <div className="flex items-center justify-between">
-              <div className="text-[11px] font-semibold text-muted-foreground uppercase">Confidence</div>
-              {confidenceBucketFilters.length === 0 ? (
-                <span className="text-[11px] text-muted-foreground">Any</span>
-              ) : (
-                <button
-                  type="button"
-                  className="text-[11px] text-primary hover:underline"
-                  onClick={onResetConfidenceBuckets}
-                >
-                  Any
-                </button>
-              )}
-            </div>
+          <GraphFilterOptions
+            label="实体类型"
+            query={entityTypeQuery}
+            selected={entityTypeFilters}
+            options={filteredEntityTypes}
+            onQueryChange={onEntityTypeQueryChange}
+            onCheckedChange={onEntityTypeCheckedChange}
+            onReset={onResetEntityTypeFilters}
+          />
+          <GraphFilterOptions
+            label="关系谓词"
+            query={predicateQuery}
+            selected={predicateFilters}
+            options={filteredPredicates}
+            onQueryChange={onPredicateQueryChange}
+            onCheckedChange={onPredicateCheckedChange}
+            onReset={onResetPredicateFilters}
+          />
+          <section aria-label="置信度">
+            <h3 className="text-[11px] font-semibold text-muted-foreground">置信度</h3>
             <div className="mt-2 flex flex-wrap gap-2">
               <Button
                 type="button"
                 size="sm"
                 variant={confidenceBucketFilters.length === 0 ? 'info' : 'outline'}
                 className="h-7 px-2 text-xs"
+                aria-pressed={confidenceBucketFilters.length === 0}
                 onClick={onResetConfidenceBuckets}
               >
-                Any
+                不限
               </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant={confidenceBucketFilters.includes('high') ? 'info' : 'outline'}
-                className="h-7 px-2 text-xs"
-                onClick={() => onToggleConfidenceBucket('high')}
-              >
-                High (≥0.8)
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant={confidenceBucketFilters.includes('medium') ? 'info' : 'outline'}
-                className="h-7 px-2 text-xs"
-                onClick={() => onToggleConfidenceBucket('medium')}
-              >
-                Mid (0.5-0.8)
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant={confidenceBucketFilters.includes('low') ? 'info' : 'outline'}
-                className="h-7 px-2 text-xs"
-                onClick={() => onToggleConfidenceBucket('low')}
-              >
-                Low (&lt;0.5)
-              </Button>
+              {CONFIDENCE_OPTIONS.map(([bucket, label]) => {
+                const pressed = confidenceBucketFilters.includes(bucket)
+                return (
+                  <Button
+                    key={bucket}
+                    type="button"
+                    size="sm"
+                    variant={pressed ? 'info' : 'outline'}
+                    className="h-7 px-2 text-xs"
+                    aria-pressed={pressed}
+                    onClick={() => onToggleConfidenceBucket(bucket)}
+                  >
+                    {label}
+                  </Button>
+                )
+              })}
             </div>
-          </div>
+          </section>
         </div>
       </PopoverContent>
     </Popover>

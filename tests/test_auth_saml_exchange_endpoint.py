@@ -7,13 +7,13 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
-import app.api.v1.auth as auth_module
-from app.api.schemas.auth import SamlExchangeResponse, TokenResponse, UserPublic
-from app.core.database import Base
-from app.core.exceptions import ConfigError, ConflictError
-from app.models.tenant import Tenant, TenantMember
-from app.models.user import User
-from app.services.user_service import create_user
+import app.api.v1.identity.auth as auth_module
+from app.api.schemas.identity.auth import SamlExchangeResponse, TokenResponse, UserPublic
+from app.infrastructure.database.connection import Base
+from app.infrastructure.exceptions import ConfigError, ConflictError
+from app.models.identity.accounts import User
+from app.models.identity.workspaces import Tenant, TenantMember
+from app.services.identity.users import create_user
 
 
 def _build_app() -> FastAPI:

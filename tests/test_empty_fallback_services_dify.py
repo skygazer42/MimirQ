@@ -1,6 +1,6 @@
 import pytest
 
-from app.services.dify_integration import common, records
+from app.services.dify import common, records
 
 
 def test_dify_response_metadata_condition_matches_real_zero_values():

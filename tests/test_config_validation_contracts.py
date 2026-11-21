@@ -1,7 +1,7 @@
 import pytest
 from pydantic import ValidationError
 
-from app.core.config import Settings
+from app.infrastructure.config import Settings
 
 
 def _production_payload(**overrides: object) -> dict[str, object]:

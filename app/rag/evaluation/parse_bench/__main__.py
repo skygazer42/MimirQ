@@ -66,7 +66,7 @@ def _filter_manifest_cases(manifest_path: Path, docs_arg: str) -> tuple[Path, Pa
 def _augment_report(out_path: Path) -> None:
     report = _load_json(out_path)
     if not isinstance(report, dict):
-        return
+        raise ValueError("parse_benchmark_report_must_be_object")
     report["doc_type_matrix"] = build_doc_type_matrix(report)
     out_path.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
@@ -112,7 +112,7 @@ def run(argv: list[str] | None = None) -> int:
     parser_benchmark_script = _load_parser_benchmark_module()
     with _patched_argv(bench_argv):
         exit_code = int(parser_benchmark_script.main() or 0)
-    if out_path.exists():
+    if exit_code == 0 or out_path.exists():
         _augment_report(out_path)
     return exit_code
 

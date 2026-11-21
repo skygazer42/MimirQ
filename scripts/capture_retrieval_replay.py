@@ -20,7 +20,7 @@ from typing import Any
 
 import httpx
 
-from app.rag.evaluation.replay_capture import build_retrieval_replay_capture_record
+from app.rag.evaluation.regression.replay_capture import build_retrieval_replay_capture_record
 
 
 def _load_json(path: Path) -> Any:

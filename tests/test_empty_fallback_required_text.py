@@ -1,7 +1,7 @@
 import pytest
 
-from app.api.v1.parsing import _extract_markdown_pair_from_documents
-from app.core.token_utils import estimate_tokens
+from app.api.v1.pipelines.parsing import _extract_markdown_pair_from_documents
+from app.infrastructure.tokens import estimate_tokens
 
 
 @pytest.mark.parametrize("text", [None, 0, False])

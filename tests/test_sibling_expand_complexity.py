@@ -1,6 +1,6 @@
 from types import SimpleNamespace
 
-from app.rag.retrieval.sibling_expand import expand_document_siblings, select_document_expansion_mode
+from app.rag.retrieval.expansion.siblings import expand_document_siblings, select_document_expansion_mode
 
 
 def _row(

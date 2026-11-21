@@ -8,14 +8,14 @@ const TOKEN_PREFIX = 'v1'
 const TOKEN_TTL_MS = 60 * 60 * 1000
 
 function getMarkdownImageProxySecret(): string | null {
-  const configured = String(process.env.MARKDOWN_IMAGE_PROXY_SECRET || '').trim()
-  if (configured) return configured
+  const configured = process.env.MARKDOWN_IMAGE_PROXY_SECRET?.trim()
+  if (configured !== undefined && configured !== '') return configured
   return process.env.NODE_ENV === 'production' ? null : DEV_FALLBACK_SECRET
 }
 
 function getMarkdownImageProxyKey(): Buffer | null {
   const secret = getMarkdownImageProxySecret()
-  if (!secret) return null
+  if (secret === null) return null
   return createHash('sha256').update(secret).digest()
 }
 
@@ -40,8 +40,8 @@ export function mintMarkdownImageProxyToken(rawUrl: string): string | null {
 }
 
 export function resolveMarkdownImageProxyToken(rawToken: string | null | undefined): string | null {
-  const token = String(rawToken || '').trim()
-  if (!token) return null
+  const token = rawToken?.trim()
+  if (token === undefined || token === '') return null
 
   const [prefix, tokenBody] = token.split('.', 2)
   if (prefix !== TOKEN_PREFIX || !tokenBody) return null
@@ -61,15 +61,15 @@ export function resolveMarkdownImageProxyToken(rawToken: string | null | undefin
     decipher.setAuthTag(authTag)
 
     const payload = Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString('utf8')
-    const parsed = JSON.parse(payload) as { src?: unknown; exp?: unknown }
-    const src = typeof parsed.src === 'string' ? parsed.src.trim() : ''
-    const exp = typeof parsed.exp === 'number' ? parsed.exp : Number.NaN
-
-    if (!src || !Number.isFinite(exp) || exp < Date.now()) {
+    const parsed: unknown = JSON.parse(payload)
+    if (typeof parsed !== 'object' || parsed === null || !('src' in parsed) || !('exp' in parsed)) return null
+    const { src, exp } = parsed
+    if (typeof src !== 'string' || typeof exp !== 'number' || !Number.isFinite(exp) || exp < Date.now()) {
       return null
     }
 
-    return src
+    const sourceUrl = src.trim()
+    return sourceUrl === '' ? null : sourceUrl
   } catch {
     return null
   }

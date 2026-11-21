@@ -16,7 +16,6 @@ import { SafeResponsiveChart } from '@/components/ui/safe-responsive-chart'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { observabilityApi } from '@/lib/api/observability'
 import { formatApiError } from '@/lib/api-errors'
-import { toTrimmedPrimitiveString } from '@/lib/primitive-text'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 import { ObservabilityOpsPanel } from '@/components/observability/observability-ops-panel'
@@ -35,66 +34,29 @@ const SLOW_PRESETS = [
   { label: '≥ 5s', value: 5 },
 ]
 
-type AnalyticsChartPoint = {
-  t: number
-  time: string
-  requests: number
-  zero_hit: number
-  slow: number
-  errors: number
-  zero_hit_rate: number | null
-  slow_rate: number | null
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return !!value && typeof value === 'object' && !Array.isArray(value)
-}
-
-function queryCountItem(value: unknown): { query_hash: string; count: number } {
-  const item = isRecord(value) ? value : {}
-  return {
-    query_hash: toTrimmedPrimitiveString(item.query_hash),
-    count: Number(item.count || 0),
-  }
-}
-
-function slowQueryItem(value: unknown): {
-  query_hash: string
+type QueryRow = {
+  queryHash: string
+  kind: string
   count: number
-  max_elapsed_sec: number | null
-} {
-  const item = isRecord(value) ? value : {}
-  return {
-    query_hash: toTrimmedPrimitiveString(item.query_hash),
-    count: Number(item.count || 0),
-    max_elapsed_sec: item.max_elapsed_sec == null ? null : Number(item.max_elapsed_sec),
-  }
+  maxElapsedSec: number | null
 }
 
-function formatTs(tsMs: number) {
+function formatBucketTime(timestampMs: number) {
+  return new Date(timestampMs).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+}
+
+function formatPercent(value: number | null, digits = 1) {
+  return value === null ? '—' : `${(value * 100).toFixed(digits)}%`
+}
+
+function formatSeconds(value: number | null | undefined) {
+  return value == null ? '—' : `${value.toFixed(3)}s`
+}
+
+async function copyQueryHash(queryHash: string) {
   try {
-    return new Date(tsMs).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-  } catch {
-    return String(tsMs)
-  }
-}
-
-function fmtPercent(v?: number | null, digits = 1) {
-  if (v == null || !Number.isFinite(Number(v))) return '—'
-  return `${(Number(v) * 100).toFixed(digits)}%`
-}
-
-function fmtSec(v?: number | null, digits = 3) {
-  if (v == null || !Number.isFinite(Number(v))) return '—'
-  return `${Number(v).toFixed(digits)}s`
-}
-
-async function copyText(text: string, okMsg: string) {
-  const value = (text || '').trim()
-  if (!value) return
-  try {
-    await navigator.clipboard.writeText(value)
-    toast.success(okMsg)
+    await navigator.clipboard.writeText(queryHash)
+    toast.success('已复制查询标识')
   } catch {
     toast.error('复制失败')
   }
@@ -102,131 +64,96 @@ async function copyText(text: string, okMsg: string) {
 
 export default function ObservabilityPage() {
   const [opsOpen, setOpsOpen] = useState(false)
-  const [selectedQuery, setSelectedQuery] = useState<{
-    query: string
-    kind: string
-    count: number
-    elapsed: number | null
-  } | null>(null)
+  const [selectedQuery, setSelectedQuery] = useState<QueryRow | null>(null)
   const [tab, setTab] = useState<'summary' | 'query_analytics'>('summary')
   const [windowMinutes, setWindowMinutes] = useState<number>(60)
   const [slowThresholdSec, setSlowThresholdSec] = useState<number>(2)
 
   const summaryQuery = useQuery({
     queryKey: ['observability', 'summary', windowMinutes],
-    queryFn: () => observabilityApi.getRagMetricsSummary({ window_minutes: windowMinutes }),
+    queryFn: ({ signal }) => observabilityApi.getRagMetricsSummary({ window_minutes: windowMinutes }, { signal }),
     enabled: tab === 'summary',
   })
 
   const analyticsQuery = useQuery({
     queryKey: ['observability', 'query_analytics', windowMinutes, slowThresholdSec],
-    queryFn: () =>
-      observabilityApi.getRagQueryAnalytics({
-        window_minutes: windowMinutes,
-        slow_threshold_sec: slowThresholdSec,
-      }),
+    queryFn: ({ signal }) =>
+      observabilityApi.getRagQueryAnalytics(
+        { window_minutes: windowMinutes, slow_threshold_sec: slowThresholdSec },
+        { signal },
+      ),
     enabled: tab === 'query_analytics',
   })
 
-  const summary = summaryQuery.data ?? null
-  const analytics = analyticsQuery.data ?? null
-  const loadingSummary = summaryQuery.isFetching
-  const loadingAnalytics = analyticsQuery.isFetching
-  const loading = tab === 'summary' ? loadingSummary : loadingAnalytics
+  const summary = summaryQuery.data
+  const analytics = analyticsQuery.data
+  const currentQuery = tab === 'summary' ? summaryQuery : analyticsQuery
+  const loading = currentQuery.isFetching
 
   const chartData = useMemo(() => {
-    if (!summary?.timeseries) return []
-    const ts = summary.timeseries.ts_ms || []
-    const ragTrace = summary.timeseries.rag_trace || []
-    const rerankerApi = summary.timeseries.reranker_api || []
-    const retrievalAvg = summary.timeseries.retrieval_avg_elapsed_sec || []
-    const out = []
-    for (let i = 0; i < ts.length; i++) {
-      const t = Number(ts[i] || 0)
-      out.push({
-        t,
-        time: formatTs(t),
-        rag_trace: Number(ragTrace[i] || 0),
-        reranker_api: Number(rerankerApi[i] || 0),
-        retrieval_avg_elapsed_sec: retrievalAvg[i] == null ? null : Number(retrievalAvg[i] || 0),
-      })
-    }
-    return out
+    const timeseries = summary?.timeseries
+    if (timeseries?.ts_ms === undefined) return []
+    return timeseries.ts_ms.map((timestampMs, index) => ({
+      time: formatBucketTime(timestampMs),
+      rag_trace: timeseries.rag_trace[index],
+      reranker_api: timeseries.reranker_api[index],
+      retrieval_avg_elapsed_sec: timeseries.retrieval_avg_elapsed_sec[index],
+    }))
   }, [summary?.timeseries])
 
-  const topErrors = useMemo(() => {
-    const raw: Record<string, number> = summary?.error_counts ?? {}
-    const entries = Object.entries(raw).sort((a, b) => (b[1] ?? 0) - (a[1] ?? 0))
-    return entries.slice(0, 8)
-  }, [summary?.error_counts])
+  const topErrors = useMemo(
+    () =>
+      Object.entries(summary?.error_counts ?? {})
+        .sort((left, right) => right[1] - left[1])
+        .slice(0, 8),
+    [summary?.error_counts],
+  )
 
   const analyticsChartData = useMemo(() => {
-    if (!analytics?.timeseries) return []
-    const ts = analytics.timeseries.ts_ms || []
-    const requests = analytics.timeseries.requests || []
-    const zeroHit = analytics.timeseries.zero_hit || []
-    const slow = analytics.timeseries.slow || []
-    const errors = analytics.timeseries.errors || []
-    const out: AnalyticsChartPoint[] = []
-    for (let i = 0; i < ts.length; i++) {
-      const t = Number(ts[i] || 0)
-      const req = Number(requests[i] || 0)
-      const zh = Number(zeroHit[i] || 0)
-      const sl = Number(slow[i] || 0)
-      const er = Number(errors[i] || 0)
-      out.push({
-        t,
-        time: formatTs(t),
-        requests: req,
-        zero_hit: zh,
-        slow: sl,
-        errors: er,
-        zero_hit_rate: req > 0 ? zh / req : null,
-        slow_rate: req > 0 ? sl / req : null,
-      })
-    }
-    return out
+    const timeseries = analytics?.timeseries
+    if (timeseries?.ts_ms === undefined) return []
+    return timeseries.ts_ms.map((timestampMs, index) => {
+      const requests = timeseries.requests[index]
+      const zeroHits = timeseries.zero_hit[index]
+      const slowRequests = timeseries.slow[index]
+      return {
+        time: formatBucketTime(timestampMs),
+        requests,
+        zero_hit: zeroHits,
+        slow: slowRequests,
+        errors: timeseries.errors[index],
+        zero_hit_rate: requests > 0 ? zeroHits / requests : null,
+        slow_rate: requests > 0 ? slowRequests / requests : null,
+      }
+    })
   }, [analytics?.timeseries])
 
-  const topErrorKinds = useMemo(() => {
-    const raw: Record<string, number> = analytics?.error_kind_counts ?? {}
-    const entries = Object.entries(raw).sort((a, b) => (b[1] ?? 0) - (a[1] ?? 0))
-    return entries.slice(0, 8)
-  }, [analytics?.error_kind_counts])
+  const topErrorKinds = useMemo(
+    () =>
+      Object.entries(analytics?.error_kind_counts ?? {})
+        .sort((left, right) => right[1] - left[1])
+        .slice(0, 8),
+    [analytics?.error_kind_counts],
+  )
 
-  const topZeroHits = useMemo(() => {
-    const raw = Array.isArray(analytics?.top_zero_hit_queries) ? analytics?.top_zero_hit_queries : []
-    return raw
-      .map(queryCountItem)
-      .filter((it) => it.query_hash && Number.isFinite(it.count))
-      .sort((a, b) => b.count - a.count)
-      .slice(0, 20)
-  }, [analytics?.top_zero_hit_queries])
+  const queryRows: QueryRow[] =
+    analytics === undefined
+      ? []
+      : [
+          ...analytics.top_zero_hit_queries.map((item) => ({
+            queryHash: item.query_hash,
+            kind: '零命中',
+            count: item.count,
+            maxElapsedSec: null,
+          })),
+          ...analytics.top_slow_queries.map((item) => ({
+            queryHash: item.query_hash,
+            kind: '慢查询',
+            count: item.count,
+            maxElapsedSec: item.max_elapsed_sec,
+          })),
+        ]
 
-  const topSlowQueries = useMemo(() => {
-    const raw = Array.isArray(analytics?.top_slow_queries) ? analytics?.top_slow_queries : []
-    return raw
-      .map(slowQueryItem)
-      .filter((it) => it.query_hash && Number.isFinite(it.count))
-      .sort((a, b) => b.count - a.count)
-      .slice(0, 20)
-  }, [analytics?.top_slow_queries])
-
-  const currentQuery = tab === 'summary' ? summaryQuery : analyticsQuery
-  const queryRows = [
-    ...topZeroHits.map((item) => ({
-      query: item.query_hash,
-      kind: '零命中',
-      count: item.count,
-      elapsed: null as number | null,
-    })),
-    ...topSlowQueries.map((item) => ({
-      query: item.query_hash,
-      kind: '慢查询',
-      count: item.count,
-      elapsed: item.max_elapsed_sec,
-    })),
-  ]
   return (
     <AppFrame showBackground={false}>
       <OperationalWorkspace
@@ -294,8 +221,9 @@ export default function ObservabilityPage() {
         <Tabs
           value={tab}
           onValueChange={(value) => {
+            if (value !== 'summary' && value !== 'query_analytics') return
             setSelectedQuery(null)
-            setTab(value as typeof tab)
+            setTab(value)
           }}
         >
           <TabsList className={ws.tabList}>
@@ -312,9 +240,9 @@ export default function ObservabilityPage() {
               {formatApiError(currentQuery.error, '观测数据读取失败')}
             </WorkspaceNotice>
           ) : null}
-          {loading && !currentQuery.data ? (
+          {currentQuery.isPending ? (
             <p role="status" className="py-12 text-sm text-muted-foreground">
-              正在读取当前时间范围的观测数据…
+              {currentQuery.isPaused ? '等待网络连接以读取观测数据…' : '正在读取当前时间范围的观测数据…'}
             </p>
           ) : null}
           <TabsContent value="summary" className={ws.tabContent}>
@@ -339,12 +267,12 @@ export default function ObservabilityPage() {
                     { label: '检索请求', value: summary.rag_trace_count },
                     {
                       label: '检索平均耗时',
-                      value: fmtSec(summary.retrieval_avg_elapsed_sec),
-                      detail: `P95 ${fmtSec(summary.retrieval_p95_elapsed_sec)}`,
+                      value: formatSeconds(summary.retrieval_avg_elapsed_sec),
+                      detail: `P95 ${formatSeconds(summary.retrieval_p95_elapsed_sec)}`,
                     },
                     {
                       label: '重排平均耗时',
-                      value: fmtSec(summary.rerank_avg_elapsed_sec),
+                      value: formatSeconds(summary.rerank_avg_elapsed_sec),
                       detail: `${summary.reranker_api_count} 次调用`,
                     },
                     { label: '平均引用数', value: summary.citations_avg_count?.toFixed(2) ?? '—' },
@@ -357,46 +285,38 @@ export default function ObservabilityPage() {
                   </div>
                 ) : (
                   <>
-                    {chartData.length ? (
+                    {chartData.length > 0 ? (
                       <div className="grid gap-x-10 lg:grid-cols-2">
                         <section className={ws.section}>
                           <h2 className={ws.sectionTitle}>请求量</h2>
-                          {chartData.length ? (
-                            <SafeResponsiveChart className="mt-5 h-[260px]" minHeight={260}>
-                              <BarChart data={chartData}>
-                                <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
-                                <XAxis dataKey="time" tick={{ fontSize: 12 }} />
-                                <YAxis tick={{ fontSize: 12 }} allowDecimals={false} />
-                                <Tooltip />
-                                <Bar name="检索" dataKey="rag_trace" fill="hsl(var(--primary))" />
-                                <Bar name="重排" dataKey="reranker_api" fill="hsl(var(--muted-foreground))" />
-                              </BarChart>
-                            </SafeResponsiveChart>
-                          ) : (
-                            <p className="py-8 text-sm text-muted-foreground">接口未返回分钟趋势</p>
-                          )}
+                          <SafeResponsiveChart className="mt-5 h-[260px]" minHeight={260}>
+                            <BarChart data={chartData}>
+                              <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
+                              <XAxis dataKey="time" tick={{ fontSize: 12 }} />
+                              <YAxis tick={{ fontSize: 12 }} allowDecimals={false} />
+                              <Tooltip />
+                              <Bar name="检索" dataKey="rag_trace" fill="hsl(var(--primary))" />
+                              <Bar name="重排" dataKey="reranker_api" fill="hsl(var(--muted-foreground))" />
+                            </BarChart>
+                          </SafeResponsiveChart>
                         </section>
                         <section className={ws.section}>
                           <h2 className={ws.sectionTitle}>检索耗时趋势</h2>
-                          {chartData.length ? (
-                            <SafeResponsiveChart className="mt-5 h-[260px]" minHeight={260}>
-                              <LineChart data={chartData}>
-                                <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
-                                <XAxis dataKey="time" tick={{ fontSize: 12 }} />
-                                <YAxis tick={{ fontSize: 12 }} />
-                                <Tooltip />
-                                <Line
-                                  name="平均耗时（秒）"
-                                  dataKey="retrieval_avg_elapsed_sec"
-                                  stroke="hsl(var(--primary))"
-                                  strokeWidth={2}
-                                  dot={false}
-                                />
-                              </LineChart>
-                            </SafeResponsiveChart>
-                          ) : (
-                            <p className="py-8 text-sm text-muted-foreground">接口未返回耗时趋势</p>
-                          )}
+                          <SafeResponsiveChart className="mt-5 h-[260px]" minHeight={260}>
+                            <LineChart data={chartData}>
+                              <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
+                              <XAxis dataKey="time" tick={{ fontSize: 12 }} />
+                              <YAxis tick={{ fontSize: 12 }} />
+                              <Tooltip />
+                              <Line
+                                name="平均耗时（秒）"
+                                dataKey="retrieval_avg_elapsed_sec"
+                                stroke="hsl(var(--primary))"
+                                strokeWidth={2}
+                                dot={false}
+                              />
+                            </LineChart>
+                          </SafeResponsiveChart>
                         </section>
                       </div>
                     ) : (
@@ -405,22 +325,24 @@ export default function ObservabilityPage() {
                       </p>
                     )}
                     <div className="grid gap-x-10 lg:grid-cols-3">
-                      {[
-                        ['检索模式', Object.entries(summary.retrieval_mode_counts)],
-                        ['命中类型', Object.entries(summary.hit_type_counts)],
-                        ['错误记录', topErrors],
-                      ].map(([title, entries]) => (
-                        <section key={String(title)} className={ws.section}>
-                          <h2 className={ws.sectionTitle}>{String(title)}</h2>
+                      {(
+                        [
+                          ['检索模式', Object.entries(summary.retrieval_mode_counts)],
+                          ['命中类型', Object.entries(summary.hit_type_counts)],
+                          ['错误记录', topErrors],
+                        ] as const
+                      ).map(([title, entries]) => (
+                        <section key={title} className={ws.section}>
+                          <h2 className={ws.sectionTitle}>{title}</h2>
                           <dl className="mt-4 divide-y divide-border">
-                            {(entries as Array<[string, number]>).map(([name, count]) => (
+                            {entries.map(([name, count]) => (
                               <div className="flex items-center justify-between gap-3 py-3 text-[13px]" key={name}>
                                 <dt className="break-words">{name}</dt>
                                 <dd className="tabular-nums">{count}</dd>
                               </div>
                             ))}
                           </dl>
-                          {!(entries as unknown[]).length ? (
+                          {entries.length === 0 ? (
                             <p className="py-5 text-sm text-muted-foreground">当前范围未记录此类数据</p>
                           ) : null}
                         </section>
@@ -435,11 +357,6 @@ export default function ObservabilityPage() {
                   </pre>
                 </details>
               </>
-            ) : !loadingSummary && !summaryQuery.isError ? (
-              <div className={ws.empty}>
-                <h2>暂无指标汇总</h2>
-                <p>重新读取当前时间范围后查看。</p>
-              </div>
             ) : null}
           </TabsContent>
           <TabsContent value="query_analytics" className={ws.tabContent}>
@@ -459,18 +376,18 @@ export default function ObservabilityPage() {
                     { label: '查询标识', value: analytics.unique_query_hashes },
                     {
                       label: '零命中率',
-                      value: fmtPercent(analytics.zero_hit_rate),
+                      value: formatPercent(analytics.zero_hit_rate),
                       detail: `${analytics.zero_hit_count} 次`,
                     },
                     {
                       label: '慢查询比例',
-                      value: fmtPercent(analytics.slow_rate),
+                      value: formatPercent(analytics.slow_rate),
                       detail: `${analytics.slow_count} 次`,
                     },
                     {
                       label: 'P50 / P95 / P99',
-                      value: fmtSec(analytics.retrieval_p50_elapsed_sec),
-                      detail: `${fmtSec(analytics.retrieval_p95_elapsed_sec)} / ${fmtSec(analytics.retrieval_p99_elapsed_sec)}`,
+                      value: formatSeconds(analytics.retrieval_p50_elapsed_sec),
+                      detail: `${formatSeconds(analytics.retrieval_p95_elapsed_sec)} / ${formatSeconds(analytics.retrieval_p99_elapsed_sec)}`,
                     },
                   ]}
                 />
@@ -490,17 +407,17 @@ export default function ObservabilityPage() {
                         </thead>
                         <tbody>
                           {queryRows.map((row) => (
-                            <tr key={`${row.kind}:${row.query}`}>
-                              <td className="max-w-[340px] truncate font-mono text-xs" title={row.query}>
-                                {row.query}
+                            <tr key={`${row.kind}:${row.queryHash}`}>
+                              <td className="max-w-[340px] truncate font-mono text-xs" title={row.queryHash}>
+                                {row.queryHash}
                               </td>
                               <td className="whitespace-nowrap">{row.kind}</td>
                               <td className="tabular-nums">{row.count}</td>
-                              <td className="tabular-nums">{fmtSec(row.elapsed)}</td>
+                              <td className="tabular-nums">{formatSeconds(row.maxElapsedSec)}</td>
                               <td>
                                 <Button
                                   variant="ghost"
-                                  aria-label={`查看统计 ${row.query}`}
+                                  aria-label={`查看统计 ${row.queryHash}`}
                                   onClick={() => setSelectedQuery(row)}
                                 >
                                   查看统计
@@ -538,7 +455,7 @@ export default function ObservabilityPage() {
                         <LineChart data={analyticsChartData}>
                           <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
                           <XAxis dataKey="time" tick={{ fontSize: 12 }} />
-                          <YAxis tickFormatter={(value) => fmtPercent(Number(value), 0)} tick={{ fontSize: 12 }} />
+                          <YAxis tickFormatter={(value: number) => formatPercent(value, 0)} tick={{ fontSize: 12 }} />
                           <Tooltip />
                           <Line name="零命中比例" dataKey="zero_hit_rate" stroke="hsl(var(--warning))" dot={false} />
                           <Line name="慢查询比例" dataKey="slow_rate" stroke="hsl(var(--primary))" dot={false} />
@@ -568,11 +485,6 @@ export default function ObservabilityPage() {
                   </pre>
                 </details>
               </>
-            ) : !loadingAnalytics && !analyticsQuery.isError ? (
-              <div className={ws.empty}>
-                <h2>当前范围暂无查询分析</h2>
-                <p>有检索记录后可查看零命中、慢查询与错误。</p>
-              </div>
             ) : null}
           </TabsContent>
         </Tabs>
@@ -606,7 +518,7 @@ export default function ObservabilityPage() {
                 <dl className="space-y-5 text-sm leading-6">
                   <div>
                     <dt className="text-muted-foreground">查询标识</dt>
-                    <dd className="mt-1 break-all font-mono text-xs">{selectedQuery.query}</dd>
+                    <dd className="mt-1 break-all font-mono text-xs">{selectedQuery.queryHash}</dd>
                   </div>
                   <div>
                     <dt className="text-muted-foreground">记录类型</dt>
@@ -618,20 +530,17 @@ export default function ObservabilityPage() {
                   </div>
                   <div>
                     <dt className="text-muted-foreground">最长耗时</dt>
-                    <dd>{fmtSec(selectedQuery.elapsed)}</dd>
+                    <dd>{formatSeconds(selectedQuery.maxElapsedSec)}</dd>
                   </div>
                 </dl>
               ) : null}
             </div>
             <DialogFooter className={ws.dialogFooter}>
-              <Button
-                variant="outline"
-                onClick={() => {
-                  if (selectedQuery) void copyText(selectedQuery.query, '已复制查询标识')
-                }}
-              >
-                复制标识
-              </Button>
+              {selectedQuery && (
+                <Button variant="outline" onClick={() => void copyQueryHash(selectedQuery.queryHash)}>
+                  复制标识
+                </Button>
+              )}
               <Button onClick={() => setSelectedQuery(null)}>完成</Button>
             </DialogFooter>
           </DialogContent>

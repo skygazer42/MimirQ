@@ -11,7 +11,7 @@ from tests.test_milvus_bm25_cutover import Store
 
 @pytest.fixture
 def corpus_db(monkeypatch):
-    from app.core.config import settings
+    from app.infrastructure.config import settings
 
     monkeypatch.setattr(settings, "VECTOR_BACKEND", "milvus")
     monkeypatch.setattr(settings, "BM25_INDEX_ENABLED", True)
@@ -79,7 +79,7 @@ def _document(db, table, tenant, dataset, *, published=True):
 
 
 def test_native_upsert_uses_authoritative_database_dataset_and_document_scope(corpus_db):
-    from app.rag.retrieval.corpus_index import CorpusIndex
+    from app.rag.retrieval.corpus import CorpusIndex
 
     db, table, _ = corpus_db
     tenant, dataset = uuid4(), uuid4()
@@ -109,7 +109,7 @@ def test_native_upsert_uses_authoritative_database_dataset_and_document_scope(co
 
 
 def test_backfill_counts_and_writes_only_published_chunks_in_the_requested_scope(corpus_db):
-    from app.rag.retrieval.corpus_index import CorpusIndex, CorpusScope
+    from app.rag.retrieval.corpus import CorpusIndex, CorpusScope
 
     db, documents, chunks = corpus_db
     tenant, dataset = uuid4(), uuid4()
@@ -145,7 +145,7 @@ def test_backfill_counts_and_writes_only_published_chunks_in_the_requested_scope
 
 
 def test_legacy_chunk_identity_lookup_is_limited_to_actual_missing_candidates(corpus_db, monkeypatch):
-    from app.rag.retrieval.corpus_index import CorpusIndex, CorpusScope
+    from app.rag.retrieval.corpus import CorpusIndex, CorpusScope
 
     db, documents, chunks = corpus_db
     tenant, dataset = uuid4(), uuid4()
@@ -172,7 +172,7 @@ def test_legacy_chunk_identity_lookup_is_limited_to_actual_missing_candidates(co
 
 
 def test_native_backfill_dry_run_performs_no_milvus_mutation(corpus_db):
-    from app.rag.retrieval.corpus_index import CorpusIndex, CorpusScope
+    from app.rag.retrieval.corpus import CorpusIndex, CorpusScope
     from scripts.backfill_milvus_bm25 import run_backfill
 
     db, _, _ = corpus_db
@@ -186,7 +186,7 @@ def test_native_backfill_dry_run_performs_no_milvus_mutation(corpus_db):
 
 
 def test_backfill_does_not_restore_disabled_archived_or_old_pipeline_chunks(corpus_db):
-    from app.rag.retrieval.corpus_index import CorpusIndex, CorpusScope
+    from app.rag.retrieval.corpus import CorpusIndex, CorpusScope
 
     db, documents, chunks = corpus_db
     tenant, dataset = uuid4(), uuid4()
@@ -221,7 +221,7 @@ def test_backfill_does_not_restore_disabled_archived_or_old_pipeline_chunks(corp
 
 @pytest.mark.parametrize("scope_kind", ["dataset", "document", "multi_dataset", "tenant"])
 def test_successful_backfill_rotates_all_affected_cache_scopes_without_committing(corpus_db, scope_kind):
-    from app.rag.retrieval.corpus_index import CorpusIndex, CorpusScope
+    from app.rag.retrieval.corpus import CorpusIndex, CorpusScope
 
     db, documents, chunks = corpus_db
     tenant, first_dataset, second_dataset, foreign_tenant, foreign_dataset = (uuid4() for _ in range(5))
@@ -263,7 +263,7 @@ def test_successful_backfill_rotates_all_affected_cache_scopes_without_committin
 
 
 def test_failed_native_backfill_does_not_publish_cache_revisions(corpus_db):
-    from app.rag.retrieval.corpus_index import CorpusIndex, CorpusScope
+    from app.rag.retrieval.corpus import CorpusIndex, CorpusScope
 
     db, documents, chunks = corpus_db
     tenant, dataset = uuid4(), uuid4()
@@ -295,7 +295,7 @@ def test_failed_native_backfill_does_not_publish_cache_revisions(corpus_db):
 
 def test_empty_persisted_rebuild_initializes_the_real_native_schema(corpus_db):
     pytest.importorskip("pymilvus")
-    from app.rag.retrieval.corpus_index import CorpusIndex
+    from app.rag.retrieval.corpus import CorpusIndex
     from app.storage.bm25.milvus import MilvusBM25Store
     from tests.test_milvus_native_bm25 import Client
 
@@ -311,7 +311,7 @@ def test_empty_persisted_rebuild_initializes_the_real_native_schema(corpus_db):
 
 @pytest.mark.parametrize("apply", [False, True])
 def test_backfill_cli_commits_only_explicit_apply(apply, monkeypatch, capsys):
-    from app.core import database
+    from app.infrastructure.database import connection as database
     from scripts import backfill_milvus_bm25 as cli
 
     class Session:
@@ -334,8 +334,8 @@ def test_backfill_cli_commits_only_explicit_apply(apply, monkeypatch, capsys):
 
 
 def test_legacy_persisted_rebuild_cli_commits_its_owned_revision_transaction(monkeypatch):
-    from app.core import database
-    from app.rag.retriever import HybridRetriever
+    from app.infrastructure.database import connection as database
+    from app.rag.retrieval.recall.retriever import HybridRetriever
     from scripts import rebuild_retrieval_indexes as cli
 
     class Session:

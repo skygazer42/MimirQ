@@ -1,24 +1,23 @@
 import importlib.util
-from pathlib import Path
 import sys
+from pathlib import Path
 from types import ModuleType
 
 import pytest
 
-from app.parsing.enrich.table_image_algorithms import _bind_ocr_content, _coerce_ocr_line
-from app.parsing.parsers.base_parser import BaseAdvancedParser
-from app.parsing.preprocess.llm_noise_miner import _normalize_line
-from app.parsing.utils.mineru_layout import _as_lines, _extract_block_text
+from app.rag.ingestion.parsing.enrich.table_image_algorithms import _bind_ocr_content, _coerce_ocr_line
+from app.rag.ingestion.parsing.parsers.base_parser import BaseAdvancedParser
+from app.rag.ingestion.parsing.utils.mineru_layout import _as_lines, _extract_block_text
 
 
 @pytest.fixture
 def deepdoc_adapter(monkeypatch):
     # The pure adapter helpers do not invoke the optional DeepDoc backend. Load
     # the entire adapter with only that unused IO port replaced; trio is absent.
-    backend = ModuleType("app.deepdoc.parser")
-    backend.PdfParser = type("UnusedPdfParser", (), {})
-    monkeypatch.setitem(sys.modules, "app.deepdoc.parser", backend)
-    path = Path(__file__).resolve().parents[1] / "app/parsing/parsers/deepdoc_parser.py"
+    backend = ModuleType("app.rag.ingestion.parsing.parsers.pdf_layout")
+    backend.LayoutPdfParser = type("UnusedPdfParser", (), {})
+    monkeypatch.setitem(sys.modules, "app.rag.ingestion.parsing.parsers.pdf_layout", backend)
+    path = Path(__file__).resolve().parents[1] / "app/rag/ingestion/parsing/parsers/deepdoc_parser.py"
     spec = importlib.util.spec_from_file_location("test_retained_deepdoc_adapter", path)
     module = importlib.util.module_from_spec(spec)
     monkeypatch.setitem(sys.modules, spec.name, module)
@@ -55,7 +54,6 @@ def test_layout_text_coercion_preserves_falsy_content(value):
     assert _extract_block_text({"text": value}) == str(value)
     assert _extract_block_text({"type": "table", "table_body": value}) == str(value)
     assert _extract_block_text({"type": "code", "code_body": value}) == str(value)
-    assert _normalize_line(value) == str(value)
 
 
 def test_absent_parser_text_keeps_actual_empty_text_format(deepdoc_adapter):

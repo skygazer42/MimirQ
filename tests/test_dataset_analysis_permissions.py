@@ -4,6 +4,8 @@ from uuid import uuid4
 
 import starlette.status as _status
 
+import app.services.datasets.analysis as dataset_analysis_service
+
 if not hasattr(_dt, "UTC"):
     _dt.UTC = _dt.timezone.utc
 if not hasattr(_status, "HTTP_413_CONTENT_TOO_LARGE"):
@@ -15,11 +17,10 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from app.api.dependencies.auth import get_current_account_id
-from app.api.dependencies.tenant import get_tenant_id
-from app.api.v1 import dataset_analysis as dataset_analysis_api
-from app.core.database import get_db
-from app.core.exceptions import register_exception_handlers
+from app.api.dependencies import get_current_account_id, get_tenant_id
+from app.api.v1.datasets import analysis as dataset_analysis_api
+from app.infrastructure.database.connection import get_db
+from app.infrastructure.exceptions import register_exception_handlers
 
 
 def _build_client(monkeypatch: pytest.MonkeyPatch) -> tuple[TestClient, str, str]:
@@ -41,61 +42,61 @@ def _build_client(monkeypatch: pytest.MonkeyPatch) -> tuple[TestClient, str, str
         raising=True,
     )
     monkeypatch.setattr(
-        dataset_analysis_api,
+        dataset_analysis_service,
         "build_dataset_analysis_summary",
         lambda **_k: {"ok": True},
         raising=True,
     )
     monkeypatch.setattr(
-        dataset_analysis_api,
+        dataset_analysis_service,
         "build_dataset_analysis_examples",
         lambda **_k: {"ok": True},
         raising=True,
     )
     monkeypatch.setattr(
-        dataset_analysis_api,
+        dataset_analysis_service,
         "build_dataset_analysis_rule_suggestions",
         lambda **_k: {"ok": True},
         raising=True,
     )
     monkeypatch.setattr(
-        dataset_analysis_api,
+        dataset_analysis_service,
         "export_dataset_analysis_json",
         lambda **_k: {"ok": True},
         raising=True,
     )
     monkeypatch.setattr(
-        dataset_analysis_api,
+        dataset_analysis_service,
         "export_dataset_analysis_jsonl",
         lambda **_k: '{"ok":true}\n',
         raising=True,
     )
     monkeypatch.setattr(
-        dataset_analysis_api,
+        dataset_analysis_service,
         "export_dataset_analysis_html",
         lambda **_k: "<html></html>",
         raising=True,
     )
     monkeypatch.setattr(
-        dataset_analysis_api,
+        dataset_analysis_service,
         "writeback_dataset_analysis_glossary_candidates",
         lambda **_k: {"ok": True},
         raising=True,
     )
     monkeypatch.setattr(
-        dataset_analysis_api,
+        dataset_analysis_service,
         "create_dataset_analysis_png_task",
         lambda **_k: {"task_id": "task-1", "status": "pending"},
         raising=True,
     )
     monkeypatch.setattr(
-        dataset_analysis_api,
+        dataset_analysis_service,
         "get_dataset_analysis_png_task_status",
         lambda **_k: {"task_id": "task-1", "status": "done"},
         raising=True,
     )
     monkeypatch.setattr(
-        dataset_analysis_api,
+        dataset_analysis_service,
         "get_dataset_analysis_png_result",
         lambda **_k: b"\x89PNG\r\n\x1a\n",
         raising=True,

@@ -1,8 +1,9 @@
 'use client'
 
-import { useEffect } from 'react'
+import { startTransition, useEffect } from 'react'
 import { ConnectionLost } from '@/components/icons'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { useTranslations } from 'next-intl'
 
 import { FullScreenFrame } from '@/components/full-screen-frame'
@@ -22,34 +23,36 @@ type RouteErrorProps = Readonly<{
   fullScreen?: boolean
 }>
 
-function retryRouteAfterBoundaryError(reset: () => void) {
-  reset()
-  if (globalThis.window === undefined) return
-  globalThis.window.location.reload()
-}
-
-function RouteErrorScene({ error, reset, title, message, href = '/', hrefLabel }: RouteErrorProps) {
+export function RouteError({ error, reset, title, message, href = '/', hrefLabel, fullScreen }: RouteErrorProps) {
+  const router = useRouter()
   const t = useTranslations('RouteBoundaries')
   const requestId = extractRequestIdFromError(error)
   const resolvedTitle = title ?? t('error.title')
-  const resolvedMessage = message ?? t('error.message')
   const resolvedHrefLabel = hrefLabel ?? t('error.home')
 
   useEffect(() => {
     if (reloadOnceForStaleChunk(error)) return
-    captureApiError(error, resolvedMessage, { tags: { boundary: 'route-error' } })
-  }, [error, resolvedMessage])
+    captureApiError(error, message ?? resolvedTitle, { tags: { boundary: 'route-error' } })
+  }, [error, message, resolvedTitle])
 
-  return (
+  const status = (
     <PageStatus
       title={resolvedTitle}
-      description={resolvedMessage}
+      description={message}
       icon={<ConnectionLost />}
       showBrand
       className="min-h-dvh"
       actions={
         <>
-          <Button className={pageStatusActionClass} onClick={() => retryRouteAfterBoundaryError(reset)}>
+          <Button
+            className={pageStatusActionClass}
+            onClick={() => {
+              startTransition(() => {
+                router.refresh()
+                reset()
+              })
+            }}
+          >
             {t('error.retry')}
           </Button>
           <Button variant="outline" className={pageStatusActionClass} asChild>
@@ -67,20 +70,10 @@ function RouteErrorScene({ error, reset, title, message, href = '/', hrefLabel }
       }
     />
   )
-}
 
-export function RouteError(props: RouteErrorProps) {
-  if (props.fullScreen) {
-    return (
-      <FullScreenFrame showBackground={false} className="bg-background" mainClassName="p-0">
-        <RouteErrorScene {...props} fullScreen />
-      </FullScreenFrame>
-    )
+  if (fullScreen) {
+    return <FullScreenFrame mainClassName="p-0">{status}</FullScreenFrame>
   }
 
-  return (
-    <div className="flex min-h-dvh w-full flex-1 items-stretch justify-center bg-background">
-      <RouteErrorScene {...props} />
-    </div>
-  )
+  return <div className="flex min-h-dvh w-full flex-1 items-stretch justify-center bg-background">{status}</div>
 }

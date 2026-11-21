@@ -1,0 +1,224 @@
+"""Governance-profile row mapping, tenant-scoped resolution, and JSON imports."""
+
+import json
+from collections.abc import Mapping
+from uuid import UUID
+
+from fastapi import HTTPException, UploadFile
+from sqlalchemy.orm import Session
+
+from app.api.schemas.pipelines import (
+    GovernanceProfileImportRecord,
+    GovernanceProfileOut,
+    GovernanceProfilePayload,
+    GovernanceProfileSummary,
+)
+from app.infrastructure.regex.validation import RegexRulesValidationError
+from app.models.pipelines.profiles import GovernanceProfile as DBGovernanceProfile
+from app.services.pipelines.profiles import (
+    BuiltinGovernanceProfile,
+    builtin_profile_to_out,
+    validate_and_normalize_payload,
+    validate_profile_key,
+)
+
+GOVERNANCE_PROFILE_NOT_FOUND_DETAIL = "Governance profile not found"
+
+
+def _profile_key_for_row(row: DBGovernanceProfile) -> str:
+    if row.key is not None:
+        raw = row.key.strip()
+        if raw:
+            return raw
+    return f"custom:{row.id}"
+
+
+def _profile_summary_from_row(row: DBGovernanceProfile) -> GovernanceProfileSummary:
+    return GovernanceProfileSummary(
+        id=row.id,
+        key=_profile_key_for_row(row),
+        name=row.name,
+        description=row.description,
+        is_system=bool(row.is_system),
+    )
+
+
+def _profile_out_from_row(row: DBGovernanceProfile) -> GovernanceProfileOut:
+    payload_raw = row.payload
+    if not isinstance(payload_raw, dict):
+        payload_raw = {}
+    payload = GovernanceProfilePayload(**payload_raw)
+    return GovernanceProfileOut(
+        id=row.id,
+        key=_profile_key_for_row(row),
+        name=row.name,
+        description=row.description,
+        is_system=bool(row.is_system),
+        payload=payload,
+        created_at=row.created_at,
+        updated_at=row.updated_at,
+    )
+
+
+def _resolve_profile_ref(
+    *,
+    db: Session,
+    tenant_id: UUID,
+    profile_ref: str,
+    builtin_by_key: Mapping[str, BuiltinGovernanceProfile],
+) -> GovernanceProfileOut:
+    ref = profile_ref.strip()
+    if not ref:
+        raise HTTPException(status_code=400, detail="profile_ref is required")
+
+    if ref in builtin_by_key:
+        return builtin_profile_to_out(builtin_by_key[ref])
+
+    # Allow UUID lookup.
+    try:
+        ref_uuid = UUID(ref)
+    except ValueError:
+        ref_uuid = None
+
+    q = db.query(DBGovernanceProfile).filter(DBGovernanceProfile.tenant_id == tenant_id)
+    if ref_uuid is not None:
+        row = q.filter(DBGovernanceProfile.id == ref_uuid).first()
+        if row is not None:
+            return _profile_out_from_row(row)
+    # Allow key lookup (tenant-scoped).
+    row = q.filter(DBGovernanceProfile.key == ref).first()
+    if row is not None:
+        return _profile_out_from_row(row)
+
+    raise HTTPException(status_code=404, detail=GOVERNANCE_PROFILE_NOT_FOUND_DETAIL)
+
+
+def _resolve_custom_profile_row(
+    *,
+    db: Session,
+    tenant_id: UUID,
+    profile_ref: str,
+    builtin_by_key: Mapping[str, BuiltinGovernanceProfile],
+) -> DBGovernanceProfile:
+    ref = profile_ref.strip()
+    if ref in builtin_by_key:
+        raise HTTPException(status_code=403, detail="built-in profiles are read-only")
+
+    try:
+        ref_uuid = UUID(ref)
+    except ValueError:
+        ref_uuid = None
+
+    q = db.query(DBGovernanceProfile).filter(DBGovernanceProfile.tenant_id == tenant_id)
+    row = (
+        q.filter(DBGovernanceProfile.id == ref_uuid).first()
+        if ref_uuid is not None
+        else q.filter(DBGovernanceProfile.key == ref).first()
+    )
+    if row is None:
+        raise HTTPException(status_code=404, detail=GOVERNANCE_PROFILE_NOT_FOUND_DETAIL)
+    return row
+
+
+async def _read_governance_profile_import_json(file: UploadFile) -> object:
+    max_bytes = 256 * 1024
+    raw = await file.read(max_bytes + 1)
+    if len(raw) > max_bytes:
+        raise HTTPException(status_code=413, detail=f"Profile script too large (max={max_bytes} bytes)")
+    try:
+        return json.loads(raw.decode("utf-8"))
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail="Invalid JSON file") from exc
+
+
+def _raw_governance_profile_import_items(data: object) -> list[object]:
+    if isinstance(data, dict) and isinstance(data.get("profiles"), list):
+        return data["profiles"]
+    return [data]
+
+
+def _reject_unknown_import_keys(item: dict[str, object], allowed: set[str], *, label: str) -> None:
+    unknown_keys = set(item.keys()) - allowed
+    if unknown_keys:
+        unknown_sorted = ", ".join(sorted(map(str, unknown_keys))[:20])
+        raise HTTPException(status_code=400, detail=f"Unknown {label} fields: {unknown_sorted}")
+
+
+def _normalize_governance_profile_import_record(item: object) -> GovernanceProfileImportRecord:
+    if not isinstance(item, dict):
+        raise HTTPException(status_code=400, detail="Invalid profile item (expected object)")
+
+    _reject_unknown_import_keys(item, {"name", "description", "key", "payload"}, label="profile")
+    raw_name = item.get("name")
+    if not isinstance(raw_name, str):
+        raise HTTPException(status_code=400, detail="Profile name must be a string")
+    name = raw_name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Profile name is required")
+
+    try:
+        key = validate_profile_key(item.get("key"))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    payload_raw = item.get("payload")
+    if not isinstance(payload_raw, dict):
+        raise HTTPException(status_code=400, detail="payload is required and must be an object")
+
+    _reject_unknown_import_keys(
+        payload_raw,
+        {"version", "extends", "input_formats", "pipeline_patch", "regex_rules", "processing_scripts"},
+        label="payload",
+    )
+    try:
+        payload = GovernanceProfilePayload(**payload_raw)
+        payload = validate_and_normalize_payload(payload)
+    except RegexRulesValidationError as exc:
+        raise HTTPException(status_code=400, detail=exc.to_detail()) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Invalid payload: {str(exc)[:200]}") from exc
+
+    description = item.get("description")
+    if description is not None and not isinstance(description, str):
+        raise HTTPException(status_code=400, detail="Profile description must be a string")
+    return GovernanceProfileImportRecord(
+        name=name,
+        key=key,
+        description=description.strip()[:2000] if description is not None else None,
+        payload=payload,
+    )
+
+
+def _upsert_governance_profile_import_record(
+    *,
+    db: Session,
+    tenant_id: UUID,
+    record: GovernanceProfileImportRecord,
+    overwrite: bool,
+) -> tuple[int, int, GovernanceProfileSummary]:
+    existing = None
+    if record.key is not None:
+        existing = (
+            db.query(DBGovernanceProfile)
+            .filter(DBGovernanceProfile.tenant_id == tenant_id, DBGovernanceProfile.key == record.key)
+            .first()
+        )
+    if existing is not None:
+        if not overwrite:
+            raise HTTPException(status_code=409, detail=f"Profile key already exists: {record.key}")
+        existing.name = record.name[:200]
+        existing.description = record.description
+        existing.payload = record.payload.model_dump(mode="json")
+        return 0, 1, _profile_summary_from_row(existing)
+
+    row = DBGovernanceProfile(
+        tenant_id=tenant_id,
+        key=record.key,
+        name=record.name[:200],
+        description=record.description,
+        is_system=False,
+        payload=record.payload.model_dump(mode="json"),
+    )
+    db.add(row)
+    db.flush()
+    return 1, 0, _profile_summary_from_row(row)

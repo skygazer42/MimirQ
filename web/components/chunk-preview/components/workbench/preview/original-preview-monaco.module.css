@@ -1,0 +1,15 @@
+.viewer :global(.mimirq-monaco-parent-highlight) {
+  background: hsl(var(--foreground) / 0.08);
+}
+
+.viewer :global(.mimirq-monaco-active-highlight) {
+  background: hsl(var(--foreground) / 0.18);
+  border-radius: 2px;
+  box-shadow: inset 0 0 0 1px hsl(var(--foreground) / 0.25);
+}
+
+.viewer :global(.mimirq-monaco-citation-highlight) {
+  background: hsl(var(--warning) / 0.22);
+  border-radius: 2px;
+  box-shadow: inset 0 0 0 1px hsl(var(--warning) / 0.35);
+}

@@ -7,32 +7,23 @@ type NavigatorLike = {
   language?: string
 }
 
-function toValidLanguageTag(value: unknown): string | undefined {
+export function normalizeLanguageTag(value: unknown): string | undefined {
   if (typeof value !== 'string') return undefined
   const tag = value.trim()
-  if (!tag || !LANGUAGE_TAG_PATTERN.test(tag)) return undefined
-  return tag
+  return LANGUAGE_TAG_PATTERN.test(tag) ? tag : undefined
 }
 
 export function resolveBrowserPreferredLanguage(
   navigatorLike: NavigatorLike | undefined = globalThis.navigator,
 ): string | undefined {
-  if (!navigatorLike) return undefined
-
-  const candidates: unknown[] = []
-  if (Array.isArray(navigatorLike.languages)) candidates.push(...navigatorLike.languages)
-  candidates.push(navigatorLike.language)
-
-  for (const candidate of candidates) {
-    const tag = toValidLanguageTag(candidate)
-    if (tag) return tag
+  if (navigatorLike === undefined) return undefined
+  if (Array.isArray(navigatorLike.languages)) {
+    for (const candidate of navigatorLike.languages) {
+      const tag = normalizeLanguageTag(candidate)
+      if (tag !== undefined) return tag
+    }
   }
-  return undefined
-}
-
-function hasHeaderIgnoreCase(headers: Record<string, string>, key: string): boolean {
-  const lowered = key.toLowerCase()
-  return Object.keys(headers).some((headerKey) => headerKey.toLowerCase() === lowered)
+  return normalizeLanguageTag(navigatorLike.language)
 }
 
 export function withPreferredLanguageHeader(
@@ -40,7 +31,7 @@ export function withPreferredLanguageHeader(
   preferredLanguage: string | undefined = resolveBrowserPreferredLanguage(),
 ): Record<string, string> {
   if (!preferredLanguage) return headers
-  if (hasHeaderIgnoreCase(headers, 'Accept-Language')) return headers
+  if (Object.keys(headers).some((name) => name.toLowerCase() === 'accept-language')) return headers
   return {
     ...headers,
     'Accept-Language': preferredLanguage,

@@ -1,16 +1,18 @@
-import { PARSER_BACKEND_REGISTRY_OPTIONS } from '@/lib/parser-options'
+import { getParserLabel } from '@/lib/parser-options'
 import type { IngestionPolicy } from '@/types'
 import styles from './precheck.module.css'
 
 export function PolicySuggestionSummary({ policy }: { policy: IngestionPolicy }) {
-  const rules = policy.rules ?? []
+  const { rules } = policy
+  if (!Array.isArray(rules)) return <p role="alert">建议缺少规则列表。</p>
+
   return (
     <section aria-labelledby="precheck-suggested-rules">
       <h3 id="precheck-suggested-rules" className="text-sm font-semibold">
         建议规则 · {rules.length} 条
       </h3>
       <p className="mt-1 text-sm leading-6 text-muted-foreground">应用后用于后续入库，不会重新处理已有文档。</p>
-      {rules.length ? (
+      {rules.length > 0 ? (
         <ol className={styles.policyRules}>
           {rules.map((rule, index) => (
             <li key={rule.id} className={styles.policyRule}>
@@ -28,12 +30,8 @@ export function PolicySuggestionSummary({ policy }: { policy: IngestionPolicy })
                 ) : null}
               </div>
               <div className={styles.ruleMethod}>
-                <span>
-                  {PARSER_BACKEND_REGISTRY_OPTIONS.find((item) => item.value === rule.parser_backend)?.label ??
-                    rule.parser_backend ??
-                    '默认解析器'}
-                </span>
-                <small>{rule.chunk_strategy || '默认切块策略'}</small>
+                <span>{rule.parser_backend == null ? '默认解析器' : getParserLabel(rule.parser_backend)}</span>
+                <small>{rule.chunk_strategy ?? '默认切块策略'}</small>
               </div>
             </li>
           ))}

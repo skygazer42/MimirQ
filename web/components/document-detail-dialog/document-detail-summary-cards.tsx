@@ -1,179 +1,170 @@
 'use client'
 
 import { Copy, Parsing, Chunking, DataGovernance } from '@/components/icons'
+import type { PlatformIcon } from '@/components/icons'
 import { useTranslations } from 'next-intl'
+import type { ReactNode } from 'react'
 
 import { IconButton } from '@/components/ui/icon-button'
 import { Panel } from '@/components/ui/panel'
+import { getChunkStrategyLabel } from '@/lib/chunk-strategies'
+import { getParserLabel } from '@/lib/parser-options'
 import { cn } from '@/lib/utils'
-
-type DocumentAnalyticsMetadata = {
-  char_count?: unknown
-  page_count?: unknown
-  table_count?: unknown
-  image_count?: unknown
-}
-
-type DocumentPipelineSummaryMetadata = {
-  chunk_size?: unknown
-  chunk_overlap?: unknown
-  chunk_vector_enabled?: unknown
-  bm25_index_enabled?: unknown
-}
+import type { Document } from '@/types/documents'
 
 type DocumentDetailSummaryCardsProps = Readonly<{
-  parserLabel: string | null
-  parserBackend: string
-  requestedParserBackend: string
-  chunkStrategyLabel: string | null
-  chunkStrategy: string
-  analyticsRaw: DocumentAnalyticsMetadata
-  governanceEnabled: boolean
-  governanceRulesApplied: unknown
-  governanceChangedDocuments: unknown
-  governanceDroppedDocuments: unknown
-  governanceRulePacks: string[]
-  viewingPipelineHash: string
-  activePipelineHash: string
-  lastPipelineHash: string
-  pipelineEffective: DocumentPipelineSummaryMetadata
+  document: Pick<Document, 'pipeline' | 'governance'>
+  viewingPipelineHash: string | null | undefined
+  activePipelineHash: string | null | undefined
   onCopyPipelineHash: (hash: string) => void
 }>
 
-type TraceRowProps = {
+type SummaryValue = string | number | boolean | null | undefined
+
+type SummaryRowProps = {
   label: string
-  value: string
+  value: SummaryValue
   mono?: boolean
 }
 
-function TraceRow({ label, value, mono }: Readonly<TraceRowProps>) {
-  const display = value?.trim?.() ? value : '-'
+function formatSummaryValue(value: SummaryValue, t: ReturnType<typeof useTranslations<'DocumentDetailDialog'>>) {
+  if (value === null || value === undefined) return t('cards.notProvided')
+  if (value === '') return t('cards.emptyValue')
+  if (typeof value === 'boolean') return value ? t('cards.enabledValue') : t('cards.disabledValue')
+  return String(value)
+}
+
+function SummaryRow({ label, value, mono }: Readonly<SummaryRowProps>) {
+  const t = useTranslations('DocumentDetailDialog')
+  const display = formatSummaryValue(value, t)
 
   return (
     <div className="flex items-center justify-between gap-3 text-xs">
-      <span className="text-muted-foreground">{label}</span>
-      <span className={cn('min-w-0 truncate text-foreground', mono ? 'font-mono' : null)} title={display}>
+      <dt className="shrink-0 text-muted-foreground">{label}</dt>
+      <dd className={cn('min-w-0 truncate text-foreground', mono ? 'font-mono' : null)} title={display}>
         {display}
-      </span>
+      </dd>
     </div>
   )
 }
 
-function traceValue(value: unknown): string {
-  if (value == null || value === '') return '-'
-  if (typeof value === 'string') return value
-  if (typeof value === 'number' || typeof value === 'boolean' || typeof value === 'bigint') {
-    return String(value)
-  }
-  return '-'
+function SummaryCard({
+  title,
+  subtitle,
+  icon: Icon,
+  iconSurface,
+  aside,
+  children,
+}: Readonly<{
+  title: string
+  subtitle: ReactNode
+  icon: PlatformIcon
+  iconSurface: 'icon-surface-process' | 'icon-surface-governance'
+  aside?: ReactNode
+  children: ReactNode
+}>) {
+  return (
+    <Panel className="rounded-2xl">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex min-w-0 items-start gap-3">
+          <div className={cn('grid size-10 shrink-0 place-items-center rounded-2xl border', iconSurface)}>
+            <Icon appearance="color" className="size-5" aria-hidden="true" />
+          </div>
+          <div className="min-w-0">
+            <h3 className="text-sm font-semibold text-foreground">{title}</h3>
+            <p className="truncate text-xs text-muted-foreground">{subtitle}</p>
+          </div>
+        </div>
+        {aside}
+      </div>
+      <dl className="mt-3 space-y-1.5">{children}</dl>
+    </Panel>
+  )
 }
 
 export function DocumentDetailSummaryCards({
-  parserLabel,
-  parserBackend,
-  requestedParserBackend,
-  chunkStrategyLabel,
-  chunkStrategy,
-  analyticsRaw,
-  governanceEnabled,
-  governanceRulesApplied,
-  governanceChangedDocuments,
-  governanceDroppedDocuments,
-  governanceRulePacks,
+  document,
   viewingPipelineHash,
   activePipelineHash,
-  lastPipelineHash,
-  pipelineEffective,
   onCopyPipelineHash,
 }: DocumentDetailSummaryCardsProps) {
   const t = useTranslations('DocumentDetailDialog')
+  const { pipeline, governance } = document
+  const parserBackend = pipeline?.parser_backend
+  const chunkStrategy = pipeline?.chunk_strategy
+  const rulePacks = pipeline?.governance_rule_packs
+  const analytics = pipeline?.analytics_raw
+  const effectivePipeline = pipeline?.pipeline_effective
+  const governanceStatusLabel =
+    governance === undefined
+      ? t('cards.notProvided')
+      : t(governance.enabled ? 'cards.governance.enabled' : 'cards.governance.disabled')
 
   return (
     <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-      <Panel className="rounded-2xl">
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex items-start gap-3 min-w-0">
-            <div className="grid h-10 w-10 place-items-center rounded-2xl border icon-surface-process">
-              <Parsing appearance="color" className="size-5" />
-            </div>
-            <div className="min-w-0">
-              <div className="text-sm font-semibold text-foreground">{t('cards.parse.title')}</div>
-              <div className="text-xs text-muted-foreground truncate">{parserLabel || parserBackend || '-'}</div>
-            </div>
-          </div>
-        </div>
-        <div className="mt-3 space-y-1.5">
-          <TraceRow label="parser_backend" value={traceValue(parserBackend)} mono />
-          <TraceRow label="requested" value={traceValue(requestedParserBackend)} mono />
-          <TraceRow label="char_count" value={traceValue(analyticsRaw?.char_count)} mono />
-          <TraceRow label="page_count" value={traceValue(analyticsRaw?.page_count)} mono />
-          <TraceRow label="table_count" value={traceValue(analyticsRaw?.table_count)} mono />
-          <TraceRow label="image_count" value={traceValue(analyticsRaw?.image_count)} mono />
-        </div>
-      </Panel>
+      <SummaryCard
+        title={t('cards.parse.title')}
+        subtitle={formatSummaryValue(parserBackend ? getParserLabel(parserBackend) : parserBackend, t)}
+        icon={Parsing}
+        iconSurface="icon-surface-process"
+      >
+        <SummaryRow label={t('cards.fields.parser')} value={parserBackend} mono />
+        <SummaryRow label={t('cards.fields.requestedParser')} value={pipeline?.parser_backend_requested} mono />
+        <SummaryRow label={t('cards.fields.charCount')} value={analytics?.char_count} mono />
+        <SummaryRow label={t('cards.fields.pageCount')} value={analytics?.page_count} mono />
+        <SummaryRow label={t('cards.fields.tableCount')} value={analytics?.table_count} mono />
+        <SummaryRow label={t('cards.fields.imageCount')} value={analytics?.image_count} mono />
+      </SummaryCard>
 
-      <Panel className="rounded-2xl">
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex items-start gap-3 min-w-0">
-            <div className="grid h-10 w-10 place-items-center rounded-2xl border icon-surface-governance">
-              <DataGovernance appearance="color" className="size-5" />
-            </div>
-            <div className="min-w-0">
-              <div className="text-sm font-semibold text-foreground">{t('cards.governance.title')}</div>
-              <div className="text-xs text-muted-foreground truncate">
-                {governanceEnabled ? t('cards.governance.enabled') : t('cards.governance.disabled')}
-              </div>
-            </div>
-          </div>
-          {governanceRulePacks.length ? (
-            <span className="rounded-full border border-border/60 bg-muted/60 px-2 py-1 text-[11px] text-muted-foreground">
-              {t('cards.governance.packsCount', { count: governanceRulePacks.length })}
+      <SummaryCard
+        title={t('cards.governance.title')}
+        subtitle={governanceStatusLabel}
+        icon={DataGovernance}
+        iconSurface="icon-surface-governance"
+        aside={
+          rulePacks !== undefined && rulePacks.length > 0 ? (
+            <span className="shrink-0 rounded-full border border-border/60 bg-muted/60 px-2 py-1 text-[11px] text-muted-foreground">
+              {t('cards.governance.packsCount', { count: rulePacks.length })}
             </span>
-          ) : null}
-        </div>
-        <div className="mt-3 space-y-1.5">
-          <TraceRow label="rules_applied" value={traceValue(governanceRulesApplied)} mono />
-          <TraceRow label="changed_docs" value={traceValue(governanceChangedDocuments)} mono />
-          <TraceRow label="dropped_docs" value={traceValue(governanceDroppedDocuments)} mono />
-          <TraceRow
-            label="rule_packs"
-            value={governanceRulePacks.length ? governanceRulePacks.slice(0, 4).join(', ') : '-'}
-          />
-        </div>
-      </Panel>
+          ) : null
+        }
+      >
+        <SummaryRow label={t('cards.fields.rulesApplied')} value={governance?.rules_applied} mono />
+        <SummaryRow label={t('cards.fields.changedDocuments')} value={governance?.changed_documents} mono />
+        <SummaryRow label={t('cards.fields.droppedDocuments')} value={governance?.dropped_documents} mono />
+        <SummaryRow label={t('cards.fields.rulePacks')} value={rulePacks?.join(', ')} />
+      </SummaryCard>
 
-      <Panel className="rounded-2xl">
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex items-start gap-3 min-w-0">
-            <div className="grid h-10 w-10 place-items-center rounded-2xl border icon-surface-process">
-              <Chunking appearance="color" className="size-5" />
-            </div>
-            <div className="min-w-0">
-              <div className="text-sm font-semibold text-foreground">{t('cards.chunking.title')}</div>
-              <div className="text-xs text-muted-foreground truncate">{chunkStrategyLabel || chunkStrategy || '-'}</div>
-            </div>
-          </div>
-          {viewingPipelineHash ? (
+      <SummaryCard
+        title={t('cards.chunking.title')}
+        subtitle={
+          <span title={chunkStrategy === null ? undefined : chunkStrategy}>
+            {formatSummaryValue(chunkStrategy ? getChunkStrategyLabel(chunkStrategy) : chunkStrategy, t)}
+          </span>
+        }
+        icon={Chunking}
+        iconSurface="icon-surface-process"
+        aside={
+          viewingPipelineHash ? (
             <IconButton
               label={t('cards.chunking.copyPipelineHash')}
               variant="ghost"
               className="h-9 w-9 text-muted-foreground hover:text-foreground"
-              onClick={() => onCopyPipelineHash(String(viewingPipelineHash || ''))}
+              onClick={() => onCopyPipelineHash(viewingPipelineHash)}
             >
-              <Copy className="h-4 w-4" />
+              <Copy className="h-4 w-4" aria-hidden="true" />
             </IconButton>
-          ) : null}
-        </div>
-        <div className="mt-3 space-y-1.5">
-          <TraceRow label="viewing_pipeline_hash" value={traceValue(viewingPipelineHash)} mono />
-          <TraceRow label="active_pipeline_hash" value={traceValue(activePipelineHash)} mono />
-          <TraceRow label="last_pipeline_hash" value={traceValue(lastPipelineHash)} mono />
-          <TraceRow label="chunk_size" value={traceValue(pipelineEffective?.chunk_size)} mono />
-          <TraceRow label="chunk_overlap" value={traceValue(pipelineEffective?.chunk_overlap)} mono />
-          <TraceRow label="vector_enabled" value={pipelineEffective?.chunk_vector_enabled ? 'true' : 'false'} mono />
-          <TraceRow label="bm25_enabled" value={pipelineEffective?.bm25_index_enabled ? 'true' : 'false'} mono />
-        </div>
-      </Panel>
+          ) : null
+        }
+      >
+        <SummaryRow label={t('cards.fields.viewingVersion')} value={viewingPipelineHash} mono />
+        <SummaryRow label={t('cards.fields.activeVersion')} value={activePipelineHash} mono />
+        <SummaryRow label={t('cards.fields.lastVersion')} value={pipeline?.pipeline_hash} mono />
+        <SummaryRow label={t('cards.fields.chunkSize')} value={effectivePipeline?.chunk_size} mono />
+        <SummaryRow label={t('cards.fields.chunkOverlap')} value={effectivePipeline?.chunk_overlap} mono />
+        <SummaryRow label={t('cards.fields.vectorEnabled')} value={effectivePipeline?.chunk_vector_enabled} />
+        <SummaryRow label={t('cards.fields.bm25Enabled')} value={effectivePipeline?.bm25_index_enabled} />
+      </SummaryCard>
     </div>
   )
 }

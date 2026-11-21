@@ -256,7 +256,7 @@ def test_vector_store_fetch_vectors_by_ids_coerces_supported_vector_shapes() -> 
     }
 
 
-def test_vector_store_fetch_vectors_by_ids_returns_empty_on_query_failure() -> None:
+def test_vector_store_fetch_vectors_by_ids_propagates_query_failure() -> None:
     class _Collection:
         def query(self, **_kwargs):
             raise RuntimeError("boom")
@@ -265,4 +265,5 @@ def test_vector_store_fetch_vectors_by_ids_returns_empty_on_query_failure() -> N
     store._store = SimpleNamespace(col=_Collection(), _primary_field="id", _vector_field="embedding")
     store._require_store = lambda: store._store
 
-    assert store.fetch_vectors_by_ids(["vec-1"]) == {}
+    with pytest.raises(RuntimeError, match="boom"):
+        store.fetch_vectors_by_ids(["vec-1"])

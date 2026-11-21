@@ -32,13 +32,6 @@ type DataAnnotatorProps = {
 type AnnotationTypeId = Annotation['type']
 type AnnotationTone = 'info' | 'success' | 'destructive' | 'primary'
 type AutoTagProviderId = 'cpu' | 'llm' | 'compliance' | 'hybrid'
-type AnnotationTypeConfig = {
-  id: AnnotationTypeId
-  label: string
-  icon: typeof Highlighter
-  tone: AnnotationTone
-  description: string
-}
 
 const ANNOTATION_TYPE_CONFIGS: Array<{
   id: AnnotationTypeId
@@ -85,8 +78,7 @@ function isLongTag(tag: AutoDocumentTag): boolean {
 }
 
 function getSelectionRoot(): HTMLElement | null {
-  if (globalThis.document === undefined) return null
-  return globalThis.document.querySelector('[data-governance-selection-root="true"]')
+  return document.querySelector('[data-governance-selection-root="true"]')
 }
 
 function normalizeSelectedText(value: string): string {
@@ -101,14 +93,20 @@ function findSelectionRange(
   if (!content || !text) return null
 
   const exactStart = content.indexOf(text)
-  if (exactStart >= 0) return { start: exactStart, end: exactStart + text.length, text }
+  if (exactStart >= 0) {
+    if (content.indexOf(text, exactStart + 1) >= 0) return null
+    return { start: exactStart, end: exactStart + text.length, text }
+  }
 
   const pattern = normalizeSelectedText(text)
     .split(' ')
     .map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`))
     .join(String.raw`\s+`)
-  const match = new RegExp(pattern, 'm').exec(content)
+  const matcher = new RegExp(pattern, 'gm')
+  const match = matcher.exec(content)
   if (match) {
+    matcher.lastIndex = match.index + 1
+    if (matcher.test(content)) return null
     return {
       start: match.index,
       end: match.index + match[0].length,
@@ -237,25 +235,23 @@ export function DataAnnotator({
     if (!isSelecting) return
 
     const captureSelection = () => {
-      const activeSelection = globalThis.getSelection?.()
-      const selectedText = activeSelection?.toString() || ''
-      if (!normalizeSelectedText(selectedText)) return
+      const activeSelection = window.getSelection()
+      if (activeSelection === null) return
 
       const root = getSelectionRoot()
-      const anchorNode = activeSelection?.anchorNode || null
-      const focusNode = activeSelection?.focusNode || null
+      const { anchorNode, focusNode } = activeSelection
       if (root && anchorNode && !root.contains(anchorNode)) return
       if (root && focusNode && !root.contains(focusNode)) return
 
-      const nextSelection = findSelectionRange(content, selectedText)
-      if (nextSelection) setSelection(nextSelection)
+      const nextSelection = findSelectionRange(content, activeSelection.toString())
+      setSelection(nextSelection)
     }
 
-    globalThis.document?.addEventListener('mouseup', captureSelection)
-    globalThis.document?.addEventListener('keyup', captureSelection)
+    document.addEventListener('mouseup', captureSelection)
+    document.addEventListener('keyup', captureSelection)
     return () => {
-      globalThis.document?.removeEventListener('mouseup', captureSelection)
-      globalThis.document?.removeEventListener('keyup', captureSelection)
+      document.removeEventListener('mouseup', captureSelection)
+      document.removeEventListener('keyup', captureSelection)
     }
   }, [content, isSelecting])
 

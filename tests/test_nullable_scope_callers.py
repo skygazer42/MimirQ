@@ -4,17 +4,17 @@ from uuid import uuid4
 import pytest
 from fastapi import BackgroundTasks
 
-from app.api.schemas.chat import ChatRequest
-from app.api.v1 import chat as chat_api
-from app.api.v1 import rag
+from app.api.schemas.conversations.chat import ChatRequest
+from app.api.v1.conversations import routes as chat_api
 from app.rag.kg import pipeline
 from app.rag.kg.search.cache import build_kg_community_summary_cache_key
 from app.rag.kg.search.config import SearchConfig
 from app.rag.kg.search.searcher import _community_scope
-from app.rag.retrieval.orchestration.kg_query_expansion import search_kg_query_async
-from app.rag.retrieval.orchestration.query_contracts import KGQueryRequest, KGQueryScope
-from app.rag.retrieval.orchestration.query_planning import _deterministic_and_kg_request
-from app.services.chat_stream_orchestrator import _build_stream_persist_input
+from app.rag.retrieval.planning.contracts import KGQueryRequest, KGQueryScope
+from app.rag.retrieval.planning.knowledge_graph import search_kg_query_async
+from app.rag.retrieval.planning.planner import _deterministic_and_kg_request
+from app.services.chat.stream_orchestrator import _build_stream_persist_input
+from app.services.retrieval import requests as rag
 
 
 @pytest.mark.parametrize("document_ids", [None, [], [uuid4()]])
@@ -147,15 +147,15 @@ async def test_dataset_chat_reaches_response_finalization_with_nullable_scope(do
             structured_data=None,
         )
 
-    def finalize(*, options):
+    async def finalize(*, options):
         captured["count"] = options.document_count
         return options.metrics
 
-    monkeypatch.setattr("app.services.tenant_quota_service.enforce_tenant_qps_quota_async", quota)
+    monkeypatch.setattr(chat_api, "enforce_tenant_qps_quota_async", quota)
     monkeypatch.setattr(chat_api, "check_chat_assistant_token_quota", lambda *_args, **_kwargs: {"enabled": False})
     monkeypatch.setattr(
         chat_api,
-        "_prepare_chat_turn_session",
+        "prepare_chat_turn_session",
         lambda **_kwargs: SimpleNamespace(
             conversation_id=conversation,
             scope_dataset_id=request.dataset_id,
@@ -163,19 +163,22 @@ async def test_dataset_chat_reaches_response_finalization_with_nullable_scope(do
             long_term_messages=[],
         ),
     )
-    monkeypatch.setattr(chat_api, "_prepare_chat_request_runtime", lambda **_kwargs: runtime)
-    monkeypatch.setattr(chat_api, "_prepare_non_streaming_chat_cache_state", cache_state)
-    monkeypatch.setattr(chat_api, "_apply_chat_runtime_metrics_context", lambda metrics, **_kwargs: metrics)
-    monkeypatch.setattr(chat_api, "_finalize_chat_response_sync", finalize)
-    monkeypatch.setattr(chat_api, "_maybe_schedule_summary_update", lambda **_kwargs: None)
+    monkeypatch.setattr(chat_api, "prepare_chat_request_runtime", lambda **_kwargs: runtime)
+    monkeypatch.setattr(chat_api, "prepare_non_streaming_chat_cache_state", cache_state)
+    monkeypatch.setattr(chat_api, "apply_chat_runtime_metrics_context", lambda metrics, **_kwargs: metrics)
+    monkeypatch.setattr(chat_api, "finalize_chat_response", finalize)
+    monkeypatch.setattr(chat_api, "_schedule_summary_update", lambda **_kwargs: None)
     monkeypatch.setattr(chat_api, "num_tokens_from_string", lambda _text: 1)
+    from app.services.runtime import retrieval_limiter
+
+    monkeypatch.setattr(retrieval_limiter, "SessionLocal", lambda: SimpleNamespace(close=lambda: None))
     result = await chat_api.chat(
         SimpleNamespace(state=SimpleNamespace(request_id="request"), client=None, headers={}),
         request,
         BackgroundTasks(),
         tenant_id=uuid4(),
         account_id="reader",
-        db=SimpleNamespace(),
+        db=SimpleNamespace(rollback=lambda: None),
     )
     assert captured["count"] == (0 if document_ids is None else len(document_ids))
     assert result["content"] == "answer"

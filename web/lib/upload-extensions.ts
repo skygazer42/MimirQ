@@ -82,8 +82,6 @@ export const UPLOAD_ALLOWED_EXTENSIONS = [
   '.less',
 ]
 
-export type UploadAllowedExtension = (typeof UPLOAD_ALLOWED_EXTENSIONS)[number]
-
 export const UPLOAD_ACCEPT = UPLOAD_ALLOWED_EXTENSIONS.join(',')
 export const UPLOAD_ACCEPT_WITH_ZIP = `${UPLOAD_ACCEPT},.zip`
 

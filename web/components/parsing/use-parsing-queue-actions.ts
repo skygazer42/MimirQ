@@ -1,7 +1,15 @@
 'use client'
 
 import { useQueryClient } from '@tanstack/react-query'
-import { useCallback, type Dispatch, type DragEvent, type SetStateAction } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  type Dispatch,
+  type DragEvent,
+  type RefObject,
+  type SetStateAction,
+} from 'react'
 import { useTranslations } from 'next-intl'
 
 import { toast } from 'sonner'
@@ -9,106 +17,125 @@ import { toast } from 'sonner'
 import { documentApi } from '@/lib/api/documents'
 import { parsingApi } from '@/lib/api/parsing'
 import { formatApiError } from '@/lib/api-errors'
-import { ROOT_FOLDER_ID, type ParsedFileData } from '@/store/use-parsed-files-store'
+import { getAuthCacheScope, getAuthSessionRevision } from '@/lib/auth-storage'
+import { queryKeys } from '@/lib/query-keys'
+import { useParsedFiles, type ParsedFileData } from '@/store/use-parsed-files-store'
 
 import type { ParsedFile } from './parsing-types'
 
 type UseParsingQueueActionsOptions = {
-  activeFileId: string | null
-  activeLibraryFileId: string | null
   cancelParse: (fileId: string) => void
-  files: ParsedFile[]
-  libraryFiles: ParsedFileData[]
+  filesRef: RefObject<ParsedFile[]>
   moveFolder: (id: string, parentId: string) => boolean
-  removeLibraryCaches: (fileId: string) => void
   removeParsedFile: (id: string) => void
   setActiveFileId: Dispatch<SetStateAction<string | null>>
   setActiveLibraryFileId: Dispatch<SetStateAction<string | null>>
-  setDragOverFolderId: Dispatch<SetStateAction<string | null>>
   setFiles: Dispatch<SetStateAction<ParsedFile[]>>
-  updateParsedFile: (id: string, updates: Partial<Omit<ParsedFileData, 'id'>>) => void
+  setSelectedGovernanceFileIds: Dispatch<SetStateAction<Set<string>>>
+  updateParsedFile: (id: string, updates: Partial<Omit<ParsedFileData, 'id'>>) => Promise<void>
 }
 
 export function useParsingQueueActions({
-  activeFileId,
-  activeLibraryFileId,
   cancelParse,
-  files,
-  libraryFiles,
+  filesRef,
   moveFolder,
-  removeLibraryCaches,
   removeParsedFile,
   setActiveFileId,
   setActiveLibraryFileId,
-  setDragOverFolderId,
   setFiles,
+  setSelectedGovernanceFileIds,
   updateParsedFile,
 }: Readonly<UseParsingQueueActionsOptions>) {
   const t = useTranslations('ParsingWorkbench')
   const queryClient = useQueryClient()
+  const mountedRef = useRef(false)
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+    }
+  }, [])
 
   const removeFile = useCallback(
-    (fileId: string) => {
-      const queue = files.find((file) => file.id === fileId) || null
-      const libraryId = queue?.libraryId || (libraryFiles.some((file) => file.id === fileId) ? fileId : null)
-      const libraryEntry = libraryId ? libraryFiles.find((file) => file.id === libraryId) || null : null
-
-      if (queue) {
-        cancelParse(queue.id)
-        setFiles((prev) => prev.filter((file) => file.id !== queue.id))
-        if (activeFileId === queue.id) setActiveFileId(null)
+    async (fileId: string) => {
+      const scope = getAuthCacheScope()
+      const revision = getAuthSessionRevision()
+      const isCurrent = () =>
+        mountedRef.current && scope === getAuthCacheScope() && revision === getAuthSessionRevision()
+      const queue = filesRef.current.find((file) => file.id === fileId || file.libraryId === fileId)
+      if (queue?.status === 'parsing' && queue.libraryId === undefined) {
+        throw new Error('源文件正在上传，完成后可以删除')
       }
+      const libraryState = useParsedFiles.getState()
+      const libraryFiles = libraryState.files
+      const libraryId = queue?.libraryId ?? libraryFiles.find((file) => file.id === fileId)?.id
+      const libraryEntry = libraryFiles.find((file) => file.id === libraryId)
 
-      if (libraryId) {
-        queryClient.setQueriesData<ParsedFileData[] | null>(
-          { queryKey: ['parsing', 'library-documents'] },
-          (current) => {
-            if (!Array.isArray(current)) return current
-            return current.filter((file) => file.id !== libraryId)
-          },
-        )
-        queryClient.removeQueries({ queryKey: ['parsing', 'library-content', libraryId] })
+      if (libraryId !== undefined) {
+        if (libraryState.loadError !== undefined) throw libraryState.loadError
+        const source = libraryEntry === undefined ? queue?.librarySource : libraryEntry.source
+        try {
+          if (source === 'knowledge_base') await documentApi.delete(libraryId)
+          else if (source === 'parsing_workspace') await parsingApi.delete(libraryId)
+          else if (libraryEntry === undefined) throw new Error('文档来源记录不存在，请刷新列表后重试')
+        } catch (error) {
+          if (isCurrent()) throw error
+          return
+        }
 
-        void (async () => {
-          try {
-            if (libraryEntry?.source === 'knowledge_base') await documentApi.delete(libraryId)
-            else await parsingApi.delete(libraryId)
-          } catch (err: unknown) {
-            toast.error(formatApiError(err, t('toasts.deleteFailed')))
-          }
-        })()
-
+        if (!isCurrent()) return
         removeParsedFile(libraryId)
-        removeLibraryCaches(libraryId)
-        if (activeLibraryFileId === libraryId) setActiveLibraryFileId(null)
+        queryClient.removeQueries({ queryKey: ['parsing', 'library-content', libraryId] })
+        queryClient.removeQueries({ queryKey: queryKeys.parsing.librarySource(libraryId) })
       }
+
+      const removedFiles = filesRef.current.filter(
+        (file) => file.id === fileId || (libraryId !== undefined && file.libraryId === libraryId),
+      )
+      const removedIds = new Set(removedFiles.map((file) => file.id))
+      for (const id of removedIds) cancelParse(id)
+      setFiles((previous) => previous.filter((file) => !removedIds.has(file.id)))
+      setActiveFileId((current) => (current !== null && removedIds.has(current) ? null : current))
+      setActiveLibraryFileId((current) => (current === libraryId ? null : current))
+      setSelectedGovernanceFileIds(
+        (current) => new Set([...current].filter((id) => !removedIds.has(id) && id !== libraryId)),
+      )
     },
     [
-      activeFileId,
-      activeLibraryFileId,
       cancelParse,
-      files,
-      libraryFiles,
-      removeLibraryCaches,
+      filesRef,
       removeParsedFile,
       queryClient,
       setActiveFileId,
       setActiveLibraryFileId,
       setFiles,
-      t,
+      setSelectedGovernanceFileIds,
     ],
   )
 
   const moveFileToFolder = useCallback(
-    (fileId: string, folderId: string) => {
-      const targetId = folderId || ROOT_FOLDER_ID
-      setFiles((prev) => prev.map((file) => (file.id === fileId ? { ...file, folderId: targetId } : file)))
-
-      const queueMatch = files.find((file) => file.id === fileId) || null
-      const libraryId = queueMatch?.libraryId || (libraryFiles.some((file) => file.id === fileId) ? fileId : null)
-      if (libraryId) updateParsedFile(libraryId, { folderId: targetId })
+    async (fileId: string, folderId: string) => {
+      const scope = getAuthCacheScope()
+      const revision = getAuthSessionRevision()
+      const isCurrent = () =>
+        mountedRef.current && scope === getAuthCacheScope() && revision === getAuthSessionRevision()
+      const queue = filesRef.current.find((file) => file.id === fileId || file.libraryId === fileId)
+      const libraryId = queue?.libraryId ?? useParsedFiles.getState().files.find((file) => file.id === fileId)?.id
+      try {
+        if (libraryId !== undefined) await updateParsedFile(libraryId, { folderId })
+        if (!isCurrent()) return
+        setFiles((previous) =>
+          previous.map((file) =>
+            file.id === fileId || (libraryId !== undefined && file.libraryId === libraryId)
+              ? { ...file, folderId }
+              : file,
+          ),
+        )
+      } catch (error) {
+        if (isCurrent()) toast.error(formatApiError(error, '移动文件失败'))
+      }
     },
-    [files, libraryFiles, setFiles, updateParsedFile],
+    [filesRef, setFiles, updateParsedFile],
   )
 
   const handleFileDragStart = useCallback((event: DragEvent<HTMLElement>, fileId: string) => {
@@ -116,51 +143,46 @@ export function useParsingQueueActions({
     event.dataTransfer.effectAllowed = 'move'
   }, [])
 
-  const handleFolderDragOver = useCallback(
-    (event: DragEvent<HTMLElement>, folderId: string) => {
-      event.preventDefault()
-      setDragOverFolderId(folderId)
-    },
-    [setDragOverFolderId],
-  )
-
-  const handleFolderDragLeave = useCallback(() => {
-    setDragOverFolderId(null)
-  }, [setDragOverFolderId])
-
   const handleFolderDrop = useCallback(
-    (event: DragEvent<HTMLElement>, folderId: string) => {
+    async (event: DragEvent<HTMLElement>, folderId: string) => {
       event.preventDefault()
-      const targetId = folderId || ROOT_FOLDER_ID
-
-      const draggedFolderId = event.dataTransfer.getData('application/x-mimirq-folder')
-      if (draggedFolderId) {
-        const ok = moveFolder(draggedFolderId, targetId)
-        if (ok) toast.success(t('toasts.folderMoved'))
-        else toast.error(t('toasts.folderMoveInvalid'))
-        setDragOverFolderId(null)
-        return
+      try {
+        const draggedFolderId = event.dataTransfer.getData('application/x-mimirq-folder')
+        if (draggedFolderId) {
+          const moved = moveFolder(draggedFolderId, folderId)
+          if (moved) toast.success(t('toasts.folderMoved'))
+          else toast.error(t('toasts.folderMoveInvalid'))
+          return
+        }
+        const fileId = event.dataTransfer.getData('text/plain')
+        if (fileId) await moveFileToFolder(fileId, folderId)
+      } catch (error) {
+        toast.error(formatApiError(error, '移动文件夹失败'))
       }
-
-      const fileId = event.dataTransfer.getData('text/plain')
-      if (fileId) moveFileToFolder(fileId, targetId)
-      setDragOverFolderId(null)
     },
-    [moveFileToFolder, moveFolder, setDragOverFolderId, t],
+    [moveFileToFolder, moveFolder, t],
   )
 
   const handleDeleteFolder = useCallback(
-    (folderIds: string[]) => {
-      setFiles((prev) => prev.filter((file) => !file.folderId || !folderIds.includes(file.folderId)))
+    (folderIds: string[], fileIds: string[]) => {
+      const removedIds = new Set(
+        filesRef.current.filter((file) => folderIds.includes(file.folderId)).map((file) => file.id),
+      )
+      for (const id of removedIds) cancelParse(id)
+      setFiles((previous) => previous.filter((file) => !removedIds.has(file.id)))
+      setActiveFileId((current) => (current !== null && removedIds.has(current) ? null : current))
+      setActiveLibraryFileId((current) =>
+        useParsedFiles.getState().files.some((file) => file.id === current) ? current : null,
+      )
+      const removedSelectionIds = new Set([...removedIds, ...fileIds])
+      setSelectedGovernanceFileIds((current) => new Set([...current].filter((id) => !removedSelectionIds.has(id))))
     },
-    [setFiles],
+    [cancelParse, filesRef, setActiveFileId, setActiveLibraryFileId, setFiles, setSelectedGovernanceFileIds],
   )
 
   return {
     handleDeleteFolder,
     handleFileDragStart,
-    handleFolderDragLeave,
-    handleFolderDragOver,
     handleFolderDrop,
     moveFileToFolder,
     removeFile,

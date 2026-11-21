@@ -1,3 +1,4 @@
+import math
 from typing import Any, TypedDict
 
 _SCHEMA = "mimirq.poc.latency_decomposer.v1"
@@ -20,7 +21,7 @@ def _to_int(value: Any) -> int | None:
         if value is None:
             return None
         return int(value)
-    except Exception:
+    except (OverflowError, TypeError, ValueError):
         return None
 
 
@@ -28,8 +29,9 @@ def _to_float(value: Any) -> float | None:
     try:
         if value is None:
             return None
-        return float(value)
-    except Exception:
+        number = float(value)
+        return number if math.isfinite(number) else None
+    except (OverflowError, TypeError, ValueError):
         return None
 
 
@@ -41,17 +43,18 @@ def _decompose_row(row: dict[str, Any]) -> _LatencyRow:
     wait_in_queue_ms = max(0, total_ms - active_inference_ms)
 
     prompt_tokens = max(0, _to_int(row.get("prompt_tokens")) or 0)
-    completion_tokens = max(0, _to_int(row.get("completion_tokens")) or _to_int(row.get("answer_tokens")) or 0)
+    completion_value = _to_int(row.get("completion_tokens"))
+    if completion_value is None:
+        completion_value = _to_int(row.get("answer_tokens"))
+    completion_tokens = max(0, completion_value if completion_value is not None else 0)
     if generation_ms > 0 and (prompt_tokens + completion_tokens) > 0:
         token_total = max(1, prompt_tokens + completion_tokens)
         model_prefill_ms = round(generation_ms * (prompt_tokens / token_total))
-        model_decode_ms = max(0, generation_ms - model_prefill_ms)
     elif generation_ms > 0:
         model_prefill_ms = round(generation_ms * 0.35)
-        model_decode_ms = max(0, generation_ms - model_prefill_ms)
     else:
         model_prefill_ms = 0
-        model_decode_ms = 0
+    model_decode_ms = max(0, generation_ms - model_prefill_ms)
 
     if wait_in_queue_ms >= max(1000, active_inference_ms):
         bottleneck = "concurrency_issue"

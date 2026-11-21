@@ -81,7 +81,6 @@ def mine_query_patterns(
     token_counts: Counter[str] = Counter()
     doc_counts: Counter[str] = Counter()
     token_doc_counts: defaultdict[str, int] = defaultdict(int)
-    glossary_candidates: list[dict[str, Any]] = []
     multi_intent_queries: list[dict[str, Any]] = []
 
     for row in rows or []:
@@ -114,14 +113,14 @@ def mine_query_patterns(
 
     abbreviations = _build_abbreviations(token_counts, min_frequency=int(abbreviation_min_frequency or 0))
 
-    for item in abbreviations:
-        glossary_candidates.append(
-            {
-                "token": item["token"],
-                "count": item["count"],
-                "source": "abbreviation_frequency",
-            }
-        )
+    glossary_candidates = [
+        {
+            "token": item["token"],
+            "count": item["count"],
+            "source": "abbreviation_frequency",
+        }
+        for item in abbreviations
+    ]
 
     total_docs = max(1, len(rows or []))
     keyword_scores = _build_keyword_scores(

@@ -14,33 +14,29 @@ import type { AuditSeverity, SnapshotChartTooltipProps, SnapshotDeltaRow, Snapsh
 import { deltaDirection, deltaFill, deltaSign, driftScoreToneForSeverity, toneClassForDelta } from '../utils'
 import { SectionHeading, SnapshotInlineStat } from './shared'
 
-export function auditSeverityMeta(severity: AuditSeverity): {
+function auditSeverityMeta(severity: AuditSeverity): {
   label: string
-  variant: 'soft' | 'outline' | 'destructive'
   icon: ReactNode
 } {
   if (severity === 'warning') {
     return {
       label: '数量变化较大',
-      variant: 'outline',
       icon: <ShieldAlert className="h-3.5 w-3.5" aria-hidden="true" />,
     }
   }
   if (severity === 'notice') {
     return {
       label: '数量有变化',
-      variant: 'outline',
       icon: <BarChart3 className="h-3.5 w-3.5" aria-hidden="true" />,
     }
   }
   return {
     label: '数量变化较小',
-    variant: 'outline',
     icon: <BarChart3 className="h-3.5 w-3.5" aria-hidden="true" />,
   }
 }
 
-export function SnapshotChartTooltip({ active, payload }: Readonly<SnapshotChartTooltipProps>) {
+function SnapshotChartTooltip({ active, payload }: Readonly<SnapshotChartTooltipProps>) {
   const row = payload?.[0]?.payload
   if (!active || !row) return null
   const sign = row.delta > 0 ? '+' : ''
@@ -84,7 +80,8 @@ export function SnapshotAuditPanel({
   onCompactRowsChange: (value: boolean) => void
 }>) {
   const severityMeta = auditSeverityMeta(severity)
-  const chartRows = includeZeroDeltas ? deltaRows : deltaRows.filter((row) => row.delta !== 0)
+  const changedRows = deltaRows.filter((row) => row.delta !== 0)
+  const chartRows = includeZeroDeltas ? deltaRows : changedRows
   const chartRowsWithFill = chartRows.map((row) => ({
     ...row,
     fill: deltaFill(row.delta),
@@ -100,7 +97,7 @@ export function SnapshotAuditPanel({
           description="根据两版节点、关系和属性的数量差异计算。"
           icon={<BarChart3 className="h-5 w-5" aria-hidden="true" />}
           extra={
-            <Badge variant={severityMeta.variant} className="inline-flex items-center gap-1.5 font-mono text-[11px]">
+            <Badge variant="outline" className="inline-flex items-center gap-1.5 font-mono text-[11px]">
               {severityMeta.icon}
               {severityMeta.label}
             </Badge>
@@ -122,7 +119,7 @@ export function SnapshotAuditPanel({
           <SnapshotInlineStat
             icon={<ArrowRightLeft className="h-3.5 w-3.5" />}
             label="变化项"
-            value={deltaRows.filter((row) => row.delta !== 0).length}
+            value={changedRows.length}
             tone="neutral"
           />
         </div>
@@ -181,32 +178,31 @@ export function SnapshotAuditPanel({
           <div className="min-h-0 flex-1 overflow-auto">
             {shownDriftRows.length ? (
               shownDriftRows.map((row, index) => {
-                const type = String(row.type || 'unknown')
-                const delta = Number(row.delta ?? 0)
-                const direction = deltaDirection(delta)
-                const sign = deltaSign(delta)
-                const tone = DELTA_TEXT_CLASSES[direction]
-                const tint = DELTA_TINT_CLASSES[direction]
+                const type = row.type || '未返回类型名'
+                const delta = row.delta
+                const direction = typeof delta === 'number' ? deltaDirection(delta) : null
+                const deltaLabel = typeof delta === 'number' ? `Δ ${deltaSign(delta)}${delta}` : '未取得'
                 return (
                   <div
                     key={`drift:${type}:${index}`}
                     className="grid w-full grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-2 border-b border-border/60 px-4 py-2 text-left"
-                    title={`${type} Δ ${sign}${delta}`}
+                    title={`${type} ${deltaLabel}`}
                   >
                     <span className="truncate font-mono text-[12px] text-foreground">{type}</span>
                     <span
                       className={cn(
                         'inline-flex min-w-[52px] items-center justify-center rounded-md px-2 py-0.5 font-mono text-[11px] font-semibold tabular-nums ring-1',
-                        tint,
-                        tone,
+                        direction === null ? 'text-muted-foreground' : DELTA_TINT_CLASSES[direction],
+                        direction !== null && DELTA_TEXT_CLASSES[direction],
                       )}
                     >
-                      Δ {sign}
-                      {delta}
+                      {deltaLabel}
                     </span>
-                    <Badge variant={DELTA_BADGE_VARIANTS[direction]} className="font-mono text-[10.5px]">
-                      {DELTA_LABELS[direction]}
-                    </Badge>
+                    {direction !== null && (
+                      <Badge variant={DELTA_BADGE_VARIANTS[direction]} className="font-mono text-[10.5px]">
+                        {DELTA_LABELS[direction]}
+                      </Badge>
+                    )}
                   </div>
                 )
               })

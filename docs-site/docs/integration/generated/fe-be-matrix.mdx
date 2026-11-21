@@ -35,10 +35,12 @@ sidebar_position: 10
 | --- |
 | `/api/v1/auth/login` |
 | `/api/v1/auth/me` |
+| `/api/v1/auth/policy` |
 | `/api/v1/auth/register` |
 | `/api/v1/auth/saml/bridge/consume` |
 | `/api/v1/auth/saml/exchange` |
 | `/api/v1/auth/saml/metadata` |
+| `/api/v1/auth/signup` |
 
 ### Chat
 
@@ -284,7 +286,6 @@ sidebar_position: 10
 | `/api/v1/evidence/suites/{suite_id}/dashboard` |
 | `/api/v1/evidence/suites/{suite_id}/drift-audit` |
 | `/api/v1/evidence/suites/{suite_id}/export` |
-| `/api/v1/evidence/suites/{suite_id}/export-ltr-training` |
 | `/api/v1/evidence/suites/{suite_id}/hardcase-candidates` |
 | `/api/v1/evidence/suites/{suite_id}/items` |
 | `/api/v1/evidence/suites/{suite_id}/items/import` |
@@ -392,15 +393,6 @@ sidebar_position: 10
 | `/api/v1/kg/snapshots/export` |
 | `/api/v1/kg/stats` |
 
-### LTR
-
-| Path |
-| --- |
-| `/api/v1/ltr/models` |
-| `/api/v1/ltr/models/activate` |
-| `/api/v1/ltr/models/register` |
-| `/api/v1/ltr/models/rollback` |
-
 ### Lineage
 
 | Path |
@@ -499,8 +491,6 @@ sidebar_position: 10
 | Path |
 | --- |
 | `/api/v1/rag/document-structure` |
-| `/api/v1/rag/image-index` |
-| `/api/v1/rag/image-search-preview` |
 | `/api/v1/rag/prompt-preview` |
 | `/api/v1/rag/retrieve` |
 | `/api/v1/rag/retrieve-preview` |
@@ -534,7 +524,6 @@ sidebar_position: 10
 | Path |
 | --- |
 | `/api/v1/rtbf/request` |
-| `/api/v1/rtbf/status/{ticket_id}` |
 
 ### Reports
 
@@ -597,11 +586,11 @@ sidebar_position: 10
 
 | 模块 | Path 片段 |
 | --- | --- |
-| `auth.ts` | `/api/v1/auth/login`, `/api/v1/auth/me`, `/api/v1/auth/register` |
-| `chat.ts` | `/api/v1/chat` |
+| `access.ts` | `/api/v1/groups/`, `/api/v1/rbac/members` |
+| `auth.ts` | `/api/v1/auth/me`, `/api/v1/auth/policy`, `/api/v1/auth/register`, `/api/v1/auth/saml/metadata`, `/api/v1/auth/signup` |
 | `connectors.ts` | `/api/v1/connectors`, `/api/v1/connectors/configs`, `/api/v1/connectors/configs/{config_id}`, `/api/v1/connectors/configs/{config_id}/run`, `/api/v1/connectors/runs`, `/api/v1/connectors/runs/{run_id}`, `/api/v1/connectors/runs/{run_id}/cancel`, `/api/v1/connectors/runs/{run_id}/resume`, `/api/v1/connectors/runs/{run_id}/retry-failed`, `/api/v1/connectors/scheduled/tick`, `/api/v1/connectors/validate` |
-| `datasets.ts` | `/api/v1/dataset-categories/`, `/api/v1/dataset-categories/{category_id}`, `/api/v1/dataset-categories/{category_id}/move`, `/api/v1/datasets/`, `/api/v1/datasets/{dataset_id}`, `/api/v1/datasets/{dataset_id}/categories`, `/api/v1/datasets/{dataset_id}/clone`, `/api/v1/datasets/{dataset_id}/config/export`, `/api/v1/datasets/{dataset_id}/config/import`, `/api/v1/datasets/{dataset_id}/health`, `/api/v1/datasets/{dataset_id}/ingestion-policy`, `/api/v1/datasets/{dataset_id}/ingestion-policy/rollback` … |
-| `documents.ts` | `/api/v1/documents/batch-delete`, `/api/v1/documents/batch-upload/apply-urls`, `/api/v1/documents/batch-upload/status/{batch_id}`, `/api/v1/documents/batch/access`, `/api/v1/documents/batch/archive`, `/api/v1/documents/batch/disable`, `/api/v1/documents/batch/enable`, `/api/v1/documents/batch/metadata`, `/api/v1/documents/batch/move`, `/api/v1/documents/batch/reingest`, `/api/v1/documents/batch/retry`, `/api/v1/documents/batch/unarchive` … |
+| `datasets.ts` | `/api/v1/dataset-categories/`, `/api/v1/dataset-categories/{category_id}`, `/api/v1/dataset-categories/{category_id}/move`, `/api/v1/datasets/`, `/api/v1/datasets/{dataset_id}`, `/api/v1/datasets/{dataset_id}/categories`, `/api/v1/datasets/{dataset_id}/clone`, `/api/v1/datasets/{dataset_id}/config/export`, `/api/v1/datasets/{dataset_id}/config/import`, `/api/v1/datasets/{dataset_id}/ingestion-policy`, `/api/v1/datasets/{dataset_id}/ingestion-policy/rollback`, `/api/v1/datasets/{dataset_id}/ingestion-policy/versions` … |
+| `documents.ts` | `/api/v1/documents/batch-delete`, `/api/v1/documents/batch-upload/apply-urls`, `/api/v1/documents/batch-upload/status/{batch_id}`, `/api/v1/documents/batch/access`, `/api/v1/documents/batch/archive`, `/api/v1/documents/batch/disable`, `/api/v1/documents/batch/enable`, `/api/v1/documents/batch/metadata`, `/api/v1/documents/batch/move`, `/api/v1/documents/batch/unarchive`, `/api/v1/documents/dead-letters`, `/api/v1/documents/dead-letters/{dead_letter_id}/replay` … |
 | `evidence.ts` | `/api/v1/evidence/datasets/{dataset_id}/drift-audit`, `/api/v1/evidence/items/{item_id}`, `/api/v1/evidence/items/{item_id}/approve`, `/api/v1/evidence/items/{item_id}/archive`, `/api/v1/evidence/items/{item_id}/review`, `/api/v1/evidence/suites`, `/api/v1/evidence/suites/{suite_id}`, `/api/v1/evidence/suites/{suite_id}/dashboard`, `/api/v1/evidence/suites/{suite_id}/drift-audit`, `/api/v1/evidence/suites/{suite_id}/export`, `/api/v1/evidence/suites/{suite_id}/hardcase-candidates`, `/api/v1/evidence/suites/{suite_id}/items` … |
 | `health.ts` | `/api/v1/health`, `/api/v1/health/details`, `/api/v1/health/ready` |
 | `meta.ts` | `/api/v1/meta`, `/api/v1/meta/details` |
@@ -633,7 +622,6 @@ sidebar_position: 10
 | `/[locale]/datasets/[id]/precheck` |
 | `/[locale]/datasets/[id]/profile` |
 | `/[locale]/datasets/[id]/tables` |
-| `/[locale]/datasets/[id]/workflow` |
 | `/[locale]/diagnostics` |
 | `/[locale]/evaluation` |
 | `/[locale]/evaluations` |
@@ -679,7 +667,6 @@ sidebar_position: 10
 | `/datasets/[id]/precheck` |
 | `/datasets/[id]/profile` |
 | `/datasets/[id]/tables` |
-| `/datasets/[id]/workflow` |
 | `/diagnostics` |
 | `/evaluation` |
 | `/evaluations` |

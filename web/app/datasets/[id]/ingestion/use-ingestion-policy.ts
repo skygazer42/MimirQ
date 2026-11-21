@@ -10,7 +10,7 @@ import { getAuthSessionRevision } from '@/lib/auth-storage'
 import { queryKeys } from '@/lib/query-keys'
 import { randomBase36Id } from '@/lib/secure-random'
 import { usePipelineCapabilities } from '@/contexts/pipeline-capabilities-context'
-import { INGESTION_FALLBACK_CHUNK_STRATEGY_VALUES } from '@/lib/chunk-strategies'
+import { INGESTION_FALLBACK_CHUNK_STRATEGY_VALUES, isRetiredChunkStrategy } from '@/lib/chunk-strategies'
 import type { IngestionPolicy, IngestionPreviewResponse, IngestionRule } from '@/types'
 import {
   insertTemplate,
@@ -23,13 +23,14 @@ import {
 import type { IngestionPolicyTemplate } from './policy-catalog'
 
 const PROFILE_PARAMS = { include_builtin: true, limit: 200 } as const
+
 export function useIngestionPolicy(datasetId: string) {
-  const client = useQueryClient(),
-    capabilities = usePipelineCapabilities(),
-    lock = useRef<object | null>(null)
-  const mounted = useRef(false),
-    visit = useRef<object>({}),
-    draftRevision = useRef(0)
+  const client = useQueryClient()
+  const capabilities = usePipelineCapabilities()
+  const activeRequest = useRef<object | null>(null)
+  const mounted = useRef(false)
+  const visit = useRef<object>({})
+  const draftRevision = useRef(0)
   const datasetQuery = useQuery({
     queryKey: queryKeys.datasets.detail(datasetId),
     queryFn: () => datasetApi.get(datasetId),
@@ -48,28 +49,30 @@ export function useIngestionPolicy(datasetId: string) {
   })
   const profilesQuery = useQuery({
     queryKey: queryKeys.governance.profiles(PROFILE_PARAMS),
-    queryFn: () => pipelineApi.listGovernanceProfiles(PROFILE_PARAMS),
+    queryFn: ({ signal }) => pipelineApi.listGovernanceProfiles(PROFILE_PARAMS, { signal }),
     retry: false,
   })
-  const [local, setLocal] = useState<IngestionPolicy | null>(null),
-    [saving, setSaving] = useState(false),
-    [saveError, setSaveError] = useState('')
-  const [editor, setEditor] = useState<{ originalId: string | null; draft: RuleDraft } | null>(null),
-    [templatesOpen, setTemplatesOpen] = useState(false),
-    [previewOpen, setPreviewOpen] = useState(false),
-    [overviewOpen, setOverviewOpen] = useState(false)
-  const [previewFile, setPreviewFile] = useState<File | null>(null),
-    [preview, setPreview] = useState<IngestionPreviewResponse | null>(null),
-    [previewing, setPreviewing] = useState(false),
-    [previewError, setPreviewError] = useState('')
+  const [draftPolicy, setDraftPolicy] = useState<IngestionPolicy | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState('')
+  const [editor, setEditor] = useState<{ originalId: string | null; draft: RuleDraft } | null>(null)
+  const [templatesOpen, setTemplatesOpen] = useState(false)
+  const [previewOpen, setPreviewOpen] = useState(false)
+  const [overviewOpen, setOverviewOpen] = useState(false)
+  const [previewFile, setPreviewFile] = useState<File | null>(null)
+  const [preview, setPreview] = useState<IngestionPreviewResponse | null>(null)
+  const [previewing, setPreviewing] = useState(false)
+  const [previewError, setPreviewError] = useState('')
   const [discardOpen, setDiscardOpen] = useState(false)
   const focusTarget = useRef<HTMLElement | null>(null)
-  const policy = local ?? policyQuery.data,
-    rules = policy?.rules ?? []
-  const dirty = local !== null && JSON.stringify(local) !== JSON.stringify(policyQuery.data)
+  const policy = draftPolicy ?? policyQuery.data
+  const rules = policy?.rules ?? []
+  const dirty = draftPolicy !== null && JSON.stringify(draftPolicy) !== JSON.stringify(policyQuery.data)
   const blocked = saving || previewing || !policy || policyQuery.isError || datasetQuery.isError
   const chunkOptions = capabilities.capabilities?.chunk_strategies?.length
-    ? capabilities.capabilities.chunk_strategies.map((item) => item.name)
+    ? capabilities.capabilities.chunk_strategies
+        .map((item) => item.name)
+        .filter((name) => !isRetiredChunkStrategy(name))
     : INGESTION_FALLBACK_CHUNK_STRATEGY_VALUES
 
   useEffect(() => {
@@ -80,9 +83,9 @@ export function useIngestionPolicy(datasetId: string) {
   }, [])
   useLayoutEffect(() => {
     visit.current = {}
-    lock.current = null
+    activeRequest.current = null
     draftRevision.current += 1
-    setLocal(null)
+    setDraftPolicy(null)
     setSaving(false)
     setSaveError('')
     setEditor(null)
@@ -105,9 +108,9 @@ export function useIngestionPolicy(datasetId: string) {
   }, [dirty])
 
   function changeRules(next: IngestionRule[]) {
-    if (!policy || lock.current) return
+    if (policy === undefined || activeRequest.current !== null) return
     draftRevision.current += 1
-    setLocal({ version: policy.version, rules: next })
+    setDraftPolicy({ version: policy.version, rules: next })
     setSaveError('')
     setPreview(null)
     setPreviewError('')
@@ -131,63 +134,66 @@ export function useIngestionPolicy(datasetId: string) {
     changeRules(rules.filter((rule) => rule.id !== id))
   }
   function moveRule(id: string, direction: -1 | 1) {
-    const index = rules.findIndex((rule) => rule.id === id),
-      target = index + direction
+    const index = rules.findIndex((rule) => rule.id === id)
+    const target = index + direction
     if (index < 0 || target < 0 || target >= rules.length) return
     const next = [...rules]
     ;[next[index], next[target]] = [next[target], next[index]]
     changeRules(next)
   }
   function applyTemplate(template: IngestionPolicyTemplate, placement: TemplatePlacement) {
-    const key = randomBase36Id(10),
-      additions = template.rules.map((rule, index) => ({ ...rule, id: `tpl-${key}-${index + 1}` }))
+    const key = randomBase36Id(10)
+    const additions = template.rules.map((rule, index) => ({ ...rule, id: `tpl-${key}-${index + 1}` }))
     changeRules(insertTemplate(rules, additions, placement))
     setTemplatesOpen(false)
   }
   async function save() {
-    if (!policy || lock.current || !dirty) return
-    const submission = {},
-      owner = visit.current,
-      revision = draftRevision.current,
-      sessionRevision = getAuthSessionRevision()
+    if (blocked || activeRequest.current !== null || !dirty) return
+    const submission = {}
+    const owner = visit.current
+    const revision = draftRevision.current
+    const sessionRevision = getAuthSessionRevision()
     const queryKey = queryKeys.datasets.ingestionPolicy(datasetId)
     const ownsView = () => mounted.current && visit.current === owner && sessionRevision === getAuthSessionRevision()
-    lock.current = submission
+    activeRequest.current = submission
     setSaving(true)
     setSaveError('')
     try {
       await client.cancelQueries({ queryKey, exact: true })
       if (sessionRevision !== getAuthSessionRevision()) return
-      await datasetApi.updateIngestionPolicy(datasetId, policyPayload(policy))
+      const previousPolicy = client.getQueryData(queryKey)
+      const response = policyPayload(await datasetApi.updateIngestionPolicy(datasetId, policyPayload(policy)))
       if (sessionRevision !== getAuthSessionRevision()) return
-      const response = policyPayload(await datasetApi.getIngestionPolicy(datasetId))
-      if (sessionRevision !== getAuthSessionRevision()) return
-      client.setQueryData(queryKey, response)
+      if (ownsView() || client.getQueryData(queryKey) === previousPolicy) {
+        client.setQueryData(queryKey, response)
+      } else {
+        void client.invalidateQueries({ queryKey, exact: true })
+      }
       if (!ownsView() || draftRevision.current !== revision) return
-      setLocal(null)
+      setDraftPolicy(null)
       setPreview(null)
       toast.success(`${datasetQuery.data?.name ?? '数据集'}的入库策略已保存`)
     } catch (error) {
       if (ownsView()) setSaveError(formatApiError(error, '保存策略失败'))
     } finally {
-      if (lock.current === submission) {
-        lock.current = null
+      if (activeRequest.current === submission) {
+        activeRequest.current = null
         if (mounted.current) setSaving(false)
       }
     }
   }
   async function runPreview() {
-    if (!previewFile || dirty || blocked || lock.current) return
-    const submission = {},
-      owner = visit.current,
-      revision = draftRevision.current,
-      sessionRevision = getAuthSessionRevision()
+    if (previewFile === null || dirty || blocked || activeRequest.current !== null) return
+    const submission = {}
+    const owner = visit.current
+    const revision = draftRevision.current
+    const sessionRevision = getAuthSessionRevision()
     const ownsView = () =>
       mounted.current &&
       visit.current === owner &&
       draftRevision.current === revision &&
       sessionRevision === getAuthSessionRevision()
-    lock.current = submission
+    activeRequest.current = submission
     setPreviewing(true)
     setPreviewError('')
     setPreview(null)
@@ -197,8 +203,8 @@ export function useIngestionPolicy(datasetId: string) {
     } catch (error) {
       if (ownsView()) setPreviewError(formatApiError(error, '文件预览失败'))
     } finally {
-      if (lock.current === submission) {
-        lock.current = null
+      if (activeRequest.current === submission) {
+        activeRequest.current = null
         if (mounted.current) setPreviewing(false)
       }
     }
@@ -209,7 +215,7 @@ export function useIngestionPolicy(datasetId: string) {
   }
   function discard() {
     draftRevision.current += 1
-    setLocal(null)
+    setDraftPolicy(null)
     setSaveError('')
     setDiscardOpen(false)
     setPreview(null)

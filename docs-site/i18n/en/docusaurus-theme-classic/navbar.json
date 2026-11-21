@@ -1,10 +1,10 @@
 {
   "title": {
-    "message": "MimirQ",
+    "message": "Ragvia",
     "description": "The title in the navbar"
   },
   "logo.alt": {
-    "message": "MimirQ",
+    "message": "Ragvia",
     "description": "The alt text of navbar logo"
   },
   "item.label.快速开始": {

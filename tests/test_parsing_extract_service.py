@@ -1,5 +1,5 @@
 def test_extract_parsing_fields_prefers_matching_seal_elements_with_bbox_evidence():
-    from app.services.parsing_extract_service import extract_parsing_fields  # noqa: WPS433
+    from app.services.parsing.extraction import extract_parsing_fields  # noqa: WPS433
 
     result = extract_parsing_fields(
         markdown="合同正文\n\n印章识别：杭州测试科技有限公司",
@@ -35,7 +35,7 @@ def test_extract_parsing_fields_prefers_matching_seal_elements_with_bbox_evidenc
 
 
 def test_extract_parsing_fields_supports_prompt_mode_with_field_hints():
-    from app.services.parsing_extract_service import extract_parsing_fields  # noqa: WPS433
+    from app.services.parsing.extraction import extract_parsing_fields  # noqa: WPS433
 
     result = extract_parsing_fields(
         markdown="公式：E = mc^2",
@@ -66,7 +66,7 @@ def test_extract_parsing_fields_supports_prompt_mode_with_field_hints():
 
 
 def test_extract_parsing_fields_carries_cross_page_span_into_evidence():
-    from app.services.parsing_extract_service import extract_parsing_fields  # noqa: WPS433
+    from app.services.parsing.extraction import extract_parsing_fields  # noqa: WPS433
 
     result = extract_parsing_fields(
         markdown="下表跨页延续。",
@@ -97,9 +97,9 @@ def test_extract_parsing_fields_carries_cross_page_span_into_evidence():
 
 
 def test_extract_parsing_fields_carries_cross_page_table_pages_after_merge() -> None:
-    from app.parsing.processors.cross_page_merge import merge_cross_page_documents  # noqa: WPS433
-    from app.parsing.utils.document_elements import normalize_document_elements  # noqa: WPS433
-    from app.services.parsing_extract_service import extract_parsing_fields  # noqa: WPS433
+    from app.rag.ingestion.parsing.processors.cross_page_merge import merge_cross_page_documents  # noqa: WPS433
+    from app.rag.ingestion.parsing.utils.document_elements import normalize_document_elements  # noqa: WPS433
+    from app.services.parsing.extraction import extract_parsing_fields  # noqa: WPS433
 
     docs = merge_cross_page_documents(
         [
@@ -144,7 +144,7 @@ def test_extract_parsing_fields_carries_cross_page_table_pages_after_merge() -> 
 
 
 def test_extract_parsing_fields_uses_markdown_alias_value_fallback_before_generic_excerpt():
-    from app.services.parsing_extract_service import extract_parsing_fields  # noqa: WPS433
+    from app.services.parsing.extraction import extract_parsing_fields  # noqa: WPS433
 
     result = extract_parsing_fields(
         markdown="甲方：杭州测试科技有限公司\n合同编号：HT-2026-001\n正文略。",
@@ -163,7 +163,7 @@ def test_extract_parsing_fields_uses_markdown_alias_value_fallback_before_generi
 
 
 def test_extract_parsing_fields_uses_sentence_fallback_for_prompt_terms():
-    from app.services.parsing_extract_service import extract_parsing_fields  # noqa: WPS433
+    from app.services.parsing.extraction import extract_parsing_fields  # noqa: WPS433
 
     result = extract_parsing_fields(
         markdown="本合同主要公式如下：E = mc^2。其余略。",
@@ -183,7 +183,7 @@ def test_extract_parsing_fields_uses_sentence_fallback_for_prompt_terms():
 
 
 def test_extract_parsing_fields_supports_source_visual_kind_for_image_elements():
-    from app.services.parsing_extract_service import extract_parsing_fields  # noqa: WPS433
+    from app.services.parsing.extraction import extract_parsing_fields  # noqa: WPS433
 
     result = extract_parsing_fields(
         markdown="图表说明见图片。",
@@ -224,7 +224,7 @@ def test_extract_parsing_fields_supports_source_visual_kind_for_image_elements()
 
 
 def test_extract_parsing_fields_prefers_image_code_text_for_qr_elements():
-    from app.services.parsing_extract_service import extract_parsing_fields  # noqa: WPS433
+    from app.services.parsing.extraction import extract_parsing_fields  # noqa: WPS433
 
     result = extract_parsing_fields(
         markdown="二维码见附件。",

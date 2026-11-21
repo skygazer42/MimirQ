@@ -4,7 +4,7 @@ import type {
   ChatTokenQuotaStatus,
   ChatTokenUsageSummary,
   TenantQuotaSummary,
-} from '@/types/chat'
+} from '@/types/usage'
 import {
   averageRetrievalMs,
   buildQuotaReadings,
@@ -12,6 +12,7 @@ import {
   formatCount,
   formatDuration,
   parseUsageLocation,
+  quotaStatus,
 } from './usage-model'
 
 const summary: ChatTokenUsageSummary = {
@@ -91,7 +92,7 @@ describe('usage overview data boundaries', () => {
     expect(parseUsageLocation('?page=Infinity')).toEqual({ windowDays: 7, view: 'attribution', page: 1 })
   })
   it('keeps both APIs attribution rows without confusing LLM and assistant tokens', () => {
-    const rows = buildUsageRows(summary, cost, { known: '工程文档库' }, 'ready')
+    const rows = buildUsageRows(summary, cost, new Map([['known', '工程文档库']]), 'ready')
     expect(rows).toHaveLength(4)
     expect(rows.find((r) => r.datasetId === 'known')).toMatchObject({
       name: '工程文档库',
@@ -109,25 +110,25 @@ describe('usage overview data boundaries', () => {
   })
 
   it('distinguishes confirmed hidden and unbound rows from failed name loading', () => {
-    const confirmed = buildUsageRows(summary, cost, {}, 'ready')
+    const confirmed = buildUsageRows(summary, cost, new Map(), 'ready')
     expect(confirmed.find((r) => r.datasetId === 'hidden')).toMatchObject({ visibility: 'hidden', href: null })
     expect(confirmed.find((r) => r.datasetId === null)).toMatchObject({ visibility: 'unbound', href: null })
-    const unresolved = buildUsageRows(summary, cost, {}, 'error')
+    const unresolved = buildUsageRows(summary, cost, undefined, 'error')
     expect(unresolved.find((r) => r.datasetId === 'hidden')).toMatchObject({ visibility: 'unresolved', href: null })
     expect(unresolved.find((r) => r.datasetId === 'hidden')?.name).not.toBe('不可见数据集')
   })
 
   it('encodes the actual dataset destination and retains zero instead of inventing missing use', () => {
-    const rows = buildUsageRows(summary, null, { known: '资料库' }, 'ready')
+    const rows = buildUsageRows(summary, undefined, new Map([['known', '资料库']]), 'ready')
     expect(rows[0].href).toBe('/knowledge?dataset=known&lifecycle=all&status=all')
     expect(rows.find((r) => r.datasetId === null)?.assistantTokens).toBe(0)
-    expect(buildUsageRows(null, cost, {}, 'pending')[0].assistantTokens).toBeNull()
+    expect(buildUsageRows(undefined, cost, undefined, 'pending')[0].assistantTokens).toBeNull()
   })
 
   it('does not divide by zero or turn unavailable durations into zero', () => {
     expect(averageRetrievalMs(0.5, 2)).toBe(250)
     expect(averageRetrievalMs(0, 2)).toBe(0)
-    expect(averageRetrievalMs(1, 0)).toBeNull()
+    expect(averageRetrievalMs(1, 0)).toBeUndefined()
     expect(formatCount(undefined)).toBe('—')
     expect(formatCount(0)).toBe('0')
     expect(formatDuration(null)).toBe('—')
@@ -140,19 +141,24 @@ describe('usage overview data boundaries', () => {
     expect(readings.find((q) => q.key === 'embedding')).toMatchObject({ windowHours: 48, percentage: 10, mode: 'warn' })
     expect(readings.find((q) => q.key === 'storage')).toMatchObject({ scope: '当前占用', percentage: 50 })
     expect(readings.find((q) => q.key === 'qps')).toMatchObject({
-      percentage: null,
-      progress: null,
+      percentage: undefined,
+      progress: undefined,
       scopes: ['聊天', '检索'],
     })
   })
 
   it('does not show disabled and unavailable quotas as exhausted resources', () => {
-    expect(buildQuotaReadings(chat, tenant).find((q) => q.key === 'documents')).toMatchObject({
+    const readings = buildQuotaReadings(chat, tenant)
+    expect(readings.find((q) => q.key === 'documents')).toMatchObject({
       enabled: false,
-      percentage: null,
-      remaining: null,
+      percentage: undefined,
+      remaining: 0,
+      tone: 'neutral',
     })
-    expect(buildQuotaReadings(null, null).every((q) => q.enabled === null && q.percentage === null)).toBe(true)
+    expect(readings.filter((q) => q.enabled === false).map(quotaStatus)).toEqual(['未启用'])
+    const unavailable = buildQuotaReadings(undefined, undefined)
+    expect(unavailable.every((q) => q.enabled === undefined && q.percentage === undefined)).toBe(true)
+    expect(unavailable.map(quotaStatus)).toEqual(['未取得', '未取得', '未取得', '未取得', '未取得'])
     const exceeded = buildQuotaReadings({ ...chat, used: 120, remaining: 0, exceeded: true }, tenant)[0]
     expect(exceeded).toMatchObject({ percentage: 120, progress: 100, remaining: 0, tone: 'danger' })
   })

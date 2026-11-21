@@ -135,12 +135,13 @@ def _run_doc_parser(
         start_new_session=True,
     )
 
+    effective_timeout = max(30, timeout_sec)
     try:
-        stdout, _ = proc.communicate(timeout=max(30, timeout_sec))
+        stdout, _ = proc.communicate(timeout=effective_timeout)
     except subprocess.TimeoutExpired as exc:
         _terminate_process_group(proc)
         out = _decode_subprocess_output(exc.stdout)
-        raise TimeoutError(f"doc_parser timed out after {timeout_sec}s: {out[-2000:]}") from exc
+        raise TimeoutError(f"doc_parser timed out after {effective_timeout}s: {out[-2000:]}") from exc
     except Exception:
         _terminate_process_group(proc)
         raise

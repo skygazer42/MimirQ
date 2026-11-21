@@ -1,4 +1,4 @@
-import type { ChunkStrategyInfo } from '@/types'
+import type { ChunkStrategyInfo } from '@/types/processing'
 
 export type ChunkStrategyOption = {
   value: string
@@ -12,6 +12,13 @@ export type ChunkStrategyOption = {
 
 type ChunkStrategyGroup = NonNullable<ChunkStrategyOption['group']>
 
+const RETIRED_CHUNK_STRATEGIES = new Set(['agentic_chunker', 'late_chunking', 'late_chunking_jina', 'raptor'])
+
+export function isRetiredChunkStrategy(value?: string | null) {
+  const name = value?.trim().toLowerCase()
+  return name !== undefined && RETIRED_CHUNK_STRATEGIES.has(name)
+}
+
 function strategy(
   value: string,
   label: string,
@@ -22,6 +29,15 @@ function strategy(
 ): ChunkStrategyOption {
   return { value, label, description, icon, badge, group }
 }
+
+const DEFAULT_CHUNK_STRATEGY = strategy(
+  'langchain_recursive',
+  'LangChain 递归切分',
+  '按分隔符（段落、句号等）递归切分，保留语义完整性。',
+  'recursive',
+  '通用',
+  'langchain',
+)
 
 export const CHUNK_STRATEGY_OPTIONS: ChunkStrategyOption[] = [
   strategy(
@@ -497,14 +513,7 @@ export const CHUNK_STRATEGY_OPTIONS: ChunkStrategyOption[] = [
     'Wiki',
     'preset',
   ),
-  strategy(
-    'langchain_recursive',
-    'LangChain 递归切分',
-    '按分隔符（段落、句号等）递归切分，保留语义完整性。',
-    'recursive',
-    '通用',
-    'langchain',
-  ),
+  DEFAULT_CHUNK_STRATEGY,
   strategy(
     'semantic_sentence',
     '语义句子切分',
@@ -629,31 +638,48 @@ export const CHUNK_STRATEGY_OPTIONS: ChunkStrategyOption[] = [
   ),
 ]
 
-export function getChunkStrategyOption(value?: string) {
-  const normalized = (value || '').toLowerCase()
-  return (
-    CHUNK_STRATEGY_OPTIONS.find((option) => option.value === normalized) ||
-    CHUNK_STRATEGY_OPTIONS.find((option) => option.value === 'langchain_recursive') ||
-    CHUNK_STRATEGY_OPTIONS[0]
-  )
+export function getChunkStrategyOption(value?: string): ChunkStrategyOption {
+  const normalized = value?.trim().toLowerCase()
+  if (normalized === undefined || normalized === '') return DEFAULT_CHUNK_STRATEGY
+
+  const selected = CHUNK_STRATEGY_OPTIONS.find((option) => option.value === normalized)
+  if (selected) return selected
+  if (RETIRED_CHUNK_STRATEGIES.has(normalized)) {
+    return {
+      value: normalized,
+      label: normalized,
+      description: '此切块策略已移除，请选择其他策略。',
+      icon: 'recursive',
+      badge: '已移除',
+      disabled: true,
+    }
+  }
+  return {
+    value: normalized,
+    label: normalized,
+    description: '暂未读取到该切块策略的说明。',
+    icon: 'recursive',
+  }
 }
 
 export function getChunkStrategyLabel(value?: string) {
-  return getChunkStrategyOption(value).label
+  if (value === undefined || value.length === 0) return DEFAULT_CHUNK_STRATEGY.label
+  const option = CHUNK_STRATEGY_OPTIONS.find((item) => item.value === value.toLowerCase())
+  return option === undefined ? value : option.label
 }
 
-export function getStrategiesByGroup(group: string) {
+function getStrategiesByGroup(group: string) {
   return CHUNK_STRATEGY_OPTIONS.filter((option) => option.group === group)
 }
 
 export const INGESTION_FALLBACK_CHUNK_STRATEGY_VALUES = [
-  'langchain_recursive',
+  DEFAULT_CHUNK_STRATEGY.value,
   ...getStrategiesByGroup('integrated').map((option) => option.value),
 ]
 
 export type ChunkStrategyRecommendation = 'mainstream' | 'specialized' | 'experimental' | 'optional' | 'integrated'
 
-export type ChunkStrategyCatalogItem = ChunkStrategyOption & {
+type ChunkStrategyCatalogItem = ChunkStrategyOption & {
   available?: boolean
   notes?: string | null
   recommendation: ChunkStrategyRecommendation
@@ -684,13 +710,7 @@ const MAINSTREAM_STRATEGIES = new Set([
   'paper',
 ])
 
-const EXPERIMENTAL_STRATEGIES = new Set([
-  'agentic_chunker',
-  'late_chunking',
-  'late_chunking_jina',
-  'proposition',
-  'raptor',
-])
+const EXPERIMENTAL_STRATEGIES = new Set(['proposition'])
 
 const OPTIONAL_STRATEGIES = new Set(['llama_index', 'llama_index_hierarchical'])
 
@@ -728,29 +748,25 @@ const RECOMMENDATION_ORDER: Record<ChunkStrategyRecommendation, number> = {
 function humanizeChunkStrategyValue(value: string) {
   return value
     .split('_')
-    .filter(Boolean)
+    .filter((part) => part.length > 0)
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(' ')
 }
 
 function stripRecommendationPrefix(notes?: string | null) {
-  const source = String(notes || '').trim()
-  if (!source) return ''
-  for (const item of NOTE_PREFIX_TO_RECOMMENDATION) {
-    if (source.startsWith(item.prefix)) {
-      return source.slice(item.prefix.length).trim()
-    }
-  }
-  return source
+  const source = notes?.trim()
+  if (source === undefined) return undefined
+
+  const match = NOTE_PREFIX_TO_RECOMMENDATION.find((item) => source.startsWith(item.prefix))
+  const description = match ? source.slice(match.prefix.length).trim() : source
+  return description.length > 0 ? description : undefined
 }
 
-export function getChunkStrategyRecommendation(value: string, notes?: string | null): ChunkStrategyRecommendation {
-  const normalized = String(value || '')
-    .trim()
-    .toLowerCase()
-  const source = String(notes || '').trim()
+function getChunkStrategyRecommendation(value: string, notes?: string | null): ChunkStrategyRecommendation {
+  const normalized = value.trim().toLowerCase()
+  const source = notes?.trim()
   for (const item of NOTE_PREFIX_TO_RECOMMENDATION) {
-    if (source.startsWith(item.prefix)) {
+    if (source?.startsWith(item.prefix)) {
       return item.recommendation
     }
   }
@@ -767,31 +783,26 @@ export function getChunkStrategyRecommendationLabel(recommendation: ChunkStrateg
 
 export function buildChunkStrategyCatalog(capabilities?: ChunkStrategyInfo[] | null): ChunkStrategyCatalogItem[] {
   const baseMap = new Map(CHUNK_STRATEGY_OPTIONS.map((option) => [option.value, option]))
-  const capabilityMap = new Map(
-    (capabilities || [])
-      .map((item) => ({
-        ...item,
-        name: String(item.name || '')
-          .trim()
-          .toLowerCase(),
-      }))
-      .filter((item) => item.name)
-      .map((item) => [item.name, item] as const),
-  )
+  const capabilityMap = new Map<string, ChunkStrategyInfo>()
+  for (const capability of capabilities ?? []) {
+    const name = capability.name.trim().toLowerCase()
+    if (name.length === 0 || RETIRED_CHUNK_STRATEGIES.has(name)) continue
+    capabilityMap.set(name, capability)
+  }
 
-  const names = new Set<string>([...Array.from(baseMap.keys()), ...Array.from(capabilityMap.keys())])
+  const names = new Set([...baseMap.keys(), ...capabilityMap.keys()])
 
   return Array.from(names)
     .map((name) => {
       const base = baseMap.get(name)
       const capability = capabilityMap.get(name)
       const recommendation = getChunkStrategyRecommendation(name, capability?.notes)
-      const strippedNotes = stripRecommendationPrefix(capability?.notes)
+      const label = base?.label ?? humanizeChunkStrategyValue(name)
       return {
         value: name,
-        label: base?.label || humanizeChunkStrategyValue(name),
-        description: base?.description || strippedNotes || `${humanizeChunkStrategyValue(name)} 切块策略`,
-        icon: base?.icon || (recommendation === 'integrated' ? 'integrated' : 'recursive'),
+        label,
+        description: base?.description ?? stripRecommendationPrefix(capability?.notes) ?? `${label} 切块策略`,
+        icon: base?.icon ?? (recommendation === 'integrated' ? 'integrated' : 'recursive'),
         badge: base?.badge,
         group: base?.group,
         disabled: base?.disabled,

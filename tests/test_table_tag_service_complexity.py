@@ -1,6 +1,6 @@
 import pytest
 
-from app.services import table_tag_service as svc
+from app.services.tables import generation as svc
 
 
 def _single_table_columns() -> list[dict[str, str]]:

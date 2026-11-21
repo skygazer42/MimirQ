@@ -69,12 +69,14 @@ test('请求失败不显示空数据且允许重试恢复', async ({ page }, tes
       : route.fulfill({ json: datasetResponse }),
   )
   await page.goto('/datasets')
-  const error = page.getByRole('alert').filter({ hasText: '加载数据集失败' })
+  const error = page
+    .getByRole('row')
+    .filter({ has: page.getByRole('heading', { name: '数据集加载失败', exact: true }) })
   await expect(error).toBeVisible({ timeout: 60_000 })
   await expect(page.getByRole('heading', { name: '暂无数据集' })).toHaveCount(0)
   await page.screenshot({ path: testInfo.outputPath('datasets-error.png'), animations: 'disabled' })
   failRequest = false
-  await error.getByRole('button', { name: '重试', exact: true }).click()
+  await error.getByRole('button', { name: '重新加载', exact: true }).click()
   await expect(page.locator('[data-dataset-catalog-scroll]').getByText('运维手册', { exact: true })).toBeVisible()
   await expect(error).toHaveCount(0)
 })

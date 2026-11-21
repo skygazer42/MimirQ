@@ -39,30 +39,30 @@ const KgPredicateOntologySettings = dynamic(
   { loading: () => <p className={styles.dialogLoading}>加载关系词表…</p> },
 )
 
-export function PromptDialogs({ controller: c }: { controller: PromptsController }) {
-  const t = c.preview
+export function PromptDialogs({ controller }: { controller: PromptsController }) {
+  const previewTemplate = controller.preview
   return (
     <>
       <Dialog
-        open={c.editorOpen}
+        open={controller.editorOpen}
         onOpenChange={(open) => {
-          if (c.busy !== 'save') c.setEditorOpen(open)
+          if (controller.busy !== 'save') controller.setEditorOpen(open)
         }}
       >
-        <DialogContent className={styles.editorDialog} onCloseAutoFocus={c.restoreFocus}>
+        <DialogContent className={styles.editorDialog} onCloseAutoFocus={controller.restoreFocus}>
           <form
             className={styles.dialogForm}
             onSubmit={(event) => {
               event.preventDefault()
-              void c.save()
+              void controller.save()
             }}
           >
             <DialogHeader className={styles.dialogHeader}>
-              <DialogTitle>{c.editingTemplate ? '编辑模板' : '创建模板'}</DialogTitle>
+              <DialogTitle>{controller.editingTemplate ? '编辑模板' : '创建模板'}</DialogTitle>
               <DialogDescription>用 {'{变量名}'} 标记需要传入的内容。</DialogDescription>
             </DialogHeader>
             <div className={styles.dialogBody}>
-              <fieldset disabled={Boolean(c.busy)} className={styles.formFields}>
+              <fieldset disabled={Boolean(controller.busy)} className={styles.formFields}>
                 <div className={styles.field}>
                   <Label htmlFor="prompt-name">模板名称</Label>
                   <Input
@@ -70,8 +70,8 @@ export function PromptDialogs({ controller: c }: { controller: PromptsController
                     required
                     maxLength={200}
                     autoComplete="off"
-                    value={c.draft.name}
-                    onChange={(event) => c.setDraft({ ...c.draft, name: event.target.value })}
+                    value={controller.draft.name}
+                    onChange={(event) => controller.setDraft({ ...controller.draft, name: event.target.value })}
                     placeholder="例如：技术文档问答"
                   />
                 </div>
@@ -81,8 +81,8 @@ export function PromptDialogs({ controller: c }: { controller: PromptsController
                   </Label>
                   <Input
                     id="prompt-description"
-                    value={c.draft.description}
-                    onChange={(event) => c.setDraft({ ...c.draft, description: event.target.value })}
+                    value={controller.draft.description}
+                    onChange={(event) => controller.setDraft({ ...controller.draft, description: event.target.value })}
                     placeholder="这个模板用于回答什么问题"
                   />
                 </div>
@@ -92,8 +92,8 @@ export function PromptDialogs({ controller: c }: { controller: PromptsController
                     id="prompt-content"
                     className={styles.contentInput}
                     required
-                    value={c.draft.content}
-                    onChange={(event) => c.setDraft({ ...c.draft, content: event.target.value })}
+                    value={controller.draft.content}
+                    onChange={(event) => controller.setDraft({ ...controller.draft, content: event.target.value })}
                     placeholder={'请根据 {context} 回答问题：{question}'}
                     spellCheck={false}
                   />
@@ -105,8 +105,10 @@ export function PromptDialogs({ controller: c }: { controller: PromptsController
                     </Label>
                     <Input
                       id="prompt-variables"
-                      value={c.draft.variablesText}
-                      onChange={(event) => c.setDraft({ ...c.draft, variablesText: event.target.value })}
+                      value={controller.draft.variablesText}
+                      onChange={(event) =>
+                        controller.setDraft({ ...controller.draft, variablesText: event.target.value })
+                      }
                       placeholder="context, question, history"
                       spellCheck={false}
                     />
@@ -118,13 +120,13 @@ export function PromptDialogs({ controller: c }: { controller: PromptsController
                     <Input
                       id="prompt-category"
                       maxLength={100}
-                      value={c.draft.category}
-                      onChange={(event) => c.setDraft({ ...c.draft, category: event.target.value })}
+                      value={controller.draft.category}
+                      onChange={(event) => controller.setDraft({ ...controller.draft, category: event.target.value })}
                       placeholder="例如：rag_answer"
                       list="prompt-categories"
                     />
                     <datalist id="prompt-categories">
-                      {c.categories.map((category) => (
+                      {controller.categories.map((category) => (
                         <option key={category} value={category} />
                       ))}
                     </datalist>
@@ -136,8 +138,8 @@ export function PromptDialogs({ controller: c }: { controller: PromptsController
                   </Label>
                   <Input
                     id="prompt-tags"
-                    value={c.draft.tagsText}
-                    onChange={(event) => c.setDraft({ ...c.draft, tagsText: event.target.value })}
+                    value={controller.draft.tagsText}
+                    onChange={(event) => controller.setDraft({ ...controller.draft, tagsText: event.target.value })}
                     placeholder="技术, 引用, 中文"
                   />
                 </div>
@@ -145,14 +147,14 @@ export function PromptDialogs({ controller: c }: { controller: PromptsController
                   <Label htmlFor="prompt-active">启用模板</Label>
                   <Switch
                     id="prompt-active"
-                    checked={c.draft.is_active}
-                    onCheckedChange={(value) => c.setDraft({ ...c.draft, is_active: value })}
+                    checked={controller.draft.is_active}
+                    onCheckedChange={(value) => controller.setDraft({ ...controller.draft, is_active: value })}
                   />
                 </div>
               </fieldset>
-              {c.formError ? (
+              {controller.formError ? (
                 <p className={styles.formError} role="alert">
-                  {c.formError}
+                  {controller.formError}
                 </p>
               ) : null}
             </div>
@@ -160,106 +162,115 @@ export function PromptDialogs({ controller: c }: { controller: PromptsController
               <Button
                 type="button"
                 variant="outline"
-                disabled={c.busy === 'save'}
-                onClick={() => c.setEditorOpen(false)}
+                disabled={controller.busy === 'save'}
+                onClick={() => controller.setEditorOpen(false)}
               >
                 取消
               </Button>
               <Button
                 type="submit"
                 className={styles.primary}
-                disabled={Boolean(c.busy) || !c.draft.name.trim() || !c.draft.content.trim()}
+                disabled={Boolean(controller.busy) || !controller.draft.name.trim() || !controller.draft.content.trim()}
               >
-                {c.busy === 'save' ? <Loader2 className="animate-spin" /> : null}
-                {c.busy === 'save' ? '保存中' : '保存模板'}
+                {controller.busy === 'save' ? <Loader2 className="animate-spin" /> : null}
+                {controller.busy === 'save' ? '保存中' : '保存模板'}
               </Button>
             </DialogFooter>
           </form>
         </DialogContent>
       </Dialog>
       <Dialog
-        open={Boolean(t)}
+        open={previewTemplate !== null}
         onOpenChange={(open) => {
-          if (!open) c.setPreview(null)
+          if (!open) controller.setPreview(null)
         }}
       >
         <DialogContent
           className={styles.previewDialog}
           onCloseAutoFocus={(event) => {
-            if (c.editorOpen) event.preventDefault()
-            else c.restoreFocus(event)
+            if (controller.editorOpen) event.preventDefault()
+            else controller.restoreFocus(event)
           }}
         >
-          {t ? (
+          {previewTemplate ? (
             <>
               <DialogHeader className={styles.dialogHeader}>
-                <DialogTitle title={t.name}>{t.name}</DialogTitle>
+                <DialogTitle title={previewTemplate.name}>{previewTemplate.name}</DialogTitle>
                 <DialogDescription className="sr-only">模板用途、变量及正文</DialogDescription>
               </DialogHeader>
               <div className={styles.dialogBody}>
-                {t.name.length > 70 ? <p className={styles.previewDescription}>{t.name}</p> : null}
-                {t.description ? <p className={styles.previewDescription}>{t.description}</p> : null}
+                {previewTemplate.name.length > 70 ? (
+                  <p className={styles.previewDescription}>{previewTemplate.name}</p>
+                ) : null}
+                {previewTemplate.description ? (
+                  <p className={styles.previewDescription}>{previewTemplate.description}</p>
+                ) : null}
                 <dl className={styles.previewFacts}>
                   <div>
                     <dt>场景 / 分类</dt>
                     <dd>
-                      {promptScenario(t.category).label}
-                      <small>{t.category || '未分类'}</small>
+                      {promptScenario(previewTemplate.category).label}
+                      <small>{previewTemplate.category ?? '未分类'}</small>
                     </dd>
                   </div>
                   <div>
                     <dt>来源</dt>
-                    <dd>{t.is_system ? '内置 · 只读' : '自定义'}</dd>
+                    <dd>{previewTemplate.is_system ? '内置 · 只读' : '自定义'}</dd>
                   </div>
                   <div>
                     <dt>状态</dt>
                     <dd>
-                      <PromptStatus template={t} />
+                      <PromptStatus template={previewTemplate} />
                     </dd>
                   </div>
                   <div>
                     <dt>使用次数</dt>
-                    <dd>{t.usage_count.toLocaleString()}</dd>
+                    <dd>{previewTemplate.usage_count.toLocaleString()}</dd>
                   </div>
                 </dl>
                 <div className={styles.previewVariables}>
                   <h3>
-                    模板变量 <small>{t.variables.length} 个</small>
+                    模板变量 <small>{previewTemplate.variables.length} 个</small>
                   </h3>
-                  <PromptVariables variables={t.variables} />
+                  <PromptVariables variables={previewTemplate.variables} />
                 </div>
-                {t.tags.length ? (
+                {previewTemplate.tags.length ? (
                   <div className={styles.previewTags}>
                     <h3>标签</h3>
-                    <p>{t.tags.join(' · ')}</p>
+                    <p>{previewTemplate.tags.join(' · ')}</p>
                   </div>
                 ) : null}
                 <div className={styles.contentHeading}>
                   <h3>模板正文</h3>
                   <span>
-                    v{t.version} · {promptDate(t.updated_at, true)} 更新
+                    v{previewTemplate.version} · {promptDate(previewTemplate.updated_at, true)} 更新
                   </span>
                 </div>
-                <pre className={styles.previewContent}>{t.content}</pre>
+                <pre className={styles.previewContent}>{previewTemplate.content}</pre>
               </div>
               <DialogFooter className={styles.dialogFooter}>
-                <Button variant="outline" onClick={() => c.setPreview(null)}>
+                <Button variant="outline" onClick={() => controller.setPreview(null)}>
                   关闭
                 </Button>
-                {c.canManage && !t.is_system ? (
-                  <Button variant="outline" disabled={Boolean(c.busy)} onClick={() => c.openEditor(t)}>
+                {controller.canManage && !previewTemplate.is_system ? (
+                  <Button
+                    variant="outline"
+                    disabled={Boolean(controller.busy)}
+                    onClick={() => controller.openEditor(previewTemplate)}
+                  >
                     编辑模板
                   </Button>
                 ) : null}
-                {c.canManage ? (
+                {controller.canManage ? (
                   <Button
                     className={styles.primary}
-                    disabled={Boolean(c.busy)}
+                    disabled={Boolean(controller.busy)}
                     onClick={() => {
-                      void c.duplicate(t)
+                      void controller.duplicate(previewTemplate)
                     }}
                   >
-                    {c.busy === `copy:${t.id}` ? <Loader2 className="animate-spin" /> : <Copy />}复制为自定义模板
+                    {controller.busy === `copy:${previewTemplate.id}` ? <Loader2 className="animate-spin" /> : <Copy />}
+                    复制为自定义模板
                   </Button>
                 ) : null}
               </DialogFooter>
@@ -268,59 +279,59 @@ export function PromptDialogs({ controller: c }: { controller: PromptsController
         </DialogContent>
       </Dialog>
       <AlertDialog
-        open={c.deleteTargets.length > 0}
+        open={controller.deleteTargets.length > 0}
         onOpenChange={(open) => {
-          if (!open && !c.busy) c.closeDelete()
+          if (!open && !controller.busy) controller.closeDelete()
         }}
       >
-        <AlertDialogContent className={styles.deleteDialog} onCloseAutoFocus={c.restoreFocus}>
+        <AlertDialogContent className={styles.deleteDialog} onCloseAutoFocus={controller.restoreFocus}>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              删除{c.deleteTargets.length > 1 ? ` ${c.deleteTargets.length} 个` : ''}模板？
+              删除{controller.deleteTargets.length > 1 ? ` ${controller.deleteTargets.length} 个` : ''}模板？
             </AlertDialogTitle>
             <AlertDialogDescription>
-              {c.deleteTargets.length === 1
-                ? `将删除「${c.deleteTargets[0].name}」。`
-                : `将删除所选的 ${c.deleteTargets.length} 个自定义模板。`}
+              {controller.deleteTargets.length === 1
+                ? `将删除「${controller.deleteTargets[0].name}」。`
+                : `将删除所选的 ${controller.deleteTargets.length} 个自定义模板。`}
               此操作不可撤销。
             </AlertDialogDescription>
           </AlertDialogHeader>
-          {c.actionError ? (
+          {controller.actionError ? (
             <p className={styles.formError} role="alert">
-              {c.actionError}
+              {controller.actionError}
             </p>
           ) : null}
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={Boolean(c.busy)}>取消</AlertDialogCancel>
+            <AlertDialogCancel disabled={Boolean(controller.busy)}>取消</AlertDialogCancel>
             <Button
               variant="destructive"
-              disabled={Boolean(c.busy)}
+              disabled={Boolean(controller.busy)}
               onClick={() => {
-                void c.confirmDelete()
+                void controller.confirmDelete()
               }}
             >
-              {c.busy === 'delete' ? <Loader2 className="animate-spin" /> : null}
-              {c.busy === 'delete'
+              {controller.busy === 'delete' ? <Loader2 className="animate-spin" /> : null}
+              {controller.busy === 'delete'
                 ? '删除中'
-                : `删除${c.deleteTargets.length > 1 ? ` ${c.deleteTargets.length} 个模板` : '模板'}`}
+                : `删除${controller.deleteTargets.length > 1 ? ` ${controller.deleteTargets.length} 个模板` : '模板'}`}
             </Button>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-      <Dialog open={c.bindingOpen} onOpenChange={c.setBindingOpen}>
-        <DialogContent className={styles.bindingDialog} onCloseAutoFocus={c.restoreFocus}>
+      <Dialog open={controller.bindingOpen} onOpenChange={controller.setBindingOpen}>
+        <DialogContent className={styles.bindingDialog} onCloseAutoFocus={controller.restoreFocus}>
           <DialogHeader className={styles.dialogHeader}>
             <DialogTitle>场景绑定</DialogTitle>
             <DialogDescription>选择各场景使用的模板，维护知识图谱关系词表。</DialogDescription>
           </DialogHeader>
-          {c.bindingOpen ? (
+          {controller.bindingOpen ? (
             <Tabs defaultValue="templates" className={styles.bindingTabs}>
               <TabsList className={styles.bindingTabList} aria-label="绑定配置类型">
                 <TabsTrigger value="templates">场景模板</TabsTrigger>
                 <TabsTrigger value="predicates">关系词表</TabsTrigger>
               </TabsList>
               <TabsContent value="templates" className={styles.bindingBody}>
-                <KgExtractPromptSettings templates={c.templates} />
+                <KgExtractPromptSettings templates={controller.templates} />
               </TabsContent>
               <TabsContent value="predicates" className={styles.bindingBody}>
                 <KgPredicateOntologySettings />

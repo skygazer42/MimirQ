@@ -101,8 +101,7 @@ export function NavigationVisibilitySection({
   navigation,
   updateNavigation,
 }: Readonly<NavigationVisibilitySectionProps>) {
-  const visibleModules = normalizeNavigationModules(navigation.user_visible_modules)
-  const visibleSet = new Set(visibleModules)
+  const visibleModules = new Set(normalizeNavigationModules(navigation.user_visible_modules))
 
   const setModuleVisible = (key: AdminControlledNavigationModule, visible: boolean) => {
     const next = new Set(visibleModules)
@@ -128,7 +127,7 @@ export function NavigationVisibilitySection({
           id={`navigation-${item.key}`}
           aria-label={`普通用户显示${item.label}`}
           aria-describedby={`navigation-${item.key}-description`}
-          checked={visibleSet.has(item.key)}
+          checked={visibleModules.has(item.key)}
           onCheckedChange={(next) => setModuleVisible(item.key, next)}
         />
       </div>

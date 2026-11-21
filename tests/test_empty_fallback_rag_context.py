@@ -2,9 +2,9 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.rag.retrieval.context_expansion import _neighbor_item
-from app.rag.retrieval.corpus_index import CorpusIndex
-from app.rag.retrieval.planner import _metadata_terms
+from app.rag.retrieval.corpus import CorpusIndex
+from app.rag.retrieval.expansion.context import _neighbor_item
+from app.rag.retrieval.ranking.policy_rules import _metadata_terms
 
 
 def test_neighbor_projection_exposes_a_missing_required_database_identity():

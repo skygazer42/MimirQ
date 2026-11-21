@@ -327,6 +327,35 @@ describe('industry forms retain query, draft and session ownership', () => {
 })
 
 describe('industry section payloads and failures', () => {
+  it('moves focus to a visible rule after a filtered removal and then to the add button', async () => {
+    const response = detail()
+    api.getRuleset.mockResolvedValue({
+      ...response,
+      ruleset: { ...response.ruleset, glossary: { 'alarm-a': [], hidden: [], 'alarm-b': [] } },
+    })
+    const { container } = await ready()
+    const search = container.querySelector<HTMLInputElement>('[aria-label="搜索术语词库"]')!
+    fill(search, 'alarm')
+    const nextTerm = container.querySelector<HTMLInputElement>('[aria-label="第 3 条规则"] input')
+    expect(nextTerm?.value).toBe('alarm-b')
+
+    const removeFirst = container.querySelector<HTMLButtonElement>('[aria-label="移除 alarm-a"]')!
+    act(() => {
+      removeFirst.focus()
+      removeFirst.click()
+    })
+    expect(document.activeElement).toBe(nextTerm)
+
+    const removeLast = container.querySelector<HTMLButtonElement>('[aria-label="移除 alarm-b"]')!
+    act(() => {
+      removeLast.focus()
+      removeLast.click()
+    })
+    expect(document.activeElement).toBe(button(container, '新增术语'))
+    fill(search, '')
+    expect(container.querySelector<HTMLInputElement>('[data-row-id] input')?.value).toBe('hidden')
+  })
+
   it.each(['glossary', 'patterns', 'intents'] as const)(
     'writes and reads back only %s while retaining extension values',
     async (section) => {

@@ -46,7 +46,7 @@ def build_hybrid_sweep_configs(
 
 
 def _coerce_ranked_ids(items: Any) -> list[str]:
-    out: list[str] = []
+    chunk_ids: dict[str, None] = {}
     for item in items or []:
         if isinstance(item, dict):
             raw = item.get("chunk_id") or item.get("id") or item.get("document_id")
@@ -55,9 +55,9 @@ def _coerce_ranked_ids(items: Any) -> list[str]:
         if raw is None:
             continue
         chunk_id = str(raw).strip()
-        if chunk_id and chunk_id not in out:
-            out.append(chunk_id)
-    return out
+        if chunk_id:
+            chunk_ids[chunk_id] = None
+    return list(chunk_ids)
 
 
 def _coerce_channels(sample: dict[str, Any]) -> dict[str, list[str]]:
@@ -80,17 +80,13 @@ def _weighted_rrf(channels: dict[str, list[str]], *, alpha: float, rrf_k: int, t
     non_vector_weight = (1.0 - alpha) / float(max(1, len(non_vector)))
 
     scores: dict[str, float] = {}
-    first_seen: dict[str, int] = {}
-    cursor = 0
     for channel, ranked_ids in channels.items():
         weight = alpha if channel == "vector" else non_vector_weight
         for rank, chunk_id in enumerate(ranked_ids, start=1):
-            if chunk_id not in first_seen:
-                first_seen[chunk_id] = cursor
-                cursor += 1
             scores[chunk_id] = scores.get(chunk_id, 0.0) + (weight / float(rrf_k + rank))
 
-    ordered = sorted(scores, key=lambda cid: (-scores[cid], first_seen.get(cid, 0), cid))
+    # Stable sorting keeps first-seen order for equal scores.
+    ordered = sorted(scores, key=scores.__getitem__, reverse=True)
     return ordered[:top_k]
 
 
@@ -110,6 +106,15 @@ def run_hybrid_sweep(
     configs: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     channels = _coerce_channels(sample if isinstance(sample, dict) else {})
+    return _run_hybrid_sweep(sample, channels=channels, configs=configs)
+
+
+def _run_hybrid_sweep(
+    sample: dict[str, Any],
+    *,
+    channels: dict[str, list[str]],
+    configs: list[dict[str, Any]] | None,
+) -> dict[str, Any]:
     configs = list(configs or build_hybrid_sweep_configs())
     gold_chunk_ids = _coerce_ranked_ids((sample or {}).get("gold_chunk_ids"))
     cited_chunk_ids = _coerce_ranked_ids((sample or {}).get("cited_chunk_ids") or (sample or {}).get("citations"))
@@ -172,15 +177,17 @@ def run_hybrid_sweep(
 
 
 def run_hybrid_route(sample: dict[str, Any]) -> dict[str, Any]:
-    if _coerce_channels(sample if isinstance(sample, dict) else {}):
-        sweep_spec = (sample or {}).get("hybrid_sweep") if isinstance((sample or {}).get("hybrid_sweep"), dict) else {}
+    channels = _coerce_channels(sample if isinstance(sample, dict) else {})
+    if channels:
+        raw_sweep_spec = sample.get("hybrid_sweep")
+        sweep_spec = raw_sweep_spec if isinstance(raw_sweep_spec, dict) else {}
         configs = build_hybrid_sweep_configs(
             alpha_values=sweep_spec.get("alpha_values") or DEFAULT_ALPHA_VALUES,
             rrf_k_values=sweep_spec.get("rrf_k_values") or DEFAULT_RRF_K_VALUES,
             top_k_values=sweep_spec.get("top_k_values") or DEFAULT_TOP_K_VALUES,
             fusion=str(sweep_spec.get("fusion") or "rrf"),
         )
-        sweep = run_hybrid_sweep(sample, configs=configs)
+        sweep = _run_hybrid_sweep(sample, channels=channels, configs=configs)
         best = sweep.get("best") or {}
         return {
             "route_id": "hybrid",

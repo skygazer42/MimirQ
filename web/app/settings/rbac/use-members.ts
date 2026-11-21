@@ -1,22 +1,21 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { rbacApi, type TenantMember } from '@/lib/api/access'
 import { useTenantAccess } from '@/hooks/use-tenant-access'
 import { queryKeys } from '@/lib/query-keys'
 import { formatApiError } from '@/lib/api-errors'
-import { getAuthSessionRevision } from '@/lib/auth-storage'
+import { getAuthSessionKey } from '@/lib/auth-storage'
 import { TENANT_PERMISSIONS, tenantAccessAllows } from '@/lib/tenant-permissions'
+import { paginateDirectory, readDirectoryPages } from '@/lib/directory-pagination'
 import {
   activeAdminCount,
   filterMembers,
   isAdministrator,
   isCurrentAccount,
   memberIdentity,
-  pageMembers,
-  readAllMembers,
   removalRestriction,
   roleChangeRestriction,
   roleLabel,
@@ -29,23 +28,28 @@ type RoleTarget = { member: TenantMember; desired: MemberRole }
 type RoleFailure = RoleTarget & { message: string }
 
 export function useMembers() {
-  const client = useQueryClient(),
-    access = useTenantAccess()
+  const client = useQueryClient()
+  const access = useTenantAccess()
   const membersQuery = useQuery({
     queryKey: MEMBERS_KEY,
-    queryFn: () => readAllMembers((params) => rbacApi.listTenantMembers(params)),
+    queryFn: ({ signal }) =>
+      readDirectoryPages(
+        (params) => rbacApi.listTenantMembers(params, { signal }),
+        (member) => member.id,
+        signal,
+      ),
     retry: false,
   })
-  const [query, setQuery] = useState(''),
-    [role, setRole] = useState('all'),
-    [scope, setScope] = useState<MemberScope>('all')
-  const [page, setPage] = useState(1),
-    [size, setSize] = useState(20)
+  const [query, setQuery] = useState('')
+  const [role, setRole] = useState('all')
+  const [scope, setScope] = useState<MemberScope>('all')
+  const [page, setPage] = useState(1)
+  const [size, setSize] = useState(20)
   const [busy, setBusy] = useState<{ kind: 'role' | 'remove'; id: string } | null>(null)
   const lock = useRef<symbol | null>(null),
     returnFocus = useRef<HTMLElement | null>(null)
   const mounted = useRef(false)
-  useEffect(() => {
+  useLayoutEffect(() => {
     mounted.current = true
     return () => {
       mounted.current = false
@@ -64,28 +68,28 @@ export function useMembers() {
     () => filterMembers(members, query, role, scope, accountId),
     [members, query, role, scope, accountId],
   )
-  const paged = pageMembers(filtered, page, size)
+  const paged = paginateDirectory(filtered, page, size)
   const blocked = Boolean(busy) || membersQuery.isFetching || membersQuery.isError
 
   async function refresh() {
     if (lock.current) return
-    await membersQuery.refetch()
+    await Promise.all([membersQuery.refetch(), client.invalidateQueries({ queryKey: queryKeys.access.current })])
   }
   async function saveRole({ member, desired }: RoleTarget) {
-    if (lock.current || !canManage || !member.user_id) return
+    if (blocked || lock.current || !canManage || !member.user_id) return
     const restriction = roleChangeRestriction(member, desired, admins)
     if (restriction) {
       toast.error(restriction)
       return
     }
-    const revision = getAuthSessionRevision()
+    const sessionKey = getAuthSessionKey()
     const origin: object = client.getQueryCache().build(client, { queryKey: MEMBERS_KEY })
     const memberQueries = client
       .getQueryCache()
       .findAll({ predicate: (query) => query.queryKey[0] === 'rbac' && query.queryKey[1] === 'members' })
     const operation = Symbol()
     const canUpdateCache = () =>
-      getAuthSessionRevision() === revision &&
+      getAuthSessionKey() === sessionKey &&
       client.getQueryCache().find({ queryKey: MEMBERS_KEY, exact: true }) === origin
     const canPublish = () => mounted.current && lock.current === operation && canUpdateCache()
     lock.current = operation
@@ -105,9 +109,12 @@ export function useMembers() {
         toast.success(`${memberIdentity(updated).name}的角色已改为${roleLabel(updated.role)}`)
       }
       // A successful write and a failed readback are different outcomes.
-      await client.invalidateQueries({ predicate: (query) => query === origin || memberQueries.includes(query) })
-      if (canUpdateCache() && isCurrentAccount(member, accountId))
-        await client.invalidateQueries({ queryKey: queryKeys.access.current })
+      await Promise.all([
+        client.invalidateQueries({ predicate: (query) => query === origin || memberQueries.includes(query) }),
+        ...(isCurrentAccount(member, accountId)
+          ? [client.invalidateQueries({ queryKey: queryKeys.access.current })]
+          : []),
+      ])
     } catch (error) {
       if (!canPublish()) return
       setDemotion(null)
@@ -140,21 +147,19 @@ export function useMembers() {
     setDeletion(member)
   }
   async function removeMember() {
-    if (lock.current || !canManage || !deletion?.user_id) return
-    const member = deletion,
-      reason = removalRestriction(member, accountId, admins)
+    const member = deletion
+    if (blocked || lock.current || !canManage || !member?.user_id) return
+    const userId = member.user_id
+    const reason = removalRestriction(member, accountId, admins)
     if (reason) {
       setDeleteError(reason)
       return
     }
-    const revision = getAuthSessionRevision()
+    const sessionKey = getAuthSessionKey()
     const origin: object = client.getQueryCache().build(client, { queryKey: MEMBERS_KEY })
-    const memberQueries = client
-      .getQueryCache()
-      .findAll({ predicate: (query) => query.queryKey[0] === 'rbac' && query.queryKey[1] === 'members' })
     const operation = Symbol()
     const canUpdateCache = () =>
-      getAuthSessionRevision() === revision &&
+      getAuthSessionKey() === sessionKey &&
       client.getQueryCache().find({ queryKey: MEMBERS_KEY, exact: true }) === origin
     const canPublish = () => mounted.current && lock.current === operation && canUpdateCache()
     lock.current = operation
@@ -163,7 +168,7 @@ export function useMembers() {
     try {
       await client.cancelQueries({ queryKey: MEMBERS_KEY })
       if (!canUpdateCache()) return
-      const response = await rbacApi.removeTenantMember(member.user_id!)
+      const response = await rbacApi.removeTenantMember(userId)
       if (!canUpdateCache()) return
       if (response.removed === false) throw new Error('成员未被移除，请重新读取成员列表。')
       if (canPublish()) {
@@ -174,7 +179,13 @@ export function useMembers() {
         setDeletion(null)
         toast.success(`已移除${memberIdentity(member).name}`)
       }
-      await client.invalidateQueries({ predicate: (query) => query === origin || memberQueries.includes(query) })
+      await client.invalidateQueries({
+        predicate: ({ queryKey }) =>
+          (queryKey[0] === 'rbac' && queryKey[1] === 'members') ||
+          (queryKey[0] === 'groups' && queryKey[1] === 'detail' && queryKey[3] === 'members') ||
+          (queryKey[0] === 'documents' && queryKey[1] === 'access') ||
+          queryKey[0] === 'access-review',
+      })
     } catch (error) {
       if (canPublish()) setDeleteError(formatApiError(error, '移除成员失败'))
     } finally {

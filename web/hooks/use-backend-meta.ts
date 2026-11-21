@@ -3,12 +3,11 @@
 import { useQuery } from '@tanstack/react-query'
 
 import { metaApi } from '@/lib/api/meta'
-import type { MetaDetailsResponse, MetaResponse } from '@/types/backend'
 
 export function useBackendMeta() {
-  return useQuery<MetaResponse>({
+  return useQuery({
     queryKey: ['backend-meta'],
-    queryFn: () => metaApi.get(),
+    queryFn: ({ signal }) => metaApi.get({ signal }),
     staleTime: 60_000,
     refetchOnWindowFocus: false,
     retry: 1,
@@ -16,9 +15,9 @@ export function useBackendMeta() {
 }
 
 export function useBackendMetaDetails() {
-  return useQuery<MetaDetailsResponse>({
+  return useQuery({
     queryKey: ['backend-meta-details'],
-    queryFn: () => metaApi.details(),
+    queryFn: ({ signal }) => metaApi.details({ signal }),
     staleTime: 60_000,
     refetchOnWindowFocus: false,
     retry: 1,

@@ -12,16 +12,17 @@ if str(ROOT) not in sys.path:
 
 
 def run_backfill(*, db, corpus_index, scope, apply: bool, batch_size: int) -> dict:
-    from app.core.config import settings
+    from app.infrastructure.config import settings
 
     if batch_size < 1:
         raise ValueError("Backfill batch size must be positive")
-    count = corpus_index._count_retrieval_docs_in_db(
-        db, tenant_id=scope.tenant_id, dataset_ids=scope.dataset_ids, document_ids=list(scope.document_ids)
-    )
     limit = settings.RETRIEVAL_REBUILD_MAX_CHUNKS
     if apply:
         count = corpus_index.rebuild(db, scope=scope, batch_size=batch_size)
+    else:
+        count = corpus_index._count_retrieval_docs_in_db(
+            db, tenant_id=scope.tenant_id, dataset_ids=scope.dataset_ids, document_ids=list(scope.document_ids)
+        )
     return {
         "mode": "apply" if apply else "dry-run",
         "tenant_id": str(scope.tenant_id),
@@ -42,8 +43,9 @@ def main(argv: list[str] | None = None) -> int:
         "--apply", action="store_true", help="Write native BM25 rows; the default only previews PostgreSQL counts"
     )
     args = parser.parse_args(argv)
-    from app.core.database import SessionLocal
-    from app.rag.retrieval.corpus_index import CorpusScope, get_corpus_index
+    import app.models.registry  # noqa: F401
+    from app.infrastructure.database.connection import SessionLocal
+    from app.rag.retrieval.corpus import CorpusScope, get_corpus_index
 
     scope = CorpusScope(args.tenant_id, (args.dataset_id,) if args.dataset_id is not None else ())
     with SessionLocal() as db:

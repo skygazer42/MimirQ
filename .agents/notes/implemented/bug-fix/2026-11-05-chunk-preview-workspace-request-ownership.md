@@ -30,6 +30,8 @@ Status: implemented
 
 ## Alternatives considered
 
+同文件提交视图、预览与原始 File 配对、Scope 集合和批量版本选择由[预览提交与文件快照](2026-11-15-preview-submission-and-file-snapshots.md)补齐。本篇的会话隔离、请求退休和原 Query 缓存义务继续适用。
+
 仅检查 mounted 无法区别同一个组件里的两次文件访问，也不能处理同用户无范围事件的新登录。只调用 abort 无法阻止忽略 signal 的成功响应或旧 SHA 回退。只用 React 的 loading／saving 状态不能阻止同步重复事件，因此分别保留业务请求身份和同步提交引用。
 
 把所有完成都放到 mounted 检查之后会漏掉已经成功的持久化写入。缓存完成按真实 Query 对象身份与原会话判断，队列和提示另按视图判断。没有把缓存移除当作撤销私有 File 写入的授权，也没有合并不同列表响应的 DTO。

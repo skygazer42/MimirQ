@@ -1,12 +1,12 @@
 import pytest
 
-from app.services.pipeline_config import (
+from app.services.pipelines.config import (
     build_pipeline_metadata,
     merge_pipeline_options,
     parse_pipeline_from_metadata,
     upsert_pipeline_metadata,
 )
-from app.types.pipeline import PipelineOptions
+from app.types.pipeline_options import PipelineOptions
 
 
 @pytest.mark.parametrize(

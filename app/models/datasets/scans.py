@@ -1,0 +1,113 @@
+"""SQLAlchemy datasets scans entities."""
+
+import uuid
+
+from sqlalchemy import Column, DateTime, ForeignKeyConstraint, Index, Integer, String, Text, text
+from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.sql import func
+
+from app.infrastructure.database.connection import Base
+
+
+class DatasetPrecheckScanRun(Base):
+    __tablename__ = "dataset_precheck_scan_runs"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id = Column(UUID(as_uuid=True), nullable=False, index=True)
+    dataset_id = Column(UUID(as_uuid=True), nullable=False, index=True)
+
+    requested_by = Column(String(255), nullable=True)
+
+    # Run kind:
+    # - path: scan a local folder path (mounted/available to the API process)
+    kind = Column(String(32), nullable=False, default="path")
+
+    # Status lifecycle: pending -> running -> completed | failed | cancelled
+    status = Column(String(32), nullable=False, default="pending")
+    progress = Column(Integer, nullable=False, default=0)  # 0-100
+
+    # User-provided options / thresholds (stored for reproducibility).
+    config = Column(JSONB, nullable=False, default=dict)
+
+    # Persisted summary payload (mirrors DatasetPrecheckSummary schema).
+    summary = Column(JSONB, nullable=False, default=dict)
+
+    # Pointer to on-disk artifacts (JSONL/HTML), stored as small strings for portability.
+    artifacts = Column(JSONB, nullable=False, default=dict)
+
+    error_message = Column(Text, nullable=True)
+
+    started_at = Column(DateTime(timezone=True), nullable=True)
+    finished_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["tenant_id", "dataset_id"],
+            ["datasets.tenant_id", "datasets.id"],
+            name="fk_dataset_precheck_scan_runs_tenant_dataset",
+            ondelete="CASCADE",
+        ),
+        Index(
+            "uq_dataset_precheck_scan_runs_active_dataset",
+            "tenant_id",
+            "dataset_id",
+            unique=True,
+            postgresql_where=text("status IN ('pending', 'running')"),
+            sqlite_where=text("status IN ('pending', 'running')"),
+        ),
+        Index("ix_dataset_precheck_scan_runs_tenant_dataset_created_at", "tenant_id", "dataset_id", "created_at"),
+        Index("ix_dataset_precheck_scan_runs_tenant_status_created_at", "tenant_id", "status", "created_at"),
+    )
+
+
+class DatasetProfileScanRun(Base):
+    __tablename__ = "dataset_profile_scan_runs"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id = Column(UUID(as_uuid=True), nullable=False, index=True)
+    dataset_id = Column(UUID(as_uuid=True), nullable=False, index=True)
+
+    # Who initiated the scan (for audit).
+    requested_by = Column(String(255), nullable=True)
+
+    # Run kind:
+    # - deep: backfill missing per-document metrics and compute a persisted summary
+    kind = Column(String(32), nullable=False, default="deep")
+
+    # Status lifecycle: pending -> running -> completed | failed | cancelled
+    status = Column(String(32), nullable=False, default="pending")
+    progress = Column(Integer, nullable=False, default=0)  # 0-100
+
+    # User-provided options / thresholds (stored for reproducibility).
+    config = Column(JSONB, nullable=False, default=dict)
+
+    # Persisted summary payload (mirrors DatasetProfileSummary schema).
+    summary = Column(JSONB, nullable=False, default=dict)
+
+    error_message = Column(Text, nullable=True)
+
+    started_at = Column(DateTime(timezone=True), nullable=True)
+    finished_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["tenant_id", "dataset_id"],
+            ["datasets.tenant_id", "datasets.id"],
+            name="fk_dataset_profile_scan_runs_tenant_dataset",
+            ondelete="CASCADE",
+        ),
+        Index(
+            "uq_dataset_profile_scan_runs_active_dataset",
+            "tenant_id",
+            "dataset_id",
+            unique=True,
+            postgresql_where=text("status IN ('pending', 'running')"),
+            sqlite_where=text("status IN ('pending', 'running')"),
+        ),
+        Index("ix_dataset_profile_scan_runs_tenant_dataset_created_at", "tenant_id", "dataset_id", "created_at"),
+        Index("ix_dataset_profile_scan_runs_tenant_status_created_at", "tenant_id", "status", "created_at"),
+    )

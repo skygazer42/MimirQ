@@ -7,12 +7,14 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { WorkspaceTableScroll, workspaceStyles as ws } from '@/components/ui/operational-workspace'
+import { recordSchema } from '@/lib/response-schema'
 import { cn } from '@/lib/utils'
 import { buildSideBySideDiffRows } from '../json-diff'
 import type { SnapshotDiffPayload } from '../types'
-import { exactDiffCount, exactDiffSample, firstDisplayString } from '../utils'
+import { exactDiffSample, exactDiffTotal, firstDisplayString } from '../utils'
 import { JsonDiffCell } from './json-code-pane'
 
+const CHANGE_PAGE_SIZE = 20
 const groups = [
   { key: 'nodes_added', kind: '节点', change: '新增', tone: 'text-success' },
   { key: 'nodes_removed', kind: '节点', change: '移除', tone: 'text-destructive' },
@@ -23,6 +25,7 @@ const groups = [
 ] as const
 type ChangeRow = {
   key: string
+  id: string
   kind: string
   change: string
   tone: string
@@ -31,8 +34,8 @@ type ChangeRow = {
 }
 
 function changeName(item: Record<string, unknown>): string {
-  const before = item.before as Record<string, unknown> | undefined
-  const after = item.after as Record<string, unknown> | undefined
+  const before = recordSchema.safeParse(item.before).data
+  const after = recordSchema.safeParse(item.after).data
   return firstDisplayString(item.name, item.label, after?.name, after?.label, before?.name, before?.label, item.id)
 }
 
@@ -79,42 +82,41 @@ export function SnapshotDiffView({
   const changes = useMemo(
     () =>
       groups.flatMap((group) =>
-        exactDiffSample(diff, group.key).map((item, index) => ({
-          key: `${group.key}:${String(item.id)}:${index}`,
-          kind: group.kind,
-          change: group.change,
-          tone: group.tone,
-          name: changeName(item),
-          item,
-        })),
+        exactDiffSample(diff, group.key).map((item, index) => {
+          const id = typeof item.id === 'string' || typeof item.id === 'number' ? String(item.id) : ''
+          return {
+            key: JSON.stringify([group.key, id, index]),
+            id,
+            kind: group.kind,
+            change: group.change,
+            tone: group.tone,
+            name: changeName(item),
+            item,
+          }
+        }),
       ),
     [diff],
   )
+  const searchTerm = query.trim().toLowerCase()
+  const hasFilters = searchTerm !== '' || kind !== '全部' || change !== '全部'
   const filtered = useMemo(
     () =>
       changes.filter(
         (row) =>
           (kind === '全部' || row.kind === kind) &&
           (change === '全部' || row.change === change) &&
-          `${row.name} ${String(row.item.id)}`.toLowerCase().includes(query.trim().toLowerCase()),
+          `${row.name} ${row.id}`.toLowerCase().includes(searchTerm),
       ),
-    [changes, kind, change, query],
+    [changes, kind, change, searchTerm],
   )
-  const pageCount = Math.max(1, Math.ceil(filtered.length / 20)),
-    currentPage = Math.min(page, pageCount)
+  const pageCount = Math.max(1, Math.ceil(filtered.length / CHANGE_PAGE_SIZE))
+  const currentPage = Math.min(page, pageCount)
   const rawRows = useMemo(
     () => (view === 'raw' && ready ? buildSideBySideDiffRows(leftCode, rightCode) : []),
     [view, ready, leftCode, rightCode],
   )
-  const detailed = Boolean(diff?.node_diff || diff?.edge_diff)
-  const changeCount = (['node_diff', 'edge_diff'] as const).reduce(
-    (sum, key) =>
-      sum +
-      exactDiffCount(diff?.[key], 'added_count') +
-      exactDiffCount(diff?.[key], 'removed_count') +
-      exactDiffCount(diff?.[key], 'changed_count'),
-    0,
-  )
+  const detailed = diff?.node_diff != null || diff?.edge_diff != null || changes.length > 0
+  const changeCount = exactDiffTotal(diff)
   const loadDetails =
     onLoadDetails && (!leftCode || !rightCode) ? (
       <Button variant="outline" disabled={pending} onClick={onLoadDetails}>
@@ -225,11 +227,13 @@ export function SnapshotDiffView({
               <option>更新</option>
             </select>
             <span className="ml-auto text-[13px] text-muted-foreground">
-              {detailed
+              {changeCount !== undefined
                 ? changeCount === changes.length
                   ? `${changeCount} 项变化`
                   : `${changeCount} 项变化 · 当前预览 ${changes.length} 项`
-                : '数量摘要'}
+                : detailed
+                  ? `变更总数未取得 · 当前预览 ${changes.length} 项`
+                  : '数量摘要'}
             </span>
           </div>
           <div className="min-h-0 flex-1 overflow-auto px-4 md:px-6">
@@ -246,7 +250,7 @@ export function SnapshotDiffView({
                     </tr>
                   </thead>
                   <tbody>
-                    {filtered.slice((currentPage - 1) * 20, currentPage * 20).map((row) => (
+                    {filtered.slice((currentPage - 1) * CHANGE_PAGE_SIZE, currentPage * CHANGE_PAGE_SIZE).map((row) => (
                       <tr key={row.key}>
                         <td className="max-w-[140px] sm:max-w-[320px]">
                           <div className="truncate font-medium" title={row.name}>
@@ -260,11 +264,8 @@ export function SnapshotDiffView({
                         <td className="hidden sm:table-cell">
                           <span className={row.tone}>{row.change}</span>
                         </td>
-                        <td
-                          className="hidden max-w-[240px] truncate font-mono text-xs sm:table-cell"
-                          title={String(row.item.id)}
-                        >
-                          {String(row.item.id)}
+                        <td className="hidden max-w-[240px] truncate font-mono text-xs sm:table-cell" title={row.id}>
+                          {row.id === '' ? '—' : row.id}
                         </td>
                         <td>
                           <Button variant="ghost" aria-label={`查看变更 ${row.name}`} onClick={() => setSelected(row)}>
@@ -279,7 +280,7 @@ export function SnapshotDiffView({
             ) : (
               <div className={ws.empty}>
                 <h2>
-                  {query || kind !== '全部' || change !== '全部'
+                  {hasFilters
                     ? '没有匹配的变更'
                     : detailed && changeCount === 0
                       ? '没有返回节点或关系变更'
@@ -290,7 +291,7 @@ export function SnapshotDiffView({
                     ? '可调整筛选，或切换到原始对照查看快照内容。'
                     : '可在统计页查看数量摘要，或切换到快照 A / B 查看元信息。'}
                 </p>
-                {query || kind !== '全部' || change !== '全部' ? (
+                {hasFilters ? (
                   <Button
                     variant="outline"
                     onClick={() => {
@@ -310,7 +311,9 @@ export function SnapshotDiffView({
           </div>
           {filtered.length ? (
             <div className="flex shrink-0 items-center justify-between gap-3 border-t border-border px-4 py-3 text-[13px] md:px-6">
-              <span className="text-muted-foreground">匹配 {filtered.length} 项 · 每页 20 项</span>
+              <span className="text-muted-foreground">
+                匹配 {filtered.length} 项 · 每页 {CHANGE_PAGE_SIZE} 项
+              </span>
               <div className="flex items-center gap-3">
                 <Button
                   variant="outline"

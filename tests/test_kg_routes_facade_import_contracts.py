@@ -1,8 +1,9 @@
 from pathlib import Path
 
-from app.rag.kg import schemas as kg_schemas
-from app.rag.kg.api import routes
-from app.rag.kg.api.routes_support import common, extraction, merge_alias, projection, schemas, undo
+from app.api.schemas.knowledge_graph import graph as kg_schemas
+from app.api.v1.knowledge_graph import routes
+from app.api.v1.knowledge_graph.routes_support import common, extraction, merge_alias, projection, undo
+from app.api.v1.knowledge_graph.routes_support import types as schemas
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 _ROUTES_PATH = _REPO_ROOT / "app" / "rag" / "kg" / "api" / "routes.py"

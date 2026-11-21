@@ -4,11 +4,11 @@ from uuid import uuid4
 
 import pytest
 
-from app.core.pipeline_versions import get_active_pipeline_hash
-from app.parsing.models.manifest import SmallModelManifest, SmallModelSpec
-from app.parsing.models.runtime import SmallModelRuntime
-from app.rag.retrieval.orchestration.kg_merge_boost import _resolve_kg_scope
-from app.services import chat_scope
+from app.rag.ingestion.parsing.models.manifest import SmallModelManifest, SmallModelSpec
+from app.rag.ingestion.parsing.models.runtime import SmallModelRuntime
+from app.rag.retrieval.ranking.knowledge_graph import _resolve_kg_scope
+from app.services.chat import scope as chat_scope
+from app.services.documents.pipeline_versions import get_active_pipeline_hash
 
 
 def test_kg_scope_keeps_a_supplied_empty_document_selection() -> None:

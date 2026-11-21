@@ -4,11 +4,15 @@ from uuid import uuid4
 
 import pytest
 
-from app.api.v1 import audit, datasets, evidence
-from app.models.document import Document
-from app.models.evidence import EvidenceItem
-from app.models.feedback import MessageFeedback
-from app.services import chat_response_cache, rag_runtime_warmup, table_store_service
+from app.api.v1.datasets import routes as datasets
+from app.api.v1.evaluation import evidence
+from app.api.v1.system import audit
+from app.models.conversations.chat import MessageFeedback
+from app.models.documents.records import Document
+from app.models.evaluation.evidence import EvidenceItem
+from app.services.chat import response_cache as chat_response_cache
+from app.services.runtime import model_warmup as rag_runtime_warmup
+from app.services.tables import store as table_store_service
 
 
 @pytest.mark.parametrize("field", ["dataset_id", "corpus_cache_token", "structured_preset"])
@@ -115,7 +119,7 @@ def test_training_export_preserves_persisted_status(status: str) -> None:
 
 @pytest.mark.parametrize("reason", ["", None])
 def test_feedback_training_export_preserves_stored_reason(reason: str | None) -> None:
-    from app.models.chat import Conversation, Message
+    from app.models.conversations.chat import Conversation, Message
 
     feedback = MessageFeedback(id=uuid4(), extra={}, tags=[], rating=5, reason=reason)
     assistant = Message(id=uuid4())
@@ -229,7 +233,7 @@ def test_planner_diagnostics_expose_an_empty_executed_statement() -> None:
 
 
 def test_trace_keeps_false_scope_presence_without_exposing_identifiers() -> None:
-    from app.services.rag_trace_service import normalize_rag_trace_record
+    from app.services.observability.rag_traces import normalize_rag_trace_record
 
     trace = normalize_rag_trace_record(
         {
@@ -265,7 +269,7 @@ def test_trace_keeps_false_scope_presence_without_exposing_identifiers() -> None
 
 
 def test_trace_does_not_invent_negative_presence_for_unknown_scope_fields() -> None:
-    from app.services.rag_trace_service import normalize_rag_trace_record
+    from app.services.observability.rag_traces import normalize_rag_trace_record
 
     trace = normalize_rag_trace_record(
         {
@@ -278,7 +282,7 @@ def test_trace_does_not_invent_negative_presence_for_unknown_scope_fields() -> N
 
 
 def test_trace_preserves_already_redacted_presence_flags() -> None:
-    from app.services.rag_trace_service import normalize_rag_trace_record
+    from app.services.observability.rag_traces import normalize_rag_trace_record
 
     trace = normalize_rag_trace_record(
         {
@@ -304,8 +308,8 @@ def test_trace_preserves_already_redacted_presence_flags() -> None:
 
 @pytest.mark.parametrize("stored", ["", None])
 def test_index_drift_response_preserves_optional_text(stored: str | None) -> None:
-    from app.api.v1.observability import IndexDriftItemResponse, _serialize_index_drift_item
-    from app.models.index_drift_item import IndexDriftItem
+    from app.api.schemas.system.observability import IndexDriftItemResponse
+    from app.models.documents.indexing import IndexDriftItem
 
     dataset_id = uuid4()
     item = IndexDriftItem(
@@ -326,9 +330,9 @@ def test_index_drift_response_preserves_optional_text(stored: str | None) -> Non
         resolution_note=stored,
     )
 
-    response = IndexDriftItemResponse.model_validate(_serialize_index_drift_item(item))
+    response = IndexDriftItemResponse.model_validate(item)
 
-    assert response.dataset_id == str(dataset_id)
+    assert response.dataset_id == dataset_id
     assert response.document_id is None
     assert response.reconcile_task_id == stored
     assert response.resolved_by == stored
@@ -337,8 +341,10 @@ def test_index_drift_response_preserves_optional_text(stored: str | None) -> Non
 
 
 def test_index_drift_serializer_exposes_missing_required_details() -> None:
-    from app.api.v1.observability import _serialize_index_drift_item
-    from app.models.index_drift_item import IndexDriftItem
+    from pydantic import ValidationError
+
+    from app.api.schemas.system.observability import IndexDriftItemResponse
+    from app.models.documents.indexing import IndexDriftItem
 
     item = IndexDriftItem(
         id=uuid4(),
@@ -353,13 +359,13 @@ def test_index_drift_serializer_exposes_missing_required_details() -> None:
         replay_count=0,
     )
 
-    with pytest.raises(TypeError):
-        _serialize_index_drift_item(item)
+    with pytest.raises(ValidationError):
+        IndexDriftItemResponse.model_validate(item)
 
 
 @pytest.mark.parametrize("field", ["top_k", "score_threshold", "retrieval_mode"])
 def test_profile_projection_exposes_missing_internal_baseline_fields(field: str) -> None:
-    from app.api.v1.retrieval_profiles import _effective_profile, _runtime_baseline
+    from app.api.v1.retrieval.profiles import _effective_profile, _runtime_baseline
 
     baseline = _runtime_baseline()
     del baseline[field]
@@ -369,7 +375,7 @@ def test_profile_projection_exposes_missing_internal_baseline_fields(field: str)
 
 
 def test_profile_baseline_reports_the_actual_sparse_provider(monkeypatch: pytest.MonkeyPatch) -> None:
-    from app.api.v1.retrieval_profiles import _runtime_baseline, settings
+    from app.api.v1.retrieval.profiles import _runtime_baseline, settings
 
     monkeypatch.setattr(settings, "SPARSE_RETRIEVAL_PROVIDER", "")
 
@@ -378,12 +384,12 @@ def test_profile_baseline_reports_the_actual_sparse_provider(monkeypatch: pytest
 
 @pytest.mark.parametrize("stored", ["", None])
 def test_feedback_case_metadata_preserves_category_source(stored: str | None) -> None:
-    from app.api.v1.feedback import _build_regression_case_extra
+    from app.api.v1.conversations.feedback import _build_regression_case_extra
 
     feedback = MessageFeedback(
         id=uuid4(), message_id=uuid4(), rating=5, category="other", category_source=stored, extra={}
     )
 
-    extra = _build_regression_case_extra(fb=feedback, body_extra=None, dataset_id=None)
+    extra = _build_regression_case_extra(feedback=feedback, body_extra={}, dataset_id=None)
 
     assert extra["feedback_category_source"] == stored

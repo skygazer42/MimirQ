@@ -63,7 +63,7 @@ export function ProfileDetail({
   const heading = useRef<HTMLHeadingElement>(null)
   const query = useQuery({
     queryKey: queryKeys.governance.profileResolved(ref),
-    queryFn: () => pipelineApi.getGovernanceProfileResolved(ref),
+    queryFn: ({ signal }) => pipelineApi.getGovernanceProfileResolved(ref, { signal }),
     retry: 1,
   })
   useEffect(() => {
@@ -249,7 +249,7 @@ export function ProfileDetail({
                   </tbody>
                 </table>
               ) : (
-                <p className={styles.note}>此配置未覆盖管线参数，沿用系统默认值。</p>
+                <p className={styles.note}>未设置其他管线覆盖参数。</p>
               )}
               {(effective.regex_rules.length > 0 || (effective.processing_scripts?.length || 0) > 0) && (
                 <p className={styles.extraRules}>

@@ -1,4 +1,4 @@
-import type { GraphData, GraphLink, GraphNode } from '@/lib/graph-parser'
+import type { GraphData, GraphLink } from '@/lib/graph-types'
 
 type GraphEndpoint = GraphLink['source'] | GraphLink['target'] | { id?: unknown } | null | undefined
 
@@ -9,13 +9,9 @@ export type GraphClusterResult = Readonly<{
 }>
 
 function coerceEndpointId(endpoint: GraphEndpoint): string {
-  if (endpoint == null) return ''
   if (typeof endpoint === 'string' || typeof endpoint === 'number') return String(endpoint)
-  if (typeof endpoint === 'object' && 'id' in endpoint) {
-    const id = endpoint.id
-    if (typeof id === 'string' || typeof id === 'number') return String(id)
-  }
-  return ''
+  const id = endpoint?.id
+  return typeof id === 'string' || typeof id === 'number' ? String(id) : ''
 }
 
 class DisjointSet {
@@ -56,44 +52,43 @@ class DisjointSet {
 }
 
 export function computeConnectedComponents(graph: Readonly<Pick<GraphData, 'nodes' | 'links'>>): GraphClusterResult {
-  const nodes: GraphNode[] = Array.isArray(graph.nodes) ? graph.nodes : []
-  const links: GraphLink[] = Array.isArray(graph.links) ? graph.links : []
+  const { nodes, links } = graph
 
-  const nodeIds = nodes.map((n) => String(n.id || '').trim()).filter(Boolean)
+  const nodeIds = nodes.map((node) => node.id.trim()).filter(Boolean)
   const idToIndex = new Map<string, number>()
-  nodeIds.forEach((id, idx) => idToIndex.set(id, idx))
+  nodeIds.forEach((id, index) => idToIndex.set(id, index))
 
-  const dsu = new DisjointSet(nodeIds.length)
+  const disjointSet = new DisjointSet(nodeIds.length)
   for (const link of links) {
     const sourceId = coerceEndpointId(link.source)
     const targetId = coerceEndpointId(link.target)
     if (!sourceId || !targetId) continue
-    const si = idToIndex.get(sourceId)
-    const ti = idToIndex.get(targetId)
-    if (si == null || ti == null) continue
-    dsu.union(si, ti)
+    const sourceIndex = idToIndex.get(sourceId)
+    const targetIndex = idToIndex.get(targetId)
+    if (sourceIndex === undefined || targetIndex === undefined) continue
+    disjointSet.union(sourceIndex, targetIndex)
   }
 
   const rootToCount = new Map<number, number>()
   const roots: number[] = []
-  for (let i = 0; i < nodeIds.length; i += 1) {
-    const r = dsu.find(i)
-    roots[i] = r
-    rootToCount.set(r, (rootToCount.get(r) || 0) + 1)
+  for (let index = 0; index < nodeIds.length; index += 1) {
+    const root = disjointSet.find(index)
+    roots[index] = root
+    rootToCount.set(root, (rootToCount.get(root) ?? 0) + 1)
   }
 
   const sortedRoots = Array.from(rootToCount.entries())
     .map(([root, size]) => ({ root, size }))
     .sort((a, b) => b.size - a.size || a.root - b.root)
 
-  const rootToClusterIndex = new Map<number, number>()
-  sortedRoots.forEach((row, idx) => rootToClusterIndex.set(row.root, idx + 1))
+  const clusterIndexByRoot: number[] = []
+  sortedRoots.forEach(({ root }, index) => {
+    clusterIndexByRoot[root] = index + 1
+  })
 
-  const nodeToCluster: Record<string, number> = {}
-  for (let i = 0; i < nodeIds.length; i += 1) {
-    const id = nodeIds[i]
-    const clusterIndex = rootToClusterIndex.get(roots[i]) || 1
-    nodeToCluster[id] = clusterIndex
+  const nodeToCluster: Record<string, number> = Object.create(null)
+  for (const [index, id] of nodeIds.entries()) {
+    nodeToCluster[id] = clusterIndexByRoot[roots[index]]
   }
 
   return {

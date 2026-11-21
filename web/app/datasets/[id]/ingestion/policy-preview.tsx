@@ -5,31 +5,36 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { LoadingButton } from '@/components/ui/loading-button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { formatApiError } from '@/lib/api-errors'
 import { formatPolicyDate } from './policy-model'
 import type { IngestionPolicyController } from './use-ingestion-policy'
 import styles from './policy.module.css'
 
-export function PolicyPreviewDialog({ c }: { c: IngestionPolicyController }) {
+export function PolicyPreviewDialog({ policyController }: { policyController: IngestionPolicyController }) {
+  const { preview } = policyController
+  const issues = preview?.clean.issues
+
   return (
     <Dialog
       open
       onOpenChange={(open) => {
-        if (!open && !c.previewing && !c.saving) c.setPreviewOpen(false)
+        if (!open && !policyController.previewing && !policyController.saving) policyController.setPreviewOpen(false)
       }}
     >
       <DialogContent
         className={styles.previewDialog}
+        showCloseButton={!policyController.previewing && !policyController.saving}
         onCloseAutoFocus={(event) => {
           event.preventDefault()
-          c.restoreFocus()
+          policyController.restoreFocus()
         }}
       >
         <DialogHeader className={styles.dialogHeader}>
           <DialogTitle>文件预览</DialogTitle>
           <DialogDescription>
-            {c.datasetQuery.data?.name} · 按已保存策略检查命中规则、解析与治理结果。
+            {policyController.datasetQuery.data?.name} · 按已保存策略检查命中规则、解析与治理结果。
           </DialogDescription>
         </DialogHeader>
         <div className={styles.previewSource}>
@@ -38,82 +43,83 @@ export function PolicyPreviewDialog({ c }: { c: IngestionPolicyController }) {
             <Input
               id="policy-preview-file"
               type="file"
-              disabled={c.previewing || c.saving}
-              onChange={(event) => c.setPreviewFile(event.target.files?.[0] ?? null)}
+              disabled={policyController.previewing || policyController.saving}
+              onChange={(event) => policyController.setPreviewFile(event.target.files?.[0] ?? null)}
             />
           </div>
-          <Button
-            disabled={!c.previewFile || c.dirty || c.blocked}
+          <LoadingButton
+            loading={policyController.previewing}
+            disabled={!policyController.previewFile || policyController.dirty || policyController.blocked}
             onClick={() => {
-              void c.runPreview()
+              void policyController.runPreview()
             }}
           >
-            {c.previewing ? <Loader2 className="animate-spin motion-reduce:animate-none" /> : <FileSearch />}
-            {c.previewing ? '生成中' : '生成预览'}
-          </Button>
+            <FileSearch />
+            生成预览
+          </LoadingButton>
         </div>
-        {c.dirty ? (
+        {policyController.dirty ? (
           <div className={styles.previewDraftNotice}>
             <span>当前修改尚未保存，请先保存策略再预览。</span>
             <Button
               variant="outline"
-              disabled={c.saving || c.policyQuery.isError}
+              disabled={policyController.blocked}
               onClick={() => {
-                void c.save()
+                void policyController.save()
               }}
             >
-              {c.saving ? '保存中' : '保存策略'}
+              {policyController.saving ? '保存中' : '保存策略'}
             </Button>
           </div>
         ) : null}
-        {c.saveError ? (
+        {policyController.saveError ? (
           <p className={styles.formError} role="alert">
-            {c.saveError}
+            {policyController.saveError}
           </p>
         ) : null}
-        {c.policyQuery.isError ? (
+        {policyController.policyQuery.isError ? (
           <div className={styles.previewDraftNotice} role="alert">
             <span>已保存策略重新读取失败，请重新读取后再预览。</span>
             <Button
               variant="outline"
-              disabled={c.policyQuery.isFetching}
+              disabled={policyController.policyQuery.isFetching}
               onClick={() => {
-                void c.policyQuery.refetch()
+                void policyController.policyQuery.refetch()
               }}
             >
               重新读取策略
             </Button>
           </div>
         ) : null}
-        {c.previewError ? (
+        {policyController.previewError ? (
           <p className={styles.formError} role="alert">
-            {c.previewError}。文件已保留，可重新生成。
+            {policyController.previewError}。文件已保留，可重新生成。
           </p>
         ) : null}
-        {c.preview ? (
+        {preview !== null ? (
           <div className={styles.previewResults}>
             <div className={styles.previewSummary}>
               <strong>
-                {c.preview.rule.matched
-                  ? `命中：${c.preview.rule.rule_name || c.preview.rule.rule_id}`
+                {preview.rule.matched
+                  ? `命中：${preview.rule.rule_name ?? preview.rule.rule_id}`
                   : '未命中规则，采用默认处理配置'}
               </strong>
               <span>
-                {c.preview.rule.parser_backend}
-                {c.preview.rule.chunk_strategy ? ` · ${c.preview.rule.chunk_strategy}` : ''}
-                {c.preview.rule.governance_profile_ref ? ` · ${c.preview.rule.governance_profile_ref}` : ''}
+                {preview.rule.parser_backend}
+                {preview.rule.chunk_strategy && ` · ${preview.rule.chunk_strategy}`}
+                {preview.rule.governance_profile_ref && ` · ${preview.rule.governance_profile_ref}`}
               </span>
-              <span>解析前预处理：{c.preview.preprocess.changed ? '文件已调整' : '文件未调整'}</span>
+              <span>解析前预处理：{preview.preprocess.changed ? '文件已调整' : '文件未调整'}</span>
             </div>
-            {c.preview.clean.issues?.length ? (
+            {issues && issues.length > 0 ? (
               <details className={styles.previewIssues}>
-                <summary>检测到 {c.preview.clean.issues.length} 类问题</summary>
+                <summary>检测到 {issues.length} 类问题</summary>
                 <ul>
-                  {c.preview.clean.issues.map((issue, index) => (
+                  {issues.map((issue, index) => (
                     <li key={index}>
                       <span>{issue.severity}</span>
                       {issue.message}
-                      {issue.count ? `（${issue.count}）` : ''}
+                      {issue.count == null ? null : `（${issue.count}）`}
                     </li>
                   ))}
                 </ul>
@@ -127,21 +133,21 @@ export function PolicyPreviewDialog({ c }: { c: IngestionPolicyController }) {
               <TabsContent value="compare" className={styles.comparePanel}>
                 <section>
                   <h3>解析后</h3>
-                  <pre>{c.preview.parse.markdown || '没有解析文本'}</pre>
+                  <pre>{preview.parse.markdown ? preview.parse.markdown : '没有解析文本'}</pre>
                 </section>
                 <section>
                   <h3>治理后</h3>
-                  <pre>{c.preview.clean.markdown || '没有治理文本'}</pre>
+                  <pre>{preview.clean.markdown === '' ? '没有治理文本' : preview.clean.markdown}</pre>
                 </section>
               </TabsContent>
               <TabsContent value="diff" className={styles.diffPanel}>
-                <pre>{c.preview.clean.diff_unified || '没有文本差异'}</pre>
+                <pre>{preview.clean.diff_unified ? preview.clean.diff_unified : '没有文本差异'}</pre>
               </TabsContent>
             </Tabs>
           </div>
         ) : (
-          <div className={styles.previewEmpty} role={c.previewing ? 'status' : undefined}>
-            {c.previewing ? (
+          <div className={styles.previewEmpty} role={policyController.previewing ? 'status' : undefined}>
+            {policyController.previewing ? (
               <>
                 <Loader2 className="animate-spin motion-reduce:animate-none" />
                 <p>正在检查文件…</p>
@@ -155,8 +161,12 @@ export function PolicyPreviewDialog({ c }: { c: IngestionPolicyController }) {
           </div>
         )}
         <div className={styles.dialogFooter}>
-          <span>{c.previewFile?.name}</span>
-          <Button variant="ghost" disabled={c.previewing || c.saving} onClick={() => c.setPreviewOpen(false)}>
+          <span>{policyController.previewFile?.name}</span>
+          <Button
+            variant="ghost"
+            disabled={policyController.previewing || policyController.saving}
+            onClick={() => policyController.setPreviewOpen(false)}
+          >
             关闭
           </Button>
         </div>
@@ -165,30 +175,30 @@ export function PolicyPreviewDialog({ c }: { c: IngestionPolicyController }) {
   )
 }
 
-export function PolicyOverviewDialog({ c }: { c: IngestionPolicyController }) {
-  const stats = c.statsQuery.data
+export function PolicyOverviewDialog({ policyController }: { policyController: IngestionPolicyController }) {
+  const stats = policyController.statsQuery.data
   return (
-    <Dialog open onOpenChange={c.setOverviewOpen}>
+    <Dialog open onOpenChange={policyController.setOverviewOpen}>
       <DialogContent
         className={styles.overviewDialog}
         onCloseAutoFocus={(event) => {
           event.preventDefault()
-          c.restoreFocus()
+          policyController.restoreFocus()
         }}
       >
         <DialogHeader className={styles.dialogHeader}>
           <DialogTitle>入库概览</DialogTitle>
-          <DialogDescription>{c.datasetQuery.data?.name}</DialogDescription>
+          <DialogDescription>{policyController.datasetQuery.data?.name}</DialogDescription>
         </DialogHeader>
         <div className={styles.dialogBody}>
-          {c.statsQuery.isPending ? (
+          {policyController.statsQuery.isPending ? (
             <p role="status">正在读取入库概览…</p>
-          ) : c.statsQuery.isError ? (
+          ) : policyController.statsQuery.isError ? (
             <div className={styles.fieldError} role="alert">
-              {formatApiError(c.statsQuery.error, '入库概览读取失败')}
+              {formatApiError(policyController.statsQuery.error, '入库概览读取失败')}
               <button
                 onClick={() => {
-                  void c.statsQuery.refetch()
+                  void policyController.statsQuery.refetch()
                 }}
               >
                 重新读取

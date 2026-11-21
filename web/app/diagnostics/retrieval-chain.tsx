@@ -2,8 +2,8 @@
 
 import { useRef, useState } from 'react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
-import { ArrowRight, ArrowRightLeft, Database, Filter, Search, Workflow } from '@/components/icons'
-import { buildChannels, record, rerankState, timestamp, type Channel, type Verdict } from './diagnostics-model'
+import { ArrowRight, Search } from '@/components/icons'
+import { buildChannels, record, rerankState, text, timestamp, type Channel, type Verdict } from './diagnostics-model'
 import { Reading, Status } from './diagnostics-controls'
 import { CitationOutput } from './citation-output'
 import type { DiagnosticsController } from './use-diagnostics'
@@ -79,13 +79,11 @@ export function RetrievalChain({ controller: c }: { controller: DiagnosticsContr
     ...summary.reranker,
   ]
   const order = ['retrieval_mode', 'fusion_strategy', 'score_threshold', 'enable_reranker', 'retrieval_profile']
-  const knownParams = params
-    .filter((item, index) => params.findIndex((x) => x.label === item.label) === index)
-    .sort(
-      (a, b) =>
-        (order.includes(a.label) ? order.indexOf(a.label) : 100) -
-        (order.includes(b.label) ? order.indexOf(b.label) : 100),
-    )
+  const knownParams = params.sort(
+    (a, b) =>
+      (order.includes(a.label) ? order.indexOf(a.label) : 100) -
+      (order.includes(b.label) ? order.indexOf(b.label) : 100),
+  )
   const readings = c.metrics.filter(
     (m) => ['citations', 'tokens', 'contexts', 'latency'].includes(m.key) && c.visibleMetrics.includes(m.key),
   )
@@ -96,10 +94,6 @@ export function RetrievalChain({ controller: c }: { controller: DiagnosticsContr
   )
   const missingQuality = quality.filter((m) => m.raw === null).length
   const history = c.metrics.find((m) => m.key === 'history')!
-  const rawRecommendations = record(c.online.data).recommendations
-  const recommendations = Array.isArray(rawRecommendations)
-    ? rawRecommendations.filter((v): v is string => typeof v === 'string')
-    : []
   return (
     <>
       <section className={styles.previewResults} aria-label="检索链路" aria-busy={c.preview.status === 'running'}>
@@ -113,7 +107,7 @@ export function RetrievalChain({ controller: c }: { controller: DiagnosticsContr
             修改查询
           </button>
         </div>
-        {c.preview.error ? (
+        {c.preview.error !== null ? (
           <div className={styles.domainError} role="alert">
             {c.preview.error}
             {r ? <span>以下保留 {timestamp(r.finishedAt)} 的上次结果。</span> : null}
@@ -176,11 +170,10 @@ export function RetrievalChain({ controller: c }: { controller: DiagnosticsContr
                 disabled={!r || c.preview.status === 'running'}
                 onClick={(event) => openDetail({ label: '过滤配置', data: summary.filtering }, event.currentTarget)}
               >
-                <h3>
-                  <Filter />
-                  过滤配置
-                </h3>
-                <p>{filtering ? `分数阈值 ≥ ${filtering.value}` : unavailable}</p>
+                <span className={styles.chainNodeTitle}>过滤配置</span>
+                <span className={styles.chainNodeValue}>
+                  {filtering ? `分数阈值 ≥ ${filtering.value}` : unavailable}
+                </span>
               </button>
               <ArrowRight className={styles.connector} />
               <button
@@ -189,11 +182,8 @@ export function RetrievalChain({ controller: c }: { controller: DiagnosticsContr
                 data-kind="keyword"
                 onClick={(event) => openDetail({ label: '融合配置', data: summary.fusion }, event.currentTarget)}
               >
-                <h3>
-                  <Workflow />
-                  融合配置
-                </h3>
-                <p>{fusion ? fusion.value.toUpperCase() : unavailable}</p>
+                <span className={styles.chainNodeTitle}>融合配置</span>
+                <span className={styles.chainNodeValue}>{fusion ? fusion.value.toUpperCase() : unavailable}</span>
               </button>
               <ArrowRight className={styles.connector} />
               <button
@@ -209,10 +199,7 @@ export function RetrievalChain({ controller: c }: { controller: DiagnosticsContr
                   )
                 }
               >
-                <h3>
-                  <ArrowRightLeft />
-                  重排
-                </h3>
+                <span className={styles.chainNodeTitle}>重排</span>
                 <Status {...(r ? rerank : { label: '待执行', tone: 'neutral' })} />
               </button>
               <ArrowRight className={styles.connector} />
@@ -228,10 +215,7 @@ export function RetrievalChain({ controller: c }: { controller: DiagnosticsContr
                   )
                 }
               >
-                <h3>
-                  <Database />
-                  引用输出
-                </h3>
+                <span className={styles.chainNodeTitle}>引用输出</span>
                 <strong>
                   <Reading metric={citations} />
                 </strong>
@@ -262,7 +246,7 @@ export function RetrievalChain({ controller: c }: { controller: DiagnosticsContr
             </span>
             <span>
               配置签名{' '}
-              {summary.configHash ? (
+              {summary.configHash && text(r?.configHash?.hash) === summary.configHash ? (
                 <button
                   className={styles.hashButton}
                   onClick={(event) =>
@@ -272,7 +256,7 @@ export function RetrievalChain({ controller: c }: { controller: DiagnosticsContr
                   {summary.configHash}
                 </button>
               ) : (
-                <strong>{unavailable}</strong>
+                <strong>{summary.configHash ?? unavailable}</strong>
               )}
             </span>
             {c.visibleMetrics.includes('history') ? (
@@ -346,14 +330,6 @@ export function RetrievalChain({ controller: c }: { controller: DiagnosticsContr
           )}
         </section>
       </section>
-      {recommendations.length ? (
-        <section className={styles.recommendations}>
-          <h2>后端建议</h2>
-          {recommendations.map((v, index) => (
-            <p key={index}>{v}</p>
-          ))}
-        </section>
-      ) : null}
       <Dialog
         open={Boolean(detail)}
         onOpenChange={(open) => {

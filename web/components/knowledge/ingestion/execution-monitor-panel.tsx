@@ -1,7 +1,6 @@
 'use client'
 import { useMemo, useState } from 'react'
 import { ChevronLeft, ChevronRight, Activity, FileText, Search } from '@/components/icons'
-import type { PlatformIcon } from '@/components/icons'
 import type { EChartsOption } from 'echarts'
 import type { Document } from '@/types'
 import { Button } from '@/components/ui/button'
@@ -13,24 +12,14 @@ import { WorkspaceMetrics, WorkspaceTableScroll, workspaceStyles as ws } from '@
 import { getDocumentStatusLabel, getDocumentStatusTone } from '@/app/knowledge/ingestion/presentation'
 import { formatDurationClock } from '@/app/knowledge/ingestion/document-signals'
 import { cn, formatFileSize } from '@/lib/utils'
-type ExecutionKpiCard = {
-  label: string
-  value: string
-  suffix?: string
-  detail: string
-  icon: PlatformIcon
-  tone: string
-}
-
 type ExecutionBatchAnalysis = {
   sourceLabel: string
   complexity: string
   pricingMode: string
-  sampleTarget: number | null
   sampleTargetDetail: string
   totalSizeLabel: string
   samplePoolLabel: string
-  imageProxyNote: string
+  pageCountNote?: string
 }
 
 type ExecutionRecentLog = {
@@ -38,43 +27,28 @@ type ExecutionRecentLog = {
   time: string
   stage: string
   detail: string
-  tone: string
 }
 
 type ExecutionPipelineCard = {
   key: 'parser' | 'chunker' | 'governance' | 'export'
   label: string
   metrics: string[][]
-  progress: number
   statusLabel: string
-  statusTone: string
 }
 
 type ExecutionMonitorPanelProps = {
   batchProfileBarOption: EChartsOption
   executionBatchAnalysis: ExecutionBatchAnalysis
-  executionDocuments: Document[]
-  executionKpiCards: ExecutionKpiCard[]
-  executionOverallProgress: number
   executionPipelineCards: ExecutionPipelineCard[]
   executionPipelineEstimateLabel: string
   executionPipelineWarning: string | null
-  executionProcessedTotal: number
   executionRecentLogs: ExecutionRecentLog[]
-  executionSuccessRate: number
-  executionTaskPage: number
-  executionTaskPageCount: number
   executionTaskRows: Document[]
   predictionOption: EChartsOption
   radarOption: EChartsOption
-  recentQueueOutcomesCount: number
   selectedDatasetId: string | null
-  showEmptyShell: boolean
-  visibleExecutionTaskRows: Document[]
-  onNextPage: () => void
   onOpenAuditSnapshot: (documentId: string) => void
   onOpenIngestionOperation: () => void
-  onPrevPage: () => void
   onScopeAllProjects: () => void
 }
 
@@ -383,15 +357,17 @@ export function ExecutionMonitorPanel(props: Readonly<ExecutionMonitorPanelProps
                   </div>
                 </section>
                 <div className={ws.charts}>
-                  {[
-                    ['文件画像', props.batchProfileBarOption],
-                    ['处理分布', props.radarOption],
-                    ['耗时估计', props.predictionOption],
-                  ].map(([label, option]) => (
-                    <section className={ws.section} key={label as string}>
-                      <h2 className={ws.sectionTitle}>{label as string}</h2>
+                  {(
+                    [
+                      ['文件画像', props.batchProfileBarOption],
+                      ['处理分布', props.radarOption],
+                      ['吞吐趋势', props.predictionOption],
+                    ] as const
+                  ).map(([label, option]) => (
+                    <section className={ws.section} key={label}>
+                      <h2 className={ws.sectionTitle}>{label}</h2>
                       <div className="h-72">
-                        <EChart option={option as EChartsOption} />
+                        <EChart option={option} />
                       </div>
                     </section>
                   ))}
@@ -406,13 +382,18 @@ export function ExecutionMonitorPanel(props: Readonly<ExecutionMonitorPanelProps
                       总大小: props.executionBatchAnalysis.totalSizeLabel,
                       采样范围: props.executionBatchAnalysis.samplePoolLabel,
                       采样说明: props.executionBatchAnalysis.sampleTargetDetail,
-                      图像统计: props.executionBatchAnalysis.imageProxyNote,
                     }).map(([label, value]) => (
                       <div key={label}>
                         <dt className="text-muted-foreground">{label}</dt>
-                        <dd className="mt-1">{value || '—'}</dd>
+                        <dd className="mt-1">{value}</dd>
                       </div>
                     ))}
+                    {props.executionBatchAnalysis.pageCountNote === undefined ? null : (
+                      <div>
+                        <dt className="text-muted-foreground">页数说明</dt>
+                        <dd className="mt-1">{props.executionBatchAnalysis.pageCountNote}</dd>
+                      </div>
+                    )}
                   </dl>
                 </section>
               </>

@@ -9,8 +9,8 @@ import { Input } from '@/components/ui/input'
 
 type QAGenerationDialogProps = {
   open: boolean
-  qaNumPairs: number
-  qaMaxSourceChars: number
+  qaNumPairsInput: string
+  qaMaxSourceCharsInput: string
   qaReplaceExisting: boolean
   qaPreferLlm: boolean
   qaSubmitting: boolean
@@ -18,8 +18,8 @@ type QAGenerationDialogProps = {
   canEditChunks: boolean
   documentId: string | null
   onOpenChange: (open: boolean) => void
-  onNumPairsChange: (value: number) => void
-  onMaxSourceCharsChange: (value: number) => void
+  onNumPairsInputChange: (value: string) => void
+  onMaxSourceCharsInputChange: (value: string) => void
   onReplaceExistingChange: (value: boolean) => void
   onPreferLlmChange: (value: boolean) => void
   onSubmit: () => void
@@ -27,8 +27,8 @@ type QAGenerationDialogProps = {
 
 export function QAGenerationDialog({
   open,
-  qaNumPairs,
-  qaMaxSourceChars,
+  qaNumPairsInput,
+  qaMaxSourceCharsInput,
   qaReplaceExisting,
   qaPreferLlm,
   qaSubmitting,
@@ -36,8 +36,8 @@ export function QAGenerationDialog({
   canEditChunks,
   documentId,
   onOpenChange,
-  onNumPairsChange,
-  onMaxSourceCharsChange,
+  onNumPairsInputChange,
+  onMaxSourceCharsInputChange,
   onReplaceExistingChange,
   onPreferLlmChange,
   onSubmit,
@@ -52,18 +52,26 @@ export function QAGenerationDialog({
         <div className="space-y-4">
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
             <div className="space-y-2">
-              <div className="text-sm font-medium text-foreground/80">Num pairs</div>
+              <label htmlFor="viewer-qa-pairs" className="text-sm font-medium text-foreground/80">
+                Num pairs
+              </label>
               <Input
-                value={String(qaNumPairs)}
-                onChange={(event) => onNumPairsChange(Number(event.target.value || 0))}
+                id="viewer-qa-pairs"
+                value={qaNumPairsInput}
+                disabled={qaSubmitting}
+                onChange={(event) => onNumPairsInputChange(event.target.value)}
                 inputMode="numeric"
               />
             </div>
             <div className="space-y-2">
-              <div className="text-sm font-medium text-foreground/80">Max source chars</div>
+              <label htmlFor="viewer-qa-chars" className="text-sm font-medium text-foreground/80">
+                Max source chars
+              </label>
               <Input
-                value={String(qaMaxSourceChars)}
-                onChange={(event) => onMaxSourceCharsChange(Number(event.target.value || 0))}
+                id="viewer-qa-chars"
+                value={qaMaxSourceCharsInput}
+                disabled={qaSubmitting}
+                onChange={(event) => onMaxSourceCharsInputChange(event.target.value)}
                 inputMode="numeric"
               />
             </div>
@@ -74,6 +82,7 @@ export function QAGenerationDialog({
             <input
               type="checkbox"
               checked={qaReplaceExisting}
+              disabled={qaSubmitting}
               onChange={(event) => onReplaceExistingChange(event.target.checked)}
               className="accent-primary h-4 w-4"
             />
@@ -84,6 +93,7 @@ export function QAGenerationDialog({
             <input
               type="checkbox"
               checked={qaPreferLlm}
+              disabled={qaSubmitting}
               onChange={(event) => onPreferLlmChange(event.target.checked)}
               className="accent-primary h-4 w-4"
             />

@@ -3,12 +3,11 @@ from uuid import uuid4
 
 import pytest
 
-from app.rag.core.retrieval_profiles import apply_retrieval_profile_overrides
-from app.rag.retrieval.context_expansion import _neighbor_item
-from app.rag.retrieval.hybrid.lexical import LexicalDBMixin
-from app.rag.retrieval.hybrid.metadata_scope import lexical_dataset_scope
-from app.rag.retrieval.orchestration.query_options import parse_model_query_overrides, resolve_model_query_settings
-from app.rag.retrieval.sibling_expand import _sibling_metadata
+from app.rag.retrieval.configuration.profiles import apply_retrieval_profile_overrides
+from app.rag.retrieval.expansion.context import _neighbor_item
+from app.rag.retrieval.expansion.siblings import _sibling_metadata
+from app.rag.retrieval.planning.options import parse_model_query_overrides, resolve_model_query_settings
+from app.rag.retrieval.recall.metadata_scope import lexical_dataset_scope
 
 
 @pytest.mark.parametrize("value", ["", None])
@@ -67,16 +66,14 @@ def test_expansion_metadata_preserves_the_actual_anchor_identity(anchor_id: str)
     assert sibling["start_char"] == 0
 
 
-@pytest.mark.parametrize("resolver", [lexical_dataset_scope, LexicalDBMixin._lexical_dataset_scope])
-def test_lexical_scope_returns_the_actual_empty_collection(resolver) -> None:
-    assert resolver(None) == ([], None)
+def test_lexical_scope_returns_the_actual_empty_collection() -> None:
+    assert lexical_dataset_scope(None) == ([], None)
 
 
-@pytest.mark.parametrize("resolver", [lexical_dataset_scope, LexicalDBMixin._lexical_dataset_scope])
-def test_lexical_scope_keeps_all_requested_dataset_ids(resolver) -> None:
+def test_lexical_scope_keeps_all_requested_dataset_ids() -> None:
     first, second = uuid4(), uuid4()
 
-    ids, first_text = resolver({"dataset_id": {"$in": [str(first), str(second)]}})
+    ids, first_text = lexical_dataset_scope({"dataset_id": {"$in": [str(first), str(second)]}})
 
     assert ids == [first, second]
     assert first_text == str(first)

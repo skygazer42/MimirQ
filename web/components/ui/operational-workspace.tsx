@@ -115,8 +115,10 @@ export function WorkspaceMetrics({
       {items.map((item) => (
         <div key={item.label}>
           <dt>{item.label}</dt>
-          <dd data-tone={item.tone}>{item.value}</dd>
-          {item.detail ? <small>{item.detail}</small> : null}
+          <dd data-tone={item.tone}>
+            {item.value}
+            {item.detail == null ? null : <small className="font-normal">{item.detail}</small>}
+          </dd>
         </div>
       ))}
     </dl>
@@ -151,7 +153,7 @@ export function WorkspaceNotice({
         ) : null}
       </div>
       {retry ? (
-        <Button variant="ghost" disabled={pending} onClick={retry}>
+        <Button type="button" variant="ghost" disabled={pending} onClick={retry}>
           {pending ? <Loader2 className="animate-spin motion-reduce:animate-none" /> : null}
           {retryLabel}
         </Button>

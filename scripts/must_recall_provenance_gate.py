@@ -157,7 +157,7 @@ def _capsule_is_valid(
     strict_integrity: bool,
     require_signature: bool,
 ) -> bool:
-    from app.rag.core.evidence_capsule_builder import validate_evidence_capsule
+    from app.rag.retrieval.evidence.capsule import validate_evidence_capsule
 
     ok, _reason = validate_evidence_capsule(
         capsule,

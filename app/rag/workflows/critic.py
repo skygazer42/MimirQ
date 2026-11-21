@@ -1,8 +1,8 @@
 import re
 from typing import Any, TypedDict
 
-from app.core.config import settings
-from app.rag.core.text import split_into_claims, verify_claim_with_fallback
+from app.infrastructure.config import settings
+from app.rag.safety.claim_verification import split_into_claims, verify_claim_with_fallback
 from app.rag.workflows.base import BaseWorkflow, WorkflowMode, WorkflowResult
 
 
@@ -85,21 +85,23 @@ def run_critic_review(
             verifier_mode=verifier_mode,
             verifier_enable_contradiction_check=bool(verifier_enable_contradiction_check),
         )
+        preview = text[:300]
         if verification.supported:
             supported_claims += 1
         elif len(unsupported_claims) < 16:
-            unsupported_claims.append(text[:300])
+            unsupported_claims.append(preview)
         claim_results.append(
             {
-                "text": text[:300],
+                "text": preview,
                 "supported": verification.supported,
-                "reason_code": str((verification.diagnostics or {}).get("reason_code") or "unsupported"),
+                "reason_code": verification.diagnostics["reason_code"],
             }
         )
 
     total_claims = len(claim_results)
     faithfulness_score = round(supported_claims / total_claims, 4) if total_claims > 0 else None
-    citation_missing = len(citations or []) <= 0
+    citation_count = len(citations or [])
+    citation_missing = citation_count == 0
     style_issues = _detect_style_issues(raw_answer)
 
     reason_codes: list[str] = []
@@ -122,7 +124,7 @@ def run_critic_review(
         "total_claims": total_claims,
         "unsupported_claims": unsupported_claims,
         "claims": claim_results,
-        "citation_count": len(citations or []),
+        "citation_count": citation_count,
         "citation_missing": citation_missing,
         "style_issues": style_issues,
         "reason_codes": reason_codes,

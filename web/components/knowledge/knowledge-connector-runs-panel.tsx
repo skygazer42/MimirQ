@@ -5,21 +5,20 @@ import { ChevronDown, History, Link2, Loader2, RefreshCw, RotateCcw, Terminal, X
 import { useTranslations } from 'next-intl'
 import { motion, AnimatePresence } from 'framer-motion'
 import { toast } from 'sonner'
-import { Button } from '@/components/ui/button'
+import { Alert, AlertDescription } from '@/components/ui/alert'
 import { IconButton } from '@/components/ui/icon-button'
 import { Switch } from '@/components/ui/switch'
 import { toTrimmedPrimitiveString } from '@/lib/primitive-text'
 import { cn, formatDate } from '@/lib/utils'
 import type { ConnectorRunOut } from '@/types'
 
-type ConnectorRunStatusFilter = 'all' | 'pending' | 'running' | 'failed' | 'completed' | 'cancelled'
-type TranslateValue = string | number | Date
-type TranslateFn = (key: string, values?: Record<string, TranslateValue>) => string
+type ConnectorRunStatusFilter = 'all' | 'active' | 'failed' | 'completed'
 
 type KnowledgeConnectorRunsPanelProps = {
   selectedDatasetId?: string
   connectorRuns: ConnectorRunOut[]
   connectorRunsLoading: boolean
+  connectorRunsError: string | null
   onCancelConnectorRun: (id: string) => void | Promise<void>
   onResumeConnectorRun: (id: string) => void | Promise<void>
   onRetryFailedConnectorRun: (id: string) => void | Promise<void>
@@ -28,7 +27,6 @@ type KnowledgeConnectorRunsPanelProps = {
 
 type TaskCardProps = {
   run: ConnectorRunOut
-  t: TranslateFn
   onCancel: (id: string) => void | Promise<void>
   onResume?: (id: string) => void | Promise<void>
   onRetry: (id: string) => void | Promise<void>
@@ -40,22 +38,32 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object' && !Array.isArray(value)
 }
 
+function readProgressCount(value: unknown): number | null {
+  const count = typeof value === 'string' && value.trim() !== '' ? Number(value) : value
+  return typeof count === 'number' && Number.isInteger(count) && count >= 0 ? count : null
+}
+
 function getConnectorRunProgress(rawStats: unknown) {
-  const stats = isRecord(rawStats) ? rawStats : {}
-  const total = Number(stats?.total_items || stats?.items_total || stats?.total_urls || 0)
-  const processed = Number(stats?.processed_items || stats?.items_processed || stats?.processed_urls || 0)
-  return { total, processed }
+  if (!isRecord(rawStats)) return null
+  const total = readProgressCount(rawStats.total_items ?? rawStats.items_total ?? rawStats.total_urls)
+  const processed = readProgressCount(rawStats.processed_items ?? rawStats.items_processed ?? rawStats.processed_urls)
+  if (total === null || total === 0 || processed === null) return null
+  return { total, processed, percentage: Math.round((processed / total) * 100) }
 }
 
 function getConnectorRunErrors(stats: unknown): Record<string, unknown>[] {
-  const record = isRecord(stats) ? stats : {}
-  return Array.isArray(record.errors) ? record.errors.filter(isRecord) : []
+  return isRecord(stats) && Array.isArray(stats.errors) ? stats.errors.filter(isRecord) : []
+}
+
+function isActiveRun(run: ConnectorRunOut): boolean {
+  return run.status === 'running' || run.status === 'pending'
 }
 
 export function KnowledgeConnectorRunsPanel({
   selectedDatasetId,
   connectorRuns,
   connectorRunsLoading,
+  connectorRunsError,
   onCancelConnectorRun,
   onResumeConnectorRun,
   onRetryFailedConnectorRun,
@@ -69,7 +77,7 @@ export function KnowledgeConnectorRunsPanel({
   const stats = useMemo(
     () => ({
       total: connectorRuns.length,
-      active: connectorRuns.filter((r) => r.status === 'running' || r.status === 'pending').length,
+      active: connectorRuns.filter(isActiveRun).length,
       failed: connectorRuns.filter((r) => r.status === 'failed').length,
       completed: connectorRuns.filter((r) => r.status === 'completed').length,
     }),
@@ -77,19 +85,19 @@ export function KnowledgeConnectorRunsPanel({
   )
 
   const visibleRuns = useMemo(() => {
-    let list =
-      runStatusFilter === 'all'
-        ? connectorRuns
-        : connectorRuns.filter((r) => String(r.status).toLowerCase() === runStatusFilter)
-
-    return [...list].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+    return connectorRuns
+      .filter((run) => {
+        if (runStatusFilter === 'active') return isActiveRun(run)
+        return runStatusFilter === 'all' || run.status === runStatusFilter
+      })
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
   }, [connectorRuns, runStatusFilter])
 
   useEffect(() => {
-    if (!autoRefresh || stats.active === 0) return
+    if (!autoRefresh || stats.active === 0 || connectorRunsLoading) return
     const id = setInterval(() => onLoadConnectorRuns({ datasetId: selectedDatasetId }), 5000)
     return () => clearInterval(id)
-  }, [autoRefresh, stats.active, selectedDatasetId, onLoadConnectorRuns])
+  }, [autoRefresh, stats.active, connectorRunsLoading, selectedDatasetId, onLoadConnectorRuns])
 
   return (
     <div className="flex flex-col h-full bg-background/50">
@@ -123,6 +131,7 @@ export function KnowledgeConnectorRunsPanel({
               variant="ghost"
               className="h-6 w-6 rounded-md text-muted-foreground hover:text-foreground"
               onClick={() => onLoadConnectorRuns({ datasetId: selectedDatasetId })}
+              disabled={connectorRunsLoading}
             >
               <RefreshCw className={cn('size-3', connectorRunsLoading && 'animate-spin')} />
             </IconButton>
@@ -140,7 +149,7 @@ export function KnowledgeConnectorRunsPanel({
                 color: 'text-foreground',
               },
               {
-                key: 'running',
+                key: 'active',
                 label: t('connectorRuns.summary.active'),
                 count: stats.active,
                 color: 'text-primary',
@@ -166,11 +175,13 @@ export function KnowledgeConnectorRunsPanel({
           ).map((item) => (
             <button
               key={item.key}
+              type="button"
+              aria-pressed={runStatusFilter === item.key}
               onClick={() => setRunStatusFilter(item.key)}
               className={cn(
                 'flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-md text-[10px] font-medium transition-all duration-200',
                 runStatusFilter === item.key
-                  ? 'bg-background text-primary shadow-sm ring-1 ring-border/10' + item.color
+                  ? cn('bg-background shadow-sm ring-1 ring-border/10', item.color)
                   : 'text-muted-foreground/50 hover:text-muted-foreground hover:bg-muted/40',
               )}
             >
@@ -182,48 +193,51 @@ export function KnowledgeConnectorRunsPanel({
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 space-y-2.5 no-scrollbar">
+        {connectorRunsError ? (
+          <Alert variant="destructive">
+            <AlertDescription>{connectorRunsError}</AlertDescription>
+          </Alert>
+        ) : null}
         <AnimatePresence mode="popLayout">
-          {visibleRuns.length === 0 ? (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              className="flex flex-col items-center justify-center gap-3 px-5 py-16 text-center"
-            >
-              {connectorRunsLoading ? (
-                <Loader2 className="size-6 animate-spin motion-reduce:animate-none text-muted-foreground" />
-              ) : (
-                <History className="size-7 text-muted-foreground" />
-              )}
-              <p className="text-[13px] text-muted-foreground">
-                {connectorRunsLoading ? t('connectorRuns.loading') : t('connectorRuns.empty.title')}
-              </p>
-            </motion.div>
-          ) : (
-            visibleRuns.map((run) => (
-              <TaskCard
-                key={run.id}
-                run={run}
-                t={t}
-                onCancel={onCancelConnectorRun}
-                onResume={onResumeConnectorRun}
-                onRetry={onRetryFailedConnectorRun}
-                isExpanded={expandedRunId === run.id}
-                onToggleExpand={() => setExpandedRunId(expandedRunId === run.id ? null : run.id)}
-              />
-            ))
-          )}
+          {visibleRuns.length === 0
+            ? !connectorRunsError && (
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  className="flex flex-col items-center justify-center gap-3 px-5 py-16 text-center"
+                >
+                  {connectorRunsLoading ? (
+                    <Loader2 className="size-6 animate-spin motion-reduce:animate-none text-muted-foreground" />
+                  ) : (
+                    <History className="size-7 text-muted-foreground" />
+                  )}
+                  <p className="text-[13px] text-muted-foreground">
+                    {connectorRunsLoading ? t('connectorRuns.loading') : t('connectorRuns.empty.title')}
+                  </p>
+                </motion.div>
+              )
+            : visibleRuns.map((run) => (
+                <TaskCard
+                  key={run.id}
+                  run={run}
+                  onCancel={onCancelConnectorRun}
+                  onResume={onResumeConnectorRun}
+                  onRetry={onRetryFailedConnectorRun}
+                  isExpanded={expandedRunId === run.id}
+                  onToggleExpand={() => setExpandedRunId(expandedRunId === run.id ? null : run.id)}
+                />
+              ))}
         </AnimatePresence>
       </div>
     </div>
   )
 }
 
-function TaskCard({ run, t, onCancel, onResume, onRetry, isExpanded, onToggleExpand }: Readonly<TaskCardProps>) {
-  const { total, processed } = getConnectorRunProgress(run.stats || {})
+function TaskCard({ run, onCancel, onResume, onRetry, isExpanded, onToggleExpand }: Readonly<TaskCardProps>) {
+  const progress = getConnectorRunProgress(run.stats)
   const runErrors = getConnectorRunErrors(run.stats)
-  const progressPct = total > 0 ? Math.round((processed / total) * 100) : 0
   const isFailed = run.status === 'failed'
-  const isRunning = run.status === 'running' || run.status === 'pending'
+  const isRunning = isActiveRun(run)
   const isCancelled = run.status === 'cancelled'
 
   return (
@@ -276,7 +290,7 @@ function TaskCard({ run, t, onCancel, onResume, onRetry, isExpanded, onToggleExp
             </div>
           </div>
 
-          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+          <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
             {isRunning && (
               <IconButton
                 label="取消"
@@ -287,7 +301,7 @@ function TaskCard({ run, t, onCancel, onResume, onRetry, isExpanded, onToggleExp
                 <X className="size-3.5" />
               </IconButton>
             )}
-            {isFailed && (
+            {isFailed && run.supports_retry_failed === true && (
               <IconButton
                 label="重试"
                 variant="ghost"
@@ -297,7 +311,7 @@ function TaskCard({ run, t, onCancel, onResume, onRetry, isExpanded, onToggleExp
                 <RotateCcw className="size-3.5" />
               </IconButton>
             )}
-            {isCancelled && onResume ? (
+            {isCancelled && run.supports_resume === true && onResume ? (
               <IconButton
                 label="继续"
                 variant="ghost"
@@ -311,9 +325,13 @@ function TaskCard({ run, t, onCancel, onResume, onRetry, isExpanded, onToggleExp
               label="复制"
               variant="ghost"
               className="h-7 w-7 rounded-md text-muted-foreground"
-              onClick={() => {
-                navigator.clipboard.writeText(run.id)
-                toast.success('Copied')
+              onClick={async () => {
+                try {
+                  await navigator.clipboard.writeText(run.id)
+                  toast.success('已复制任务 ID')
+                } catch {
+                  toast.error('复制任务 ID 失败')
+                }
               }}
             >
               <Terminal className="size-3.5" />
@@ -321,19 +339,21 @@ function TaskCard({ run, t, onCancel, onResume, onRetry, isExpanded, onToggleExp
           </div>
         </div>
 
-        {total > 0 && (
+        {progress !== null && (
           <div className="space-y-1.5">
             <div className="h-1 w-full bg-muted/40 rounded-full overflow-hidden">
               <motion.div
                 initial={{ width: 0 }}
-                animate={{ width: `${progressPct}%` }}
+                animate={{ width: `${progress.percentage}%` }}
                 className={cn('h-full transition-colors', isFailed ? 'bg-destructive/60' : 'bg-primary/70')}
               />
             </div>
             <div className="flex items-center justify-between px-0.5">
-              <span className="text-[9px] font-medium text-foreground/40 uppercase">{progressPct}% Complete</span>
+              <span className="text-[9px] font-medium text-foreground/40 uppercase">
+                {progress.percentage}% Complete
+              </span>
               <span className="text-[9px] font-medium text-muted-foreground/30 tabular-nums">
-                {processed}/{total}
+                {progress.processed}/{progress.total}
               </span>
             </div>
           </div>

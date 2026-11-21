@@ -5,7 +5,7 @@ from typing import Any
 
 import pytest
 
-from app.services import queryset_health_service
+from app.services.evaluation import queryset_health as queryset_health_service
 from scripts import run_queryset_health_diagnostics as diagnostics
 
 

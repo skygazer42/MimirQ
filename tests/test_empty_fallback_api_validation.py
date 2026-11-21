@@ -2,8 +2,8 @@ from uuid import uuid4
 
 import pytest
 
-from app.api.schemas.regression import ReferenceSource
-from app.core.regex_safety import RegexRulesValidationError, validate_regex_rules
+from app.api.schemas.evaluation.regression import ReferenceSource
+from app.infrastructure.regex.validation import RegexRulesValidationError, validate_regex_rules
 
 
 @pytest.mark.parametrize("value", [0, False, [], {}])

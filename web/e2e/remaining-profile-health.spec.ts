@@ -15,6 +15,9 @@ test('profile separates problems, distribution and scan history with explicit fa
   state.failHistory = true
   await page.getByRole('button', { name: '重新读取扫描历史', exact: true }).click()
   await expect(page.getByRole('alert').filter({ hasText: '扫描历史读取暂不可用' })).toBeVisible({ timeout: 30000 })
+  await page.getByRole('tab', { name: '问题与概览', exact: true }).click()
+  await expect(page.getByRole('alert').filter({ hasText: '保留上次有效结果' })).toBeVisible()
+  await expect(page.getByRole('table', { name: '画像问题清单' })).toContainText('扫描版 PDF')
   expect(state.base.blocked).toEqual([])
 })
 

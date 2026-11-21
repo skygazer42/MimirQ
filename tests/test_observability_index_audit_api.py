@@ -1,16 +1,31 @@
 import uuid
 from types import SimpleNamespace
 
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from app.api.dependencies.auth import get_current_account_id
-from app.api.dependencies.tenant import get_tenant_id
-from app.api.v1 import observability as obs_mod
-from app.core.database import get_db
+from app.api.dependencies import get_current_account_id, get_tenant_id
+from app.api.v1.system import observability as obs_mod
+from app.infrastructure.database.connection import get_db
 
 
 class _DummyDB:
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_args):
+        return None
+
+    def add(self, _row):
+        return None
+
+    def commit(self):
+        return None
+
+    def rollback(self):
+        return None
+
     def query(self, _model):  # noqa: ANN001
         return self
 
@@ -19,6 +34,11 @@ class _DummyDB:
 
     def first(self):  # noqa: ANN201
         return None
+
+
+@pytest.fixture(autouse=True)
+def _owned_worker_sessions(monkeypatch):
+    monkeypatch.setattr(obs_mod, "SessionLocal", _DummyDB)
 
 
 def _override_get_db():  # noqa: ANN202
@@ -41,6 +61,12 @@ def test_index_audit_reconcile_request_writes_pii_safe_audit_event(monkeypatch) 
     captured: dict[str, object] = {}
 
     class _AuditDB:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
         def commit(self) -> None:
             captured["committed"] = True
 
@@ -50,10 +76,10 @@ def test_index_audit_reconcile_request_writes_pii_safe_audit_event(monkeypatch) 
     def _audit(_db, **kwargs):  # noqa: ANN001, ANN202
         captured.update(kwargs)
 
-    monkeypatch.setattr("app.services.audit_log_service.audit_log_event", _audit, raising=True)
+    monkeypatch.setattr("app.services.observability.audit_log.audit_log_event", _audit, raising=True)
 
-    obs_mod._audit_index_reconcile_request(
-        _AuditDB(),  # type: ignore[arg-type]
+    monkeypatch.setattr(obs_mod, "SessionLocal", _AuditDB)
+    obs_mod._audit_index_reconcile_in_session(
         tenant_id=tenant_id,
         account_id="acct-1",
         dataset_id=dataset_id,
@@ -101,7 +127,7 @@ def test_index_audit_exposes_channel_summary(monkeypatch) -> None:  # noqa: ANN0
     dataset_id = uuid.uuid4()
     monkeypatch.setattr(obs_mod, "_ensure_admin", lambda *_args, **_kwargs: None, raising=True)
 
-    import app.services.index_audit_service as audit_service
+    import app.services.indexing.audit as audit_service
 
     monkeypatch.setattr(
         audit_service,
@@ -143,7 +169,7 @@ def test_index_audit_reconcile_returns_noop_when_document_is_ready(monkeypatch) 
     document_id = uuid.uuid4()
     monkeypatch.setattr(obs_mod, "_ensure_admin", lambda *_args, **_kwargs: None, raising=True)
 
-    import app.services.index_audit_service as audit_service
+    import app.services.indexing.audit as audit_service
 
     monkeypatch.setattr(
         audit_service,
@@ -174,7 +200,7 @@ def test_index_audit_reconcile_enqueues_document_job(monkeypatch) -> None:  # no
     document_id = uuid.uuid4()
     monkeypatch.setattr(obs_mod, "_ensure_admin", lambda *_args, **_kwargs: None, raising=True)
 
-    import app.services.index_audit_service as audit_service
+    import app.services.indexing.audit as audit_service
 
     monkeypatch.setattr(
         audit_service,
@@ -219,7 +245,7 @@ def test_index_audit_reconcile_rejects_missing_document_in_dataset(monkeypatch) 
     document_id = uuid.uuid4()
     monkeypatch.setattr(obs_mod, "_ensure_admin", lambda *_args, **_kwargs: None, raising=True)
 
-    import app.services.index_audit_service as audit_service
+    import app.services.indexing.audit as audit_service
 
     monkeypatch.setattr(
         audit_service,
@@ -243,7 +269,7 @@ def test_index_audit_reconcile_status_returns_legacy_unknown(monkeypatch) -> Non
     document_id = uuid.uuid4()
     monkeypatch.setattr(obs_mod, "_ensure_admin", lambda *_args, **_kwargs: None, raising=True)
 
-    import app.services.index_audit_service as audit_service
+    import app.services.indexing.audit as audit_service
 
     monkeypatch.setattr(
         audit_service,
@@ -282,7 +308,7 @@ def test_index_audit_reconcile_status_returns_pending_and_404(monkeypatch) -> No
     missing_document_id = uuid.uuid4()
     monkeypatch.setattr(obs_mod, "_ensure_admin", lambda *_args, **_kwargs: None, raising=True)
 
-    import app.services.index_audit_service as audit_service
+    import app.services.indexing.audit as audit_service
 
     def _status(**kwargs):  # noqa: ANN202
         if kwargs["document_id"] == missing_document_id:
@@ -367,7 +393,7 @@ def test_index_audit_reconcile_job_enqueue_validates_document_scope_and_duplicat
     monkeypatch.setattr(obs_mod, "_ensure_admin", lambda *_args, **_kwargs: None, raising=True)
     monkeypatch.setattr(obs_mod.dataset_service, "get_dataset", lambda *_args, **_kwargs: object(), raising=True)
 
-    import app.services.index_audit_service as audit_service
+    import app.services.indexing.audit as audit_service
 
     monkeypatch.setattr(
         audit_service,

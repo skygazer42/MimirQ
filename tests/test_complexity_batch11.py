@@ -13,10 +13,10 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.orm import Session
 
-from app.core.database import Base
+from app.infrastructure.database.connection import Base
 from app.models.audit_log import AuditLog
-from app.models.tenant_group import TenantGroup
-from app.services.table_store import format_table_id
+from app.models.identity.workspaces import TenantGroup
+from app.services.tables.store_paths import format_table_id
 
 UTC = getattr(dt, "UTC", timezone.utc)
 if not hasattr(dt, "UTC"):
@@ -107,7 +107,7 @@ class _StaticDB:
 def test_export_audit_logs_gzip_sanitizes_nested_sensitive_details(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.audit as audit_api
+    import app.api.v1.system.audit as audit_api
 
     engine = create_engine("sqlite:///:memory:")
     Base.metadata.create_all(engine, tables=[AuditLog.__table__])
@@ -131,10 +131,9 @@ def test_export_audit_logs_gzip_sanitizes_nested_sensitive_details(
         )
         db.commit()
 
-        monkeypatch.setattr(audit_api, "_ensure_admin", lambda *_a, **_k: None, raising=True)
+        monkeypatch.setattr(audit_api, "_ensure_audit_read_permission", lambda *_a, **_k: None, raising=True)
 
         response = audit_api.export_audit_logs(
-            filters=audit_api.AuditLogFilterParams(),
             export=audit_api.AuditLogExportParams(limit=10, gzip=True),
             tenant_id=tenant_id,
             account_id="acct-1",
@@ -151,7 +150,7 @@ def test_export_audit_logs_gzip_sanitizes_nested_sensitive_details(
 def test_export_access_graph_json_requires_after_kind_and_emits_next_cursor(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.audit as audit_api
+    import app.api.v1.system.audit as audit_api
 
     engine = create_engine("sqlite:///:memory:")
     Base.metadata.create_all(engine, tables=[TenantGroup.__table__])
@@ -178,7 +177,7 @@ def test_export_access_graph_json_requires_after_kind_and_emits_next_cursor(
         db.add_all([first_group, second_group])
         db.commit()
 
-        monkeypatch.setattr(audit_api, "_ensure_admin", lambda *_a, **_k: None, raising=True)
+        monkeypatch.setattr(audit_api, "_ensure_audit_read_permission", lambda *_a, **_k: None, raising=True)
         monkeypatch.setattr(audit_api, "audit_log_event", lambda *_a, **_k: None, raising=True)
 
         with pytest.raises(audit_api.HTTPException) as exc_info:
@@ -216,7 +215,7 @@ def test_export_access_graph_json_requires_after_kind_and_emits_next_cursor(
 def test_delta_sync_jira_documents_acl_fallback_updates_matching_issue_doc_only(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.services.connector_document_access as connectors_acl
+    import app.services.connectors.document_access as connectors_acl
 
     tenant_id = uuid4()
     dataset_id = uuid4()
@@ -293,7 +292,7 @@ def test_soft_disable_jira_issue_children_fallback_filters_seen_urls(
     doc_kind: str,
     url_field: str,
 ) -> None:
-    import app.services.connector_document_access as connectors_acl
+    import app.services.connectors.document_access as connectors_acl
 
     tenant_id = uuid4()
     dataset_id = uuid4()
@@ -356,7 +355,7 @@ def test_soft_disable_jira_issue_children_fallback_filters_seen_urls(
 def test_soft_disable_jira_documents_missing_from_full_sync_fallback_reconciles_issue_urls(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.services.connector_execution.jira as connectors_jira
+    import app.services.connectors.execution.jira as connectors_jira
 
     tenant_id = uuid4()
     dataset_id = uuid4()
@@ -412,7 +411,7 @@ def test_soft_disable_jira_documents_missing_from_full_sync_fallback_reconciles_
 def test_process_jira_project_issues_tracks_progress_and_completion(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.services.connector_execution.jira as connectors_jira
+    import app.services.connectors.execution.jira as connectors_jira
 
     async def _fetch_page(*_args, **_kwargs):
         return 1, [{"key": "ABC-1"}]
@@ -474,7 +473,7 @@ def test_process_jira_project_issues_tracks_progress_and_completion(
 def test_extract_table_assets_filters_wrong_doc_and_caps_payloads(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.dataset_tables as dataset_tables
+    import app.api.v1.datasets.tables as dataset_tables
 
     doc_id = uuid4()
     valid_table_id = format_table_id(document_id=doc_id, sheet_index=2)
@@ -523,7 +522,7 @@ def test_extract_table_assets_filters_wrong_doc_and_caps_payloads(
 def test_list_dataset_tables_filters_docs_and_audits_fls_masking(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.dataset_tables as dataset_tables
+    import app.api.v1.datasets.tables as dataset_tables
 
     dataset_id = uuid4()
     allowed_doc_id = uuid4()
@@ -591,7 +590,7 @@ def test_list_dataset_tables_filters_docs_and_audits_fls_masking(
 def test_get_dataset_table_masks_sample_rows_for_matching_table(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.dataset_tables as dataset_tables
+    import app.api.v1.datasets.tables as dataset_tables
 
     dataset_id = uuid4()
     document_id = uuid4()
@@ -653,7 +652,7 @@ def test_get_dataset_table_masks_sample_rows_for_matching_table(
 def test_ask_dataset_table_masks_rows_before_answer_and_hides_sql(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.dataset_tables as dataset_tables
+    import app.api.v1.datasets.tables as dataset_tables
 
     dataset_id = uuid4()
     document_id = uuid4()
@@ -679,7 +678,6 @@ def test_ask_dataset_table_masks_rows_before_answer_and_hides_sql(
     )
     answer_inputs: list[dict[str, object]] = []
 
-    monkeypatch.setattr(dataset_tables, "tag_enabled", lambda: True, raising=True)
     monkeypatch.setattr(dataset_tables.settings, "LLM_API_KEY", "key", raising=False)
     monkeypatch.setattr(dataset_tables.settings, "TABLE_LLM_ALLOW_RESULT_EGRESS", True, raising=False)
     monkeypatch.setattr(
@@ -761,7 +759,7 @@ def test_ask_dataset_table_masks_rows_before_answer_and_hides_sql(
 def test_lotus_sem_filter_dataset_table_fallback_runs_nl2sql_and_masks_rows(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.dataset_tables as dataset_tables
+    import app.api.v1.datasets.tables as dataset_tables
 
     dataset_id = uuid4()
     document_id = uuid4()
@@ -780,7 +778,6 @@ def test_lotus_sem_filter_dataset_table_fallback_runs_nl2sql_and_masks_rows(
     monkeypatch.setattr(
         dataset_tables, "get_lotus_availability", lambda: SimpleNamespace(ok=False, reason="missing"), raising=True
     )
-    monkeypatch.setattr(dataset_tables, "tag_enabled", lambda: True, raising=True)
     monkeypatch.setattr(
         dataset_tables.dataset_service,
         "get_dataset",

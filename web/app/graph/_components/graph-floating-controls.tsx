@@ -67,7 +67,7 @@ export function GraphFloatingControls({
   onExportSvgCopy,
 }: GraphFloatingControlsProps) {
   return (
-    <div className={styles.controls} aria-label="图谱画布工具">
+    <div className={styles.controls} role="group" aria-label="图谱画布工具">
       <Button variant="ghost" size="icon" onClick={onZoomOut} aria-label="缩小">
         <ZoomOut />
       </Button>
@@ -102,7 +102,7 @@ export function GraphFloatingControls({
           </button>
           <button type="button" onClick={onStartExplainMode} aria-pressed={isExplainMode}>
             <PlayCircle />
-            推理演示
+            路径回放
           </button>
           <button type="button" onClick={onToggleFullscreen}>
             {isFullscreen ? <Minimize2 /> : <Maximize2 />}

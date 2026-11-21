@@ -1,417 +1,214 @@
-# Ragvia Backend 目录结构
+# Ragvia 后端目录结构
 
-## 概览
+## 目录与职责
 
-```
+```text
 app/
-├── api/              # API 路由层
-├── core/             # 核心配置
-├── connectors/       # 数据库连通性、目录与行快照、持久化及画像隐私
-├── models/           # 数据库模型
-├── api/schemas/      # API 请求/响应 Schema
-├── api/dependencies.py # FastAPI 请求依赖
-├── api/middleware/    # 请求上下文、响应头、限流与请求体限制
-├── api/utils/         # HTTP 输入、响应头、文件与 URL 边界
-├── parsing/          # 文档解析模块
-├── governance/       # 数据治理（Markdown 清洗/规则）
-├── storage/          # 存储模块
-├── rag/              # RAG 引擎模块
-│   └── kg/           # 知识图谱模块（事件/实体/关系）
-├── evaluation/       # 评估模块
-├── services/         # 业务服务
-└── main.py           # 应用入口
+├── api/                  # HTTP 请求、响应和路由装配
+│   ├── schemas/          # 按领域公开的 Pydantic 契约
+│   ├── v1/               # 按业务领域组织的路由普通包
+│   ├── dependencies.py   # 本地账号与工作区请求依赖
+│   ├── middleware/       # 请求上下文、请求体、限流、响应头
+│   └── utils/            # 文件/URL/表单输入及 HTTP 错误转换
+├── infrastructure/       # 应用配置与共同基础设施
+├── models/               # SQLAlchemy 数据库实体及显式注册
+├── types/                # 内部共享数据和元数据契约
+├── parsing/              # 文档解析、推理、增强和产物统计
+│   ├── parsers/          # 文件格式解析及 PDF 布局算法
+│   ├── models/           # OCR、版面、表格等推理实现
+│   ├── enrich/           # 图片描述、表格组装及文档增强
+│   ├── utils/            # 编码、标签、分词、安全解包
+│   └── resources/        # 模型、词典、NLTK 与样例资源
+├── query/                # 入库/查询一致的归一化、扩展与路由规则
+├── rag/                  # 检索、模型调用和生成
+│   ├── retrieval/        # 召回、融合、上下文、引用与缓存
+│   ├── llm/              # 模型适配、提示词和响应解析
+│   ├── safety/           # 输入/输出策略、声明验证、答案质量
+│   ├── kg/               # 知识图谱抽取、索引与搜索
+│   ├── tracing/          # trace 数据契约、指标及可选客户端
+│   ├── chunking/         # 切块策略
+│   ├── preprocessing/    # 解析后的文本治理和清理
+│   ├── evaluation/       # 检索/生成评估算法
+│   ├── engine.py         # RAG 引擎装配
+│   └── engine_support/   # 引擎的检索与生成执行步骤
+├── services/             # 按业务领域组织的操作与资源所有者
+├── storage/              # 向量、BM25、对象存储客户端
+├── connectors/           # 数据库连通性、目录读取与画像隐私
+├── tasks/                # 后台队列、worker 与作业入口
+└── main.py               # 应用启动与 HTTP 装配
 ```
 
-## API 工具
+`models` 的含义取决于所属领域：顶层是数据库映射，`parsing/models` 是推理实现。Pydantic 类是否属于 API schema，要看它是否描述 HTTP 契约；内部文档对象不能因为也继承 BaseModel 就混入数据库目录。
 
-`app/api/` 与 `app/api/utils/` 使用普通包。utils 保留五个实际职责模块，包入口显式发布公共文件与响应工具，URL 与管线输入通过具名子模块使用；普通文件工具导入不会加载应用配置或管线服务。
+## API v1 领域包
 
-```python
-from app.api.utils import file_response_headers, save_upload_file
-from app.api.utils.document_pipeline_input import to_pipeline_options
-from app.api.utils.url_ingest import download_url_to_path
-```
-
-| 模块 | 职责 |
-| --- | --- |
-| document_pipeline_input.py | 管线 JSON、覆盖参数与 HTTP 输入错误转换 |
-| file_io.py | 上传保存、文件名／来源路径、哈希与未完成文件清理 |
-| url_ingest.py | URL／DNS 校验、Host／SNI 固定、重定向及有界下载 |
-| response_headers.py | 安全文件响应头与 Content-Disposition |
-| http_exception_responses.py | 被多个路由共用的错误响应说明 |
-
-## 数据库连接器
-
-`app/connectors/` 保留四个职责模块，直接从定义模块导入；沿用项目已有的命名空间包方式，不设置注册副作用或聚合入口。
+`app/api/v1` 根目录只保留 `__init__.py`，其中 `get_router()` 负责按既有顺序装配领域路由。实际文件归入 11 个普通包：
 
 ```text
-connectors/
-├── connectivity.py    # 异步连接探针与权限警告，驱动按需加载
-├── catalog.py         # 目录 SQL、表列读取、同步与有界行快照
-├── store.py           # 持有 Session 的 SQLAlchemy 存储，不提交事务
-└── profile_privacy.py # 存储和读取共用的画像隐私过滤
+v1/
+├── __init__.py       # 缓存的统一路由装配入口
+├── identity/         # 账号、组、RBAC、SCIM
+├── conversations/    # 聊天、历史、记忆、反馈、提示词
+├── documents/        # 文档、上传、分段、预览、版本、入库运行
+├── datasets/         # 数据集、预检、画像、表与报告
+├── connectors/       # 来源目录、配置、验证、运行、调度
+├── pipelines/        # 解析工作台、管线、治理与切块预设
+├── evaluation/       # 评估、证据工作台与证据胶囊
+├── integrations/     # Dify、外部会话及专属适配
+├── retrieval/        # 检索与提示词预览、配置、解释、可视化
+├── system/           # 健康、元信息、指标、设置、审计与用量
+└── knowledge_graph/  # 知识图谱操作与网络分析
 ```
 
-## 模块说明
+文档、连接器和会话的 `routes.py` 保留实际子路由聚合；叶模块按具体能力命名，例如 `documents/upload.py`、`datasets/precheck.py`、`connectors/schedules.py`。其余领域入口不增加聚合或转发。领域目录与 HTTP URL 前缀独立维护，本次归类保留所有原有路径、标签和注册顺序；系统设置仍读写仓库根的 `.env`。
 
-### 1. api/ - API 路由层
+## 数据库实体、HTTP schema 与内部类型
 
-FastAPI 路由定义，处理 HTTP 请求。
+| 用途 | 位置 | 例子 |
+| --- | --- | --- |
+| 数据库表、列、关系 | `app/models` | `documents/records.py`、`connectors/runs.py`、`knowledge_graph/entities.py` |
+| HTTP 请求、响应和约束 | `app/api/schemas` | `documents/document.py`、`datasets/dataset.py`、`knowledge_graph/graph.py` |
+| 供响应读取 ORM 属性的 Pydantic 基类 | `app/api/schemas/base.py` | `OrmModel`、`OrmTimestampModel` |
+| 内部 RAG 文档与转换协议 | `app/types/rag_document.py` | `Document`、`ChildDocument` |
+| 内部文档管线选项 | `app/types/pipeline_options.py` | `PipelineOptions`、`PipelineEffective` |
+| 共用元数据格式及规范化 | `app/types/document_metadata.py`、`indexing.py` | 文档结构、图片 ID、索引视图键 |
+| 解析统计及其返回记录 | `app/parsing/artifact_stats.py` | `DocumentAnalytics`、`compute_document_analytics` |
 
-```python
-from app.api.v1 import get_router
-
-app.include_router(get_router(), prefix="/api/v1")
-```
-
-**文件：**
-- `v1/chat.py` - 对话接口
-- `v1/documents.py` - 文档管理
-- `v1/datasets.py` - 数据集管理
-- `v1/pipeline.py` - 解析流水线
-- `v1/evaluations.py` - 评估接口
-- `v1/__init__.py` - 路由聚合（包含 `/kg/*`）
-
-### 2. core/ - 核心配置
-
-应用核心配置和基础设施。
-
-```python
-from app.core.config import settings
-from app.core.database import get_db
-```
-
-**文件：**
-- `config.py` - 配置管理（Settings）
-- `database.py` - 数据库连接
-- `migrations.py` - 运行时迁移
-
-### 3. models/ - 数据库模型
-
-SQLAlchemy ORM 模型定义。
-
-```python
-from app.models.document import Document, DocumentChunk
-```
-
-**文件：**
-- `document.py` - 文档模型
-- `chat.py` - 对话模型
-- `dataset.py` - 数据集模型
-- `evaluation.py` - 评估模型
-
-### 4. api/schemas/ - API Schema
-
-API 请求/响应的数据验证模型。
-
-Schema 按业务领域组织为普通包，每个领域通过 __init__.py 显式导出已承诺的模型、类型和常量，并用 __all__ 标记公开范围。域外消费者依赖领域入口，域内继续依赖定义模块；共享 ORM 基类由 base.py 持有，schemas 根入口不聚合全部领域。
-
-```text
-schemas/
-├── __init__.py          # 领域包容器，不全量导出业务模型
-├── base.py              # 共享 ORM 响应基类
-├── identity/            # 账号、成员权限、组和字段访问策略
-├── conversations/       # 聊天、检索、反馈及提示词/RAG 模板
-├── documents/           # 文档、入库、目录、健康状态、问答和时间线
-├── datasets/            # 数据集、分类、统计、预检、数据库目录和表格
-├── sources/             # 连接器、来源 ACL、入库策略和运行清单
-├── pipelines/           # 解析预览、治理规则、行业规则和切块预设
-├── evaluation/          # 会话评估、回归、证据、引用治理、诊断和报告
-├── integrations/        # Dify 与外部会话协议
-└── system/              # 审计、设置、健康检查和元信息
-```
-
-九个领域的包入口只发布当前有域外使用方的 418 个名称，实际类和校验器仍定义在原模块中，没有转发函数或动态查找。数据集健康模型与统计摘要同归 datasets/profile.py，证据漂移和修复同归 evaluation/references.py。
+API schema 的十个领域是 `identity`、`conversations`、`documents`、`datasets`、`sources`、`pipelines`、`evaluation`、`integrations`、`system`、`knowledge_graph`。域外使用公开包，域内直接依赖定义模块：
 
 ```python
 from app.api.schemas.documents import DocumentDetail, UrlUploadRequest
-from app.api.schemas.identity import LoginRequest
+from app.api.schemas.knowledge_graph import KGSnapshotDiffRequest
+from app.models.documents.records import Document, DocumentChunk
 ```
 
-普通领域入口会加载该领域公开契约所需的模型依赖；conversations 与 evaluation 可经 datasets 初始化已有 ORM 注册和 SQLAlchemy engine，构造时不建立连接。文件与响应公共工具保持配置隔离，包导入不启动路由、任务或网络请求。
+应用、Alembic 和拥有数据库查询的命令/worker 在自己的启动边界导入 `app.models.registry`，完整注册表和字符串关系。模型包入口只保留说明，消费实体不需要经过第二套根导出清单。
 
-### 5. api/dependencies.py - FastAPI 依赖
+`models` 根层只保留 `__init__.py`、`registry.py` 与跨领域的 `audit_log.py`。其余按实际领域组织：
 
-依赖注入函数（鉴权、租户等）。
+```text
+models/
+├── identity/          # accounts、workspaces（租户/成员/成员组）
+├── conversations/     # chat（会话/消息/摘要/反馈）
+├── datasets/          # records、access、scans、catalog
+├── documents/         # records、access、ingestion、indexing
+├── connectors/        # configs、runs，生命周期分别维护
+├── pipelines/         # profiles（切块预设与治理配置）
+├── templates/         # versions（提示词/RAG配置版本与A/B记录）
+├── evaluation/        # results、evidence
+└── knowledge_graph/   # entities（实体、关系、事件与本体）
+```
+
+实际实体模块从27份合并为19份，53张表和类分别保留。文档与索引通道、会话与摘要等同一聚合集中维护；ACL、连接器配置/运行与目录画像等独立职责继续分开。领域包标记不注册或转发全部模型。
 
 ```python
-from app.api.dependencies import get_current_account_id, get_tenant_id
+from app.models.documents.records import Document, DocumentChunk
+from app.models.documents.access import DocumentPermission
+from app.models.datasets.access import DatasetPermissionEnum
 ```
 
-请求依赖集中在 `app.api.dependencies`；原依赖目录及其 `auth.py`、`tenant.py` 和 `logging.py` 已删除。HTTP 中间件按实际协议组织：
+`DatasetPermissionEnum` 的唯一定义在权限模块，数据集声明直接依赖该类型。完整字符串关系仍由进程入口的registry补齐；单独导入一个叶模块不表示全部mapper已可配置。新结构没有更改表、字段、索引或默认值，也不需要数据库迁移。
 
-- `middleware/request_context.py` - 请求 ID、日志上下文和耗时
-- `middleware/response_headers.py` - 安全响应头和服务指纹清理
-- `middleware/body_size_limit.py` - 请求体大小限制
-- `middleware/rate_limit.py` - API 与聊天限流
+## Infrastructure 的边界
 
-### 6. parsing/ - 文档解析模块 📦
+`infrastructure` 直接表达应用配置和共同基础设施，按用户要求替代原来的 `core` 包名。九个根模块和七个职责包保持，导入从 `app.infrastructure` 下的实际定义模块使用。
 
-负责文档解析、质量评估、文本切块（原始 Markdown 生产）。
-
-### 6.5 governance/ - 数据治理 📦
-
-负责将 Markdown 做“清洗/规范化”（正则规则、空白规范化等），为人工调整与后续分块做准备。
-
-**开关：** `GOVERNANCE_ENABLED` 控制治理流程是否启用（默认 false）。
-
-**预览 API：**
-- `POST /api/v1/pipeline/clean-preview`
-- `GET  /api/v1/pipeline/clean-rules`
-- `POST /api/v1/pipeline/llm-clean-preview`（大模型清洗：支持 `prompt_template_id/template_key/ab_experiment_key` 选择 PromptTemplate）
-
-**关键词 API：**
-- `POST /api/v1/pipeline/extract-keywords`（`provider=auto/jieba/jieba_tfidf/jieba_textrank/hanlp/simple`；HanLP 可用 `HANLP_TOKENIZER_MODEL` 指定 tokenizer 模型）
-  - 停用词：`app/rag/preprocessing/stopwords.py`
-
-#### 使用示例
-
-```python
-# 质量评估
-from app.parsing.quality.scorer import score_pdf_quality
-quality = score_pdf_quality(pdf_path, sample_pages=3, use_ocr_validation=True)
-
-# 解析文档
-from app.parsing.factory import parser_factory
-documents, backend = parser_factory.parse(file_path, parser_backend="auto")
-
-# 文本切块
-from app.parsing.chunking.factory import chunker_factory
-chunker = chunker_factory.get_chunker("langchain_recursive")
-chunks = chunker.split_documents(documents)
-
-# 分层切块
-from app.parsing.chunking.hierarchical import hierarchical_chunk_markdown
-result = hierarchical_chunk_markdown(markdown_text)
-
-# 完整流程
-from app.parsing.processors.support.process_document_flow import process_document
-await process_document(file_path, doc_id, tenant_id)
+```text
+infrastructure/
+├── config.py、config_validation.py、env.py  # 稳定的配置入口与校验
+├── exceptions.py、hashing.py、metadata_filters.py
+├── model_policy.py、tokens.py
+├── security/         # 角色、密码、令牌、密钥、PII、安全随机数
+├── database/         # 连接、Session、ORM Base 与运行时迁移
+├── http/             # 连接池、代理环境、OpenAI 协议地址
+├── observability/    # 日志、指标、遥测、探针与构建信息
+├── redis/            # 延迟客户端与所有者安全的租约
+├── runtime/          # 同步/异步桥接、可选依赖、上下文与限流
+└── regex/            # 规则验证和有界执行
 ```
 
-**可选 pipeline 参数（每文档覆盖默认配置）：**
-- `governance_enabled` / `chunk_size` / `chunk_overlap`
-- `chunk_vector_enabled` / `bm25_index_enabled`
-- `kg_enabled` / `event_vector_enabled` / `entity_vector_enabled`
+普通包入口只说明职责，不聚合全部基础设施；调用方直接使用具体模块，例如 `app.infrastructure.database.connection` 和 `app.infrastructure.http.client`。这样导入角色或配置默认地址不会初始化数据库、HTTP 连接池或可选模型。
 
-**子模块：**
-- `quality/` - PDF 质量评估、OCR 验证
-- `parsers/` - 各类解析器实现
-- `chunking/` - 切块策略
-- `processors/` - 处理流程编排
-- `utils/` - 工具函数（ZIP 处理等）
+| 职责 | 模块 |
+| --- | --- |
+| 配置、环境和启动校验 | `config.py`、`config_validation.py`、`env.py` |
+| 数据库连接与运行时迁移 | `database/connection.py`、`database/migrations.py` |
+| 密码、令牌签发、未验证的第三方令牌诊断 | `security/passwords.py`、`security/jwt_tokens.py`、`security/jwt_inspect.py` |
+| 角色、密钥、PII 与安全随机数 | `security/roles.py`、`security/secrets.py`、`security/pii.py`、`security/random.py` |
+| HTTP 连接池、代理环境与协议地址 | `http/client.py`、`http/environment.py`、`http/openai.py` |
+| 请求日志、指标和遥测 | `observability/logging.py`、`metrics.py`、`opentelemetry.py`、`sentry.py` |
+| 健康探针与构建信息 | `observability/health.py`、`observability/build_info.py` |
+| Redis 客户端与租约 | `redis/client.py`、`redis/leases.py` |
+| 执行桥接、依赖加载、请求/流上下文及限流 | `runtime/async_bridge.py`、`dependencies.py`、`request_state.py`、`stream_events.py`、`rate_limit.py` |
+| 共同数据操作 | `hashing.py`、`metadata_filters.py`、`tokens.py` |
+| 正则规则验证与有界执行 | `regex/validation.py`、`regex/execution.py` |
 
-### 7. storage/ - 存储模块 📦
+业务代码直接使用标准库 `logging.getLogger`。日志配置和日志字段上下文由 `infrastructure/observability/logging.py` 持有；迁移前的日志分类作为稳定遥测标识保留。API 限流中间件与 `infrastructure/runtime/rate_limit.py` 的计数算法职责不同。JWT 签发和未验证诊断、有界正则执行和纯规则校验、Redis 客户端和租约操作也保留各自边界。
 
-负责向量存储、对象存储、混合检索。
+原 `constants.py` 不再集中无关协议：角色归 `security/roles.py`，Embedding 提供方归 `model_policy.py`，Milvus 索引参数归唯一使用它的 `storage/vector/milvus.py`，默认 OpenAI 地址归 `http/openai.py`，共用日志消息归日志模块。八组无生产调用的常量类退出；活跃的五个对象保持原定义和值。
 
-#### 使用示例
+## RAG 的边界
 
-```python
-# 向量存储
-from app.storage.vector.factory import get_vector_store
-vector_store = get_vector_store()
-vector_ids = vector_store.add_documents(docs, doc_id, tenant_id)
+RAG 领域不再维护第二套 `core`，也不通过它转发通用日志、HTTP 环境或异常。
 
-# 对象存储（MinIO）
-from app.storage.object.minio import minio_service
-img_id = minio_service.upload_image(image_data, tenant_id, dataset_id, document_id, chunk_key)
-url = minio_service.get_image_url(img_id)
+| 能力 | 所有者 |
+| --- | --- |
+| 有状态混合检索器 | `rag/retrieval/hybrid/retriever.py` |
+| 检索模式与 profile 配置 | `rag/retrieval/profiles.py` |
+| 上下文去噪、摘取、排序和预算 | `rag/retrieval/context_preparation.py` |
+| 模型上下文压缩 | `rag/llm/context_compression.py` |
+| 引用构造、证据摘取与缺口 | `rag/retrieval/citations.py`、`evidence_text.py`、`evidence_gap.py` |
+| 声明校验与答案质量 | `rag/safety/claim_verification.py`、`answer_quality.py` |
+| JSON/代码围栏解析、拒答和追问 | `rag/llm/response_parsing.py` |
+| 提示词 bundle、历史格式化 | `rag/llm/prompts/templates.py` |
+| trace 契约及 SLI 指标 | `rag/tracing/schemas.py`、`metrics.py` |
 
-# 混合检索
-from app.storage.search.hybrid_retriever import hybrid_retriever
-docs = hybrid_retriever.retrieve(query, doc_ids, tenant_id, top_k=5)
-```
+原文件解析/分块代码已吸收进上述 RAG 所有者：`rag/chunking/factory.py` 的 `chunk_file` 是唯一文件入口，四种格式策略位于 `strategies/naive.py`、`book.py`、`laws.py`、`email.py`；章节层级、文本/图片合并与切块记录分别由 `utils/section_structure.py`、`section_merging.py`、`chunk_records.py` 持有。四份文档记录构造和四份相同默认配置各只留一个维护点。
 
-**子模块：**
-- `vector/` - 向量数据库（Milvus、Qdrant、pgvector）与进程内 memory 测试索引
-- `object/` - 对象存储（MinIO）
-- `search/` - 混合检索（BM25 + 向量）
+`integrated_naive`、`integrated_book`、`integrated_laws`、`integrated_email` 继续作为已有配置值；它们接收原始文件，与预解析文本的 `book_structured`、`laws_structured`、`email_thread` 等策略保持不同输入职责。原 bridge、包聚合、Token 转出、空文件工具和未用常量退出，不保留第二套集成包。
 
-### 8. rag/ - RAG 引擎模块 📦
+文件解析的可选视觉描述由 `rag/llm/vision_client.py` 持有实际同步客户端；它与 VisionReader 共用图片 MIME/data URL 构造，独立的异步传输/URL/响应策略保持。来源与维护位置分别记录：吸收的 InfiniFlow 算法保留 Apache 头与 NOTICE，进入项目 RAG 检查。
 
-负责检索增强生成核心逻辑。
+词典扩展与别名替换拥有不同匹配规则，在 `app/query/expand.py` 保留明确入口。`query/normalize.py` 返回带规则记录的归一化对象；`rag/preprocessing/normalization.py` 的 `normalize_query_text` 返回清理后的字符串，两者不互换。
 
-#### 使用示例
+知识图谱的数据库表属于 `models`，HTTP 请求与响应属于 `api/schemas/knowledge_graph`，路由属于 `api/v1/knowledge_graph`；`rag/kg` 保留实际抽取、索引和搜索。checkpoint 的恢复用途与 LangGraph store 的装配契约分别保留。
 
-```python
-# RAG 引擎
-from app.rag.engine import get_rag_engine
-rag_engine = get_rag_engine()
-async for event in rag_engine.stream_chat(query, document_ids=document_ids, tenant_id=tenant_id):
-    print(event)
+## 服务领域
 
-# LangGraph 编排
-from app.rag.pipelines.langgraph import run_rag_graph
-result = run_rag_graph(question, history, document_ids, tenant_id=tenant_id)
+领域入口是普通包，不统一导出所有函数。域名已经说明业务，叶模块使用具体职责，例如 `services.documents.ingestion` 和 `services.chat.stream_orchestrator`。
 
-# Agentic RAG
-from app.rag.agents.rag_agent import get_agentic_runner
-runner = get_agentic_runner(engine=rag_engine)
-async for event in runner.stream(question=query, document_ids=document_ids, tenant_id=tenant_id):
-    print(event)
-```
+| 领域 | 职责 |
+| --- | --- |
+| `chat` | 会话准备、执行、流交付、记忆和持久化 |
+| `documents` | 入库、读取范围、权限、生命周期、预览和版本 |
+| `datasets` | 数据集管理、预检、画像和扫描结果 |
+| `connectors` | 来源配置、运行、调度、对账与执行 |
+| `tables` | 表存储、SQL 计划、表问答和字段安全 |
+| `indexing` | 索引写入、重建与一致性审计 |
+| `chunking` | 统计、质量评估与切块预设 |
+| `parsing` | 远端解析适配、缓存和字段提取 |
+| `pipelines` | 文档管线配置、治理、来源和入库规则 |
+| `retrieval` | 检索请求、范围、默认值、模板与语义缓存 |
+| `identity` | 账号、组、RBAC、配额和登录 |
+| `evaluation` | 回归运行、用例、引用校验及在线评估 |
+| `evidence` | 证据套件、覆盖率、漂移及修复 |
+| `dify` | Dify 协议适配、策略、排序和记录整形 |
+| `embeddings` | 向量空间迁移、漂移与集合相似度 |
+| `prompts` | 用户提示词选择与默认值 |
+| `reports` | 报告聚合与 HTML 渲染 |
+| `retention` | 生命周期、保留策略和 RTBF |
+| `observability` | 日志、指标、审计、诊断与运维报告 |
+| `runtime` | 任务交接、并发预算、就绪缓存与模型预热 |
+| `security` | 共用路径约束和输出脱敏 |
 
-**子模块：**
-- `engine.py` - 核心 RAG 引擎
-- `pipelines/langgraph.py` - LangGraph 编排
-- `agents/rag_agent.py` - Agentic RAG 执行
-- `tools/` - RAG 工具函数
-- `reranker/` - 重排序策略
+`connectors` 顶层目录持有底层数据库协议，`services/connectors` 持有业务运行和事务；`parsing` 顶层持有算法，`services/parsing` 持有远端部署和缓存适配。这些是不同资源边界。
 
-### 9. evaluation/ - 评估模块 📦
+清理文档的DOCX下载由 `services/documents/docx_export.py` 持有，API直接传入Markdown和文件名标题。格式生成、首H1去重由一个服务函数顺序完成；原 `parsing/output` 只服务该下载能力，其块转换、字节渲染和无消费包装已收敛。
 
-负责 RAG 系统评估。
+## 验证与维护
 
-#### 使用示例
+命名和目录迁移同时更新定义、调用方、CLI、worker、动态工厂、CI 内嵌脚本和文档。普通 Python 的 Ruff/语法检查不能替代冷导入、OpenAPI、ORM 注册和资源路径核对。
 
-```python
-from app.rag.evaluation.ragas import evaluate_rag_with_ragas
+本轮不新增、修改或运行 Python 测试；真实服务和模型运行与静态契约验证分别登记。当前文件结论见 [app 清单](maintenance/style-unification/app-review.csv)，命名迁移和审核层级见 [归属清单](maintenance/style-unification/layout-review.csv)，验证结果见 [验证记录](maintenance/style-unification/verification.md)。
 
-result = await evaluate_rag_with_ragas(
-    questions=questions,
-    answers=answers,
-    contexts=contexts,
-    ground_truths=ground_truths
-)
-```
-
-### 10. services/ - 业务服务
-
-高层业务逻辑服务。
-
-```python
-from app.services.dataset_service import DatasetService
-from app.services.document_access import filter_allowed_document_ids
-from app.services.prompt_resolver import resolve_prompt_template
-```
-
-**保留的服务：**
-- `dataset_service.py` - 数据集管理
-- `document_access.py` - 文档权限
-- `prompt_resolver.py` - 提示词解析/选择
-- `metrics_logger.py` - 指标日志
-- `mineru_service.py` - MinerU API 客户端
-- `indexer.py` - 统一索引器（chunk/event 入库、重建、删除）
-- `pipeline_config.py` - 文档级 pipeline 配置解析/合并
-
-### 11. rag/kg/ - 知识图谱模块
-
-知识图谱（KG）功能：从文档 chunks 抽取事件/实体，并提供图谱检索能力。
-
-## 依赖关系
-
-```
-┌─────────────────────────────────────────────┐
-│           api/ (FastAPI 路由)               │
-└─────────────────┬───────────────────────────┘
-                  │
-┌─────────────────▼───────────────────────────┐
-│        services/ (业务服务层)               │
-└─────────────────┬───────────────────────────┘
-                  │
-        ┌─────────┼─────────┬─────────┐
-        │         │         │         │
-┌───────▼───┐ ┌──▼────┐ ┌──▼────┐ ┌─▼──────┐
-│ parsing/  │ │storage│ │  rag/ │ │evaluat │
-│   解析    │ │ 存储  │ │  引擎 │ │  评估  │
-└───────┬───┘ └──┬────┘ └──┬────┘ └─┬──────┘
-        │        │         │         │
-        └────────┴─────────┴─────────┘
-                  │
-┌─────────────────▼───────────────────────────┐
-│   models/ + api/schemas/ (数据层)           │
-└─────────────────┬───────────────────────────┘
-                  │
-┌─────────────────▼───────────────────────────┐
-│           core/ (核心配置)                  │
-└─────────────────────────────────────────────┘
-```
-
-## 导入路径对照表
-
-| 旧路径 | 新路径 |
-|--------|--------|
-| `app.services.pdf_quality` | `app.parsing.quality.scorer` |
-| `app.services.rapid_ocr_service` | `app.parsing.quality.ocr_validator` |
-| `app.services.parsers` | `app.parsing.factory` |
-| `app.services.chunkers` | `app.parsing.chunking.factory` |
-| `app.services.hierarchical_chunking` | `app.parsing.chunking.hierarchical` |
-| `app.services.document_processor` | `app.parsing.processors.support.process_document_flow`（入口）；`app.parsing.processors.processor`（持久化与图像助手） |
-| `app.services.document_parser_service` | `app.parsing.processors.parser_service` |
-| `app.services.zip_image_processor` | `app.parsing.utils.zip_processor` |
-| `app.services.vector_router` | `app.storage.vector.factory` |
-| `app.services.milvus_store` | `app.storage.vector.milvus` |
-| `app.services.minio_service` | `app.storage.object.minio` |
-| `app.services.hybrid_retriever` | `app.storage.search.hybrid_retriever` |
-| `app.services.rag_engine` | `app.rag.engine` |
-| `app.services.rag_graph` | `app.rag.pipelines.langgraph` |
-| `app.services.rag_agent` | `app.rag.agents.rag_agent` |
-| `app.services.rag_tools` | `app.rag.tools` |
-| `app.services.llm_reranker` | `app.rag.reranking.llm_reranker` |
-| `app.services.ragas_evaluator` | `app.rag.evaluation.ragas` |
-
-## 设计原则
-
-### 1. 单一职责
-
-每个模块只负责一类功能：
-- `parsing/` 只管解析
-- `storage/` 只管存储
-- `rag/` 只管检索生成和评估
-
-### 2. 低耦合
-
-模块间通过清晰的接口交互，避免循环依赖。
-
-### 3. 高内聚
-
-相关功能集中在同一模块内，便于维护。
-
-### 4. 易扩展
-
-新功能有明确的归属位置。
-
-## 开发指南
-
-### 添加新解析器
-
-在 `parsing/parsers/` 下创建新文件，然后在 `parsing/factory.py` 中注册。
-
-### 添加新切块策略
-
-在 `parsing/chunking/` 下实现，然后在 `factory.py` 中注册。
-
-### 添加新向量数据库
-
-在 `storage/vector/` 下实现，遵循 `router.py` 的接口。
-
-### 添加新 RAG 策略
-
-在 `rag/` 下扩展 `engine.py` 或添加新的编排文件。
-
-### 添加新 API 路由
-
-在 `api/v1/` 下创建路由文件，然后在 `api/v1/__init__.py` 中 `include_router(...)` 注册。
-
-**认证约定（务必遵守）**：后端没有全局强制认证中间件——认证由**每个路由显式声明依赖**实现。新增任何路由都必须带认证依赖：
-
-- 函数级：访问租户数据时同时声明 `tenant_id: Annotated[UUID, Depends(get_tenant_id)]` 和 `account_id: Annotated[str, Depends(get_current_account_id)]`；只需确认身份、不涉及租户数据时声明 `Depends(get_current_account_id)`；
-- 路由级：`APIRouter(dependencies=[Depends(get_current_account_id)])`（整组路由统一鉴权，适合一组无租户数据但仍需认证的端点）。
-
-即使是**纯计算、不访问数据库**的端点（如图算法工具）也必须认证，否则会成为未认证的计算/DoS 面；同时对客户端提供的列表/数组输入用 `Field(..., max_length=...)` 设上限，避免无界输入导致 CPU/内存耗尽。参考 `api/v1/network_analysis.py`（用路由级 `Depends(get_current_account_id)` + `edges` 上限）。
-
-## 测试
-
-按模块运行测试：
-
-```bash
-pytest tests/parsing/
-pytest tests/storage/
-pytest tests/rag/
-pytest tests/evaluation/
-```
-
-## 迁移完成 ✅
-
-所有文件已按功能域重新组织，导入路径已更新，结构更清晰！
+详细规则见 [模块职责与调用约定](development/module_boundaries.md)。

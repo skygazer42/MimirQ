@@ -56,7 +56,7 @@ def extract_ts_paths() -> dict[str, list[str]]:
                 p = m.group("p")
                 if "${" in p or "`" in p:
                     continue
-                found.add(re.sub(r"\$\{[^}]+\}", "{id}", p))
+                found.add(p)
         if found:
             out[fp.name] = sorted(found)
     return out
@@ -72,12 +72,7 @@ def app_path_to_route(file_path: Path) -> str:
             continue
         if seg == "page.tsx" or seg == "layout.tsx":
             continue
-        if seg.startswith("["):
-            parts.append(f"[{seg.strip('[]')}]")
-        else:
-            parts.append(seg)
-    if not parts:
-        return "/"
+        parts.append(seg)
     return "/" + "/".join(parts)
 
 

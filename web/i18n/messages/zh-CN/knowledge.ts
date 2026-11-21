@@ -70,6 +70,9 @@ const knowledgeMessages = {
     },
     toasts: {
       batchDeleteFailed: '批量删除失败',
+      batchDeleteSuccess: '已删除 {count} 份文档',
+      batchDeletePartial: '已删除 {deleted} 份文档，{denied} 份没有删除权限。',
+      batchNotFound: '{count} 份文档未找到，未执行操作。',
       batchLifecycleFailed: '批量操作失败',
       batchLifecycle: {
         disable: '已禁用 {count} 份文档',
@@ -80,7 +83,10 @@ const knowledgeMessages = {
       reingestLimitExceeded: '一次最多重新入库 50 份文档',
       reingestQueued: '已触发重新入库 {count} 份文档',
       reingestFailed: '批量重新入库失败',
-      uploadPartial: '已上传 {successful}/{total} 个文件，失败 {failed} 个（可重试）',
+      uploadPartial: '已上传 {successful} 个文件，失败 {failed} 个',
+      uploadUnconfirmed: '{count} 个文件结果未确认',
+      uploadFailureDetails: '查看失败文件',
+      dismissUploadResult: '关闭上传结果',
       uploadSuccess: '已上传 {count} 个文件',
       uploadFailed: '上传失败',
     },
@@ -147,6 +153,7 @@ const knowledgeMessages = {
     },
     toasts: {
       deleteSuccess: '已删除文档',
+      refreshFailed: '刷新文档列表失败',
       copyUnsupported: '复制失败：浏览器不支持 Clipboard API',
       copyFailed: '复制失败',
       copySourcePath: '已复制 Source Path',
@@ -181,8 +188,8 @@ const knowledgeMessages = {
     empty: {
       filtered: {
         title: '未找到匹配的文档',
-        description: '尝试清空筛选条件，重新查看范围内的全部文档。',
-        refinedDescription: '尝试调整筛选条件，或清空筛选后重新查看全部文档。',
+        description: '清空筛选可查看当前范围内的全部文档。',
+        refinedDescription: '换个关键词或清空筛选。',
       },
       emptyDataset: {
         title: '该数据集暂无文档',
@@ -193,8 +200,8 @@ const knowledgeMessages = {
       },
       blank: {
         title: '还没有文档',
-        description: '上传文档，完成解析后即可检索。',
-        formats: '支持 PDF, TXT, Markdown, Excel, Word 等常见格式。',
+        description: '文档完成索引后可检索。',
+        formats: '支持 PDF、TXT、Markdown、Excel、Word 等格式。',
       },
     },
     search: {
@@ -293,7 +300,7 @@ const knowledgeMessages = {
     connectorRuns: {
       emptyValue: '—',
       title: '任务中心',
-      description: '用于批量 URL 导入/同步；仅展示你有写权限的数据集的运行记录。',
+      description: '查看批量网址导入和同步记录。只显示有写权限的数据集。',
       liveBadge: '实时',
       summary: {
         all: '全部',
@@ -327,7 +334,7 @@ const knowledgeMessages = {
       lastRefreshLabel: '上次刷新',
       loading: '正在加载导入任务...',
       zeroState: {
-        description: '暂无导入任务。可通过顶部“导入/新增”创建批量导入/同步任务。',
+        description: '暂无导入任务。点击「导入/新增」可创建任务。',
       },
       empty: {
         title: '暂无运行记录',

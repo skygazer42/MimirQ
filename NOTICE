@@ -15,9 +15,13 @@ The following components are vendored from or derived from the RAGFlow project
 by The InfiniFlow Authors (https://github.com/infiniflow/ragflow), licensed
 under the Apache License, Version 2.0:
 
-  - app/deepdoc/                         (document vision, OCR, layout, parsing)
-  - app/third_party/integrated_pipeline/ (naive/book/laws/email chunkers and
-                                          supporting NLP utilities)
+  - selected algorithms in app/rag/ingestion/parsing/parsers/, app/rag/ingestion/parsing/models/,
+    app/rag/ingestion/parsing/enrich/, and app/rag/ingestion/parsing/utils/ (document layout, OCR, table
+    assembly, file-format sections, visual descriptions and tokenization)
+  - app/rag/ingestion/parsing/files/{general,book,laws,email,contracts,pdf_backends,markdown}.py
+    (file parsing, PDF/Markdown adapters and chunking strategies)
+  - app/rag/ingestion/chunking/utils/{section_structure,section_merging,chunk_records}.py
+    (section hierarchy, text/image merging and chunk-record algorithms)
 
   Copyright 2024 The InfiniFlow Authors
   Copyright 2025 The InfiniFlow Authors
@@ -32,7 +36,7 @@ under the Apache License, Version 2.0:
   the Apache License 2.0 of its upstream origin.
 
 ================================================================================
-2. Build-provisioned model weights (app/deepdoc/resources/models/)
+2. Build-provisioned model weights (app/rag/ingestion/parsing/resources/models/)
 ================================================================================
 
 The current source tree does not bundle model weights. Container builds and the
@@ -58,7 +62,7 @@ have separate rights to those weights may provide them through
 3. Bundled NLTK data resources
 ================================================================================
 
-The directory `app/deepdoc/resources/nltk_data/` contains selected data
+The directory `app/rag/ingestion/parsing/resources/nltk_data/` contains selected data
 packages distributed through the NLTK Data project:
 
   - corpora/wordnet.zip

@@ -1,6 +1,6 @@
 import pytest
 
-from app.api.v1.evaluations import _enrich_reference_source_payload
+from app.services.evaluation.reference_sources import _enrich_reference_source_payload
 
 
 @pytest.mark.parametrize("field", ["quote", "pipeline_hash", "doc_pipeline_key"])

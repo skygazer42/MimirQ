@@ -2,11 +2,11 @@ from uuid import uuid4
 
 import pytest
 
-from app.services.dataset_precheck_classification import classify_parse_failure_kind
-from app.services.dataset_precheck_diff import diff_precheck_summaries
-from app.services.dataset_precheck_ingestion_suggestion import _extract_suggestion_signals
-from app.services.dataset_precheck_scan_runner import _load_jsonl_records_by_name
-from app.services.dataset_profile_service import _collapse_ws
+from app.services.datasets.precheck.diff import diff_precheck_summaries
+from app.services.datasets.precheck.findings import classify_parse_failure_kind
+from app.services.datasets.precheck.ingestion_suggestions import _extract_suggestion_signals
+from app.services.datasets.precheck.scan import _load_jsonl_records_by_name
+from app.services.datasets.profile import _collapse_ws
 
 
 def test_scan_record_missing_required_name_is_not_silently_discarded(tmp_path):

@@ -1,10 +1,10 @@
 import pytest
 from pydantic import ValidationError
 
-from app.api.schemas.chat import ChatRAGConfig
-from app.api.schemas.connector_acl import SourcePrincipal
-from app.api.schemas.document import DocumentPipelineOptions, DocumentPipelineProvenance
-from app.api.schemas.group import TenantGroupUpdateRequest
+from app.api.schemas.conversations.chat import ChatRAGConfig
+from app.api.schemas.documents.document import DocumentPipelineOptions, DocumentPipelineProvenance
+from app.api.schemas.identity.groups import TenantGroupUpdateRequest
+from app.api.schemas.sources.acl import SourcePrincipal
 
 
 @pytest.mark.parametrize(

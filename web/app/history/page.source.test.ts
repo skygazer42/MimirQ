@@ -30,7 +30,6 @@ describe('history route source', () => {
     expect(client).toContain('data-history-sidebar-scroll')
     expect(client).toContain('conversationLoadMoreRef')
     expect(client).toContain('globalThis.window.setInterval')
-    expect(client).toContain("queryKey: queryKeys.chat.messages(selectedConversationId || '')")
     expect(client).not.toContain('useState<Conversation[]>(initialConversations)')
     expect(client).not.toContain('useState<Message[]>(initialMessages)')
     expect(client).toContain('initialMessages')

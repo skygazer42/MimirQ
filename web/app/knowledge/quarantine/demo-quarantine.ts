@@ -31,14 +31,16 @@ export function makeDemoQuarantineDocument(
 
   return {
     id: `demo-q-${id.toString().padStart(4, '0')}`,
-    tenant_id: 'demo-tenant',
     dataset_id: 'dataset-demo',
     filename,
     status: 'quarantined',
     file_type: fileType,
     file_size: 1_240_000,
     chunk_count: 0,
+    total_characters: 0,
     processing_progress: 0,
+    processing_attempts: 0,
+    publication_status: 'published',
     created_at: createdAt,
     updated_at: updatedAt,
     processed_at: updatedAt,
@@ -47,7 +49,7 @@ export function makeDemoQuarantineDocument(
     metadata: {},
     governance: createDemoGovernance({}),
     ...restOverrides,
-  } as Document
+  }
 }
 
 export function buildDemoQuarantineDocuments(): Document[] {
@@ -146,7 +148,7 @@ export function buildDemoQuarantineDocuments(): Document[] {
     const bucket = reasons[index % reasons.length]
     const status = getDemoDocumentStatus(index)
     const reviewed = status === 'completed'
-    const suffix = `${String(index + 7).padStart(3, '0')}`
+    const suffix = String(index + 7).padStart(3, '0')
     return makeDemoQuarantineDocument(index + 7, {
       filename: `${bucket.filename}_${suffix}.${bucket.fileType}`,
       file_type: bucket.fileType,

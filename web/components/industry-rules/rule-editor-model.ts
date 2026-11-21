@@ -1,9 +1,12 @@
-export type RuleSection = 'glossary' | 'patterns' | 'intents'
-export type RuleValues = {
-  glossary: Record<string, string[]>
-  patterns: Array<Record<string, unknown>>
-  intents: Array<Record<string, unknown>>
+import type { IndustryRulesetDetail } from '@/types/backend'
+
+export const RULE_SECTIONS = ['glossary', 'patterns', 'intents'] as const
+export type RuleSection = (typeof RULE_SECTIONS)[number]
+
+export function isRuleSection(value: string): value is RuleSection {
+  return RULE_SECTIONS.some((section) => section === value)
 }
+type RuleValues = Required<Pick<IndustryRulesetDetail, RuleSection>>
 type RowFields = {
   term: string
   words: string
@@ -30,20 +33,20 @@ const splitWords = (value: string) =>
     .map((word) => word.trim())
     .filter(Boolean)
 const isRecord = (value: unknown): value is Record<string, unknown> =>
-  Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+  typeof value === 'object' && value !== null && !Array.isArray(value)
 
 export function createRuleRow(id: string): RuleRow {
   return { ...defaults, id, source: null, original: { ...defaults } }
 }
 
-export function rowsFromValue(section: RuleSection, value: RuleValues[RuleSection]): RuleRow[] {
-  if (section === 'glossary') {
-    return Object.entries(value as RuleValues['glossary']).map(([term, words], index) => {
-      const fields = { ...defaults, term, words: asList(words) }
+export function rowsFromValue<T extends RuleSection>(section: T, value: RuleValues[T]): RuleRow[] {
+  if (!Array.isArray(value)) {
+    return Object.entries(value).map(([term, words], index) => {
+      const fields = { ...defaults, term, words: words.join(', ') }
       return { ...fields, id: `glossary-${index}`, source: words, original: { ...fields } }
     })
   }
-  return (value as RuleValues['patterns']).map((source, index) => {
+  return value.map((source, index) => {
     const fields = {
       ...defaults,
       words: asList(section === 'patterns' ? (source.markers ?? source.keywords) : source.keywords),
@@ -56,41 +59,46 @@ export function rowsFromValue(section: RuleSection, value: RuleValues[RuleSectio
   })
 }
 
+function validateGlossaryTerms(terms: readonly string[]) {
+  const seen = new Set<string>()
+  for (const [index, term] of terms.entries()) {
+    const normalized = term.trim()
+    if (normalized === '') throw new Error(`第 ${index + 1} 条：请填写术语。`)
+    if (seen.has(normalized)) throw new Error(`术语「${normalized}」重复，请修改后保存。`)
+    seen.add(normalized)
+  }
+}
+
 // Each API write replaces a complete section. Keep every unedited field and row,
 // including extensions and legacy key names that the form does not understand.
-export function serializeRows<T extends RuleSection>(section: T, rows: RuleRow[]): RuleValues[T] {
+export function serializeRows<T extends RuleSection>(section: T, rows: readonly RuleRow[]): RuleValues[T] {
   if (section === 'glossary') {
-    const terms = new Set<string>()
-    const entries = rows.map((row, index) => {
-      const normalized = row.term.trim()
-      if (!normalized) throw new Error(`第 ${index + 1} 条：请填写术语。`)
-      if (terms.has(normalized)) throw new Error(`术语「${normalized}」重复，请修改后保存。`)
-      terms.add(normalized)
-      const term = row.term === row.original.term ? row.term : normalized
+    validateGlossaryTerms(rows.map((row) => row.term))
+    const entries = rows.map((row) => {
+      const term = row.term === row.original.term ? row.term : row.term.trim()
       const words = row.words === row.original.words && Array.isArray(row.source) ? row.source : splitWords(row.words)
       return [term, words]
     })
     return Object.fromEntries(entries) as RuleValues[T]
   }
   const records = rows.map((row, index) => {
-    const source = isRecord(row.source) ? row.source : null
+    const source = Array.isArray(row.source) ? null : row.source
     const record = { ...source }
-    const changed = (field: keyof RowFields) => !source || row[field] !== row.original[field]
+    const changed = (field: keyof RowFields) => source === null || row[field] !== row.original[field]
     if (section === 'patterns') {
       if (changed('words')) {
         const words = splitWords(row.words)
         if (!words.length) throw new Error(`第 ${index + 1} 条：请填写触发词。`)
-        record[source && 'markers' in source ? 'markers' : source && 'keywords' in source ? 'keywords' : 'markers'] =
-          words
+        const markerKey =
+          !Object.hasOwn(record, 'markers') && Object.hasOwn(record, 'keywords') ? 'keywords' : 'markers'
+        record[markerKey] = words
       }
       if (changed('followup')) {
-        record[
-          source && 'followup' in source
-            ? 'followup'
-            : source && 'followup_template' in source
-              ? 'followup_template'
-              : 'followup'
-        ] = row.followup
+        const followupKey =
+          !Object.hasOwn(record, 'followup') && Object.hasOwn(record, 'followup_template')
+            ? 'followup_template'
+            : 'followup'
+        record[followupKey] = row.followup
       }
       if (changed('enabled')) record.enabled = row.enabled
     } else {
@@ -120,6 +128,7 @@ export function parseRuleJson<T extends RuleSection>(section: T, raw: string): R
     ) {
       throw new Error('术语词库需要是对象，每个术语对应一组扩展词。')
     }
+    validateGlossaryTerms(Object.keys(value))
   } else if (!Array.isArray(value) || value.some((item) => !isRecord(item))) {
     throw new Error('规则需要是数组，每条规则需要是对象。')
   }
@@ -130,11 +139,11 @@ export function createRuleDraft(section: RuleSection, value: RuleValues[RuleSect
   return { rows: rowsFromValue(section, value), json: null, saved: JSON.stringify(value) }
 }
 
-export function createRulesetDraft(value: Partial<RuleValues>): RulesetDraft {
+export function createRulesetDraft(value: RuleValues): RulesetDraft {
   return {
-    glossary: createRuleDraft('glossary', value.glossary ?? {}),
-    patterns: createRuleDraft('patterns', value.patterns ?? []),
-    intents: createRuleDraft('intents', value.intents ?? []),
+    glossary: createRuleDraft('glossary', value.glossary),
+    patterns: createRuleDraft('patterns', value.patterns),
+    intents: createRuleDraft('intents', value.intents),
   }
 }
 

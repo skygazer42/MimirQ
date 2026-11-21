@@ -192,13 +192,10 @@ def _find_markdown(run_root: Path, *, safe_stem: str, method: str) -> Path | Non
     expected = run_root / safe_stem / method / f"{safe_stem}.md"
     if expected.exists():
         return expected
-    candidates = list((run_root / safe_stem / method).glob("*.md"))
-    if candidates:
-        return candidates[0]
-    all_candidates = list(run_root.rglob("*.md"))
-    if all_candidates:
-        return min(all_candidates, key=lambda p: len(str(p)))
-    return None
+    candidate = next((run_root / safe_stem / method).glob("*.md"), None)
+    if candidate is not None:
+        return candidate
+    return min(run_root.rglob("*.md"), key=lambda path: len(str(path)), default=None)
 
 
 def _strip_image_refs(markdown: str) -> str:
@@ -223,7 +220,10 @@ def _run_magicpdf(
         raise RuntimeError("method must be one of: auto, ocr, txt")
 
     safe_stem = _sanitize_run_id(document_id or Path(filename).stem or str(uuid.uuid4()))
-    run_root = (_ARTIFACT_ROOT / safe_stem).absolute()
+    artifact_root = _ARTIFACT_ROOT.resolve()
+    run_root = (artifact_root / safe_stem).resolve()
+    if run_root == artifact_root or run_root.parent != artifact_root:
+        raise RuntimeError("Invalid artifact run directory")
     run_root.mkdir(parents=True, exist_ok=True)
     input_path = run_root / f"{safe_stem}.pdf"
     input_path.write_bytes(file_bytes)

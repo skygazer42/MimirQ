@@ -3,16 +3,16 @@ Simplified event processor: call LLM to extract events and entities from chunk t
 """
 
 import json
+import logging
 from typing import Any
 
-from app.core.config import settings
-from app.models.document import DocumentChunk
+from app.infrastructure.config import settings
+from app.models.documents.records import DocumentChunk
 from app.rag.kg.extraction.parser import normalize_entity_name, normalize_entity_type
-from app.rag.kg.utils import get_logger
 from app.rag.llm.base import BaseLLMClient
 from app.rag.llm.models import LLMMessage, LLMRole
 
-logger = get_logger("kg.extract.processor")
+logger = logging.getLogger("kg.extract.processor")
 
 
 def _build_context(sections: list[DocumentChunk]) -> str:
@@ -36,6 +36,7 @@ def _positive_int(value: int, *, default_min: int = 1) -> int:
 def _extraction_schema() -> dict[str, Any]:
     return {
         "type": "object",
+        "required": ["events"],
         "properties": {
             "events": {
                 "type": "array",
@@ -95,7 +96,7 @@ def _render_prompt(
         }
         try:
             return prompt_template.format_map(template_vars)
-        except Exception:
+        except (AttributeError, IndexError, KeyError, TypeError, ValueError):
             # Best-effort: avoid failing extraction due to template formatting issues.
             return f"{prompt_template}\n\n{context}"
     return (
@@ -265,22 +266,24 @@ class EventProcessor:
         messages = [LLMMessage(role=LLMRole.USER, content=prompt)]
 
         result = await self.llm_client.chat_with_schema(messages, response_schema=schema, temperature=0.2)
-        events_data = result.get("events", []) if isinstance(result, dict) else []
+        events_data = result.get("events")
         if not isinstance(events_data, list):
-            return []
+            raise ValueError("Event extraction response requires an events array")
 
         events: list[dict[str, Any]] = []
         chunk_id = str(sections[0].id)
         for raw in events_data:
             if not isinstance(raw, dict):
-                continue
+                raise ValueError("Event extraction response contains a non-object event")
             if not all(isinstance(raw.get(field), str) for field in ("title", "summary")):
-                continue
+                raise ValueError("Extracted event title and summary must be strings")
             if any(
                 raw.get(field) is not None and not isinstance(raw[field], str)
                 for field in ("schema_version", "event_schema")
             ):
-                continue
+                raise ValueError("Extracted event schema fields must be strings or null")
+            if raw.get("entities") is not None and not isinstance(raw["entities"], list):
+                raise ValueError("Extracted event entities must be an array or null")
             events.append(_build_event_payload(raw, chunk_id=chunk_id))
 
         logger.info("Batch %s extracted %s events", batch_index, len(events))

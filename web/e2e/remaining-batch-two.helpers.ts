@@ -20,7 +20,7 @@ export async function batchTwoFixture(page: Page, theme: 'light' | 'dark' = 'lig
   const ruleset = {
     name: '产品服务',
     glossary: { 单点登录: ['SSO', '统一认证'], 知识图谱: ['KG'] },
-    patterns: [{ markers: ['无法连接'], followup: '请确认连接目标', enabled: true }],
+    patterns: [{ keywords: ['无法连接'], followup_template: '请确认连接目标', enabled: true, priority: 0 }],
     intents: [{ name: '故障排查', keywords: ['失败'], route: 'support' }],
   }
   const state = {
@@ -114,7 +114,16 @@ export async function batchTwoFixture(page: Page, theme: 'light' | 'dark' = 'lig
         Object.assign(ruleset, payload)
         return json(route, { updated_count: 3 })
       }
-      return state.failRules ? json(route, { detail: '规则读取暂不可用' }, 503) : json(route, { ruleset })
+      if (state.failRules) return json(route, { detail: '规则读取暂不可用' }, 503)
+      return json(route, {
+        schema: 'mimirq.industry_rules_ruleset.v1',
+        ruleset: {
+          ...ruleset,
+          glossary_count: Object.keys(ruleset.glossary).length,
+          pattern_count: ruleset.patterns.length,
+          intent_count: ruleset.intents.length,
+        },
+      })
     }
     if (p === '/api/v1/industry-rules/preview-rewrite') {
       const payload = req.postDataJSON()

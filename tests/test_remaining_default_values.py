@@ -3,7 +3,9 @@ from uuid import uuid4
 import pytest
 
 from app.rag.evaluation.synthetic import pipeline as synthetic
-from app.services import chat_stream_common, document_ingestion_policy, pipeline_provenance_service
+from app.services.chat import stream_delivery as chat_stream_common
+from app.services.documents import ingestion_policy as document_ingestion_policy
+from app.services.pipelines import provenance as pipeline_provenance_service
 
 
 @pytest.mark.parametrize("value", [None, "", 0, False])
@@ -19,8 +21,6 @@ def test_chat_completion_projects_execution_metrics(value, monkeypatch: pytest.M
         content="answer",
         citations=[],
         metrics=metrics,
-        retrieval_mode_default="requested",
-        vector_backend_default="configured",
         structured=False,
         structured_data=None,
     )
@@ -29,8 +29,6 @@ def test_chat_completion_projects_execution_metrics(value, monkeypatch: pytest.M
         conversation_id=uuid4(),
         tenant_id=uuid4(),
         metrics=metrics,
-        retrieval_mode_default="requested",
-        vector_backend_default="configured",
     )
     assert event["data"]["retrieval_mode"] == value
     assert event["data"]["vector_backend"] == value

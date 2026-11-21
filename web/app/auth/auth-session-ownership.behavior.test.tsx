@@ -226,7 +226,7 @@ describe.each([
         ? '登录会话已失效，请返回登录页重新发起登录。'
         : kind === 'oidc'
           ? 'oidc_provider_unavailable'
-          : 'current sign-in rejected',
+          : '网络连接异常，请检查网络后重试。',
     )
   })
 
@@ -270,6 +270,7 @@ describe('credential form request ownership', () => {
     mode(view.holder, '登录')
 
     expect(view.holder.querySelector('[role="alert"]')).toBeNull()
-    expect(view.holder.querySelector<HTMLButtonElement>('button[type="submit"]')?.disabled).toBe(false)
+    expect(view.holder.querySelector<HTMLButtonElement>('button[type="submit"]')?.disabled).toBe(true)
+    expect(view.holder.querySelector<HTMLInputElement>('#password')?.value).toBe('')
   })
 })

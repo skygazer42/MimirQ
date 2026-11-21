@@ -7,11 +7,10 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from langchain_core.documents import Document
 
-from app.api.dependencies.auth import get_current_account_id
-from app.api.dependencies.tenant import get_tenant_id
-from app.api.v1 import documents as documents_module
-from app.core.database import get_db
-from app.services.preview_cache import ParseCacheEntry, preview_parse_cache
+from app.api.dependencies import get_current_account_id, get_tenant_id
+from app.api.v1.documents import routes as documents_module
+from app.infrastructure.database.connection import get_db
+from app.services.documents.preview_cache import ParseCacheEntry, preview_parse_cache
 
 chunk_preview_module = documents_module.document_chunk_preview
 

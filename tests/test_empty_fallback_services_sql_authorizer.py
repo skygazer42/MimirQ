@@ -1,6 +1,6 @@
 import sqlite3
 
-from app.services.table_store_service import _apply_sqlite_readonly_authorizer
+from app.services.tables.store import _apply_sqlite_readonly_authorizer
 
 
 def test_sqlite_read_without_a_table_identity_is_denied():

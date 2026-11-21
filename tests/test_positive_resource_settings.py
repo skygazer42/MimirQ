@@ -58,7 +58,7 @@ FIELDS = [
 
 @pytest.mark.parametrize("field,kind", FIELDS)
 def test_resource_configuration_rejects_zero(field, kind, monkeypatch):
-    from app.core.config import Settings
+    from app.infrastructure.config import Settings
 
     for key in list(os.environ):
         monkeypatch.delenv(key)
@@ -68,7 +68,7 @@ def test_resource_configuration_rejects_zero(field, kind, monkeypatch):
 
 @pytest.mark.parametrize("field", [field for field, kind in FIELDS if kind == "float"])
 def test_float_resource_configuration_rejects_negative(field, monkeypatch):
-    from app.core.config import Settings
+    from app.infrastructure.config import Settings
 
     for key in list(os.environ):
         monkeypatch.delenv(key)

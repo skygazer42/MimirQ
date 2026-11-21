@@ -1,69 +1,37 @@
-import { toSingleLinePrimitiveString } from './primitive-text'
+import type { DatasetHealthResponse } from './dataset-profile-schema'
 
-export type DatasetHealthSuggestion = {
-  severity: 'info' | 'warning' | 'error'
-  title: string
-  detail: string
+type DatasetHealthExportInput = Readonly<{
+  dataset: Readonly<{ id: string; name: string }>
+  exported_at: string
+  health: DatasetHealthResponse
+}>
+
+function toSingleLine(text: string): string {
+  return text.replaceAll(/\s+/g, ' ').trim()
 }
 
-export type DatasetHealthExportInput = {
-  datasetId: string
-  datasetName?: string | null
-  exportedAt?: string | null
-  generatedAt?: string | null
-  profile?: Record<string, unknown> | null
-  ingestion?: Record<string, unknown> | null
-  suggestions?: DatasetHealthSuggestion[]
-}
-
-function asInt(value: unknown): number {
-  const n = Number(value)
-  return Number.isFinite(n) ? Math.trunc(n) : 0
-}
-
-export function datasetHealthToMarkdown(input: DatasetHealthExportInput): string {
-  const lines: string[] = []
-
-  lines.push('# Dataset Health', '', `- dataset_id: ${toSingleLinePrimitiveString(input.datasetId)}`)
-  if (input.datasetName) lines.push(`- dataset_name: ${toSingleLinePrimitiveString(input.datasetName)}`)
-  if (input.exportedAt) lines.push(`- exported_at: ${toSingleLinePrimitiveString(input.exportedAt)}`)
-  if (input.generatedAt) lines.push(`- generated_at: ${toSingleLinePrimitiveString(input.generatedAt)}`)
-  lines.push('')
-
-  const profile = input.profile || {}
-  lines.push('## Profile', `- total_documents: ${asInt(profile.total_documents)}`)
-  if (profile.total_size_bytes != null) lines.push(`- total_size_bytes: ${asInt(profile.total_size_bytes)}`)
-  lines.push('')
-
-  const ingestion = input.ingestion || {}
-  lines.push(
+export function datasetHealthToMarkdown({ dataset, exported_at, health }: DatasetHealthExportInput): string {
+  const { profile, ingestion } = health
+  const lines = [
+    '# Dataset Health',
+    '',
+    `- dataset_id: ${toSingleLine(dataset.id)}`,
+    `- dataset_name: ${toSingleLine(dataset.name)}`,
+    `- exported_at: ${exported_at}`,
+    `- generated_at: ${health.generated_at}`,
+    '',
+    '## Profile',
+    `- total_documents: ${profile.total_documents}`,
+    `- total_size_bytes: ${profile.total_size_bytes}`,
+    '',
     '## Ingestion',
-    `- total_documents: ${asInt(ingestion.total_documents)}`,
-    `- failed: ${asInt(ingestion.failed)}`,
-    `- quarantined: ${asInt(ingestion.quarantined)}`,
-  )
+    `- total_documents: ${ingestion.total_documents}`,
+    `- failed: ${ingestion.failed}`,
+    `- quarantined: ${ingestion.quarantined}`,
+  ]
 
-  const byStatus = ingestion.by_status && typeof ingestion.by_status === 'object' ? ingestion.by_status : null
-  if (byStatus) {
-    const parts = Object.entries(byStatus)
-      .map(([k, v]) => `${toSingleLinePrimitiveString(k)}=${asInt(v)}`)
-      .filter((x) => !x.endsWith('=0'))
-    if (parts.length) lines.push(`- by_status: ${parts.join(', ')}`)
-  }
-  lines.push('')
-
-  const suggestions = Array.isArray(input.suggestions) ? input.suggestions : []
-  lines.push('## Suggestions')
-  if (suggestions.length === 0) {
-    lines.push('- (none)')
-  } else {
-    for (const s of suggestions) {
-      const sev = toSingleLinePrimitiveString(s.severity || 'info')
-      const title = toSingleLinePrimitiveString(s.title)
-      const detail = toSingleLinePrimitiveString(s.detail)
-      const detailSuffix = detail ? `: ${detail}` : ''
-      lines.push(`- [${sev}] ${title}${detailSuffix}`)
-    }
+  for (const [status, count] of Object.entries(ingestion.by_status)) {
+    lines.push(`- ${toSingleLine(status)}: ${count}`)
   }
 
   lines.push('')

@@ -1757,6 +1757,7 @@
     "chunk-preview": "Chunking",
     "data-governance": "DataGovernance",
     "dataset": "Dataset",
+    "dataset-profile": "BarChart",
     "diagnostics": "Diagnostics",
     "feedback-quality": "Feedback",
     "governance-config": "RuleSet",
@@ -1779,6 +1780,7 @@
     "report-export": "Reports",
     "retrieval-ablation": "RetrievalAblation",
     "settings": "Settings",
-    "usage-quota": "Usage"
+    "usage-quota": "Usage",
+    "table-assets": "Table2"
   }
 }

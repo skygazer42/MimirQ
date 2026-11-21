@@ -27,8 +27,8 @@ Query parameters:
 
 This endpoint uses the **last known local source set**:
 
-- `url_batch`, `drive_files`: current config URL list
-- `github_repo`, `minio_bucket`, `web_crawl`: persisted `source_manifest`
+- `url_batch`: current config URL list
+- `minio_bucket`, `web_crawl`: persisted `source_manifest`
 
 If no safe local source set is available, the endpoint returns `400` instead of guessing.
 

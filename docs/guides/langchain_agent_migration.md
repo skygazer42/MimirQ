@@ -15,7 +15,7 @@ Ragvia keeps the RAG pipeline explicit and debuggable:
   - Related modules: `app/rag/pipelines/langgraph.py`, `app/rag/checkpointer/*`
   - API integration: `app/api/v1/chat.py` (streaming events include optional `graph` events)
 
-In addition, Ragvia exposes a **workflow mode** concept for advanced orchestration features (see `WORKFLOW_MODE` in `app/core/config.py`).
+In addition, Ragvia exposes a **workflow mode** concept for advanced orchestration features (see `WORKFLOW_MODE` in `app/infrastructure/config.py`).
 
 ## Why Not a Classic “Tool-Calling Agent” Everywhere?
 
@@ -33,7 +33,7 @@ An explicit RAG pipeline (retrieval → rerank/fusion → context construction �
 
 ## Config Switches
 
-Configuration is driven by environment variables / `.env` and centralized in `app/core/config.py`.
+Configuration is driven by environment variables / `.env` and centralized in `app/infrastructure/config.py`.
 
 Common related settings:
 - `USE_LANGGRAPH_PIPELINE` (enable graph pipeline for chat)

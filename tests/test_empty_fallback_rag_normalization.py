@@ -1,6 +1,7 @@
 import pytest
 
-from app.rag.preprocessing.normalization import normalize_query, normalize_text
+from app.query.normalize import normalize_query
+from app.rag.ingestion.governance.text.normalization import normalize_text
 
 
 @pytest.mark.parametrize("value", [None, 0, False])

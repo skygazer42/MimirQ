@@ -5,7 +5,7 @@ from typing import Any
 
 import pytest
 
-from app.parsing.models.manifest import SmallModelSpec
+from app.rag.ingestion.parsing.models.manifest import SmallModelSpec
 from scripts import bootstrap_parsing_small_models as bootstrap
 
 

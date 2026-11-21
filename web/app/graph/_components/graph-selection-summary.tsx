@@ -8,12 +8,13 @@ import { graphTypeLabel } from '../graph-directory-model'
 import type { KGEntityDetailResponse, KGEventDetailResponse } from '@/types'
 import styles from './graph-workspace.module.css'
 
-type Props = {
+type GraphSelectionSummaryProps = {
   detailsButtonRef?: Ref<HTMLButtonElement>
   node: GraphNodeLike
   count: number
   detail: KGEntityDetailResponse | KGEventDetailResponse | null
   loading: boolean
+  detailError: string | null
   onDetails: () => void
   onExpand: () => void
   onSource: () => void
@@ -26,14 +27,16 @@ export function GraphSelectionSummary({
   count,
   detail,
   loading,
+  detailError,
   onDetails,
   onExpand,
   onSource,
   onClose,
-}: Readonly<Props>) {
-  const entity = detail && 'entity' in detail && detail.entity.id === node.id ? detail.entity : null
-  const event = detail && 'event' in detail && detail.event.id === node.id ? detail.event : null
-  const description = entity?.description || event?.summary || coerceTrimmedString(node.meta?.description)
+}: Readonly<GraphSelectionSummaryProps>) {
+  const entity = detail !== null && 'entity' in detail ? detail.entity : null
+  const event = detail !== null && 'event' in detail ? detail.event : null
+  const description = entity?.description ?? event?.summary ?? coerceTrimmedString(node.meta?.description)
+  const nodeLabel = node.label === '' ? node.id : node.label
   const canViewSource = Boolean(
     event?.document_id ||
     event?.chunk_id ||
@@ -44,7 +47,7 @@ export function GraphSelectionSummary({
   return (
     <section className={styles.selectionSummary} aria-label="当前实体摘要" data-graph-selection>
       <div className={styles.selectionTitle}>
-        <h2 title={node.label || node.id}>{node.label || node.id}</h2>
+        <h2 title={nodeLabel}>{nodeLabel}</h2>
         <span>{graphTypeLabel(node)}</span>
         <button type="button" className="focus-ring" aria-label="取消实体选择" onClick={onClose}>
           <X />
@@ -56,6 +59,8 @@ export function GraphSelectionSummary({
             <Loader2 className="animate-spin motion-reduce:animate-none" />
             正在读取详情
           </>
+        ) : detailError !== null ? (
+          <span role="alert">读取节点详情失败</span>
         ) : (
           <>
             {count} 个直接关联

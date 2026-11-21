@@ -11,7 +11,7 @@ import pytest
 if not hasattr(dt, "UTC"):
     dt.UTC = dt.timezone.utc
 
-from app.services import dataset_precheck_scan_runner as runner
+from app.services.datasets.precheck import scan as runner
 
 
 class _QueryStub:

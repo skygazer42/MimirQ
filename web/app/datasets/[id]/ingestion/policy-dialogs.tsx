@@ -10,30 +10,39 @@ import { Switch } from '@/components/ui/switch'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { PARSER_BACKEND_REGISTRY_OPTIONS } from '@/lib/parser-options'
+import { profileRef } from '@/components/governance-profiles/profile-presentation'
+import { getParserLabel, PARSER_BACKEND_REGISTRY_OPTIONS } from '@/lib/parser-options'
 import { formatApiError } from '@/lib/api-errors'
+import { isRetiredChunkStrategy } from '@/lib/chunk-strategies'
 import { INGESTION_POLICY_TEMPLATES, PREPROCESS_STEP_CATALOG } from './policy-catalog'
 import { draftToRule, type TemplatePlacement } from './policy-model'
 import type { IngestionPolicyController } from './use-ingestion-policy'
 import styles from './policy.module.css'
 
 const NONE = '__inherit__'
-export function PolicyRuleEditor({ c }: { c: IngestionPolicyController }) {
-  const editor = c.editor!
-  const [draft, setDraft] = useState(editor.draft),
-    [tab, setTab] = useState('basic'),
-    [error, setError] = useState('')
+
+export function PolicyRuleEditor({
+  policyController,
+  editor,
+}: Readonly<{
+  policyController: IngestionPolicyController
+  editor: NonNullable<IngestionPolicyController['editor']>
+}>) {
+  const [draft, setDraft] = useState(editor.draft)
+  const [tab, setTab] = useState('basic')
+  const [error, setError] = useState('')
   const change = <K extends keyof typeof draft>(field: K, value: (typeof draft)[K]) => {
     setDraft((previous) => ({ ...previous, [field]: value }))
     setError('')
   }
-  const profiles = (c.profilesQuery.data?.items ?? [])
-    .map((profile) => ({ value: profile.key || profile.id, label: profile.name }))
-    .filter((profile): profile is { value: string; label: string } => Boolean(profile.value))
+  const profiles = policyController.profilesQuery.data?.items.map((profile) => ({
+    value: profileRef(profile),
+    label: profile.name,
+  }))
   function apply(event: React.FormEvent) {
     event.preventDefault()
     try {
-      c.applyRule(draftToRule(draft, c.rules, editor.originalId), editor.originalId)
+      policyController.applyRule(draftToRule(draft, policyController.rules, editor.originalId), editor.originalId)
     } catch (cause) {
       setError(
         cause instanceof SyntaxError
@@ -51,19 +60,21 @@ export function PolicyRuleEditor({ c }: { c: IngestionPolicyController }) {
     <Dialog
       open
       onOpenChange={(open) => {
-        if (!open) c.setEditor(null)
+        if (!open) policyController.setEditor(null)
       }}
     >
       <DialogContent
         className={styles.editorDialog}
         onCloseAutoFocus={(event) => {
           event.preventDefault()
-          c.restoreFocus()
+          policyController.restoreFocus()
         }}
       >
         <DialogHeader className={styles.dialogHeader}>
           <DialogTitle>{editor.originalId ? '编辑规则' : '新增规则'}</DialogTitle>
-          <DialogDescription>{c.datasetQuery.data?.name} · 应用后需保存策略，配置才会生效。</DialogDescription>
+          <DialogDescription>
+            {policyController.datasetQuery.data?.name} · 应用后需保存策略，配置才会生效。
+          </DialogDescription>
         </DialogHeader>
         <form className={styles.dialogForm} onSubmit={apply}>
           <Tabs value={tab} onValueChange={setTab} className={styles.editorTabs}>
@@ -149,14 +160,18 @@ export function PolicyRuleEditor({ c }: { c: IngestionPolicyController }) {
                       onValueChange={(value) => change('chunkStrategy', value === NONE ? '' : value)}
                     >
                       <SelectTrigger id="policy-rule-chunk">
-                        <SelectValue />
+                        <SelectValue>
+                          {isRetiredChunkStrategy(draft.chunkStrategy) ? `${draft.chunkStrategy}（已移除）` : undefined}
+                        </SelectValue>
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value={NONE}>不覆盖默认配置</SelectItem>
-                        {draft.chunkStrategy && !c.chunkOptions.includes(draft.chunkStrategy) ? (
+                        {draft.chunkStrategy &&
+                        !isRetiredChunkStrategy(draft.chunkStrategy) &&
+                        !policyController.chunkOptions.includes(draft.chunkStrategy) ? (
                           <SelectItem value={draft.chunkStrategy}>{draft.chunkStrategy}</SelectItem>
                         ) : null}
-                        {c.chunkOptions.map((name) => (
+                        {policyController.chunkOptions.map((name) => (
                           <SelectItem key={name} value={name}>
                             {name}
                           </SelectItem>
@@ -176,23 +191,23 @@ export function PolicyRuleEditor({ c }: { c: IngestionPolicyController }) {
                       <SelectContent>
                         <SelectItem value={NONE}>不使用预设</SelectItem>
                         {draft.governanceProfileRef &&
-                        !profiles.some((profile) => profile.value === draft.governanceProfileRef) ? (
+                        profiles?.some((profile) => profile.value === draft.governanceProfileRef) !== true ? (
                           <SelectItem value={draft.governanceProfileRef}>{draft.governanceProfileRef}</SelectItem>
                         ) : null}
-                        {profiles.map((profile) => (
+                        {profiles?.map((profile) => (
                           <SelectItem key={profile.value} value={profile.value}>
                             {profile.label}
                           </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
-                    {c.profilesQuery.isError ? (
+                    {policyController.profilesQuery.isError ? (
                       <p className={styles.fieldError}>
                         预设读取失败，已选值保留。
                         <button
                           type="button"
                           onClick={() => {
-                            void c.profilesQuery.refetch()
+                            void policyController.profilesQuery.refetch()
                           }}
                         >
                           重新读取
@@ -270,7 +285,7 @@ export function PolicyRuleEditor({ c }: { c: IngestionPolicyController }) {
             </p>
           ) : null}
           <div className={styles.dialogFooter}>
-            <Button type="button" variant="ghost" onClick={() => c.setEditor(null)}>
+            <Button type="button" variant="ghost" onClick={() => policyController.setEditor(null)}>
               取消
             </Button>
             <Button type="submit">{editor.originalId ? '应用修改' : '加入策略'}</Button>
@@ -281,22 +296,30 @@ export function PolicyRuleEditor({ c }: { c: IngestionPolicyController }) {
   )
 }
 
-export function PolicyTemplateDialog({ c }: { c: IngestionPolicyController }) {
-  const [selected, setSelected] = useState(INGESTION_POLICY_TEMPLATES[0]),
-    [placement, setPlacement] = useState<TemplatePlacement>('prepend'),
-    [error, setError] = useState('')
+export function PolicyTemplateDialog({ policyController }: { policyController: IngestionPolicyController }) {
+  const [selected, setSelected] = useState(INGESTION_POLICY_TEMPLATES[0])
+  const [placement, setPlacement] = useState<TemplatePlacement>('prepend')
+  const [error, setError] = useState('')
+
+  function selectTemplate(key: string) {
+    const template = INGESTION_POLICY_TEMPLATES.find((item) => item.key === key)
+    if (template === undefined) return
+    setSelected(template)
+    setError('')
+  }
+
   return (
     <Dialog
       open
       onOpenChange={(open) => {
-        if (!open) c.setTemplatesOpen(false)
+        if (!open) policyController.setTemplatesOpen(false)
       }}
     >
       <DialogContent
         className={styles.templatesDialog}
         onCloseAutoFocus={(event) => {
           event.preventDefault()
-          c.restoreFocus()
+          policyController.restoreFocus()
         }}
       >
         <DialogHeader className={styles.dialogHeader}>
@@ -310,10 +333,7 @@ export function PolicyTemplateDialog({ c }: { c: IngestionPolicyController }) {
                 type="button"
                 key={template.key}
                 aria-pressed={selected.key === template.key}
-                onClick={() => {
-                  setSelected(template)
-                  setError('')
-                }}
+                onClick={() => selectTemplate(template.key)}
               >
                 <strong>{template.name}</strong>
                 <span>{template.rules.length} 条规则</span>
@@ -323,13 +343,7 @@ export function PolicyTemplateDialog({ c }: { c: IngestionPolicyController }) {
           <section className={styles.templateDetails} aria-label="模板内容">
             <div className={styles.templatePicker}>
               <Label htmlFor="policy-template-choice">规则模板</Label>
-              <Select
-                value={selected.key}
-                onValueChange={(key) => {
-                  setSelected(INGESTION_POLICY_TEMPLATES.find((template) => template.key === key)!)
-                  setError('')
-                }}
-              >
+              <Select value={selected.key} onValueChange={selectTemplate}>
                 <SelectTrigger id="policy-template-choice">
                   <SelectValue />
                 </SelectTrigger>
@@ -350,9 +364,7 @@ export function PolicyTemplateDialog({ c }: { c: IngestionPolicyController }) {
                   <strong>{rule.name}</strong>
                   <span>{rule.match?.extensions?.join(' · ') || '任意文件类型'}</span>
                   <span>
-                    {PARSER_BACKEND_REGISTRY_OPTIONS.find((option) => option.value === rule.parser_backend)?.label ??
-                      rule.parser_backend ??
-                      '不覆盖默认解析器'}
+                    {rule.parser_backend == null ? '不覆盖默认解析器' : getParserLabel(rule.parser_backend)}
                     {rule.governance_profile_ref ? ` · ${rule.governance_profile_ref}` : ''}
                   </span>
                 </li>
@@ -371,8 +383,10 @@ export function PolicyTemplateDialog({ c }: { c: IngestionPolicyController }) {
             <Select
               value={placement}
               onValueChange={(value) => {
-                setPlacement(value as TemplatePlacement)
-                setError('')
+                if (value === 'prepend' || value === 'append' || value === 'replace') {
+                  setPlacement(value)
+                  setError('')
+                }
               }}
             >
               <SelectTrigger id="policy-template-placement">
@@ -387,14 +401,14 @@ export function PolicyTemplateDialog({ c }: { c: IngestionPolicyController }) {
           </div>
           <span>
             {placement === 'replace'
-              ? `将替换当前 ${c.rules.length} 条规则。`
+              ? `将替换当前 ${policyController.rules.length} 条规则。`
               : `添加 ${selected.rules.length} 条规则。`}
           </span>
           <Button
-            disabled={c.blocked}
+            disabled={policyController.blocked}
             onClick={() => {
               try {
-                c.applyTemplate(selected, placement)
+                policyController.applyTemplate(selected, placement)
               } catch (cause) {
                 setError(formatApiError(cause, '无法应用模板'))
               }

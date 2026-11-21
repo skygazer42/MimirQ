@@ -1,4 +1,5 @@
 import asyncio
+import json
 from types import SimpleNamespace
 
 import pytest
@@ -21,7 +22,7 @@ def _langchain_options() -> SimpleNamespace:
 async def test_langchain_stream_cancels_producer_when_consumer_is_cancelled(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.services.chat_stream_langchain as stream_module
+    import app.services.chat.stream_langchain as stream_module
 
     started = asyncio.Event()
     cleaned_up = asyncio.Event()
@@ -60,7 +61,7 @@ async def test_langchain_stream_cancels_producer_when_consumer_is_cancelled(
 async def test_langchain_stream_aclose_cancels_producer(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.services.chat_stream_langchain as stream_module
+    import app.services.chat.stream_langchain as stream_module
 
     cleaned_up = asyncio.Event()
     producer_tasks: list[asyncio.Task[None]] = []
@@ -82,7 +83,7 @@ async def test_langchain_stream_aclose_cancels_producer(
         engine=object(),
         options=_langchain_options(),
     )
-    assert '"content": "x"' in await anext(stream)
+    assert (await anext(stream))["data"]["content"] == "x"
 
     try:
         await stream.aclose()
@@ -92,6 +93,35 @@ async def test_langchain_stream_aclose_cancels_producer(
         for task in producer_tasks:
             task.cancel()
         await asyncio.gather(*producer_tasks, return_exceptions=True)
+
+
+@pytest.mark.asyncio
+async def test_langchain_eof_without_completion_never_finalizes_partial_output(monkeypatch: pytest.MonkeyPatch) -> None:
+    import app.services.chat.stream_langchain as stream_module
+    from app.services.chat.ag_ui import encode_chat_events
+
+    finalized = []
+
+    async def partial_producer(*, queue, **_kwargs):
+        await queue.put({"type": "token", "data": {"content": "partial answer"}})
+        await queue.put(None)
+
+    monkeypatch.setattr(stream_module, "produce_langchain_stream_events", partial_producer)
+    monkeypatch.setattr(stream_module, "_finalize_stream_session", lambda **kwargs: finalized.append(kwargs))
+    wire = [
+        chunk
+        async for chunk in encode_chat_events(
+            stream_module.stream_langchain_chat_session_events(engine=object(), options=_langchain_options()),
+            thread_id="thread",
+            run_id="run",
+            assistant_message_id="assistant",
+            request_id="request",
+        )
+    ]
+    events = [json.loads(chunk[6:]) for chunk in wire if chunk.startswith("data: ")]
+    assert events[-1]["type"] == "RUN_ERROR"
+    assert all(event["type"] != "RUN_FINISHED" for event in events)
+    assert finalized == []
 
 
 async def _multi_agent_stream(monkeypatch: pytest.MonkeyPatch, run_sub_agent):  # noqa: ANN001, ANN202
@@ -111,7 +141,11 @@ async def _multi_agent_stream(monkeypatch: pytest.MonkeyPatch, run_sub_agent):  
 
     monkeypatch.setattr(runner, "_decompose", decompose)
     monkeypatch.setattr(runner, "_run_sub_agent", run_sub_agent)
-    monkeypatch.setattr(multi_agent, "build_rag_state", lambda **kwargs: dict(kwargs))
+    monkeypatch.setattr(
+        multi_agent,
+        "build_agentic_rag_state",
+        lambda request, *, history: {"question": request.question, "history": history},
+    )
     return runner.stream(request=multi_agent.AgenticStreamRequest(question="question"))
 
 

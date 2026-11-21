@@ -2,7 +2,10 @@ import argparse
 import json
 import sys
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from langchain_core.documents import Document
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT) not in sys.path:
@@ -29,19 +32,8 @@ def _json_safe(value: Any) -> Any:
     return None
 
 
-def _serialize_documents(items: list[Any] | None) -> list[dict[str, Any]]:
-    out: list[dict[str, Any]] = []
-    for item in items or []:
-        meta = getattr(item, "metadata", None)
-        safe_meta = _json_safe(dict(meta)) if isinstance(meta, dict) else {}
-        out.append(
-            {
-                "page_content": str(getattr(item, "page_content", "") or ""),
-                "metadata": safe_meta if isinstance(safe_meta, dict) else {},
-                "id": getattr(item, "id", None),
-            }
-        )
-    return out
+def _serialize_documents(items: list["Document"]) -> list[dict[str, Any]]:
+    return [{"page_content": item.page_content, "metadata": _json_safe(item.metadata), "id": item.id} for item in items]
 
 
 def _apply_governance_cleaning(
@@ -49,15 +41,15 @@ def _apply_governance_cleaning(
     text: str,
     governance_rule_packs: list[str] | None = None,
 ) -> str:
-    packs = [str(item).strip() for item in (governance_rule_packs or []) if str(item).strip()]
+    packs = [pack for item in governance_rule_packs or [] if (pack := item.strip())]
     if not packs:
-        return str(text or "")
+        return text
 
-    from app.rag.preprocessing.cleaning import clean_markdown
-    from app.rag.preprocessing.rules import build_governance_rules
+    from app.rag.ingestion.governance.cleaning import clean_markdown
+    from app.rag.ingestion.governance.rules import build_governance_rules
 
     result = clean_markdown(
-        str(text or ""),
+        text,
         rules=build_governance_rules([], rule_packs=packs),
         remove_toc_lines=False,
         remove_noise_lines=False,
@@ -65,7 +57,7 @@ def _apply_governance_cleaning(
         remove_common_lines=False,
         collapse_blank_lines=True,
     )
-    return str(result.markdown or text or "")
+    return result.markdown or text
 
 
 def run_parsing_retrieval_proof_from_file(
@@ -77,27 +69,29 @@ def run_parsing_retrieval_proof_from_file(
     parser_backend: str = "basic",
     top_k: int = 1,
     retrieval_mode: str = "keyword",
-    sparse_retrieval_enabled: bool = False,
-    sparse_retrieval_provider: str = "deterministic",
-    colbert_retrieval_enabled: bool | None = None,
-    colbert_retrieval_provider: str | None = None,
     governance_rule_packs: list[str] | None = None,
 ) -> dict[str, Any]:
-    from app.parsing.enrich.image_ocr import add_image_ocr_blocks
-    from app.parsing.factory import parser_factory
+    input_file = Path(input_file).resolve()
+    queries_path = Path(queries_path).resolve()
+    fixture_output_path = Path(fixture_output_path).resolve()
+    report_output_path = Path(report_output_path).resolve()
+    if fixture_output_path == report_output_path:
+        raise ValueError("fixture and benchmark report paths must be distinct")
+    if {fixture_output_path, report_output_path} & {input_file, queries_path}:
+        raise ValueError("proof output paths must be distinct from source inputs")
+
+    from app.rag.ingestion.parsing.enrich.image_ocr import add_image_ocr_blocks
+    from app.rag.ingestion.parsing.factory import parser_factory
     from scripts.build_parsing_retrieval_fixture import _read_json, build_retrieval_fixture
     from scripts.run_sample_retrieval_benchmark import run_benchmark
 
-    input_file = Path(input_file).resolve()
-    queries = _read_json(Path(queries_path).resolve())
+    queries = _read_json(queries_path)
     documents, _backend, _provenance = parser_factory.parse_with_provenance(
         input_file,
         parser_backend=str(parser_backend or "basic").strip().lower() or "basic",
     )
-    augmented_documents = []
-    for item in documents or []:
-        page_content = str(getattr(item, "page_content", "") or "")
-        metadata = dict(getattr(item, "metadata", None) or {})
+    for item in documents:
+        page_content = item.page_content
         try:
             next_content, _added, _audit = add_image_ocr_blocks(page_content, origin_path=input_file)
         except Exception:
@@ -107,28 +101,23 @@ def run_parsing_retrieval_proof_from_file(
             governance_rule_packs=governance_rule_packs,
         )
         item.page_content = next_content
-        item.metadata = metadata
-        augmented_documents.append(item)
+    top_k = int(top_k or 1)
+    retrieval_mode = str(retrieval_mode or "keyword")
     fixture = build_retrieval_fixture(
-        documents=_serialize_documents(augmented_documents),
+        documents=_serialize_documents(documents),
         queries=queries if isinstance(queries, list) else [],
-        top_k=int(top_k or 1),
-        retrieval_mode=str(retrieval_mode or "keyword"),
+        top_k=top_k,
+        retrieval_mode=retrieval_mode,
     )
 
-    fixture_output_path = Path(fixture_output_path).resolve()
     fixture_output_path.parent.mkdir(parents=True, exist_ok=True)
     fixture_output_path.write_text(json.dumps(fixture, ensure_ascii=False, indent=2), encoding="utf-8")
 
     return run_benchmark(
         fixture_path=fixture_output_path,
-        output_path=Path(report_output_path).resolve(),
-        top_k=int(top_k or 1),
-        retrieval_mode=str(retrieval_mode or "keyword"),
-        sparse_retrieval_enabled=bool(sparse_retrieval_enabled),
-        sparse_retrieval_provider=str(sparse_retrieval_provider or "deterministic"),
-        colbert_retrieval_enabled=colbert_retrieval_enabled,
-        colbert_retrieval_provider=colbert_retrieval_provider,
+        output_path=report_output_path,
+        top_k=top_k,
+        retrieval_mode=retrieval_mode,
     )
 
 
@@ -147,27 +136,6 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--top-k", type=int, default=1, help="Fixture default top_k and benchmark top_k.")
     parser.add_argument("--retrieval-mode", default="keyword", help="Benchmark retrieval mode.")
     parser.add_argument(
-        "--enable-sparse-retrieval",
-        action="store_true",
-        help="Enable sparse retrieval channel for this proof run.",
-    )
-    parser.add_argument(
-        "--sparse-retrieval-provider",
-        default="deterministic",
-        help="Sparse retrieval provider (deterministic|splade; unknown values fallback downstream).",
-    )
-    parser.add_argument(
-        "--enable-colbert-retrieval",
-        action=argparse.BooleanOptionalAction,
-        default=None,
-        help="Enable ColBERT ANN fallback retrieval for this proof run.",
-    )
-    parser.add_argument(
-        "--colbert-retrieval-provider",
-        default=None,
-        help="ColBERT retrieval provider (deterministic|hf).",
-    )
-    parser.add_argument(
         "--governance-rule-pack",
         action="append",
         default=[],
@@ -176,18 +144,14 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     report = run_parsing_retrieval_proof_from_file(
-        input_file=Path(str(args.input_file)),
-        queries_path=Path(str(args.queries_json)),
-        fixture_output_path=Path(str(args.fixture_out)),
-        report_output_path=Path(str(args.report_out)),
-        parser_backend=str(args.parser_backend or "basic"),
-        top_k=int(args.top_k or 1),
-        retrieval_mode=str(args.retrieval_mode or "keyword"),
-        sparse_retrieval_enabled=bool(args.enable_sparse_retrieval),
-        sparse_retrieval_provider=str(args.sparse_retrieval_provider or "deterministic"),
-        colbert_retrieval_enabled=args.enable_colbert_retrieval,
-        colbert_retrieval_provider=args.colbert_retrieval_provider,
-        governance_rule_packs=[str(item).strip() for item in (args.governance_rule_pack or []) if str(item).strip()],
+        input_file=Path(args.input_file),
+        queries_path=Path(args.queries_json),
+        fixture_output_path=Path(args.fixture_out),
+        report_output_path=Path(args.report_out),
+        parser_backend=args.parser_backend,
+        top_k=args.top_k,
+        retrieval_mode=args.retrieval_mode,
+        governance_rule_packs=args.governance_rule_pack,
     )
     summary = report.get("summary") if isinstance(report, dict) and isinstance(report.get("summary"), dict) else {}
     print(
@@ -195,8 +159,8 @@ def main(argv: list[str] | None = None) -> int:
         f"cases={summary.get('cases_total', 0)} "
         f"hit@k={summary.get('hit_at_k', 0.0)} "
         f"mrr={summary.get('mrr', 0.0)} "
-        f"fixture={Path(str(args.fixture_out)).resolve()} "
-        f"report={Path(str(args.report_out)).resolve()}"
+        f"fixture={Path(args.fixture_out).resolve()} "
+        f"report={Path(args.report_out).resolve()}"
     )
     return 0
 

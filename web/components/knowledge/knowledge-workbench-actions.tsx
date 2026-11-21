@@ -1,10 +1,6 @@
 'use client'
 
-import type { LoadConnectorRuns } from '@/hooks/use-connector-runs'
-
-import type { ConnectorRunOut, Dataset } from '@/types'
-import type { ChangeEvent, Ref } from 'react'
-import { useCallback, useImperativeHandle, useRef, useState } from 'react'
+import { useCallback, useImperativeHandle, useRef, useState, type ChangeEvent, type Ref } from 'react'
 import { ChevronDown, Plus } from '@/components/icons'
 import { useTranslations } from 'next-intl'
 
@@ -16,13 +12,18 @@ import { KnowledgeUrlImportDialog } from '@/components/knowledge/import/knowledg
 import { KnowledgeWebCrawlDialog } from '@/components/knowledge/import/knowledge-web-crawl-dialog'
 import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import type { LoadConnectorRuns } from '@/hooks/use-connector-runs'
 import { UPLOAD_ACCEPT } from '@/lib/upload-extensions'
 import { cn } from '@/lib/utils'
+import type { ConnectorRunOut } from '@/types/connectors'
+import type { Dataset } from '@/types/datasets'
 
 export type KnowledgeImportSource = 'files' | 'url' | 'crawl'
 export type KnowledgeWorkbenchActionsHandle = {
   openImport: (source: KnowledgeImportSource) => void
 }
+
+type WorkbenchDialog = Exclude<KnowledgeImportSource, 'files'> | 'url-batch' | 'jira' | 'pipeline-config'
 
 type KnowledgeWorkbenchActionsProps = {
   actionsRef?: Ref<KnowledgeWorkbenchActionsHandle>
@@ -57,12 +58,9 @@ export function KnowledgeWorkbenchActions({
 }: Readonly<KnowledgeWorkbenchActionsProps>) {
   const t = useTranslations('KnowledgeWorkbenchActions')
   const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const importTriggerRef = useRef<HTMLButtonElement>(null)
   const returnFocusRef = useRef<HTMLElement | null>(null)
-  const [pipelineConfigOpen, setPipelineConfigOpen] = useState(false)
-  const [urlImportOpen, setUrlImportOpen] = useState(false)
-  const [urlBatchOpen, setUrlBatchOpen] = useState(false)
-  const [webCrawlOpen, setWebCrawlOpen] = useState(false)
-  const [jiraProjectOpen, setJiraProjectOpen] = useState(false)
+  const [openDialog, setOpenDialog] = useState<WorkbenchDialog | null>(null)
 
   const handleOpenFilePicker = useCallback(() => {
     fileInputRef.current?.click()
@@ -72,16 +70,29 @@ export function KnowledgeWorkbenchActions({
     actionsRef,
     () => ({
       openImport: (source) => {
-        if (source === 'files') handleOpenFilePicker()
-        else {
-          returnFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
-          if (source === 'url') setUrlImportOpen(true)
-          else setWebCrawlOpen(true)
+        if (source === 'files') {
+          handleOpenFilePicker()
+          return
         }
+        returnFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
+        setOpenDialog(source)
       },
     }),
     [handleOpenFilePicker],
   )
+
+  function handleDialogOpenChange(dialog: WorkbenchDialog, isOpen: boolean) {
+    if (isOpen) {
+      setOpenDialog(dialog)
+      return
+    }
+    setOpenDialog((currentDialog) => (currentDialog === dialog ? null : currentDialog))
+  }
+
+  function openImportFromMenu(dialog: 'url' | 'crawl') {
+    returnFocusRef.current = importTriggerRef.current
+    setOpenDialog(dialog)
+  }
 
   const restoreImportFocus = (event: Event) => {
     const element = returnFocusRef.current
@@ -105,7 +116,7 @@ export function KnowledgeWorkbenchActions({
 
       <DropdownMenu open={open} onOpenChange={onOpenChange}>
         <DropdownMenuTrigger asChild>
-          <Button type="button" size="sm" className={cn('gap-2 shadow-none', className)}>
+          <Button ref={importTriggerRef} type="button" size="sm" className={cn('gap-2 shadow-none', className)}>
             <Plus className="size-4" />
             <span>{t('importOrCreate')}</span>
             <ChevronDown className="size-3.5" />
@@ -114,20 +125,23 @@ export function KnowledgeWorkbenchActions({
         <DropdownMenuContent align="end" className="w-72">
           <KnowledgeImportMenu
             onUploadFiles={handleOpenFilePicker}
-            onOpenUrlImport={() => setUrlImportOpen(true)}
-            onOpenUrlBatch={() => setUrlBatchOpen(true)}
-            onOpenWebCrawl={() => setWebCrawlOpen(true)}
-            onOpenJiraProject={() => setJiraProjectOpen(true)}
-            onOpenPipelineConfig={() => setPipelineConfigOpen(true)}
+            onOpenUrlImport={() => openImportFromMenu('url')}
+            onOpenUrlBatch={() => setOpenDialog('url-batch')}
+            onOpenWebCrawl={() => openImportFromMenu('crawl')}
+            onOpenJiraProject={() => setOpenDialog('jira')}
+            onOpenPipelineConfig={() => setOpenDialog('pipeline-config')}
           />
         </DropdownMenuContent>
       </DropdownMenu>
 
-      <KnowledgePipelineConfigDialog open={pipelineConfigOpen} onOpenChange={setPipelineConfigOpen} />
+      <KnowledgePipelineConfigDialog
+        open={openDialog === 'pipeline-config'}
+        onOpenChange={(isOpen) => handleDialogOpenChange('pipeline-config', isOpen)}
+      />
 
       <KnowledgeUrlImportDialog
-        open={urlImportOpen}
-        onOpenChange={setUrlImportOpen}
+        open={openDialog === 'url'}
+        onOpenChange={(isOpen) => handleDialogOpenChange('url', isOpen)}
         onCloseAutoFocus={restoreImportFocus}
         datasets={datasets}
         datasetsLoading={datasetsLoading}
@@ -138,8 +152,8 @@ export function KnowledgeWorkbenchActions({
       />
 
       <KnowledgeUrlBatchDialog
-        open={urlBatchOpen}
-        onOpenChange={setUrlBatchOpen}
+        open={openDialog === 'url-batch'}
+        onOpenChange={(isOpen) => handleDialogOpenChange('url-batch', isOpen)}
         datasets={datasets}
         datasetsLoading={datasetsLoading}
         selectedDatasetId={selectedDatasetId}
@@ -150,8 +164,8 @@ export function KnowledgeWorkbenchActions({
       />
 
       <KnowledgeWebCrawlDialog
-        open={webCrawlOpen}
-        onOpenChange={setWebCrawlOpen}
+        open={openDialog === 'crawl'}
+        onOpenChange={(isOpen) => handleDialogOpenChange('crawl', isOpen)}
         onCloseAutoFocus={restoreImportFocus}
         datasets={datasets}
         datasetsLoading={datasetsLoading}
@@ -163,8 +177,8 @@ export function KnowledgeWorkbenchActions({
       />
 
       <KnowledgeJiraProjectDialog
-        open={jiraProjectOpen}
-        onOpenChange={setJiraProjectOpen}
+        open={openDialog === 'jira'}
+        onOpenChange={(isOpen) => handleDialogOpenChange('jira', isOpen)}
         datasets={datasets}
         datasetsLoading={datasetsLoading}
         selectedDatasetId={selectedDatasetId}

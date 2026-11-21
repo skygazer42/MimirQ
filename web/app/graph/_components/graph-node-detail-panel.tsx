@@ -27,7 +27,8 @@ import {
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { coerceTrimmedString, getGraphNodeKind, getGraphNodeType } from '@/app/graph/graph-page-utils'
+import { WorkspaceNotice } from '@/components/ui/operational-workspace'
+import { getGraphNodeKind, getGraphNodeType } from '@/app/graph/graph-page-utils'
 import type {
   KGEntityAliasItem,
   KGEntityAliasSuggestionItem,
@@ -127,11 +128,15 @@ type GraphNodeDetailPanelProps = Readonly<{
   dataSource: 'live' | 'file'
   kgNodeDetailLoading: boolean
   kgNodeDetail: KGEntityDetailResponse | KGEventDetailResponse | null
+  kgNodeDetailError: string | null
+  onRetryNodeDetail: () => void
   entityAliasesLoading: boolean
+  entityAliasesError: string | null
   entityAliases: KGEntityAliasItem[]
   aliasDraft: string
   aliasSaving: boolean
   aliasSuggestionsLoading: boolean
+  aliasSuggestionsError: string | null
   aliasSuggestions: KGEntityAliasSuggestionItem[]
   lastResolutionActionId: string | null
   undoSubmitting: boolean
@@ -143,7 +148,7 @@ type GraphNodeDetailPanelProps = Readonly<{
   onStartConnectMode: () => void
   onDeleteNode: () => void
   onOpenMerge: () => void
-  onOpenSplit: () => void
+  onOpenSplit?: () => void
   onUndoLastResolution: () => void
   onAliasDraftChange: (value: string) => void
   onSaveAlias: () => void
@@ -153,14 +158,15 @@ type GraphNodeDetailPanelProps = Readonly<{
 
 type GraphNodeKgDetailProps = Pick<
   GraphNodeDetailPanelProps,
-  | 'selectedNode'
   | 'kgNodeDetailLoading'
   | 'kgNodeDetail'
   | 'entityAliasesLoading'
+  | 'entityAliasesError'
   | 'entityAliases'
   | 'aliasDraft'
   | 'aliasSaving'
   | 'aliasSuggestionsLoading'
+  | 'aliasSuggestionsError'
   | 'aliasSuggestions'
   | 'onAliasDraftChange'
   | 'onSaveAlias'
@@ -169,21 +175,22 @@ type GraphNodeKgDetailProps = Pick<
 >
 
 function GraphNodeKgDetail({
-  selectedNode,
   kgNodeDetailLoading,
   kgNodeDetail,
   entityAliasesLoading,
+  entityAliasesError,
   entityAliases,
   aliasDraft,
   aliasSaving,
   aliasSuggestionsLoading,
+  aliasSuggestionsError,
   aliasSuggestions,
   onAliasDraftChange,
   onSaveAlias,
   onRequestDeleteAlias,
   onMergeAliasSuggestion,
 }: GraphNodeKgDetailProps) {
-  if (kgNodeDetailLoading) {
+  if (kgNodeDetailLoading && kgNodeDetail === null) {
     return (
       <div className="rounded-lg border border-info/30 bg-info/10 p-2.5 text-[11px] text-muted-foreground">
         Loading...
@@ -191,21 +198,15 @@ function GraphNodeKgDetail({
     )
   }
 
-  if (!kgNodeDetail) {
-    return (
-      <div className="rounded-lg border border-border/60 bg-primary/10 p-2.5 text-[11px] text-muted-foreground">
-        No KG detail available
-      </div>
-    )
-  }
+  if (kgNodeDetail === null) return null
 
-  if (selectedNode?.meta?.kind !== 'entity') {
-    const eventDetail = kgNodeDetail as KGEventDetailResponse
+  if ('event' in kgNodeDetail) {
+    const eventDetail = kgNodeDetail
     return (
       <div className="rounded-lg border border-success/30 bg-success/10 p-2.5">
         <div className="mb-1.5 text-[11px] font-medium uppercase tracking-[0.08em] text-success/70">Entities</div>
         <div className="space-y-1.5">
-          {eventDetail.entities?.slice(0, 12)?.map((row) => (
+          {eventDetail.entities.slice(0, 12).map((row) => (
             <div key={row.entity.id} className="flex items-center justify-between gap-2 text-[11px]">
               <span className="truncate text-foreground" title={row.entity.name}>
                 {row.entity.name || row.entity.id}
@@ -220,10 +221,16 @@ function GraphNodeKgDetail({
     )
   }
 
-  const entityDetail = kgNodeDetail as KGEntityDetailResponse
+  const entityDetail = kgNodeDetail
   let aliasContent: React.ReactNode
   if (entityAliasesLoading) {
     aliasContent = <div className="text-[11px] text-muted-foreground">Loading...</div>
+  } else if (entityAliasesError !== null) {
+    aliasContent = (
+      <div role="alert" className="text-[11px] text-destructive">
+        {entityAliasesError}
+      </div>
+    )
   } else if (entityAliases.length === 0) {
     aliasContent = <div className="text-[11px] text-muted-foreground">No aliases</div>
   } else {
@@ -254,6 +261,12 @@ function GraphNodeKgDetail({
   let aliasSuggestionsContent: React.ReactNode
   if (aliasSuggestionsLoading) {
     aliasSuggestionsContent = <div className="text-[11px] text-muted-foreground">Loading...</div>
+  } else if (aliasSuggestionsError !== null) {
+    aliasSuggestionsContent = (
+      <div role="alert" className="text-[11px] text-destructive">
+        {aliasSuggestionsError}
+      </div>
+    )
   } else if (aliasSuggestions.length === 0) {
     aliasSuggestionsContent = <div className="text-[11px] text-muted-foreground">No suggestions</div>
   } else {
@@ -284,7 +297,7 @@ function GraphNodeKgDetail({
       <div className="rounded-lg border border-info/30 bg-info/10 p-2.5">
         <div className="mb-1.5 text-[11px] font-medium uppercase tracking-[0.08em] text-info/70">Recent Events</div>
         <div className="space-y-1.5">
-          {entityDetail.events?.slice(0, 6)?.map((ev) => (
+          {entityDetail.events.slice(0, 6).map((ev) => (
             <div key={ev.id} className="truncate text-[11px] text-foreground" title={ev.title}>
               {ev.title}
             </div>
@@ -295,7 +308,7 @@ function GraphNodeKgDetail({
       <div className="rounded-lg border border-success/30 bg-success/10 p-2.5">
         <div className="mb-1.5 text-[11px] font-medium uppercase tracking-[0.08em] text-success/70">Top Neighbors</div>
         <div className="space-y-1.5">
-          {entityDetail.neighbors?.slice(0, 8)?.map((neighbor) => (
+          {entityDetail.neighbors.slice(0, 8).map((neighbor) => (
             <div key={neighbor.entity_id} className="flex items-center justify-between gap-2 text-[11px]">
               <span className="truncate text-foreground" title={neighbor.name}>
                 {neighbor.name || neighbor.entity_id}
@@ -346,11 +359,15 @@ export function GraphNodeDetailPanel({
   dataSource,
   kgNodeDetailLoading,
   kgNodeDetail,
+  kgNodeDetailError,
+  onRetryNodeDetail,
   entityAliasesLoading,
+  entityAliasesError,
   entityAliases,
   aliasDraft,
   aliasSaving,
   aliasSuggestionsLoading,
+  aliasSuggestionsError,
   aliasSuggestions,
   lastResolutionActionId,
   undoSubmitting,
@@ -372,11 +389,9 @@ export function GraphNodeDetailPanel({
   const nodeKind = getGraphNodeKind(selectedNode)
   const nodeType = getGraphNodeType(selectedNode)
   const summaryBadges = [
-    {
-      label: 'ID',
-      value: selectedNode?.id == null ? '' : String(selectedNode.id),
-      className: 'border-info/30 bg-info/15 text-info',
-    },
+    selectedNode === null
+      ? null
+      : { label: 'ID', value: selectedNode.id, className: 'border-info/30 bg-info/15 text-info' },
     nodeKind ? { label: '类别', value: getKindLabel(nodeKind), className: getKindBadgeClasses(nodeKind) } : null,
     nodeType ? { label: '类型', value: nodeType, className: 'border-primary/30 bg-primary/15 text-primary' } : null,
     selectedNode?.group == null
@@ -385,7 +400,7 @@ export function GraphNodeDetailPanel({
     selectedNode?.val == null
       ? null
       : { label: '权重', value: String(selectedNode.val), className: 'border-warning/30 bg-warning/15 text-warning' },
-  ].filter(Boolean) as Array<{ label: string; value: string; className: string }>
+  ].filter((badge) => badge !== null)
 
   const detailEntries = selectedNode
     ? Object.entries(selectedNode).filter(([key, value]) => {
@@ -408,16 +423,11 @@ export function GraphNodeDetailPanel({
   } | null>(null)
   const [panelPosition, setPanelPosition] = useState<{ x: number; y: number } | null>(null)
   const [isDragging, setIsDragging] = useState(false)
-  const [isKgDetailExpanded, setIsKgDetailExpanded] = useState(false)
   const [isHovered, setIsHovered] = useState(false)
 
   useEffect(() => {
     if (open && selectedNode?.id) panelRef.current?.focus()
   }, [open, selectedNode?.id])
-
-  useEffect(() => {
-    setIsKgDetailExpanded(false)
-  }, [selectedNode?.id])
 
   useEffect(() => {
     if (!open || !selectedNode) return
@@ -546,53 +556,38 @@ export function GraphNodeDetailPanel({
 
   if (selectedNode) {
     let kgDetailSection: React.ReactNode = null
-    if (dataSource === 'live' && (selectedNode?.meta?.kind === 'entity' || selectedNode?.meta?.kind === 'event')) {
-      const kgDetailSummaryLabel = isKgDetailExpanded ? '收起' : '展开'
-      const kgDetailPanel = isKgDetailExpanded ? (
-        <GraphNodeKgDetail
-          selectedNode={selectedNode}
-          kgNodeDetailLoading={kgNodeDetailLoading}
-          kgNodeDetail={kgNodeDetail}
-          entityAliasesLoading={entityAliasesLoading}
-          entityAliases={entityAliases}
-          aliasDraft={aliasDraft}
-          aliasSaving={aliasSaving}
-          aliasSuggestionsLoading={aliasSuggestionsLoading}
-          aliasSuggestions={aliasSuggestions}
-          onAliasDraftChange={onAliasDraftChange}
-          onSaveAlias={onSaveAlias}
-          onRequestDeleteAlias={onRequestDeleteAlias}
-          onMergeAliasSuggestion={onMergeAliasSuggestion}
-        />
-      ) : (
-        <div className="rounded-lg border border-primary/30 bg-primary/10 px-3 py-2 text-[11px] text-muted-foreground">
-          展开查看最近事件、邻居、别名和合并建议。
-        </div>
-      )
-
+    if (dataSource === 'live' && (nodeKind === 'entity' || nodeKind === 'event')) {
       kgDetailSection = (
-        <div className="space-y-2">
-          <button
-            type="button"
-            onClick={() => setIsKgDetailExpanded((value) => !value)}
-            className="flex w-full items-center justify-between rounded-xl border border-border/60 bg-card px-3 py-2 text-left transition-colors hover:bg-muted/30 focus-ring"
-          >
+        <details key={selectedNode.id} className="group/kg-detail space-y-2">
+          <summary className="focus-ring flex w-full cursor-pointer list-none items-center justify-between rounded-xl border border-border/60 bg-card px-3 py-2 text-left transition-colors hover:bg-muted/30 [&::-webkit-details-marker]:hidden">
             <span className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
               <Layers className="w-3 h-3 text-warning/80" />
-              KG Detail
+              节点详情
             </span>
-            <span className="inline-flex items-center gap-1 text-[11px] font-medium text-muted-foreground">
-              {kgDetailSummaryLabel}
-              <ChevronDown
-                className={cn(
-                  'h-3.5 w-3.5 transition-transform duration-200',
-                  isKgDetailExpanded ? 'rotate-180' : null,
-                )}
-              />
-            </span>
-          </button>
-          {kgDetailPanel}
-        </div>
+            <ChevronDown className="h-3.5 w-3.5 text-muted-foreground transition-transform group-open/kg-detail:rotate-180 motion-reduce:transition-none" />
+          </summary>
+          {kgNodeDetailError !== null ? (
+            <WorkspaceNotice retry={onRetryNodeDetail} pending={kgNodeDetailLoading}>
+              {kgNodeDetailError}
+            </WorkspaceNotice>
+          ) : null}
+          <GraphNodeKgDetail
+            kgNodeDetailLoading={kgNodeDetailLoading}
+            kgNodeDetail={kgNodeDetail}
+            entityAliasesLoading={entityAliasesLoading}
+            entityAliasesError={entityAliasesError}
+            entityAliases={entityAliases}
+            aliasDraft={aliasDraft}
+            aliasSaving={aliasSaving}
+            aliasSuggestionsLoading={aliasSuggestionsLoading}
+            aliasSuggestionsError={aliasSuggestionsError}
+            aliasSuggestions={aliasSuggestions}
+            onAliasDraftChange={onAliasDraftChange}
+            onSaveAlias={onSaveAlias}
+            onRequestDeleteAlias={onRequestDeleteAlias}
+            onMergeAliasSuggestion={onMergeAliasSuggestion}
+          />
+        </details>
       )
     }
 
@@ -690,7 +685,7 @@ export function GraphNodeDetailPanel({
               {isLoading ? '展开中...' : '展开邻居节点'}
             </Button>
 
-            {dataSource === 'live' && selectedNode?.meta?.kind === 'entity' ? (
+            {dataSource === 'live' && nodeKind === 'entity' ? (
               <div className="grid grid-cols-2 gap-1.5">
                 <Button
                   variant="outline"
@@ -703,6 +698,7 @@ export function GraphNodeDetailPanel({
                 <Button
                   variant="outline"
                   onClick={onOpenSplit}
+                  disabled={onOpenSplit === undefined}
                   className="h-7.5 w-full justify-start rounded-lg border-primary/30 bg-primary/15 px-2.5 text-[11px] text-foreground/85 shadow-none hover:bg-primary/15 hover:text-foreground"
                 >
                   <Box className="w-3 h-3 mr-1.5" />
@@ -741,13 +737,11 @@ export function GraphNodeDetailPanel({
                       {key}
                     </div>
                     <div className="min-w-0 break-words text-[11px] leading-4.5 text-foreground/88">
-                      {typeof value === 'object'
-                        ? coerceTrimmedString(JSON.stringify(value)) || String(value)
-                        : String(value)}
+                      {typeof value === 'object' ? JSON.stringify(value) : String(value)}
                     </div>
                   </div>
                 ))}
-                {selectedNode.source ? (
+                {selectedNodeSourceLabel !== '' ? (
                   <button
                     type="button"
                     onClick={onViewSource}

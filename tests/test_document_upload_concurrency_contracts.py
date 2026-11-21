@@ -9,13 +9,14 @@ from fastapi import BackgroundTasks, HTTPException
 from sqlalchemy.exc import IntegrityError
 from starlette.datastructures import UploadFile
 
-import app.services.document_batch_ingestion as batch_owner
-import app.services.document_ingestion as upload_owner
-import app.services.document_ingestion_policy as ingestion_policy_owner
-import app.services.document_processing_dispatch as document_dispatch
-import app.services.document_source_persistence as source_owner
-from app.api.v1 import documents as documents_module
-from app.services import document_dedup_service
+import app.services.documents.batch_ingestion as batch_owner
+import app.services.documents.ingestion as upload_owner
+import app.services.documents.ingestion_policy as ingestion_policy_owner
+import app.services.documents.processing_dispatch as document_dispatch
+import app.services.documents.source_persistence as source_owner
+from app.api.v1.documents import routes as documents_module
+from app.services.documents import source_persistence as document_dedup_service
+from app.services.documents.ingestion import DUPLICATE_DOCUMENT_PROCESSING_DETAIL
 
 document_upload = documents_module.document_upload
 
@@ -47,7 +48,7 @@ def _make_upload(filename: str, content: str = "hello") -> UploadFile:
 
 
 def _patch_quota(monkeypatch: pytest.MonkeyPatch) -> None:
-    from app.services import tenant_quota_service
+    from app.services.identity import tenant_quotas as tenant_quota_service
 
     monkeypatch.setattr(
         tenant_quota_service,
@@ -164,8 +165,9 @@ class _OuterDB:
     def commit(self) -> None:
         return None
 
-    def refresh(self, _obj) -> None:  # noqa: ANN001
-        return None
+    def refresh(self, obj) -> None:  # noqa: ANN001
+        if isinstance(obj, batch_owner.DBDatasetPrecheckScanRun) and obj.id is None:
+            obj.id = uuid.uuid4()
 
     def query(self, _model):  # noqa: ANN001, ANN201
         return _OuterQuery(self.document)
@@ -278,7 +280,7 @@ async def test_upload_batch_cancellation_cleans_staged_temp_file(
     _patch_quota(monkeypatch)
     _patch_minimal_document_resolution(monkeypatch, dataset_id=dataset_id)
     monkeypatch.setattr(upload_owner.settings, "UPLOAD_DIR", str(tmp_path), raising=False)
-    monkeypatch.setattr(upload_owner, "_document_object_storage_enabled", lambda: False, raising=True)
+    monkeypatch.setattr(upload_owner, "document_object_storage_enabled", lambda: False, raising=True)
 
     async def _slow_save(file: UploadFile, file_path: Path, max_bytes: int) -> tuple[int, str]:
         data = await file.read()
@@ -353,25 +355,27 @@ async def test_upload_batch_uses_isolated_item_sessions_and_response_survives_cl
     monkeypatch.setattr(source_owner, "persist_uploaded_document", _persist, raising=True)
     monkeypatch.setattr(source_owner, "store_document_source", _store, raising=True)
 
-    result = await document_upload.upload_documents_batch(
-        background_tasks=BackgroundTasks(),
-        files=[_make_upload("one.txt"), _make_upload("two.txt")],
-        form=document_upload.UploadDocumentsBatchFormFields(
-            parser_backend="auto",
-            chunk_strategy="langchain_recursive",
-            pipeline=None,
-            dataset_id=dataset_id,
-            precheck_first=False,
-            precheck_only=False,
-            upload_only=True,
-            user_metadata_map=None,
-            max_concurrent=2,
-        ),
-        overrides_form=_build_overrides_form(),
-        tenant_id=uuid.uuid4(),
-        account_id="acct-1",
-        db=outer_db,
-    )
+    result = (
+        await document_upload.upload_documents_batch(
+            background_tasks=BackgroundTasks(),
+            files=[_make_upload("one.txt"), _make_upload("two.txt")],
+            form=document_upload.UploadDocumentsBatchFormFields(
+                parser_backend="auto",
+                chunk_strategy="langchain_recursive",
+                pipeline=None,
+                dataset_id=dataset_id,
+                precheck_first=False,
+                precheck_only=False,
+                upload_only=True,
+                user_metadata_map=None,
+                max_concurrent=2,
+            ),
+            overrides_form=_build_overrides_form(),
+            tenant_id=uuid.uuid4(),
+            account_id="acct-1",
+            db=outer_db,
+        )
+    ).model_dump(mode="json")
 
     assert result["successful_count"] == 2
     assert [entry["filename"] for entry in result["successful"]] == ["one.txt", "two.txt"]
@@ -432,25 +436,27 @@ async def test_upload_batch_closes_intake_after_attaching_successes_in_both_bran
 
     monkeypatch.setattr(batch_owner, "SessionLocal", _new_item_session, raising=True)
 
-    result = await document_upload.upload_documents_batch(
-        background_tasks=BackgroundTasks(),
-        files=[_make_upload("dup.txt"), _make_upload("bad.exe")],
-        form=document_upload.UploadDocumentsBatchFormFields(
-            parser_backend="auto",
-            chunk_strategy="langchain_recursive",
-            pipeline=None,
-            dataset_id=dataset_id,
-            precheck_first=precheck_first,
-            precheck_only=False,
-            upload_only=False,
-            user_metadata_map=None,
-            max_concurrent=2,
-        ),
-        overrides_form=_build_overrides_form(),
-        tenant_id=tenant_id,
-        account_id="acct-1",
-        db=outer_db,
-    )
+    result = (
+        await document_upload.upload_documents_batch(
+            background_tasks=BackgroundTasks(),
+            files=[_make_upload("dup.txt"), _make_upload("bad.exe")],
+            form=document_upload.UploadDocumentsBatchFormFields(
+                parser_backend="auto",
+                chunk_strategy="langchain_recursive",
+                pipeline=None,
+                dataset_id=dataset_id,
+                precheck_first=precheck_first,
+                precheck_only=False,
+                upload_only=False,
+                user_metadata_map=None,
+                max_concurrent=2,
+            ),
+            overrides_form=_build_overrides_form(),
+            tenant_id=tenant_id,
+            account_id="acct-1",
+            db=outer_db,
+        )
+    ).model_dump(mode="json")
 
     assert result["successful_count"] == 1
     assert result["failed_count"] == 1
@@ -679,7 +685,7 @@ async def test_single_upload_keeps_pending_different_pipeline_conflict(monkeypat
         )
 
     assert exc_info.value.status_code == 409
-    assert exc_info.value.detail == documents_module.DUPLICATE_DOCUMENT_PROCESSING_DETAIL
+    assert exc_info.value.detail == DUPLICATE_DOCUMENT_PROCESSING_DETAIL
 
 
 @pytest.mark.asyncio
@@ -1279,25 +1285,27 @@ async def test_batch_upload_hands_retry_ingest_lock_to_worker(monkeypatch: pytes
     monkeypatch.setattr("app.tasks.locks.release_lock", _release, raising=False)
     monkeypatch.setattr(upload_owner, "retry_document", _retry, raising=True)
 
-    result = await document_upload.upload_documents_batch(
-        background_tasks=BackgroundTasks(),
-        files=[_make_upload("batch.txt")],
-        form=document_upload.UploadDocumentsBatchFormFields(
-            parser_backend="auto",
-            chunk_strategy="langchain_recursive",
-            pipeline=None,
-            dataset_id=dataset_id,
-            precheck_first=False,
-            precheck_only=False,
-            upload_only=False,
-            user_metadata_map=None,
-            max_concurrent=1,
-        ),
-        overrides_form=_build_overrides_form(),
-        tenant_id=uuid.uuid4(),
-        account_id="acct-1",
-        db=SimpleNamespace(),
-    )
+    result = (
+        await document_upload.upload_documents_batch(
+            background_tasks=BackgroundTasks(),
+            files=[_make_upload("batch.txt")],
+            form=document_upload.UploadDocumentsBatchFormFields(
+                parser_backend="auto",
+                chunk_strategy="langchain_recursive",
+                pipeline=None,
+                dataset_id=dataset_id,
+                precheck_first=False,
+                precheck_only=False,
+                upload_only=False,
+                user_metadata_map=None,
+                max_concurrent=1,
+            ),
+            overrides_form=_build_overrides_form(),
+            tenant_id=uuid.uuid4(),
+            account_id="acct-1",
+            db=SimpleNamespace(),
+        )
+    ).model_dump(mode="json")
 
     assert result["successful_count"] == 1
     assert released == []
@@ -1333,8 +1341,9 @@ async def test_batch_pending_duplicate_respects_pipeline_identity(
         def commit(self) -> None:
             return None
 
-        def refresh(self, _obj) -> None:  # noqa: ANN001
-            return None
+        def refresh(self, obj) -> None:  # noqa: ANN001
+            if isinstance(obj, batch_owner.DBDatasetPrecheckScanRun) and obj.id is None:
+                obj.id = uuid.uuid4()
 
     _patch_quota(monkeypatch)
     _patch_minimal_document_resolution(monkeypatch, dataset_id=dataset_id)
@@ -1355,25 +1364,27 @@ async def test_batch_pending_duplicate_respects_pipeline_identity(
     monkeypatch.setattr(batch_owner, "run_dataset_precheck_scan", lambda *_args, **_kwargs: None, raising=True)
     monkeypatch.setattr(batch_owner, "apply_ingestion_policy_suggestion", lambda *_args, **_kwargs: None, raising=True)
 
-    result = await document_upload.upload_documents_batch(
-        background_tasks=BackgroundTasks(),
-        files=[_make_upload("batch.txt")],
-        form=document_upload.UploadDocumentsBatchFormFields(
-            parser_backend="auto",
-            chunk_strategy="langchain_recursive",
-            pipeline=None,
-            dataset_id=dataset_id,
-            precheck_first=precheck_first,
-            precheck_only=False,
-            upload_only=False,
-            user_metadata_map=None,
-            max_concurrent=1,
-        ),
-        overrides_form=_build_overrides_form(),
-        tenant_id=tenant_id,
-        account_id="acct-1",
-        db=_OuterDB(),
-    )
+    result = (
+        await document_upload.upload_documents_batch(
+            background_tasks=BackgroundTasks(),
+            files=[_make_upload("batch.txt")],
+            form=document_upload.UploadDocumentsBatchFormFields(
+                parser_backend="auto",
+                chunk_strategy="langchain_recursive",
+                pipeline=None,
+                dataset_id=dataset_id,
+                precheck_first=precheck_first,
+                precheck_only=False,
+                upload_only=False,
+                user_metadata_map=None,
+                max_concurrent=1,
+            ),
+            overrides_form=_build_overrides_form(),
+            tenant_id=tenant_id,
+            account_id="acct-1",
+            db=_OuterDB(),
+        )
+    ).model_dump(mode="json")
 
     if same_pipeline:
         assert result["successful_count"] == 1
@@ -1384,7 +1395,7 @@ async def test_batch_pending_duplicate_respects_pipeline_identity(
         assert result["failed_count"] == 1
         error = result["failed"][0]["error"]
         assert error.startswith("409:")
-        assert error.endswith(documents_module.DUPLICATE_DOCUMENT_PROCESSING_DETAIL)
+        assert error.endswith(DUPLICATE_DOCUMENT_PROCESSING_DETAIL)
 
 
 @pytest.mark.asyncio
@@ -1442,7 +1453,7 @@ async def test_single_upload_returns_existing_document_after_dedup_constraint_co
         return duplicate_document
 
     monkeypatch.setattr(source_owner, "find_duplicate_document", _find_duplicate_document, raising=True)
-    monkeypatch.setattr(document_dedup_service, "_find_duplicate_document", _find_duplicate_document, raising=True)
+    monkeypatch.setattr(document_dedup_service, "find_duplicate_document", _find_duplicate_document, raising=True)
 
     async def _schedule(**_kwargs) -> bool:  # noqa: ANN003, ANN202
         raise AssertionError("dedup conflict should return the winning document without requeueing")
@@ -1492,8 +1503,9 @@ async def test_precheck_staged_batch_hands_retry_ingest_lock_to_worker(
         def commit(self) -> None:
             return None
 
-        def refresh(self, _obj) -> None:  # noqa: ANN001
-            return None
+        def refresh(self, obj) -> None:  # noqa: ANN001
+            if isinstance(obj, batch_owner.DBDatasetPrecheckScanRun) and obj.id is None:
+                obj.id = uuid.uuid4()
 
     _patch_quota(monkeypatch)
     _patch_minimal_document_resolution(monkeypatch, dataset_id=dataset_id)
@@ -1531,25 +1543,27 @@ async def test_precheck_staged_batch_hands_retry_ingest_lock_to_worker(
     monkeypatch.setattr("app.tasks.locks.release_lock", _release, raising=False)
     monkeypatch.setattr(upload_owner, "retry_document", _retry, raising=True)
 
-    result = await document_upload.upload_documents_batch(
-        background_tasks=BackgroundTasks(),
-        files=[_make_upload("batch.txt")],
-        form=document_upload.UploadDocumentsBatchFormFields(
-            parser_backend="auto",
-            chunk_strategy="langchain_recursive",
-            pipeline=None,
-            dataset_id=dataset_id,
-            precheck_first=True,
-            precheck_only=False,
-            upload_only=False,
-            user_metadata_map=None,
-            max_concurrent=1,
-        ),
-        overrides_form=_build_overrides_form(),
-        tenant_id=uuid.uuid4(),
-        account_id="acct-1",
-        db=_OuterDB(),
-    )
+    result = (
+        await document_upload.upload_documents_batch(
+            background_tasks=BackgroundTasks(),
+            files=[_make_upload("batch.txt")],
+            form=document_upload.UploadDocumentsBatchFormFields(
+                parser_backend="auto",
+                chunk_strategy="langchain_recursive",
+                pipeline=None,
+                dataset_id=dataset_id,
+                precheck_first=True,
+                precheck_only=False,
+                upload_only=False,
+                user_metadata_map=None,
+                max_concurrent=1,
+            ),
+            overrides_form=_build_overrides_form(),
+            tenant_id=uuid.uuid4(),
+            account_id="acct-1",
+            db=_OuterDB(),
+        )
+    ).model_dump(mode="json")
 
     assert result["successful_count"] == 1
     assert released == []

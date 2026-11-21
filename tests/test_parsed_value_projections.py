@@ -1,7 +1,7 @@
 from langchain_core.documents import Document
 
-from app.parsing.subprocess_worker import _serialize_documents
-from app.parsing.utils.document_elements import normalize_document_elements
+from app.rag.ingestion.parsing.subprocess_worker import _serialize_documents
+from app.rag.ingestion.parsing.utils.document_elements import normalize_document_elements
 
 
 def test_subprocess_roundtrip_keeps_an_explicit_empty_document_id() -> None:
@@ -37,7 +37,7 @@ def test_normalized_element_keeps_its_actual_empty_attribute_map() -> None:
 
 
 def test_docling_hints_preserve_raw_source_metadata() -> None:
-    from app.parsing.parsers.docling_parser import _apply_element_hints
+    from app.rag.ingestion.parsing.parsers.docling_parser import _apply_element_hints
 
     raw = {"content_type": "", "doc_type_kwd": False}
 

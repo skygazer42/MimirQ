@@ -68,11 +68,13 @@ function field(container: ParentNode, label: string) {
 }
 
 function fill(input: HTMLInputElement, value: string, parsed?: number) {
+  if (input.type === 'number') act(() => input.focus())
   act(() => {
     Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, value)
     if (parsed !== undefined) expect(input.valueAsNumber).toBe(parsed)
     input.dispatchEvent(new Event('input', { bubbles: true }))
   })
+  if (input.type === 'number') act(() => input.blur())
 }
 
 beforeEach(() => {
@@ -84,22 +86,27 @@ afterEach(() => {
 })
 
 describe('persisted RAG settings', () => {
-  it.each(['ltr', 'xgboost_ltr'])('keeps retired %s visible without silently changing the model', (provider) => {
-    const view = mountRag({ reranker_provider: provider })
-    expect(normalizeRerankerProvider(provider)).toBe('ltr')
-    expect(view.container.querySelector('[role="combobox"]')?.textContent).not.toContain('大模型重排')
-    expect(view.onPatch).not.toHaveBeenCalled()
-  })
+  it.each(['ltr', 'xgboost_ltr', 'colbert', 'late_interaction'])(
+    'keeps retired %s visible without silently changing the model',
+    (provider) => {
+      const view = mountRag({ reranker_provider: provider })
+      expect(normalizeRerankerProvider(provider)).toBe(
+        provider === 'colbert' || provider === 'late_interaction' ? 'colbert' : 'ltr',
+      )
+      expect(view.container.querySelector('[role="combobox"]')?.textContent).not.toContain('大模型重排')
+      expect(view.onPatch).not.toHaveBeenCalled()
+    },
+  )
 
-  it.each([
-    ['aliyun', 'dashscope', '通义千问重排'],
-    ['late_interaction', 'colbert', 'ColBERT（离线验证）'],
-  ])('represents the actual persisted %s backend alias', (alias, canonical, label) => {
-    const view = mountRag({ reranker_provider: alias })
-    expect(normalizeRerankerProvider(alias)).toBe(canonical)
-    expect(view.container.querySelector('[role="combobox"]')?.textContent).toContain(label)
-    expect(view.onPatch).not.toHaveBeenCalled()
-  })
+  it.each([['aliyun', 'dashscope', '通义千问重排']])(
+    'represents the actual persisted %s backend alias',
+    (alias, canonical, label) => {
+      const view = mountRag({ reranker_provider: alias })
+      expect(normalizeRerankerProvider(alias)).toBe(canonical)
+      expect(view.container.querySelector('[role="combobox"]')?.textContent).toContain(label)
+      expect(view.onPatch).not.toHaveBeenCalled()
+    },
+  )
 
   it('preserves unknown raw selection behavior while keeping evaluation fallback policy', () => {
     const view = mountRag({ reranker_provider: 'custom-unknown' })
@@ -110,8 +117,8 @@ describe('persisted RAG settings', () => {
 
   it.each([
     ['最多附图', 'image_append_max', '1e1', 10],
-    ['重排数量', 'reranker_top_n', '2e1', 20],
-    ['最小分块长度', 'chunk_min_chars', '3e1', 30],
+    ['重排数量', 'reranker_top_n', '3e1', 30],
+    ['最小分块长度', 'chunk_min_chars', '4e1', 40],
   ] as const)('reads the full numeric input for %s', (label, key, raw, expected) => {
     const view = mountRag()
     fill(field(view.container, label), raw, expected)

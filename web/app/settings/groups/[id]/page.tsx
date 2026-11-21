@@ -1,16 +1,8 @@
-'use client'
+import { getLocale } from 'next-intl/server'
 
-import { useEffect, useRef } from 'react'
-import { useParams } from 'next/navigation'
-import { PageLoading } from '@/components/ui/page-loading'
+import { redirect } from '@/i18n/navigation'
 
-export default function GroupDetailPage() {
-  const { id } = useParams<{ id: string }>(),
-    navigating = useRef(false)
-  useEffect(() => {
-    if (!id || navigating.current) return
-    navigating.current = true
-    window.location.replace(`/settings/groups?group=${encodeURIComponent(id)}`)
-  }, [id])
-  return <PageLoading className="min-h-dvh bg-background" message="正在打开组…" srMessage="正在打开组目录" />
+export default async function GroupDetailPage({ params }: Readonly<{ params: Promise<{ id: string }> }>) {
+  const { id } = await params
+  redirect({ href: `/settings/groups?group=${encodeURIComponent(id)}`, locale: await getLocale() })
 }

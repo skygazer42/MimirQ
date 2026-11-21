@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useLayoutEffect, useRef, useState, type FormEvent } from 'react'
 import { toast } from 'sonner'
 import { Download, Loader2 } from '@/components/icons'
 import { Button } from '@/components/ui/button'
@@ -18,6 +18,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { authApi } from '@/lib/api/auth'
 import { scimApi } from '@/lib/api/scim'
 import { formatApiError, toApiErrorInfo } from '@/lib/api-errors'
+import { getAuthSessionKey } from '@/lib/auth-storage'
+import { downloadBlob } from '@/lib/download'
 import { MEMBER_ROLES, memberIdentity, roleLabel } from './members-model'
 import type { MembersController } from './use-members'
 import styles from './members.module.css'
@@ -61,43 +63,44 @@ export function IdentityToolsDialog({ tenantId, onClose }: { tenantId: string; o
     [provider, setProvider] = useState('')
   const [busy, setBusy] = useState<'scim' | 'saml' | null>(null),
     [error, setError] = useState('')
-  async function testScim(event: React.FormEvent) {
+  const requestRef = useRef<AbortController | null>(null)
+  useLayoutEffect(() => () => requestRef.current?.abort(), [])
+
+  async function fetchIdentityConfiguration(event: FormEvent<HTMLFormElement>, kind: 'scim' | 'saml') {
     event.preventDefault()
-    if (busy) return
-    setBusy('scim')
+    if (requestRef.current !== null) return
+    const controller = new AbortController()
+    requestRef.current = controller
+    const { signal } = controller
+    const sessionKey = getAuthSessionKey()
+    const isCurrent = () => !signal.aborted && getAuthSessionKey() === sessionKey
+    setBusy(kind)
     setError('')
     try {
-      await scimApi.getServiceProviderConfig({ tenantId: tenant.trim(), scimToken: token.trim() })
-      toast.success('已读取 SCIM 服务配置')
+      if (kind === 'scim') {
+        await scimApi.getServiceProviderConfig({ tenantId: tenant, scimToken: token }, { signal })
+        if (isCurrent()) toast.success('已读取 SCIM 服务配置')
+        return
+      }
+      const providerId = provider.trim()
+      const metadata = await authApi.samlMetadata(providerId === '' ? undefined : { provider_id: providerId }, {
+        signal,
+      })
+      if (!isCurrent()) return
+      downloadBlob('saml-metadata.xml', new Blob([metadata], { type: 'application/xml;charset=utf-8' }))
+      toast.success('已开始下载 SAML 元数据')
     } catch (cause) {
-      setError(formatApiError(cause, 'SCIM 服务配置读取失败'))
-    } finally {
-      setBusy(null)
-    }
-  }
-  async function downloadMetadata(event: React.FormEvent) {
-    event.preventDefault()
-    if (busy) return
-    setBusy('saml')
-    setError('')
-    try {
-      const metadata = await authApi.samlMetadata({ provider_id: provider.trim() || null })
-      const url = URL.createObjectURL(new Blob([metadata], { type: 'application/xml;charset=utf-8' }))
-      const link = document.createElement('a')
-      link.href = url
-      link.download = 'saml-metadata.xml'
-      link.click()
-      window.setTimeout(() => URL.revokeObjectURL(url), 1000)
-      toast.success('已下载 SAML 元数据')
-    } catch (cause) {
-      const info = toApiErrorInfo(cause, 'SAML 元数据读取失败')
+      if (!isCurrent()) return
+      const message = kind === 'saml' ? 'SAML 元数据读取失败' : 'SCIM 服务配置读取失败'
+      const info = toApiErrorInfo(cause, message)
       setError(
-        info.message.trim().toLowerCase() === 'saml not configured'
+        kind === 'saml' && info.message.trim().toLowerCase() === 'saml not configured'
           ? '尚未配置 SAML 身份源，暂时无法下载元数据。'
-          : formatApiError(cause, 'SAML 元数据读取失败'),
+          : formatApiError(cause, message),
       )
     } finally {
-      setBusy(null)
+      requestRef.current = null
+      if (isCurrent()) setBusy(null)
     }
   }
   return (
@@ -130,7 +133,7 @@ export function IdentityToolsDialog({ tenantId, onClose }: { tenantId: string; o
           <TabsContent value="scim" className={styles.tabContent}>
             <form
               onSubmit={(event) => {
-                void testScim(event)
+                void fetchIdentityConfiguration(event, 'scim')
               }}
             >
               <div className={styles.dialogBody}>
@@ -188,7 +191,7 @@ export function IdentityToolsDialog({ tenantId, onClose }: { tenantId: string; o
           <TabsContent value="saml" className={styles.tabContent}>
             <form
               onSubmit={(event) => {
-                void downloadMetadata(event)
+                void fetchIdentityConfiguration(event, 'saml')
               }}
             >
               <div className={styles.dialogBody}>
@@ -274,7 +277,7 @@ export function MembersConfirmations({ c }: { c: MembersController }) {
             </Button>
             <Button
               variant="destructive"
-              disabled={Boolean(c.busy)}
+              disabled={c.blocked || !c.canManage}
               onClick={() => {
                 void c.removeMember()
               }}
@@ -320,7 +323,7 @@ export function MembersConfirmations({ c }: { c: MembersController }) {
             </Button>
             <Button
               className={styles.primary}
-              disabled={Boolean(c.busy)}
+              disabled={c.blocked || !c.canManage}
               onClick={() => {
                 if (c.demotion) void c.saveRole(c.demotion)
               }}

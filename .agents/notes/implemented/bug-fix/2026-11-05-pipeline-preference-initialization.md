@@ -12,6 +12,8 @@ Provider 用一个本地 storageLoaded 状态表达首次读取已经结束。�
 
 首次 render 继续使用同一默认状态，保持原 SSR 与客户端水合快照。空存储和损坏 JSON 按原规则使用默认值，再正常持久化。外部存储事件的读取、key、字段默认值、未知扩展字段、公开 Context 值及导入、导出、更新、重置方法保持。没有新 Context、存储工具或请求管理层。
 
+任意未知扩展键的保留由[前端后端字段契约](2026-11-17-frontend-contract-fields.md)部分取代：恢复只保留当前后端字段，发现未知键时清理并关闭活动覆盖后通知。当前支持但未在面板逐项显示的字段继续保留；本篇的初始化顺序不变。
+
 同类三个偏好／能力 Provider 保留实际状态和资源职责；它们不在初始读取后无条件写入同一默认 state，无需复制这个阶段标志。五个 Worker 保留 Comlink 协议、真实 PDF 资源和 SDK 要求的工厂类；两个类型回归入口保持原形式。
 
 能力 Provider 的 parserBackendAvailable 直接用 normalizeParserBackendName 的结果查原 Map。该生产者把空输入归为 auto，其他返回值保持非空，原本的空键分支不可达。仍可能产生空键的分块策略归一化检查保留，两个 Map 的未知值仍返回 undefined。

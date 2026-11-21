@@ -8,10 +8,11 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 from sqlalchemy.sql.elements import BinaryExpression, BooleanClauseList
 
-import app.services.connector_run_operations as connector_run_operations
-from app.api.v1 import connectors_configs as connectors_configs_module
-from app.api.v1 import connectors_runs as connectors_runs_module
-from app.api.v1 import ingestion_runs as ingestion_runs_module
+import app.services.connectors.runs as connector_run_operations
+from app.api.schemas.sources import ConnectorRunListQuery, IngestionRunListQuery
+from app.api.v1.connectors import configs as connectors_configs_module
+from app.api.v1.connectors import runs as connectors_runs_module
+from app.api.v1.documents import ingestion_runs as ingestion_runs_module
 
 
 @dataclass
@@ -187,14 +188,10 @@ def test_list_ingestion_runs_applies_acl_before_count_and_pagination(monkeypatch
     )
 
     response = ingestion_runs_module.list_ingestion_runs(
-        skip=0,
-        limit=2,
-        dataset_id=None,
-        status=None,
-        kind=None,
         tenant_id=tenant_id,
         account_id="member-1",
         db=db,
+        params=IngestionRunListQuery(skip=0, limit=2, dataset_id=None, status=None, kind=None),
     )
 
     assert response.total == 2
@@ -230,7 +227,7 @@ def test_list_connector_runs_applies_acl_before_count_and_pagination(monkeypatch
     )
 
     response = connectors_runs_module.list_connector_runs(
-        params=connectors_runs_module.ConnectorRunListParams(skip=0, limit=2, dataset_id=None),
+        params=ConnectorRunListQuery(skip=0, limit=2, dataset_id=None),
         tenant_id=tenant_id,
         account_id="member-1",
         db=db,
@@ -242,7 +239,7 @@ def test_list_connector_runs_applies_acl_before_count_and_pagination(monkeypatch
 
 
 def test_list_connector_configs_applies_acl_before_count_and_pagination(monkeypatch: pytest.MonkeyPatch) -> None:
-    import app.services.connector_config_operations as config_operations
+    import app.services.connectors.configs as config_operations
 
     tenant_id, runs, allowed_dataset_ids = _build_runs()
     configs = [
@@ -294,7 +291,7 @@ def test_list_connector_configs_applies_acl_before_count_and_pagination(monkeypa
     ids=["ingestion", "connector"],
 )
 def test_writable_dataset_subquery_executes_real_acl_policy(subquery_factory) -> None:  # noqa: ANN001
-    from app.models.dataset import DatasetPermissionEnum
+    from app.api.schemas.datasets.dataset import DatasetPermissionEnum
 
     engine = create_engine("sqlite+pysqlite:///:memory:")
     tenant_id = uuid4()

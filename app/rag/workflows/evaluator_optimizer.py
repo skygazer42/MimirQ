@@ -8,19 +8,21 @@ Pattern: Generate -> Evaluate -> (Score < threshold) -> Optimize -> Evaluate -> 
 """
 
 import asyncio
+import logging
+import math
 from collections.abc import Awaitable, Callable
 from typing import Any, TypedDict
 
-from app.core.config import settings
-from app.core.optional_deps import require_dependency
-from app.rag.core.logging import get_logger
+from app.infrastructure.config import settings
+from app.infrastructure.runtime.dependencies import require_dependency
 from app.rag.workflows.base import (
     BaseWorkflow,
     WorkflowMode,
     WorkflowResult,
+    model_response_text,
 )
 
-logger = get_logger("rag.workflows.evaluator_optimizer")
+logger = logging.getLogger("rag.workflows.evaluator_optimizer")
 
 # Configuration
 EVALUATOR_MAX_ITERATIONS = settings.EVALUATOR_MAX_ITERATIONS
@@ -43,9 +45,13 @@ class EvaluationResult:
         feedback: str = "",
         criteria_scores: dict[str, float] | None = None,
     ) -> None:
+        if not math.isfinite(score) or not 0.0 <= score <= 1.0:
+            raise ValueError("Evaluation score must be finite and between 0 and 1")
         self.score = score
         self.feedback = feedback
-        self.criteria_scores = criteria_scores or {}
+        self.criteria_scores = dict(criteria_scores) if criteria_scores is not None else {}
+        if any(not math.isfinite(value) or not 0.0 <= value <= 1.0 for value in self.criteria_scores.values()):
+            raise ValueError("Evaluation criteria must be finite and between 0 and 1")
 
     def passed(self, threshold: float) -> bool:
         """Check if evaluation passed threshold."""
@@ -157,7 +163,7 @@ Question: {question}
 Provide a clear, comprehensive answer:"""
 
         response = await self._llm.ainvoke(prompt)
-        return response.content if hasattr(response, "content") else str(response)
+        return model_response_text(response)
 
     async def _default_evaluate(
         self,
@@ -196,7 +202,7 @@ Overall: [average score]
 Feedback: [specific feedback for improvement]"""
 
         response = await self._llm.ainvoke(prompt)
-        content = response.content if hasattr(response, "content") else str(response)
+        content = model_response_text(response)
         return self._parse_evaluation_response(content)
 
     @staticmethod
@@ -206,8 +212,10 @@ Feedback: [specific feedback for improvement]"""
             score += 0.2
         if len(answer) > 200:
             score += 0.1
-        if any(c["content"] and c["content"][:100].lower() in answer.lower() for c in contexts[:3]):
-            score += 0.2
+        if contexts:
+            normalized_answer = answer.lower()
+            if any(c["content"] and c["content"][:100].lower() in normalized_answer for c in contexts[:3]):
+                score += 0.2
         return EvaluationResult(min(score, 1.0), "Heuristic evaluation")
 
     @staticmethod
@@ -219,7 +227,7 @@ Feedback: [specific feedback for improvement]"""
     @staticmethod
     def _parse_evaluation_response(content: str) -> EvaluationResult:
         criteria_scores: dict[str, float] = {}
-        overall = 0.5
+        overall: float | None = None
         feedback = ""
 
         for line in content.strip().split("\n"):
@@ -243,6 +251,8 @@ Feedback: [specific feedback for improvement]"""
             else:
                 criteria_scores[key] = parsed_value
 
+        if overall is None:
+            raise ValueError("Evaluation response is missing a valid Overall score")
         return EvaluationResult(overall, feedback, criteria_scores)
 
     async def _default_optimize(
@@ -268,7 +278,7 @@ Feedback for Improvement:
 Provide an improved answer that addresses the feedback:"""
 
         response = await self._llm.ainvoke(prompt)
-        return response.content if hasattr(response, "content") else str(response)
+        return model_response_text(response)
 
     async def run(self, state: dict[str, Any]) -> WorkflowResult:
         """
@@ -326,7 +336,7 @@ Provide an improved answer that addresses the feedback:"""
                         "iteration": iteration,
                         "score": eval_result.score,
                         "feedback": eval_result.feedback,
-                        "criteria": eval_result.criteria_scores,
+                        "criteria": dict(eval_result.criteria_scores),
                     }
                 )
                 current_state["score"] = eval_result.score
@@ -336,8 +346,18 @@ Provide an improved answer that addresses the feedback:"""
 
             except Exception as e:
                 logger.exception("Evaluation failed: %s", e)
-                # Keep the current answer and use completed evaluations below.
-                break
+                current_state["evaluation_history"] = evaluation_history
+                return self.create_result(
+                    current_state,
+                    success=False,
+                    error=f"Evaluation failed: {e}",
+                    execution_path=execution_path,
+                    iterations=iterations,
+                    metadata={
+                        "final_score": evaluation_history[-1]["score"] if evaluation_history else None,
+                        "max_iterations_reached": False,
+                    },
+                )
 
             # Check if passed threshold
             if eval_result.passed(self.threshold):
@@ -363,8 +383,15 @@ Provide an improved answer that addresses the feedback:"""
                     current_state["answer"] = answer
                 except Exception as e:
                     logger.exception("Optimization failed: %s", e)
-                    # Continue with current answer
-                    break
+                    current_state["evaluation_history"] = evaluation_history
+                    return self.create_result(
+                        current_state,
+                        success=False,
+                        error=f"Optimization failed: {e}",
+                        execution_path=execution_path,
+                        iterations=iterations,
+                        metadata={"final_score": eval_result.score, "max_iterations_reached": False},
+                    )
 
         # Max iterations reached
         current_state["evaluation_history"] = evaluation_history
@@ -413,34 +440,21 @@ def create_ragas_evaluator(
             raise RuntimeError("RAGAS evaluator dependencies are missing required exports")
 
         context_texts = [ctx["content"] for ctx in contexts]
-        try:
-            # Prepare data
-
-            data = {
-                "question": [question],
-                "answer": [answer],
-                "contexts": [context_texts],
-            }
-            dataset = dataset_cls.from_dict(data)
-
-            # Run evaluation
-            result = await asyncio.to_thread(evaluate, dataset, metrics=[faithfulness, answer_relevancy])
-
-            # Calculate overall score
-            scores = {}
-            for metric in ["faithfulness", "answer_relevancy"]:
-                if metric in result:
-                    scores[metric] = result[metric]
-
-            overall = sum(scores.values()) / len(scores) if scores else 0.5
-
-            return EvaluationResult(
-                score=overall,
-                feedback=f"RAGAS scores: {scores}",
-                criteria_scores=scores,
-            )
-        except Exception as e:
-            logger.exception("RAGAS evaluation failed: %s", e)
-            return EvaluationResult(0.5, f"Evaluation error: {e}")
+        data = {
+            "question": [question],
+            "answer": [answer],
+            "contexts": [context_texts],
+        }
+        dataset = dataset_cls.from_dict(data)
+        result = await asyncio.to_thread(evaluate, dataset, metrics=[faithfulness, answer_relevancy])
+        if len(result.scores) != 1:
+            raise ValueError("RAGAS evaluation must return one score row for this sample")
+        scores = {metric: float(result.scores[0][metric]) for metric in ("faithfulness", "answer_relevancy")}
+        overall = sum(scores.values()) / len(scores)
+        return EvaluationResult(
+            score=overall,
+            feedback=f"RAGAS scores: {scores}",
+            criteria_scores=scores,
+        )
 
     return evaluator

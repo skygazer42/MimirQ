@@ -32,10 +32,11 @@ describe('frontend boundary system', () => {
 
   it('keeps knowledge workbenches on the same flat boundary baseline', () => {
     const src = readWorkspaceFile('components/ui/knowledge-ops-hero.tsx')
+    const header = readWorkspaceFile('components/ui/page-header.tsx')
 
     expect(src).toContain('bg-background')
     expect(src).toContain('border-b border-foreground/15')
-    expect(src).toContain('border border-foreground/10 bg-background/70')
+    expect(header).toContain('border border-foreground/10 bg-background/70')
     expect(src).not.toContain('radial-gradient')
   })
 

@@ -3,7 +3,7 @@ from uuid import uuid4
 
 import pytest
 
-from app.services import index_audit_service as audit
+from app.services.indexing import audit
 
 
 def _summary(existing, checked):

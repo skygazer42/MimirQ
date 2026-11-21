@@ -4,8 +4,10 @@ import React, { act, type ComponentProps } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { toast } from 'sonner'
+import { reportClientWarning } from '@/lib/client-logging'
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.fn(), warning: vi.fn() } }))
+vi.mock('@/lib/client-logging', () => ({ reportClientWarning: vi.fn() }))
 
 const authApiMock = vi.hoisted(() => ({
   login: vi.fn(),
@@ -34,15 +36,12 @@ vi.mock('@/i18n/navigation', () => ({
 vi.mock('@/lib/api/auth', () => ({
   authApi: authApiMock,
 }))
-vi.mock('@/lib/api/auth', () => ({
-  authApi: authApiMock,
-}))
 vi.mock('@/lib/auth-storage', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/auth-storage')>()),
   setAuthSession: sessionMock.setAuthSession,
 }))
 vi.mock('@/lib/oidc', () => ({
-  startOidcLogin: vi.fn(),
+  prepareOidcLogin: vi.fn(),
 }))
 vi.mock('@/lib/oidc-providers', () => ({
   getOidcPublicProvidersFromEnv: () => [],
@@ -178,17 +177,13 @@ describe('auth page registration', () => {
     setInputValue(container.querySelector('#password'), 'wrong-password')
     await submitForm(container)
 
-    await vi.waitFor(() => {
-      expect(toast.error).toHaveBeenCalledWith(
-        '账号或密码不正确，请重试。',
-        expect.objectContaining({ duration: 4000 }),
-      )
-    })
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain('账号或密码不正确，请核对后重新输入。')
+    expect(toast.error).not.toHaveBeenCalled()
 
     clickButtonByText(container, '注册')
 
     expect(container.querySelector('[role="alert"]')).toBeNull()
-    expect(container.textContent).not.toContain('账号或密码不正确，请重试。')
+    expect(container.textContent).not.toContain('账号或密码不正确，请核对后重新输入。')
 
     act(() => root.unmount())
   })
@@ -338,7 +333,7 @@ describe('auth page registration', () => {
     setInputValue(container.querySelector('#confirmPassword'), 'valid-reader-password')
     await submitForm(container)
     expect(container.querySelector('h1')?.textContent).toBe('创建账号')
-    expect(toast.error).toHaveBeenCalled()
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain('网络连接异常，请检查网络后重试。')
     expect(container.textContent).not.toContain('注册成功')
     expect(routerMock.replace).not.toHaveBeenCalled()
     expect(sessionMock.setAuthSession).not.toHaveBeenCalled()
@@ -381,6 +376,9 @@ describe('auth page registration', () => {
     expect(container.querySelector('[data-auth-mode-switch]')).toBeNull()
     expect(container.querySelector('#identifier')).not.toBeNull()
     expect(container.querySelector('#email')).toBeNull()
+    expect(container.querySelector('button[type="submit"]')?.hasAttribute('disabled')).toBe(true)
+    setInputValue(container.querySelector('#identifier'), 'reader@example.com')
+    setInputValue(container.querySelector('#password'), 'reader-password')
     expect(container.querySelector('button[type="submit"]')?.hasAttribute('disabled')).toBe(false)
     act(() => root.unmount())
   })
@@ -419,6 +417,9 @@ describe('auth page registration', () => {
       root.render(<AuthPage />)
     })
     expect(container.querySelector('[data-auth-mode-switch]')).toBeNull()
+    expect(container.querySelector('button[type="submit"]')?.hasAttribute('disabled')).toBe(true)
+    setInputValue(container.querySelector('#identifier'), 'reader@example.com')
+    setInputValue(container.querySelector('#password'), 'reader-password')
     expect(container.querySelector('button[type="submit"]')?.hasAttribute('disabled')).toBe(false)
     await act(async () => {
       resolvePolicy({
@@ -433,7 +434,7 @@ describe('auth page registration', () => {
     act(() => root.unmount())
   })
 
-  it('lets the user retry a failed policy request while retaining account login', async () => {
+  it('keeps account login available after a policy failure without a retry action', async () => {
     authApiMock.policy.mockRejectedValueOnce(new Error('Network error')).mockResolvedValue({
       initialized: true,
       registration_enabled: true,
@@ -447,20 +448,20 @@ describe('auth page registration', () => {
       root.render(<AuthPage />)
     })
     expect(container.querySelector('[data-auth-mode-switch]')).toBeNull()
-    expect(container.querySelector('button[type="submit"]')?.hasAttribute('disabled')).toBe(false)
+    expect(container.querySelector('button[type="submit"]')?.hasAttribute('disabled')).toBe(true)
     setInputValue(container.querySelector('#identifier'), 'reader@example.com')
     setInputValue(container.querySelector('#password'), 'retained-password')
-    await act(async () => {
-      clickButtonByText(container, '重试')
-    })
-    expect(container.querySelector('[data-auth-mode-switch]')).not.toBeNull()
-    expect(container.textContent).not.toContain('服务暂时不可用')
+    expect(container.querySelector('button[type="submit"]')?.hasAttribute('disabled')).toBe(false)
+    expect(authApiMock.policy).toHaveBeenCalledOnce()
+    expect(authApiMock.login).not.toHaveBeenCalled()
+    expect(Array.from(container.querySelectorAll('button')).some((button) => button.textContent === '重试')).toBe(false)
+    expect(container.querySelector('[role="status"]')?.textContent).toContain('服务暂时不可用，请稍后重试。')
     expect(container.querySelector<HTMLInputElement>('#identifier')?.value).toBe('reader@example.com')
     expect(container.querySelector<HTMLInputElement>('#password')?.value).toBe('retained-password')
     act(() => root.unmount())
   })
 
-  it('shows one readable service failure and keeps request details collapsed without discarding credentials', async () => {
+  it('shows one service failure without diagnostic details or discarded credentials', async () => {
     authApiMock.policy.mockRejectedValue({
       response: { status: 503, data: { detail: 'Service Unavailable' } },
     })
@@ -479,18 +480,18 @@ describe('auth page registration', () => {
     setInputValue(container.querySelector('#password'), 'retained-password')
     await submitForm(container)
 
-    expect(toast.error).toHaveBeenCalledWith(
-      '服务暂时不可用，请稍后重试。',
-      expect.objectContaining({ duration: 4000 }),
-    )
-    expect(container.querySelectorAll('[role="alert"], [role="status"]')).toHaveLength(0)
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain('服务暂时不可用，请稍后重试。')
+    expect(container.querySelectorAll('[role="alert"], [role="status"]')).toHaveLength(1)
+    expect(toast.error).not.toHaveBeenCalled()
     expect(container.textContent).not.toContain('Internal Server Error')
     expect(container.textContent).not.toContain('暂时无法获取注册方式')
-    const details = container.querySelector('details')
-    expect(details).not.toBeNull()
-    expect(details?.open).toBe(false)
-    expect(details?.querySelector('summary')?.textContent).toBe('错误详情')
-    expect(details?.textContent).toContain('login-request-123')
+    expect(container.querySelector('details')).toBeNull()
+    expect(container.textContent).not.toContain('错误详情')
+    expect(container.textContent).not.toContain('login-request-123')
+    expect(reportClientWarning).toHaveBeenLastCalledWith('Authentication request failed', expect.any(Error), {
+      tags: { operation: 'login', http_status: '500', request_id: 'login-request-123' },
+    })
+    expect(vi.mocked(reportClientWarning).mock.calls.at(-1)?.[1]).not.toHaveProperty('config')
     expect(container.querySelector<HTMLInputElement>('#identifier')?.value).toBe('reader@example.com')
     expect(container.querySelector<HTMLInputElement>('#password')?.value).toBe('retained-password')
     expect(sessionMock.setAuthSession).not.toHaveBeenCalled()
@@ -523,12 +524,50 @@ describe('auth page registration', () => {
     setInputValue(container.querySelector('#password'), 'valid-reader-password')
     setInputValue(container.querySelector('#confirmPassword'), 'valid-reader-password')
     await submitForm(container)
-    expect(toast.error).toHaveBeenCalledWith(
-      '当前暂未开放注册，请联系管理员。',
-      expect.objectContaining({ duration: 4000 }),
-    )
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain('当前暂未开放注册，请联系管理员。')
     expect(container.querySelector('#auth-error')?.textContent).not.toContain('令牌')
     expect(container.querySelector('#bootstrapToken')).toBeNull()
+    act(() => root.unmount())
+  })
+
+  it('offers real administrator help for a forgotten password without submitting credentials', async () => {
+    process.env.NEXT_PUBLIC_ADMIN_CONTACT_URL = 'mailto:ops@example.com'
+    const container = document.createElement('div')
+    const root = createRoot(container)
+    await act(async () => root.render(<AuthPage />))
+    setInputValue(container.querySelector('#identifier'), 'reader@example.com')
+    setInputValue(container.querySelector('#password'), 'retained-password')
+
+    clickButtonByText(container, '忘记密码？')
+    expect(container.querySelector('#password-recovery')?.textContent).toContain('请联系管理员重置密码。')
+    expect(container.querySelector('#password-recovery a')?.getAttribute('href')).toBe('mailto:ops@example.com')
+    expect(container.querySelector('a[href="/forgot-password"]')).toBeNull()
+    expect(authApiMock.login).not.toHaveBeenCalled()
+    expect(container.querySelector<HTMLInputElement>('#password')?.value).toBe('retained-password')
+    act(() => root.unmount())
+  })
+
+  it.each([
+    [400, '账号或密码不正确，请核对后重新输入。'],
+    [401, '账号或密码不正确，请核对后重新输入。'],
+    [404, '服务暂时不可用，请稍后重试。'],
+    [502, '服务暂时不可用，请稍后重试。'],
+    [429, '尝试次数过多，请稍后再试。'],
+  ])('maps login status %s without exposing the backend response or replaying a request', async (status, message) => {
+    authApiMock.login.mockRejectedValue({ response: { status, data: { detail: 'Not Found: account does not exist' } } })
+    const container = document.createElement('div')
+    const root = createRoot(container)
+    await act(async () => root.render(<AuthPage />))
+    setInputValue(container.querySelector('#identifier'), 'reader@example.com')
+    setInputValue(container.querySelector('#password'), 'retained-password')
+    await submitForm(container)
+
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain(message)
+    expect(container.textContent).not.toContain('Not Found')
+    expect(container.textContent).not.toContain('account does not exist')
+    expect(authApiMock.login).toHaveBeenCalledOnce()
+    expect(sessionMock.setAuthSession).not.toHaveBeenCalled()
+    expect(container.querySelector<HTMLInputElement>('#password')?.value).toBe('retained-password')
     act(() => root.unmount())
   })
 })

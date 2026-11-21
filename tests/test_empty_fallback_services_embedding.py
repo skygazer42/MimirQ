@@ -1,11 +1,12 @@
 import pytest
+from pydantic import ValidationError
 
-from app.services import dataset_embedding_config
+from app.services.datasets import embedding_config as dataset_embedding_config
 
 
 def test_invalid_stored_embedding_model_does_not_silently_inherit_the_global_model(monkeypatch):
     monkeypatch.setattr(dataset_embedding_config.settings, "VECTOR_BACKEND", "milvus")
-    with pytest.raises(AttributeError):
+    with pytest.raises(ValidationError):
         dataset_embedding_config.resolve_dataset_embedding_runtime({"embedding_defaults": {"model": 0}})
 
 

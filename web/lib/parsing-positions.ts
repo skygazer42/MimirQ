@@ -13,7 +13,7 @@ export type ParsingBlock = {
   positions: ParsingPosition[]
 }
 
-export type PositionTagRange = {
+type PositionTagRange = {
   start: number
   end: number
 }
@@ -34,7 +34,6 @@ function parsePages(value: string): number[] {
 }
 
 function parsePosition(match: RegExpExecArray): ParsingPosition | null {
-  if (!match || match.length < 6) return null
   const pages = parsePages(match[1])
   const left = Number(match[2])
   const right = Number(match[3])
@@ -52,7 +51,6 @@ function parsePosition(match: RegExpExecArray): ParsingPosition | null {
 }
 
 export function stripPositionTags(markdown: string): string {
-  if (!markdown) return ''
   POSITION_TAG_RE.lastIndex = 0
   return markdown.replace(POSITION_TAG_RE, '')
 }
@@ -88,13 +86,12 @@ export function createPositionTagIndexMapper(
   markdown: string,
   ranges?: PositionTagRange[],
 ): (rawIndex: number) => number {
-  const raw = markdown || ''
-  const tagRanges = (ranges || findPositionTagRanges(raw))
+  const tagRanges = (ranges ?? findPositionTagRanges(markdown))
     .filter((r) => Number.isFinite(r.start) && Number.isFinite(r.end) && r.end > r.start)
     .sort((a, b) => a.start - b.start)
 
   if (tagRanges.length === 0) {
-    return (rawIndex: number) => Math.max(0, Math.trunc(Number(rawIndex) || 0))
+    return (rawIndex: number) => Math.max(0, Math.trunc(rawIndex))
   }
 
   const starts: number[] = []
@@ -109,7 +106,7 @@ export function createPositionTagIndexMapper(
   }
 
   return (rawIndex: number) => {
-    const idx = Math.trunc(Number(rawIndex) || 0)
+    const idx = Math.trunc(rawIndex)
     if (idx <= 0) return 0
 
     const k = upperBound(starts, idx) - 1
@@ -144,10 +141,6 @@ export function extractBlocksFromMarkdownWithRanges(markdown: string): {
   blocks: ParsingBlockWithRange[]
   tagRanges: PositionTagRange[]
 } {
-  if (!markdown) {
-    return { cleanedMarkdown: '', blocks: [], tagRanges: [] }
-  }
-
   const blocks: ParsingBlockWithRange[] = []
   const tagRanges: PositionTagRange[] = []
   let lastIndex = 0

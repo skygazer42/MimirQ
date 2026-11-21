@@ -8,17 +8,16 @@ export function iconCatalog({ icons, slug, svg, iconColorRules }) {
     analysis: '分析与结构',
   }
   const sections = Object.entries(groups)
-    .map(
-      ([group, label]) =>
-        `<section aria-labelledby="${group}"><div class="section-heading"><h2 id="${group}">${label}</h2><span>${icons.filter((icon) => icon[2] === group).length}</span></div><ul>${icons
-          .filter((icon) => icon[2] === group)
-          .map(([name, title, , nodes, aliases]) => {
-            const monoFile = `${slug(name)}.svg`
-            const colorFile = iconColorRules[name] ? `color/${monoFile}` : monoFile
-            return `<li data-search="${title} ${name.toLowerCase()} ${aliases.join(' ').toLowerCase()}"><a href="${colorFile}" data-mono-file="${monoFile}" data-color-file="${colorFile}" download aria-label="下载${title} SVG"><span class="glyph">${svg(name, nodes, { color: true, embedded: true }).replace('<svg ', '<svg aria-hidden="true" ')}</span><span class="label">${title}</span><span class="name">${name}</span></a></li>`
-          })
-          .join('')}</ul></section>`,
-    )
+    .map(([group, label]) => {
+      const groupIcons = icons.filter(([, , iconGroup]) => iconGroup === group)
+      return `<section aria-labelledby="${group}"><div class="section-heading"><h2 id="${group}">${label}</h2><span>${groupIcons.length}</span></div><ul>${groupIcons
+        .map(([name, title, , nodes, aliases]) => {
+          const monoFile = `${slug(name)}.svg`
+          const colorFile = iconColorRules[name] ? `color/${monoFile}` : monoFile
+          return `<li data-search="${title} ${name.toLowerCase()} ${aliases.join(' ').toLowerCase()}"><a href="${colorFile}" data-mono-file="${monoFile}" data-color-file="${colorFile}" download aria-label="下载${title} SVG"><span class="glyph">${svg(name, nodes, { color: true, embedded: true }).replace('<svg ', '<svg aria-hidden="true" ')}</span><span class="label">${title}</span><span class="name">${name}</span></a></li>`
+        })
+        .join('')}</ul></section>`
+    })
     .join('')
   return `<!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Ragvia · 功能图标</title><link rel="stylesheet" href="colors.css"><style>

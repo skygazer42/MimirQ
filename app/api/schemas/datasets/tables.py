@@ -32,6 +32,7 @@ class TableAssetOut(BaseModel):
 class DatasetTablesListResponse(BaseModel):
     total: int
     items: list[TableAssetOut]
+    next_skip: int | None = Field(default=None, ge=0, description="Next document offset, not table offset")
 
 
 class TableQueryRequest(BaseModel):

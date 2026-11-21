@@ -6,7 +6,7 @@ import pytest
 
 @pytest.mark.parametrize("enabled", [False, True])
 def test_settings_keeps_only_url_import_availability(monkeypatch: pytest.MonkeyPatch, enabled: bool) -> None:
-    from app.api.v1 import settings as settings_api
+    from app.api.v1.system import settings as settings_api
 
     monkeypatch.setattr(settings_api, "_ensure_settings_readable", lambda *_args: None)
     monkeypatch.setattr(settings_api.settings, "URL_INGEST_ENABLED", enabled)
@@ -17,7 +17,7 @@ def test_settings_keeps_only_url_import_availability(monkeypatch: pytest.MonkeyP
 
 
 def test_settings_updates_cannot_change_url_fetch_configuration(monkeypatch: pytest.MonkeyPatch) -> None:
-    from app.api.v1 import settings as settings_api
+    from app.api.v1.system import settings as settings_api
 
     monkeypatch.setattr(settings_api.settings, "URL_INGEST_ENABLED", False)
     monkeypatch.setattr(settings_api.settings, "URL_INGEST_ALLOW_PRIVATE_IPS", False)

@@ -12,13 +12,12 @@ import starlette.status as _status
 from fastapi import BackgroundTasks, FastAPI
 from fastapi.testclient import TestClient
 
-from app.api.dependencies.auth import get_current_account_id
-from app.api.dependencies.tenant import get_tenant_id
-from app.api.v1 import dataset_analysis as dataset_analysis_api
-from app.core.database import get_db
-from app.core.exceptions import register_exception_handlers
+from app.api.dependencies import get_current_account_id, get_tenant_id
+from app.api.v1.datasets import analysis as dataset_analysis_api
+from app.infrastructure.database.connection import get_db
+from app.infrastructure.exceptions import register_exception_handlers
 from app.rag.evaluation.poc_runner import png_tasks
-from app.services import dataset_analysis_service
+from app.services.datasets import analysis as dataset_analysis_service
 
 if not hasattr(_dt, "UTC"):
     _dt.UTC = _dt.timezone.utc
@@ -600,7 +599,7 @@ def test_png_export_endpoint_returns_non_202_when_shared_state_unavailable(monke
         dataset_analysis_api.dataset_service, "assert_dataset_readable", lambda *_a, **_k: None, raising=True
     )
     monkeypatch.setattr(
-        dataset_analysis_api,
+        dataset_analysis_service,
         "create_dataset_analysis_png_task",
         lambda **_k: (_ for _ in ()).throw(RuntimeError("Redis unavailable")),
         raising=True,

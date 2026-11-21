@@ -13,8 +13,8 @@ def _records():
 
 @pytest.fixture
 def cache_backend(monkeypatch: pytest.MonkeyPatch):
-    from app.services import chat_response_cache
-    from app.services.dify_integration import response_cache
+    from app.services.chat import response_cache as chat_response_cache
+    from app.services.dify import response_cache
 
     values: dict[str, dict] = {}
 
@@ -41,8 +41,8 @@ def _policy(cache):
 
 
 def test_dify_corpus_cache_token_uses_the_shared_owner(monkeypatch: pytest.MonkeyPatch) -> None:
-    from app.services import corpus_cache_tokens
-    from app.services.dify_integration import response_cache
+    from app.services.dify import response_cache
+    from app.services.retrieval import corpus_tokens as corpus_cache_tokens
 
     tenant_id, dataset_a, dataset_b = uuid4(), uuid4(), uuid4()
     database = object()
@@ -125,7 +125,7 @@ async def test_local_follower_receives_records_before_redis_publication(
 async def test_failed_distributed_wait_releases_the_owned_local_flight(
     cache_backend, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from app.services import chat_response_cache
+    from app.services.chat import response_cache as chat_response_cache
 
     cache, _values = cache_backend
     failure = RuntimeError("lease wait failed")
@@ -161,7 +161,7 @@ async def test_valid_empty_cached_records_are_a_hit(cache_backend) -> None:
 @pytest.mark.asyncio
 @pytest.mark.parametrize("records", [[42], [{"content": "missing fields"}], [_records()[0], "invalid"]])
 async def test_invalid_redis_records_are_a_cache_miss(monkeypatch: pytest.MonkeyPatch, records) -> None:
-    from app.services.dify_integration import response_cache as cache
+    from app.services.dify import response_cache as cache
 
     async def read(_key):
         return {"schema": cache._DIFY_RESPONSE_CACHE_REDIS_SCHEMA, "records": records}
@@ -184,7 +184,7 @@ class NoApi(importlib.abc.MetaPathFinder):
             raise AssertionError(fullname)
 
 sys.meta_path.insert(0, NoApi())
-from app.services.dify_integration import response_cache
+from app.services.dify import response_cache
 async def compute():
     return [{'content': 'evidence', 'score': 0.9, 'title': 'source', 'metadata': {}}]
 result = asyncio.run(response_cache.get_or_compute_response(

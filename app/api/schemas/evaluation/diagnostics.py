@@ -22,6 +22,7 @@ HardcaseKind = Literal["knowledge_pressure", "reasoning_pressure"]
 
 class KGSearchDiagnosticsRunListQuery(BaseModel):
     dataset_id: UUID = Field(description="Dataset ID (required)")
+    skip: int = Field(default=0, ge=0)
     limit: int = Field(default=20, ge=1, le=200, description="Max runs to return (default: 20)")
 
 
@@ -125,17 +126,21 @@ class KGSearchDiagnosticsSummary(BaseModel):
     cases_evaluated: int = 0
     hardcases_generated: int = 0
 
-    baseline_hit_rate: float = 0.0
-    baseline_mrr: float = 0.0
-    baseline_recall: float = 0.0
-    baseline_ndcg: float = 0.0
-    baseline_map: float = 0.0
+    baseline_hit_rate: float | None = None
+    baseline_mrr: float | None = None
+    baseline_recall: float | None = None
+    baseline_ndcg: float | None = None
+    baseline_map: float | None = None
+    baseline_valid_searches: int = 0
+    baseline_search_errors: int = 0
 
     hardcase_hit_rate: float | None = None
     hardcase_mrr: float | None = None
     hardcase_recall: float | None = None
     hardcase_ndcg: float | None = None
     hardcase_map: float | None = None
+    hardcase_valid_searches: int = 0
+    hardcase_search_errors: int = 0
 
     failure_breakdown: dict[str, int] = Field(default_factory=dict)
     preflight: dict[str, Any] = Field(default_factory=dict)

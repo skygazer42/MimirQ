@@ -1,7 +1,6 @@
 'use client'
-import { FeedbackToast } from '@/components/feedback-toast'
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   AlertCircle,
@@ -14,7 +13,6 @@ import {
   Copy,
   Filter,
   Mail as Inbox,
-  Loader2,
   MessageSquare,
   MoreHorizontal,
   RefreshCw,
@@ -30,6 +28,8 @@ import { toast } from 'sonner'
 import { AppFrame } from '@/components/app-frame'
 import { PageTitleIcon } from '@/components/ui/page-title-icon'
 import { Button } from '@/components/ui/button'
+import { LoadingButton } from '@/components/ui/loading-button'
+import { Skeleton } from '@/components/ui/skeleton'
 import { SearchInput } from '@/components/ui/search-input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
@@ -39,21 +39,18 @@ import { Link } from '@/i18n/navigation'
 import { chatApi } from '@/lib/api/chat'
 import { feedbackApi } from '@/lib/api/feedback'
 import { formatApiError } from '@/lib/api-errors'
-import { getAuthSessionRevision } from '@/lib/auth-storage'
+import { getAuthSessionKey, subscribeAuthSession } from '@/lib/auth-storage'
 import { useDocumentView } from '@/store/document-view'
-import type { MessageFeedbackEnriched } from '@/types'
+import type { Message, MessageFeedbackEnriched } from '@/types'
 import {
-  archived,
-  displayText,
-  feedbackContext,
-  feedbackIssue,
-  feedbackKind,
-  feedbackQuestion,
-  feedbackSource,
-  feedbackStatus,
-  feedbackTime,
+  isFeedbackArchived,
+  getFeedbackIssue,
+  getFeedbackKind,
+  getFeedbackLabel,
+  getFeedbackSource,
+  getFeedbackStatus,
+  formatFeedbackTime,
   filterFeedback,
-  loadFeedback,
   RANGE_LABELS,
   SOURCE_LABELS,
   type FeedbackRange,
@@ -64,10 +61,53 @@ import { FeedbackCandidatesDialog } from './feedback-candidates-dialog'
 import styles from './feedback.module.css'
 
 const PAGE_SIZE = 20
+const FEEDBACK_PAGE_SIZE = 200
 type ActionResult = { error?: string; caseId?: string }
 
+// Load every API page so local filters and counts include older feedback.
+async function loadFeedback(signal: AbortSignal) {
+  const firstPage = await feedbackApi.listEnriched({ skip: 0, limit: FEEDBACK_PAGE_SIZE }, { signal })
+  const items = [...firstPage.items]
+  const ids = new Set(items.map((item) => item.id))
+  const total = firstPage.total
+  if (ids.size !== items.length) throw new Error('反馈列表包含重复记录，请刷新后重试。')
+  while (items.length < total) {
+    signal.throwIfAborted()
+    const page = await feedbackApi.listEnriched({ skip: items.length, limit: FEEDBACK_PAGE_SIZE }, { signal })
+    if (page.total !== total || page.items.length === 0) throw new Error('反馈列表已变化，请刷新后重新读取。')
+    for (const item of page.items) {
+      if (ids.has(item.id)) throw new Error('反馈列表已变化，请刷新后重新读取。')
+      ids.add(item.id)
+      items.push(item)
+    }
+  }
+  if (items.length !== total) throw new Error('反馈列表数量不一致，请刷新后重试。')
+  return { items }
+}
+
+async function loadFeedbackContext(conversationId: string, messageId: string, signal: AbortSignal) {
+  let before: string | undefined
+  let answer: Message | undefined
+  for (;;) {
+    signal.throwIfAborted()
+    const page = await chatApi.getMessages(conversationId, { limit: 200, before }, { signal })
+    for (let index = page.messages.length - 1; index >= 0; index -= 1) {
+      const message = page.messages[index]
+      if (answer === undefined) {
+        if (message.id === messageId && message.role === 'assistant') answer = message
+      } else if (message.role === 'user') {
+        return { answer, question: message.content }
+      }
+    }
+    if (!page.has_more) return answer === undefined ? null : { answer, question: undefined }
+    const nextBefore = page.messages[0].id
+    if (nextBefore === before) throw new Error('历史消息分页未前进，请重新读取。')
+    before = nextBefore
+  }
+}
+
 function Rating({ item }: Readonly<{ item: MessageFeedbackEnriched }>) {
-  const kind = feedbackKind(item)
+  const kind = getFeedbackKind(item)
   const Icon = kind === 'positive' ? ThumbsUp : kind === 'negative' ? ThumbsDown : Star
   return (
     <span className={styles.rating} data-kind={kind} aria-label={`评分 ${item.rating} / 5`}>
@@ -79,18 +119,18 @@ function Rating({ item }: Readonly<{ item: MessageFeedbackEnriched }>) {
 }
 function StateLabel({ item }: Readonly<{ item: MessageFeedbackEnriched }>) {
   return (
-    <span className={styles.stateLabel} data-state={archived(item) ? 'archived' : feedbackKind(item)}>
-      {feedbackStatus(item)}
+    <span className={styles.stateLabel} data-state={isFeedbackArchived(item) ? 'archived' : getFeedbackKind(item)}>
+      {getFeedbackStatus(item)}
     </span>
   )
 }
 
 function FeedbackReader({
   item,
+  sessionKey,
   position,
   total,
   busy,
-  locked,
   result,
   onPrevious,
   onNext,
@@ -99,10 +139,10 @@ function FeedbackReader({
   onCreate,
 }: Readonly<{
   item: MessageFeedbackEnriched
+  sessionKey: string
   position: number
   total: number
   busy: 'archive' | 'case' | null
-  locked: boolean
   result?: ActionResult
   onPrevious: () => void
   onNext: () => void
@@ -111,29 +151,43 @@ function FeedbackReader({
   onCreate: () => void
 }>) {
   const { openDocument } = useDocumentView()
+  const ownerRef = useRef({ active: true })
+  useLayoutEffect(() => {
+    const owner = { active: true }
+    ownerRef.current = owner
+    return () => {
+      owner.active = false
+    }
+  }, [])
   const context = useQuery({
-    queryKey: ['feedback-conversation', item.conversation_id],
-    queryFn: () => chatApi.getMessages(item.conversation_id),
+    queryKey: ['feedback-conversation', sessionKey, item.conversation_id, item.message_id],
+    queryFn: ({ signal }) => loadFeedbackContext(item.conversation_id, item.message_id, signal),
     staleTime: 60_000,
     retry: false,
   })
-  const original = feedbackContext(context.data?.messages || [], item.message_id)
-  const citations = original?.answer.citations || []
-  const answer = displayText(item.message_content, original?.answer.content)
-  const question = displayText(original?.question) || feedbackQuestion(item)
+  const original = context.data
+  const citations = original?.answer.citations
+  const answer = original == null ? item.message_content : original.answer.content
+  const answerIsPreview = original == null && item.message_content !== null
+  const question = original?.question
+  const storedCaseId = item.extra.eval_case_id
+  const caseId =
+    result?.caseId ?? (typeof storedCaseId === 'string' && storedCaseId.length > 0 ? storedCaseId : undefined)
   const copy = async () => {
+    const owner = ownerRef.current
+    const isCurrent = () => owner.active && sessionKey === getAuthSessionKey()
     try {
       await navigator.clipboard.writeText(JSON.stringify(item, null, 2))
-      toast.success('已复制反馈详情')
+      if (isCurrent()) toast.success('已复制反馈详情')
     } catch (error) {
-      toast.error(formatApiError(error, '复制失败'))
+      if (isCurrent()) toast.error(formatApiError(error, '复制失败'))
     }
   }
 
   return (
     <section className={styles.reader} data-feedback-reader aria-label="反馈详情">
       <div className={styles.readerScroll} tabIndex={0} aria-label="反馈内容">
-        <article className={styles.reading} key={item.id}>
+        <article className={styles.reading}>
           <div className={styles.recordBar}>
             <Button variant="ghost" size="icon" className={styles.back} onClick={onBack} aria-label="返回反馈队列">
               <ArrowLeft />
@@ -179,26 +233,52 @@ function FeedbackReader({
               </DropdownMenu>
             </div>
           </div>
-          <h2 className={styles.question}>{question}</h2>
+          <h2 className={styles.question}>
+            {question === undefined ? getFeedbackLabel(item) : question.length === 0 ? '提问内容为空' : question}
+          </h2>
           <div className={styles.context}>
             <span>
               <UserRound aria-hidden="true" />
-              {item.account_id || '未知用户'}
+              {item.account_id}
             </span>
-            <span>{SOURCE_LABELS[feedbackSource(item)]}</span>
-            <time dateTime={item.created_at} title={feedbackTime(item.created_at, true)}>
-              {feedbackTime(item.created_at)}
+            <span>{SOURCE_LABELS[getFeedbackSource(item)]}</span>
+            <time dateTime={item.created_at} title={formatFeedbackTime(item.created_at, true)}>
+              {formatFeedbackTime(item.created_at)}
             </time>
-            {typeof item.extra?.dataset_name === 'string' && <span>知识库 · {item.extra.dataset_name}</span>}
+            {typeof item.extra.dataset_name === 'string' && <span>知识库 · {item.extra.dataset_name}</span>}
           </div>
+          {context.isFetching && (
+            <p className={styles.missing} role="status">
+              {context.data === undefined ? '正在读取原会话…' : '正在刷新原会话…'}
+            </p>
+          )}
+          {context.isError && (
+            <div className={styles.contextError} role="alert">
+              <p>{formatApiError(context.error, '原会话读取失败')}</p>
+              <Button
+                type="button"
+                variant="ghost"
+                disabled={context.isFetching}
+                onClick={() => void context.refetch({ cancelRefetch: false })}
+              >
+                重新读取
+              </Button>
+            </div>
+          )}
           <section className={styles.section}>
             <div className={styles.sectionHeading}>
               <h3>用户反馈</h3>
-              <span className={styles.tag}>{feedbackIssue(item)}</span>
+              <span className={styles.tag}>{getFeedbackIssue(item)}</span>
               <Rating item={item} />
             </div>
-            <p className={item.reason ? styles.copy : styles.missing}>{item.reason || '用户未填写反馈原因。'}</p>
-            {!!item.tags?.length && (
+            <p className={item.reason === null || item.reason.length === 0 ? styles.missing : styles.copy}>
+              {item.reason === null
+                ? '用户未填写反馈原因。'
+                : item.reason.length === 0
+                  ? '反馈原因为空。'
+                  : item.reason}
+            </p>
+            {item.tags.length > 0 && (
               <div className={styles.tags}>
                 {item.tags.map((tag, index) => (
                   <span key={`${tag}-${index}`} className={styles.tag}>
@@ -211,43 +291,51 @@ function FeedbackReader({
           <section className={styles.section}>
             <div className={styles.sectionHeading}>
               <h3>原回答</h3>
+              {answerIsPreview && <span className={styles.sectionMeta}>列表中的回答预览，最多 4,000 字符</span>}
             </div>
-            <div className={answer ? styles.copy : styles.missing}>
-              {answer || (context.isPending ? '正在读取原回答…' : '未记录原回答。')}
+            <div className={answer === null || answer.length === 0 ? styles.missing : styles.copy}>
+              {answer === null
+                ? original === null
+                  ? '未找到这条原回答。'
+                  : '原回答暂不可用。'
+                : answer.length === 0
+                  ? '原回答内容为空。'
+                  : answer}
             </div>
           </section>
           <section className={styles.section}>
             <div className={styles.sectionHeading}>
               <h3>期望回答</h3>
             </div>
-            <div className={item.expected_answer ? styles.copy : styles.missing}>
-              {item.expected_answer || '用户未填写期望回答。'}
+            <div
+              className={
+                item.expected_answer === null || item.expected_answer.length === 0 ? styles.missing : styles.copy
+              }
+            >
+              {item.expected_answer === null
+                ? '用户未填写期望回答。'
+                : item.expected_answer.length === 0
+                  ? '期望回答为空。'
+                  : item.expected_answer}
             </div>
           </section>
           <section className={styles.section}>
             <div className={styles.sectionHeading}>
               <h3>原回答引用</h3>
-              {original && <span className={styles.sectionMeta}>{citations.length} 个来源</span>}
+              {citations !== undefined && <span className={styles.sectionMeta}>{citations.length} 个来源</span>}
             </div>
-            {context.isPending ? (
-              <p className={styles.missing} role="status">
-                正在读取会话引用…
-              </p>
-            ) : context.isError ? (
-              <div className={styles.contextError}>
-                <p>会话内容加载失败，仍可查看已记录的反馈。</p>
-                <Button variant="ghost" onClick={() => void context.refetch()}>
-                  重新读取
-                </Button>
-              </div>
-            ) : !original ? (
+            {original === null ? (
               <p className={styles.missing}>未找到这条原回答的会话记录，可前往原会话查看。</p>
-            ) : !citations.length ? (
+            ) : citations === undefined ? (
+              <p className={styles.missing}>
+                {original === undefined ? '读取原会话后显示引用。' : '原回答未记录引用字段。'}
+              </p>
+            ) : citations.length === 0 ? (
               <p className={styles.missing}>这条回答没有引用来源。</p>
             ) : (
               <ol className={styles.sources}>
                 {citations.map((citation, index) => (
-                  <li key={`${citation.document_id}-${citation.chunk_id || index}`}>
+                  <li key={JSON.stringify([citation, index])}>
                     <span className={styles.sourceOrder}>{index + 1}</span>
                     <FileTypeIcon filename={citation.document_name} />
                     <div className={styles.sourceContent}>
@@ -256,13 +344,16 @@ function FeedbackReader({
                         className={styles.sourceTitle}
                         onClick={() => openDocument(citation.document_id, citation.chunk_id)}
                       >
-                        {citation.document_name || '未命名文档'}
+                        {citation.document_name.length === 0 ? '文档名称为空' : citation.document_name}
                         <ArrowUpRight aria-hidden="true" />
                       </Button>
-                      {(citation.page_number || citation.header_path) && (
+                      {(citation.page_number !== undefined || citation.header_path !== undefined) && (
                         <span className={styles.sourceLocation}>
-                          {[citation.page_number ? `第 ${citation.page_number} 页` : '', citation.header_path]
-                            .filter(Boolean)
+                          {[
+                            citation.page_number === undefined ? undefined : `第 ${citation.page_number} 页`,
+                            citation.header_path,
+                          ]
+                            .filter((value) => value !== undefined)
                             .join(' · ')}
                         </span>
                       )}
@@ -276,7 +367,12 @@ function FeedbackReader({
         </article>
       </div>
       <footer className={styles.recordFooter} data-task-center-dock>
-        <FeedbackToast type="error" message={result?.error} id={`feedback-action-${item.id}`} />
+        {result?.error !== undefined && (
+          <p className={styles.actionError} role="alert">
+            <AlertCircle aria-hidden="true" />
+            {result.error}
+          </p>
+        )}
         <div className={styles.actions}>
           <StateLabel item={item} />
           <Button asChild variant="outline">
@@ -285,37 +381,66 @@ function FeedbackReader({
               原会话
             </Link>
           </Button>
-          {result?.caseId ? (
+          {caseId !== undefined ? (
             <Button asChild variant="outline">
-              <Link href="/evaluations?tab=regression" title={`用例 ${result.caseId}`}>
+              <Link href="/evaluations?tab=regression" title={`用例 ${caseId}`}>
                 <TestTube2 />
                 查看回归用例
               </Link>
             </Button>
           ) : (
-            <Button variant="outline" onClick={onCreate} disabled={locked}>
-              {busy === 'case' ? <Loader2 className="animate-spin motion-reduce:animate-none" /> : <TestTube2 />}
-              {busy === 'case' ? '正在创建…' : '创建回归用例'}
-            </Button>
+            <LoadingButton variant="outline" onClick={onCreate} disabled={busy !== undefined} loading={busy === 'case'}>
+              <TestTube2 />
+              创建回归用例
+            </LoadingButton>
           )}
-          <Button onClick={onArchive} disabled={locked}>
-            {busy === 'archive' ? (
-              <Loader2 className="animate-spin motion-reduce:animate-none" />
-            ) : archived(item) ? (
-              <Archive />
-            ) : (
-              <CheckCheck />
-            )}
-            {busy === 'archive' ? '正在保存…' : archived(item) ? '取消归档' : '归档反馈'}
-          </Button>
+          <LoadingButton onClick={onArchive} disabled={busy !== undefined} loading={busy === 'archive'}>
+            {isFeedbackArchived(item) ? <Archive /> : <CheckCheck />}
+            {isFeedbackArchived(item) ? '取消归档' : '归档反馈'}
+          </LoadingButton>
         </div>
       </footer>
     </section>
   )
 }
 
+function FeedbackReaderLoading() {
+  return (
+    <section className={styles.reader} aria-busy="true" aria-label="正在读取反馈详情">
+      <p role="status" className="sr-only">
+        正在读取反馈详情…
+      </p>
+      <div className={styles.readerScroll}>
+        <div className={styles.reading} aria-hidden="true">
+          <div className={styles.recordBar}>
+            <Skeleton className="size-8" />
+            <Skeleton className="h-4 w-24" />
+          </div>
+          <Skeleton className="mt-5 h-8 w-3/4" />
+          <Skeleton className="mt-4 h-4 w-1/2" />
+          {['用户反馈', '原回答', '期望回答', '原回答引用'].map((label) => (
+            <section key={label} className={styles.section}>
+              <div className={styles.sectionHeading}>
+                <h3>{label}</h3>
+              </div>
+              <Skeleton className="h-4 w-full" />
+              <Skeleton className="mt-2 h-4 w-2/3" />
+            </section>
+          ))}
+        </div>
+      </div>
+    </section>
+  )
+}
+
 export default function FeedbackTriagePage() {
+  const sessionKey = useSyncExternalStore(subscribeAuthSession, getAuthSessionKey, getAuthSessionKey)
+  return <FeedbackTriageWorkspace key={sessionKey} sessionKey={sessionKey} />
+}
+
+function FeedbackTriageWorkspace({ sessionKey }: Readonly<{ sessionKey: string }>) {
   const queryClient = useQueryClient()
+  const feedbackQueryKey = ['feedback-enriched', sessionKey] as const
   const [view, setView] = useState<FeedbackView>('all')
   const [rating, setRating] = useState('all')
   const [kind, setKind] = useState('all')
@@ -328,10 +453,10 @@ export default function FeedbackTriagePage() {
   const [candidatesOpen, setCandidatesOpen] = useState(false)
   const [busyById, setBusyById] = useState<Record<string, 'archive' | 'case'>>({})
   const [results, setResults] = useState<Record<string, ActionResult>>({})
-  const requestsRef = useRef(new Map<string, { authRevision: number }>())
+  const requestsRef = useRef(new Set<string>())
   const mountedRef = useRef(false)
   const readerVisitRef = useRef<object>({})
-  useEffect(() => {
+  useLayoutEffect(() => {
     mountedRef.current = true
     return () => {
       mountedRef.current = false
@@ -340,31 +465,39 @@ export default function FeedbackTriagePage() {
   const queueButtons = useRef(new Map<string, HTMLButtonElement>())
   const queueScroll = useRef<HTMLDivElement>(null)
   const query = useQuery({
-    queryKey: ['feedback-enriched'],
+    queryKey: feedbackQueryKey,
     queryFn: ({ signal }) => loadFeedback(signal),
     staleTime: 5_000,
     retry: false,
   })
   const items = query.data?.items
   const filtered = useMemo(
-    () => filterFeedback(items || [], { view, rating, kind, source, range, search }),
+    () => (items === undefined ? [] : filterFeedback(items, { view, rating, kind, source, range, search })),
     [items, view, rating, kind, source, range, search],
   )
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
   const safePage = Math.min(page, totalPages)
   const paginated = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE)
-  const selected = paginated.find((item) => item.id === selectedId) || paginated[0]
+  const selected = paginated.find((item) => item.id === selectedId) ?? paginated[0]
   useLayoutEffect(() => {
     readerVisitRef.current = {}
   }, [selected?.id])
   const position = selected ? filtered.findIndex((item) => item.id === selected.id) : -1
   const activeFilters =
-    view !== 'all' || rating !== 'all' || kind !== 'all' || source !== 'all' || range !== 'all' || !!search.trim()
+    view !== 'all' || rating !== 'all' || kind !== 'all' || source !== 'all' || range !== 'all' || search.trim() !== ''
   const extraFilters = kind !== 'all' || source !== 'all'
-  const count = items?.length
-  const pending = items?.filter((item) => !archived(item)).length
-  const priority = items?.filter((item) => !archived(item) && feedbackKind(item) === 'negative').length
-  const archivedCount = items?.filter(archived).length
+  const statusCounts = useMemo(() => {
+    if (items === undefined) return undefined
+    let archived = 0
+    let priority = 0
+    for (const item of items) {
+      if (isFeedbackArchived(item)) archived += 1
+      else if (getFeedbackKind(item) === 'negative') priority += 1
+    }
+    return { total: items.length, pending: items.length - archived, priority, archived }
+  }, [items])
+  const count = statusCounts?.total
+  const waitingForNetwork = query.isPending && query.isPaused
 
   const resetPosition = () => {
     setPage(1)
@@ -397,56 +530,51 @@ export default function FeedbackTriagePage() {
     queueScroll.current?.scrollTo({ top: 0 })
   }
   const runAction = async (item: MessageFeedbackEnriched, action: 'archive' | 'case') => {
-    const authRevision = getAuthSessionRevision()
-    if (requestsRef.current.get(item.id)?.authRevision === authRevision) return
-    const request = { authRevision }
-    requestsRef.current.set(item.id, request)
+    const isSessionCurrent = () => sessionKey === getAuthSessionKey()
+    if (!isSessionCurrent() || requestsRef.current.has(item.id)) return
+    requestsRef.current.add(item.id)
     const visit = readerVisitRef.current
-    const isSessionCurrent = () => authRevision === getAuthSessionRevision()
     const ownsView = () => mountedRef.current && isSessionCurrent() && readerVisitRef.current === visit
     setBusyById((previous) => ({ ...previous, [item.id]: action }))
     setResults((previous) => ({ ...previous, [item.id]: { ...previous[item.id], error: undefined } }))
     try {
       if (action === 'archive') {
-        const response = await feedbackApi.update(item.id, { archived: !archived(item) })
+        const response = await feedbackApi.update(item.id, { archived: !isFeedbackArchived(item) })
         if (!isSessionCurrent()) return
-        queryClient.setQueryData<Awaited<ReturnType<typeof loadFeedback>>>(['feedback-enriched'], (previous) =>
+        await queryClient.cancelQueries({ queryKey: feedbackQueryKey, exact: true })
+        if (!isSessionCurrent()) return
+        queryClient.setQueryData<Awaited<ReturnType<typeof loadFeedback>>>(feedbackQueryKey, (previous) =>
           previous
             ? {
                 ...previous,
-                items: previous.items.map((record) =>
-                  record.id === item.id
-                    ? { ...record, ...response, extra: { ...record.extra, ...response.extra } }
-                    : record,
-                ),
+                items: previous.items.map((record) => (record.id === item.id ? { ...record, ...response } : record)),
               }
             : previous,
         )
-        await queryClient.invalidateQueries({ queryKey: ['feedback-enriched'], exact: true, refetchType: 'all' })
-        if (ownsView()) toast.success(archived(item) ? '已取消归档' : '已归档反馈')
+        await queryClient.invalidateQueries({ queryKey: feedbackQueryKey, exact: true, refetchType: 'all' })
+        if (ownsView()) toast.success(isFeedbackArchived(item) ? '已取消归档' : '已归档反馈')
       } else {
         const regression = await feedbackApi.toRegressionCase(item.id, { include_document_scope: true })
-        if (!mountedRef.current || !isSessionCurrent()) return
-        setResults((previous) => ({ ...previous, [item.id]: { caseId: regression.id } }))
+        if (!isSessionCurrent()) return
+        if (mountedRef.current) setResults((previous) => ({ ...previous, [item.id]: { caseId: regression.id } }))
+        await queryClient.invalidateQueries({ queryKey: feedbackQueryKey, exact: true, refetchType: 'all' })
         if (ownsView()) toast.success('已创建回归用例')
       }
     } catch (error) {
       if (!mountedRef.current || !isSessionCurrent()) return
-      const fallback = action === 'case' ? '创建回归用例失败' : archived(item) ? '取消归档失败' : '归档失败'
+      const fallback = action === 'case' ? '创建回归用例失败' : isFeedbackArchived(item) ? '取消归档失败' : '归档失败'
       setResults((previous) => ({
         ...previous,
         [item.id]: { ...previous[item.id], error: `${fallback}：${formatApiError(error, '请重试')}` },
       }))
     } finally {
-      if (requestsRef.current.get(item.id) === request) {
-        requestsRef.current.delete(item.id)
-        if (mountedRef.current)
-          setBusyById((previous) => {
-            const next = { ...previous }
-            delete next[item.id]
-            return next
-          })
-      }
+      requestsRef.current.delete(item.id)
+      if (mountedRef.current)
+        setBusyById((previous) => {
+          const next = { ...previous }
+          delete next[item.id]
+          return next
+        })
     }
   }
 
@@ -463,7 +591,12 @@ export default function FeedbackTriagePage() {
             </span>
           </div>
           <div className={styles.headerActions}>
-            <Button variant="ghost" className={styles.candidatesButton} onClick={() => setCandidatesOpen(true)}>
+            <Button
+              variant="ghost"
+              className={styles.candidatesButton}
+              aria-label="反哺候选"
+              onClick={() => setCandidatesOpen(true)}
+            >
               <TestTube2 />
               <span>反哺候选</span>
             </Button>
@@ -485,16 +618,16 @@ export default function FeedbackTriagePage() {
                 ))}
               </SelectContent>
             </Select>
-            <Button
+            <LoadingButton
               variant="ghost"
               size="icon"
               className={styles.refresh}
               onClick={() => void query.refetch()}
-              disabled={query.isFetching}
+              loading={query.isFetching}
               aria-label="刷新反馈"
             >
-              <RefreshCw className={query.isFetching ? 'animate-spin motion-reduce:animate-none' : ''} />
-            </Button>
+              <RefreshCw />
+            </LoadingButton>
           </div>
         </header>
         <div className={styles.workspace} data-detail-open={mobileDetail && !!selected}>
@@ -587,11 +720,9 @@ export default function FeedbackTriagePage() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">全部反馈{count === undefined ? '' : ` · ${count}`}</SelectItem>
-                    <SelectItem value="pending">待分析{pending === undefined ? '' : ` · ${pending}`}</SelectItem>
-                    <SelectItem value="priority">优先分析{priority === undefined ? '' : ` · ${priority}`}</SelectItem>
-                    <SelectItem value="archived">
-                      已归档{archivedCount === undefined ? '' : ` · ${archivedCount}`}
-                    </SelectItem>
+                    <SelectItem value="pending">待分析{statusCounts && ` · ${statusCounts.pending}`}</SelectItem>
+                    <SelectItem value="priority">优先分析{statusCounts && ` · ${statusCounts.priority}`}</SelectItem>
+                    <SelectItem value="archived">已归档{statusCounts && ` · ${statusCounts.archived}`}</SelectItem>
                   </SelectContent>
                 </Select>
                 <Select
@@ -634,10 +765,24 @@ export default function FeedbackTriagePage() {
               </div>
             )}
             <div className={styles.queueList} ref={queueScroll} aria-busy={query.isFetching}>
-              {query.isPending ? (
-                <div className={styles.queueState} role="status">
-                  <Loader2 className="animate-spin motion-reduce:animate-none" />
-                  <p>正在加载反馈…</p>
+              {waitingForNetwork ? (
+                <p className={styles.queueState} role="status">
+                  等待网络连接
+                </p>
+              ) : query.isPending ? (
+                <div role="status">
+                  <span className="sr-only">正在加载反馈…</span>
+                  <div aria-hidden="true">
+                    {[0, 1, 2, 3].map((index) => (
+                      <div key={index} className={`${styles.queueItem} pointer-events-none`}>
+                        <Skeleton className="h-4 w-3/4" />
+                        <div className={styles.queueMeta}>
+                          <Skeleton className="h-3 w-12" />
+                          <Skeleton className="h-3 w-16" />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               ) : paginated.length ? (
                 paginated.map((item) => (
@@ -653,11 +798,13 @@ export default function FeedbackTriagePage() {
                     aria-current={selected?.id === item.id ? 'true' : undefined}
                     onClick={() => selectRecord(item.id)}
                   >
-                    <span className={styles.queueQuestion}>{feedbackQuestion(item)}</span>
+                    <span className={styles.queueQuestion}>{getFeedbackLabel(item)}</span>
                     <span className={styles.queueMeta}>
                       <Rating item={item} />
-                      <span className={styles.queueIssue}>{archived(item) ? '已归档' : feedbackIssue(item)}</span>
-                      <time dateTime={item.created_at}>{feedbackTime(item.created_at)}</time>
+                      <span className={styles.queueIssue}>
+                        {isFeedbackArchived(item) ? '已归档' : getFeedbackIssue(item)}
+                      </span>
+                      <time dateTime={item.created_at}>{formatFeedbackTime(item.created_at)}</time>
                     </span>
                   </button>
                 ))
@@ -685,7 +832,7 @@ export default function FeedbackTriagePage() {
               </span>
               <div className={styles.pagination}>
                 <span>
-                  {safePage} / {totalPages}
+                  {items === undefined ? '—' : filtered.length === 0 ? '0 / 0' : `${safePage} / ${totalPages}`}
                 </span>
                 <Button
                   variant="ghost"
@@ -708,14 +855,16 @@ export default function FeedbackTriagePage() {
               </div>
             </footer>
           </aside>
-          {selected ? (
+          {waitingForNetwork ? null : query.isPending ? (
+            <FeedbackReaderLoading />
+          ) : selected ? (
             <FeedbackReader
               key={selected.id}
               item={selected}
+              sessionKey={sessionKey}
               position={position}
               total={filtered.length}
               busy={busyById[selected.id] ?? null}
-              locked={Boolean(busyById[selected.id])}
               result={results[selected.id]}
               onPrevious={() => navigateRecord(-1)}
               onNext={() => navigateRecord(1)}
@@ -728,12 +877,7 @@ export default function FeedbackTriagePage() {
             />
           ) : (
             <div className={styles.emptyReader}>
-              {query.isPending ? (
-                <>
-                  <Loader2 className="animate-spin motion-reduce:animate-none" />
-                  <h2>正在读取反馈</h2>
-                </>
-              ) : query.isError ? (
+              {query.isError ? (
                 <>
                   <AlertCircle />
                   <h2>暂时无法读取反馈</h2>

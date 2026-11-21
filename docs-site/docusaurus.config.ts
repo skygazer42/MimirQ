@@ -76,7 +76,6 @@ const config: Config = {
           to: '/docs/ops/getting-started',
           position: 'left',
           label: '快速开始',
-          activeBaseRegex: '^/docs/ops/getting-started',
         },
         {
           type: 'docSidebar',
@@ -98,7 +97,7 @@ const config: Config = {
           to: '/docs/ops/welcome',
           position: 'left',
           label: '运维',
-          activeBaseRegex: '^/docs/ops/(?!getting-started)',
+          activeBaseRegex: '/docs/ops/(?!getting-started(?:/|$))',
         },
         {
           type: 'localeDropdown',

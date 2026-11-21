@@ -1,7 +1,6 @@
+import math
 from datetime import UTC, datetime
 from typing import Any
-
-from app.rag.core.logging import get_logger
 
 POC_TELEMETRY_SCHEMA_V1 = "mimirq.poc.telemetry.v1"
 
@@ -11,24 +10,7 @@ def _coerce_mapping(value: Any) -> dict[str, Any]:
         return {}
     if isinstance(value, dict):
         return dict(value)
-    if hasattr(value, "model_dump"):
-        try:
-            return dict(value.model_dump(mode="json"))
-        except Exception:
-            return {}
-    out: dict[str, Any] = {}
-    for key in dir(value):
-        if key.startswith("_"):
-            continue
-        try:
-            current = getattr(value, key)
-        except Exception:
-            get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
-            continue
-        if callable(current):
-            continue
-        out[key] = current
-    return out
+    raise TypeError("POC metadata must be a JSON object or None")
 
 
 def _safe_str(value: Any, *, max_len: int = 2_000) -> str | None:
@@ -52,7 +34,7 @@ def _coerce_datetime(value: Any) -> datetime | None:
         text = text[:-1] + "+00:00"
     try:
         parsed = datetime.fromisoformat(text)
-    except Exception:
+    except ValueError:
         return None
     return parsed if parsed.tzinfo is not None else parsed.replace(tzinfo=UTC)
 
@@ -67,7 +49,7 @@ def _coerce_int(value: Any) -> int | None:
         if value is None:
             return None
         return int(value)
-    except Exception:
+    except (OverflowError, TypeError, ValueError):
         return None
 
 
@@ -75,8 +57,9 @@ def _coerce_float(value: Any) -> float | None:
     try:
         if value is None:
             return None
-        return float(value)
-    except Exception:
+        number = float(value)
+        return number if math.isfinite(number) else None
+    except (OverflowError, TypeError, ValueError):
         return None
 
 
@@ -128,13 +111,8 @@ def _resolve_latency_total_ms(trace: dict[str, Any]) -> int | None:
     direct_ms = _coerce_int(retrieval.get("latency_total_ms"))
     if direct_ms is not None:
         return max(0, direct_ms)
-    elapsed_sec = retrieval.get("elapsed_sec")
-    try:
-        if elapsed_sec is None:
-            return None
-        return max(0, round(float(elapsed_sec) * 1000.0))
-    except Exception:
-        return None
+    elapsed_sec = _coerce_float(retrieval.get("elapsed_sec"))
+    return max(0, round(elapsed_sec * 1000.0)) if elapsed_sec is not None else None
 
 
 def build_poc_interaction_row(source: dict[str, Any]) -> dict[str, Any]:
@@ -166,9 +144,11 @@ def build_poc_interaction_row(source: dict[str, Any]) -> dict[str, Any]:
         if assistant_meta.get("completion_tokens") is not None
         else assistant_meta.get("cost_llm_completion_tokens")
     )
-    answer_tokens = _coerce_int(
-        assistant_meta.get("answer_tokens") or completion_tokens or assistant_message.get("token_count")
-    )
+    answer_tokens = _coerce_int(assistant_meta.get("answer_tokens"))
+    if answer_tokens is None:
+        answer_tokens = completion_tokens
+    if answer_tokens is None:
+        answer_tokens = _coerce_int(assistant_message.get("token_count"))
 
     request_id = _safe_str(
         trace.get("request_id") or assistant_meta.get("request_id") or feedback_extra.get("retrieval_trace_request_id"),
@@ -246,7 +226,4 @@ def build_poc_interaction_row(source: dict[str, Any]) -> dict[str, Any]:
 
 
 def build_poc_interaction_rows(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    out: list[dict[str, Any]] = []
-    for item in items or []:
-        out.append(build_poc_interaction_row(item))
-    return out
+    return [build_poc_interaction_row(item) for item in items or []]

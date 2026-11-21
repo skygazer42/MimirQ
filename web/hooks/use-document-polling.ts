@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useRef } from 'react'
+import { useCallback, useLayoutEffect, useRef } from 'react'
 
 import { documentApi } from '@/lib/api/documents'
 import { reportClientError } from '@/lib/client-logging'
@@ -16,92 +16,84 @@ type UseDocumentPollingOptions = {
   captureDocumentListOperation: CaptureDocumentListOperation
 }
 
-type DocumentPoll = { timerId?: number }
+type DocumentPoll = { controller: AbortController; timerId?: number }
+
+const POLL_INTERVAL_MS = 2_000
+const POLL_WINDOW_MS = 30_000
 
 export function useDocumentPolling({ captureDocumentListOperation }: UseDocumentPollingOptions) {
   const pollsRef = useRef<Map<string, DocumentPoll>>(new Map())
   const cancelledRef = useRef(false)
 
   const cancelDocumentPolling = useCallback((documentId: string) => {
-    const existing = pollsRef.current.get(documentId)
-    if (existing?.timerId !== undefined) clearTimeout(existing.timerId)
+    const poll = pollsRef.current.get(documentId)
+    if (poll === undefined) return
     pollsRef.current.delete(documentId)
-  }, [])
-
-  const cancelAllDocumentPolling = useCallback(() => {
-    for (const poll of pollsRef.current.values()) {
-      if (poll.timerId !== undefined) clearTimeout(poll.timerId)
-    }
-    pollsRef.current.clear()
+    if (poll.timerId !== undefined) globalThis.window.clearTimeout(poll.timerId)
+    poll.controller.abort()
   }, [])
 
   const pollDocumentStatus = useCallback(
     (documentId: string, operation = captureDocumentListOperation()) => {
+      if (cancelledRef.current || !operation.isActive()) return
       cancelDocumentPolling(documentId)
 
-      const poll: DocumentPoll = {}
+      const poll: DocumentPoll = { controller: new AbortController() }
       pollsRef.current.set(documentId, poll)
-      const isCurrent = () => !cancelledRef.current && operation.isActive() && pollsRef.current.get(documentId) === poll
+      const request = { signal: poll.controller.signal }
+      const isCurrent = () => pollsRef.current.get(documentId) === poll && operation.isActive()
       const finish = () => {
         if (pollsRef.current.get(documentId) === poll) pollsRef.current.delete(documentId)
       }
       const startedAt = Date.now()
       const pollOnce = async () => {
+        poll.timerId = undefined
         if (!isCurrent()) {
           finish()
           return
         }
         try {
-          const status = await documentApi.getStatus(documentId)
+          const status = await documentApi.getStatus(documentId, request)
           if (!isCurrent()) {
             finish()
             return
           }
 
           operation.updateCachedDocuments((current) => {
-            if (!current?.items?.length) return current
+            if (!current?.items.length) return current
             return {
               ...current,
-              items: mergePolledDocumentList(current.items || [], documentId, status),
+              items: mergePolledDocumentList(current.items, documentId, status),
             }
           })
 
           if (isTerminalDocumentStatus(status.status)) {
-            const fullDoc = await documentApi.get(documentId)
+            const fullDoc = await documentApi.get(documentId, undefined, request)
             if (!isCurrent()) {
               finish()
               return
             }
             operation.updateCachedDocuments((current) => {
-              if (!current?.items?.length) return current
+              if (!current?.items.length) return current
               return {
                 ...current,
-                items: replacePolledDocumentList(current.items || [], documentId, fullDoc),
+                items: replacePolledDocumentList(current.items, documentId, fullDoc),
               }
             })
             finish()
             return
           }
-        } catch (err) {
-          if (!isCurrent()) {
-            finish()
-            return
-          }
-          reportClientError('Poll document status failed', err)
+        } catch (error) {
+          if (isCurrent()) reportClientError('Poll document status failed', error)
           finish()
           return
         }
 
-        if (Date.now() - startedAt > 30000) {
+        if (Date.now() - startedAt > POLL_WINDOW_MS || !isCurrent()) {
           finish()
           return
         }
-
-        if (!isCurrent()) {
-          finish()
-          return
-        }
-        poll.timerId = globalThis.window.setTimeout(pollOnce, 2000)
+        poll.timerId = globalThis.window.setTimeout(pollOnce, POLL_INTERVAL_MS)
       }
 
       void pollOnce()
@@ -109,13 +101,14 @@ export function useDocumentPolling({ captureDocumentListOperation }: UseDocument
     [cancelDocumentPolling, captureDocumentListOperation],
   )
 
-  useEffect(() => {
+  useLayoutEffect(() => {
+    const polls = pollsRef.current
     cancelledRef.current = false
     return () => {
       cancelledRef.current = true
-      cancelAllDocumentPolling()
+      for (const documentId of polls.keys()) cancelDocumentPolling(documentId)
     }
-  }, [cancelAllDocumentPolling])
+  }, [cancelDocumentPolling])
 
   return {
     pollDocumentStatus,

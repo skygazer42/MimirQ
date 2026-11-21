@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 
 from app.connectors.catalog import CatalogColumnInput, CatalogTableInput
 from app.connectors.profile_privacy import sanitize_db_profile_snapshot
-from app.models.db_catalog import DbCatalogColumn, DbCatalogTable, DbProfileSnapshot
+from app.models.datasets.catalog import DbCatalogColumn, DbCatalogTable, DbProfileSnapshot
 
 
 class SQLAlchemyCatalogStore:

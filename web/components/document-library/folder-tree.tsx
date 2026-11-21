@@ -23,6 +23,7 @@ import {
 import { getFileTypeMeta } from '@/components/knowledge/file-type'
 import { toast } from 'sonner'
 import { collectFolderDescendantIds } from '@/lib/folder-tree-index'
+import { formatApiError } from '@/lib/api-errors'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
@@ -56,13 +57,14 @@ export type DocumentTreeFileItem = {
   isSelectable?: boolean
   isSelected?: boolean
   readOnly?: boolean
+  canRemove?: boolean
 }
 
 const TREE_INDENT_STEP = 14
 const TREE_ROW_BASE_PADDING = 8
 
 export function getFileIcon(filename: string, className?: string) {
-  const { icon: Icon, bg, border } = getFileTypeMeta({ filename, file_type: '' })
+  const { icon: Icon, bg, border } = getFileTypeMeta({ filename })
   return (
     <span
       className={cn('flex size-6 shrink-0 items-center justify-center rounded-lg border', bg, border, className)}
@@ -129,10 +131,10 @@ type DocumentFolderTreeProps = {
   fileItems?: DocumentTreeFileItem[]
   showFiles?: FolderFileVisibility
   onSelectFile?: (fileId: string) => void
-  onDeleteFolder?: (folderIds: string[]) => void
-  onFileDrop?: (fileId: string, folderId: string) => void
+  onDeleteFolder?: (folderIds: string[], fileIds: string[]) => void
+  onFileDrop?: (fileId: string, folderId: string) => void | Promise<void>
   onRetryFile?: (fileId: string) => void
-  onRemoveFile?: (fileId: string) => void
+  onRemoveFile?: (fileId: string) => void | Promise<void>
   onFileDragStart?: (event: ReactDragEvent<HTMLElement>, fileId: string) => void
   onToggleFileSelected?: (fileId: string) => void
 }
@@ -176,9 +178,13 @@ export function DocumentFolderTree({
   const handleDelete = useCallback(
     (folderId: string) => {
       const idsToDelete = [folderId, ...collectFolderDescendantIds(folders, folderId)]
+      const fileIds = useParsedFiles
+        .getState()
+        .files.filter((file) => file.folderId !== undefined && idsToDelete.includes(file.folderId))
+        .map((file) => file.id)
 
       deleteFolder(folderId)
-      onDeleteFolder?.(idsToDelete)
+      onDeleteFolder?.(idsToDelete, fileIds)
       toast.success('文件夹已删除')
     },
     [deleteFolder, folders, onDeleteFolder],
@@ -260,7 +266,13 @@ export function DocumentFolderTree({
   const moveFolderWithToast = useCallback(
     (folderId: string, targetParentId: string) => {
       const target = targetParentId || ROOT_FOLDER_ID
-      const ok = moveFolder(folderId, target)
+      let ok: boolean
+      try {
+        ok = moveFolder(folderId, target)
+      } catch (error) {
+        toast.error(formatApiError(error, '移动文件夹失败'))
+        return false
+      }
       if (ok) {
         toast.success('文件夹已移动')
         return true
@@ -333,55 +345,49 @@ export function DocumentFolderTree({
     const name = folderName.trim()
     if (!name) return
 
-    if (dialog.open && dialog.mode === 'create') {
-      const newId = createFolder(name, dialog.parentId)
-      setActiveFolderId(newId)
-      toast.success('文件夹已创建')
-      closeDialog()
-      return
-    }
+    try {
+      if (dialog.open && dialog.mode === 'create') {
+        const newId = createFolder(name, dialog.parentId)
+        closeDialog()
+        toast.success('文件夹已创建')
+        try {
+          setActiveFolderId(newId)
+        } catch (error) {
+          toast.error(`文件夹已创建，切换目录失败：${formatApiError(error, '无法保存当前位置')}`)
+        }
+        return
+      }
 
-    if (dialog.open && dialog.mode === 'rename') {
-      renameFolder(dialog.folderId, name)
-      toast.success('文件夹已重命名')
-      closeDialog()
+      if (dialog.open && dialog.mode === 'rename') {
+        renameFolder(dialog.folderId, name)
+        toast.success('文件夹已重命名')
+        closeDialog()
+      }
+    } catch (error) {
+      toast.error(formatApiError(error, '保存文件夹失败'))
     }
   }, [folderName, dialog, createFolder, renameFolder, setActiveFolderId, closeDialog])
 
   const handleMoveSubmit = useCallback(() => {
     if (!(dialog.open && dialog.mode === 'move')) return
     const targetParentId = moveParentId || ROOT_FOLDER_ID
-    moveFolderWithToast(dialog.folderId, targetParentId)
-    closeDialog()
+    if (moveFolderWithToast(dialog.folderId, targetParentId)) closeDialog()
   }, [dialog, moveParentId, moveFolderWithToast, closeDialog])
 
   const moveTargetOptions = useMemo(() => {
     if (!(dialog.open && dialog.mode === 'move')) return []
 
     const movingFolderId = dialog.folderId
-    const blocked = new Set<string>([movingFolderId])
-    const stack = [movingFolderId]
-    while (stack.length > 0) {
-      const current = stack.pop()
-      if (!current) continue
-      const children = childrenByParentId.get(current) || []
-      for (const child of children) {
-        if (blocked.has(child.id)) continue
-        blocked.add(child.id)
-        stack.push(child.id)
-      }
-    }
+    const blocked = new Set([movingFolderId, ...collectFolderDescendantIds(folders, movingFolderId)])
 
     const options = [
       { id: ROOT_FOLDER_ID, label: '根目录' },
-      ...folders
-        .filter((f) => !blocked.has(f.id))
-        .map((f) => ({ id: f.id, label: folderPathById[f.id] || `根目录 / ${f.name}` })),
+      ...folders.filter((f) => !blocked.has(f.id)).map((f) => ({ id: f.id, label: folderPathById[f.id] })),
     ]
 
     options.sort((a, b) => a.label.localeCompare(b.label))
     return options
-  }, [dialog, folders, childrenByParentId, folderPathById])
+  }, [dialog, folders, folderPathById])
 
   const requestExpand = useCallback(
     (targetId: string) => {
@@ -445,7 +451,7 @@ export function DocumentFolderTree({
     if (dragScrollRafRef.current != null) return
     const step = () => {
       const d = dragScrollDirRef.current
-      if (!container || d === 0) {
+      if (d === 0) {
         dragScrollRafRef.current = null
         return
       }
@@ -473,15 +479,13 @@ export function DocumentFolderTree({
 
   const renderFileRow = useCallback(
     (file: DocumentTreeFileItem, parentFolderId: string, level: number) => {
-      const status = String(file.status || 'parsed')
+      const status = file.status
       const isParsing = status === 'parsing'
       const isError = status === 'error'
       const isPending = status === 'pending'
       const governanceStatusLabel = getGovernanceStatusLabel(file.governanceStatus)
       const progress =
-        file.progress == null || !Number.isFinite(Number(file.progress))
-          ? null
-          : Math.max(0, Math.min(100, Number(file.progress)))
+        file.progress == null || !Number.isFinite(file.progress) ? null : Math.max(0, Math.min(100, file.progress))
       const canRunFile = !file.readOnly && Boolean(onRetryFile) && (isPending || isError)
       const canRemoveFile = Boolean(onRemoveFile)
       const hasInlineActions = canRunFile || canRemoveFile
@@ -537,12 +541,14 @@ export function DocumentFolderTree({
               confirmLabel="删除"
               cancelLabel="返回"
               confirmVariant="destructive"
+              confirmDisabled={file.canRemove === false}
               onConfirm={() => onRemoveFile(file.id)}
             >
               <button
                 type="button"
+                disabled={file.canRemove === false}
                 className="flex h-5 w-5 items-center justify-center rounded-md text-muted-foreground/65 hover:bg-destructive/10 hover:text-destructive focus-ring"
-                title="删除"
+                title={file.canRemove === false ? '源文件正在上传，完成后可以删除' : '删除'}
                 aria-label="删除"
                 onClick={(event) => {
                   event.stopPropagation()
@@ -777,7 +783,7 @@ export function DocumentFolderTree({
           onDrop={(e) => {
             e.preventDefault()
             // Folder drop has priority over file drop.
-            const draggedFolderId = e.dataTransfer.getData(DND_FOLDER_MIME) || draggedFolderIdRef.current || ''
+            const draggedFolderId = e.dataTransfer.getData(DND_FOLDER_MIME) || draggedFolderIdRef.current
             if (draggedFolderId) {
               moveFolderWithToast(draggedFolderId, folder.id)
             } else {
@@ -826,7 +832,7 @@ export function DocumentFolderTree({
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-5 w-5 rounded-md text-muted-foreground opacity-0 transition-opacity duration-150 group-hover:opacity-100 hover:bg-muted/60 hover:text-foreground"
+                  className="h-5 w-5 rounded-md text-muted-foreground opacity-0 transition-opacity duration-150 group-hover:opacity-100 focus-visible:opacity-100 hover:bg-muted/60 hover:text-foreground"
                   aria-label="Add content"
                   onClick={(e) => e.stopPropagation()}
                 >
@@ -930,7 +936,7 @@ export function DocumentFolderTree({
               setConfirmingFolderId(open ? folder.id : null)
             }}
             title="删除该文件夹？"
-            description="将删除该文件夹及其子文件夹，且所有内容将被永久删除。此操作不可恢复。"
+            description="将删除该文件夹、子文件夹和本地解析记录。服务器中的文档会保留。"
             confirmLabel="删除"
             cancelLabel="返回"
             confirmVariant="destructive"
@@ -951,15 +957,16 @@ export function DocumentFolderTree({
 
   const rootCount = displayFiles.length
   const rootChildren = childrenByParentId.get(ROOT_FOLDER_ID) || []
+  const isRootExpanded = expandedFileFolderIds.has(ROOT_FOLDER_ID)
+  const showRootFolders = showFiles !== 'expanded' || isRootExpanded
   const rootDirectFiles =
     showFiles === 'all' ||
     (showFiles === 'active' && activeFolderId === ROOT_FOLDER_ID) ||
-    (showFiles === 'expanded' && expandedFileFolderIds.has(ROOT_FOLDER_ID))
+    (showFiles === 'expanded' && isRootExpanded)
       ? directFilesByFolderId.get(ROOT_FOLDER_ID) || []
       : []
   const rootDirectCount = directCountByFolderId[ROOT_FOLDER_ID] || 0
   const rootHasContent = rootDirectCount > 0 || rootChildren.length > 0
-  const isRootExpanded = expandedFileFolderIds.has(ROOT_FOLDER_ID)
 
   return (
     <div className={cn('flex flex-col', className)} ref={scrollContainerRef} role="tree" aria-label="文档目录">
@@ -968,7 +975,7 @@ export function DocumentFolderTree({
           role="treeitem"
           tabIndex={0}
           aria-selected={activeFolderId === ROOT_FOLDER_ID}
-          aria-expanded={rootHasContent ? isRootExpanded : undefined}
+          aria-expanded={rootHasContent ? showRootFolders : undefined}
           className={cn(
             'group relative flex items-center gap-1 rounded-xl py-1.5 transition-colors before:absolute before:bottom-1.5 before:left-0 before:top-1.5 before:w-0.5 before:rounded-full before:bg-primary/0 before:transition-colors',
             activeFolderId === ROOT_FOLDER_ID
@@ -998,7 +1005,7 @@ export function DocumentFolderTree({
           }}
           onDrop={(e) => {
             e.preventDefault()
-            const draggedFolderId = e.dataTransfer.getData(DND_FOLDER_MIME) || draggedFolderIdRef.current || ''
+            const draggedFolderId = e.dataTransfer.getData(DND_FOLDER_MIME) || draggedFolderIdRef.current
             if (draggedFolderId) {
               moveFolderWithToast(draggedFolderId, ROOT_FOLDER_ID)
             } else {
@@ -1083,14 +1090,8 @@ export function DocumentFolderTree({
           )}
         </div>
 
-        {(showFiles === 'all' ||
-          (showFiles === 'active' && activeFolderId === ROOT_FOLDER_ID) ||
-          (showFiles === 'expanded' && expandedFileFolderIds.has(ROOT_FOLDER_ID))) &&
-          rootDirectFiles.map((f) => renderFileRow(f, ROOT_FOLDER_ID, 1))}
-        {(showFiles === 'all' ||
-          (showFiles === 'active' && activeFolderId === ROOT_FOLDER_ID) ||
-          (showFiles === 'expanded' && expandedFileFolderIds.has(ROOT_FOLDER_ID))) &&
-          rootChildren.map((folder) => renderFolder(folder, 1))}
+        {rootDirectFiles.map((file) => renderFileRow(file, ROOT_FOLDER_ID, 1))}
+        {showRootFolders && rootChildren.map((folder) => renderFolder(folder, 1))}
       </div>
 
       <Dialog

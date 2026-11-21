@@ -1,7 +1,7 @@
 import jwt
 import pytest
 
-from app.core import jwt_verify
+from app.infrastructure.security import jwt_verify
 
 
 @pytest.mark.asyncio

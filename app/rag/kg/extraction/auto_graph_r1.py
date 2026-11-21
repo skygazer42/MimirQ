@@ -1,6 +1,6 @@
 from typing import Any, TypedDict
 
-from app.core.model_execution import reject_retired_provider
+from app.infrastructure.model_policy import reject_retired_provider
 from app.rag.kg.extraction.relation_processor import normalize_predicate
 
 AUTO_GRAPH_R1_PLAN_SCHEMA_V1 = "mimirq.kg.auto_graph_r1_plan.v1"

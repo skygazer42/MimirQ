@@ -134,4 +134,30 @@ describe('listAllDatasets', () => {
     expect(datasets).toHaveLength(205)
     expect(openapi.request).toHaveBeenCalledTimes(2)
   })
+
+  it('does not convert a missing required items envelope into a successful empty list', async () => {
+    openapi.request.mockResolvedValueOnce({ total: 2 })
+
+    await expect(listAllDatasets()).rejects.toBeInstanceOf(TypeError)
+    expect(openapi.request).toHaveBeenCalledOnce()
+  })
+
+  it('forwards the query cancellation signal through every dataset page', async () => {
+    const signal = new AbortController().signal
+    openapi.request
+      .mockResolvedValueOnce({ total: 3, items: [{ id: 'dataset-a' }, { id: 'dataset-b' }] })
+      .mockResolvedValueOnce({ total: 3, items: [{ id: 'dataset-c' }] })
+
+    const datasets = await listAllDatasets({ pageSize: 2 }, { signal })
+
+    expect(datasets).toHaveLength(3)
+    expect(openapi.request).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ query: { skip: 0, limit: 2 }, signal }),
+    )
+    expect(openapi.request).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ query: { skip: 2, limit: 2 }, signal }),
+    )
+  })
 })

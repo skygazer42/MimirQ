@@ -47,10 +47,12 @@ def _clean_one_line(value: Any, *, limit: int = 160) -> str:
     text = " ".join(_text(value).split())
     if len(text) <= limit:
         return text
-    return text[: max(0, limit - 1)].rstrip() + "..."
+    return text[: max(0, limit - 3)].rstrip() + "." * min(max(0, limit), 3)
 
 
 def _metadata_value(metadata: Mapping[str, Any], key: str) -> Any:
+    if key in metadata:
+        return metadata[key]
     current: Any = metadata
     for part in key.split("."):
         if not isinstance(current, Mapping):
@@ -75,7 +77,7 @@ def _source_section(source: str) -> str:
 
 
 def _default_document_section(doc: Document, *, metadata_keys: Sequence[str]) -> str:
-    metadata = dict(doc.metadata or {})
+    metadata = doc.metadata
     for key in metadata_keys:
         value = _metadata_value(metadata, key)
         text = _text(value)
@@ -103,7 +105,7 @@ def _default_event_section(event: Any, *, metadata_keys: Sequence[str]) -> str:
 
 
 def _default_title(doc: Document, *, metadata_keys: Sequence[str]) -> str:
-    metadata = dict(doc.metadata or {})
+    metadata = doc.metadata
     for key in metadata_keys:
         value = _metadata_value(metadata, key)
         if isinstance(value, list):
@@ -118,7 +120,7 @@ def _default_title(doc: Document, *, metadata_keys: Sequence[str]) -> str:
 def _metadata_fields(documents: Sequence[Document]) -> list[str]:
     fields: set[str] = set()
     for doc in documents:
-        for key in dict(doc.metadata or {}):
+        for key in doc.metadata:
             if key in _RESERVED_VIEW_KEYS or key.startswith("_"):
                 continue
             fields.add(str(key))
@@ -152,7 +154,7 @@ def _chunk_example(
     metadata_highlight_keys: Sequence[str],
     extra_example_metadata_fields: Mapping[str, str],
 ) -> dict[str, Any]:
-    metadata = dict(doc.metadata or {})
+    metadata = doc.metadata
     example: dict[str, Any] = {
         "title": title_resolver(doc),
         "chunk_kind": _text(metadata.get("chunk_kind")) or "unknown",

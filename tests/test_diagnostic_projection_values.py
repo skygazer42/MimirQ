@@ -7,8 +7,8 @@ import pytest
 from app.rag.kg.search.config import SearchConfig
 from app.rag.kg.search.expand import ExpandResult
 from app.rag.kg.search.searcher import _event_response
-from app.services import online_eval_service
-from app.services.evidence_drift_audit import classify_reference_source_drift
+from app.services.evaluation import online as online_eval_service
+from app.services.evidence.drift import classify_reference_source_drift
 from scripts.parser_benchmark import BenchmarkCase, CaseGoldenData, _build_case_row
 
 

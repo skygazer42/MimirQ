@@ -6,7 +6,8 @@ import { Loader2, Plus, Sparkles } from '@/components/icons'
 import type { DocumentChunk } from '@/types/backend'
 import { Button } from '@/components/ui/button'
 
-import { DocumentChunkCard } from './chunk-renderer'
+import { CitationSnapshotCard, DocumentChunkCard } from './chunk-renderer'
+import type { DocumentChunkLocation, DocumentViewerHighlight } from './document-viewer-models'
 
 type ChunksToolbarPanelProps = {
   chunkSearchRef: RefObject<HTMLInputElement | null>
@@ -17,11 +18,11 @@ type ChunksToolbarPanelProps = {
   canEditChunks: boolean
   serverMatchTruncatedHint: boolean
   highlightChunkId: string | null
-  loadAllChunks: boolean
   chunksLoaded: boolean
   chunksLoading: boolean
   highlightChunkLoading: boolean
-  highlightChunk: DocumentChunk | null
+  highlightChunkError: string | null
+  highlightContent: DocumentViewerHighlight | null
   chunkEditorSubmitting: boolean
   chunkDeleteSubmitting: string | null
   onChunkQueryChange: (value: string) => void
@@ -32,10 +33,10 @@ type ChunksToolbarPanelProps = {
   onOpenQaDialog: () => void
   onClearHighlight: () => void
   onLoadAllChunks: () => void
-  onCopyContent: (content: string) => void
-  onCopyLink: (chunk: DocumentChunk) => void
+  onCopyContent: (content: string) => Promise<void>
+  onCopyLink: (location: DocumentChunkLocation) => Promise<void>
   onEditChunk: (chunk: DocumentChunk) => void
-  onDeleteChunk: (chunk: DocumentChunk) => void
+  onDeleteChunk: (chunk: DocumentChunk) => Promise<void>
 }
 
 export function ChunksToolbarPanel({
@@ -47,11 +48,11 @@ export function ChunksToolbarPanel({
   canEditChunks,
   serverMatchTruncatedHint,
   highlightChunkId,
-  loadAllChunks,
   chunksLoaded,
   chunksLoading,
   highlightChunkLoading,
-  highlightChunk,
+  highlightChunkError,
+  highlightContent,
   chunkEditorSubmitting,
   chunkDeleteSubmitting,
   onChunkQueryChange,
@@ -71,6 +72,7 @@ export function ChunksToolbarPanel({
     <div className="border-b border-border bg-background p-4">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
         <input
+          aria-label="搜索文档切片"
           ref={chunkSearchRef}
           value={chunkQuery}
           onChange={(event) => onChunkQueryChange(event.target.value)}
@@ -126,14 +128,16 @@ export function ChunksToolbarPanel({
         </div>
       ) : null}
 
-      {highlightChunkId && !loadAllChunks && !chunksLoaded ? (
+      {highlightChunkId && (!chunksLoaded || highlightContent?.kind === 'citation') ? (
         <div className="mt-3 rounded-xl border border-border/60 bg-background/60 p-4">
           <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
             <div className="min-w-0">
               <div className="text-xs font-semibold text-foreground">引用切片</div>
-              <div className="mt-1 text-[11px] text-muted-foreground">
-                为避免一次性加载大量切片，先展示命中内容；需要全文切片可点击「加载全部切片」。
-              </div>
+              {!chunksLoaded ? (
+                <div className="mt-1 text-[11px] text-muted-foreground">
+                  当前展示命中内容，需要全文切片时可加载全部。
+                </div>
+              ) : null}
             </div>
             <div className="flex items-center justify-end gap-2">
               <Button
@@ -145,24 +149,33 @@ export function ChunksToolbarPanel({
               >
                 清除定位
               </Button>
-              <Button type="button" size="sm" onClick={onLoadAllChunks} disabled={chunksLoading}>
-                加载全部切片
-              </Button>
+              {!chunksLoaded ? (
+                <Button type="button" size="sm" onClick={onLoadAllChunks} disabled={chunksLoading}>
+                  加载全部切片
+                </Button>
+              ) : null}
             </div>
           </div>
 
           <div className="mt-3">
-            {highlightChunkLoading ? (
+            {highlightContent?.kind === 'citation' ? (
+              <CitationSnapshotCard
+                snapshot={highlightContent.snapshot}
+                query={chunkQuery}
+                onCopyContent={onCopyContent}
+                onCopyLink={onCopyLink}
+              />
+            ) : highlightChunkLoading ? (
               <div className="flex items-center gap-2 text-xs text-muted-foreground">
                 <Loader2 className="size-4 animate-spin motion-reduce:animate-none" />
                 <span>加载命中切片…</span>
               </div>
-            ) : highlightChunk ? (
+            ) : highlightContent?.kind === 'chunk' ? (
               <DocumentChunkCard
-                chunk={highlightChunk}
+                chunk={highlightContent.chunk}
                 query={chunkQuery}
                 isActive
-                canEditChunks={canEditChunks}
+                canEditChunks={canEditChunks && highlightChunkError === null}
                 chunkEditorSubmitting={chunkEditorSubmitting}
                 chunkDeleteSubmitting={chunkDeleteSubmitting}
                 showHoverActions={false}
@@ -171,9 +184,7 @@ export function ChunksToolbarPanel({
                 onEdit={onEditChunk}
                 onDelete={onDeleteChunk}
               />
-            ) : (
-              <div className="text-xs text-muted-foreground">未找到命中切片（可能已被删除或无权限）</div>
-            )}
+            ) : null}
           </div>
         </div>
       ) : null}

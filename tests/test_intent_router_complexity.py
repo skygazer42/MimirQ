@@ -135,7 +135,7 @@ def test_route_retrieval_preset_learned_hint_only_fills_missing_overrides(
     monkeypatch.setattr(intent_router, "normalize_intent_router_model", lambda model: {"ready": True})
     monkeypatch.setattr(
         intent_router,
-        "predict_learned_router_hint",
+        "predict_normalized_router_hint",
         lambda **kwargs: {
             "confidence": 0.8,
             "rule_id": "learned-rule",

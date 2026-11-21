@@ -1,6 +1,6 @@
 import pytest
 
-from app.parsing.processors.parse_cache import LocalParseCacheStore, ParseCacheEntry
+from app.rag.ingestion.parsing.processors.parse_cache import LocalParseCacheStore, ParseCacheEntry
 
 
 @pytest.mark.parametrize("strategy", [None, "", False, 0])

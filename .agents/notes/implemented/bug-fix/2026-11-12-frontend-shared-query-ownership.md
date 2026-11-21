@@ -2,6 +2,8 @@
 
 Status: implemented
 
+明确session替换的共享Query清理补充见[消融回执与会话归属](2026-11-18-ablation-submit-receipts-and-session-ownership.md)：继续使用原QueryClient与真实会话来源，按key去重处理session/scope配对事件。本篇结果形状/目录投影决定和历史依据保留，不将旧运行结果继承给新源码。
+
 ## Problem
 
 聊天详情、评测限量消息与历史无限分页原先共用同一消息键。详情包含 messages，无限查询包含 pages/pageParams；新鲜缓存可在页面切换时把另一种结构交给调用方。当前 TanStack 依赖的内存复现确认分页观察者会报错，详情读取也会取到不存在的 messages。
@@ -14,7 +16,7 @@ Status: implemented
 
 消息缓存按实际结果形状区分：详情使用 messages 并包含真实 limit/before 参数，历史无限分页使用 messagePages。页面直接消费已有 ConversationDetail；请求和恢复回调转发现有 ApiRequestOptions.signal，不通过额外包装丢掉第三个参数。
 
-相同输入的完整目录使用 queryKeys.datasets.exhaustive()，缓存保存原始 Dataset[]。名称字典与 id/name 选项由原生 select 投影给观察者，原启用条件与新鲜度选择继续由各调用方持有。目录 API 每页转发同一 signal，必需 items/id 按实际响应模型读取。分页大小、重复页终止和已测试的非可信 total 提示政策继续保留。
+相同输入的完整目录使用 queryKeys.datasets.exhaustive()，缓存保存原始 Dataset[]。名称字典与 id/name 选项由原生 select 投影给观察者，原启用条件与新鲜度选择继续由各调用方持有。目录 API 每页转发同一 signal，必需 items/id 按实际响应模型读取。原记录沿用过分页大小修补、重复页提前返回和非可信 total 提示政策；[完整目录接受决定](2026-11-17-dataset-options-completeness.md)基于当前真实输出合同明确接管这部分失败政策，其余缓存形状、投影和会话边界继续成立。该轮按用户要求没有重跑本篇历史测试，旧结果不证明当前代码。
 
 当前查询错误在选择器、治理范围控件和解析工作台中反馈；缓存数据仍可使用。重试以原生 isFetching 禁用重复触发；生成弹窗只在打开时消费属于当前来源的错误。错误提示采用当前 Tailwind 的 wrap-anywhere，使长编号参与真实最小内容尺寸计算，按钮保留自身宽度；不裁掉请求编号来掩盖布局问题。
 
@@ -37,6 +39,10 @@ CommandMenu 同样位于已有身份边界内，认证事件关闭全局打开�
 - 为全局命令补建批量任务流程可以让原入口执行，但需要新的范围选择、权限及失败政策。当前没有这些业务合同，因此删除实际没有实现的入口。预检/报告沿用已存在的数据集选择链，不重新暴露路由已退出的旧审计视图。
 
 ## Consequences
+
+[对话评测](2026-11-18-conversation-evaluation-contracts-and-selection.md)补齐该消费者的实际 schema、选择、轮询与创建反馈；继续使用本篇 Query/身份所有者，没有新增共享状态框架。本次只改实现，没有继承或重跑本篇旧验证。
+
+[会话历史查询与操作](2026-11-17-conversation-history-query-and-operations.md)补齐历史页的实际响应、正向缓存/反向显示及操作结果归属；本文 messages/messagePages 形状分离和共享 Query 合同继续适用。
 
 目录更新和失败会被同一资源的多个观察者看到，调用方必须按当前表单/视图决定何时反馈；关闭的生成弹窗已有相应回归。局部草稿与选择不从目录响应重新初始化。查询取消只结束失效读取与发布，不回滚已提交的后端动作。
 

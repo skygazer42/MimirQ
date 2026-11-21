@@ -116,6 +116,14 @@
   gap: 16px;
   padding: 12px 32px;
 }
+.importButton:focus-visible,
+.datasetTrigger:focus-visible,
+.searchInput:focus-visible,
+.sort:focus-visible,
+.pageSize:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 2px;
+}
 .datasetTrigger {
   width: auto;
   min-width: 146px;
@@ -787,13 +795,6 @@
 .pageOf {
   font-variant-numeric: tabular-nums;
 }
-.dialogError {
-  margin-top: 12px;
-  color: hsl(var(--destructive));
-  font-size: 13px;
-  line-height: 22px;
-  overflow-wrap: anywhere;
-}
 .detailsSheet {
   width: min(100%, 540px);
   max-width: 540px;
@@ -909,7 +910,6 @@
     gap: 10px 14px;
   }
   .filters {
-    order: 3;
     width: 100%;
   }
   .table {
@@ -933,7 +933,6 @@
     padding: 12px 16px 0;
   }
   .tabs {
-    order: 3;
     width: 100%;
     height: 44px;
     gap: 26px;
@@ -956,6 +955,7 @@
     padding: 16px;
   }
   .datasetTrigger {
+    grid-column: 1 / -1;
     width: fit-content;
     min-width: 0;
     max-width: 100%;
@@ -976,8 +976,7 @@
     display: inline-flex;
   }
   .search {
-    grid-column: 1 / -1;
-    grid-row: 2;
+    grid-column: 1;
     width: 100%;
   }
   .searchInput {
@@ -986,12 +985,10 @@
   }
   .sort {
     grid-column: 2;
-    grid-row: 1;
     height: 44px;
   }
   .advancedFilter {
     grid-column: 3;
-    grid-row: 1;
     height: 44px;
     width: 36px;
   }
@@ -1000,7 +997,6 @@
   }
   .filters {
     grid-column: 1 / -1;
-    grid-row: 3;
     width: 100%;
     min-width: 0;
     overflow-x: auto;

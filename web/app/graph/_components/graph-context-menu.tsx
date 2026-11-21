@@ -20,6 +20,7 @@ import {
   type GraphContextMenuState,
   type GraphLinkLike,
   type GraphNodeLike,
+  coerceTrimmedString,
   getGraphLinkPredicate,
 } from '../graph-page-utils'
 
@@ -43,23 +44,8 @@ type GraphContextMenuProps = Readonly<{
 }>
 
 function getGraphContextLinkId(link: GraphLinkLike): string {
-  if (typeof link?.id === 'string' || typeof link?.id === 'number') {
-    return String(link.id)
-  }
-  if (typeof link?.meta?.id === 'string' || typeof link?.meta?.id === 'number') {
-    return String(link.meta.id)
-  }
-  return ''
-}
-
-function getGraphViewLabel(viewMode: '2d' | '3d'): string {
-  if (viewMode === '3d') return '3D View'
-  return '2D View'
-}
-
-function getEdgeLabelsActionLabel(showEdgeLabels: boolean): string {
-  if (showEdgeLabels) return '隐藏连线标签'
-  return '显示连线标签'
+  const id = link.id ?? link.meta?.id
+  return typeof id === 'string' || typeof id === 'number' ? String(id) : ''
 }
 
 export function GraphContextMenu({
@@ -85,14 +71,14 @@ export function GraphContextMenu({
   let menuContent: React.ReactNode
   if (contextMenu.target.type === 'node') {
     const node = contextMenu.target.node
+    const nodeId = coerceTrimmedString(node.id)
+    const nodeLabel = coerceTrimmedString(node.label)
     menuContent = (
       <div>
         <div className="border-b border-border/60 bg-muted/30 px-3 py-2">
           <div className="text-[11px] font-medium uppercase text-muted-foreground">Node</div>
-          <div className="truncate text-sm font-semibold text-foreground">
-            {String(node?.label || node?.id || 'Node')}
-          </div>
-          <div className="truncate font-mono text-[11px] text-muted-foreground">{String(node?.id || '')}</div>
+          <div className="truncate text-sm font-semibold text-foreground">{nodeLabel === '' ? nodeId : nodeLabel}</div>
+          <div className="truncate font-mono text-[11px] text-muted-foreground">{nodeId}</div>
         </div>
         <div className="p-1">
           <Button
@@ -102,7 +88,7 @@ export function GraphContextMenu({
             className="h-8 w-full justify-start"
             onClick={() => {
               onClose()
-              onExpandNode(String(node?.id || ''))
+              onExpandNode(nodeId)
             }}
           >
             <Layers className="w-4 h-4 mr-2" />
@@ -168,7 +154,7 @@ export function GraphContextMenu({
             className="h-8 w-full justify-start"
             onClick={() => {
               onClose()
-              onCopyNodeId(String(node?.id || ''))
+              onCopyNodeId(nodeId)
             }}
           >
             <Copy className="w-4 h-4 mr-2" />
@@ -235,7 +221,9 @@ export function GraphContextMenu({
       <div>
         <div className="border-b border-border/60 bg-muted/30 px-3 py-2">
           <div className="text-[11px] font-medium uppercase text-muted-foreground">Graph</div>
-          <div className="truncate text-sm font-semibold text-foreground">{getGraphViewLabel(viewMode)}</div>
+          <div className="truncate text-sm font-semibold text-foreground">
+            {viewMode === '3d' ? '3D View' : '2D View'}
+          </div>
         </div>
         <div className="p-1">
           <Button
@@ -275,7 +263,7 @@ export function GraphContextMenu({
             }}
           >
             <Type className="w-4 h-4 mr-2" />
-            {getEdgeLabelsActionLabel(showEdgeLabels)}
+            {showEdgeLabels ? '隐藏连线标签' : '显示连线标签'}
           </Button>
         </div>
       </div>

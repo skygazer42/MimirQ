@@ -1,4 +1,4 @@
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 from app.rag.evaluation.runners.agentic_runner import run_agentic_route
@@ -6,7 +6,9 @@ from app.rag.evaluation.runners.hybrid_runner import run_hybrid_route
 from app.rag.evaluation.runners.kg_runner import run_kg_route
 from app.rag.evaluation.runners.retrieval_runner import run_retrieval_route
 
-_REGISTRY: dict[str, Callable[[dict[str, Any]], dict[str, Any]] | None] = {
+EvaluationRunner = Callable[[dict[str, Any]], dict[str, Any] | Awaitable[dict[str, Any]]]
+
+_REGISTRY: dict[str, EvaluationRunner] = {
     "retrieval": run_retrieval_route,
     "kg": run_kg_route,
     "hybrid": run_hybrid_route,
@@ -18,5 +20,5 @@ def get_registered_route_ids() -> list[str]:
     return list(_REGISTRY.keys())
 
 
-def get_runner(route_id: str) -> Callable[[dict[str, Any]], dict[str, Any]] | None:
+def get_runner(route_id: str) -> EvaluationRunner | None:
     return _REGISTRY.get(route_id)

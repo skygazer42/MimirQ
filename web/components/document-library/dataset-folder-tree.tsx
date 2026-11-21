@@ -5,7 +5,6 @@ import type { ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { ChevronDown, ChevronRight, Folder, FolderOpen, Loader2, RefreshCw } from '@/components/icons'
 import { useTranslations } from 'next-intl'
-import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -16,60 +15,19 @@ import { queryKeys } from '@/lib/query-keys'
 
 import type { DocumentFolderNode } from '@/types'
 
-function collectFolderPaths(node: DocumentFolderNode, out: Set<string>) {
-  out.add(node.path)
-  for (const child of node.children || []) {
-    collectFolderPaths(child, out)
-  }
-}
-
 type DatasetFolderTreeViewProps = {
   root: DocumentFolderNode
   selectedPath: string | null
   onSelect: (path: string | null) => void
-  className?: string
-  expandAll?: boolean
-  labels?: {
+  labels: {
     collapse: string
     expand: string
-    unnamed: string
     allDirectories: string
   }
 }
 
-export function DatasetFolderTreeView({
-  root,
-  selectedPath,
-  onSelect,
-  className,
-  expandAll = false,
-  labels = {
-    collapse: '折叠',
-    expand: '展开',
-    unnamed: '(未命名目录)',
-    allDirectories: '全部目录',
-  },
-}: Readonly<DatasetFolderTreeViewProps>) {
-  const initialExpanded = useMemo(() => {
-    const next = new Set<string>([''])
-    if (expandAll) {
-      collectFolderPaths(root, next)
-      return next
-    }
-
-    // Default: expand root + first level for discoverability.
-    for (const child of root.children || []) {
-      next.add(child.path)
-    }
-    return next
-  }, [expandAll, root])
-
-  const [expandedPaths, setExpandedPaths] = useState<Set<string>>(initialExpanded)
-
-  // If a new tree is loaded (dataset switch), reset expansion.
-  useEffect(() => {
-    setExpandedPaths(initialExpanded)
-  }, [initialExpanded])
+function DatasetFolderTreeView({ root, selectedPath, onSelect, labels }: Readonly<DatasetFolderTreeViewProps>) {
+  const [expandedPaths, setExpandedPaths] = useState(() => new Set(root.children?.map((child) => child.path)))
 
   const toggle = (path: string) => {
     setExpandedPaths((prev) => {
@@ -81,10 +39,10 @@ export function DatasetFolderTreeView({
   }
 
   const renderNode = (node: DocumentFolderNode) => {
-    const children = node.children || []
+    const children = node.children ?? []
     const hasChildren = children.length > 0
     const isExpanded = hasChildren && expandedPaths.has(node.path)
-    const isSelected = (selectedPath || '') === node.path
+    const isSelected = selectedPath === node.path
     const depth = Math.max(0, node.depth - 1)
 
     const Icon = isExpanded ? FolderOpen : Folder
@@ -95,7 +53,8 @@ export function DatasetFolderTreeView({
         <button
           type="button"
           className="z-10 rounded-sm p-0.5 hover:bg-muted/50 focus-ring"
-          aria-label={isExpanded ? labels.collapse : labels.expand}
+          aria-label={`${isExpanded ? labels.collapse : labels.expand} ${node.name}`}
+          aria-expanded={isExpanded}
           onClick={(e) => {
             e.stopPropagation()
             toggle(node.path)
@@ -119,7 +78,8 @@ export function DatasetFolderTreeView({
 
           <button
             type="button"
-            onClick={() => onSelect(node.path || null)}
+            aria-current={isSelected ? true : undefined}
+            onClick={() => onSelect(node.path)}
             className="min-w-0 flex-1 flex items-center justify-between gap-2 text-left focus-ring rounded-md py-0.5"
           >
             <span className="min-w-0 flex items-center gap-2">
@@ -127,7 +87,7 @@ export function DatasetFolderTreeView({
                 className={cn('h-4 w-4 transition-colors', isSelected ? 'text-primary' : 'text-muted-foreground/60')}
               />
               <span className={cn('truncate  transition-colors', isSelected ? 'font-bold' : 'font-medium')}>
-                {node.name || node.path || labels.unnamed}
+                {node.name}
               </span>
             </span>
             <span
@@ -143,9 +103,8 @@ export function DatasetFolderTreeView({
 
         {hasChildren && isExpanded ? (
           <div className="mt-0.5 relative">
-            {/* Vertical Guide Line */}
             <div
-              className="pointer-events-none absolute bottom-2 top-0 left-[15px] w-px bg-foreground/10"
+              className="pointer-events-none absolute bottom-2 top-0 w-px bg-foreground/10"
               style={{ left: 15 + depth * 12 }}
             />
             {children.map(renderNode)}
@@ -156,9 +115,10 @@ export function DatasetFolderTreeView({
   }
 
   return (
-    <div className={cn('space-y-1', className)}>
+    <div className="space-y-1">
       <button
         type="button"
+        aria-current={selectedPath === null ? true : undefined}
         onClick={() => onSelect(null)}
         className={cn(
           'w-full flex items-center justify-between rounded-md border border-transparent px-2 py-1.5 text-sm transition-colors focus-ring',
@@ -208,7 +168,7 @@ export function DatasetFolderTree({
   const folderTreeQuery = useQuery({
     queryKey: queryKeys.documents.folders(folderTreeParams),
     enabled: Boolean(datasetId),
-    queryFn: () => documentApi.folders(folderTreeParams),
+    queryFn: ({ signal }) => documentApi.folders(folderTreeParams, { signal }),
   })
 
   const tree = datasetId ? (folderTreeQuery.data ?? null) : null
@@ -219,20 +179,18 @@ export function DatasetFolderTree({
   useEffect(() => {
     if (!folderTreeQuery.error) return
     reportClientError('Failed to load dataset folder tree', folderTreeQuery.error)
-    toast.error(formatApiError(folderTreeQuery.error, t('loadFailed')))
-  }, [folderTreeQuery.error, t])
+  }, [folderTreeQuery.error])
 
   const labels = useMemo(
     () => ({
       collapse: t('collapse'),
       expand: t('expand'),
-      unnamed: t('unnamed'),
       allDirectories: t('allDirectories'),
     }),
     [t],
   )
 
-  if (tree && tree.total_documents > 0 && tree.total_with_source_path <= 0) {
+  if (error === null && tree && tree.total_documents > 0 && tree.total_with_source_path <= 0) {
     return null
   }
 
@@ -244,12 +202,18 @@ export function DatasetFolderTree({
         {t('loading')}
       </div>
     )
-  } else if (error) {
-    content = <div className="text-xs text-destructive">{error}</div>
   } else if (!tree || tree.total_documents <= 0) {
-    content = <div className="text-xs text-muted-foreground">{t('empty')}</div>
+    content = error === null ? <div className="text-xs text-muted-foreground">{t('empty')}</div> : null
   } else {
-    content = <DatasetFolderTreeView root={tree.root} selectedPath={selectedPath} onSelect={onSelect} labels={labels} />
+    content = (
+      <DatasetFolderTreeView
+        key={JSON.stringify(folderTreeParams)}
+        root={tree.root}
+        selectedPath={selectedPath}
+        onSelect={onSelect}
+        labels={labels}
+      />
+    )
   }
 
   return (
@@ -276,6 +240,11 @@ export function DatasetFolderTree({
         </div>
       ) : null}
 
+      {error === null ? null : (
+        <div role="alert" className="text-xs text-destructive">
+          {error}
+        </div>
+      )}
       {content}
     </div>
   )

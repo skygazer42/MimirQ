@@ -27,9 +27,7 @@ def _render_umap_scatter(report: dict[str, Any]) -> str:
     }
     circles: list[str] = []
     labels: list[str] = []
-    for point in points:
-        x = float(point.get("x") or 0.0)
-        y = float(point.get("y") or 0.0)
+    for point, x, y in zip(points, xs, ys, strict=True):
         cx = padding + ((x - min_x) / span_x) * (width - padding * 2)
         cy = padding + ((max_y - y) / span_y) * (height - padding * 2)
         color = color_map.get(point.get("group"), "#0f172a")
@@ -53,13 +51,14 @@ def _render_umap_scatter(report: dict[str, Any]) -> str:
     )
     svg = (
         f"<svg viewBox='0 0 {int(width)} {int(height)}' width='100%' "
-        f"height='{int(height)}' role='img' aria-label='umap scatter'>"
+        f"height='{int(height)}' role='img' aria-label='projection scatter'>"
         "<rect x='0' y='0' width='100%' height='100%' fill='#f8fafc' rx='16' />"
         + "".join(circles)
         + "".join(labels)
         + "</svg>"
     )
-    return f"<div id='umap-scatter'>{svg}{legend}</div>"
+    method = escape(str(scatter.get("projection_method") or "unknown"))
+    return f"<div id='umap-scatter'><p>Projection: {method}</p>{svg}{legend}</div>"
 
 
 def _render_latency_breakdown(report: dict[str, Any]) -> str:
@@ -101,7 +100,7 @@ def _render_heatmap(report: dict[str, Any]) -> str:
         .set_global_opts(
             title_opts=opts.TitleOpts(title="coverage-heatmap"),
             toolbox_opts=opts.ToolboxOpts(is_show=False),
-            visualmap_opts=opts.VisualMapOpts(min_=0, max_=max([v[2] for v in values] or [1])),
+            visualmap_opts=opts.VisualMapOpts(min_=0, max_=max((value[2] for value in values), default=1)),
             xaxis_opts=opts.AxisOpts(axislabel_opts=opts.LabelOpts(rotate=0)),
         )
     )

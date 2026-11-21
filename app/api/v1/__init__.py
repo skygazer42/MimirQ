@@ -11,51 +11,34 @@ _RETRIEVAL_PREFIX = "/retrieval"
 @cache
 def get_router() -> APIRouter:
     """Return the shared router, importing route modules only when requested."""
-    from app.api.v1 import (
-        audit,
-        auth,
-        chat,
-        chunk_presets,
-        connectors,
-        dataset_analysis,
-        dataset_categories,
-        dataset_precheck,
-        dataset_tables,
-        datasets,
-        db_catalog,
-        documents,
-        evaluations,
-        evidence,
-        evidence_capsules,
-        feedback,
-        governance,
-        groups,
-        health,
-        industry_rules,
-        ingestion_runs,
-        integrations_conversations,
-        integrations_dify,
-        lineage,
-        meta,
-        network_analysis,
-        observability,
-        parsing,
-        pipeline,
-        prompt_templates,
-        rag,
-        rag_config_templates,
-        ragviz,
-        rbac,
-        reports,
-        retrieval_config_hash,
-        retrieval_explain,
-        retrieval_profiles,
-        rtbf,
-        scim,
-        settings,
-        usage,
-    )
-    from app.rag.kg.api import routes as kg
+    import app.api.v1.knowledge_graph.routes as kg
+    from app.api.v1.connectors import routes as connectors
+    from app.api.v1.conversations import feedback
+    from app.api.v1.conversations import prompts as prompt_templates
+    from app.api.v1.conversations import routes as chat
+    from app.api.v1.datasets import analysis as dataset_analysis
+    from app.api.v1.datasets import categories as dataset_categories
+    from app.api.v1.datasets import db_catalog, reports
+    from app.api.v1.datasets import precheck as dataset_precheck
+    from app.api.v1.datasets import routes as datasets
+    from app.api.v1.datasets import tables as dataset_tables
+    from app.api.v1.documents import ingestion_runs, lineage
+    from app.api.v1.documents import routes as documents
+    from app.api.v1.evaluation import evidence, evidence_capsules
+    from app.api.v1.evaluation import routes as evaluations
+    from app.api.v1.identity import auth, groups, rbac, scim
+    from app.api.v1.integrations import conversations as integrations_conversations
+    from app.api.v1.integrations import dify as integrations_dify
+    from app.api.v1.knowledge_graph import network as network_analysis
+    from app.api.v1.pipelines import chunk_presets, governance, industry_rules, parsing
+    from app.api.v1.pipelines import routes as pipeline
+    from app.api.v1.retrieval import config_hash as retrieval_config_hash
+    from app.api.v1.retrieval import config_templates as rag_config_templates
+    from app.api.v1.retrieval import explain as retrieval_explain
+    from app.api.v1.retrieval import profiles as retrieval_profiles
+    from app.api.v1.retrieval import routes as rag
+    from app.api.v1.retrieval import visualization as ragviz
+    from app.api.v1.system import audit, health, meta, observability, rtbf, settings, usage
 
     router = APIRouter()
     router.include_router(health.router, tags=["Health"])

@@ -3,7 +3,7 @@
  */
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useLayoutEffect, useRef, useState } from 'react'
 import {
   Check,
   Copy,
@@ -28,6 +28,7 @@ import { toTrimmedPrimitiveString } from '@/lib/primitive-text'
 import { ChunkCompareDialog } from '@/components/chunk-preview/components/chunk-compare-dialog'
 import { ChunkingHelpDialog } from '@/components/chunk-preview/components/chunking-help-dialog'
 import { useChunkPreview } from '@/components/chunk-preview/context'
+import { useChunkPreviewConfig } from '@/components/chunk-preview/use-chunk-preview-config'
 import {
   applyChunkOverridesToPreview,
   chunkPreviewToCsv,
@@ -37,7 +38,8 @@ import {
   sanitizeFilename,
   toChunkPreviewExport,
 } from '@/components/chunk-preview/utils/export'
-import { isChunkOverrideDisabled } from '@/components/chunk-preview/utils/metadata'
+import { isChunkOverrideDisabled, readMetadataString } from '@/components/chunk-preview/utils/metadata'
+import { getComparisonCandidates } from '@/components/chunk-preview/utils/ab-diff'
 import { TestGenerationDialog } from '@/components/test-generation-dialog'
 import { Button } from '@/components/ui/button'
 import { FileTypeIcon } from '@/components/ui/file-type-icon'
@@ -52,32 +54,13 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { usePipelineOptions } from '@/contexts/pipeline-options-context'
 import { useRouter } from '@/i18n/navigation'
 import { getAuthHeaders } from '@/lib/auth-headers'
 import { getAuthCacheScope, getAuthSessionRevision } from '@/lib/auth-storage'
 import { API_V1_BASE_URL } from '@/lib/env'
+import { appendChunkPreviewSettings, buildChunkPreviewQueryParams } from '@/lib/api/document-helpers'
 import { getChunkStrategyLabel } from '@/lib/chunk-strategies'
 import { cn, detachPromise, formatFileSize } from '@/lib/utils'
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-}
-
-function getStringValue(record: Record<string, unknown>, key: string): string | undefined {
-  const value = record[key]
-  return typeof value === 'string' ? value : undefined
-}
-
-function getFiniteNumber(record: Record<string, unknown>, key: string): number | undefined {
-  const value = record[key]
-  if (typeof value === 'number' && Number.isFinite(value)) return value
-  if (typeof value === 'string') {
-    const parsed = Number(value)
-    return Number.isFinite(parsed) ? parsed : undefined
-  }
-  return undefined
-}
 
 function getFiniteNumberValue(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) ? value : undefined
@@ -133,26 +116,20 @@ function splitTopBarErrorMessage(cleaned: string): {
 function formatTopBarError(message: string): {
   title: string
   detail: string | null
-  badge: string | null
 } {
-  const cleaned = String(message || '').trim()
+  const cleaned = message.trim()
   const split = splitTopBarErrorMessage(cleaned)
-  const title = split?.title || '操作失败'
-  const detail = split?.detail || cleaned
-  const lower = cleaned.toLowerCase()
-  const badge = cleaned.includes('请求超时') || lower.includes('timeout') ? '请求超时' : null
+  const title = split?.title ?? '操作失败'
+  const detail = split?.detail ?? cleaned
 
   return {
     title,
-    detail: detail || null,
-    badge,
+    detail: detail === '' ? null : detail,
   }
 }
 
-const ESCAPED_NEWLINE = String.raw`\n`
 const SHELL_BACKSLASH = String.fromCodePoint(92)
 const DOUBLE_SHELL_BACKSLASH = SHELL_BACKSLASH.repeat(2)
-const BACKTICK = String.fromCodePoint(96)
 
 export function TopBar({ onOpenDocuments }: Readonly<{ onOpenDocuments: () => void }>) {
   const router = useRouter()
@@ -162,8 +139,8 @@ export function TopBar({ onOpenDocuments }: Readonly<{ onOpenDocuments: () => vo
   const [compareOpen, setCompareOpen] = useState(false)
   const [testGenOpen, setTestGenOpen] = useState(false)
   const [includeSkippedInExports, setIncludeSkippedInExports] = useState(false)
-  const pipelineCtx = usePipelineOptions()
-  const { enabled: pipelineOverridesEnabled, options: pipelineOptions } = pipelineCtx
+  const { buildConfig, applyConfig } = useChunkPreviewConfig('workbench')
+  const applyConfigRef = useRef(applyConfig)
   const importConfigInputRef = useRef<HTMLInputElement>(null)
   const configImportRef = useRef<object | null>(null)
   const {
@@ -176,16 +153,11 @@ export function TopBar({ onOpenDocuments }: Readonly<{ onOpenDocuments: () => vo
     datasetId,
     previewData,
     chunkOverrides,
-    parserBackend,
     chunkStrategy,
     chunkSize,
     chunkOverlap,
-    separatorPreset,
-    separatorCustom,
-    keepSeparator,
-    separatorMaxChunkSize,
-    parentChildRatio,
-    parentChildMinChildSize,
+    buildChunkPreviewRequestParams,
+    buildIngestPayload,
     lastPreviewDurationMs,
     cacheHit,
     isPreviewDirty,
@@ -201,61 +173,42 @@ export function TopBar({ onOpenDocuments }: Readonly<{ onOpenDocuments: () => vo
     toggleOriginalPanel,
     toggleSettingsPanel,
     reset,
-    setDatasetId,
-    setParserBackend,
-    updateSettings,
-    updateSeparatorSettings,
     onClose,
   } = useChunkPreview()
 
-  useEffect(
+  useLayoutEffect(() => {
+    applyConfigRef.current = applyConfig
+  }, [applyConfig])
+
+  useLayoutEffect(
     () => () => {
       configImportRef.current = null
     },
-    [currentFile, currentFileItem?.id, datasetId],
+    [currentFile, currentFileItem?.id, currentFileItem?.fileRevision, datasetId],
   )
 
   if (!currentFile || !currentFileItem) return null
 
-  const effectiveParserBackend = previewData?.parser_backend || parserBackend
   const effectiveChunkStrategy = previewData?.chunk_strategy || chunkStrategy
   const skippedCount = Object.values(chunkOverrides).reduce(
     (acc, override) => acc + (isChunkOverrideDisabled(override) ? 1 : 0),
     0,
   )
 
-  const exportPreviewEnabledOnly = previewData ? applyChunkOverridesToPreview(previewData, chunkOverrides) : null
-  const exportPreviewAll = previewData
-    ? applyChunkOverridesToPreview(previewData, chunkOverrides, { include_disabled: true })
-    : null
-  const exportPreview = includeSkippedInExports ? exportPreviewAll : exportPreviewEnabledOnly
+  const exportPreview =
+    previewData === null
+      ? null
+      : applyChunkOverridesToPreview(previewData, chunkOverrides, { include_disabled: includeSkippedInExports })
 
-  const shouldIncludeSeparatorSettings = effectiveChunkStrategy === 'separator'
-  const shouldIncludeParentChildSettings = effectiveChunkStrategy === 'parent_child'
-  const selectedPreviewChunk = selectedChunkIndex == null ? null : previewData?.chunks?.[selectedChunkIndex] || null
-  const selectedChunkStart =
-    typeof selectedPreviewChunk?.start_index === 'number' && Number.isFinite(selectedPreviewChunk.start_index)
-      ? Math.trunc(selectedPreviewChunk.start_index)
-      : null
-  const selectedChunkEnd =
-    typeof selectedPreviewChunk?.end_index === 'number' && Number.isFinite(selectedPreviewChunk.end_index)
-      ? Math.trunc(selectedPreviewChunk.end_index)
-      : null
+  const selectedPreviewChunk = selectedChunkIndex === null ? undefined : previewData?.chunks[selectedChunkIndex]
+  const selectedChunkStart = getFiniteNumberValue(selectedPreviewChunk?.start_index)
+  const selectedChunkEnd = getFiniteNumberValue(selectedPreviewChunk?.end_index)
   const canOpenSelectedChunkInChatPage =
-    selectedChunkStart != null && selectedChunkEnd != null && selectedChunkEnd > selectedChunkStart
-  const selectedDocumentChunkId = (() => {
-    if (!selectedPreviewChunk || !isRecord(selectedPreviewChunk.metadata)) {
-      return undefined
-    }
-    const chunkId = (getStringValue(selectedPreviewChunk.metadata, 'chunk_id') || '').trim()
-    return chunkId || undefined
-  })()
-  const canCompare = Boolean(
-    previewData &&
-    (runHistory || []).filter(
-      (item) => item.fileName === currentFile.name && typeof item.cacheKey === 'string' && Boolean(item.cacheKey),
-    ).length >= 2,
-  )
+    selectedChunkStart !== undefined &&
+    selectedChunkEnd !== undefined &&
+    Math.trunc(selectedChunkEnd) > Math.trunc(selectedChunkStart)
+  const selectedDocumentChunkId = readMetadataString(selectedPreviewChunk?.metadata?.chunk_id)
+  const canCompare = Boolean(previewData && getComparisonCandidates(runHistory, currentFileItem.id).length >= 2)
 
   const serverTimingTitle = (() => {
     if (!previewData) return undefined
@@ -280,23 +233,12 @@ export function TopBar({ onOpenDocuments }: Readonly<{ onOpenDocuments: () => vo
     if (previewData.parse_cache_hit) {
       rows.push(`parse_cache_age_ms: ${previewData.parse_cache_age_ms ?? '-'}`)
     }
-    return rows.join(ESCAPED_NEWLINE)
+    return rows.join('\n')
   })()
-
-  const escapeForAnsiC = (value: string) => {
-    // Used for bash $'...' strings in generated cURL.
-    return value.replaceAll(SHELL_BACKSLASH, DOUBLE_SHELL_BACKSLASH).replaceAll("'", SHELL_BACKSLASH + "'")
-  }
-  const escapeForDoubleQuotedShell = (value: string) =>
-    value
-      .replaceAll(SHELL_BACKSLASH, DOUBLE_SHELL_BACKSLASH)
-      .replaceAll('"', String.raw`\"`)
-      .replaceAll('$', String.raw`\$`)
-      .replaceAll(BACKTICK, SHELL_BACKSLASH + BACKTICK)
 
   const visibleFileName = currentFileItem.displayName || previewData?.filename || currentFile.name
   const visibleFileType =
-    currentFileItem.originalFileType || previewData?.file_type || currentFile.name.split('.').pop() || ''
+    readMetadataString(currentFileItem.originalFileType) ?? readMetadataString(previewData?.file_type)
   const visibleFileSize = getVisibleFileSize(currentFileItem.originalFileSize, previewData?.file_size, currentFile.size)
   const visibleChunkSize =
     typeof previewData?.params?.chunk_size === 'number' && Number.isFinite(previewData.params.chunk_size)
@@ -306,7 +248,7 @@ export function TopBar({ onOpenDocuments }: Readonly<{ onOpenDocuments: () => vo
     typeof previewData?.params?.chunk_overlap === 'number' && Number.isFinite(previewData.params.chunk_overlap)
       ? Math.trunc(previewData.params.chunk_overlap)
       : chunkOverlap
-  const visibleChunkUnit = previewData?.params?.unit || 'chars'
+  const visibleChunkUnit = previewData?.params?.unit
   const visiblePreviewDurationMs =
     typeof previewData?.preview_duration_ms === 'number' && Number.isFinite(previewData.preview_duration_ms)
       ? Math.max(0, Math.round(previewData.preview_duration_ms))
@@ -319,23 +261,6 @@ export function TopBar({ onOpenDocuments }: Readonly<{ onOpenDocuments: () => vo
   })
   const visibleQualityClass = getQualityGradeClass(visibleQualityGrade)
   const topBarError = error ? formatTopBarError(error) : null
-
-  const buildConfig = () => ({
-    dataset_id: datasetId || undefined,
-    chunk_size: chunkSize,
-    chunk_overlap: chunkOverlap,
-    parser_backend: effectiveParserBackend,
-    chunk_strategy: effectiveChunkStrategy,
-    pipeline: pipelineOverridesEnabled ? pipelineOptions : undefined,
-    ...(shouldIncludeSeparatorSettings
-      ? {
-          separator_preset: separatorPreset,
-          separator: separatorPreset === 'custom' ? separatorCustom : undefined,
-          keep_separator: keepSeparator,
-          separator_max_chunk_size: separatorMaxChunkSize,
-        }
-      : {}),
-  })
 
   const copyText = async (value: string, okMessage: string) => {
     try {
@@ -350,75 +275,42 @@ export function TopBar({ onOpenDocuments }: Readonly<{ onOpenDocuments: () => vo
     toast.error(t('topBar.toasts.clipboardUnsupported'))
   }
 
-  const applyConfigFromText = (text: string) => {
-    const parsed = JSON.parse(text || '{}') as unknown
-    if (!isRecord(parsed)) {
-      toast.error(t('topBar.toasts.invalidJsonObject'))
-      return false
+  const copyIngestPayload = () => {
+    if (previewData === null) return
+    try {
+      const payload = buildIngestPayload(previewData, currentFileItem, chunkOverrides)
+      detachPromise(copyText(JSON.stringify(payload, null, 2), t('topBar.toasts.copiedIngestPayload')))
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, '无法生成入库请求'))
     }
+  }
 
-    const datasetIdValue = getStringValue(parsed, 'dataset_id')
-    if (datasetIdValue !== undefined) {
-      setDatasetId(datasetIdValue)
-    } else if (parsed.dataset_id == null) {
-      setDatasetId('')
+  const copyCurl = () => {
+    const params = buildChunkPreviewRequestParams()
+    const query = new URLSearchParams()
+    for (const [key, value] of Object.entries(buildChunkPreviewQueryParams(params))) {
+      if (value !== undefined) query.set(key, String(value))
     }
+    const formData = new FormData()
+    appendChunkPreviewSettings(formData, currentFile.name, params)
 
-    const parserBackendValue = getStringValue(parsed, 'parser_backend')
-    if (parserBackendValue !== undefined) {
-      setParserBackend(parserBackendValue)
+    const quoteForBash = (value: string) => {
+      const escaped = value
+        .replaceAll(SHELL_BACKSLASH, DOUBLE_SHELL_BACKSLASH)
+        .replaceAll("'", SHELL_BACKSLASH + "'")
+        .replaceAll('\r', SHELL_BACKSLASH + 'r')
+        .replaceAll('\n', SHELL_BACKSLASH + 'n')
+        .replaceAll('\t', SHELL_BACKSLASH + 't')
+      return `$'${escaped}'`
     }
-
-    const nextStrategy = getStringValue(parsed, 'chunk_strategy')
-    const nextSize = getFiniteNumber(parsed, 'chunk_size')
-    const nextOverlap = getFiniteNumber(parsed, 'chunk_overlap')
-
-    updateSettings({
-      ...(nextStrategy ? { strategy: nextStrategy } : {}),
-      ...(nextSize === undefined ? {} : { chunkSize: Math.max(50, Math.min(4000, Math.trunc(nextSize))) }),
-      ...(nextOverlap === undefined ? {} : { chunkOverlap: Math.max(0, Math.min(1000, Math.trunc(nextOverlap))) }),
-    })
-
-    const separatorPresetValue = getStringValue(parsed, 'separator_preset')
-    if (separatorPresetValue !== undefined) {
-      updateSeparatorSettings({ separatorPreset: separatorPresetValue })
-    }
-
-    const separatorValue = getStringValue(parsed, 'separator')
-    if (separatorValue !== undefined) {
-      updateSeparatorSettings({ separatorCustom: separatorValue })
-    }
-
-    if (typeof parsed.keep_separator === 'boolean') {
-      updateSeparatorSettings({ keepSeparator: parsed.keep_separator })
-    }
-
-    const separatorMaxChunkSizeValue = getFiniteNumber(parsed, 'separator_max_chunk_size')
-    if (separatorMaxChunkSizeValue !== undefined) {
-      updateSeparatorSettings({
-        separatorMaxChunkSize: Math.max(0, Math.min(20000, Math.trunc(separatorMaxChunkSizeValue))),
-      })
-    }
-
-    const pipeline = parsed.pipeline
-    if (isRecord(pipeline)) {
-      const importResult = pipelineCtx.importJson(
-        JSON.stringify({
-          enabled: true,
-          options: {
-            ...pipelineCtx.options,
-            ...pipeline,
-          },
-        }),
-      )
-
-      if (!importResult.ok) {
-        toast.error(importResult.error || t('topBar.toasts.invalidPipelineConfig'))
-        return false
-      }
-    }
-
-    return true
+    const url = `${API_V1_BASE_URL}/documents/chunk-preview?${query}`
+    const lines = [
+      `curl -X POST ${quoteForBash(url)}`,
+      ...Object.entries(getAuthHeaders()).map(([key, value]) => `  -H ${quoteForBash(`${key}: ${value}`)}`),
+      '  -F "file=@/path/to/your-file"',
+      ...Array.from(formData, ([key, value]) => `  --form-string ${quoteForBash(`${key}=${value}`)}`),
+    ]
+    detachPromise(copyText(lines.join(` ${SHELL_BACKSLASH}\n`), t('topBar.toasts.copiedCurl')))
   }
 
   const importConfiguration = async (
@@ -435,13 +327,21 @@ export function TopBar({ onOpenDocuments }: Readonly<{ onOpenDocuments: () => vo
     try {
       const text = await readText()
       if (!isCurrent()) return
-      if (applyConfigFromText(text)) toast.success(successMessage)
+      const payload: unknown = JSON.parse(text)
+      const result = applyConfigRef.current(payload)
+      if (result.ok) toast.success(successMessage)
+      else toast.error(result.error)
     } catch (error: unknown) {
       if (isCurrent()) toast.error(getErrorMessage(error, failureMessage))
     } finally {
       if (configImportRef.current === request) configImportRef.current = null
     }
   }
+
+  let ingestLabel = t('topBar.actions.confirmIngest')
+  if (isSubmitting) ingestLabel = '正在入库…'
+  else if (submitSuccess) ingestLabel = t('topBar.actions.completed')
+  else if (createdDocumentId !== null) ingestLabel = '查询入库状态'
 
   return (
     <>
@@ -556,7 +456,7 @@ export function TopBar({ onOpenDocuments }: Readonly<{ onOpenDocuments: () => vo
                   <DropdownMenuCheckboxItem
                     className="rounded-md py-2 text-[13px] font-normal"
                     checked={includeSkippedInExports}
-                    onCheckedChange={(checked) => setIncludeSkippedInExports(Boolean(checked))}
+                    onCheckedChange={setIncludeSkippedInExports}
                   >
                     {t('topBar.actions.includeSkippedInExports', {
                       count: skippedCount,
@@ -625,32 +525,8 @@ export function TopBar({ onOpenDocuments }: Readonly<{ onOpenDocuments: () => vo
               </DropdownMenuItem>
               <DropdownMenuItem
                 className="rounded-md py-2 text-[13px] font-normal text-primary"
-                disabled={!previewData}
-                onSelect={() => {
-                  const payloadPreview = exportPreviewEnabledOnly
-                  if (!payloadPreview) return
-                  const payload = {
-                    filename: payloadPreview.filename,
-                    file_type: payloadPreview.file_type,
-                    file_size: payloadPreview.file_size,
-                    dataset_id: datasetId || undefined,
-                    chunks: (payloadPreview.chunks || []).map((chunk) => ({
-                      content: chunk.content ?? '',
-                      page_number: chunk.page_number,
-                      start_char: chunk.start_index,
-                      end_char: chunk.end_index,
-                      metadata: chunk.metadata ?? {},
-                    })),
-                    pipeline: pipelineOverridesEnabled
-                      ? {
-                          ...pipelineOptions,
-                          chunk_size: chunkSize,
-                          chunk_overlap: chunkOverlap,
-                        }
-                      : undefined,
-                  }
-                  detachPromise(copyText(JSON.stringify(payload, null, 2), t('topBar.toasts.copiedIngestPayload')))
-                }}
+                disabled={previewData === null || isLoading || isPreviewDirty}
+                onSelect={copyIngestPayload}
               >
                 <Copy className="mr-2.5 h-4 w-4 opacity-80" strokeWidth={2.5} />
                 {t('topBar.actions.copyIngestPayload')}
@@ -664,51 +540,7 @@ export function TopBar({ onOpenDocuments }: Readonly<{ onOpenDocuments: () => vo
                 {t('topBar.actions.comparePreview')}
               </DropdownMenuItem>
               <DropdownMenuSeparator className="bg-border/60 mx-1 my-1.5" />
-              <DropdownMenuItem
-                className="rounded-md py-2 text-[13px] font-normal"
-                onSelect={() => {
-                  const url = `${API_V1_BASE_URL}/documents/chunk-preview?chunk_size=${encodeURIComponent(
-                    String(chunkSize),
-                  )}&chunk_overlap=${encodeURIComponent(String(chunkOverlap))}`
-                  const pipeline = pipelineOverridesEnabled ? JSON.stringify(pipelineOptions || {}) : null
-                  const authHeaders = getAuthHeaders()
-                  const lines = [
-                    `curl -X POST "${url}"`,
-                    ...Object.entries(authHeaders).map(
-                      ([name, value]) => `  -H "${name}: ${escapeForDoubleQuotedShell(value)}"`,
-                    ),
-                    `  -F "file=@/path/to/your-file"`,
-                    `  -F "parser_backend=${escapeForDoubleQuotedShell(effectiveParserBackend)}"`,
-                    `  -F "chunk_strategy=${escapeForDoubleQuotedShell(effectiveChunkStrategy)}"`,
-                  ]
-                  if (datasetId) {
-                    lines.push(`  -F "dataset_id=${escapeForDoubleQuotedShell(datasetId)}"`)
-                  }
-                  if (shouldIncludeParentChildSettings) {
-                    lines.push(
-                      `  -F "child_ratio=${parentChildRatio}"`,
-                      `  -F "min_child_size=${parentChildMinChildSize}"`,
-                    )
-                  }
-                  if (shouldIncludeSeparatorSettings) {
-                    lines.push(`  -F "separator_preset=${escapeForDoubleQuotedShell(separatorPreset)}"`)
-                    if (separatorPreset === 'custom') {
-                      lines.push(`  -F $'separator=${escapeForAnsiC(separatorCustom)}'`)
-                    }
-                    lines.push(`  -F "keep_separator=${keepSeparator ? 'true' : 'false'}"`)
-                    if (typeof separatorMaxChunkSize === 'number' && separatorMaxChunkSize > 0) {
-                      lines.push(`  -F "separator_max_chunk_size=${separatorMaxChunkSize}"`)
-                    }
-                  }
-                  if (pipeline) {
-                    lines.push(`  -F "pipeline=${escapeForDoubleQuotedShell(pipeline)}"`)
-                  }
-                  const command = lines
-                    .map((line, index) => (index < lines.length - 1 ? `${line} ${SHELL_BACKSLASH}` : line))
-                    .join('\n')
-                  detachPromise(copyText(command, t('topBar.toasts.copiedCurl')))
-                }}
-              >
+              <DropdownMenuItem className="rounded-md py-2 text-[13px] font-normal" onSelect={copyCurl}>
                 <Copy className="mr-2.5 h-4 w-4 opacity-60" strokeWidth={2.5} />
                 {t('topBar.actions.copyCurl')}
               </DropdownMenuItem>
@@ -738,11 +570,11 @@ export function TopBar({ onOpenDocuments }: Readonly<{ onOpenDocuments: () => vo
                       if (!canOpenSelectedChunkInChatPage) return
                       const params = new URLSearchParams()
                       params.set('doc', createdDocumentId)
-                      if (selectedDocumentChunkId) {
+                      if (selectedDocumentChunkId !== undefined) {
                         params.set('chunk', selectedDocumentChunkId)
                       }
-                      params.set('start', String(selectedChunkStart))
-                      params.set('end', String(selectedChunkEnd))
+                      params.set('start', String(Math.trunc(selectedChunkStart)))
+                      params.set('end', String(Math.trunc(selectedChunkEnd)))
                       router.push(`/?${params.toString()}`)
                       toast.success(t('topBar.toasts.openedCurrentChunkInChat'))
                     }}
@@ -773,14 +605,10 @@ export function TopBar({ onOpenDocuments }: Readonly<{ onOpenDocuments: () => vo
             className={styles.ingest}
             onClick={submitChunks}
             disabled={!previewData || isLoading || isSubmitting || submitSuccess || isPreviewDirty}
-            title={isPreviewDirty ? '参数已变更，请先生成预览' : undefined}
+            title={isPreviewDirty ? '请先更新当前预览' : undefined}
           >
             {isSubmitting ? <Loader2 className="animate-spin motion-reduce:animate-none" /> : <Check />}
-            {isSubmitting
-              ? '正在入库…'
-              : submitSuccess
-                ? t('topBar.actions.completed')
-                : t('topBar.actions.confirmIngest')}
+            {ingestLabel}
           </Button>
         </div>
       </header>
@@ -813,9 +641,7 @@ export function TopBar({ onOpenDocuments }: Readonly<{ onOpenDocuments: () => vo
           </Select>
         </div>
         <span className={styles.docmeta} title={formatFileSize(visibleFileSize)}>
-          {previewData
-            ? `${Number(previewData.total_characters || previewData.original_text?.length || 0).toLocaleString()} 字符`
-            : formatFileSize(visibleFileSize)}
+          {previewData ? `${previewData.total_characters.toLocaleString()} 字符` : formatFileSize(visibleFileSize)}
         </span>
         <div className={styles.docActions}>
           <Button variant="ghost" disabled={isSubmitting} onClick={onOpenDocuments}>
@@ -836,7 +662,7 @@ export function TopBar({ onOpenDocuments }: Readonly<{ onOpenDocuments: () => vo
       <FeedbackToast
         type="warning"
         id="chunk-preview-parameters"
-        message={isPreviewDirty && !submitSuccess && !error ? '参数已变更，生成预览后可确认入库。' : null}
+        message={isPreviewDirty && !submitSuccess && !error ? '更新预览后可确认入库。' : null}
       />
       <input
         ref={importConfigInputRef}
@@ -863,6 +689,7 @@ export function TopBar({ onOpenDocuments }: Readonly<{ onOpenDocuments: () => vo
           open={compareOpen}
           onOpenChange={setCompareOpen}
           current={previewData}
+          currentFileId={currentFileItem.id}
           currentFileName={currentFile.name}
           runHistory={runHistory}
           getCachedPreview={getCachedPreview}
@@ -871,10 +698,10 @@ export function TopBar({ onOpenDocuments }: Readonly<{ onOpenDocuments: () => vo
       <TestGenerationDialog
         open={testGenOpen}
         onClose={() => setTestGenOpen(false)}
-        onGenerated={() => toast.success(t('topBar.toasts.generatedEvalCases'))}
+        onCasesSaved={() => toast.success(t('topBar.toasts.generatedEvalCases'))}
         initialSourceType="documents"
-        initialDatasetId={datasetId || undefined}
-        initialDocumentIds={createdDocumentId ? [createdDocumentId] : undefined}
+        initialDatasetId={datasetId}
+        initialDocumentIds={createdDocumentId === null ? undefined : [createdDocumentId]}
       />
     </>
   )

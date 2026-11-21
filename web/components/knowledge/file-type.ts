@@ -13,9 +13,7 @@ import {
   Presentation,
 } from '@/components/icons'
 
-import type { Document } from '@/types'
-
-export type FileTypeMeta = {
+type FileTypeMeta = {
   icon: PlatformIcon
   label: string
   color: string
@@ -27,18 +25,15 @@ function fileMeta(icon: PlatformIcon, label: string, tone: string): FileTypeMeta
   return { icon, label, color: `icon-ink-${tone}`, bg: `icon-surface-${tone}`, border: `icon-border-${tone}` }
 }
 
-export function getFileTypeMeta(doc: Pick<Document, 'filename' | 'file_type'>): FileTypeMeta {
-  const explicit = String(doc.file_type || '')
-    .trim()
-    .toLowerCase()
-  const fromName =
-    String(doc.filename || '')
-      .trim()
-      .split('.')
-      .pop()
-      ?.toLowerCase()
-      ?.trim() || ''
-  const ext = explicit || fromName
+export function getFileTypeMeta({
+  filename,
+  file_type: fileType,
+}: Readonly<{ filename?: string | null; file_type?: string | null }>): FileTypeMeta {
+  const explicitType = fileType?.trim().toLowerCase()
+  const ext =
+    explicitType === undefined || explicitType === ''
+      ? filename?.trim().split('.').pop()?.trim().toLowerCase()
+      : explicitType
 
   switch (ext) {
     case 'pdf':
@@ -89,6 +84,6 @@ export function getFileTypeMeta(doc: Pick<Document, 'filename' | 'file_type'>): 
     case '7z':
       return fileMeta(FileArchive, ext.toUpperCase(), 'code')
     default:
-      return fileMeta(File, ext ? ext.toUpperCase() : 'FILE', 'neutral')
+      return fileMeta(File, ext === undefined || ext === '' ? 'FILE' : ext.toUpperCase(), 'neutral')
   }
 }

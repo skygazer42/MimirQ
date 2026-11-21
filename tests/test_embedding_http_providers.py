@@ -155,7 +155,7 @@ def test_async_embedding_semaphore_pool_does_not_retain_closed_loops(
     import app.rag.embedding.providers._embedding_http as http_module
 
     monkeypatch.setattr(http_module.settings, "EMBEDDING_API_MAX_CONCURRENCY", 2, raising=False)
-    pool = http_module.EmbeddingHTTPConcurrency("test embedding")
+    pool = http_module.EmbeddingHTTPConcurrency()
     loop_refs: list[weakref.ReferenceType[asyncio.AbstractEventLoop]] = []
 
     async def touch_pool() -> None:

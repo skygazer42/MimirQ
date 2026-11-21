@@ -52,27 +52,21 @@ def classify_query_modality(query: str) -> tuple[str, list[str]]:
     if not q:
         return "text", ["empty_query"]
 
-    reasons: list[str] = []
-
     if _SQL_TABLE_INTENT_RE.search(q):
-        reasons.append("sql_table_intent")
-        return "table", reasons
+        return "table", ["sql_table_intent"]
 
-    if _MARKDOWN_IMAGE_RE.search(q) or "data:image/" in q.lower() or "<img" in q.lower():
-        reasons.append("image_inline")
-        return "image", reasons
+    lower = q.lower()
+    if _MARKDOWN_IMAGE_RE.search(q) or "data:image/" in lower or "<img" in lower:
+        return "image", ["image_inline"]
 
     if _IMAGE_EXT_RE.search(q):
-        reasons.append("image_ext")
-        return "image", reasons
+        return "image", ["image_ext"]
 
     if _IMAGE_HINT_RE.search(q):
-        reasons.append("image_hint")
-        return "image", reasons
+        return "image", ["image_hint"]
 
     if any(keyword in q for keyword in _TABLE_INTENT_KEYWORDS) or _RANKING_INTENT_RE.search(q):
-        reasons.append("table_intent")
-        return "table", reasons
+        return "table", ["table_intent"]
 
     return "text", ["default"]
 

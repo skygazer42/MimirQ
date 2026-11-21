@@ -9,7 +9,7 @@ from pathlib import Path
 from types import ModuleType
 from typing import Any
 
-from app.rag.core.hashing import stable_hash
+from app.infrastructure.hashing import stable_hash
 
 
 def _now_utc_iso() -> str:

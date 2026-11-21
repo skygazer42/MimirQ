@@ -7,10 +7,9 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from app.api.dependencies.auth import get_current_account_id
-from app.api.dependencies.tenant import get_tenant_id
-from app.core.database import get_db
-from app.models.dataset import DatasetPermissionEnum
+from app.api.dependencies import get_current_account_id, get_tenant_id
+from app.api.schemas.datasets.dataset import DatasetPermissionEnum
+from app.infrastructure.database.connection import get_db
 
 
 class _DummyDB:
@@ -62,11 +61,8 @@ class _CommitTrackingDB(_DummyDB):
 
 
 def test_retention_policy_metadata_helpers_round_trip() -> None:
-    from app.api.schemas.dataset import DatasetRetentionPolicy
-    from app.services.retention_policy import (
-        parse_retention_policy_from_metadata,
-        upsert_retention_policy_metadata,
-    )
+    from app.api.schemas.datasets.dataset import DatasetRetentionPolicy
+    from app.services.retention.policy import parse_retention_policy_from_metadata, upsert_retention_policy_metadata
 
     meta: dict[str, object] = {}
     policy = DatasetRetentionPolicy(enabled=True, action="archive", max_age_days=90, max_versions=3)
@@ -95,8 +91,8 @@ def test_retention_policy_metadata_helpers_round_trip() -> None:
 
 
 def test_create_dataset_returns_retention_policy(monkeypatch: pytest.MonkeyPatch) -> None:
-    import app.api.v1.datasets as ds_api
-    from app.api.schemas.dataset import DatasetOut
+    import app.api.v1.datasets.routes as ds_api
+    from app.api.schemas.datasets.dataset import DatasetOut
 
     tenant_id = uuid.uuid4()
     dataset_id = uuid.uuid4()
@@ -186,8 +182,8 @@ def test_create_dataset_returns_retention_policy(monkeypatch: pytest.MonkeyPatch
 
 
 def test_get_dataset_returns_retention_policy(monkeypatch: pytest.MonkeyPatch) -> None:
-    import app.api.v1.datasets as ds_api
-    from app.api.schemas.dataset import DatasetOut
+    import app.api.v1.datasets.routes as ds_api
+    from app.api.schemas.datasets.dataset import DatasetOut
 
     tenant_id = uuid.uuid4()
     dataset_id = uuid.uuid4()
@@ -233,8 +229,8 @@ def test_get_dataset_returns_retention_policy(monkeypatch: pytest.MonkeyPatch) -
 async def test_run_dataset_retention_sweep_dry_run_summarizes_eligible_documents(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from app.api.schemas.dataset import DatasetRetentionPolicy
-    from app.services import retention_policy as rp
+    from app.api.schemas.datasets.dataset import DatasetRetentionPolicy
+    from app.services.retention import policy as rp
 
     tenant_id = uuid.uuid4()
     dataset_id = uuid.uuid4()
@@ -292,9 +288,9 @@ async def test_run_dataset_retention_sweep_dry_run_summarizes_eligible_documents
 async def test_run_dataset_retention_sweep_delete_uses_system_membership_bypass(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from app.api.schemas.dataset import DatasetRetentionPolicy
-    from app.services import retention_jobs
-    from app.services import retention_policy as rp
+    from app.api.schemas.datasets.dataset import DatasetRetentionPolicy
+    from app.services.retention import jobs as retention_jobs
+    from app.services.retention import policy as rp
 
     tenant_id = uuid.uuid4()
     dataset_id = uuid.uuid4()
@@ -349,8 +345,8 @@ async def test_run_dataset_retention_sweep_delete_uses_system_membership_bypass(
 async def test_run_dataset_retention_sweep_archive_only_counts_after_successful_commit(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from app.api.schemas.dataset import DatasetRetentionPolicy
-    from app.services import retention_policy as rp
+    from app.api.schemas.datasets.dataset import DatasetRetentionPolicy
+    from app.services.retention import policy as rp
 
     tenant_id = uuid.uuid4()
     dataset_id = uuid.uuid4()

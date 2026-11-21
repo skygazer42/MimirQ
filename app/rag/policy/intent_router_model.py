@@ -61,7 +61,7 @@ def _coerce_float(value: Any, *, default: float = 0.0) -> float:
         if value is None:
             return float(default)
         return float(value)
-    except Exception:
+    except (OverflowError, TypeError, ValueError):
         return float(default)
 
 
@@ -70,7 +70,7 @@ def _coerce_int(value: Any, *, default: int = 0) -> int:
         if value is None:
             return int(default)
         return int(value)
-    except Exception:
+    except (OverflowError, TypeError, ValueError):
         return int(default)
 
 
@@ -172,7 +172,7 @@ def load_intent_router_model(path: str | None) -> IntentRouterModel | None:
     try:
         resolved = (base / p).resolve(strict=False)
         resolved.relative_to(base)
-    except Exception:
+    except (OSError, RuntimeError, ValueError):
         return None
     if resolved.suffix.lower() != ".json":
         return None
@@ -180,42 +180,32 @@ def load_intent_router_model(path: str | None) -> IntentRouterModel | None:
         if not resolved.exists():
             return None
         raw = json.loads(resolved.read_text(encoding="utf-8"))
-    except Exception:
+    except (OSError, ValueError):
         return None
     return normalize_intent_router_model(raw)
 
 
-def predict_learned_router_hint(
-    *,
-    query: str,
-    model: IntentRouterModel | dict[str, Any] | None,
-) -> LearnedRouterHint:
-    mdl = normalize_intent_router_model(model)
-    if mdl is None:
-        return {
-            "schema": INTENT_ROUTER_HINT_SCHEMA_V1,
-            "used": False,
-            "confidence": 0.0,
-            "reason_codes": ["model_unavailable"],
-            "overrides": {},
-            "rule_id": None,
-        }
+def _unused_hint(reason: str) -> LearnedRouterHint:
+    return {
+        "schema": INTENT_ROUTER_HINT_SCHEMA_V1,
+        "used": False,
+        "confidence": 0.0,
+        "reason_codes": [reason],
+        "overrides": {},
+        "rule_id": None,
+    }
 
+
+def predict_normalized_router_hint(*, query: str, model: IntentRouterModel) -> LearnedRouterHint:
+    """Evaluate the already validated model produced by the policy/model loader."""
     query_tokens = _safe_tokenize(query)
     if not query_tokens:
-        return {
-            "schema": INTENT_ROUTER_HINT_SCHEMA_V1,
-            "used": False,
-            "confidence": 0.0,
-            "reason_codes": ["empty_query"],
-            "overrides": {},
-            "rule_id": None,
-        }
+        return _unused_hint("empty_query")
 
     best_score = 0.0
     best_rule: IntentRouterModelRule | None = None
     best_matched = 0
-    for rule in mdl["rules"]:
+    for rule in model["rules"]:
         toks_norm = {token.casefold() if token.isascii() else token for token in rule["tokens"]}
         matched = len(toks_norm.intersection(query_tokens))
         if matched < rule["min_match"]:
@@ -229,14 +219,7 @@ def predict_learned_router_hint(
             best_matched = matched
 
     if best_rule is None:
-        return {
-            "schema": INTENT_ROUTER_HINT_SCHEMA_V1,
-            "used": False,
-            "confidence": 0.0,
-            "reason_codes": ["no_rule_match"],
-            "overrides": {},
-            "rule_id": None,
-        }
+        return _unused_hint("no_rule_match")
 
     overrides = best_rule["overrides"]
     return {
@@ -250,9 +233,22 @@ def predict_learned_router_hint(
     }
 
 
+def predict_learned_router_hint(
+    *,
+    query: str,
+    model: IntentRouterModel | dict[str, Any] | None,
+) -> LearnedRouterHint:
+    mdl = normalize_intent_router_model(model)
+    if mdl is None:
+        return _unused_hint("model_unavailable")
+
+    return predict_normalized_router_hint(query=query, model=mdl)
+
+
 __all__ = [
     "INTENT_ROUTER_MODEL_SCHEMA_V1",
     "load_intent_router_model",
     "normalize_intent_router_model",
     "predict_learned_router_hint",
+    "predict_normalized_router_hint",
 ]

@@ -1,0 +1,69 @@
+"""Standard streaming executor for the RAG engine."""
+
+from collections.abc import AsyncGenerator
+from contextlib import aclosing
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any
+
+from app.rag.runtime.streaming.evidence import EVIDENCE_OPERATIONS
+from app.rag.runtime.streaming.finalization import FINALIZATION_OPERATIONS
+from app.rag.runtime.streaming.generation import GENERATION_OPERATIONS
+from app.rag.runtime.streaming.query import QUERY_OPERATIONS
+from app.rag.runtime.streaming.retrieval import RETRIEVAL_OPERATIONS
+from app.rag.runtime.streaming.setup import SETUP_OPERATIONS
+from app.rag.runtime.streaming.state import StandardStreamState
+
+if TYPE_CHECKING:
+    from app.rag.runtime.engine import RAGEngine
+
+
+@dataclass(frozen=True)
+class StandardStreamInputs:
+    payload: dict[str, Any]
+
+    @classmethod
+    def from_state(cls, state: dict[str, Any]) -> "StandardStreamInputs":
+        return cls(payload=dict(state))
+
+    def as_state(self) -> dict[str, Any]:
+        return dict(self.payload)
+
+
+_STANDARD_OPERATIONS = (
+    *SETUP_OPERATIONS,
+    *QUERY_OPERATIONS,
+    *RETRIEVAL_OPERATIONS,
+    *EVIDENCE_OPERATIONS,
+    *GENERATION_OPERATIONS,
+    *FINALIZATION_OPERATIONS,
+)
+
+
+class StandardStreamExecutor:
+    def __init__(
+        self,
+        *,
+        engine: "RAGEngine",
+        inputs: StandardStreamInputs,
+    ) -> None:
+        self.engine = engine
+        self.inputs = inputs
+
+    async def stream(self) -> AsyncGenerator[dict[str, Any], None]:
+        runtime = StandardStreamState(
+            engine=self.engine,
+            payload=self.inputs.as_state(),
+        )
+        for operation in _STANDARD_OPERATIONS:
+            if runtime.finished:
+                return
+            result = operation.callback(runtime)
+            if not operation.streams:
+                await result
+                continue
+            async with aclosing(result) as events:
+                async for event in events:
+                    yield event
+
+
+__all__ = ["StandardStreamExecutor", "StandardStreamInputs"]

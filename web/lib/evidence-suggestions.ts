@@ -1,7 +1,8 @@
-import type { Citation } from '@/types'
+import { getEvidenceScore, type EvidenceCitation } from '@/lib/evidence-citations'
 
 export type RankedEvidenceCitation = {
-  citation: Citation
+  citation: EvidenceCitation
+  sourceIndex: number
   score: number
   hits: string[]
 }
@@ -40,80 +41,43 @@ const STOPWORDS = new Set([
 ])
 
 function needleWeight(needle: string): number {
-  const s = String(needle || '').trim()
-  if (!s) return 0
-  if (/^\d/.test(s)) return 3
-  if (/[\\/.:]/.test(s)) return 2
+  if (/^\d/.test(needle)) return 3
+  if (/[\\/.:]/.test(needle)) return 2
   return 1
 }
 
-function citationNumericScore(c: Citation): number {
-  const raw: unknown = c.retrieval_score ?? c.rerank_score ?? c.relevance_score ?? c.vector_score ?? c.bm25_score ?? 0
-  const n = Number(raw)
-  return Number.isFinite(n) ? n : 0
+export function extractEvidenceNeedles(expectedAnswer: string): string[] {
+  const text = expectedAnswer.trim().toLowerCase()
+  const numbers = text.match(/\b\d+(?:\.\d+)?\b/g) ?? []
+  const words = text.match(/[a-z0-9_./\\-]{4,}/g) ?? []
+  const needles = new Set<string>(numbers)
+  for (const word of words) {
+    if (!STOPWORDS.has(word)) needles.add(word)
+  }
+  return Array.from(needles).slice(0, 12)
 }
 
-export function extractEvidenceNeedles(expectedAnswer: string, opts?: { max_needles?: number }): string[] {
-  const maxNeedles = Math.max(1, Math.min(50, Number(opts?.max_needles ?? 12) || 12))
-  const text = String(expectedAnswer || '').trim()
-  if (!text) return []
-
-  const lower = text.toLowerCase()
-  const numbers = lower.match(/\b\d+(?:\.\d+)?\b/g) || []
-  const words = lower.match(/[a-z0-9_./\\-]{4,}/g) || []
-
-  const out: string[] = []
-  const seen = new Set<string>()
-
-  const push = (raw: string) => {
-    const s = String(raw || '')
-      .trim()
+export function rankEvidenceCitations(
+  citations: readonly EvidenceCitation[],
+  needles: readonly string[],
+): RankedEvidenceCitation[] {
+  const normalizedNeedles = needles.map((needle) => needle.trim().toLowerCase()).filter((needle) => needle.length > 0)
+  const ranked = citations.map((citation, sourceIndex): RankedEvidenceCitation => {
+    const text = [citation.chunk_content, citation.header_path, citation.document_name]
+      .filter((value) => typeof value === 'string')
+      .join('\n')
       .toLowerCase()
-    if (!s) return
-    if (seen.has(s)) return
-    seen.add(s)
-    out.push(s)
-  }
-
-  for (const n of numbers) push(n)
-  for (const w of words) {
-    if (STOPWORDS.has(w)) continue
-    push(w)
-  }
-
-  return out.slice(0, maxNeedles)
-}
-
-export function rankEvidenceCitations(citations: Citation[], needles: string[]): RankedEvidenceCitation[] {
-  const ns = (needles || [])
-    .map((n) =>
-      String(n || '')
-        .trim()
-        .toLowerCase(),
-    )
-    .filter(Boolean)
-  const base = citations || []
-  if (!ns.length) {
-    return base.map((c) => ({ citation: c, score: 0, hits: [] }))
-  }
-
-  const ranked: RankedEvidenceCitation[] = base.map((c) => {
-    const hay = `${c.chunk_content || ''}\n${c.header_path || ''}\n${c.document_name || ''}`.toLowerCase()
-    const hits: string[] = []
-    let score = 0
-    for (const n of ns) {
-      if (!n) continue
-      if (!hay.includes(n)) continue
-      hits.push(n)
-      score += needleWeight(n)
-    }
-    return { citation: c, score, hits: hits.slice(0, 8) }
+    const hits = normalizedNeedles.filter((needle) => text.includes(needle))
+    const score = hits.reduce((total, needle) => total + needleWeight(needle), 0)
+    return { citation, sourceIndex, score, hits: hits.slice(0, 8) }
   })
-
-  ranked.sort((a, b) => {
-    if (b.score !== a.score) return b.score - a.score
-    return citationNumericScore(b.citation) - citationNumericScore(a.citation)
+  if (normalizedNeedles.length === 0) return ranked
+  return ranked.sort((a, b) => {
+    if (a.score !== b.score) return b.score - a.score
+    const aScore = getEvidenceScore(a.citation)
+    const bScore = getEvidenceScore(b.citation)
+    if (aScore === undefined || aScore === null) return bScore === undefined || bScore === null ? 0 : 1
+    if (bScore === undefined || bScore === null) return -1
+    return bScore - aScore
   })
-
-  return ranked
 }

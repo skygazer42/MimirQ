@@ -3,11 +3,12 @@ Unified entry for KG search: recall -> expand -> rerank.
 """
 
 import asyncio
+import logging
 import time
+from contextlib import AsyncExitStack
 from typing import TYPE_CHECKING, Any, TypedDict
 
-from app.core.config import settings
-from app.rag.core.logging import get_logger
+from app.infrastructure.config import settings
 from app.rag.kg.community import build_community_reports, lazy_summarize
 from app.rag.kg.search.cache import build_kg_community_summary_cache_key, kg_community_summary_cache
 from app.rag.kg.search.config import RerankStrategy, ReturnType, SearchConfig
@@ -15,14 +16,14 @@ from app.rag.kg.search.expand import ExpandResult, expand
 from app.rag.kg.search.path_verbalizer import attach_path_renderings
 from app.rag.kg.search.recall import RecallResult, recall
 from app.rag.llm.factory import create_llm_client
-from app.rag.reranker.kg import get_kg_reranker
-from app.rag.reranker.types import RerankCandidate, RerankResult
-from app.services.metrics_logger import log_metrics
+from app.rag.retrieval.reranking.kg import get_kg_reranker
+from app.rag.retrieval.reranking.types import RerankCandidate, RerankResult
+from app.services.observability.metrics_log import log_metrics
 
 if TYPE_CHECKING:
     from app.rag.llm.base import BaseLLMClient
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class _LazySummarySettings(TypedDict):
@@ -48,15 +49,13 @@ def _evaluate_community_detection_gate(*, config: SearchConfig, query_mode: str)
     Returns:
         (should_run, reason_codes)
     """
-    if not bool(settings.KG_COMMUNITY_ENABLED):
+    if not settings.KG_COMMUNITY_ENABLED:
         return False, ["disabled"]
 
     if query_mode.strip().lower() != "global":
         return False, [f"skipped_mode:{query_mode}"]
 
-    reasons = [str(x) for x in (config.query_mode_reason_codes or []) if str(x).strip()]
-    require_global_pattern = bool(settings.KG_COMMUNITY_REQUIRE_GLOBAL_PATTERN)
-    if require_global_pattern and "global_pattern" not in set(reasons):
+    if settings.KG_COMMUNITY_REQUIRE_GLOBAL_PATTERN and "global_pattern" not in config.query_mode_reason_codes:
         return False, ["missing_global_pattern"]
 
     return True, ["enabled"]
@@ -77,14 +76,11 @@ def _evaluate_expansion_skip_policy(
     multi-hop expansion fan-out.
     """
     reasons = {str(x).strip() for x in (config.query_mode_reason_codes or []) if str(x).strip()}
-    if (
-        query_mode.strip().lower() == "local"
-        and "dataset_factoid_scope" in reasons
-        and int(recalled_event_count or 0) > 0
-    ):
+    mode = query_mode.strip().lower()
+    if mode == "local" and "dataset_factoid_scope" in reasons and int(recalled_event_count or 0) > 0:
         return True, "local_factoid_precision"
 
-    if query_mode.strip().lower() != "global":
+    if mode != "global":
         return False, ""
     if bool(config.expand.enabled) is False:
         return False, ""
@@ -108,11 +104,11 @@ def _effective_rerank_strategy(*, config: SearchConfig, query_mode: str) -> Rera
 
 def _lazy_community_summary_settings() -> _LazySummarySettings:
     return {
-        "enabled": bool(settings.KG_LAZY_COMMUNITY_SUMMARY_ENABLED),
-        "top_n": max(0, int(settings.KG_LAZY_COMMUNITY_SUMMARY_TOP_N)),
-        "max_tokens": max(1, int(settings.KG_LAZY_COMMUNITY_SUMMARY_MAX_TOKENS)),
-        "ttl_sec": max(0, int(settings.KG_LAZY_COMMUNITY_SUMMARY_CACHE_TTL_SEC)),
-        "max_entries": max(0, int(settings.KG_LAZY_COMMUNITY_SUMMARY_CACHE_MAX_ENTRIES)),
+        "enabled": settings.KG_LAZY_COMMUNITY_SUMMARY_ENABLED,
+        "top_n": max(0, settings.KG_LAZY_COMMUNITY_SUMMARY_TOP_N),
+        "max_tokens": max(1, settings.KG_LAZY_COMMUNITY_SUMMARY_MAX_TOKENS),
+        "ttl_sec": max(0, settings.KG_LAZY_COMMUNITY_SUMMARY_CACHE_TTL_SEC),
+        "max_entries": max(0, settings.KG_LAZY_COMMUNITY_SUMMARY_CACHE_MAX_ENTRIES),
     }
 
 
@@ -147,7 +143,7 @@ def _apply_cached_community_summary(
 
 async def _generate_lazy_summary(
     *,
-    llm_client: "BaseLLMClient | None",
+    llm_client: "BaseLLMClient",
     report: dict[str, Any],
     query: str,
     max_tokens: int,
@@ -156,9 +152,7 @@ async def _generate_lazy_summary(
     ttl_sec: int,
     max_entries: int,
     meta: _LazySummaryMeta,
-) -> "BaseLLMClient":
-    if llm_client is None:
-        llm_client = await create_llm_client(scenario="kg_community_summary")
+) -> None:
     summary = await lazy_summarize(
         community_report=report,
         query=query,
@@ -175,7 +169,6 @@ async def _generate_lazy_summary(
                 ttl_sec=ttl_sec,
                 max_entries=max_entries,
             )
-    return llm_client
 
 
 async def _apply_lazy_community_summaries(
@@ -206,44 +199,50 @@ async def _apply_lazy_community_summaries(
 
     llm_client = None
     cache_enabled = ttl_sec > 0 and max_entries > 0
-    for report in reports[:top_n]:
-        if not isinstance(report, dict):
-            continue
-        community_id = str(report.get("community_id") or report.get("label") or "").strip()
-        if not community_id:
-            continue
+    async with AsyncExitStack() as llm_resources:
+        for report in reports[:top_n]:
+            if not isinstance(report, dict):
+                continue
+            community_id = str(report.get("community_id") or report.get("label") or "").strip()
+            if not community_id:
+                continue
 
-        cache_key = build_kg_community_summary_cache_key(
-            **_community_scope(
-                config=config,
-                community_id=community_id,
-                query=query,
-                report=report,
-            )
-        )
-        if _apply_cached_community_summary(
-            report=report,
-            cache_key=cache_key,
-            ttl_sec=ttl_sec,
-            cache_enabled=cache_enabled,
-            meta=meta,
-        ):
-            continue
+            cache_key = ""
+            if cache_enabled:
+                cache_key = build_kg_community_summary_cache_key(
+                    **_community_scope(
+                        config=config,
+                        community_id=community_id,
+                        query=query,
+                        report=report,
+                    )
+                )
+                if _apply_cached_community_summary(
+                    report=report,
+                    cache_key=cache_key,
+                    ttl_sec=ttl_sec,
+                    cache_enabled=True,
+                    meta=meta,
+                ):
+                    continue
 
-        try:
-            llm_client = await _generate_lazy_summary(
-                llm_client=llm_client,
-                report=report,
-                query=query,
-                max_tokens=max_tokens,
-                cache_enabled=cache_enabled,
-                cache_key=cache_key,
-                ttl_sec=ttl_sec,
-                max_entries=max_entries,
-                meta=meta,
-            )
-        except Exception:
-            meta["errors"] = meta["errors"] + 1
+            try:
+                if llm_client is None:
+                    llm_client = await create_llm_client()
+                    llm_resources.push_async_callback(llm_client.aclose)
+                await _generate_lazy_summary(
+                    llm_client=llm_client,
+                    report=report,
+                    query=query,
+                    max_tokens=max_tokens,
+                    cache_enabled=cache_enabled,
+                    cache_key=cache_key,
+                    ttl_sec=ttl_sec,
+                    max_entries=max_entries,
+                    meta=meta,
+                )
+            except Exception:
+                meta["errors"] = meta["errors"] + 1
 
     meta["used"] = meta["cache_hits"] > 0 or meta["generated"] > 0
     return meta
@@ -357,14 +356,13 @@ async def _community_summary_pass(
         return community_meta, community_reports, global_summary
 
     t_comm = time.perf_counter()
-    chosen_event_ids: list[str] = []
+    chosen_event_ids, community_reports, global_summary = await _build_community_outputs(
+        config=config,
+        expand_result=expand_result,
+        rerank_result=rerank_result,
+        event_ids_total=event_ids_total,
+    )
     try:
-        chosen_event_ids, community_reports, global_summary = await _build_community_outputs(
-            config=config,
-            expand_result=expand_result,
-            rerank_result=rerank_result,
-            event_ids_total=event_ids_total,
-        )
         community_meta["lazy_summary"] = await _apply_lazy_community_summaries(
             config=config,
             reports=community_reports,
@@ -372,8 +370,8 @@ async def _community_summary_pass(
         )
         community_meta["used"] = True
     except Exception as exc:  # noqa: BLE001
-        community_meta["used"] = False
-        community_meta["error"] = str(exc)[:200]
+        community_meta["used"] = True
+        community_meta["lazy_summary_error"] = str(exc)[:200]
     finally:
         community_meta["elapsed_sec"] = round(float(time.perf_counter() - t_comm), 3)
 
@@ -401,7 +399,8 @@ async def _build_community_outputs(
     event_scores = dict(expand_result.event_scores or {})
     scored = [(float(event_scores.get(eid, 0.0) or 0.0), str(eid)) for eid in (event_ids_total or [])]
     scored.sort(key=lambda item: (-float(item[0]), str(item[1])))
-    chosen_event_ids = [eid for _score, eid in scored[:max_events]] if max_events else [eid for _score, eid in scored]
+    chosen = scored[:max_events] if max_events else scored
+    chosen_event_ids = [eid for _score, eid in chosen]
     ev_to_ents = _community_event_entities(config=config, chosen_event_ids=chosen_event_ids)
     community_reports, global_summary = build_community_reports(
         entities=list(expand_result.key_final or []),
@@ -466,6 +465,8 @@ def _log_community_metrics(
 
 
 async def search(config: SearchConfig) -> dict[str, Any]:
+    if config.tenant_id is None:
+        raise ValueError("KG search requires tenant_id")
     timeout_sec = float(settings.KG_SEARCH_TIMEOUT_SEC)
     if timeout_sec <= 0:
         return await _search_impl(config)

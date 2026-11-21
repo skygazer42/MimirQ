@@ -2,10 +2,10 @@ from itertools import islice
 from typing import TYPE_CHECKING, Any
 
 from app.rag.kg.provenance import build_kg_path_provenance
-from app.rag.retrieval.query_phrase_match import query_phrase_match
+from app.rag.retrieval.planning.phrases import query_phrase_match
 
 if TYPE_CHECKING:
-    from app.rag.kg.models import KgEntity, KgSourceEvent
+    from app.models.knowledge_graph.entities import KgEntity, KgSourceEvent
 
 
 def event_id(event: "KgSourceEvent") -> str:
@@ -49,7 +49,7 @@ def clamped_hop(event_hops: dict[str, int] | None, event_id_value: str) -> int:
         return 1
     try:
         hop = int(event_hops.get(event_id_value, 1) or 1)
-    except Exception:
+    except (TypeError, ValueError, OverflowError):
         hop = 1
     return max(1, min(hop, 5))
 

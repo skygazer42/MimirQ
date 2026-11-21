@@ -70,16 +70,17 @@ class S3CompatibleObjectStore(MinIOService):
         if not self._bucket_name:
             raise RuntimeError(f"{self._provider_name} bucket is required")
 
-        if self._client is None:
-            self._client = Minio(
-                endpoint=self._endpoint,
-                access_key=self._access_key,
-                secret_key=self._secret_key,
-                secure=self._use_ssl,
-            )
-        if not self._bucket_ready:
-            self._ensure_bucket()
-        return self._client
+        with self._state_lock:
+            if self._client is None:
+                self._client = Minio(
+                    endpoint=self._endpoint,
+                    access_key=self._access_key,
+                    secret_key=self._secret_key,
+                    secure=self._use_ssl,
+                )
+            if not self._bucket_ready:
+                self._ensure_bucket()
+            return self._client
 
     def health_check(self) -> dict[str, Any]:
         if not self._enabled:

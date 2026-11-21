@@ -12,7 +12,7 @@ The bounded retrieval slice reads declared non-Optional Settings directly. Its 1
 
 Subsequent directory batches use the same declaration checks. Optional string `or ""` normalization remains idiomatic and must not be rewritten into ternaries. Configuration-validation presence checks and settings-to-settings precedence chains retain their original boolean meaning. A zero redirect budget is safe and means no redirect hops, retaining the existing [0,20] bound.
 
-Existing request override precedence, domain minimums/maximums and text normalization remain. Boolean combinations expressing forced multi-query experiments or policy enablement remain logical OR operations. This extends [direct value contracts](2026-11-07-direct-value-contracts.md) and follows [undeclared Settings probes](2026-11-08-remove-undeclared-settings-probes.md); it does not introduce probes or fields.
+Existing request override precedence, domain minimums/maximums and text normalization remain. Boolean combinations expressing forced multi-query experiments or policy enablement remain logical OR operations. This extends [direct value contracts](../../../../docs/development/direct-value-contracts-verification.md) and follows [undeclared Settings probes](2026-11-08-remove-undeclared-settings-probes.md); it does not introduce probes or fields.
 
 The first global scan exceeded the agreed 60-location threshold. The follow-up directory batches classify the remaining candidates in groups of at most 300. No `is None` branch is added for non-Optional fields; Optional/getattr forms are handled only after checking their actual declaration.
 

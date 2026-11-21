@@ -67,7 +67,7 @@ MimirQ/
 │   │   ├── schemas/     # Pydantic 请求/响应模型
 │   │   ├── dependencies/# 认证、租户、错误处理
 │   │   └── middleware/  # 请求ID、速率限制
-│   ├── core/            # 核心配置与数据库
+│   ├── infrastructure/            # 核心配置与数据库
 │   ├── models/          # 数据模型 (Pydantic/SQLModel)
 │   ├── services/        # 业务逻辑
 │   ├── parsing/         # 文档解析模块

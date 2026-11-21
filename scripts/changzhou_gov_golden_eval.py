@@ -23,8 +23,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from app.rag.pipeline_plugins.contracts import DISPLAY_METADATA_KEY, EVALUABLE_METADATA_KEY  # noqa: E402
-from app.rag.retrieval.planner import summarize_kg_hint_diagnostics  # noqa: E402
+from app.types.indexing import DISPLAY_METADATA_KEY, EVALUABLE_METADATA_KEY  # noqa: E402
 
 DEFAULT_CASES = "plugins/pipelines/changzhou-gov-service-knowledge/golden_eval_cases.json"
 QUALITY_GATE_EXIT_CODE = 3
@@ -117,6 +116,180 @@ _COMPARISON_LOWER_IS_BETTER_METRICS = (
     "retrieval_noise_rate",
     "generated_answer_fallback_rate",
 )
+
+
+def _record_meta(record: dict[str, Any]) -> dict[str, Any]:
+    meta = record.get("metadata") if isinstance(record, dict) else {}
+    return meta if isinstance(meta, dict) else {}
+
+
+def _record_value(record: dict[str, Any], key: str) -> Any:
+    if isinstance(record, dict) and key in record:
+        return record.get(key)
+    return _record_meta(record).get(key)
+
+
+def _record_text(record: dict[str, Any], key: str) -> str | None:
+    value = _record_value(record, key)
+    return str(value).strip() if value is not None else None
+
+
+def _record_float(record: dict[str, Any], key: str) -> float:
+    try:
+        return float(_record_value(record, key) or 0.0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _record_bool(record: dict[str, Any], key: str) -> bool:
+    value = _record_value(record, key)
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "y", "on"}
+    return bool(value)
+
+
+def _record_has_kg_path(record: dict[str, Any]) -> bool:
+    path = _record_value(record, "kg_path")
+    if isinstance(path, list | tuple) and path:
+        return True
+    provenance = _record_value(record, "kg_path_provenance")
+    return isinstance(provenance, dict) and bool(provenance)
+
+
+def _record_role(record: dict[str, Any]) -> str:
+    role = _record_text(record, "retrieval_role")
+    return role.lower() if role else "main"
+
+
+def _is_kg_hint_record(record: dict[str, Any]) -> bool:
+    role = _record_role(record)
+    if role in {"kg", "kgq"}:
+        return True
+    return any(
+        (
+            _record_float(record, "kg_pagerank") > 0,
+            _record_float(record, "kg_shared_events") > 0,
+            _record_float(record, "kg_path_length") > 0,
+            _record_bool(record, "kg_evidence_anchored"),
+            _record_has_kg_path(record),
+        )
+    )
+
+
+def _matches_expected_record_scope(
+    record: dict[str, Any],
+    *,
+    expected_chunk_ids: set[str],
+    expected_document_ids: set[str],
+    expected_metadata: dict[str, Any],
+    metadata_view_keys: tuple[str, ...],
+) -> bool:
+    chunk_id = _record_text(record, "chunk_id")
+    document_id = _record_text(record, "document_id")
+    if expected_chunk_ids and chunk_id in expected_chunk_ids:
+        return True
+    if expected_document_ids and document_id in expected_document_ids:
+        return True
+    return bool(expected_metadata and _record_metadata_matches(record, expected_metadata, metadata_view_keys))
+
+
+def _record_metadata_layers(record: dict[str, Any], metadata_view_keys: tuple[str, ...]) -> tuple[dict[str, Any], ...]:
+    meta = _record_meta(record)
+    layers = [meta]
+    for key in metadata_view_keys:
+        nested = meta.get(key)
+        if isinstance(nested, dict):
+            layers.append(nested)
+    return tuple(layers)
+
+
+def _metadata_expected_value_matches(actual: Any, expected: Any) -> bool:
+    if isinstance(expected, list | tuple | set):
+        return actual in expected
+    return actual == expected
+
+
+def _record_metadata_matches(
+    record: dict[str, Any],
+    expected_metadata: dict[str, Any],
+    metadata_view_keys: tuple[str, ...],
+) -> bool:
+    if not expected_metadata:
+        return False
+    for layer in _record_metadata_layers(record, metadata_view_keys):
+        if all(
+            _metadata_expected_value_matches(layer.get(key), expected) for key, expected in expected_metadata.items()
+        ):
+            return True
+    return False
+
+
+def _summarize_kg_hint_diagnostics(
+    records: list[dict[str, Any]] | tuple[dict[str, Any], ...],
+    *,
+    expected_chunk_ids: list[str] | tuple[str, ...] | set[str] = (),
+    expected_document_ids: list[str] | tuple[str, ...] | set[str] = (),
+    expected_metadata: dict[str, Any] | None = None,
+    metadata_view_keys: list[str] | tuple[str, ...] | set[str] = (),
+) -> dict[str, Any]:
+    """Summarize optional KG retrieval hints without changing ranking behavior."""
+
+    expected_chunks = {item.strip() for item in expected_chunk_ids or () if item.strip()}
+    expected_documents = {item.strip() for item in expected_document_ids or () if item.strip()}
+    expected_meta = dict(expected_metadata) if isinstance(expected_metadata, dict) else {}
+    view_keys = tuple(item.strip() for item in metadata_view_keys or () if item.strip())
+    noise_evaluated = bool(expected_chunks or expected_documents or expected_meta)
+
+    role_counts: dict[str, int] = {}
+    kg_candidate_count = 0
+    query_expansion_count = 0
+    entity_anchor_count = 0
+    relation_neighbor_count = 0
+    boosted_count = 0
+    noise_count = 0
+
+    for record in records or ():
+        if not isinstance(record, dict):
+            continue
+        role = _record_role(record)
+        role_counts[role] = role_counts.get(role, 0) + 1
+
+        if not _is_kg_hint_record(record):
+            continue
+        kg_candidate_count += 1
+
+        if role == "kgq":
+            query_expansion_count += 1
+        if _record_bool(record, "kg_evidence_anchored"):
+            entity_anchor_count += 1
+        if _record_float(record, "kg_shared_events") > 0 or _record_float(record, "kg_path_length") > 0:
+            relation_neighbor_count += 1
+        if _record_float(record, "kg_pagerank") > 0 or _record_float(record, "kg_shared_events") > 0:
+            boosted_count += 1
+        if noise_evaluated and not _matches_expected_record_scope(
+            record,
+            expected_chunk_ids=expected_chunks,
+            expected_document_ids=expected_documents,
+            expected_metadata=expected_meta,
+            metadata_view_keys=view_keys,
+        ):
+            noise_count += 1
+
+    return {
+        "schema": "mimirq.kg_hint_diagnostics.v1",
+        "record_count": sum(role_counts.values()),
+        "retrieval_role_counts": role_counts,
+        "kg_candidate_count": kg_candidate_count,
+        "kg_query_expansion_record_count": query_expansion_count,
+        "kg_entity_anchor_record_count": entity_anchor_count,
+        "kg_relation_neighbor_record_count": relation_neighbor_count,
+        "kg_boosted_record_count": boosted_count,
+        "kg_noise_evaluated": noise_evaluated,
+        "kg_noise_record_count": noise_count if noise_evaluated else 0,
+        "kg_noise_rate": (noise_count / kg_candidate_count) if noise_evaluated and kg_candidate_count else None,
+    }
 
 
 def _text(value: Any) -> str:
@@ -527,7 +700,7 @@ def evaluate_case(
         "case_scope": evaluate_case_scope(case),
         "metadata_quality": evaluate_metadata_quality(case, records),
         "answer_quality": evaluate_answer_quality(case, records),
-        "kg_hint_diagnostics": summarize_kg_hint_diagnostics(
+        "kg_hint_diagnostics": _summarize_kg_hint_diagnostics(
             records,
             expected_chunk_ids=_expected_string_values(expected, "chunk_id", "chunk_ids"),
             expected_document_ids=_expected_string_values(expected, "document_id", "document_ids"),

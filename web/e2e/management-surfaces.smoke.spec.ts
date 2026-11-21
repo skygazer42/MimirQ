@@ -3,6 +3,7 @@ import path from 'node:path'
 import { expect, test, type Page, type Route } from '@playwright/test'
 
 import {
+  fulfillChatStream,
   installCommonApiMocks,
   installDeterministicRandom,
   type EnterpriseTelemetryMockState,
@@ -1101,36 +1102,10 @@ test.describe('management surfaces smoke', () => {
 
     await page.route('**/api/v1/chat/stream', async (route) => {
       if (route.request().method() !== 'POST') return route.fallback()
-      const body = [
-        { type: 'citations', data: [evidence] },
-        {
-          type: 'token',
-          data: {
-            content: '发布前需要完成数据集权限检查、真实检索验证和引用核对，并保存 Golden 题集作为回归基线。',
-          },
-        },
-        {
-          type: 'done',
-          request_id: 'req-guide-screenshot',
-          data: {
-            conversation_id: 'conv-guide-screenshot',
-            assistant_message_id: 'assistant-guide-screenshot',
-            request_id: 'req-guide-screenshot',
-          },
-        },
-      ]
-        .map((event) => `data: ${JSON.stringify(event)}\n\n`)
-        .join('')
-      return route.fulfill({
-        status: 200,
-        contentType: 'text/event-stream',
-        headers: {
-          'Cache-Control': 'no-cache',
-          Connection: 'keep-alive',
-          'X-Request-ID': 'req-guide-screenshot',
-          'X-Conversation-ID': 'conv-guide-screenshot',
-        },
-        body,
+      return fulfillChatStream(route, {
+        contentParts: ['发布前需要完成数据集权限检查、真实检索验证和引用核对，并保存 Golden 题集作为回归基线。'],
+        citations: [evidence],
+        requestId: 'req-guide-screenshot',
       })
     })
 

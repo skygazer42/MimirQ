@@ -434,10 +434,10 @@ describe('tool editing and multi-stage operations', () => {
     const pending = deferred<CleanPreviewResponse>()
     boundary.cleanPreview.mockReturnValue(pending.promise)
     const publish = vi.fn()
-    const view = renderTool(<DataCleaner content="Original" cleanedContent="Original" onClean={publish} />)
+    const view = renderTool(<DataCleaner content="Original" onClean={publish} />)
     await view.ready
     await click(view.container, '运行清洗')
-    await view.render(<DataCleaner content="Original" cleanedContent="Manual edit" onClean={publish} />)
+    await view.render(<DataCleaner content="Manual edit" onClean={publish} />)
 
     await act(async () => pending.resolve(cleanResponse()))
 
@@ -482,7 +482,7 @@ describe('tool editing and multi-stage operations', () => {
     boundary.cleanPreview.mockResolvedValue({ ...cleanResponse(), diff_unified: 'Confirmed diff' })
     function Parent() {
       const [cleanedContent, setCleanedContent] = useState('Original')
-      return <DataCleaner content="Original" cleanedContent={cleanedContent} onClean={setCleanedContent} />
+      return <DataCleaner content={cleanedContent} onClean={setCleanedContent} />
     }
     const view = renderTool(<Parent />)
     await view.ready

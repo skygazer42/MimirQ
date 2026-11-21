@@ -2,7 +2,7 @@ import math
 
 import pytest
 
-from app.core.constants import EmbeddingProviders
+from app.infrastructure.model_policy import EmbeddingProviders
 from app.rag.embedding import create_langchain_embeddings_from_config
 from app.rag.embedding.factory import select_embedding_model
 from app.rag.embedding.providers.deterministic_test import DeterministicTestEmbedding

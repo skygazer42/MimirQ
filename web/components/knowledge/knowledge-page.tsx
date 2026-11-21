@@ -6,11 +6,12 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
   type KeyboardEvent,
   type ChangeEvent as ReactChangeEvent,
 } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { isCancelledError, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 
@@ -22,6 +23,7 @@ import {
   Loader2,
   MoreHorizontal,
   RefreshCw,
+  X,
 } from '@/components/icons'
 import { AppFrame } from '@/components/app-frame'
 import { DatasetFolderTree } from '@/components/document-library/dataset-folder-tree'
@@ -33,33 +35,36 @@ import {
   type KnowledgeWorkbenchActionsHandle,
 } from '@/components/knowledge/knowledge-workbench-actions'
 import {
+  DATASET_ALL,
   parseKnowledgeQueryState,
   serializeKnowledgeQueryState,
+  STATUS_FILTERS,
+  TABS,
   type KnowledgeQueryState,
-  type KnowledgeStatusFilter,
 } from '@/components/knowledge/use-knowledge-query-state'
 import { RetrievePreviewPanel } from '@/components/rag/retrieve-preview-panel'
 import { Button } from '@/components/ui/button'
 import { IconButton } from '@/components/ui/icon-button'
 import { SearchInput } from '@/components/ui/search-input'
+import { WorkspaceNotice } from '@/components/ui/operational-workspace'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { useConnectorRuns } from '@/hooks/use-connector-runs'
 import { useDatasets } from '@/hooks/use-datasets'
 import { useDocuments } from '@/hooks/use-documents'
 import { useIsMobile } from '@/hooks/use-media-query'
+import { getUploadReceiptKey } from '@/lib/api/document-helpers'
 import { documentApi } from '@/lib/api/documents'
 import { formatApiError } from '@/lib/api-errors'
+import { getAuthSessionKey, subscribeAuthSession } from '@/lib/auth-storage'
 import { queryKeys } from '@/lib/query-keys'
 import { cn, detachPromise } from '@/lib/utils'
 import { useDocumentView } from '@/store/document-view'
+import type { DocumentBatchUploadFailure } from '@/types/backend'
 
 import styles from './knowledge-page.module.css'
 
-const DATASET_ALL = '__all__'
 const DEFAULT_PAGE_SIZE = 20
-const TABS = ['documents', 'retrieval'] as const
-const STATUS_FILTERS: KnowledgeStatusFilter[] = ['all', 'completed', 'processing', 'failed', 'quarantined']
 const SORT_OPTIONS = [
   { value: 'created_at:desc', label: '最新上传' },
   { value: 'created_at:asc', label: '最早上传' },
@@ -69,19 +74,29 @@ const SORT_OPTIONS = [
   { value: 'file_size:asc', label: '大小从小到大' },
 ]
 
+type KnowledgeBatchAction = 'delete' | 'lifecycle' | 'reingest'
+type UploadNotice = {
+  sessionKey: string
+  message: string
+  failures: DocumentBatchUploadFailure[]
+  interruption?: string
+}
+
 export default function KnowledgePage() {
   const t = useTranslations('KnowledgePage')
   const scopeT = useTranslations('KnowledgeScopePanel')
+  const documentsT = useTranslations('KnowledgeDocumentsPanel')
   const searchParams = useSearchParams()
   const router = useRouter()
   const isMobile = useIsMobile()
   const queryClient = useQueryClient()
+  const sessionKey = useSyncExternalStore(subscribeAuthSession, getAuthSessionKey, getAuthSessionKey)
+  const [uploadNotice, setUploadNotice] = useState<UploadNotice | null>(null)
+  const latestUpload = useRef<symbol | null>(null)
   const importActionsRef = useRef<KnowledgeWorkbenchActionsHandle>(null)
   const { openDocument } = useDocumentView()
   const queryString = searchParams.toString()
-  const [query, setQuery] = useState(() =>
-    parseKnowledgeQueryState(new URLSearchParams(queryString), { datasetAllValue: DATASET_ALL }),
-  )
+  const [query, setQuery] = useState(() => parseKnowledgeQueryState(new URLSearchParams(queryString)))
   const queryRef = useRef(query)
   const writtenQueryRef = useRef(queryString)
   const [documentsPage, setDocumentsPage] = useState(1)
@@ -93,13 +108,16 @@ export default function KnowledgePage() {
   const [importOpen, setImportOpen] = useState(false)
   const [batchDeleteOpen, setBatchDeleteOpen] = useState(false)
   const [batchDeleteError, setBatchDeleteError] = useState<string | null>(null)
-  const [batchDeleting, setBatchDeleting] = useState(false)
-  const [batchLifecycleWorking, setBatchLifecycleWorking] = useState(false)
-  const [batchReingestWorking, setBatchReingestWorking] = useState(false)
+  const [batchAction, setBatchAction] = useState<KnowledgeBatchAction | null>(null)
+  const batchActionRef = useRef<KnowledgeBatchAction | null>(null)
+  const batchWorking = batchAction !== null
+  const batchDeleting = batchAction === 'delete'
+  const batchLifecycleWorking = batchAction === 'lifecycle'
+  const batchReingestWorking = batchAction === 'reingest'
 
   useEffect(() => {
     const params = new URLSearchParams(queryString)
-    if (params.get('tab') === 'settings' && !params.get('run') && params.get('tasks') !== '1') {
+    if (params.get('tab') === 'settings' && !parseKnowledgeQueryState(params).tasksOpen) {
       router.replace('/settings#sec-models')
     }
   }, [queryString, router])
@@ -109,7 +127,7 @@ export default function KnowledgePage() {
   useEffect(() => {
     if (queryString === writtenQueryRef.current) return
     writtenQueryRef.current = queryString
-    const next = parseKnowledgeQueryState(new URLSearchParams(queryString), { datasetAllValue: DATASET_ALL })
+    const next = parseKnowledgeQueryState(new URLSearchParams(queryString))
     queryRef.current = next
     setQuery(next)
     setDocumentsPage(1)
@@ -117,12 +135,12 @@ export default function KnowledgePage() {
   }, [queryString])
 
   const updateQuery = useCallback((patch: Partial<KnowledgeQueryState>) => {
-    const next = { ...queryRef.current, ...patch, viewMode: 'list' as const }
+    const next = { ...queryRef.current, ...patch }
     queryRef.current = next
     setQuery(next)
     setDocumentsPage(1)
     setSelectedDocIds([])
-    const nextQuery = serializeKnowledgeQueryState(next, { datasetAllValue: DATASET_ALL })
+    const nextQuery = serializeKnowledgeQueryState(next)
     writtenQueryRef.current = nextQuery
     globalThis.window.history.replaceState(
       globalThis.window.history.state,
@@ -132,38 +150,63 @@ export default function KnowledgePage() {
   }, [])
 
   const { activeTab, datasetScope, docFilter, statusFilter, lifecycleFilter, folderPath, sortKey, sortDir } = query
+  const isDocumentsTab = activeTab === 'documents'
+  const searchTerm = docFilter.trim()
+  const documentQuery = isDocumentsTab && searchTerm !== '' ? searchTerm : undefined
+  const documentFolder = isDocumentsTab && folderPath !== null && folderPath !== '' ? folderPath : undefined
+  const documentLifecycle = isDocumentsTab ? lifecycleFilter : 'active'
   const selectedDatasetId = datasetScope === DATASET_ALL ? undefined : datasetScope
-  const { datasets, isLoading: datasetsLoading } = useDatasets()
+  const {
+    datasets,
+    isLoading: datasetsLoading,
+    isFetching: datasetsFetching,
+    error: datasetsError,
+    refreshDatasets,
+  } = useDatasets()
   const selectedDataset = datasets.find((dataset) => dataset.id === selectedDatasetId) ?? null
-  const selectedDatasetLabel = selectedDataset?.name || selectedDatasetId
+  const selectedDatasetLabel =
+    selectedDataset === null
+      ? selectedDatasetId
+      : selectedDataset.name === ''
+        ? selectedDataset.id
+        : selectedDataset.name
   const datasetLabelById = useMemo(
-    () => Object.fromEntries(datasets.map((dataset) => [dataset.id, dataset.name])),
+    () => Object.fromEntries(datasets.map((dataset) => [dataset.id, dataset.name === '' ? dataset.id : dataset.name])),
     [datasets],
   )
-  const retrievalDatasetIds = useMemo(() => datasets.map((dataset) => dataset.id).filter(Boolean), [datasets])
+  const retrievalDatasetIds = useMemo(() => datasets.map((dataset) => dataset.id), [datasets])
 
-  const { documents, total, isLoading, error, loadDocuments, deleteDocument, uploadDocuments, uploadDocumentFromUrl } =
-    useDocuments({
-      dataset_id: selectedDatasetId,
-      status: activeTab === 'documents' && statusFilter !== 'all' ? statusFilter : undefined,
-      lifecycle: activeTab === 'documents' ? lifecycleFilter : 'active',
-      source_path_prefix: activeTab === 'documents' ? folderPath || undefined : undefined,
-      q: activeTab === 'documents' ? docFilter.trim() || undefined : undefined,
-      order_by: sortKey,
-      order_dir: sortDir,
-      skip: activeTab === 'documents' ? (documentsPage - 1) * pageSize : 0,
-      limit: pageSize,
-    })
+  const {
+    documents,
+    total,
+    isLoading,
+    isPlaceholderData,
+    error,
+    loadDocuments,
+    deleteDocument,
+    uploadDocuments,
+    uploadDocumentFromUrl,
+  } = useDocuments({
+    dataset_id: selectedDatasetId,
+    status: isDocumentsTab && statusFilter !== 'all' ? statusFilter : undefined,
+    lifecycle: documentLifecycle,
+    source_path_prefix: documentFolder,
+    q: documentQuery,
+    order_by: sortKey,
+    order_dir: sortDir,
+    skip: isDocumentsTab ? (documentsPage - 1) * pageSize : 0,
+    limit: pageSize,
+  })
 
   const statsParams = {
     dataset_id: selectedDatasetId,
-    lifecycle: activeTab === 'documents' ? lifecycleFilter : ('active' as const),
-    q: activeTab === 'documents' ? docFilter.trim() || undefined : undefined,
+    lifecycle: documentLifecycle,
+    q: documentQuery,
   }
   const { data: stats, isLoading: statsLoading } = useQuery({
     queryKey: ['documents', 'stats', statsParams],
     queryFn: () => documentApi.stats(statsParams),
-    enabled: !folderPath || activeTab !== 'documents',
+    enabled: documentFolder === undefined,
   })
   const statusCounts =
     !folderPath && stats
@@ -176,17 +219,18 @@ export default function KnowledgePage() {
         }
       : undefined
   const totalChunks = !folderPath && statusFilter === 'all' ? stats?.total_chunks : undefined
-  const documentCount = folderPath && activeTab === 'documents' ? total : stats?.total
+  const documentCount = documentFolder === undefined ? stats?.total : isPlaceholderData ? undefined : total
   const pageCount = Math.max(1, Math.ceil(total / pageSize))
 
   useEffect(() => {
-    if (isLoading) return
+    if (isLoading || isPlaceholderData || error !== null) return
     setDocumentsPage((current) => Math.min(current, pageCount))
-  }, [isLoading, pageCount])
+  }, [error, isLoading, isPlaceholderData, pageCount])
 
   const {
     connectorRuns,
     connectorRunsLoading,
+    connectorRunsError,
     loadConnectorRuns,
     cancelConnectorRun,
     resumeConnectorRun,
@@ -203,7 +247,7 @@ export default function KnowledgePage() {
   }, [query.connectorRunId, query.tasksOpen])
 
   const refreshDocuments = useCallback(async () => {
-    await Promise.all([loadDocuments(), queryClient.invalidateQueries({ queryKey: queryKeys.documents.all })])
+    await Promise.all([queryClient.invalidateQueries({ queryKey: queryKeys.documents.all }), loadDocuments()])
   }, [loadDocuments, queryClient])
 
   const handleDatasetScopeChange = useCallback(
@@ -215,20 +259,46 @@ export default function KnowledgePage() {
 
   const handleFileUpload = useCallback(
     async (event: ReactChangeEvent<HTMLInputElement>) => {
-      const input = event.target
-      const files = Array.from(input.files || [])
-      if (!files.length) return
+      const input = event.currentTarget
+      if (input.files === null || input.files.length === 0) return
+      const files = Array.from(input.files)
+      const uploadSessionKey = getAuthSessionKey()
+      const upload = Symbol()
+      latestUpload.current = upload
+      input.value = ''
+      setUploadNotice(null)
+
       try {
-        await uploadDocuments(files)
-        toast.success(t('toasts.uploadSuccess', { count: files.length }))
-        await refreshDocuments()
-      } catch (err) {
-        toast.error(formatApiError(err, t('toasts.uploadFailed')))
-      } finally {
-        input.value = ''
+        const result = await uploadDocuments(files)
+        if (uploadSessionKey !== getAuthSessionKey()) return
+        if (result.interruption !== undefined || result.failed_count > 0) {
+          const message = t('toasts.uploadPartial', {
+            successful: result.successful_count,
+            failed: result.failed_count,
+          })
+          const unconfirmed = result.total - result.successful_count - result.failed_count
+          const summary =
+            unconfirmed > 0 ? `${message}，${t('toasts.uploadUnconfirmed', { count: unconfirmed })}` : message
+          if (latestUpload.current === upload) {
+            setUploadNotice({
+              sessionKey: uploadSessionKey,
+              message: summary,
+              failures: result.failed,
+              interruption: result.interruption,
+            })
+          } else {
+            toast.warning(summary)
+          }
+        } else {
+          toast.success(t('toasts.uploadSuccess', { count: result.successful_count }))
+        }
+      } catch (error) {
+        if (uploadSessionKey !== getAuthSessionKey() || isCancelledError(error)) return
+        toast.error(formatApiError(error, t('toasts.uploadFailed')))
       }
+      await queryClient.invalidateQueries({ queryKey: queryKeys.documents.all })
     },
-    [refreshDocuments, t, uploadDocuments],
+    [queryClient, t, uploadDocuments],
   )
 
   const selectedSet = useMemo(() => new Set(selectedDocIds), [selectedDocIds])
@@ -242,79 +312,117 @@ export default function KnowledgePage() {
   const toggleSelectAllVisible = () => {
     setSelectedDocIds(allVisibleSelected ? [] : documents.map((doc) => doc.id))
   }
-  const batchWorking = batchDeleting || batchLifecycleWorking || batchReingestWorking
-
   useEffect(() => {
-    if (isLoading) return
+    if (isLoading || isPlaceholderData || error !== null) return
     const validIds = new Set(documents.map((doc) => doc.id))
     setSelectedDocIds((previous) => {
       const next = previous.filter((id) => validIds.has(id))
       return next.length === previous.length ? previous : next
     })
-  }, [documents, isLoading])
+  }, [documents, error, isLoading, isPlaceholderData])
 
-  const runBatchLifecycle = async (action: 'enable' | 'disable' | 'archive' | 'unarchive') => {
-    if (!selectedDocIds.length || batchWorking) return
-    setBatchLifecycleWorking(true)
+  async function runDocumentBatchAction<Result>(
+    action: KnowledgeBatchAction,
+    perform: (documentIds: string[]) => Promise<Result>,
+    handleResult: (result: Result) => string[],
+    onFailure: (error: unknown) => void,
+  ) {
+    const documentIds = selectedDocIds
+    if (documentIds.length === 0 || batchActionRef.current !== null) return
+
+    const ownsSession = () => getAuthSessionKey() === sessionKey
+    batchActionRef.current = action
+    setBatchAction(action)
     try {
-      const lifecycleAction = {
-        enable: documentApi.batchEnable,
-        disable: documentApi.batchDisable,
-        archive: documentApi.batchArchive,
-        unarchive: documentApi.batchUnarchive,
-      }[action]
-      const result = await lifecycleAction(selectedDocIds)
-      const remaining = [...(result.denied ?? []), ...(result.conflicts ?? [])]
-      if (result.updated) toast.success(t('toasts.batchLifecycle.' + action, { count: result.updated }))
-      if (remaining.length) toast.error(remaining.length + ' 份文档未完成操作，请检查权限或处理状态。')
-      setSelectedDocIds(remaining)
-      await refreshDocuments()
-    } catch (err) {
-      toast.error(formatApiError(err, t('toasts.batchLifecycleFailed')))
-    } finally {
-      setBatchLifecycleWorking(false)
-    }
-  }
-  const runBatchReingest = async () => {
-    if (!selectedDocIds.length || batchWorking) return
-    setBatchReingestWorking(true)
-    try {
-      const result = await documentApi.batchReingest({
-        document_ids: selectedDocIds,
-        replace: false,
-        force: true,
-        skip_if_unchanged: false,
-      })
-      const remaining = [...(result.denied ?? []), ...(result.conflicts ?? [])]
-      if (result.queued) toast.success(t('toasts.reingestQueued', { count: result.queued }))
-      if (remaining.length) toast.error(remaining.length + ' 份文档未能重新入库，请检查权限或处理状态。')
-      setSelectedDocIds(remaining)
-      await refreshDocuments()
-    } catch (err) {
-      toast.error(formatApiError(err, t('toasts.reingestFailed')))
-    } finally {
-      setBatchReingestWorking(false)
-    }
-  }
-  const confirmBatchDelete = async () => {
-    if (!selectedDocIds.length || batchWorking) return
-    setBatchDeleting(true)
-    setBatchDeleteError(null)
-    try {
-      const result = await documentApi.batchDelete(selectedDocIds)
-      const remaining = result.denied ?? []
-      setSelectedDocIds(remaining)
-      if (remaining.length) {
-        setBatchDeleteError('已删除 ' + result.deleted + ' 份文档；其余 ' + remaining.length + ' 份没有删除权限。')
-      } else {
-        setBatchDeleteOpen(false)
+      try {
+        const result = await perform(documentIds)
+        if (!ownsSession()) return
+        const remainingIds = handleResult(result)
+        setSelectedDocIds((current) => (current === documentIds ? remainingIds : current))
+      } catch (error) {
+        if (ownsSession()) onFailure(error)
+        return
       }
-      await refreshDocuments()
-    } catch (err) {
-      setBatchDeleteError(formatApiError(err, t('toasts.batchDeleteFailed')))
+
+      try {
+        await refreshDocuments()
+      } catch (error) {
+        if (ownsSession()) toast.error(formatApiError(error, documentsT('toasts.refreshFailed')))
+      }
     } finally {
-      setBatchDeleting(false)
+      batchActionRef.current = null
+      setBatchAction(null)
     }
+  }
+
+  function warnMissingDocuments(documentIds: readonly string[] | undefined) {
+    if (documentIds !== undefined && documentIds.length > 0) {
+      toast.warning(t('toasts.batchNotFound', { count: documentIds.length }))
+    }
+  }
+
+  function runBatchLifecycle(action: 'enable' | 'disable' | 'archive' | 'unarchive') {
+    const lifecycleAction = {
+      enable: documentApi.batchEnable,
+      disable: documentApi.batchDisable,
+      archive: documentApi.batchArchive,
+      unarchive: documentApi.batchUnarchive,
+    }[action]
+    return runDocumentBatchAction(
+      'lifecycle',
+      lifecycleAction,
+      (result) => {
+        const remainingIds = [...(result.denied ?? []), ...(result.conflicts ?? [])]
+        if (result.updated > 0) toast.success(t('toasts.batchLifecycle.' + action, { count: result.updated }))
+        warnMissingDocuments(result.not_found)
+        if (remainingIds.length > 0) toast.error(remainingIds.length + ' 份文档未完成操作，请检查权限或处理状态。')
+        return remainingIds
+      },
+      (error) => toast.error(formatApiError(error, t('toasts.batchLifecycleFailed'))),
+    )
+  }
+
+  function runBatchReingest() {
+    return runDocumentBatchAction(
+      'reingest',
+      (documentIds) =>
+        documentApi.batchReingest({
+          document_ids: documentIds,
+          replace: false,
+          force: true,
+          skip_if_unchanged: false,
+        }),
+      (result) => {
+        const remainingIds = [...result.denied, ...result.conflicts]
+        if (result.queued > 0) toast.success(t('toasts.reingestQueued', { count: result.queued }))
+        warnMissingDocuments(result.not_found)
+        if (remainingIds.length > 0) toast.error(remainingIds.length + ' 份文档未能重新入库，请检查权限或处理状态。')
+        return remainingIds
+      },
+      (error) => toast.error(formatApiError(error, t('toasts.reingestFailed'))),
+    )
+  }
+
+  function confirmBatchDelete() {
+    return runDocumentBatchAction(
+      'delete',
+      (documentIds) => {
+        setBatchDeleteError(null)
+        return documentApi.batchDelete(documentIds)
+      },
+      (result) => {
+        const remainingIds = result.denied ?? []
+        warnMissingDocuments(result.not_found)
+        if (remainingIds.length > 0) {
+          setBatchDeleteError(t('toasts.batchDeletePartial', { deleted: result.deleted, denied: remainingIds.length }))
+        } else {
+          setBatchDeleteOpen(false)
+          if (result.deleted > 0) toast.success(t('toasts.batchDeleteSuccess', { count: result.deleted }))
+        }
+        return remainingIds
+      },
+      (error) => setBatchDeleteError(formatApiError(error, t('toasts.batchDeleteFailed'))),
+    )
   }
 
   const handleTabsKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -331,7 +439,7 @@ export default function KnowledgePage() {
     event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="tab"]')[index]?.focus()
   }
   const hasAdvancedFilters = lifecycleFilter !== 'active' || Boolean(folderPath)
-  const hasActiveFilters = hasAdvancedFilters || statusFilter !== 'all' || Boolean(docFilter.trim())
+  const hasActiveFilters = hasAdvancedFilters || statusFilter !== 'all' || searchTerm !== ''
   const showImportIntro = activeTab === 'documents' && !isLoading && !error && total === 0 && !hasActiveFilters
   const clearFilters = () =>
     updateQuery({ docFilter: '', statusFilter: 'all', lifecycleFilter: 'active', folderPath: null })
@@ -349,7 +457,7 @@ export default function KnowledgePage() {
         ) : null}
         {datasets.map((dataset) => (
           <SelectItem key={dataset.id} value={dataset.id}>
-            {dataset.name}
+            {dataset.name === '' ? dataset.id : dataset.name}
           </SelectItem>
         ))}
       </SelectContent>
@@ -416,14 +524,58 @@ export default function KnowledgePage() {
               uploadDocumentFromUrl={uploadDocumentFromUrl}
               loadDocuments={refreshDocuments}
               loadConnectorRuns={loadConnectorRuns}
-              onConnectorRunCreated={() => {
+              onConnectorRunCreated={(run) => {
+                const runDatasetScope = run.dataset_id ?? DATASET_ALL
+                const current = queryRef.current
                 setTasksOpen(true)
-                updateQuery({ activeTab: 'documents' })
+                updateQuery({
+                  activeTab: 'documents',
+                  datasetScope: runDatasetScope,
+                  folderPath: runDatasetScope === current.datasetScope ? current.folderPath : null,
+                  connectorRunId: run.id,
+                })
               }}
             />
           </div>
         </header>
 
+        {uploadNotice?.sessionKey === sessionKey && (
+          <WorkspaceNotice>
+            <div className="flex items-start justify-between gap-3">
+              <p>{uploadNotice.message}</p>
+              <IconButton label={t('toasts.dismissUploadResult')} variant="ghost" onClick={() => setUploadNotice(null)}>
+                <X className="size-4" aria-hidden="true" />
+              </IconButton>
+            </div>
+            {uploadNotice.interruption !== undefined && <p className="wrap-anywhere">{uploadNotice.interruption}</p>}
+            {uploadNotice.failures.length > 0 && (
+              <details>
+                <summary className="cursor-pointer">{t('toasts.uploadFailureDetails')}</summary>
+                <ol className="max-h-48 list-decimal overflow-y-auto pl-5">
+                  {uploadNotice.failures.map((failure, index) => (
+                    <li key={index} className="wrap-anywhere">
+                      {getUploadReceiptKey(failure)} · {failure.error}
+                    </li>
+                  ))}
+                </ol>
+              </details>
+            )}
+          </WorkspaceNotice>
+        )}
+        {datasetsError !== null ? (
+          <WorkspaceNotice
+            retry={() => void refreshDatasets()}
+            retryLabel="重新读取数据集目录"
+            pending={datasetsFetching}
+          >
+            {formatApiError(datasetsError, '数据集目录读取失败，当前选择已保留')}
+          </WorkspaceNotice>
+        ) : null}
+        {datasetsFetching && !datasetsLoading ? (
+          <p role="status" className="text-sm text-muted-foreground">
+            正在更新数据集目录，保留当前选择。
+          </p>
+        ) : null}
         <div
           className={cn(styles.toolbar, (showImportIntro || activeTab === 'retrieval') && styles.introToolbar)}
           aria-label="文档筛选与排序"
@@ -432,7 +584,7 @@ export default function KnowledgePage() {
           {activeTab === 'retrieval' && stats ? (
             <p className={styles.scopeSummary}>
               {stats.total} 份文档<span>·</span>
-              {stats.total_chunks ?? 0} 个分片
+              {stats.total_chunks} 个分片
             </p>
           ) : null}
           {activeTab === 'documents' && !showImportIntro ? (
@@ -548,6 +700,7 @@ export default function KnowledgePage() {
           {activeTab === 'documents' ? (
             <KnowledgeDocumentsPanel
               isLoading={isLoading}
+              isPlaceholderData={isPlaceholderData}
               error={error}
               documents={documents}
               totalDocumentsCount={total}
@@ -608,9 +761,9 @@ export default function KnowledgePage() {
             <RetrievePreviewPanel
               selectedDatasetId={selectedDatasetId}
               availableDatasetIds={retrievalDatasetIds}
-              scopeLabel={selectedDatasetLabel || scopeT('dataset.all')}
-              aggregateDocuments={stats?.total ?? (error ? undefined : total)}
-              aggregateChunks={stats?.total_chunks ?? 0}
+              scopeLabel={selectedDatasetLabel === undefined ? scopeT('dataset.all') : selectedDatasetLabel}
+              aggregateDocuments={stats?.total ?? (isLoading || error ? undefined : total)}
+              aggregateChunks={stats?.total_chunks}
               scopeLoading={datasetsLoading || isLoading || statsLoading}
               onGoToDocuments={() => updateQuery({ activeTab: 'documents' })}
             />
@@ -701,6 +854,7 @@ export default function KnowledgePage() {
                 selectedDatasetId={selectedDatasetId}
                 connectorRuns={connectorRuns}
                 connectorRunsLoading={connectorRunsLoading}
+                connectorRunsError={connectorRunsError}
                 onCancelConnectorRun={cancelConnectorRun}
                 onResumeConnectorRun={resumeConnectorRun}
                 onRetryFailedConnectorRun={retryFailedConnectorRun}

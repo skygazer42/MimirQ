@@ -1,9 +1,9 @@
 'use client'
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { usePipelineCapabilities } from '@/contexts/pipeline-capabilities-context'
 import { readClientStorage, writeClientStorage } from '@/lib/client-storage'
-import { normalizeParserBackendName } from '@/lib/parser-compat'
+import { isRetiredParserBackend, normalizeParserBackendName } from '@/lib/parser-compat'
 
 const STORAGE_KEY = 'mimirq_parser_backend'
 
@@ -14,8 +14,8 @@ type ParserBackendContextValue = {
 
 const ParserBackendContext = createContext<ParserBackendContextValue | null>(null)
 
-export function ParserBackendProvider({ children }: Readonly<{ children: React.ReactNode }>) {
-  const [parserBackend, setParserBackend] = useState('auto')
+export function ParserBackendProvider({ children }: Readonly<{ children: ReactNode }>) {
+  const [parserBackend, setParserBackend] = useState(() => normalizeParserBackendName())
   const { capabilities, parserBackendAvailable } = usePipelineCapabilities()
 
   useEffect(() => {
@@ -40,10 +40,9 @@ export function ParserBackendProvider({ children }: Readonly<{ children: React.R
   }, [])
 
   useEffect(() => {
-    if (!capabilities) return
-    const ok = parserBackendAvailable(parserBackend)
-    if (ok === false) {
-      persistParserBackend(capabilities.default_parser_backend || 'auto')
+    if (!capabilities || isRetiredParserBackend(parserBackend)) return
+    if (parserBackendAvailable(parserBackend) === false) {
+      persistParserBackend(capabilities.default_parser_backend)
     }
   }, [capabilities, parserBackend, parserBackendAvailable, persistParserBackend])
 
@@ -59,9 +58,9 @@ export function ParserBackendProvider({ children }: Readonly<{ children: React.R
 }
 
 export function useParserBackendPreference() {
-  const ctx = useContext(ParserBackendContext)
-  if (!ctx) {
+  const context = useContext(ParserBackendContext)
+  if (context === null) {
     throw new Error('useParserBackendPreference must be used within ParserBackendProvider')
   }
-  return ctx
+  return context
 }

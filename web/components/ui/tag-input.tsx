@@ -1,12 +1,24 @@
-import * as React from 'react'
+import { useState, type KeyboardEvent } from 'react'
 import { X } from '@/components/icons'
 import { useTranslations } from 'next-intl'
-
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
-import { normalizeTag, parseTagsText } from '@/lib/document-user-tags'
+import { appendTagText, tagKey } from '@/lib/tag-input'
+
+type TagInputProps = {
+  value: readonly string[]
+  onValueChange: (next: string[]) => void
+  placeholder?: string
+  disabled?: boolean
+  /** 0 表示不限数量。 */
+  maxTags?: number
+  maxTagLen?: number
+  className?: string
+  inputClassName?: string
+  inputId?: string
+}
 
 export function TagInput({
   value,
@@ -17,95 +29,44 @@ export function TagInput({
   maxTagLen = 64,
   className,
   inputClassName,
-}: Readonly<{
-  value: string[]
-  onValueChange: (next: string[]) => void
-  placeholder?: string
-  disabled?: boolean
-  maxTags?: number
-  maxTagLen?: number
-  className?: string
-  inputClassName?: string
-}>) {
+  inputId,
+}: Readonly<TagInputProps>) {
   const t = useTranslations('CommonUi')
-  const [draft, setDraft] = React.useState('')
-
-  const tags = React.useMemo(() => (Array.isArray(value) ? value : []), [value])
-  const resolvedPlaceholder = placeholder ?? t('tagInput.placeholder')
-
-  const addTags = React.useCallback(
-    (incoming: string[]) => {
-      const cap = Math.max(0, Math.min(200, Number(maxTags || 0)))
-      const seen = new Set(
-        tags
-          .map((t) =>
-            String(t || '')
-              .trim()
-              .toLowerCase(),
-          )
-          .filter(Boolean),
-      )
-      const next = [...tags]
-
-      for (const raw of incoming) {
-        if (cap && next.length >= cap) break
-        const norm = normalizeTag(raw, { maxLen: maxTagLen })
-        if (!norm) continue
-        const key = norm.trim().toLowerCase()
-        if (!key || seen.has(key)) continue
-        seen.add(key)
-        next.push(norm)
-      }
-
-      onValueChange(next)
-    },
-    [maxTagLen, maxTags, onValueChange, tags],
+  const [draft, setDraft] = useState('')
+  const preview = appendTagText(value, draft, { maxTags, maxLen: maxTagLen })
+  const errorMessages = preview.issues.map((issue) =>
+    issue === 'limit' ? t('tagInput.limitError', { maxTags }) : t('tagInput.lengthError', { maxLen: maxTagLen }),
   )
+  let validationMessage = errorMessages.join(' ')
+  if (validationMessage.length === 0 && draft.trim().length > 0) validationMessage = t('tagInput.pendingError')
 
-  const removeTag = React.useCallback(
-    (tag: string) => {
-      const key = String(tag || '')
-        .trim()
-        .toLowerCase()
-      if (!key) return
-      onValueChange(
-        tags.filter(
-          (t) =>
-            String(t || '')
-              .trim()
-              .toLowerCase() !== key,
-        ),
-      )
-    },
-    [onValueChange, tags],
-  )
+  function commitText(text: string) {
+    const result = appendTagText(value, text, { maxTags, maxLen: maxTagLen })
+    onValueChange(result.tags)
+    setDraft(result.pending)
+  }
 
-  const commitDraft = React.useCallback(() => {
-    const text = String(draft || '')
-    const parsed = parseTagsText(text, { maxTags, maxLen: maxTagLen })
-    if (parsed.length) addTags(parsed)
-    setDraft('')
-  }, [addTags, draft, maxTagLen, maxTags])
+  function removeTag(tag: string) {
+    const key = tagKey(tag)
+    onValueChange(value.filter((current) => tagKey(current) !== key))
+  }
 
-  const onKeyDown: React.KeyboardEventHandler<HTMLInputElement> = (e) => {
-    if (disabled) return
-    if (e.key === 'Enter') {
-      e.preventDefault()
-      commitDraft()
-      return
-    }
-    if (e.key === 'Backspace' && !draft.trim() && tags.length) {
-      // Quick delete last tag when input is empty.
-      const lastTag = tags.at(-1)
-      if (lastTag) removeTag(lastTag)
+  function handleKeyDown(event: KeyboardEvent<HTMLInputElement>) {
+    if (disabled || event.nativeEvent.isComposing) return
+    if (event.key === 'Enter') {
+      event.preventDefault()
+      commitText(event.currentTarget.value)
+    } else if (event.key === 'Backspace' && draft.length === 0 && value.length > 0) {
+      event.preventDefault()
+      onValueChange(value.slice(0, -1))
     }
   }
 
   return (
     <div className={cn('space-y-2', className)}>
-      {tags.length ? (
+      {value.length > 0 ? (
         <div className="flex flex-wrap items-center gap-2">
-          {tags.map((tag) => (
+          {value.map((tag) => (
             <Badge key={tag} variant="soft" className="gap-1 pr-1">
               <span className="max-w-[14rem] truncate">{tag}</span>
               <Button
@@ -123,44 +84,50 @@ export function TagInput({
           ))}
         </div>
       ) : null}
-
       <div className="flex items-center gap-2">
         <Input
+          id={inputId}
+          ref={(input) => {
+            if (input !== null) input.setCustomValidity(validationMessage)
+          }}
           value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={onKeyDown}
-          onBlur={() => {
-            if (disabled) return
-            if (draft.trim()) commitDraft()
+          onChange={(event) => setDraft(event.target.value)}
+          onKeyDown={handleKeyDown}
+          onBlur={(event) => {
+            if (!disabled && event.currentTarget.value.trim().length > 0) commitText(event.currentTarget.value)
           }}
-          onPaste={(e) => {
+          onPaste={(event) => {
             if (disabled) return
-            const text = e.clipboardData?.getData('text') || ''
-            const parsed = parseTagsText(text, { maxTags, maxLen: maxTagLen })
-            if (!parsed.length) return
-            // If paste contains multiple tags, treat as batch add.
-            e.preventDefault()
-            addTags(parsed)
+            const text = event.clipboardData.getData('text')
+            if (text.trim().length === 0) return
+            event.preventDefault()
+            const result = appendTagText(value, text, { maxTags, maxLen: maxTagLen })
+            onValueChange(result.tags)
+            setDraft((current) => [current, result.pending].filter((part) => part.length > 0).join(', '))
           }}
-          placeholder={resolvedPlaceholder}
+          placeholder={placeholder ?? t('tagInput.placeholder')}
           disabled={disabled}
+          aria-invalid={preview.issues.length > 0}
           className={cn('h-10 rounded-xl', inputClassName)}
         />
         <Button
           type="button"
           variant="outline"
           className="h-10 rounded-xl"
-          onClick={commitDraft}
-          disabled={disabled || !draft.trim()}
+          onClick={() => commitText(draft)}
+          disabled={disabled || draft.trim().length === 0}
         >
           {t('tagInput.add')}
         </Button>
       </div>
-      <div className="text-[11px] text-muted-foreground">
-        {tags.length}
-        <span className="mx-1">/</span>
-        {Math.max(0, Math.min(200, Number(maxTags || 0)))}
-      </div>
+      {errorMessages.map((message) => (
+        <p key={message} role="alert" className="break-words text-sm text-destructive">
+          {message}
+        </p>
+      ))}
+      <p className="text-[11px] text-muted-foreground">
+        {value.length} / {maxTags === 0 ? t('tagInput.unlimited') : maxTags}
+      </p>
     </div>
   )
 }

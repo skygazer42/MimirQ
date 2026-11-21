@@ -2,7 +2,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field, ValidationError
 
-from app.rag.core.json_text import parse_json_from_text
+from app.rag.llm.response_parsing import parse_json_from_text
 
 
 class _StructuredBase(BaseModel):
@@ -98,34 +98,27 @@ def _repair_with_schema(
     preset: str | None,
     fallback_answer: str,
     fallback_citations: list[dict[str, Any]] | None = None,
-) -> tuple[dict[str, Any], bool]:
+) -> tuple[dict[str, Any], bool, bool]:
     key = normalize_structured_preset_key(preset)
-    merged = build_structured_abstain_payload(
+    fallback_payload = build_structured_abstain_payload(
         preset=key,
         answer=fallback_answer,
         citations=fallback_citations,
     )
-    if data is not None:
-        merged.update(data)
+    merged = fallback_payload if data is None else fallback_payload | data
 
     model = STRUCTURED_OUTPUT_MODELS.get(key)
     if model is None:
-        return merged, data is None
+        return merged, data is None, data is None
 
     try:
         validated = model.model_validate(merged)
         payload = validated.model_dump(mode="json")
         repaired = data is None or payload != data
-        return payload, repaired
+        return payload, repaired, data is None
     except ValidationError:
-        fallback_validated = model.model_validate(
-            build_structured_abstain_payload(
-                preset=key,
-                answer=fallback_answer,
-                citations=fallback_citations,
-            )
-        )
-        return fallback_validated.model_dump(mode="json"), True
+        fallback_validated = model.model_validate(fallback_payload)
+        return fallback_validated.model_dump(mode="json"), True, True
 
 
 def parse_and_repair_structured_output(
@@ -136,7 +129,7 @@ def parse_and_repair_structured_output(
     fallback_citations: list[dict[str, Any]] | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     parsed, meta = parse_json_from_text(text, expected="object")
-    payload, repaired = _repair_with_schema(
+    payload, repaired, fallback_used = _repair_with_schema(
         parsed,
         preset=preset,
         fallback_answer=fallback_answer,
@@ -145,7 +138,7 @@ def parse_and_repair_structured_output(
     out_meta = dict(meta)
     out_meta["schema_key"] = normalize_structured_preset_key(preset) or "default"
     out_meta["repaired"] = repaired
-    out_meta["fallback_used"] = not bool(out_meta.get("ok"))
+    out_meta["fallback_used"] = fallback_used
     return payload, out_meta
 
 

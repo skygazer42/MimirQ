@@ -5,7 +5,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.api.schemas.document import (
+import app.services.documents.access as document_access_service
+from app.api.schemas.documents.document import (
     DocumentChunkCreateRequest,
     DocumentChunkReembedRequest,
     DocumentChunkUpdateRequest,
@@ -118,11 +119,11 @@ def _chunk(*, tenant_id: uuid.UUID, document_id: uuid.UUID, chunk_id: uuid.UUID 
 def test_manual_chunk_mutations_route_vector_ops_through_indexer_helpers(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from app.rag import retriever as retriever_module
-    from app.services import indexer as indexer_module
+    from app.rag.ingestion.indexing import indexer as indexer_module
+    from app.rag.retrieval.recall import retriever as retriever_module
 
-    chunk_routes = importlib.import_module("app.api.v1.document_chunks_write")
-    chunk_operations = importlib.import_module("app.services.document_chunk_operations")
+    chunk_routes = importlib.import_module("app.api.v1.documents.chunks_write")
+    chunk_operations = importlib.import_module("app.services.documents.chunks")
 
     tenant_id = uuid.uuid4()
     document_id = uuid.uuid4()
@@ -160,8 +161,8 @@ def test_manual_chunk_mutations_route_vector_ops_through_indexer_helpers(
     monkeypatch.setattr(chunk_operations, "Indexer", _FakeIndexer, raising=False)
     monkeypatch.setattr(chunk_operations.dataset_service, "ensure_member", lambda *_a, **_k: None, raising=True)
     monkeypatch.setattr(
-        chunk_operations,
-        "_assert_document_writable_for_chunk_ops",
+        document_access_service,
+        "assert_document_writable_for_lifecycle",
         lambda *_a, **_k: None,
         raising=True,
     )
@@ -184,7 +185,7 @@ def test_manual_chunk_mutations_route_vector_ops_through_indexer_helpers(
         lambda doc_id, _meta: f"{doc_id}:active",
         raising=True,
     )
-    monkeypatch.setattr(chunk_operations, "_get_document_for_chunk_ops", lambda *_a, **_k: document, raising=True)
+    monkeypatch.setattr(document_access_service, "get_document_for_lifecycle", lambda *_a, **_k: document, raising=True)
     monkeypatch.setattr(
         chunk_operations,
         "_get_chunk_for_chunk_ops",
@@ -295,12 +296,13 @@ def test_delete_document_version_routes_vector_cleanup_through_indexer_helper(
     pg_session,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from app.api.v1 import document_versions
-    from app.models.dataset import Dataset, DatasetPermissionEnum
-    from app.models.document import Document as DBDocument
-    from app.models.document import DocumentChunk
-    from app.rag import retriever as retriever_module
-    from app.services import indexer as indexer_module
+    from app.api.schemas.datasets.dataset import DatasetPermissionEnum
+    from app.api.v1.documents import versions as document_versions
+    from app.models.datasets.records import Dataset
+    from app.models.documents.records import Document as DBDocument
+    from app.models.documents.records import DocumentChunk
+    from app.rag.ingestion.indexing import indexer as indexer_module
+    from app.rag.retrieval.recall import retriever as retriever_module
 
     tenant_id = uuid.uuid4()
     dataset_id = uuid.uuid4()
@@ -408,10 +410,10 @@ def test_retention_cleanup_routes_vector_cleanup_through_indexer_helper(
     pg_session,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from app.models.document import Document as DBDocument
-    from app.models.document import DocumentChunk
-    from app.services import indexer as indexer_module
-    from app.services import retention_policy as rp
+    from app.models.documents.records import Document as DBDocument
+    from app.models.documents.records import DocumentChunk
+    from app.rag.ingestion.indexing import indexer as indexer_module
+    from app.services.retention import policy as rp
 
     tenant_id = uuid.uuid4()
     document_id = uuid.uuid4()

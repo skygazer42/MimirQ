@@ -9,8 +9,6 @@ extend-exclude = [
   ".ruff_cache",
   ".shared",
   ".superpowers",
-  "app/third_party",
-  "app/deepdoc",
   "alembic/versions",
   "uploads",
   "web",

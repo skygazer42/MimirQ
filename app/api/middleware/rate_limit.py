@@ -1,5 +1,6 @@
 """按客户端地址限制 API 和聊天请求的速率。"""
 
+import logging
 import math
 
 from fastapi import Request, Response
@@ -8,12 +9,11 @@ from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoin
 from starlette.status import HTTP_429_TOO_MANY_REQUESTS
 from starlette.types import ASGIApp
 
-from app.core.config import settings
-from app.core.exceptions import ErrorResponse, get_request_id
-from app.core.rate_limit import RateLimiter, RedisRateLimiter
-from app.rag.core.logging import get_logger
+from app.infrastructure.config import settings
+from app.infrastructure.exceptions import ErrorResponse, get_request_id
+from app.infrastructure.runtime.rate_limit import RateLimiter, RedisRateLimiter
 
-logger = get_logger("api.rate_limit")
+logger = logging.getLogger("api.rate_limit")
 
 _RATE_LIMIT_EXCLUDED_PATHS = frozenset(
     {

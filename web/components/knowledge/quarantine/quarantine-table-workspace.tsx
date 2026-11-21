@@ -99,6 +99,7 @@ function ReviewStateLabel({ doc }: Readonly<{ doc: Document }>) {
 
 export function QuarantineTableWorkspace(props: Readonly<Props>) {
   const {
+    actingByDocumentId,
     dateFrom,
     dateTo,
     datasetLabelById,
@@ -138,6 +139,7 @@ export function QuarantineTableWorkspace(props: Readonly<Props>) {
     onSearchChange,
     onSeverityChange,
     onSourceChange,
+    ...reviewActions
   } = props
   const views: { id: ReviewState; label: string; count: number }[] = [
     { id: 'all', label: '全部', count: reviewCounts.total },
@@ -190,6 +192,11 @@ export function QuarantineTableWorkspace(props: Readonly<Props>) {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">全部数据集</SelectItem>
+              {selectedDataset !== 'all' && !datasetOptions.some((option) => option.id === selectedDataset) ? (
+                <SelectItem value={selectedDataset} disabled>
+                  已选数据集：{selectedDataset}
+                </SelectItem>
+              ) : null}
               {datasetOptions.map((option) => (
                 <SelectItem key={option.id} value={option.id}>
                   {option.label}
@@ -255,7 +262,7 @@ export function QuarantineTableWorkspace(props: Readonly<Props>) {
                   <Input
                     type="date"
                     value={dateFrom}
-                    max={dateTo || undefined}
+                    max={dateTo}
                     onChange={(event) => onDateFromChange(event.target.value)}
                   />
                 </label>
@@ -264,7 +271,7 @@ export function QuarantineTableWorkspace(props: Readonly<Props>) {
                   <Input
                     type="date"
                     value={dateTo}
-                    min={dateFrom || undefined}
+                    min={dateFrom}
                     onChange={(event) => onDateToChange(event.target.value)}
                   />
                 </label>
@@ -357,10 +364,9 @@ export function QuarantineTableWorkspace(props: Readonly<Props>) {
                 const expanded = selectedId === doc.id
                 const reasons = getDropReasons(doc).map(reasonLabel).join('、') || '待确认原因'
                 const severity = getQuarantineSeverity(doc)
-                const datasetLabel = doc.dataset_id
-                  ? datasetLabelById[doc.dataset_id] || doc.dataset_id
-                  : '未指定数据集'
+                const datasetLabel = doc.dataset_id ? datasetLabelById[doc.dataset_id] : '未指定数据集'
                 const regionId = `quarantine-review-${doc.id}`
+                const processedAt = doc.updated_at
                 const RiskIcon = severity === '高' ? ShieldAlert : ShieldCheck
                 return (
                   <Fragment key={doc.id}>
@@ -399,8 +405,8 @@ export function QuarantineTableWorkspace(props: Readonly<Props>) {
                       <td className={styles.reviewCell}>
                         <ReviewStateLabel doc={doc} />
                       </td>
-                      <td className={styles.dateCell} title={processingTime(doc.updated_at || doc.created_at, true)}>
-                        {processingTime(doc.updated_at || doc.created_at)}
+                      <td className={styles.dateCell} title={processingTime(processedAt, true)}>
+                        {processingTime(processedAt)}
                       </td>
                       <td>
                         <button
@@ -420,8 +426,8 @@ export function QuarantineTableWorkspace(props: Readonly<Props>) {
                       <tr>
                         <td colSpan={8} className={styles.expandedCell} id={regionId}>
                           <QuarantineInlineReview
-                            {...props}
-                            acting={props.actingByDocumentId.get(doc.id) ?? null}
+                            {...reviewActions}
+                            acting={actingByDocumentId.get(doc.id) ?? null}
                             document={doc}
                             datasetLabel={datasetLabel}
                           />
@@ -476,7 +482,7 @@ export function QuarantineTableWorkspace(props: Readonly<Props>) {
             : countsReady
               ? hasActiveFilters
                 ? `筛出 ${filteredCount} / ${documentsCount} 份文档`
-                : `共 ${documentsCount} 份文档 · ${reviewCounts.unreviewed} 份待复核`
+                : `已加载 ${documentsCount} 份文档 · ${reviewCounts.unreviewed} 份待复核`
               : '队列尚未加载'}
         </span>
         <div className={styles.pagination}>

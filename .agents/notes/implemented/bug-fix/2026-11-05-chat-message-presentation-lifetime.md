@@ -39,6 +39,10 @@ Status: implemented
 
 ## Consequences
 
+[消息元数据与引用位置](2026-11-17-chat-message-metadata-and-citation-ownership.md)补齐已知 metadata 的入口校验、claim 位置归属和剪贴板清理；原反馈 owner 扩展为消息操作 owner，认证修订与旧结果归属理由保持。
+
+[图片与下载资源所有者](2026-11-15-shared-image-and-download-resource-owners.md)部分接管本文的共享图片结果、缓存和错误政策，补齐原生错误与会话通知；本文其余引用、反馈和动效决定继续适用。
+
 可见消息内容、引用行为和反馈状态与实际数据／操作归属一致；增加的运行时状态仅属于单个消息实例，不建立共享管理器或新缓存。API 请求可能在离开后完成，已接受的服务端写入不会回滚。
 
 ChatArea 和 History 都以消息 ID 作为 key，因此生命周期验证使用实际卸载、身份变化和静默同账号登录，不依赖真实调用者不存在的同实例换 ID 情形。证据范围、预览 anchor、来源上下文、预取去重、排序与数量以及公共 props 保持。证据弹窗、代码高亮和 Markdown 安全 helper 经完整源码复核后保留原实现。

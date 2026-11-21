@@ -60,13 +60,8 @@ def extract_clause_refs(text: str) -> list[str]:
         seen.add(key)
         out.append(v)
 
-    for m in _CN_ARTICLE.finditer(raw):
-        _add(m.group(1))
-    for m in _CN_CLAUSE.finditer(raw):
-        _add(m.group(1))
-    for m in _EN_ARTICLE.finditer(raw):
-        _add(m.group(0))
-    for m in _EN_SECTION.finditer(raw):
-        _add(m.group(0))
+    for pattern in (_CN_ARTICLE, _CN_CLAUSE, _EN_ARTICLE, _EN_SECTION):
+        for match in pattern.finditer(raw):
+            _add(match.group())
 
     return out

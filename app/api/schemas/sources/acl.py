@@ -17,7 +17,7 @@ from pydantic import BaseModel, Field, model_validator
 
 from app.api.schemas.documents import DocumentAccessMode
 
-SourceSystem = Literal["github", "confluence", "jira", "drive", "generic"]
+SourceSystem = Literal["confluence", "jira", "generic"]
 SourcePrincipalKind = Literal["user", "group", "team", "role", "policy", "domain", "anyone"]
 
 
@@ -26,12 +26,11 @@ class SourcePrincipal(BaseModel):
     A normalized identity from an upstream system.
 
     Examples:
-    - {"system":"github","kind":"team","id":"myorg/platform"}
     - {"system":"confluence","kind":"group","id":"confluence-users"}
     - {"system":"jira","kind":"role","id":"developers"}
     - {"system":"jira","kind":"policy","id":"security-level/10001"}
-    - {"system":"drive","kind":"domain","id":"example.com"}
-    - {"system":"drive","kind":"anyone","id":""}
+    - {"system":"generic","kind":"domain","id":"example.com"}
+    - {"system":"generic","kind":"anyone","id":""}
     """
 
     system: SourceSystem

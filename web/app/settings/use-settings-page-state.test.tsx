@@ -89,6 +89,34 @@ describe('settings automatic saving', () => {
     expect(hook.result.current.hasChanges).toBe(false)
   })
 
+  it('keeps the latest system status when an earlier save refresh finishes later', async () => {
+    const hook = await openSettings()
+    let finishPreviousRead!: () => void
+    const previousRead = new Promise<void>((resolve) => {
+      finishPreviousRead = resolve
+    })
+    api.getStatus
+      .mockImplementationOnce(async () => {
+        await previousRead
+        return { llm: { configured: false, model: '' } }
+      })
+      .mockResolvedValueOnce({ llm: { configured: true, model: 'current-model' } })
+
+    await act(async () => {
+      hook.result.current.updateGovernance({ enabled: true })
+    })
+    await act(async () => {
+      hook.result.current.updateGovernance({ enabled: false })
+    })
+    expect(api.getStatus).toHaveBeenCalledTimes(3)
+    expect(hook.result.current.status?.llm.model).toBe('current-model')
+
+    await act(async () => {
+      finishPreviousRead()
+    })
+    expect(hook.result.current.status?.llm.model).toBe('current-model')
+  })
+
   it('hydrates and saves a custom OpenAI-compatible embedding model through central settings', async () => {
     stored.embedding = {
       provider: 'openai_compatible',

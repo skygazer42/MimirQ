@@ -57,7 +57,7 @@ async def test_subprocess_is_terminated_when_cancelled_during_poll_sleep(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    from app.parsing import subprocess_runner
+    from app.rag.ingestion.parsing import subprocess_runner
 
     class _RunningProcess:
         pid = 123

@@ -42,8 +42,8 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from app.rag.core.hashing import stable_hash  # noqa: E402
-from app.rag.evaluation.evidence_retrieve_gate import (  # noqa: E402
+from app.infrastructure.hashing import stable_hash  # noqa: E402
+from app.rag.evaluation.regression.evidence_retrieve_gate import (  # noqa: E402
     build_retrieval_gate_summary,
     compute_retrieval_item_meta,
 )
@@ -69,6 +69,8 @@ def _normalize_channels(channels: list[str]) -> list[str]:
         raise ValueError("channels must be non-empty")
     if len(set(normalized)) != len(normalized):
         raise ValueError("channels must be unique")
+    if any(channel not in {"vector", "bm25", "lexical"} for channel in normalized):
+        raise ValueError("channels must be vector, bm25, or lexical")
     return normalized
 
 
@@ -144,7 +146,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--step", type=float, default=0.25, help="Grid step size on simplex (default: %(default)s)")
     parser.add_argument(
         "--channels",
-        default="vector,bm25,lexical,sparse",
+        default="vector,bm25,lexical",
         help="Comma-separated channels to tune (default: %(default)s)",
     )
     parser.add_argument(

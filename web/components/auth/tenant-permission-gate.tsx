@@ -22,7 +22,6 @@ export function TenantPermissionGate({ permission, pageName, children }: Readonl
   const [hasHydrated, setHasHydrated] = useState(false)
   const { isDevMode } = useAuth()
   const access = useTenantAccess()
-  const allowed = hasHydrated && (isDevMode || tenantAccessAllows(access.data, permission))
   async function recheckAccess() {
     toast.dismiss('tenant-access-recheck')
     const result = await access.refetch()
@@ -47,8 +46,8 @@ export function TenantPermissionGate({ permission, pageName, children }: Readonl
     )
   }
 
-  if (!allowed) {
-    const isUnknown = access.isError || !access.data
+  if (!isDevMode && !tenantAccessAllows(access.data, permission)) {
+    const isUnknown = access.isError || access.data === undefined
     return (
       <AppFrame>
         <PageStatus
@@ -84,7 +83,7 @@ export function TenantPermissionGate({ permission, pageName, children }: Readonl
                 <dt>需要权限</dt>
                 <dd className="break-all font-mono text-foreground">{permission}</dd>
                 <dt>最近读取的角色</dt>
-                <dd className="break-all text-foreground">{access.data?.role || '未读取'}</dd>
+                <dd className="break-all text-foreground">{access.data?.role ?? '未读取'}</dd>
               </dl>
             </details>
           }

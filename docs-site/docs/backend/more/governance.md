@@ -107,11 +107,11 @@ Governance Profile 仅存储配置数据，不包含可执行代码，确保策�
 
 | 文件 | 职责 |
 |------|------|
-| `app/models/governance_profile.py` | Governance Profile 模型 |
+| `app/models/pipelines/profiles.py` | Governance Profile 模型 |
 | `app/models/audit_log.py` | 审计日志模型 |
 | `app/api/v1/governance.py` | 治理 API 路由 |
 | `app/api/v1/audit.py` | 审计 API 路由 |
-| `app/services/governance_profiles.py` | 治理服务层 |
+| `app/services/pipelines/profiles.py` | 治理服务层 |
 
 ---
 

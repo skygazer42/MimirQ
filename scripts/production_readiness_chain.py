@@ -334,7 +334,9 @@ def probe_llm_provider(api: Api, evidence: Evidence, *, timeout_sec: float = 15.
     try:
         data = response.json()
     except Exception:
-        data = {"success": False, "message": response.text[:400]}
+        data = {"success": False, "message": response.text}
+    if not isinstance(data, dict):
+        fail(f"LLM provider probe returned {type(data).__name__}, expected an object")
 
     success = response.status_code == 200 and bool(data.get("success"))
     evidence.provider_health = {
@@ -345,7 +347,7 @@ def probe_llm_provider(api: Api, evidence: Evidence, *, timeout_sec: float = 15.
         "model": model,
         "api_base": api_base,
         "api_key_source": api_key_source,
-        "message": str(data.get("message") or "")[:400],
+        "message": str(data.get("message") or "").replace(api_key, "[redacted]")[:400],
     }
     evidence.check("llm_provider_health_recorded", True, provider_health=evidence.provider_health)
 
@@ -461,6 +463,7 @@ def upload_documents(
             "elapsed_ms": round(elapsed_ms, 2),
             "metadata": payload.get("doc_metadata") or payload.get("metadata") or {},
         }
+        evidence.uploads.append(upload_row)
         if per_upload_timeout_sec > 0:
             # Keep the readiness chain deterministic on local/dev stacks where
             # background parsing + KG extraction can otherwise exhaust DB pool
@@ -468,7 +471,6 @@ def upload_documents(
             terminal = wait_for_document_terminal(api, doc_id, timeout_sec=per_upload_timeout_sec)
             upload_row["terminal_status"] = terminal.get("status")
             upload_row["terminal_wait_ms"] = terminal.get("_detail_elapsed_ms")
-        evidence.uploads.append(upload_row)
     evidence.check("uploaded_at_least_10_documents", len(doc_ids) >= 10, count=len(doc_ids))
     return doc_ids
 
@@ -557,9 +559,10 @@ def run_chunk_previews(api: Api, dataset_id: str, corpus_files: list[Path], evid
                 )
             response_status = int(response.status_code)
             response_text = response.text[:800]
-            payload = response.json() if response.status_code == 200 else {}
-            chunks = payload.get("chunks") if isinstance(payload, dict) else None
-            count = len(chunks or [])
+            parsed = response.json() if response_status == 200 else None
+            payload = parsed if isinstance(parsed, dict) else {}
+            chunks = payload.get("chunks")
+            count = len(chunks) if isinstance(chunks, list) else 0
             attempts.append(
                 {
                     "attempt": attempt,

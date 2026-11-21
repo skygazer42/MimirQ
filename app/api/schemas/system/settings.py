@@ -4,9 +4,10 @@ from typing import Any
 
 from pydantic import BaseModel, Field, field_validator
 
-from app.core.config import settings
-from app.core.model_execution import reject_retired_provider
-from app.services.navigation_visibility import normalize_navigation_modules
+from app.infrastructure.config import settings
+from app.infrastructure.model_policy import reject_retired_provider
+from app.rag.ingestion.chunking.capabilities import reject_retired_chunk_strategy
+from app.services.identity.navigation import normalize_navigation_modules
 
 _MINERU_BACKENDS = {"pipeline", "vlm-http-client"}
 SYSTEM_DIFY_ACCOUNT_ID = "system:dify"
@@ -401,6 +402,7 @@ class UpdateSettingsRequest(BaseModel):
         if value is not None:
             reject_retired_provider(value.reranker_provider, capability="reranker")
             reject_retired_provider(value.default_parser_backend, capability="parser")
+            reject_retired_chunk_strategy(value.default_chunk_strategy)
         return value
 
 

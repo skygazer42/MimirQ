@@ -4,14 +4,8 @@ import React, { act, useMemo, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import type { GraphData } from '@/lib/graph-parser'
-import type {
-  KGEntityDetailResponse,
-  KGEventDetailResponse,
-  KGManualImportRequest,
-  KGStatsResponse,
-  RagTrace,
-} from '@/types'
+import type { GraphData } from '@/lib/graph-types'
+import type { KGManualImportRequest, RagTrace } from '@/types'
 
 const controlled = vi.hoisted(() => ({
   kg: {
@@ -26,15 +20,15 @@ const controlled = vi.hoisted(() => ({
 }))
 
 vi.mock('@/lib/api', () => ({ kgApi: controlled.kg, metaApi: controlled.meta }))
+vi.mock('@/lib/api/meta', () => ({ metaApi: controlled.meta }))
 vi.mock('@/lib/api/graph', () => ({ kgApi: controlled.kg }))
 vi.mock('sonner', () => ({ toast: controlled.toast }))
 vi.mock('@/lib/client-logging', () => ({ reportClientError: controlled.reportClientError }))
 
-import type { GraphNodeLike } from './graph-page-utils'
+import type { GraphTraceReplay } from './graph-page-utils'
 import { useGraphDataLoading } from './use-graph-data-loading'
 
 const liveGraph: GraphData = { nodes: [{ id: 'live-node', label: 'Live graph' }], links: [] }
-const liveStats: KGStatsResponse = { events: 2, entities: 3, links: 4, entity_types: [] }
 const importStats = { entities: 1, relations: 1, events: 1, chunks: 1, aliases: 0, warnings: 0 }
 const noop = () => {}
 
@@ -45,15 +39,16 @@ type SurfaceState = {
   viewMode: '2d' | '3d'
   isLoading: boolean
   traceId: string | null
-  stats: KGStatsResponse | null
 }
 
 function deferred<T>() {
   let resolve!: (value: T) => void
-  const promise = new Promise<T>((fulfill) => {
+  let reject!: (reason: unknown) => void
+  const promise = new Promise<T>((fulfill, fail) => {
     resolve = fulfill
+    reject = fail
   })
-  return { promise, resolve }
+  return { promise, resolve, reject }
 }
 
 function traceText(requestId: string): string {
@@ -88,17 +83,14 @@ function LoadingSurface() {
   const [dataSource, setDataSource] = useState<'live' | 'file'>('live')
   const [viewMode, setViewMode] = useState<'2d' | '3d'>('3d')
   const [isLoading, setIsLoading] = useState(false)
-  const [traceReplay, setTraceReplay] = useState<RagTrace | null>(null)
-  const [kgStats, setKgStats] = useState<KGStatsResponse | null>(null)
-  const [, setKgNodeDetail] = useState<KGEntityDetailResponse | KGEventDetailResponse | null>(null)
-  const [, setIsDetailOpen] = useState(false)
-  const [, setSelectedNode] = useState<GraphNodeLike | null>(null)
+  const [traceReplay, setTraceReplay] = useState<GraphTraceReplay | null>(null)
   const traceFileInputRef = useRef<HTMLInputElement>(null)
   const manualKgFileInputRef = useRef<HTMLInputElement>(null)
   const loading = useGraphDataLoading({
     scope,
     scopedDocumentIds,
     scopedDatasetDocIdsLoading: false,
+    refetchScopedDocuments: vi.fn(),
     scopeParams,
     includeEntityLinks: true,
     includeRelationLinks: false,
@@ -108,17 +100,11 @@ function LoadingSurface() {
     setFileName,
     setDataSource,
     setTraceReplay,
-    setKgStats,
-    setKgNodeDetail,
     setIsLoading,
-    setIsDetailOpen,
-    setSelectedNode,
     setViewMode,
     traceFileInputRef,
     manualKgFileInputRef,
-    resetPathMode: noop,
-    resetConnectMode: noop,
-    resetExplainMode: noop,
+    resetGraphSurface: noop,
   })
 
   return (
@@ -142,7 +128,6 @@ function LoadingSurface() {
           viewMode,
           isLoading,
           traceId: traceReplay?.request_id ?? null,
-          stats: kgStats,
         } satisfies SurfaceState)}
       </output>
     </>
@@ -159,7 +144,6 @@ describe('graph data loading through React DOM file inputs', () => {
     ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
     controlled.meta.details.mockResolvedValue({ features: { kg_enabled: true } })
     controlled.kg.getGraph.mockResolvedValue(liveGraph)
-    controlled.kg.getStats.mockResolvedValue(liveStats)
     controlled.kg.previewManualImport.mockResolvedValue({ valid: true, issues: [], stats: importStats })
     controlled.kg.importManualGraph.mockResolvedValue({ valid: true, issues: [], stats: importStats })
     container = document.createElement('div')
@@ -176,6 +160,42 @@ describe('graph data loading through React DOM file inputs', () => {
   async function mount() {
     await act(async () => root.render(<LoadingSurface />))
   }
+
+  it('reports a current live graph failure without replacing it with an empty success', async () => {
+    controlled.kg.getGraph.mockRejectedValueOnce(new Error('Graph unavailable'))
+    await mount()
+    expect(controlled.toast.error).toHaveBeenCalledWith(expect.stringContaining('Graph unavailable'))
+    expect(surface().isLoading).toBe(false)
+  })
+
+  it('discards the old graph when another scope fails to load', async () => {
+    await mount()
+    expect(surface().nodes).toEqual(['live-node'])
+    controlled.kg.getGraph.mockRejectedValueOnce(new Error('New scope unavailable'))
+    await changeScope()
+    expect(surface().nodes).toEqual([])
+  })
+
+  it('does not report a request failure after the graph page unmounts', async () => {
+    const request = deferred<GraphData>()
+    controlled.kg.getGraph.mockReturnValueOnce(request.promise)
+    await mount()
+    act(() => root.unmount())
+    await act(async () => request.reject(new Error('Late graph failure')))
+    expect(controlled.toast.error).not.toHaveBeenCalled()
+  })
+
+  it('finishes the active load after StrictMode effect replay', async () => {
+    await act(async () =>
+      root.render(
+        <React.StrictMode>
+          <LoadingSurface />
+        </React.StrictMode>,
+      ),
+    )
+    expect(surface().nodes).toEqual(['live-node'])
+    expect(surface().isLoading).toBe(false)
+  })
 
   function surface(): SurfaceState {
     return JSON.parse(container.querySelector('output')!.textContent!) as SurfaceState
@@ -215,15 +235,18 @@ describe('graph data loading through React DOM file inputs', () => {
     expect(controlled.kg.getStats).not.toHaveBeenCalled()
   })
 
-  it('discards earlier live stats after a Trace replaces the live graph', async () => {
-    const stats = deferred<KGStatsResponse>()
-    controlled.kg.getStats.mockReturnValueOnce(stats.promise)
+  it('keeps the selected graph when an earlier import completes', async () => {
+    const imported = deferred<{ valid: boolean; issues: []; stats: typeof importStats }>()
+    controlled.kg.importManualGraph.mockReturnValueOnce(imported.promise)
     await mount()
-    expect(controlled.kg.getStats).toHaveBeenCalledOnce()
-    await selectFile('Trace file', 'trace.json', traceText('stats-owner'))
-    await act(async () => stats.resolve(liveStats))
+    await selectFile('KG file', 'earlier.json', JSON.stringify([{ name: 'Alice', type: 'person' }]))
+    expect(controlled.kg.importManualGraph).toHaveBeenCalledOnce()
+    await changeScope()
+    const selected = surface()
+    await act(async () => imported.resolve({ valid: true, issues: [], stats: importStats }))
 
-    expect(surface()).toMatchObject({ dataSource: 'file', traceId: 'stats-owner', stats: null, isLoading: false })
+    expect(surface()).toEqual(selected)
+    expect(controlled.kg.getGraph).toHaveBeenCalledTimes(2)
   })
 
   it('keeps the latest Trace when file reads complete in reverse order', async () => {
@@ -295,7 +318,9 @@ describe('graph data loading through React DOM file inputs', () => {
     )
     const expected = { name: 'people', entities: [entity], relations: [relation] }
 
-    expect(controlled.kg.previewManualImport).toHaveBeenCalledExactlyOnceWith(expected)
+    expect(controlled.kg.previewManualImport).toHaveBeenCalledExactlyOnceWith(expected, {
+      signal: expect.any(AbortSignal),
+    })
     expect(controlled.kg.importManualGraph).toHaveBeenCalledExactlyOnceWith(expected)
     expect(controlled.kg.getGraph).toHaveBeenCalledTimes(2)
     expect(input.value).toBe('')
@@ -319,7 +344,9 @@ describe('graph data loading through React DOM file inputs', () => {
     }
     await selectFile('KG file', 'request.json', JSON.stringify(payload))
 
-    expect(controlled.kg.previewManualImport).toHaveBeenCalledExactlyOnceWith(payload)
+    expect(controlled.kg.previewManualImport).toHaveBeenCalledExactlyOnceWith(payload, {
+      signal: expect.any(AbortSignal),
+    })
     expect(controlled.kg.importManualGraph).toHaveBeenCalledExactlyOnceWith(payload)
     expect(controlled.toast.error).not.toHaveBeenCalled()
   })
@@ -328,11 +355,10 @@ describe('graph data loading through React DOM file inputs', () => {
     await mount()
     const entity = { name: 'Alice', type: 'person' }
     await selectFile('KG file', 'array.jsonl', JSON.stringify([entity]))
-    expect(controlled.kg.previewManualImport).toHaveBeenCalledExactlyOnceWith({
-      name: 'array',
-      entities: [entity],
-      relations: [],
-    })
+    expect(controlled.kg.previewManualImport).toHaveBeenCalledExactlyOnceWith(
+      { name: 'array', entities: [entity], relations: [] },
+      { signal: expect.any(AbortSignal) },
+    )
   })
 
   it('does not commit when the backend rejects the preview', async () => {
@@ -347,9 +373,13 @@ describe('graph data loading through React DOM file inputs', () => {
     expect(surface().isLoading).toBe(false)
   })
 
-  it('rejects malformed JSONL before either backend import action', async () => {
+  it.each([
+    ['broken.jsonl', '{"name":"Alice","type":"person"}\n{bad JSON}'],
+    ['unknown.jsonl', '{"name":"Alice","type":"person"}\n{"kind":"unrecognized"}'],
+    ['bad-bundle.json', '{"entities":[{"name":"Alice","type":"person"}],"relations":{}}'],
+  ])('rejects a malformed import %s before either backend action', async (fileName, text) => {
     await mount()
-    await selectFile('KG file', 'broken.jsonl', '{"name":"Alice","type":"person"}\n{bad JSON}')
+    await selectFile('KG file', fileName, text)
     expect(controlled.kg.previewManualImport).not.toHaveBeenCalled()
     expect(controlled.kg.importManualGraph).not.toHaveBeenCalled()
     expect(controlled.toast.error).toHaveBeenCalledOnce()
@@ -361,7 +391,9 @@ describe('graph data loading through React DOM file inputs', () => {
     const entity = { kind: 'entity', key: 'alice', name: 'Alice', type: 'person' }
     await selectFile('KG file', 'single-entity.jsonl', JSON.stringify(entity) + '\n')
     const expected = { name: 'single-entity', entities: [entity], relations: [] }
-    expect(controlled.kg.previewManualImport).toHaveBeenCalledExactlyOnceWith(expected)
+    expect(controlled.kg.previewManualImport).toHaveBeenCalledExactlyOnceWith(expected, {
+      signal: expect.any(AbortSignal),
+    })
     expect(controlled.kg.importManualGraph).toHaveBeenCalledExactlyOnceWith(expected)
   })
 
@@ -370,7 +402,9 @@ describe('graph data loading through React DOM file inputs', () => {
     const relation = { kind: 'relation', subject: 'alice', predicate: 'knows', object: 'bob' }
     await selectFile('KG file', 'single-relation.JSONL', JSON.stringify(relation) + '\n')
     const expected = { name: 'single-relation', entities: [], relations: [relation] }
-    expect(controlled.kg.previewManualImport).toHaveBeenCalledExactlyOnceWith(expected)
+    expect(controlled.kg.previewManualImport).toHaveBeenCalledExactlyOnceWith(expected, {
+      signal: expect.any(AbortSignal),
+    })
     expect(controlled.kg.importManualGraph).toHaveBeenCalledExactlyOnceWith(expected)
   })
 
@@ -390,7 +424,9 @@ describe('graph data loading through React DOM file inputs', () => {
       relations: [],
     }
     await selectFile('KG file', 'bundle.jsonl', JSON.stringify(payload))
-    expect(controlled.kg.previewManualImport).toHaveBeenCalledExactlyOnceWith(payload)
+    expect(controlled.kg.previewManualImport).toHaveBeenCalledExactlyOnceWith(payload, {
+      signal: expect.any(AbortSignal),
+    })
     expect(controlled.kg.importManualGraph).toHaveBeenCalledExactlyOnceWith(payload)
   })
 })

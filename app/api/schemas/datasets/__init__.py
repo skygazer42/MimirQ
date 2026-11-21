@@ -25,7 +25,7 @@ from app.api.schemas.datasets.categories import (
     DatasetCategoryTreeResponse,
     DatasetCategoryUpdate,
 )
-from app.api.schemas.datasets.models import (
+from app.api.schemas.datasets.dataset import (
     DatasetChunkTargetsV2,
     DatasetCloneRequest,
     DatasetConfigBundle,

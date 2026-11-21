@@ -104,7 +104,7 @@ See [Observability Configuration](./observability) for details.
 | --- | --- |
 | `docker/docker-compose*.yml` | Docker Compose orchestration |
 | `deploy/helm/mimirq/` | Helm Chart templates |
-| `.env.example` / `app/core/config.py` | Environment template and application settings |
+| `.env.example` / `app/infrastructure/config.py` | Environment template and application settings |
 | `alembic.ini` | Database migration config |
 | `.env` / `web/.env.local` | Local backend and frontend environment variables |
 

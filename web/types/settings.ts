@@ -33,27 +33,9 @@ type BackendTestLLMRequest = OpenApiSchema<'TestLLMRequest'>
 export type TestLLMRequest = Pick<BackendTestLLMRequest, 'api_key' | 'model'> &
   Partial<Omit<BackendTestLLMRequest, 'api_key' | 'model'>>
 
-type SettingsActionResponse = {
-  success: boolean
-  message: string
-}
+export type SettingsUpdateResponse = OpenApiSchema<'UpdateSettingsResponse'>
+export type TestLLMResponse = OpenApiSchema<'TestLLMResponse'>
 
-export type SettingsUpdateResponse = SettingsActionResponse & {
-  updated_keys: string[]
-}
+export type ParserBackendStatus = OpenApiSchema<'SettingsParserStatus'>
 
-export type TestLLMResponse = SettingsActionResponse
-
-export type ParserBackendStatus = {
-  enabled: boolean
-  available: boolean
-  message: string
-}
-
-export type SystemStatus = {
-  database: { connected: boolean; message: string }
-  milvus: { connected: boolean; message: string }
-  llm: { configured: boolean; model: string }
-  embedding: { configured: boolean; model: string }
-  parsers?: Record<string, ParserBackendStatus>
-}
+export type SystemStatus = OpenApiSchema<'SystemStatusResponse'>

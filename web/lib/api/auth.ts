@@ -6,15 +6,15 @@ import type {
   RegisterRequest,
   UserProfile,
 } from '@/types/backend'
-import type { paths } from '@/types/openapi'
+import type { OpenApiQueryParams } from '@/types/openapi-helpers'
 
-import { apiClient, openapiRequest } from '@/lib/api/core'
+import { apiClient, openapiRequest, type ApiRequestOptions } from '@/lib/api/core'
 
-export type RegisterPayload = RegisterRequest & {
+type RegisterPayload = RegisterRequest & {
   bootstrapToken?: string
 }
 
-type SamlMetadataParams = NonNullable<paths['/api/v1/auth/saml/metadata']['get']['parameters']['query']>
+type SamlMetadataParams = NonNullable<OpenApiQueryParams<'/api/v1/auth/saml/metadata', 'get'>>
 type SamlExchangePayload = Pick<
   OpenApiSchema<'SamlExchangeRequest'>,
   'provider_id' | 'saml_response' | 'relay_state' | 'acs_url'
@@ -32,29 +32,43 @@ export const authApi = {
 
   async register(payload: RegisterPayload): Promise<AuthResponse> {
     const { bootstrapToken, ...body } = payload
+    const token = bootstrapToken?.trim()
     return openapiRequest({
       path: '/api/v1/auth/register',
       method: 'post',
       body,
-      headers: bootstrapToken?.trim() ? { 'X-Bootstrap-Token': bootstrapToken.trim() } : undefined,
+      headers: token === undefined || token === '' ? undefined : { 'X-Bootstrap-Token': token },
     })
   },
 
   async login(payload: LoginRequest): Promise<AuthResponse> {
-    return openapiRequest({ path: '/api/v1/auth/login', method: 'post', body: payload })
+    const { data } = await apiClient.post<AuthResponse>('/auth/login', payload, {
+      headers: { Authorization: false },
+    })
+    return data
   },
 
-  async me(): Promise<UserProfile> {
-    return openapiRequest({ path: '/api/v1/auth/me', method: 'get' })
+  async me(options?: ApiRequestOptions): Promise<UserProfile> {
+    return openapiRequest({ path: '/api/v1/auth/me', method: 'get', signal: options?.signal })
   },
 
-  async samlMetadata(params?: SamlMetadataParams): Promise<string> {
-    const { data } = await apiClient.get('/auth/saml/metadata', { params, responseType: 'text' })
-    return String(data ?? '')
+  async samlMetadata(params?: SamlMetadataParams, options?: ApiRequestOptions): Promise<string> {
+    const { data, headers } = await apiClient.get<string>('/auth/saml/metadata', {
+      params,
+      responseType: 'text',
+      signal: options?.signal,
+    })
+    const contentType = headers['content-type']
+    if (typeof contentType !== 'string' || !/^application\/(?:samlmetadata\+xml|xml)(?:\s*;|$)/i.test(contentType)) {
+      throw new Error('SAML 元数据响应格式不是 XML')
+    }
+    return data
   },
 
   async samlExchange(body: SamlExchangePayload): Promise<SamlExchangeResponse> {
-    const { data } = await apiClient.post('/auth/saml/exchange', body)
+    const { data } = await apiClient.post<SamlExchangeResponse>('/auth/saml/exchange', body, {
+      headers: { Authorization: false },
+    })
     return data
   },
 }

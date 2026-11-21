@@ -5,31 +5,44 @@ import httpx
 import pytest
 from starlette.requests import Request
 
-from app.api.dependencies import auth
-from app.api.schemas.auth import AuthHeaders
-from app.api.v1 import evaluations, pipeline
-from app.core.jwt_verify import _validate_response_url_chain
-from app.models.evaluation import RagasRegressionCase
+from app.api import dependencies as auth
+from app.api.v1.evaluation import routes as evaluations
+from app.api.v1.pipelines import routes as pipeline
+from app.infrastructure.security.jwt_verify import _validate_response_url_chain
+from app.models.evaluation.results import RagasRegressionCase
 
 
 @pytest.mark.asyncio
 async def test_account_resolution_preserves_genuinely_absent_tenant_header(monkeypatch: pytest.MonkeyPatch) -> None:
     captured = {}
 
-    async def resolve(**kwargs):
-        captured.update(kwargs)
-        return "reader"
+    async def decode(token):
+        captured["token"] = token
+        return {"sub": "reader"}
 
-    monkeypatch.setattr(auth, "get_current_account_id_from_headers", resolve)
-    request = Request({"type": "http", "headers": []})
-    assert await auth.get_current_account_id(request, AuthHeaders()) == "reader"
-    assert captured["x_tenant_id"] is None
+    monkeypatch.setattr(auth.settings, "AUTH_MODE", "jwt")
+    monkeypatch.setattr(auth, "decode_access_token", decode)
+    request = Request({"type": "http", "headers": [(b"authorization", b"Bearer verified-token")]})
+    assert await auth.get_current_account_id(request) == "reader"
+    assert captured == {"token": "verified-token"}
+    assert request.headers.get("X-Tenant-ID") is None
+    assert "tenant_id" not in request.state.jwt_payload
+    assert not hasattr(request.state, "tenant_id")
 
 
 def test_synthetic_case_projects_the_actual_generated_kind() -> None:
     case = RagasRegressionCase(id=uuid4(), extra={})
-    result = evaluations._synthetic_case_extra(case, SimpleNamespace(kind=False, rationale=None))
-    assert result["hardcase_kind"] is False
+    result = evaluations._build_synthetic_regression_case(
+        base_case=case,
+        hardcase=SimpleNamespace(kind=False, rationale=None),
+        reference_sources=[],
+        tenant_id=uuid4(),
+        dataset_id=uuid4(),
+        account_id="reader",
+        question="Generated question",
+        tag="generated",
+    )
+    assert result.extra["hardcase_kind"] is False
 
 
 def test_missing_required_generated_question_is_not_a_successful_empty_batch() -> None:

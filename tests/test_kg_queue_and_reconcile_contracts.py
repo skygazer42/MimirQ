@@ -20,8 +20,12 @@ class _NoopDB:
         self.rollbacks += 1
 
 
+async def _queued_job_status(_job_id: str) -> str:
+    return "queued"
+
+
 @pytest.mark.asyncio
-async def test_enqueue_kg_extraction_returns_none_for_duplicate_job(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_enqueue_kg_extraction_reuses_live_duplicate_job(monkeypatch: pytest.MonkeyPatch) -> None:
     from app.tasks import queue
 
     class _Queue:
@@ -32,6 +36,7 @@ async def test_enqueue_kg_extraction_returns_none_for_duplicate_job(monkeypatch:
         return _Queue()
 
     monkeypatch.setattr(queue, "get_queue", _get_queue, raising=True)
+    monkeypatch.setattr(queue, "get_task_job_status", _queued_job_status, raising=True)
 
     result = await queue.enqueue_kg_extraction(
         tenant_id=uuid.uuid4(),
@@ -45,7 +50,7 @@ async def test_enqueue_kg_extraction_returns_none_for_duplicate_job(monkeypatch:
         extract_skills=True,
     )
 
-    assert result is None
+    assert result == "kg:job"
 
 
 @pytest.mark.asyncio
@@ -93,7 +98,7 @@ async def test_enqueue_kg_extraction_forwards_frozen_effective_options(monkeypat
 
 
 @pytest.mark.asyncio
-async def test_enqueue_rebuild_indexes_returns_none_for_duplicate_job(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_enqueue_rebuild_indexes_reuses_live_duplicate_job(monkeypatch: pytest.MonkeyPatch) -> None:
     from app.tasks import queue
 
     class _Queue:
@@ -104,6 +109,7 @@ async def test_enqueue_rebuild_indexes_returns_none_for_duplicate_job(monkeypatc
         return _Queue()
 
     monkeypatch.setattr(queue, "get_queue", _get_queue, raising=True)
+    monkeypatch.setattr(queue, "get_task_job_status", _queued_job_status, raising=True)
 
     result = await queue.enqueue_rebuild_indexes(
         tenant_id=uuid.uuid4(),
@@ -112,11 +118,11 @@ async def test_enqueue_rebuild_indexes_returns_none_for_duplicate_job(monkeypatc
         job_id="rebuild:job",
     )
 
-    assert result is None
+    assert result == "rebuild:job"
 
 
 @pytest.mark.asyncio
-async def test_enqueue_index_audit_reconcile_job_returns_none_for_duplicate_job(
+async def test_enqueue_index_audit_reconcile_job_reuses_live_duplicate_job(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from app.tasks import queue
@@ -129,6 +135,7 @@ async def test_enqueue_index_audit_reconcile_job_returns_none_for_duplicate_job(
         return _Queue()
 
     monkeypatch.setattr(queue, "get_queue", _get_queue, raising=True)
+    monkeypatch.setattr(queue, "get_task_job_status", _queued_job_status, raising=True)
 
     result = await queue.enqueue_index_audit_reconcile_job(
         tenant_id=uuid.uuid4(),
@@ -140,11 +147,11 @@ async def test_enqueue_index_audit_reconcile_job_returns_none_for_duplicate_job(
         job_id="index-audit:job",
     )
 
-    assert result is None
+    assert result == "index-audit:job"
 
 
 def test_kg_pipeline_scope_rejects_missing_selected_version() -> None:
-    from app.rag.kg.api import routes
+    from app.api.v1.knowledge_graph.routes_support import extraction as routes
 
     document_id = uuid.uuid4()
     chunks = [SimpleNamespace(doc_metadata={"pipeline_hash": "old-pipeline"})]
@@ -162,7 +169,7 @@ def test_kg_pipeline_scope_rejects_missing_selected_version() -> None:
 
 @pytest.mark.asyncio
 async def test_kg_enqueue_response_scopes_job_id_by_extraction_options(monkeypatch: pytest.MonkeyPatch) -> None:
-    from app.rag.kg.api import routes
+    from app.api.v1.knowledge_graph.routes_support import extraction as routes
     from app.rag.kg.extraction_job_options import kg_extraction_job_options_fingerprint
 
     tenant_id = uuid.uuid4()
@@ -232,7 +239,7 @@ async def test_kg_enqueue_response_scopes_job_id_by_extraction_options(monkeypat
 
 @pytest.mark.asyncio
 async def test_kg_enqueue_response_rejects_duplicate_job_handoff(monkeypatch: pytest.MonkeyPatch) -> None:
-    from app.rag.kg.api import routes
+    from app.api.v1.knowledge_graph.routes_support import extraction as routes
 
     tenant_id = uuid.uuid4()
     document_id = uuid.uuid4()
@@ -282,7 +289,7 @@ async def test_kg_enqueue_response_rejects_duplicate_job_handoff(monkeypatch: py
 async def test_kg_enqueue_response_preserves_unversioned_chunk_scope(
     monkeypatch: pytest.MonkeyPatch, legacy_hash
 ) -> None:
-    from app.rag.kg.api import routes
+    from app.api.v1.knowledge_graph.routes_support import extraction as routes
 
     tenant_id = uuid.uuid4()
     document_id = uuid.uuid4()
@@ -330,7 +337,7 @@ async def test_kg_enqueue_response_preserves_unversioned_chunk_scope(
 async def test_record_chunk_index_drift_only_enqueues_document_scoped_bm25_reconcile(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from app.api.v1 import document_chunks_write
+    from app.services.documents import chunks as document_chunks_write
 
     tenant_id = uuid.uuid4()
     dataset_id = uuid.uuid4()
@@ -351,7 +358,7 @@ async def test_record_chunk_index_drift_only_enqueues_document_scoped_bm25_recon
 
     monkeypatch.setattr(document_chunks_write, "_enqueue_index_drift_reconcile", _enqueue, raising=True)
     monkeypatch.setattr(
-        "app.services.index_audit_service.record_index_drift_item",
+        "app.services.indexing.audit.record_index_drift_item",
         _record_index_drift_item,
         raising=True,
     )

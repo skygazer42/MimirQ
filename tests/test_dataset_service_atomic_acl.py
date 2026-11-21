@@ -75,8 +75,8 @@ class _AtomicSession:
 def test_create_dataset_rolls_back_when_partial_member_acl_update_fails(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from app.models.dataset import DatasetPermissionEnum
-    from app.services import dataset_service
+    from app.api.schemas.datasets.dataset import DatasetPermissionEnum
+    from app.services.datasets import management as dataset_service
 
     tenant_id = uuid.uuid4()
     db = _AtomicSession(first_results=[None])
@@ -129,8 +129,8 @@ def test_create_dataset_rolls_back_when_partial_member_acl_update_fails(
 def test_update_dataset_rolls_back_dataset_fields_when_group_acl_update_fails(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from app.models.dataset import DatasetPermissionEnum
-    from app.services import dataset_service
+    from app.api.schemas.datasets.dataset import DatasetPermissionEnum
+    from app.services.datasets import management as dataset_service
 
     tenant_id = uuid.uuid4()
     dataset = SimpleNamespace(

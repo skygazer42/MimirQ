@@ -188,6 +188,19 @@
 .tab .status {
   margin-left: 6px;
 }
+.headerActions button:focus-visible,
+.primary:focus-visible,
+.tab:focus-visible,
+.scopeField > button:focus-visible,
+.queryActions button:focus-visible,
+.sectionHeading > button:focus-visible,
+.probeShortcuts button:focus-visible,
+.probeForm input:focus-visible,
+.probeForm > button:focus-visible,
+.dialogFooter button:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 2px;
+}
 .tab[data-state='active'] {
   background: transparent;
   border-color: hsl(var(--foreground));
@@ -634,7 +647,7 @@
   cursor: pointer;
   transition: color 140ms ease;
 }
-.chainNode h3,
+.chainNodeTitle,
 .channelGroup h4 {
   display: flex;
   align-items: center;
@@ -645,10 +658,7 @@
   font-weight: 450;
   color: hsl(var(--muted-foreground));
 }
-.chainNode h3 > svg {
-  display: none;
-}
-.chainNode p {
+.chainNodeValue {
   font-size: 13px;
   line-height: 23px;
   margin: 0;
@@ -1150,21 +1160,6 @@
 }
 .footer time {
   font-variant-numeric: tabular-nums;
-}
-.recommendations {
-  padding-top: 20px;
-}
-.recommendations h2 {
-  font-size: 14px;
-  font-weight: 550;
-  line-height: 24px;
-  margin: 0 0 9px;
-}
-.recommendations p {
-  font-size: 13px;
-  line-height: 24px;
-  color: hsl(var(--muted-foreground));
-  margin: 5px 0;
 }
 .rawDialog,
 .detailDialog {

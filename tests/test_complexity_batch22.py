@@ -1,14 +1,17 @@
 import uuid
 from typing import Any
 
-from app.connectors.db import catalog_runner
-from app.services import report_html
+import pytest
+from sqlalchemy.exc import SQLAlchemyError
+
+from app.connectors import catalog
+from app.services.reports import html as report_html
 
 
 class _StoreRecorder:
     def __init__(self) -> None:
         self.tables: list[dict[str, Any]] = []
-        self.replaced_columns: list[list[catalog_runner.CatalogColumnInput]] = []
+        self.replaced_columns: list[list[catalog.CatalogColumnInput]] = []
         self.snapshots: list[dict[str, Any]] = []
 
     def upsert_table(
@@ -17,7 +20,7 @@ class _StoreRecorder:
         tenant_id: uuid.UUID,
         dataset_id: uuid.UUID,
         connector_config_id: uuid.UUID | None,
-        table: catalog_runner.CatalogTableInput,
+        table: catalog.CatalogTableInput,
         seen_at: Any,
     ) -> uuid.UUID:
         self.tables.append(
@@ -31,7 +34,7 @@ class _StoreRecorder:
         )
         return uuid.uuid4()
 
-    def replace_columns(self, *, table_id: uuid.UUID, columns: list[catalog_runner.CatalogColumnInput]) -> int:
+    def replace_columns(self, *, table_id: uuid.UUID, columns: list[catalog.CatalogColumnInput]) -> int:
         _ = table_id
         self.replaced_columns.append(list(columns))
         return len(columns)
@@ -74,7 +77,7 @@ class _FakeMysqlConnection:
         sql = str(stmt)
         self.sql.append(sql)
         if "`bad`" in sql:
-            raise RuntimeError("boom")
+            raise SQLAlchemyError("boom")
         if "`fallback`" in sql:
             return _FakeResult([])
         if "`full`" in sql:
@@ -230,103 +233,88 @@ def test_render_precheck_html_redacts_root_and_directory_structure() -> None:
 
 def test_run_catalog_sync_sqlserver_normalizes_schema_columns_and_profiles(monkeypatch: Any) -> None:
     store = _StoreRecorder()
-    tenant_id = uuid.uuid4()
-    dataset_id = uuid.uuid4()
-    connector_config_id = uuid.uuid4()
-
-    monkeypatch.setattr(
-        catalog_runner,
-        "_introspect_sqlserver",
-        lambda **_kwargs: [
-            {
-                "db_name": "analytics",
-                "schema_name": "dbo",
-                "table_name": "orders",
-                "table_type": "VIEW",
-                "comment": "main",
-                "row_count_estimate": "17",
-                "columns": [
-                    {"ordinal": 1, "name": "order_id", "data_type": "bigint", "nullable": False, "comment": "pk"},
-                    {"ordinal": "oops", "name": "created_at", "data_type": "timestamp"},
-                ],
-            },
-            {"db_name": "analytics", "schema_name": "dbo", "table_name": "ignored", "columns": []},
-        ],
+    columns = catalog._catalog_columns(
+        [
+            {"ordinal": 1, "name": "order_id", "data_type": "bigint", "nullable": False, "comment": "pk"},
+            {"ordinal": 2, "name": "created_at", "data_type": "timestamp", "nullable": False, "comment": None},
+        ]
     )
-
-    result = catalog_runner.run_catalog_sync(
-        tenant_id=tenant_id,
-        dataset_id=dataset_id,
+    table = catalog._catalog_table(
+        {
+            "db_name": "analytics",
+            "schema_name": "dbo",
+            "table_name": "orders",
+            "table_type": "view",
+            "comment": "main",
+            "row_count_estimate": 17,
+        },
+        engine="sqlserver",
+        columns=columns,
+    )
+    monkeypatch.setattr(catalog, "_read_sqlserver_catalog", lambda *_args, **_kwargs: [table])
+    result = catalog.run_catalog_sync(
+        tenant_id=uuid.uuid4(),
+        dataset_id=uuid.uuid4(),
         connector_id="sqlserver_catalog",
-        connector_config_id=connector_config_id,
+        connector_config_id=uuid.uuid4(),
         config={"database": "analytics", "max_tables": 1, "profile_enabled": True, "password": "secret"},
         store=store,
     )
-
     assert result["engine"] == "sqlserver"
-    assert result["tables"] == 1
-    assert result["tables_upserted"] == 1
+    assert result["tables"] == result["tables_upserted"] == result["profiles_written"] == 1
     assert result["columns_upserted"] == 2
-    assert result["profiles_written"] == 1
     assert len(result["entitlement_hash"]) == 64
-
     persisted = store.tables[0]["table"]
-    assert persisted.schema_name == "dbo"
-    assert persisted.table_name == "orders"
+    assert persisted.schema_name == "dbo" and persisted.table_name == "orders"
     assert persisted.table_type == "view"
     assert [column.name for column in persisted.columns] == ["order_id", "created_at"]
-    assert persisted.columns[1].ordinal == 0
-
-    snapshot = store.snapshots[0]
-    assert snapshot["entitlement_hash"] == result["entitlement_hash"]
-    assert snapshot["profile"] == {"row_count_estimate": 17}
-    assert snapshot["sample_meta"]["strategy"] == "catalog_sync"
+    assert persisted.columns[1].ordinal == 2
+    assert store.snapshots[0]["entitlement_hash"] == result["entitlement_hash"]
+    assert store.snapshots[0]["profile"] == {"row_count_estimate": 17}
+    assert store.snapshots[0]["sample_meta"]["strategy"] == "catalog_sync"
+    with pytest.raises(ValueError):
+        catalog._catalog_columns([{"name": "invalid", "ordinal": "oops"}])
 
 
 def test_extract_row_snapshots_mysql_preserves_limits_fallback_skip_and_cleanup(monkeypatch: Any) -> None:
     ctx = _FakeMysqlContext()
-    tenant_id = uuid.uuid4()
-    dataset_id = uuid.uuid4()
+
+    def table(name, columns):
+        return catalog.CatalogTableInput(
+            engine="mysql",
+            db_name="analytics",
+            schema_name=None,
+            table_name=name,
+            table_type="table",
+            comment=None,
+            fingerprint=name,
+            columns=[catalog.CatalogColumnInput(ordinal=i, name=value) for i, value in enumerate(columns, 1)],
+        )
 
     monkeypatch.setattr(
-        catalog_runner,
-        "_introspect_mysql",
-        lambda **_kwargs: [
-            {"db_name": "analytics", "table_name": "bad", "columns": [{"name": "ignored"}]},
-            {
-                "db_name": "analytics",
-                "table_name": "fallback",
-                "columns": [{"name": "declared_one"}, {"name": "declared_two"}, {"name": "declared_three"}],
-            },
-            {
-                "db_name": "analytics",
-                "table_name": "full",
-                "columns": [{"name": "id"}, {"name": "name"}, {"name": "note"}],
-            },
+        catalog,
+        "_read_mysql_catalog",
+        lambda *_args, **_kwargs: [
+            table("bad", ["ignored"]),
+            table("fallback", ["declared_one", "declared_two", "declared_three"]),
+            table("full", ["id", "name", "note"]),
         ],
     )
-    monkeypatch.setattr(catalog_runner, "_connect_mysql", lambda _config: ctx)
-
-    snapshots = catalog_runner.extract_row_snapshots(
-        tenant_id=tenant_id,
-        dataset_id=dataset_id,
+    monkeypatch.setattr(catalog, "_connect_catalog", lambda **_kwargs: ctx)
+    snapshots = catalog.extract_row_snapshots(
         connector_id="mysql_catalog",
         config={"database": "analytics"},
         max_tables=2,
         max_rows_per_table=1,
         max_cols=2,
     )
-
     assert ctx.exited is True
     assert [snapshot["source_table"] for snapshot in snapshots] == ["analytics.fallback", "analytics.full"]
-
-    fallback_snapshot, full_snapshot = snapshots
-    assert fallback_snapshot["columns"] == ["declared_one", "declared_two", "__row_pk_hash"]
-    assert fallback_snapshot["rows"] == []
-    assert len(fallback_snapshot["source_sync_token"]) == 64
-
-    assert full_snapshot["columns"] == ["id", "name", "__row_pk_hash"]
-    assert len(full_snapshot["rows"]) == 1
-    assert set(full_snapshot["rows"][0]) == {"id", "name", "__row_pk_hash"}
-    assert full_snapshot["rows"][0]["id"] == 1
-    assert len(full_snapshot["rows"][0]["__row_pk_hash"]) == 64
+    fallback, full = snapshots
+    assert fallback["columns"] == ["declared_one", "declared_two", "__row_pk_hash"]
+    assert fallback["rows"] == []
+    assert len(fallback["source_sync_token"]) == 64
+    assert full["columns"] == ["id", "name", "__row_pk_hash"]
+    assert len(full["rows"]) == 1 and full["rows"][0]["id"] == 1
+    assert set(full["rows"][0]) == {"id", "name", "__row_pk_hash"}
+    assert len(full["rows"][0]["__row_pk_hash"]) == 64

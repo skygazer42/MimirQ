@@ -28,7 +28,8 @@ import {
 } from '@/components/ui/alert-dialog'
 import { pipelineApi } from '@/lib/api/pipeline'
 import { formatApiError } from '@/lib/api-errors'
-import { AUTH_SCOPE_CHANGED_EVENT } from '@/lib/auth-storage'
+import { downloadBlob } from '@/lib/download'
+import { AUTH_SCOPE_CHANGED_EVENT, getAuthSessionKey } from '@/lib/auth-storage'
 import {
   buildGovernanceProfileCreateFromExisting,
   buildIngestionPolicyExportFilename,
@@ -77,18 +78,31 @@ export function GovernanceProfilesPage() {
     return () => window.clearTimeout(timer)
   }, [query])
 
-  const list = useQuery({ queryKey: LIST_KEY, queryFn: () => pipelineApi.listGovernanceProfiles(LIST_PARAMS) })
+  const list = useQuery({
+    queryKey: LIST_KEY,
+    queryFn: ({ signal }) => pipelineApi.listGovernanceProfiles(LIST_PARAMS, { signal }),
+  })
   const searchParams = { ...LIST_PARAMS, q: search }
   const matches = useQuery({
     queryKey: queryKeys.governance.profiles(searchParams),
-    queryFn: () => pipelineApi.listGovernanceProfiles(searchParams),
+    queryFn: ({ signal }) => pipelineApi.listGovernanceProfiles(searchParams, { signal }),
     enabled: Boolean(search),
   })
   const activeQuery = search ? matches : list
-  const items = useMemo(
-    () => (activeQuery.data?.items || []).filter((item) => item.is_system === (source === 'builtin')),
-    [activeQuery.data?.items, source],
-  )
+  const items = useMemo(() => {
+    const matched = (activeQuery.data?.items ?? []).filter((item) => item.is_system === (source === 'builtin'))
+    if (source !== 'builtin' || search === '') return matched
+
+    const matchedRefs = new Set(matched.map(profileRef))
+    const needle = search.toLowerCase()
+    const localizedMatches = (list.data?.items ?? []).filter(
+      (item) =>
+        item.is_system &&
+        !matchedRefs.has(profileRef(item)) &&
+        profileIdentity(item).name.toLowerCase().includes(needle),
+    )
+    return [...matched, ...localizedMatches]
+  }, [activeQuery.data?.items, list.data?.items, search, source])
   const builtinCount = (list.data?.items || []).filter((item) => item.is_system).length
   const customCount = list.data ? Math.max(0, list.data.total - builtinCount) : 0
   const selected =
@@ -99,26 +113,26 @@ export function GovernanceProfilesPage() {
     const grouped = new Map<string, GovernanceProfileSummary[]>()
     for (const item of items) {
       const group = profileIdentity(item).group
-      grouped.set(group, [...(grouped.get(group) || []), item])
+      const members = grouped.get(group)
+      if (members === undefined) grouped.set(group, [item])
+      else members.push(item)
     }
     return grouped
   }, [items])
   const waiting = query.trim() !== search || activeQuery.isPending
   const refresh = () => {
-    void client.invalidateQueries({ queryKey: ['governance', 'profiles'] })
-    void client.invalidateQueries({ queryKey: ['governance', 'profile-resolved'] })
+    void client.invalidateQueries({ queryKey: queryKeys.governance.all })
   }
   const saved = (profile: GovernanceProfileOut, created = false) => {
-    client.setQueryData<GovernanceProfileListResponse>(LIST_KEY, (previous) =>
-      previous
-        ? {
-            total: previous.total + (created ? 1 : 0),
-            items: [profile, ...previous.items.filter((item) => profileRef(item) !== profileRef(profile))],
-          }
-        : { total: 1, items: [profile] },
-    )
+    const ref = profileRef(profile)
+    client.setQueryData<GovernanceProfileListResponse>(LIST_KEY, (previous) => {
+      if (previous === undefined) return previous
+      const remaining = previous.items.filter((item) => profileRef(item) !== ref)
+      const added = created && remaining.length === previous.items.length
+      return { total: previous.total + (added ? 1 : 0), items: [profile, ...remaining] }
+    })
     setSource(profile.is_system ? 'builtin' : 'custom')
-    setSelectedRef(profileRef(profile))
+    setSelectedRef(ref)
     setQuery('')
     setSearch('')
     setRevealed(true)
@@ -126,19 +140,29 @@ export function GovernanceProfilesPage() {
   }
   const copy = useMutation({
     mutationFn: (profile: GovernanceProfileSummary) => pipelineApi.getGovernanceProfile(profileRef(profile)),
-    onSuccess: (profile) => setEditor({ mode: 'create', seed: buildGovernanceProfileCreateFromExisting(profile) }),
-    onError: (error) => toast.error(formatApiError(error, '复制配置失败')),
+    onMutate: () => getAuthSessionKey(),
+    onSuccess: (profile, _target, sessionKey) => {
+      if (sessionKey === getAuthSessionKey())
+        setEditor({ mode: 'create', seed: buildGovernanceProfileCreateFromExisting(profile) })
+    },
+    onError: (error, _target, sessionKey) => {
+      if (sessionKey === getAuthSessionKey()) toast.error(formatApiError(error, '复制配置失败'))
+    },
   })
   const importing = useMutation({
     mutationFn: ({ file, overwrite: replace }: { file: File; overwrite: boolean }) =>
       pipelineApi.importGovernanceProfiles(file, replace),
-    onSuccess: (result) => {
+    onMutate: () => getAuthSessionKey(),
+    onSuccess: (result, _input, sessionKey) => {
+      if (sessionKey !== getAuthSessionKey()) return
       toast.success(`已导入：新建 ${result.created} 项，更新 ${result.updated} 项`)
       refresh()
     },
-    onError: (error) => toast.error(formatApiError(error, '导入失败')),
-    onSettled: () => {
-      if (importInput.current) importInput.current.value = ''
+    onError: (error, _input, sessionKey) => {
+      if (sessionKey === getAuthSessionKey()) toast.error(formatApiError(error, '导入失败'))
+    },
+    onSettled: (_result, _error, _input, sessionKey) => {
+      if (sessionKey === getAuthSessionKey() && importInput.current) importInput.current.value = ''
     },
   })
   const deleting = useMutation({
@@ -146,39 +170,39 @@ export function GovernanceProfilesPage() {
       if (profile.is_system) throw new Error('内置模板不能删除')
       return pipelineApi.deleteGovernanceProfile(profileRef(profile))
     },
-    onSuccess: (_, profile) => {
-      client.setQueryData<GovernanceProfileListResponse>(LIST_KEY, (previous) =>
-        previous
-          ? {
-              total: Math.max(0, previous.total - 1),
-              items: previous.items.filter((item) => profileRef(item) !== profileRef(profile)),
-            }
-          : previous,
-      )
+    onMutate: () => getAuthSessionKey(),
+    onSuccess: (_, profile, sessionKey) => {
+      if (sessionKey !== getAuthSessionKey()) return
+      const ref = profileRef(profile)
+      client.setQueryData<GovernanceProfileListResponse>(LIST_KEY, (previous) => {
+        if (previous === undefined) return previous
+        const remaining = previous.items.filter((item) => profileRef(item) !== ref)
+        const removed = previous.items.length - remaining.length
+        return { total: previous.total - removed, items: remaining }
+      })
       setDeleteTarget(null)
       toast.success('已删除配置')
       refresh()
     },
-    onError: (error) => toast.error(formatApiError(error, '删除失败，请重试')),
+    onError: (error, _target, sessionKey) => {
+      if (sessionKey === getAuthSessionKey()) toast.error(formatApiError(error, '删除失败，请重试'))
+    },
   })
 
   const exportProfile = async (profile: GovernanceProfileSummary, policy = false) => {
+    const sessionKey = getAuthSessionKey()
     try {
       const ref = profileRef(profile)
       const blob = await (policy
         ? pipelineApi.exportGovernanceProfileIngestionPolicy(ref)
         : pipelineApi.exportGovernanceProfile(ref))
+      if (sessionKey !== getAuthSessionKey()) return
       const filename = policy
         ? buildIngestionPolicyExportFilename(profile.key)
         : `${profile.key.replaceAll(/[\\/:*?"<>|]+/g, '_').slice(0, 120)}.governance-profile.json`
-      const url = URL.createObjectURL(blob)
-      const anchor = document.createElement('a')
-      anchor.href = url
-      anchor.download = filename
-      anchor.click()
-      window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+      downloadBlob(filename, blob)
     } catch (error) {
-      toast.error(formatApiError(error, '导出配置失败'))
+      if (sessionKey === getAuthSessionKey()) toast.error(formatApiError(error, '导出配置失败'))
     }
   }
   const changeSource = (next: 'builtin' | 'custom') => {
@@ -225,7 +249,7 @@ export function GovernanceProfilesPage() {
                 onCheckedChange={setOverwrite}
                 onSelect={(event) => event.preventDefault()}
               >
-                覆盖同名配置
+                覆盖相同标识的配置
               </DropdownMenuCheckboxItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem onSelect={() => importInput.current?.click()}>

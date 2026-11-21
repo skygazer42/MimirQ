@@ -1,3 +1,4 @@
+from contextlib import closing
 from io import BytesIO
 from typing import Any
 
@@ -81,9 +82,11 @@ def _draw_heatmap(draw: ImageDraw.ImageDraw, report: dict[str, Any], *, y: int) 
 
 
 def _draw_scatter(draw: ImageDraw.ImageDraw, report: dict[str, Any], *, y: int) -> None:
-    draw.text((24, y), "UMAP Scatter", fill=(17, 24, 39))
+    scatter = report.get("umap_scatter") or {}
+    method = scatter.get("projection_method") or "unknown"
+    draw.text((24, y), f"Projection Scatter ({method})", fill=(17, 24, 39))
     y += 16
-    scatter_points = list((report.get("umap_scatter") or {}).get("points") or [])
+    scatter_points = list(scatter.get("points") or [])
     chart_left = 24
     chart_top = y + 12
     chart_width = 980
@@ -96,7 +99,7 @@ def _draw_scatter(draw: ImageDraw.ImageDraw, report: dict[str, Any], *, y: int) 
         fill=(248, 250, 252),
     )
     if not scatter_points:
-        draw.text((chart_left + 18, chart_top + 18), "No UMAP scatter data", fill=(100, 116, 139))
+        draw.text((chart_left + 18, chart_top + 18), "No projection data", fill=(100, 116, 139))
         return
 
     xs = [float(point.get("x") or 0.0) for point in scatter_points]
@@ -110,9 +113,8 @@ def _draw_scatter(draw: ImageDraw.ImageDraw, report: dict[str, Any], *, y: int) 
         "query": (100, 116, 139),
         "out_of_scope_candidate": (220, 38, 38),
     }
-    for point in scatter_points[:80]:
-        x = float(point.get("x") or 0.0)
-        yy = float(point.get("y") or 0.0)
+    for index, point in enumerate(scatter_points[:80]):
+        x, yy = xs[index], ys[index]
         cx = chart_left + 28 + int(((x - min_x) / span_x) * (chart_width - 56))
         cy = chart_top + 24 + int(((max_y - yy) / span_y) * (chart_height - 48))
         color = color_map.get(point.get("group"), (15, 23, 42))
@@ -125,54 +127,54 @@ def _draw_scatter(draw: ImageDraw.ImageDraw, report: dict[str, Any], *, y: int) 
 def render_dataset_analysis_png(report: dict[str, Any]) -> bytes:
     width = 1400
     height = 1360
-    image = Image.new("RGB", (width, height), color=(255, 255, 255))
-    draw = ImageDraw.Draw(image)
+    with closing(Image.new("RGB", (width, height), color=(255, 255, 255))) as image:
+        draw = ImageDraw.Draw(image)
 
-    y = 24
-    title = str(
-        ((report.get("meta") or {}).get("dataset_name"))
-        or ((report.get("meta") or {}).get("dataset_id"))
-        or "Dataset Analysis"
-    )
-    draw.text((24, y), title, fill=(17, 24, 39))
-    y += 36
-    draw.text((24, y), f"generated_at: {report['meta']['generated_at']}", fill=(75, 85, 99))
-    y += 40
+        y = 24
+        title = str(
+            ((report.get("meta") or {}).get("dataset_name"))
+            or ((report.get("meta") or {}).get("dataset_id"))
+            or "Dataset Analysis"
+        )
+        draw.text((24, y), title, fill=(17, 24, 39))
+        y += 36
+        draw.text((24, y), f"generated_at: {report['meta']['generated_at']}", fill=(75, 85, 99))
+        y += 40
 
-    y = _draw_metric_section(draw, report, y=y)
-    for key, value in dict(report.get("metrics") or {}).items():
-        draw.text((32, y), f"{key}: {value}", fill=(31, 41, 55))
-        y += 24
+        y = _draw_metric_section(draw, report, y=y)
+        for key, value in dict(report.get("metrics") or {}).items():
+            draw.text((32, y), f"{key}: {value}", fill=(31, 41, 55))
+            y += 24
 
-    y += 12
-    draw.text((24, y), "Counts", fill=(17, 24, 39))
-    y += 28
-    for key, value in dict(report.get("counts") or {}).items():
-        draw.text((32, y), f"{key}: {value}", fill=(31, 41, 55))
-        y += 24
+        y += 12
+        draw.text((24, y), "Counts", fill=(17, 24, 39))
+        y += 28
+        for key, value in dict(report.get("counts") or {}).items():
+            draw.text((32, y), f"{key}: {value}", fill=(31, 41, 55))
+            y += 24
 
-    y += 16
-    draw.text((24, y), "Top Examples", fill=(17, 24, 39))
-    y += 28
-    for category, rows in dict(report.get("top_examples") or {}).items():
-        draw.text((32, y), str(category), fill=(17, 24, 39))
-        y += 24
-        for row in list(rows or [])[:3]:
-            query = row.get("original_query")
-            draw.text(
-                (48, y),
-                f"{row.get('interaction_id')}: {(str(query) if query is not None else '')[:110]}",
-                fill=(55, 65, 81),
-            )
-            y += 22
-        y += 10
+        y += 16
+        draw.text((24, y), "Top Examples", fill=(17, 24, 39))
+        y += 28
+        for category, rows in dict(report.get("top_examples") or {}).items():
+            draw.text((32, y), str(category), fill=(17, 24, 39))
+            y += 24
+            for row in list(rows or [])[:3]:
+                query = row.get("original_query")
+                draw.text(
+                    (48, y),
+                    f"{row.get('interaction_id')}: {(str(query) if query is not None else '')[:110]}",
+                    fill=(55, 65, 81),
+                )
+                y += 22
+            y += 10
 
-    y += 16
-    y = _draw_heatmap(draw, report, y=y)
+        y += 16
+        y = _draw_heatmap(draw, report, y=y)
 
-    y += 28
-    _draw_scatter(draw, report, y=y)
+        y += 28
+        _draw_scatter(draw, report, y=y)
 
-    buffer = BytesIO()
-    image.save(buffer, format="PNG")
-    return buffer.getvalue()
+        with BytesIO() as buffer:
+            image.save(buffer, format="PNG")
+            return buffer.getvalue()

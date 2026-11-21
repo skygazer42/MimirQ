@@ -1,11 +1,10 @@
-import numpy as np
 import pytest
 
-from app.rag.reranker.types import RerankCandidate
+from app.rag.retrieval.reranking.types import RerankCandidate
 
 
 def test_falsy_long_context_scorer_is_used() -> None:
-    from app.rag.reranker.long_context_rerank import LongContextReranker
+    from app.rag.retrieval.reranking.long_context import LongContextReranker
 
     class Scorer:
         def __init__(self):
@@ -26,52 +25,6 @@ def test_falsy_long_context_scorer_is_used() -> None:
     assert scorer.calls == ["unrelated"]
 
 
-def test_falsy_colbert_embedder_is_used() -> None:
-    from app.rag.reranker.colbert import ColBERTReranker
-
-    class Embedder:
-        def __init__(self):
-            self.encoded = []
-
-        def __bool__(self) -> bool:
-            return False
-
-        def encode(self, tokens):
-            self.encoded.append(list(tokens))
-            return np.ones((len(tokens), 2), dtype=np.float32)
-
-    embedder = Embedder()
-    result = ColBERTReranker(embedder=embedder).rerank("alpha", [RerankCandidate(id="doc", text="beta")])
-    assert result.ordered_ids == ["doc"]
-    assert embedder.encoded == [["alpha"], ["beta"]]
-
-
-def test_explicit_empty_sparse_synonyms_do_not_use_configured_expansion(monkeypatch) -> None:
-    from app.rag.retrieval import sparse
-
-    monkeypatch.setattr(sparse, "_ENCODER_CACHE", {})
-    encoder = sparse.get_sparse_encoder(provider="deterministic", synonyms={}, synonyms_raw="alpha:beta")
-    assert set(encoder.encode("alpha").weights) == {"alpha"}
-
-
-def test_absent_sparse_synonyms_keep_configured_expansion(monkeypatch) -> None:
-    from app.rag.retrieval import sparse
-
-    monkeypatch.setattr(sparse, "_ENCODER_CACHE", {})
-    encoder = sparse.get_sparse_encoder(provider="deterministic", synonyms=None, synonyms_raw="alpha:beta")
-    assert set(encoder.encode("alpha").weights) == {"alpha", "beta"}
-
-
-def test_explicit_sparse_synonyms_do_not_reuse_a_different_cached_configuration(monkeypatch) -> None:
-    from app.rag.retrieval import sparse
-
-    monkeypatch.setattr(sparse, "_ENCODER_CACHE", {})
-    default = sparse.get_sparse_encoder(provider="deterministic", synonyms_raw="alpha:beta")
-    explicit = sparse.get_sparse_encoder(provider="deterministic", synonyms={}, synonyms_raw="alpha:beta")
-    assert set(default.encode("alpha").weights) == {"alpha", "beta"}
-    assert set(explicit.encode("alpha").weights) == {"alpha"}
-
-
 def test_explicit_zero_burst_does_not_enable_the_default_capacity() -> None:
     from app.api.middleware.rate_limit import RateLimiter
 
@@ -89,7 +42,7 @@ def test_redis_limiter_preserves_explicit_zero_burst_without_connecting() -> Non
 
 @pytest.mark.parametrize("value,expected", [(None, None), (0, "0"), (False, "false"), ("", None), (" value ", "value")])
 def test_optional_override_normalization_keeps_zero_and_false(value, expected) -> None:
-    from app.services.ingestion_policy import _normalize_optional_override
+    from app.services.pipelines.ingestion_policy import _normalize_optional_override
 
     assert _normalize_optional_override(value) == expected
 

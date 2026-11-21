@@ -53,6 +53,24 @@ def tmpl_block(
 """.strip()
 
 
+def _write_topics(
+    directory: str,
+    title_prefix: str,
+    *,
+    scope: str,
+    perspective: str,
+    topics: list[tuple[str, str, str]],
+) -> None:
+    for position, (slug, title, detail) in enumerate(topics, start=1):
+        md(
+            f"{directory}/{slug}.md",
+            f"{title_prefix}{title}",
+            tmpl_block(scope=scope, perspective=perspective, extra=detail),
+            title,
+            position,
+        )
+
+
 def pilot_backend_datasets() -> None:
     category("backend/_category_.json", "后端视角", 1)
     category("backend/datasets/_category_.json", "数据集与目录", 2)
@@ -127,14 +145,7 @@ def pilot_backend_datasets() -> None:
             "表级资源与 TAG 维度的查询、绑定关系。",
         ),
     ]
-    for i, (slug, title, detail) in enumerate(blocks, start=1):
-        md(
-            f"backend/datasets/{slug}.md",
-            f"数据集 — {title}",
-            tmpl_block(scope="数据集", perspective="后端", extra=detail),
-            title,
-            i,
-        )
+    _write_topics("backend/datasets", "数据集 — ", scope="数据集", perspective="后端", topics=blocks)
 
 
 def pilot_backend_documents() -> None:
@@ -155,14 +166,7 @@ def pilot_backend_documents() -> None:
         ("ingestion-runs", "入库 Run", "一次入库运行的生命周期与可观测字段。"),
         ("pipeline", "流水线阶段", "解析 → 分块 → 向量/索引各阶段在 API/元数据中的体现。"),
     ]
-    for i, (slug, title, detail) in enumerate(blocks, start=1):
-        md(
-            f"backend/documents/{slug}.md",
-            f"文档 — {title}",
-            tmpl_block(scope="文档与入库", perspective="后端", extra=detail),
-            title,
-            i,
-        )
+    _write_topics("backend/documents", "文档 — ", scope="文档与入库", perspective="后端", topics=blocks)
 
 
 def pilot_frontend_datasets() -> None:
@@ -199,14 +203,7 @@ def pilot_frontend_datasets() -> None:
         ("catalog-ui", "DB Catalog 界面", "连接与对象浏览。"),
         ("tables-ui", "表 / TAG 界面", "表级操作与 TAG 过滤。"),
     ]
-    for i, (slug, title, detail) in enumerate(blocks, start=1):
-        md(
-            f"frontend/datasets/{slug}.md",
-            f"数据集（前端）— {title}",
-            tmpl_block(scope="数据集", perspective="前端", extra=detail),
-            title,
-            i,
-        )
+    _write_topics("frontend/datasets", "数据集（前端）— ", scope="数据集", perspective="前端", topics=blocks)
 
 
 def pilot_frontend_documents() -> None:
@@ -221,14 +218,7 @@ def pilot_frontend_documents() -> None:
         ("testing", "测试", "组件与契约测试建议。"),
         ("connectors-ui", "连接器配置", "表单字段与校验。"),
     ]
-    for i, (slug, title, detail) in enumerate(blocks, start=1):
-        md(
-            f"frontend/documents/{slug}.md",
-            f"文档（前端）— {title}",
-            tmpl_block(scope="文档与入库", perspective="前端", extra=detail),
-            title,
-            i,
-        )
+    _write_topics("frontend/documents", "文档（前端）— ", scope="文档与入库", perspective="前端", topics=blocks)
 
 
 def pilot_integration() -> None:
@@ -425,14 +415,7 @@ def phase2_integration_stubs() -> None:
         ("s14-multi-tenant", "多租户隔离", "Header 与 JWT 下的租户边界测试清单。"),
         ("s15-sse-reconnect", "SSE 重连", "流式对话断线重连与幂等。"),
     ]
-    for i, (slug, title, detail) in enumerate(scenarios, start=1):
-        md(
-            f"integration/scenarios/{slug}.md",
-            f"场景 — {title}",
-            tmpl_block(scope="集成", perspective="E2E", extra=detail),
-            title,
-            i,
-        )
+    _write_topics("integration/scenarios", "场景 — ", scope="集成", perspective="E2E", topics=scenarios)
 
 
 def integration_patterns_real() -> None:

@@ -787,6 +787,14 @@
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+.headerActions button:focus-visible,
+.searchInput:focus-visible,
+.filterControl:focus-visible,
+.actions button:focus-visible,
+.actions a:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 2px;
+}
 .queueItem:focus-visible,
 .readerScroll:focus-visible,
 .candidateTabs button:focus-visible,

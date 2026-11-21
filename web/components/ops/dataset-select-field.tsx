@@ -1,10 +1,12 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, useId } from 'react'
 
 import { Label } from '@/components/ui/label'
+import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useDatasets } from '@/hooks/use-datasets'
+import { formatApiError } from '@/lib/api-errors'
 import { cn } from '@/lib/utils'
 
 type DatasetSelectFieldProps = {
@@ -34,40 +36,64 @@ export function DatasetSelectField({
   labelClassName,
   triggerClassName,
 }: Readonly<DatasetSelectFieldProps>) {
-  const { datasets, isLoading } = useDatasets()
+  const { datasets, isLoading, isFetching, error, refreshDatasets } = useDatasets()
+  const selectId = useId()
 
-  const selectedValue = value || (allowAll ? ALL_DATASETS_VALUE : '')
-  const firstDatasetId = String(datasets[0]?.id || '').trim()
+  const selectedValue = value === '' && allowAll ? ALL_DATASETS_VALUE : value
+  const firstDatasetId = datasets[0]?.id
 
   useEffect(() => {
-    if (!autoSelectFirst || allowAll || value || !firstDatasetId) return
+    if (!autoSelectFirst || allowAll || value !== '' || error !== null || firstDatasetId === undefined) return
     onChange(firstDatasetId)
-  }, [allowAll, autoSelectFirst, firstDatasetId, onChange, value])
+  }, [allowAll, autoSelectFirst, error, firstDatasetId, onChange, value])
 
   return (
-    <div className={cn('space-y-1', className)}>
-      <Label className={cn('text-[11px] font-medium text-muted-foreground', labelClassName)}>{label}</Label>
+    <div className={cn('min-w-0 space-y-1', className)}>
+      <Label htmlFor={selectId} className={cn('text-[11px] font-medium text-muted-foreground', labelClassName)}>
+        {label}
+      </Label>
       <Select
         value={selectedValue}
         onValueChange={(next) => onChange(next === ALL_DATASETS_VALUE ? '' : next)}
-        disabled={isLoading || (!allowAll && !datasets.length)}
+        disabled={isLoading || (!allowAll && datasets.length === 0)}
       >
-        <SelectTrigger className={cn('h-8 text-xs', triggerClassName)}>
+        <SelectTrigger id={selectId} aria-label={label} className={cn('h-8 text-xs', triggerClassName)}>
           <SelectValue placeholder={isLoading ? '加载中...' : placeholder} />
         </SelectTrigger>
         <SelectContent>
           {allowAll ? <SelectItem value={ALL_DATASETS_VALUE}>{allLabel}</SelectItem> : null}
-          {datasets.map((dataset) => {
-            const id = String(dataset.id || '').trim()
-            if (!id) return null
-            return (
-              <SelectItem key={id} value={id}>
-                {dataset.name || id}
-              </SelectItem>
-            )
-          })}
+          {value !== '' && !datasets.some((dataset) => dataset.id === value) ? (
+            <SelectItem value={value} disabled>
+              已选数据集：{value}
+            </SelectItem>
+          ) : null}
+          {datasets.map((dataset) => (
+            <SelectItem key={dataset.id} value={dataset.id}>
+              {dataset.name === '' ? dataset.id : dataset.name}
+            </SelectItem>
+          ))}
         </SelectContent>
       </Select>
+      {isFetching && !isLoading ? (
+        <p role="status" className="text-xs text-muted-foreground">
+          正在更新数据集目录，保留当前选择。
+        </p>
+      ) : null}
+      {error !== null ? (
+        <div role="alert" className="flex min-w-0 items-center gap-2 text-xs text-destructive">
+          <span className="min-w-0 wrap-anywhere">{formatApiError(error, '加载数据集失败')}</span>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-6 shrink-0 px-2 text-xs"
+            disabled={isFetching}
+            onClick={() => void refreshDatasets()}
+          >
+            重试
+          </Button>
+        </div>
+      ) : null}
     </div>
   )
 }

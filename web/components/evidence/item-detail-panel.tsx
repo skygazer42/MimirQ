@@ -1,47 +1,27 @@
 'use client'
 
-import type { RefObject } from 'react'
-import { BarChart3, Download, FileUp, Loader2, RefreshCw, Search, ShieldCheck, TestTube2, X } from '@/components/icons'
-
-import type { EvidenceItem, EvidenceSuite } from '@/types'
+import { BarChart3, Search, ShieldCheck, X } from '@/components/icons'
+import type { EvidenceItem } from '@/types'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { LoadingButton } from '@/components/ui/loading-button'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Panel } from '@/components/ui/panel'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { Separator } from '@/components/ui/separator'
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from '@/components/ui/alert-dialog'
-
-type SuiteCounts = {
-  total: number
-  draft: number
-  reviewed: number
-  approved: number
-  archived: number
-}
 
 type ItemDetailPanelProps = {
   selectedItem: EvidenceItem | null
-  selectedSuite: EvidenceSuite | null
+  itemAction: 'review' | 'approve' | 'archive' | null
   statusBadgeVariant: (status: EvidenceItem['status']) => 'outline' | 'secondary' | 'soft' | 'destructive'
   onReviewItem: (itemId: string) => void
   onApproveItem: (itemId: string) => void
   onOpenWhyMissed: () => void
-  onArchiveItem: (itemId: string) => void
+  onArchiveItem: (itemId: string) => Promise<void>
 }
 
 export function ItemDetailPanel({
   selectedItem,
-  selectedSuite,
+  itemAction,
   statusBadgeVariant,
   onReviewItem,
   onApproveItem,
@@ -61,7 +41,7 @@ export function ItemDetailPanel({
                 </Badge>
                 {selectedItem.regression_case_id ? (
                   <Badge variant="outline" className="max-w-[220px] truncate">
-                    case {String(selectedItem.regression_case_id).slice(0, 8)}
+                    case {selectedItem.regression_case_id.slice(0, 8)}
                   </Badge>
                 ) : null}
               </div>
@@ -69,51 +49,50 @@ export function ItemDetailPanel({
 
             <div className="flex flex-wrap items-center gap-2">
               {selectedItem.status === 'draft' ? (
-                <Button
+                <LoadingButton
+                  loading={itemAction === 'review'}
+                  disabled={itemAction !== null}
                   size="sm"
                   variant="outline"
                   className="gap-2"
-                  onClick={() => onReviewItem(String(selectedItem.id))}
+                  onClick={() => onReviewItem(selectedItem.id)}
                 >
                   <Search className="size-4" aria-hidden="true" />
                   Review
-                </Button>
+                </LoadingButton>
               ) : null}
               {selectedItem.status === 'reviewed' ? (
-                <Button size="sm" className="gap-2" onClick={() => onApproveItem(String(selectedItem.id))}>
+                <LoadingButton
+                  loading={itemAction === 'approve'}
+                  disabled={itemAction !== null}
+                  size="sm"
+                  className="gap-2"
+                  onClick={() => onApproveItem(selectedItem.id)}
+                >
                   <ShieldCheck className="size-4" aria-hidden="true" />
                   Approve
-                </Button>
+                </LoadingButton>
               ) : null}
               <Button size="sm" variant="outline" className="gap-2" onClick={onOpenWhyMissed}>
                 <BarChart3 className="size-4" aria-hidden="true" />
                 Why missed?
               </Button>
-              <AlertDialog>
-                <AlertDialogTrigger asChild>
-                  <Button
-                    size="sm"
-                    variant="destructive"
-                    className="gap-2"
-                    disabled={selectedItem.status === 'archived'}
-                  >
-                    <X className="size-4" aria-hidden="true" />
-                    归档
-                  </Button>
-                </AlertDialogTrigger>
-                <AlertDialogContent>
-                  <AlertDialogHeader>
-                    <AlertDialogTitle>归档该 Item？</AlertDialogTitle>
-                    <AlertDialogDescription className="text-pretty">
-                      归档后不会从数据库删除，但默认列表会隐藏。该操作可用于标记“已废弃/不再维护”的证据。
-                    </AlertDialogDescription>
-                  </AlertDialogHeader>
-                  <AlertDialogFooter>
-                    <AlertDialogCancel>取消</AlertDialogCancel>
-                    <AlertDialogAction onClick={() => onArchiveItem(String(selectedItem.id))}>归档</AlertDialogAction>
-                  </AlertDialogFooter>
-                </AlertDialogContent>
-              </AlertDialog>
+              <ConfirmDialog
+                title="归档该条目？"
+                description="归档后条目会保留，可通过“已归档”筛选查看。"
+                confirmLabel="归档"
+                onConfirm={() => onArchiveItem(selectedItem.id)}
+              >
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  className="gap-2"
+                  disabled={selectedItem.status === 'archived' || itemAction !== null}
+                >
+                  <X className="size-4" aria-hidden="true" />
+                  归档
+                </Button>
+              </ConfirmDialog>
             </div>
           </div>
 
@@ -156,16 +135,13 @@ export function ItemDetailPanel({
             <div className="mb-1 text-xs font-medium text-muted-foreground">Reference Sources</div>
             <Panel className="p-3">
               <div className="space-y-2">
-                {(selectedItem.reference_sources || []).length ? (
-                  (selectedItem.reference_sources || []).map((reference) => (
-                    <div
-                      key={`${String(reference.document_id)}:${String(reference.chunk_id)}`}
-                      className="rounded-md border border-border/60 p-2"
-                    >
+                {selectedItem.reference_sources?.length ? (
+                  selectedItem.reference_sources.map((reference, index) => (
+                    <div key={index} className="rounded-md border border-border/60 p-2">
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">
                           <div className="truncate text-xs font-mono text-foreground">
-                            {String(reference.document_id).slice(0, 8)}:{String(reference.chunk_id).slice(0, 8)}
+                            {reference.document_id.slice(0, 8)}:{reference.chunk_id.slice(0, 8)}
                           </div>
                           {reference.label ? (
                             <div className="mt-1 line-clamp-1 text-xs text-muted-foreground text-pretty">
@@ -202,9 +178,7 @@ export function ItemDetailPanel({
           ) : null}
         </div>
       ) : (
-        <div className="text-sm text-muted-foreground text-pretty">
-          选择一个 Item 查看详情。你可以在 draft 状态下修改内容，然后提交 review → approve → sync。
-        </div>
+        <div className="text-sm text-muted-foreground text-pretty">选择一个条目查看问题、答案与引用，再提交复核。</div>
       )}
     </Panel>
   )

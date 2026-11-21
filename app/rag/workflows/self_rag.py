@@ -1,7 +1,7 @@
 import re
 from typing import Any, TypedDict
 
-from app.rag.core.faithfulness import compute_faithfulness_score
+from app.rag.safety.answer_quality import compute_faithfulness_score
 
 
 class SelfRagReflection(TypedDict):

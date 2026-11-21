@@ -45,7 +45,7 @@ def _mix32(x: int) -> int:
     return x & 0xFFFFFFFF
 
 
-def _walkhash_config(*, node_count: int, params: WalkHashParams) -> tuple[int, int, int, int, int]:
+def _walkhash_config(params: WalkHashParams) -> tuple[int, int, int, int, int]:
     return (
         max(1, int(params.dim or 0)),
         max(0, int(params.num_walks or 0)),
@@ -132,10 +132,7 @@ def compute_walkhash_embeddings(
         np.ndarray shape (N, dim), L2-normalized rows (rows may be all zeros if isolated).
     """
     node_count = len(neighbors)
-    dim, num_walks, walk_length, window_size, seed = _walkhash_config(
-        node_count=node_count,
-        params=params,
-    )
+    dim, num_walks, walk_length, window_size, seed = _walkhash_config(params)
 
     emb = np.zeros((node_count, dim), dtype=np.float32)
     if node_count == 0 or num_walks <= 0 or walk_length <= 0:
@@ -225,10 +222,7 @@ def recall_similar_entity_nodes(
 
     nodes = sorted(adj.keys())
     idx_by_node = {n: i for i, n in enumerate(nodes)}
-    neighbors_idx: list[list[int]] = []
-    for n in nodes:
-        nbrs = [idx_by_node[t] for t in adj.get(n, []) if t in idx_by_node]
-        neighbors_idx.append(nbrs)
+    neighbors_idx = [[idx_by_node[target] for target in adj[node]] for node in nodes]
 
     seed_idx: list[int] = [idx_by_node[s] for s in seeds if s in idx_by_node]
     if not seed_idx:
@@ -238,8 +232,8 @@ def recall_similar_entity_nodes(
     if not entity_nodes:
         return []
 
-    entity_idx = [idx_by_node[n] for n in entity_nodes]
-    candidate_idx = [i for i in entity_idx if i not in set(seed_idx)]
+    seed_indexes = set(seed_idx)
+    candidate_idx = [idx_by_node[node] for node in entity_nodes if idx_by_node[node] not in seed_indexes]
     if not candidate_idx:
         return []
 
@@ -371,7 +365,4 @@ def _add_relation_entity_edges(
 
 
 def _freeze_sorted_adjacency(adj: dict[str, set[str]]) -> dict[str, list[str]]:
-    out: dict[str, list[str]] = {}
-    for key, values in adj.items():
-        out[str(key)] = sorted(str(value) for value in values if str(value))
-    return out
+    return {node: sorted(neighbors) for node, neighbors in adj.items()}

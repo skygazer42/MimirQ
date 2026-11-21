@@ -8,18 +8,14 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-import app.api.v1.auth as auth_module
-from app.core.config import settings
-from app.core.database import Base
-from app.core.exceptions import MimirQError, register_exception_handlers
-from app.core.security import hash_password
-from app.models.tenant import Tenant, TenantMember
-from app.models.user import User
-from app.services.user_service import (
-    authenticate_user,
-    create_user,
-    get_current_tenant_id,
-)
+import app.api.v1.identity.auth as auth_module
+from app.infrastructure.config import settings
+from app.infrastructure.database.connection import Base
+from app.infrastructure.exceptions import MimirQError, register_exception_handlers
+from app.infrastructure.security.passwords import hash_password
+from app.models.identity.accounts import User
+from app.models.identity.workspaces import Tenant, TenantMember
+from app.services.identity.users import authenticate_user, create_user, get_current_tenant_id
 
 
 @pytest.mark.parametrize(
@@ -107,7 +103,7 @@ def _build_auth_test_client():
 
 @pytest.fixture
 def local_accounts(monkeypatch):
-    import app.api.v1.rbac as rbac_module
+    import app.api.v1.identity.rbac as rbac_module
 
     monkeypatch.setenv("ENV", "development")
     overrides = {

@@ -1,8 +1,8 @@
 import hashlib
+from collections.abc import Mapping, Sequence
 from typing import Any
 
-from app.rag.core.logging import get_logger
-from app.rag.evaluation.hard_negative_mining import mine_hard_negatives_for_case_from_trace
+from app.rag.evaluation.generation.hard_negative_mining import mine_hard_negatives_for_case_from_trace
 from app.rag.industry_rules.mining.auto_rules import build_ruleset_suggestions
 from app.rag.industry_rules.schema import IndustryRuleset
 
@@ -11,31 +11,13 @@ FEEDBACK_TRAINING_TRIPLE_SCHEMA_V1 = "mimirq.feedback_training_triple.v1"
 FEEDBACK_EVAL_CASE_SCHEMA_V1 = "mimirq.feedback_eval_case.v1"
 
 
-def _as_mapping(row: Any) -> dict[str, Any]:
-    if isinstance(row, dict):
-        return dict(row)
-    out: dict[str, Any] = {}
-    for key in dir(row):
-        if key.startswith("_"):
-            continue
-        try:
-            value = getattr(row, key)
-        except Exception:
-            get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
-            continue
-        if callable(value):
-            continue
-        out[key] = value
-    return out
-
-
-def _safe_str(value: Any, *, max_len: int = 512) -> str | None:
+def _optional_text(value: str | None, *, max_len: int = 512) -> str | None:
     if value is None:
         return None
-    text = str(value).strip()
-    if not text:
-        return ""
-    return text[: max(0, int(max_len or 0))] if max_len else text
+    if not isinstance(value, str):
+        raise TypeError("Feedback text fields must be strings")
+    text = value.strip()
+    return text[:max_len] if max_len else text
 
 
 def _stable_query_hash(query: str) -> str:
@@ -45,29 +27,39 @@ def _stable_query_hash(query: str) -> str:
 def _bounded_optional_text(value: str | None, *, max_len: int) -> str | None:
     if value is None:
         return None
+    if not isinstance(value, str):
+        raise TypeError("Feedback text fields must be strings")
     return value[:max_len]
 
 
 def _rating(row: dict[str, Any]) -> int | None:
-    try:
-        return int(row.get("rating")) if row.get("rating") is not None else None
-    except Exception:
+    value = row.get("rating")
+    if value is None:
         return None
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise TypeError("Feedback rating must be an integer")
+    if not 1 <= value <= 5:
+        raise ValueError("Feedback rating must be between 1 and 5")
+    return value
 
 
-def _extra(row: dict[str, Any]) -> dict[str, Any]:
+def _extra(row: dict[str, Any]) -> Mapping[str, Any]:
     value = row.get("extra")
-    return dict(value) if isinstance(value, dict) else {}
+    if value is None:
+        return {}
+    if not isinstance(value, Mapping):
+        raise TypeError("Feedback extra must be a mapping")
+    return value
 
 
 def _query(row: dict[str, Any]) -> str:
     extra = _extra(row)
     for key in ("original_query", "query", "question", "user_query"):
-        text = _safe_str(row.get(key), max_len=4000)
+        text = _optional_text(row.get(key), max_len=4000)
         if text:
             return text
     for key in ("original_query", "query", "question", "user_query"):
-        text = _safe_str(extra.get(key), max_len=4000)
+        text = _optional_text(extra.get(key), max_len=4000)
         if text:
             return text
     return ""
@@ -76,38 +68,46 @@ def _query(row: dict[str, Any]) -> str:
 def _reference_sources(row: dict[str, Any]) -> list[dict[str, Any]]:
     extra = _extra(row)
     refs = row.get("reference_sources")
-    if not isinstance(refs, list):
+    if refs is None:
         refs = extra.get("reference_sources")
-    if not isinstance(refs, list):
-        refs = []
-    return [dict(item) for item in refs if isinstance(item, dict)]
+    if refs is None:
+        return []
+    if not isinstance(refs, list) or any(not isinstance(item, Mapping) for item in refs):
+        raise TypeError("Feedback reference sources must be a list of mappings")
+    return [dict(item) for item in refs]
 
 
 def _retrieval_trace(row: dict[str, Any]) -> dict[str, Any]:
     extra = _extra(row)
     for key in ("retrieval_trace", "trace", "trace_record"):
         value = row.get(key)
-        if isinstance(value, dict):
+        if value is not None:
+            if not isinstance(value, Mapping):
+                raise TypeError("Feedback retrieval trace must be a mapping")
             return dict(value)
     value = extra.get("retrieval_trace")
-    return dict(value) if isinstance(value, dict) else {}
+    if value is None:
+        return {}
+    if not isinstance(value, Mapping):
+        raise TypeError("Feedback retrieval trace must be a mapping")
+    return dict(value)
 
 
 def _feedback_id(row: dict[str, Any]) -> str | None:
     value = row.get("feedback_id", row.get("id", _extra(row).get("feedback_id")))
-    return str(value)[:128] if value is not None else None
+    return _bounded_optional_text(value, max_len=128)
 
 
 def _lineage_id(row: dict[str, Any], key: str) -> str | None:
     value = row.get(key, _extra(row).get(key))
-    return str(value)[:128] if value is not None else None
+    return _bounded_optional_text(value, max_len=128)
 
 
 def _positive_chunk_ids(reference_sources: list[dict[str, Any]]) -> list[str]:
     out: list[str] = []
     seen: set[str] = set()
     for item in reference_sources:
-        cid = _safe_str(item.get("chunk_id"), max_len=200)
+        cid = _optional_text(item.get("chunk_id"), max_len=200)
         if not cid or cid in seen:
             continue
         seen.add(cid)
@@ -126,7 +126,7 @@ def _build_training_triple(
     positives = _positive_chunk_ids(reference_sources)
     negatives: list[str] = []
     for item in mined["hard_negatives"]:
-        chunk_id = _safe_str(item["chunk_id"], max_len=200)
+        chunk_id = _optional_text(item["chunk_id"], max_len=200)
         if chunk_id:
             negatives.append(chunk_id)
     if not positives or not negatives:
@@ -143,16 +143,24 @@ def _build_training_triple(
 
 def _build_eval_case_candidate(row: dict[str, Any]) -> dict[str, Any] | None:
     extra = _extra(row)
-    status = _safe_str(row.get("eval_case_status") or extra.get("eval_case_status"), max_len=32)
+    status = _optional_text(row.get("eval_case_status", extra.get("eval_case_status")), max_len=32)
     if status is not None:
         status = status.lower()
-    if status in {"promoted", "rejected"} or bool(row.get("archived") or extra.get("archived")):
+    archived = row.get("archived", extra.get("archived", False))
+    if archived is not None and not isinstance(archived, bool):
+        raise TypeError("Feedback archived flag must be a boolean")
+    if status in {"promoted", "rejected"} or archived:
         return None
     question = _query(row)
     if not question:
         return None
     category = _bounded_optional_text(row.get("category"), max_len=32)
-    tags = [_safe_str(item, max_len=64) for item in (row.get("tags") or [])]
+    raw_tags = row.get("tags")
+    if raw_tags is None:
+        raw_tags = []
+    if not isinstance(raw_tags, list):
+        raise TypeError("Feedback tags must be a list")
+    tags = [_optional_text(item, max_len=64) for item in raw_tags]
     tags = [item for item in tags if item]
     if category and category not in tags:
         tags.append(category)
@@ -170,7 +178,7 @@ def _build_eval_case_candidate(row: dict[str, Any]) -> dict[str, Any] | None:
         "tags": tags[:30],
         "category": category,
         "category_source": _bounded_optional_text(row.get("category_source"), max_len=32),
-        "query_hash": _safe_str(row.get("query_hash"), max_len=64) or _stable_query_hash(question),
+        "query_hash": _optional_text(row.get("query_hash"), max_len=64) or _stable_query_hash(question),
         "retrieval_trace_ref": _bounded_optional_text(row.get("retrieval_trace_ref"), max_len=255),
         "retrieval_config_hash": _bounded_optional_text(retrieval.get("retrieval_config_hash"), max_len=128),
         "profile": _bounded_optional_text(row.get("profile"), max_len=64),
@@ -182,7 +190,7 @@ def _build_eval_case_candidate(row: dict[str, Any]) -> dict[str, Any] | None:
     }
 
 
-def _rules_row(row: dict[str, Any]) -> dict[str, Any]:
+def _rules_row(row: dict[str, Any], *, query: str) -> dict[str, Any]:
     trace = _retrieval_trace(row)
     citations = trace.get("citations")
     filenames: list[str] = []
@@ -190,29 +198,35 @@ def _rules_row(row: dict[str, Any]) -> dict[str, Any]:
         for item in citations:
             if not isinstance(item, dict):
                 continue
-            name = _safe_str(item.get("filename") or item.get("document_name") or item.get("document_id"), max_len=200)
+            name = _optional_text(
+                item.get("filename") or item.get("document_name") or item.get("document_id"), max_len=200
+            )
             if name:
                 filenames.append(name)
     return {
         "interaction_id": _feedback_id(row),
-        "original_query": _query(row),
+        "original_query": query,
         "final_context_filenames": filenames[:20],
     }
 
 
 def build_feedback_loop_candidates(
-    rows: list[Any],
+    rows: Sequence[Mapping[str, Any]],
     *,
     ruleset: IndustryRuleset | None = None,
     max_rating: int = 2,
     top_k: int = 10,
     max_hard_negatives: int = 10,
 ) -> dict[str, Any]:
-    normalized_rows = [_as_mapping(row) for row in (rows or [])]
+    normalized_rows: list[dict[str, Any]] = []
+    for row in rows:
+        if not isinstance(row, Mapping):
+            raise TypeError("Feedback rows must be mappings")
+        normalized_rows.append(dict(row))
     negative_rows: list[dict[str, Any]] = []
     for row in normalized_rows:
         rating = _rating(row)
-        if rating is not None and rating <= int(max_rating):
+        if rating is not None and rating <= max_rating:
             negative_rows.append(row)
 
     hard_negative_records: list[dict[str, Any]] = []
@@ -254,7 +268,7 @@ def build_feedback_loop_candidates(
         if triple is not None:
             training_triples.append(triple)
 
-    rules_rows = [_rules_row(row) for row in negative_rows if _query(row)]
+    rules_rows = [_rules_row(row, query=query) for row in negative_rows if (query := _query(row))]
     rules_suggestions = build_ruleset_suggestions(rules_rows, ruleset=ruleset, top_k=top_k)
 
     return {

@@ -2,6 +2,7 @@
 
 import React, { act, useState, type ReactNode } from 'react'
 import { createRoot } from 'react-dom/client'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { Dataset } from '@/types/datasets'
@@ -139,8 +140,12 @@ function mountControlled<T extends object>(
 }
 
 async function mountDify(extra: Partial<DifyConfig> = {}) {
+  const client = new QueryClient()
+  cleanup.push(() => client.clear())
   const view = mountControlled(difyConfig(extra), (value, update) => (
-    <DifyIntegrationSection difyExternalKnowledge={value} updateDifyExternalKnowledge={update} />
+    <QueryClientProvider client={client}>
+      <DifyIntegrationSection difyExternalKnowledge={value} updateDifyExternalKnowledge={update} />
+    </QueryClientProvider>
   ))
   await act(async () => {})
   return view
@@ -196,6 +201,19 @@ afterEach(() => {
 })
 
 describe('Dify binding preservation', () => {
+  it('aborts the dataset read when leaving the settings section', async () => {
+    let requestSignal: AbortSignal | undefined
+    boundary.listAll.mockImplementationOnce((_params: unknown, { signal }: { signal: AbortSignal }) => {
+      requestSignal = signal
+      return new Promise<Dataset[]>(() => {})
+    })
+
+    const view = await mountDify()
+    expect(requestSignal?.aborted).toBe(false)
+    view.unmount()
+    expect(requestSignal?.aborted).toBe(true)
+  })
+
   it('keeps existing advanced mappings when generating an unrelated binding', async () => {
     const view = await mountDify({
       knowledge_map_json: JSON.stringify({ existing: ADVANCED_BINDING, legacy: 'dataset-legacy' }),
@@ -295,15 +313,23 @@ describe('Dify clipboard boundary', () => {
 })
 
 describe('native numeric input values', () => {
-  it('keeps a fractional integer setting available for server validation', async () => {
+  it('rejects a fractional result limit before autosave', async () => {
     const view = await mountDify()
-    fill(input(view.container, '最大返回条数'), '1.5', 1.5)
-    expect(view.onPatch).toHaveBeenLastCalledWith({ top_k_max: 1.5 })
-    expect(input(view.container, '最大返回条数').validity.stepMismatch).toBe(true)
+    const field = input(view.container, '最大返回条数')
+    act(() => field.focus())
+    fill(field, '1.5', 1.5)
+    expect(field.validity.stepMismatch).toBe(true)
+    act(() => field.blur())
+    expect(view.onPatch).not.toHaveBeenCalled()
+    expect(field.value).toBe('50')
   })
-  it('passes a full numeric exponent to Dify top_k_max', async () => {
+  it('commits the full Dify result limit on Enter', async () => {
     const view = await mountDify()
-    fill(input(view.container, '最大返回条数'), '1e2', 100)
+    const field = input(view.container, '最大返回条数')
+    act(() => field.focus())
+    fill(field, '1e2', 100)
+    expect(view.onPatch).not.toHaveBeenCalled()
+    act(() => field.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })))
     expect(view.onPatch).toHaveBeenLastCalledWith({ top_k_max: 100 })
   })
 
@@ -323,12 +349,17 @@ describe('native numeric input values', () => {
     const section = [...view.container.querySelectorAll('section')].find(
       (node) => node.querySelector('h2')?.textContent?.trim() === title,
     )!
-    fill(input(section, label), '1e2', 100)
+    const field = input(section, label)
+    expect(field.closest('label')?.textContent).toBe(label)
+    act(() => field.focus())
+    fill(field, '1e2', 100)
+    act(() => field.blur())
     expect(props[callback]).toHaveBeenLastCalledWith({ [key]: 100 })
   })
 
-  it('keeps existing parser blank defaults and optional secret/path meaning', () => {
+  it('keeps an empty timeout local and allows clearing optional secrets and paths', () => {
     const props = parserProps()
+    props.etl4llm.timeout_sec = 90
     props.magicPdf.models_dir = '/models'
     const view = mount(<ParserServicesSection {...props} />)
     const sections = [...view.container.querySelectorAll('section')]
@@ -336,8 +367,13 @@ describe('native numeric input values', () => {
     const docling = sections.find((node) => node.querySelector('h2')?.textContent?.trim() === 'Docling Serve 配置')!
     const magic = sections.find((node) => node.querySelector('h2')?.textContent?.trim() === 'MagicPDF 配置')!
 
-    fill(input(etl, '超时（秒）'), '')
-    expect(props.updateEtl4Llm).toHaveBeenLastCalledWith({ timeout_sec: 120 })
+    const timeout = input(etl, '超时（秒）')
+    act(() => timeout.focus())
+    fill(timeout, '')
+    expect(timeout.value).toBe('')
+    act(() => timeout.blur())
+    expect(props.updateEtl4Llm).not.toHaveBeenCalled()
+    expect(timeout.value).toBe('90')
     expect(input(docling, 'API Key（可选）').value).toBe('docling***mask')
     fill(input(docling, 'API Key（可选）'), '')
     expect(props.updateDocling).toHaveBeenLastCalledWith({ api_key: '' })

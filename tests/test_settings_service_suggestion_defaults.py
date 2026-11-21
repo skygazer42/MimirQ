@@ -2,7 +2,7 @@ from types import SimpleNamespace
 
 
 def test_zero_overlap_is_preserved_in_precheck_suggestion(monkeypatch):
-    from app.services import dataset_precheck_ingestion_suggestion as suggestion
+    from app.services.datasets.precheck import ingestion_suggestions as suggestion
 
     monkeypatch.setattr(suggestion.settings, "PRECHECK_SUGGEST_CHUNK_SIZE", True)
     monkeypatch.setattr(suggestion.settings, "CHUNK_SIZE", 1000)

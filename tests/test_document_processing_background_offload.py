@@ -5,7 +5,7 @@ from uuid import UUID
 
 import pytest
 
-import app.services.document_processing_dispatch as documents_module
+import app.services.documents.processing_dispatch as documents_module
 
 
 @pytest.fixture(autouse=True)
@@ -37,7 +37,7 @@ async def test_document_processing_offloads_blocking_processor_off_event_loop(
             heartbeat_count += 1
             await asyncio.sleep(0.01)
 
-    monkeypatch.setattr(documents_module.document_processor, "process_document", _process, raising=True)
+    monkeypatch.setattr(documents_module, "process_document", _process, raising=True)
 
     heartbeat_task = asyncio.create_task(_heartbeat())
     try:
@@ -75,7 +75,7 @@ async def test_document_processing_offload_respects_background_concurrency_limit
         events.append(("end", label))
         return label
 
-    monkeypatch.setattr(documents_module.document_processor, "process_document", _process, raising=True)
+    monkeypatch.setattr(documents_module, "process_document", _process, raising=True)
 
     first_task = asyncio.create_task(
         documents_module.run_document_processing_limited("first", document_id=UUID(int=0), tenant_id=UUID(int=0))
@@ -122,7 +122,7 @@ async def test_document_processing_offload_holds_semaphore_until_cancelled_worke
         events.append(("end", label))
         return label
 
-    monkeypatch.setattr(documents_module.document_processor, "process_document", _process, raising=True)
+    monkeypatch.setattr(documents_module, "process_document", _process, raising=True)
 
     first_task = asyncio.create_task(
         documents_module.run_document_processing_limited("first", document_id=UUID(int=0), tenant_id=UUID(int=0))
@@ -177,7 +177,7 @@ async def test_document_processing_offload_preserves_cancellation_when_worker_fa
         events.append(("end", label))
         return label
 
-    monkeypatch.setattr(documents_module.document_processor, "process_document", _process, raising=True)
+    monkeypatch.setattr(documents_module, "process_document", _process, raising=True)
 
     first_task = asyncio.create_task(
         documents_module.run_document_processing_limited("first", document_id=UUID(int=0), tenant_id=UUID(int=0))

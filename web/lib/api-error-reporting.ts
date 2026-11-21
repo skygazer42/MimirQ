@@ -1,7 +1,7 @@
 import * as Sentry from '@sentry/browser'
 
 import type { ApiErrorInfo } from '@/lib/api-errors'
-import { extractRequestIdFromError, toApiErrorInfo, withRequestId } from '@/lib/api-errors'
+import { toApiErrorInfo, withRequestId } from '@/lib/api-errors'
 
 type CaptureApiErrorOptions = {
   level?: 'error' | 'warning' | 'info'
@@ -14,21 +14,17 @@ export function captureApiError(
   options: CaptureApiErrorOptions = {},
 ): ApiErrorInfo {
   const info = toApiErrorInfo(err, fallbackMessage)
-  const requestId = info.requestId || extractRequestIdFromError(err)
-  const eventError = err instanceof Error ? err : new Error(withRequestId(info.message, requestId))
+  const eventError = err instanceof Error ? err : new Error(withRequestId(info.message, info.requestId), { cause: err })
 
   Sentry.withScope((scope) => {
-    scope.setLevel(options.level || 'error')
-    if (requestId) scope.setTag('request_id', requestId)
-    if (typeof info.status === 'number') scope.setTag('http_status', String(info.status))
-    for (const [key, value] of Object.entries(options.tags || {})) {
-      if (value) scope.setTag(key, value)
+    scope.setLevel(options.level === undefined ? 'error' : options.level)
+    if (info.requestId !== undefined) scope.setTag('request_id', info.requestId)
+    if (info.status !== undefined) scope.setTag('http_status', String(info.status))
+    if (options.tags !== undefined) {
+      for (const [key, value] of Object.entries(options.tags)) scope.setTag(key, value)
     }
     Sentry.captureException(eventError)
   })
 
-  return {
-    ...info,
-    requestId,
-  }
+  return info
 }

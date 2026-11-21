@@ -1,0 +1,144 @@
+{
+  "empty": {
+    "metadata": {},
+    "pipeline": {
+      "active_pipeline_hash": null,
+      "pipeline_hash": null,
+      "parser_backend": null,
+      "parser_backend_requested": null,
+      "chunk_strategy": null,
+      "chunk_strategy_requested": null,
+      "governance_enabled": false,
+      "governance_rule_packs": [],
+      "pipeline_effective": {
+        "governance_enabled": false,
+        "governance_remove_toc_lines": false,
+        "governance_remove_noise_lines": false,
+        "governance_unwrap_lines": false,
+        "governance_remove_common_lines": false,
+        "governance_unwrap_max_line_length": 0,
+        "governance_noise_min_chars": 0,
+        "governance_noise_ratio_threshold": 0,
+        "governance_common_lines_min_docs": 0,
+        "governance_common_lines_min_ratio": 0,
+        "governance_python_plugin": "",
+        "governance_python_params": {},
+        "chunk_size": 0,
+        "chunk_overlap": 0,
+        "chunk_merge_small_min_chars": 0,
+        "chunk_strategy_params": {},
+        "chunk_python_plugin": "",
+        "chunk_python_params": {},
+        "chunk_vector_enabled": false,
+        "bm25_index_enabled": false,
+        "kg_enabled": false,
+        "event_vector_enabled": false,
+        "entity_vector_enabled": false
+      },
+      "analytics_raw": {
+        "char_count": 0,
+        "line_count": 0,
+        "heading_count": 0,
+        "page_count": 0,
+        "table_count": 0,
+        "image_count": 0,
+        "block_count": 0,
+        "language": null,
+        "language_confidence": null,
+        "cjk_chars": null,
+        "latin_chars": null
+      },
+      "parsed_text_quality": {}
+    },
+    "governance": {
+      "enabled": false,
+      "documents": 0,
+      "changed_documents": 0,
+      "rules_applied": 0,
+      "dropped_documents": 0,
+      "drop_reasons": {}
+    }
+  },
+  "processed": {
+    "metadata": {
+      "parser_backend": "text",
+      "parser_backend_requested": "",
+      "chunk_strategy": "custom-legal-sections",
+      "chunk_strategy_requested": "custom-legal-sections",
+      "active_pipeline_hash": "old-active-snapshot",
+      "pipeline_hash": "last-canonical-version",
+      "governance_enabled": true,
+      "governance_rule_packs": ["法律条文", "段落清理", "页眉过滤", "来源声明", "保留最后一包"],
+      "pipeline_effective": {
+        "governance_enabled": true,
+        "chunk_size": 0,
+        "chunk_overlap": 0,
+        "chunk_vector_enabled": false,
+        "bm25_index_enabled": true
+      },
+      "document_analytics_raw": {
+        "char_count": 0,
+        "page_count": 0,
+        "table_count": 0,
+        "image_count": 0
+      }
+    },
+    "pipeline": {
+      "active_pipeline_hash": "old-active-snapshot",
+      "pipeline_hash": "last-canonical-version",
+      "parser_backend": "text",
+      "parser_backend_requested": "",
+      "chunk_strategy": "custom-legal-sections",
+      "chunk_strategy_requested": "custom-legal-sections",
+      "governance_enabled": true,
+      "governance_rule_packs": ["法律条文", "段落清理", "页眉过滤", "来源声明", "保留最后一包"],
+      "pipeline_effective": {
+        "governance_enabled": true,
+        "governance_remove_toc_lines": false,
+        "governance_remove_noise_lines": false,
+        "governance_unwrap_lines": false,
+        "governance_remove_common_lines": false,
+        "governance_unwrap_max_line_length": 0,
+        "governance_noise_min_chars": 0,
+        "governance_noise_ratio_threshold": 0,
+        "governance_common_lines_min_docs": 0,
+        "governance_common_lines_min_ratio": 0,
+        "governance_python_plugin": "",
+        "governance_python_params": {},
+        "chunk_size": 0,
+        "chunk_overlap": 0,
+        "chunk_merge_small_min_chars": 0,
+        "chunk_strategy_params": {},
+        "chunk_python_plugin": "",
+        "chunk_python_params": {},
+        "chunk_vector_enabled": false,
+        "bm25_index_enabled": true,
+        "kg_enabled": false,
+        "event_vector_enabled": false,
+        "entity_vector_enabled": false
+      },
+      "analytics_raw": {
+        "char_count": 0,
+        "line_count": 0,
+        "heading_count": 0,
+        "page_count": 0,
+        "table_count": 0,
+        "image_count": 0,
+        "block_count": 0,
+        "language": null,
+        "language_confidence": null,
+        "cjk_chars": null,
+        "latin_chars": null
+      },
+      "parsed_text_quality": {}
+    },
+    "governance": {
+      "enabled": true,
+      "documents": 0,
+      "changed_documents": 0,
+      "rules_applied": 0,
+      "dropped_documents": 0,
+      "drop_reasons": {}
+    }
+  }
+}

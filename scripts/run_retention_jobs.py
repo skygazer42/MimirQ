@@ -53,17 +53,18 @@ def _parse_uuid(value: str) -> UUID:
 
 
 def _load_runtime_dependencies() -> SimpleNamespace:
-    from app.core.config import settings
-    from app.core.database import SessionLocal
-    from app.models.dataset import Dataset
-    from app.models.tenant import Tenant
-    from app.services.retention_jobs import (
+    import app.models.registry  # noqa: F401
+    from app.infrastructure.config import settings
+    from app.infrastructure.database.connection import SessionLocal
+    from app.models.datasets.records import Dataset
+    from app.models.identity.workspaces import Tenant
+    from app.services.retention.jobs import (
         run_audit_log_retention,
         run_knowledge_asset_retention,
         run_regression_run_retention,
     )
-    from app.services.retention_policy import parse_retention_policy_from_metadata, run_dataset_retention_sweep
-    from app.services.semantic_cache import run_semantic_cache_retention
+    from app.services.retention.policy import parse_retention_policy_from_metadata, run_dataset_retention_sweep
+    from app.services.retrieval.semantic_cache import run_semantic_cache_retention
 
     return SimpleNamespace(
         settings=settings,

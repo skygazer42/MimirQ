@@ -7,13 +7,10 @@ from typing import Any
 
 from langchain_core.documents import Document
 
-from app.core.token_utils import estimate_tokens
-from app.rag.chunking.factory import chunker_factory
-from app.rag.chunking.quality_scorer import detect_context_cliff
-from app.services.chunking_stats_utils import (
-    compute_chunking_stats_from_texts,
-    compute_chunking_stats_from_texts_tokens,
-)
+from app.infrastructure.tokens import estimate_tokens
+from app.rag.ingestion.chunking.factory import chunker_factory
+from app.rag.ingestion.chunking.quality_scorer import detect_context_cliff
+from app.services.chunking.statistics import compute_chunking_stats_from_texts, compute_chunking_stats_from_texts_tokens
 
 _DEFAULT_CHUNK_SIZES = (256, 512, 1024)
 _DEFAULT_OVERLAP_RATIOS = (0.0, 0.10, 0.25)

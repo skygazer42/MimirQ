@@ -148,24 +148,34 @@ const integerFields = [
 describe.each(integerFields)('%s numeric patch contract', (label, scope, key) => {
   it('emits the complete native exponent value', () => {
     const view = mount()
-    fill(input(view.container, label), '1e3', 1000)
+    const field = input(view.container, label)
+    act(() => field.focus())
+    fill(field, '1e3', 1000)
+    act(() => field.blur())
     expect(view.onPatch).toHaveBeenLastCalledWith(scope, { [key]: 1000 })
   })
 
-  it('retains a fraction for the existing integer API validation', () => {
+  it('keeps fractional drafts out of integer patches', () => {
     const view = mount()
-    fill(input(view.container, label), '1.5', 1.5)
-    expect(view.onPatch).toHaveBeenLastCalledWith(scope, { [key]: 1.5 })
-    expect(input(view.container, label).validity.stepMismatch).toBe(true)
+    const field = input(view.container, label)
+    act(() => field.focus())
+    fill(field, '1.5', 1.5)
+    expect(field.validity.stepMismatch).toBe(true)
+    act(() => field.blur())
+    expect(view.onPatch).not.toHaveBeenCalled()
   })
 
-  it('keeps blank and explicit zero as zero without restoring display defaults', () => {
+  it('keeps empty drafts separate from explicit zero', () => {
     const view = mount()
-    fill(input(view.container, label), '')
+    const field = input(view.container, label)
+    act(() => field.focus())
+    fill(field, '')
+    expect(field.value).toBe('')
+    expect(view.onPatch).not.toHaveBeenCalled()
+    fill(field, '0', 0)
+    act(() => field.blur())
     expect(view.onPatch).toHaveBeenLastCalledWith(scope, { [key]: 0 })
-    expect(input(view.container, label).value).toBe('0')
-    fill(input(view.container, label), '0', 0)
-    expect(input(view.container, label).value).toBe('0')
+    expect(field.value).toBe('0')
   })
 })
 
@@ -237,11 +247,13 @@ describe('observability privacy controls', () => {
     const view = mount({ observability })
     click(view.container, '切换工具调用记录')
     expect(view.onPatch).toHaveBeenLastCalledWith('observability', { tool_call_log_enabled: false })
-    expect([...view.container.querySelectorAll('div')].some((node) => node.textContent === '结果摘要最大字符数')).toBe(
-      false,
-    )
+    expect(
+      [...view.container.querySelectorAll('label')].some((node) => node.textContent === '结果摘要最大字符数'),
+    ).toBe(false)
     click(view.container, '切换工具调用记录')
-    expect(input(view.container, '结果摘要最大字符数').value).toBe('0')
+    const previewLimit = input(view.container, '结果摘要最大字符数')
+    expect(previewLimit.closest('label')?.textContent).toBe('结果摘要最大字符数')
+    expect(previewLimit.value).toBe('0')
     expect(toggle(view.container, '切换工具调用结果摘要记录').getAttribute('aria-checked')).toBe('false')
   })
 })
@@ -264,13 +276,18 @@ describe('runtime controlled configuration', () => {
 
   it('retains fractional heartbeat and explicit zero payloads and the existing disable hint', () => {
     const view = mount()
-    expect(input(view.container, '心跳间隔').value).toBe('0')
+    const heartbeat = input(view.container, '心跳间隔')
+    expect(heartbeat.value).toBe('0')
     expect(view.container.textContent).toContain('0 表示禁用，不推荐')
-    fill(input(view.container, '心跳间隔'), '12.5', 12.5)
+    act(() => heartbeat.focus())
+    fill(heartbeat, '12.5', 12.5)
+    act(() => heartbeat.blur())
     expect(view.onPatch).toHaveBeenLastCalledWith('chat', { stream_heartbeat_sec: 12.5 })
-    fill(input(view.container, '心跳间隔'), '', undefined)
+    act(() => heartbeat.focus())
+    fill(heartbeat, '0', 0)
+    act(() => heartbeat.blur())
     expect(view.onPatch).toHaveBeenLastCalledWith('chat', { stream_heartbeat_sec: 0 })
-    expect(input(view.container, '心跳间隔').value).toBe('0')
+    expect(heartbeat.value).toBe('0')
   })
 
   it('keeps the empty redaction mask and zero cache budgets through option visibility changes', () => {

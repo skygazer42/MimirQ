@@ -6,7 +6,7 @@ import pytest
 
 @pytest.mark.parametrize("complex_threshold,expected_profile", [(200.0, None), (0.0, "recall50")])
 def test_zero_adaptive_threshold_is_not_replaced(complex_threshold, expected_profile, monkeypatch):
-    from app.rag.engine_support.llm_routing import LlmRoutingMixin, settings
+    from app.rag.runtime.model_routing import LlmRoutingMixin, settings
 
     monkeypatch.setattr(settings, "ADAPTIVE_RETRIEVAL_ROUTING_ENABLED", True)
     monkeypatch.setattr(settings, "ADAPTIVE_RETRIEVAL_SIMPLE_THRESHOLD", 0.0)

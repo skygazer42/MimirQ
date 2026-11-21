@@ -1,0 +1,146 @@
+import re
+import unicodedata
+from typing import TypedDict
+
+from app.rag.ingestion.governance.text.stopwords import STOPWORDS
+
+_TOKEN_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_+./:-]{1,64}|[\u4e00-\u9fff]{2,32}", flags=re.UNICODE)
+_SPACE_RE = re.compile(r"\s+")
+_SEPARATOR_RE = re.compile(r"[-_/]+")
+
+_QUERY_BOILERPLATE = {
+    "article",
+    "articles",
+    "document",
+    "documents",
+    "find",
+    "identify",
+    "include",
+    "including",
+    "introduce",
+    "introduced",
+    "introduces",
+    "method",
+    "methods",
+    "model",
+    "models",
+    "paper",
+    "papers",
+    "propose",
+    "proposed",
+    "review",
+    "reviews",
+    "survey",
+    "surveys",
+    "use",
+    "used",
+    "uses",
+    "work",
+    "works",
+}
+
+
+class _QueryPhraseMatch(TypedDict):
+    score: float
+    matched_phrases: list[str]
+    longest_match_tokens: int
+    token_coverage: float
+
+
+def _normalize_text(value: str) -> str:
+    normalized = unicodedata.normalize("NFKC", value.strip())
+    normalized = _SEPARATOR_RE.sub(" ", normalized)
+    return _SPACE_RE.sub(" ", normalized.casefold()).strip()
+
+
+def _query_tokens(query: str) -> list[str]:
+    tokens: list[str] = []
+    for raw in _TOKEN_RE.findall(query):
+        tok = _normalize_text(raw)
+        if len(tok) < 2 or tok in STOPWORDS or tok in _QUERY_BOILERPLATE:
+            continue
+        tokens.append(tok)
+    return tokens
+
+
+def extract_informative_query_phrases(
+    query: str,
+    *,
+    max_phrases: int = 24,
+    max_ngram: int = 4,
+    include_unigrams: bool = False,
+) -> list[str]:
+    tokens = _query_tokens(query)
+    if not tokens:
+        return []
+
+    phrases: list[str] = []
+    seen: set[str] = set()
+
+    def add(phrase: str) -> None:
+        normalized = _normalize_text(phrase)
+        if not normalized or normalized in seen:
+            return
+        if len(normalized) > 160:
+            return
+        seen.add(normalized)
+        phrases.append(normalized)
+
+    upper = max(1, min(max_ngram, len(tokens)))
+    lower = 1 if include_unigrams else 2
+    limit = max(1, max_phrases)
+    for n in range(upper, lower - 1, -1):
+        for start in range(0, len(tokens) - n + 1):
+            add(" ".join(tokens[start : start + n]))
+            if len(phrases) >= limit:
+                return phrases
+    return phrases
+
+
+def query_phrase_match(
+    query: str,
+    text: str,
+    *,
+    max_phrases: int = 24,
+    max_ngram: int = 4,
+) -> _QueryPhraseMatch:
+    haystack = _normalize_text(text)
+    if not haystack:
+        return {"score": 0.0, "matched_phrases": [], "longest_match_tokens": 0, "token_coverage": 0.0}
+
+    phrases = extract_informative_query_phrases(query, max_phrases=max_phrases, max_ngram=max_ngram)
+    if not phrases:
+        return {"score": 0.0, "matched_phrases": [], "longest_match_tokens": 0, "token_coverage": 0.0}
+
+    matched: list[str] = []
+    longest = 0
+    for phrase in phrases:
+        if phrase in haystack:
+            matched.append(phrase)
+            longest = max(longest, len(phrase.split()))
+
+    tokens = set(_query_tokens(query))
+    token_hits = sum(1 for token in tokens if token in haystack)
+    coverage = token_hits / len(tokens) if tokens else 0.0
+
+    if longest >= 3:
+        exact_component = min(0.9, float(longest) / 4.0)
+        repeat_component = min(0.12, max(0, len(matched) - 1) * 0.04)
+        coverage_component = min(0.18, coverage * 0.18)
+    else:
+        # Two-token overlaps such as "neural networks" are useful but too generic
+        # to outweigh an exact paper-title phrase on their own.
+        exact_component = float(longest) * 0.12 if longest else 0.0
+        repeat_component = min(0.06, max(0, len(matched) - 1) * 0.02)
+        coverage_component = min(0.06, coverage * 0.06)
+    score = min(1.0, exact_component + repeat_component + coverage_component)
+
+    return {
+        "score": round(score, 6),
+        "matched_phrases": matched[:8],
+        "longest_match_tokens": longest,
+        "token_coverage": round(coverage, 6),
+    }
+
+
+__all__ = ["extract_informative_query_phrases", "query_phrase_match"]

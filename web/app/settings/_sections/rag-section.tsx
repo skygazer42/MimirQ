@@ -1,25 +1,22 @@
 'use client'
 
 import type { ReactNode } from 'react'
-import { Input } from '@/components/ui/input'
+import { SettingsNumberInput } from '@/components/settings/settings-number-input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { SettingsSwitch } from '@/components/settings/settings-switch'
-import type { SystemSettings } from '@/types/settings'
+import type { RAGConfig } from '@/types/settings'
 import { normalizeRerankerProvider, RERANKER_PROVIDER_OPTIONS } from '@/lib/reranker-provider-options'
 import { HelpCircle } from '@/components/icons'
 import { cn } from '@/lib/utils'
 import { settingsTextTokens } from '@/components/ui/system-page-tokens'
 
-type RagSettings = NonNullable<SystemSettings['rag']>
-
 type RagSectionProps = {
-  rag: RagSettings
-  updateRag: (patch: Partial<RagSettings>) => void
+  rag: RAGConfig
+  updateRag: (patch: Partial<RAGConfig>) => void
 }
 
 const RANGE_INPUT_CLASS =
   'h-2 w-full cursor-pointer appearance-none rounded-full bg-muted/40 accent-[hsl(var(--primary))] outline-none transition-colors hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-2 [&::-moz-range-thumb]:h-4 [&::-moz-range-thumb]:w-4 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-2 [&::-moz-range-thumb]:border-background [&::-moz-range-thumb]:bg-primary [&::-moz-range-track]:h-2 [&::-moz-range-track]:rounded-full [&::-moz-range-track]:bg-muted/40 [&::-webkit-slider-runnable-track]:h-2 [&::-webkit-slider-runnable-track]:rounded-full [&::-webkit-slider-runnable-track]:bg-muted/40 [&::-webkit-slider-thumb]:mt-[-4px] [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-background [&::-webkit-slider-thumb]:bg-primary'
-const DEFAULT_RERANKER_PROVIDER = 'llm'
 
 function InlineHelp({ label, children }: Readonly<{ label: string; children: ReactNode }>) {
   return (
@@ -42,9 +39,7 @@ export function RagSection({ rag, updateRag }: Readonly<RagSectionProps>) {
   const isBm25IndexEnabled = rag.bm25_index_enabled
   const isRerankerEnabled = rag.enable_reranker
   const showImageInAnswer = rag.show_image_in_answer
-  const rawRerankerProvider = rag.reranker_provider || DEFAULT_RERANKER_PROVIDER
-  const rerankerProviderValue = normalizeRerankerProvider(rawRerankerProvider, rawRerankerProvider)
-  const rerankerProviderLabel = rawRerankerProvider
+  const rerankerProviderValue = normalizeRerankerProvider(rag.reranker_provider, rag.reranker_provider)
 
   return (
     <section className="space-y-5">
@@ -64,7 +59,7 @@ export function RagSection({ rag, updateRag }: Readonly<RagSectionProps>) {
               value={rag.retrieval_top_k}
               onChange={(event) =>
                 updateRag({
-                  retrieval_top_k: Number.parseInt(event.target.value, 10),
+                  retrieval_top_k: event.currentTarget.valueAsNumber,
                 })
               }
               className={RANGE_INPUT_CLASS}
@@ -86,7 +81,7 @@ export function RagSection({ rag, updateRag }: Readonly<RagSectionProps>) {
               value={rag.similarity_threshold}
               onChange={(event) =>
                 updateRag({
-                  similarity_threshold: Number.parseFloat(event.target.value),
+                  similarity_threshold: event.currentTarget.valueAsNumber,
                 })
               }
               className={RANGE_INPUT_CLASS}
@@ -157,7 +152,7 @@ export function RagSection({ rag, updateRag }: Readonly<RagSectionProps>) {
               <SelectContent>
                 {!RERANKER_PROVIDER_OPTIONS.some((option) => option.key === rerankerProviderValue) ? (
                   <SelectItem value={rerankerProviderValue} disabled>
-                    {rerankerProviderLabel}
+                    {rag.reranker_provider}
                   </SelectItem>
                 ) : null}
                 {RERANKER_PROVIDER_OPTIONS.map((option) => (
@@ -177,17 +172,12 @@ export function RagSection({ rag, updateRag }: Readonly<RagSectionProps>) {
             <div className="mb-1.5 flex items-center justify-between">
               <div className={cn(settingsTextTokens.fieldLabel, 'text-foreground/80')}>重排数量</div>
             </div>
-            <Input
-              type="number"
+            <SettingsNumberInput
               aria-label="重排数量"
               min={1}
               max={200}
               value={rag.reranker_top_n}
-              onChange={(event) =>
-                updateRag({
-                  reranker_top_n: Math.max(1, Math.min(200, Number(event.target.value || '1'))),
-                })
-              }
+              onValueChange={(value) => updateRag({ reranker_top_n: value })}
               className="h-11 sm:h-9 rounded-md border-input bg-background text-[13px]"
             />
             <p className="mt-1.5 text-[13px] text-muted-foreground">
@@ -215,7 +205,7 @@ export function RagSection({ rag, updateRag }: Readonly<RagSectionProps>) {
               value={rag.chunk_size}
               onChange={(event) =>
                 updateRag({
-                  chunk_size: Number.parseInt(event.target.value, 10),
+                  chunk_size: event.currentTarget.valueAsNumber,
                 })
               }
               className={RANGE_INPUT_CLASS}
@@ -237,7 +227,7 @@ export function RagSection({ rag, updateRag }: Readonly<RagSectionProps>) {
               value={rag.chunk_overlap}
               onChange={(event) =>
                 updateRag({
-                  chunk_overlap: Number.parseInt(event.target.value, 10),
+                  chunk_overlap: event.currentTarget.valueAsNumber,
                 })
               }
               className={RANGE_INPUT_CLASS}
@@ -254,18 +244,11 @@ export function RagSection({ rag, updateRag }: Readonly<RagSectionProps>) {
             <div className="mb-1.5 flex items-center justify-between">
               <div className={cn(settingsTextTokens.fieldLabel, 'text-foreground/80')}>最小分块长度</div>
             </div>
-            <Input
-              type="number"
-              min={0}
-              max={5000}
+            <SettingsNumberInput
               aria-label="最小分块长度"
               className="h-11 rounded-md border-input bg-background text-[13px] sm:h-9"
               value={rag.chunk_min_chars}
-              onChange={(event) =>
-                updateRag({
-                  chunk_min_chars: Math.max(0, Number(event.target.value || '0')),
-                })
-              }
+              onValueChange={(value) => updateRag({ chunk_min_chars: value })}
             />
             <p className="mt-1.5 text-[13px] text-muted-foreground">
               入库时丢弃过短分块
@@ -296,16 +279,12 @@ export function RagSection({ rag, updateRag }: Readonly<RagSectionProps>) {
           <label htmlFor="rag-image-max" className={cn(settingsTextTokens.fieldLabel, 'shrink-0')}>
             最多附图
           </label>
-          <Input
+          <SettingsNumberInput
             id="rag-image-max"
-            type="number"
-            min={0}
             max={10}
             value={rag.image_append_max}
             disabled={!showImageInAnswer}
-            onChange={(event) =>
-              updateRag({ image_append_max: Math.max(0, Math.min(10, Number(event.target.value || '0'))) })
-            }
+            onValueChange={(value) => updateRag({ image_append_max: value })}
             className="h-11 w-24 border-input bg-background text-[13px] disabled:opacity-60 sm:h-9"
           />
         </div>

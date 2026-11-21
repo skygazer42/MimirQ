@@ -6,11 +6,10 @@ import pytest
 from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 
-from app.api.dependencies.auth import get_current_account_id
-from app.api.dependencies.tenant import get_tenant_id
-from app.core.database import get_db
-from app.models.dataset import Dataset
-from app.models.document import Document as DBDocument
+from app.api.dependencies import get_current_account_id, get_tenant_id
+from app.infrastructure.database.connection import get_db
+from app.models.datasets.records import Dataset
+from app.models.documents.records import Document as DBDocument
 
 
 class _DummyQuery:
@@ -47,8 +46,8 @@ class _DummyDB:
 
 
 def _build_client(monkeypatch, *, doc):  # noqa: ANN001
-    import app.api.v1.documents as documents_module
-    from app.services import document_lifecycle_service as lifecycle_module
+    import app.api.v1.documents.routes as documents_module
+    from app.services.documents import lifecycle as lifecycle_module
 
     tenant_id = doc.tenant_id
 
@@ -199,7 +198,7 @@ def test_document_lifecycle_metadata_patch_rejects_self_supersedes(monkeypatch, 
 
 
 def test_document_qa_calls_the_qa_service(monkeypatch) -> None:
-    import app.services.document_qa_service as document_qa_service
+    import app.services.documents.qa as document_qa_service
 
     document_id = uuid.uuid4()
     tenant_id = uuid.uuid4()

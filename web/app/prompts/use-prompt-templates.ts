@@ -1,10 +1,11 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { promptTemplateApi, type PromptTemplate, type PromptTemplateCreate } from '@/lib/api/prompts'
 import { formatApiError } from '@/lib/api-errors'
+import { getAuthSessionKey } from '@/lib/auth-storage'
 import { queryKeys } from '@/lib/query-keys'
 import { useTenantAccess } from '@/hooks/use-tenant-access'
 import { TENANT_PERMISSIONS, tenantAccessAllows } from '@/lib/tenant-permissions'
@@ -37,35 +38,14 @@ const EMPTY_DRAFT: PromptDraft = {
   is_active: true,
 }
 
-// Client-side content/tag search needs every API page, not only its first 100 rows.
-async function loadTemplates() {
-  const items: PromptTemplate[] = [],
-    seen = new Set<string>()
-  let skip = 0,
-    total = 1
-  while (skip < total) {
-    const page = await promptTemplateApi.list({ skip, limit: 100 })
-    total = page.total
-    if (!page.items.length && skip < total) throw new Error('模板列表未完整加载，请重试。')
-    let added = 0
-    for (const template of page.items)
-      if (!seen.has(template.id)) {
-        seen.add(template.id)
-        items.push(template)
-        added++
-      }
-    if (!added && skip < total) throw new Error('模板列表未完整加载，请重试。')
-    skip += page.items.length
-  }
-  if (items.length !== total) throw new Error('模板列表有变化，请重新加载。')
-  return { items, total }
-}
-
-export function usePromptTemplates() {
+export function usePromptTemplates(sessionKey: string) {
   const queryClient = useQueryClient()
   const access = useTenantAccess()
   const canManage = tenantAccessAllows(access.data, TENANT_PERMISSIONS.SETTINGS_WRITE)
-  const query = useQuery({ queryKey: queryKeys.prompts.list({ scope: 'all' }), queryFn: loadTemplates })
+  const query = useQuery({
+    queryKey: queryKeys.prompts.list({ scope: 'all', sessionKey }),
+    queryFn: ({ signal }) => promptTemplateApi.listAll(undefined, { signal }),
+  })
   const templates = query.data?.items ?? EMPTY_TEMPLATES
   const [filters, setFilters] = useState<PromptFilters>(INITIAL_FILTERS)
   const [page, setPage] = useState(1)
@@ -82,6 +62,18 @@ export function usePromptTemplates() {
   const [deleteTargets, setDeleteTargets] = useState<PromptTemplate[]>([])
   const [bindingOpen, setBindingOpen] = useState(false)
   const returnFocus = useRef<string | null>(null)
+  const mounted = useRef(true)
+
+  useLayoutEffect(() => {
+    mounted.current = true
+    return () => {
+      mounted.current = false
+    }
+  }, [])
+
+  function isCurrentWorkspace() {
+    return mounted.current && getAuthSessionKey() === sessionKey
+  }
 
   const filtered = useMemo(() => filterPrompts(templates, filters), [templates, filters])
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize))
@@ -112,7 +104,7 @@ export function usePromptTemplates() {
   }, [templates, query.isSuccess])
 
   const changeFilter = <K extends keyof PromptFilters>(key: K, value: PromptFilters[K]) => {
-    setFilters((previous) => ({ ...previous, [key]: value, ...(key === 'scenario' ? { category: 'all' } : {}) }))
+    setFilters((previous) => ({ ...previous, [key]: value, ...(key === 'scenario' ? { category: null } : {}) }))
     setPage(1)
     setSelectedIds(new Set())
     setActionError('')
@@ -144,8 +136,11 @@ export function usePromptTemplates() {
       return next
     })
   }
-  const refresh = () => queryClient.invalidateQueries({ queryKey: queryKeys.prompts.all })
+  async function refresh() {
+    if (getAuthSessionKey() === sessionKey) await queryClient.invalidateQueries({ queryKey: queryKeys.prompts.all })
+  }
   async function runAction(kind: string, action: () => Promise<void>, onError?: (message: string) => void) {
+    if (!isCurrentWorkspace()) return
     if (!canManage) {
       const message = '当前账号没有管理模板的权限。'
       setActionError(message)
@@ -159,13 +154,14 @@ export function usePromptTemplates() {
     try {
       await action()
     } catch (error) {
+      if (!isCurrentWorkspace()) return
       const message = formatApiError(error, '操作失败，请重试')
       setActionError(message)
       onError?.(message)
       toast.error(message)
     } finally {
       actionLock.current = false
-      setBusy('')
+      if (isCurrentWorkspace()) setBusy('')
     }
   }
   const openEditor = (template?: PromptTemplate) => {
@@ -196,12 +192,18 @@ export function usePromptTemplates() {
     }
     const payload: PromptTemplateCreate = {
       name: draft.name.trim(),
-      description: draft.description.trim(),
       content: draft.content,
       variables: splitPromptValues(draft.variablesText),
-      category: draft.category.trim(),
       tags: splitPromptValues(draft.tagsText),
       is_active: draft.is_active,
+    }
+    if (editingTemplate === null || draft.description !== (editingTemplate.description ?? '')) {
+      const description = draft.description.trim()
+      payload.description = description === '' ? null : description
+    }
+    if (editingTemplate === null || draft.category !== (editingTemplate.category ?? '')) {
+      const category = draft.category.trim()
+      payload.category = category === '' ? null : category
     }
     await runAction(
       'save',
@@ -209,6 +211,7 @@ export function usePromptTemplates() {
         if (editingTemplate) await promptTemplateApi.update(editingTemplate.id, payload)
         else await promptTemplateApi.create(payload)
         await refresh()
+        if (!isCurrentWorkspace()) return
         setEditorOpen(false)
         setFormError('')
         toast.success(editingTemplate ? '模板已更新' : '模板已创建')
@@ -220,14 +223,14 @@ export function usePromptTemplates() {
     runAction(`copy:${template.id}`, async () => {
       await promptTemplateApi.duplicate(template.id)
       await refresh()
-      toast.success('已复制为自定义模板')
+      if (isCurrentWorkspace()) toast.success('已复制为自定义模板')
     })
   const toggleActive = (template: PromptTemplate) => {
     if (template.is_system) return
     return runAction(`toggle:${template.id}`, async () => {
       await promptTemplateApi.update(template.id, { is_active: !template.is_active })
       await refresh()
-      toast.success(template.is_active ? '模板已停用' : '模板已启用')
+      if (isCurrentWorkspace()) toast.success(template.is_active ? '模板已停用' : '模板已启用')
     })
   }
   async function batch(targets: PromptTemplate[], kind: 'activate' | 'deactivate' | 'delete') {
@@ -241,15 +244,16 @@ export function usePromptTemplates() {
             : promptTemplateApi.update(t.id, { is_active: kind === 'activate' }),
         ),
       )
-      const succeeded = editable.filter((_, i) => results[i].status === 'fulfilled'),
-        failed = editable.filter((_, i) => results[i].status === 'rejected')
+      const succeeded = editable.filter((_, i) => results[i].status === 'fulfilled')
+      const failed = editable.filter((_, i) => results[i].status === 'rejected')
+      if (succeeded.length > 0) await refresh()
+      if (!isCurrentWorkspace()) return
       const succeededIds = new Set(succeeded.map((t) => t.id))
       setSelectedIds((previous) => new Set([...previous].filter((id) => !succeededIds.has(id))))
-      if (succeeded.length) await refresh()
       if (kind === 'delete') setDeleteTargets(failed)
       const verb = kind === 'delete' ? '删除' : kind === 'activate' ? '启用' : '停用'
-      if (failed.length) {
-        const failure = results.find((r) => r.status === 'rejected') as PromiseRejectedResult
+      const failure = results.find((result) => result.status === 'rejected')
+      if (failure !== undefined) {
         const message = `${succeeded.length ? `已${verb} ${succeeded.length} 个，` : ''}${failed.length} 个模板未${verb}：${formatApiError(failure.reason, '请重试')}`
         setActionError(message)
         toast.error(message)
@@ -260,7 +264,7 @@ export function usePromptTemplates() {
     runAction('sync', async () => {
       const result = await promptTemplateApi.syncBuiltins()
       await refresh()
-      toast.success(`内置模板已同步：新增 ${result.created}，更新 ${result.updated}`)
+      if (isCurrentWorkspace()) toast.success(`内置模板已同步：新增 ${result.created}，更新 ${result.updated}`)
     })
 
   return {
@@ -329,6 +333,7 @@ export function usePromptTemplates() {
       event.preventDefault()
       const id = returnFocus.current
       requestAnimationFrame(() => {
+        if (!isCurrentWorkspace()) return
         const selector =
           id === 'bindings'
             ? '[data-prompt-bindings], [data-prompt-mobile-actions]'

@@ -472,6 +472,15 @@
   line-height: 22px;
   min-width: 0;
 }
+.footer .primary:focus-visible,
+.limits input:focus-visible,
+.presetSelect:focus-visible,
+.presetBar > button:focus-visible,
+.presetForm input:focus-visible,
+.presetForm textarea:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 2px;
+}
 .presetForm input,
 .presetForm textarea {
   height: 36px;

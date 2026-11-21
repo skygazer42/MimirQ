@@ -1,4 +1,4 @@
-from app.services.chat_stream_graph import _consume_graph_value_chunk
+from app.services.chat.stream_graph import _consume_graph_value_chunk
 
 
 def test_graph_snapshot_without_an_answer_does_not_consume_the_answer_update():

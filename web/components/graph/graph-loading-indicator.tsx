@@ -28,22 +28,12 @@ const ORB_SPECS = [
 type GraphLoadingIndicatorProps = Readonly<{
   className?: string
   message?: string
-  srMessage?: string
   hint?: string
 }>
 
-export function GraphLoadingIndicator({
-  className,
-  message = '正在加载图谱...',
-  srMessage = 'Loading graph',
-  hint,
-}: GraphLoadingIndicatorProps) {
+export function GraphLoadingIndicator({ className, message = '正在加载图谱…', hint }: GraphLoadingIndicatorProps) {
   return (
-    <div
-      role="status"
-      aria-live="polite"
-      className={cn('flex flex-col items-center justify-center gap-3 text-center', className)}
-    >
+    <div role="status" className={cn('flex flex-col items-center justify-center gap-3 text-center', className)}>
       <div className="graph-loader-stage relative h-[72px] w-[122px]" aria-hidden="true">
         {ORB_SPECS.map((orb) => {
           const orbStyle: CSSProperties = {
@@ -69,8 +59,6 @@ export function GraphLoadingIndicator({
         <p className="text-sm font-medium tracking-[0.01em] text-foreground/88">{message}</p>
         {hint ? <p className="text-[11px] leading-5 text-muted-foreground">{hint}</p> : null}
       </div>
-
-      <span className="sr-only">{srMessage}</span>
 
       <style jsx>{`
         .graph-loader-stage {

@@ -19,8 +19,8 @@ export function layoutSnapshotCanvas(nodes: SnapshotStudioNode[], layout: string
     y: ((((Math.floor(index / columns) + 0.5) * (height - 64)) / rows + 32) / height) * 100,
   }))
   const positioned = layoutSnapshotStudioNodes(nodes, layout).map((node) => {
-    let nearest = 0,
-      distance = Number.POSITIVE_INFINITY
+    let nearest = 0
+    let distance = Number.POSITIVE_INFINITY
     slots.forEach((slot, index) => {
       const candidate = ((slot.x - node.x) * width) ** 2 + ((slot.y - node.y) * height) ** 2
       if (candidate < distance) {
@@ -34,7 +34,7 @@ export function layoutSnapshotCanvas(nodes: SnapshotStudioNode[], layout: string
   return { nodes: positioned, width, height }
 }
 
-export function getLinkEndpointId(value: unknown): string {
+function getLinkEndpointId(value: unknown): string {
   if (typeof value === 'string' || typeof value === 'number') return String(value)
   if (value && typeof value === 'object') {
     const record = value as Record<string, unknown>
@@ -43,7 +43,7 @@ export function getLinkEndpointId(value: unknown): string {
   return ''
 }
 
-export function getNodeMetaValue(node: KGGraphNode, ...keys: string[]): unknown {
+function getNodeMetaValue(node: KGGraphNode, ...keys: string[]): unknown {
   const meta = node.meta && typeof node.meta === 'object' ? node.meta : {}
   const nodeRecord = node as unknown as Record<string, unknown>
   for (const key of keys) {
@@ -59,7 +59,7 @@ export function getNodeType(node: KGGraphNode): string {
   return firstDisplayString(getNodeMetaValue(node, 'type', 'entity_type', 'kind', 'node_type')) || '节点'
 }
 
-export function getLinkValue(link: KGGraphLink, ...keys: string[]): unknown {
+function getLinkValue(link: KGGraphLink, ...keys: string[]): unknown {
   const linkRecord = link as unknown as Record<string, unknown>
   const meta = link.meta && typeof link.meta === 'object' ? link.meta : {}
   for (const key of keys) {
@@ -71,7 +71,7 @@ export function getLinkValue(link: KGGraphLink, ...keys: string[]): unknown {
   return undefined
 }
 
-export function toneForNodeType(type: string): SnapshotStudioNode['tone'] {
+function toneForNodeType(type: string): SnapshotStudioNode['tone'] {
   const normalized = type.toLowerCase()
   if (normalized.includes('event') || normalized.includes('事件')) return 'orange'
   if (normalized.includes('document') || normalized.includes('文档')) return 'amber'
@@ -82,7 +82,7 @@ export function toneForNodeType(type: string): SnapshotStudioNode['tone'] {
   return 'blue'
 }
 
-export function iconForNodeType(type: string): ReactNode {
+function iconForNodeType(type: string): ReactNode {
   const normalized = type.toLowerCase()
   if (normalized.includes('event') || normalized.includes('事件'))
     return <Sparkles className="h-5 w-5" aria-hidden="true" />
@@ -99,7 +99,7 @@ export function iconForNodeType(type: string): ReactNode {
   return <Network className="h-5 w-5" aria-hidden="true" />
 }
 
-export function strengthForWeight(weight: unknown): SnapshotStudioLink['strength'] {
+function strengthForWeight(weight: unknown): SnapshotStudioLink['strength'] {
   const value = Number(weight ?? 1)
   if (!Number.isFinite(value)) return 'medium'
   if (value >= 0.75) return 'strong'
@@ -165,13 +165,13 @@ export function buildSnapshotStudioGraphFromKgGraph(graph: KGGraphResponse | nul
   const nodes: SnapshotStudioNode[] = rawNodes.map((node, index): SnapshotStudioNode => {
     const type = getNodeType(node)
     const angle = (index / total) * Math.PI * 2 - Math.PI / 2
-    const id = String(node.id || node.label || `node-${index}`)
+    const id = node.id || node.label || `node-${index}`
     const occurrences = Number(
       getNodeMetaValue(node, 'occurrences', 'count', 'event_count', 'degree', 'val') ?? node.val ?? 0,
     )
     return {
       id,
-      label: String(node.label || id),
+      label: node.label || id,
       type,
       kind: firstDisplayString(getNodeMetaValue(node, 'kind', 'node_type', 'source')) || type,
       description:
@@ -192,8 +192,12 @@ export function buildSnapshotStudioGraphFromKgGraph(graph: KGGraphResponse | nul
     .map((link) => {
       const source = getLinkEndpointId(link.source)
       const target = getLinkEndpointId(link.target)
-      if (!source || !target || !nodeById.has(source) || !nodeById.has(target)) return null
+      const sourceNode = nodeById.get(source)
+      const targetNode = nodeById.get(target)
+      if (source === '' || target === '' || sourceNode === undefined || targetNode === undefined) return null
       const label = toTrimmedPrimitiveString(getLinkValue(link, 'label', 'predicate', 'relation', 'type'), '关联')
+      sourceNode.relations.push({ label, target: targetNode.label, targetId: targetNode.id })
+      targetNode.relations.push({ label, target: sourceNode.label, targetId: sourceNode.id })
       return {
         source,
         target,
@@ -201,14 +205,7 @@ export function buildSnapshotStudioGraphFromKgGraph(graph: KGGraphResponse | nul
         strength: strengthForWeight(getLinkValue(link, 'weight', 'confidence', 'score')),
       } satisfies SnapshotStudioLink
     })
-    .filter((link): link is SnapshotStudioLink => Boolean(link))
-
-  for (const link of links) {
-    const source = nodeById.get(link.source)
-    const target = nodeById.get(link.target)
-    if (source && target) source.relations.push({ label: link.label, target: target.label, targetId: target.id })
-    if (target && source) target.relations.push({ label: link.label, target: source.label, targetId: source.id })
-  }
+    .filter((link): link is SnapshotStudioLink => link !== null)
 
   for (const node of nodes) {
     node.relations = node.relations.slice(0, 8)
@@ -217,11 +214,11 @@ export function buildSnapshotStudioGraphFromKgGraph(graph: KGGraphResponse | nul
   return { nodes, links }
 }
 
-export function clampPercent(value: number, min = 7, max = 93): number {
+function clampPercent(value: number, min = 7, max = 93): number {
   return Math.min(max, Math.max(min, Math.round(value * 10) / 10))
 }
 
-export function layoutSnapshotStudioNodes(nodes: SnapshotStudioNode[], layout: string): SnapshotStudioNode[] {
+function layoutSnapshotStudioNodes(nodes: SnapshotStudioNode[], layout: string): SnapshotStudioNode[] {
   const total = nodes.length
   if (total === 0 || layout === 'radial') return nodes
 

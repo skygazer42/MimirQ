@@ -1,58 +1,62 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type RefObject } from 'react'
 import { Sparkles, Languages, FileText } from '@/components/icons'
 import { Button } from '@/components/ui/button'
 import { useRouter } from '@/i18n/navigation'
 import { globalEventBus } from '@/lib/event-bus'
 import { useDocumentView } from '@/store/document-view'
 
-export function FloatingMenu() {
+const SELECTION_ACTIONS = { explain: '解释', translate: '翻译', summarize: '总结' } as const
+
+type DocumentTextSelection = {
+  text: string
+  documentId: string
+  chunkId: string | null
+  x: number
+  top: number
+  bottom: number
+}
+
+export function FloatingMenu({ panelRef }: Readonly<{ panelRef: RefObject<HTMLDivElement | null> }>) {
   const router = useRouter()
   const documentId = useDocumentView((state) => state.documentId)
   const chunkId = useDocumentView((state) => state.highlightChunkId)
-  const [visible, setVisible] = useState(false)
   const [position, setPosition] = useState({ top: 0, left: 0 })
-  const [selection, setSelection] = useState('')
-  const [anchor, setAnchor] = useState<{ x: number; top: number; bottom: number } | null>(null)
+  const [selectedText, setSelectedText] = useState<DocumentTextSelection | null>(null)
+  const selection = selectedText?.documentId === documentId ? selectedText : null
   const menuRef = useRef<HTMLDivElement | null>(null)
 
   const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value))
 
   useEffect(() => {
-    const handleMouseUp = () => {
-      const sel = globalThis.window.getSelection()
-      if (!sel || sel.isCollapsed) {
-        setVisible(false)
-        setAnchor(null)
+    const handleMouseUp = (event: MouseEvent) => {
+      if (event.target instanceof Node && menuRef.current?.contains(event.target)) return
+      const browserSelection = globalThis.window.getSelection()
+      if (documentId === null || browserSelection === null || browserSelection.isCollapsed) {
+        setSelectedText(null)
         return
       }
 
-      const text = sel.toString().trim()
-      if (!text) {
-        setVisible(false)
-        setAnchor(null)
+      const range = browserSelection.getRangeAt(0)
+      const text = browserSelection.toString().trim()
+      if (text === '' || !panelRef.current?.contains(range.commonAncestorContainer)) {
+        setSelectedText(null)
         return
       }
 
-      const range = sel.getRangeAt(0)
       const rect = range.getBoundingClientRect()
-
-      // Calculate relative to viewport, but we need to handle scroll offsets if inside iframe/div
-      // For simplicity, we assume fixed positioning relative to viewport
       const x = rect.left + rect.width / 2
-      setAnchor({ x, top: rect.top, bottom: rect.bottom })
+      setSelectedText({ text, documentId, chunkId, x, top: rect.top, bottom: rect.bottom })
       setPosition({ top: rect.top - 50, left: x })
-      setSelection(text)
-      setVisible(true)
     }
 
     document.addEventListener('mouseup', handleMouseUp)
     return () => document.removeEventListener('mouseup', handleMouseUp)
-  }, [])
+  }, [chunkId, documentId, panelRef])
 
   useEffect(() => {
-    if (!visible || !anchor) return
+    if (selection === null) return
     const raf = globalThis.window.requestAnimationFrame(() => {
       const el = menuRef.current
       if (!el) return
@@ -65,12 +69,12 @@ export function FloatingMenu() {
       const padding = 10
       const halfW = menuRect.width / 2
 
-      const left = clamp(anchor.x, padding + halfW, viewportW - padding - halfW)
+      const left = clamp(selection.x, padding + halfW, viewportW - padding - halfW)
 
       // Prefer above selection; if it doesn't fit, place below.
       const gap = 10
-      let top = anchor.top - menuRect.height - gap
-      if (top < padding) top = anchor.bottom + gap
+      let top = selection.top - menuRect.height - gap
+      if (top < padding) top = selection.bottom + gap
       top = clamp(top, padding, viewportH - padding - menuRect.height)
 
       setPosition((prev) => {
@@ -80,39 +84,33 @@ export function FloatingMenu() {
     })
 
     return () => globalThis.window.cancelAnimationFrame(raf)
-  }, [anchor, visible])
+  }, [selection])
 
-  const handleAction = (action: 'explain' | 'translate' | 'summarize') => {
-    let prompt = ''
-    switch (action) {
-      case 'explain':
-        prompt = `请解释这段文字：\n> ${selection}`
-        break
-      case 'translate':
-        prompt = `请翻译这段文字：\n> ${selection}`
-        break
-      case 'summarize':
-        prompt = `请总结这段文字：\n> ${selection}`
-        break
-    }
+  function handleAction(action: keyof typeof SELECTION_ACTIONS) {
+    if (selection === null) return
+    const prompt = `请${SELECTION_ACTIONS[action]}这段文字：\n> ${selection.text}`
 
     const handled = globalEventBus.emit('chat:submit', prompt)
     if (handled === 0) {
       const currentParams = new URLSearchParams(globalThis.window.location.search)
       const params = new URLSearchParams()
-      const conversationId = (currentParams.get('id') || currentParams.get('conversation') || '').trim()
-      if (conversationId) params.set('conversation', conversationId)
-      if (documentId) params.set('doc', documentId)
-      if (chunkId) params.set('chunk', chunkId)
+      const routeConversationId = currentParams.get('id')?.trim()
+      const conversationId =
+        routeConversationId === '' || routeConversationId === undefined
+          ? currentParams.get('conversation')?.trim()
+          : routeConversationId
+      if (conversationId !== undefined && conversationId !== '') params.set('conversation', conversationId)
+      params.set('doc', selection.documentId)
+      if (selection.chunkId !== null) params.set('chunk', selection.chunkId)
       params.set('prompt', prompt)
       params.set('autorun', '1')
       router.push(`/?${params.toString()}`)
     }
-    setVisible(false)
+    setSelectedText(null)
     globalThis.window.getSelection()?.removeAllRanges()
   }
 
-  if (!visible) return null
+  if (selection === null) return null
 
   return (
     <div

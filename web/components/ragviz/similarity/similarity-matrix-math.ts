@@ -105,7 +105,7 @@ export function applyMask(matrix: number[][], mask: boolean[][]): Array<Array<nu
   return out
 }
 
-export type NormalModeStats = {
+type NormalModeStats = {
   totalCount: number
   currentDisplayCount: number
   diagonalTrueCount: number
@@ -184,7 +184,7 @@ export function calculateNormalModeStatistics(finalMask: boolean[][], topKAxis: 
   }
 }
 
-export type DifferenceModeStats = {
+type DifferenceModeStats = {
   truePositive: number
   trueNegative: number
   falsePositive: number

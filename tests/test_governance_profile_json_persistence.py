@@ -5,12 +5,13 @@ from uuid import uuid4
 import pytest
 from sqlalchemy.dialects import postgresql
 
-from app.api.schemas.governance_profile import (
+from app.api.schemas.pipelines import GovernanceProfileImportRecord
+from app.api.schemas.pipelines.governance import (
     GovernanceProfileCreate,
     GovernanceProfilePayload,
     GovernanceProfileUpdate,
 )
-from app.models.governance_profile import GovernanceProfile
+from app.models.pipelines.profiles import GovernanceProfile
 
 
 class ProfileSession:
@@ -27,7 +28,7 @@ class ProfileSession:
         return self
 
     def first(self):
-        return None
+        return self.rows[0] if self.rows else None
 
     def add(self, row):
         row.id = uuid4()
@@ -61,7 +62,7 @@ def script_payload():
 
 @pytest.mark.parametrize("operation", ["create", "update"])
 def test_profile_endpoints_store_timestamped_drafts_as_json(monkeypatch, operation):
-    from app.api.v1 import pipeline
+    from app.api.v1.pipelines import routes as pipeline
 
     tenant_id, account_id = uuid4(), str(uuid4())
     member_checks = []
@@ -98,7 +99,7 @@ def test_profile_endpoints_store_timestamped_drafts_as_json(monkeypatch, operati
 
 @pytest.mark.parametrize("overwrite", [False, True])
 def test_profile_import_preserves_timestamped_drafts_in_json(monkeypatch, overwrite):
-    from app.api.v1.pipeline_support import governance_profiles as owner
+    from app.api.v1.pipelines.support import governance_profiles as owner
 
     tenant_id = uuid4()
     row = (
@@ -107,8 +108,7 @@ def test_profile_import_preserves_timestamped_drafts_in_json(monkeypatch, overwr
         else None
     )
     db = ProfileSession([row] if row is not None else [])
-    monkeypatch.setattr(owner, "_find_existing_governance_profile", lambda *_args: row)
-    record = owner._GovernanceProfileImportRecord(
+    record = GovernanceProfileImportRecord(
         name="Imported", key="json-timestamp-test", description=None, payload=script_payload()
     )
     owner._upsert_governance_profile_import_record(db=db, tenant_id=tenant_id, record=record, overwrite=overwrite)

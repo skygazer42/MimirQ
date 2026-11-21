@@ -1,9 +1,18 @@
-import type { DocumentAccessUpdateRequest, DocumentPipelineOptions } from './backend'
+import type { DocumentAccessUpdateRequest, DocumentPipelineOptions, OpenApiSchema } from './backend'
 import type { DocumentAccessMode, JsonObject } from './common'
 
-// Backend may add connector ids over time; keep this open-ended.
-export type ConnectorId = string
-export type ConnectorRunStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled'
+export const CONNECTOR_IDS = [
+  'url_batch',
+  'web_crawl',
+  'minio_bucket',
+  'confluence_space',
+  'jira_project',
+  'mysql_catalog',
+  'sqlserver_catalog',
+] as const
+
+export type ConnectorId = (typeof CONNECTOR_IDS)[number]
+export type ConnectorRunStatus = OpenApiSchema<'ConnectorRunOut'>['status']
 
 export type ConnectorInfo = {
   id: ConnectorId
@@ -45,7 +54,7 @@ export type WebCrawlAuthConfig = {
 }
 
 export type SourcePrincipal = {
-  system: 'github' | 'confluence' | 'jira' | 'drive' | 'generic'
+  system: 'confluence' | 'jira' | 'generic'
   kind: 'user' | 'group' | 'team' | 'role' | 'policy' | 'domain' | 'anyone'
   id: string
   display?: string | null
@@ -162,20 +171,11 @@ export type ConnectorRunCreateRequest =
       config: SQLServerCatalogConnectorConfig
     }
 
-export type ConnectorValidateRequest = {
-  connector_id: string
-  config?: Record<string, unknown>
-  check_connectivity: boolean
+export type ConnectorValidateRequest = Omit<OpenApiSchema<'ConnectorValidateRequest'>, 'connector_id'> & {
+  connector_id: ConnectorId
 }
 
-export type ConnectorValidateResponse = {
-  ok: boolean
-  connector_id: string
-  config?: Record<string, unknown>
-  errors?: Record<string, unknown>[]
-  warnings?: Record<string, unknown>[]
-  checks?: Record<string, unknown>
-}
+export type ConnectorValidateResponse = OpenApiSchema<'ConnectorValidateResponse'>
 
 export type ConnectorRunDocumentOut = {
   document_id: string
@@ -202,6 +202,8 @@ export type ConnectorRunOut = {
   connector_id: string
   requested_by?: string | null
   status: ConnectorRunStatus
+  supports_retry_failed?: boolean
+  supports_resume?: boolean
   config?: JsonObject
   stats?: JsonObject
   error_message?: string | null
@@ -218,12 +220,7 @@ export type ConnectorRunListResponse = {
   items: ConnectorRunOut[]
 }
 
-export type IngestionRunDocumentOut = {
-  document_id: string
-  status: string
-  source_ref?: string | null
-  created_at?: string | null
-}
+export type IngestionRunDocumentOut = OpenApiSchema<'IngestionRunDocumentOut'>
 
 export type IngestionRunOut = {
   id: string
@@ -253,7 +250,7 @@ export type IngestionRunCompareResponse = {
 }
 
 export type ConnectorConfigCreateRequest = {
-  connector_id: string
+  connector_id: ConnectorId
   dataset_id: string
   name: string
   enabled: boolean
@@ -261,13 +258,7 @@ export type ConnectorConfigCreateRequest = {
   config?: Record<string, unknown>
 }
 
-export type ConnectorConfigUpdateRequest = {
-  name?: string | null
-  enabled?: boolean | null
-  schedule_cron?: string | null
-  config?: Record<string, unknown> | null
-  state?: Record<string, unknown> | null
-}
+export type ConnectorConfigUpdateRequest = OpenApiSchema<'ConnectorConfigUpdateRequest'>
 
 export type ConnectorConfigOut = {
   id: string
@@ -290,4 +281,4 @@ export type ConnectorConfigListResponse = {
   items: ConnectorConfigOut[]
 }
 
-export type ConnectorScheduledTickResponse = unknown
+export type { ConnectorScheduledTickResponse } from './backend'

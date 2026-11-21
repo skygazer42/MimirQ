@@ -2,7 +2,7 @@
  * Dataset, reporting, and analysis types re-exported by `@/types`.
  */
 
-import type { DocumentFolderTreeResponse, DocumentPipelineOptions } from './backend'
+import type { DocumentPipelineOptions } from './backend'
 import type { JsonObject, PermissionEnum } from './common'
 import type { components } from './openapi'
 import type { IngestionPolicy } from './processing'
@@ -98,15 +98,7 @@ export type DatasetListResponse = {
   facets?: DatasetListFacets | null
 }
 
-export type DatasetCategoryNode = {
-  id: string
-  name: string
-  parent_id?: string | null
-  sort_order: number
-  depth: number
-  datasets: number
-  children?: DatasetCategoryNode[]
-}
+export type DatasetCategoryNode = import('./backend').OpenApiSchema<'DatasetCategoryNode'>
 
 export type DatasetCategoryTreeResponse = {
   total: number
@@ -169,140 +161,11 @@ export type DatasetHealthIngestionSummary = {
   cancelled: number
 }
 
-export type DatasetHealthResponse = import('./backend').DatasetHealthResponse
+export type { DatasetHealthResponse } from '@/lib/dataset-profile-schema'
 
-export type DatasetReportCompliance = {
-  pii_hits_total: Record<string, number>
-  secrets_hits_total: Record<string, number>
-  quarantined_documents: number
-  failed_documents: number
-}
-
-export type DatasetReportPipelineVersion = {
-  pipeline_hash: string
-  documents: number
-}
-
-export type DatasetReportConnectorRun = {
-  id: string
-  connector_id: string
-  status: string
-  created_at: string
-  finished_at?: string | null
-  error_message?: string | null
-  stats: Record<string, unknown>
-}
-
-export type DatasetReportDataProvenance = {
-  source: string
-  mocked: boolean
-  generated_by?: string | null
-  sections: Record<string, string>
-}
-
-export type DatasetGovernanceMetrics = {
-  total_documents: number
-  used_documents: number
-  truncated: boolean
-  docs_with_governance: number
-  rules_applied_total: number
-  changed_documents_total: number
-  dropped_documents_total: number
-  drop_reasons_total: Record<string, number>
-  rule_packs_docs: Record<string, number>
-}
-
-export type DatasetGovernanceAudit = {
-  total_documents: number
-  used_documents: number
-  truncated: boolean
-  docs_with_parsed_content_persisted: number
-  parsed_content_truncated_docs: number
-  docs_with_char_stats: number
-  original_chars_total: number
-  cleaned_chars_total: number
-  char_reduction_ratio: number
-  char_reduction_pct_percentiles: DatasetProfilePercentiles
-  char_reduction_pct_histogram: DatasetProfileHistogramBin[]
-  docs_changed: number
-  docs_dropped: number
-  docs_with_governance_quality: number
-  density_pct_percentiles: DatasetProfilePercentiles
-  density_pct_histogram: DatasetProfileHistogramBin[]
-  heading_ratio_pct_percentiles: DatasetProfilePercentiles
-  heading_ratio_pct_histogram: DatasetProfileHistogramBin[]
-  paragraphs_dropped_total: number
-  references_removed_lines_total: number
-  urls_changed_total: number
-  boilerplate_removed_sections_total: number
-  boilerplate_removed_lines_total: number
-  images_removed_total: number
-  tables_normalized_total: number
-  table_rows_changed_total: number
-  code_lines_stripped_total: number
-}
-
-export type DatasetRetrievalAuditGate = {
-  name: string
-  status: string
-  metrics: Record<string, unknown>
-  failed_conditions: string[]
-  generated_at?: string | null
-  source?: string | null
-}
-
-export type DatasetRetrievalAudit = {
-  status: string
-  plugin_refs: string[]
-  plugin_package_hashes: string[]
-  gates: DatasetRetrievalAuditGate[]
-  failure_categories: Record<string, number>
-  kg_recommendation?: string | null
-  recommended_next_action?: string | null
-}
-
-export type DatasetReport = {
-  dataset_id: string
-  dataset_name?: string | null
-  pipeline_hash?: string | null
-  generated_at: string
-  data_provenance?: DatasetReportDataProvenance | null
-  profile: DatasetProfileSummary
-  compliance: DatasetReportCompliance
-  pipeline_versions: DatasetReportPipelineVersion[]
-  connectors: DatasetReportConnectorRun[]
-  dataset_metadata: Record<string, unknown>
-  folder_tree?: DocumentFolderTreeResponse | null
-  governance_metrics?: DatasetGovernanceMetrics | null
-  governance_audit?: DatasetGovernanceAudit | null
-  retrieval_audit?: DatasetRetrievalAudit | null
-}
-
-export type DatasetConfigBundle = {
-  default_parser_backend?: string | null
-  default_chunk_strategy?: string | null
-  rag_defaults?: DatasetRagDefaults | null
-  embedding_defaults?: DatasetEmbeddingDefaults | null
-  default_prompt_template_id?: string | null
-  default_prompt_template_key?: string | null
-  default_prompt_ab_experiment_key?: string | null
-  pipeline?: DocumentPipelineOptions | null
-  ingestion_policy?: IngestionPolicy | null
-  workflow_layout?: Record<string, unknown> | null
-}
-
-export type DatasetConfigExport = {
-  version: string
-  dataset_id: string
-  name: string
-  exported_at: string
-  config: DatasetConfigBundle
-}
-
-export type DatasetConfigImportRequest = {
-  config: DatasetConfigBundle
-  replace: boolean
-}
+export type DatasetConfigBundle = components['schemas']['DatasetConfigBundle-Input']
+export type DatasetConfigExport = components['schemas']['DatasetConfigExport']
+export type DatasetConfigImportRequest = components['schemas']['DatasetConfigImportRequest']
 
 export type DatasetCloneRequest = {
   name: string
@@ -313,166 +176,25 @@ export type DatasetCloneRequest = {
 
 // ==================== Dataset Profile (Ingestion Scan) ====================
 
-export type DatasetProfileFindingSeverity = 'info' | 'warning' | 'error'
-
-export type DatasetProfileHistogramBin = {
-  label: string
-  min?: number | null
-  max?: number | null
-  count: number
-}
-
-export type DatasetProfilePercentiles = {
-  p25: number
-  p50: number
-  p75: number
-  p90: number
-  p99: number
-}
-
-export type DatasetProfilePdfScanStats = {
-  scanned: number
-  not_scanned: number
-  unknown: number
-}
-
-export type DatasetProfileParsingProvenanceStats = {
-  docs_with_provenance: number
-  by_resolved_backend: Record<string, number>
-  fallback_docs: number
-  elapsed_ms_percentiles: DatasetProfilePercentiles
-}
-
-export type DatasetProfileTargetCheckStatus = 'pass' | 'warn' | 'fail'
-
-export type DatasetProfileTargetCheck = {
-  key: string
-  label: string
-  status: DatasetProfileTargetCheckStatus
-  observed: JsonObject
-  target: JsonObject
-  message?: string | null
-  suggestions: string[]
-}
-
-export type DatasetProfileFindingSummary = {
-  key: string
-  label: string
-  severity: DatasetProfileFindingSeverity
-  count: number
-  description?: string | null
-}
-
-export type DatasetProfileScanRunSummary = {
-  id: string
-  kind: string
-  status: string
-  progress: number
-  requested_by?: string | null
-  created_at?: string | null
-  started_at?: string | null
-  finished_at?: string | null
-  error_message?: string | null
-}
-
-export type DatasetProfileSummary = {
-  dataset_id: string
-  generated_at: string
-
-  total_documents: number
-  total_size_bytes: number
-  by_status: Record<string, number>
-  by_file_type: Record<string, number>
-  by_directory?: Record<string, number>
-  by_quality_bucket?: Record<string, number>
-
-  file_size_histogram: DatasetProfileHistogramBin[]
-  length_percentiles: DatasetProfilePercentiles
-  length_histogram: DatasetProfileHistogramBin[]
-  chunk_count_percentiles?: DatasetProfilePercentiles
-  chunk_count_histogram?: DatasetProfileHistogramBin[]
-  avg_chunk_chars_percentiles?: DatasetProfilePercentiles
-  avg_chunk_chars_histogram?: DatasetProfileHistogramBin[]
-  chunk_length_percentiles?: DatasetProfilePercentiles
-  chunk_length_histogram?: DatasetProfileHistogramBin[]
-  chunk_token_percentiles?: DatasetProfilePercentiles
-  chunk_token_histogram?: DatasetProfileHistogramBin[]
-  avg_chunk_tokens_percentiles?: DatasetProfilePercentiles
-  avg_chunk_tokens_histogram?: DatasetProfileHistogramBin[]
-  chunk_coverage_percentiles?: DatasetProfilePercentiles
-  chunk_coverage_histogram?: DatasetProfileHistogramBin[]
-  chunk_overlap_waste_percentiles?: DatasetProfilePercentiles
-  chunk_overlap_waste_histogram?: DatasetProfileHistogramBin[]
-  page_number_histogram?: DatasetProfileHistogramBin[]
-  parse_quality_histogram?: DatasetProfileHistogramBin[]
-  language_mix?: Record<string, number>
-  pdf_scan: DatasetProfilePdfScanStats
-  parsing_provenance?: DatasetProfileParsingProvenanceStats
-
-  pii_hits_total: Record<string, number>
-  secrets_hits_total: Record<string, number>
-
-  findings: DatasetProfileFindingSummary[]
-  chunk_targets?: DatasetProfileTargetCheck[]
-  latest_scan_run?: DatasetProfileScanRunSummary | null
-}
-
-export type DatasetProfileDocumentOut = {
-  id: string
-  dataset_id?: string | null
-  filename: string
-  file_type: string
-  file_size: number
-  status: string
-  chunk_count: number
-  total_characters: number
-  created_at?: string | null
-  updated_at?: string | null
-  error_message?: string | null
-  metadata: JsonObject
-  preview?: string | null
-  preview_truncated?: boolean
-}
-
-export type DatasetProfileFindingListResponse = {
-  total: number
-  items: DatasetProfileDocumentOut[]
-}
-
-export type DatasetProfileDocumentListResponse = {
-  total: number
-  items: DatasetProfileDocumentOut[]
-}
-
-export type DatasetProfileScanRunCreateRequest = {
-  backfill_pdf_quality?: boolean
-  backfill_text_quality?: boolean
-  backfill_chunk_stats?: boolean
-  compute_file_hash?: boolean
-  max_documents?: number | null
-}
-
-export type DatasetProfileScanRunOut = {
-  id: string
-  tenant_id: string
-  dataset_id: string
-  requested_by?: string | null
-  kind: string
-  status: string
-  progress: number
-  config: JsonObject
-  summary: JsonObject
-  error_message?: string | null
-  started_at?: string | null
-  finished_at?: string | null
-  created_at?: string | null
-  updated_at?: string | null
-}
-
-export type DatasetProfileScanRunListResponse = {
-  total: number
-  items: DatasetProfileScanRunOut[]
-}
+export type {
+  DatasetProfileSummary,
+  DatasetProfileHistogramBin,
+  DatasetProfilePercentiles,
+  DatasetProfilePdfScanStats,
+  DatasetProfileParsingProvenanceStats,
+  DatasetProfileTargetCheckStatus,
+  DatasetProfileTargetCheck,
+  DatasetProfileFindingSummary,
+  DatasetProfileScanRunSummary,
+  DatasetProfileDocumentOut,
+  DatasetProfileFindingListResponse,
+  DatasetProfileDocumentListResponse,
+  DatasetProfileScanRunOut,
+  DatasetProfileScanRunListResponse,
+} from '@/lib/dataset-profile-schema'
+export type DatasetProfileFindingSeverity =
+  import('@/lib/dataset-profile-schema').DatasetProfileFindingSummary['severity']
+export type DatasetProfileScanRunCreateRequest = Partial<components['schemas']['DatasetProfileScanRunCreateRequest']>
 
 // ==================== Dataset Precheck (Local Folder Scan) ====================
 
@@ -587,40 +309,10 @@ export type DatasetPrecheckFindingListResponse = {
   items: DatasetPrecheckFileOut[]
 }
 
-export type DatasetPrecheckScanRunCreateRequest = {
-  root_path: string
-  max_files?: number | null
-  enable_pdf_quality?: boolean
-  enable_text_extract?: boolean
-  enable_pii?: boolean
-  enable_secrets?: boolean
-  compute_file_hash?: boolean
-  pdf_sample_pages?: number | null
-  text_extract_max_bytes?: number | null
-  redact_paths?: boolean
+type DatasetPrecheckScanRunInput = components['schemas']['DatasetPrecheckScanRunCreateRequest']
 
-  enable_pii_samples?: boolean
-  pii_context_chars?: number | null
-  pii_max_samples_per_file?: number | null
-
-  enable_secrets_samples?: boolean
-  secrets_context_chars?: number | null
-  secrets_max_samples_per_file?: number | null
-
-  pdf_min_text_chars_per_page?: number | null
-  pdf_text_chars_per_page?: number | null
-  pdf_scan_ratio_threshold?: number | null
-
-  enable_near_dup?: boolean
-  near_dup_hamming_threshold?: number | null
-  near_dup_max_pairs?: number | null
-
-  enable_sampling?: boolean
-  sample_size?: number | null
-
-  reuse_unchanged_files?: boolean
-  reuse_from_scan_run_id?: string | null
-}
+export type DatasetPrecheckScanRunCreateRequest = Pick<DatasetPrecheckScanRunInput, 'root_path'> &
+  Partial<Omit<DatasetPrecheckScanRunInput, 'root_path'>>
 
 export type DatasetPrecheckScanRunOut = {
   id: string
@@ -747,6 +439,7 @@ export type DatasetTableAsset = {
 export type DatasetTablesListResponse = {
   total: number
   items: DatasetTableAsset[]
+  next_skip: number | null
 }
 
 export type TableQueryRequest = {
@@ -755,12 +448,7 @@ export type TableQueryRequest = {
   max_cols?: number | null
 }
 
-export type TableQueryResponse = {
-  sql: string
-  columns: string[]
-  rows: unknown[][]
-  truncated: boolean
-}
+export type TableQueryResponse = import('./backend').OpenApiSchema<'TableQueryResponse'>
 
 export type TableAskRequest = {
   question: string

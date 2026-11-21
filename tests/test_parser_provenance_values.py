@@ -4,13 +4,14 @@ from uuid import uuid4
 
 import pytest
 
-from app.parsing.factory import ParserFactory
-from app.parsing.processors.parse_cache import build_parse_cache_key as local_key
-from app.parsing.processors.support import process_document_flow as flow
-from app.parsing.processors.support import stages
-from app.parsing.processors.support.recovery import upsert_ingest_checkpoint
-from app.services.parse_cache import SCHEMA, ParseCacheEntry
-from app.services.parse_cache import build_parse_cache_key as remote_key
+from app.rag.ingestion import pipeline as flow
+from app.rag.ingestion.indexing.support import stages
+from app.rag.ingestion.indexing.support.recovery import upsert_ingest_checkpoint
+from app.rag.ingestion.parsing.errors import ParsingInternalError
+from app.rag.ingestion.parsing.factory import ParserFactory
+from app.rag.ingestion.parsing.processors.parse_cache import build_parse_cache_key as local_key
+from app.services.parsing.cache import SCHEMA, ParseCacheEntry
+from app.services.parsing.cache import build_parse_cache_key as remote_key
 
 
 def test_parse_cache_formats_do_not_reuse_old_inferred_provenance() -> None:
@@ -59,24 +60,22 @@ async def test_remote_cache_hit_reports_the_backend_that_produced_the_content(mo
     )
     monkeypatch.setattr(stages, "get_parse_cache", lambda **_kwargs: (entry, 1))
     recorded = []
-    service = SimpleNamespace(
-        INTEGRATED_PIPELINE_STRATEGIES=set(),
-        _record_processing_metadata=lambda *_args, **kwargs: recorded.append(kwargs),
-    )
-    stage = stages.ParsingStage(service)
-    monkeypatch.setattr(stage, "_persist_parse_provenance", lambda *_args: None)
-    monkeypatch.setattr(stage, "_persist_parse_quality", lambda **_kwargs: None)
-    result = await stage.run(
+    monkeypatch.setattr(stages, "_record_processing_metadata", lambda *_args, **kwargs: recorded.append(kwargs))
+    monkeypatch.setattr(stages, "_persist_parse_provenance", lambda *_args: None)
+    monkeypatch.setattr(stages, "_persist_parse_quality", lambda **_kwargs: None)
+    document_id = uuid4()
+    result = await stages.parse_document(
         db=SimpleNamespace(commit=lambda: None, refresh=lambda _document: None),
         db_document=SimpleNamespace(
-            doc_metadata={"file_sha256": "sha", "pipeline_hash": "config"}, filename="cached.docx"
+            id=document_id, doc_metadata={"file_sha256": "sha", "pipeline_hash": "config"}, filename="cached.docx"
         ),
         file_path=Path("cached.docx"),
-        document_id=uuid4(),
+        document_id=document_id,
         tenant_id=uuid4(),
         dataset_id="dataset",
         parser_backend="auto",
         chunk_strategy="separator",
+        artifact_dirs=set(),
     )
     assert result.resolved_backend == "pandoc"
     assert recorded[0]["parser_backend"] == "pandoc"
@@ -84,15 +83,14 @@ async def test_remote_cache_hit_reports_the_backend_that_produced_the_content(mo
 
 @pytest.mark.asyncio
 async def test_live_parser_response_cannot_omit_its_resolved_backend(monkeypatch) -> None:
-    stage = stages.ParsingStage(SimpleNamespace())
-    monkeypatch.setattr(stage, "_artifact_root", lambda **_kwargs: Path("unused"))
+    monkeypatch.setattr(stages, "_artifact_root", lambda **_kwargs: Path("unused"))
 
     async def incomplete_job(**_kwargs):
         return {"documents": []}
 
-    monkeypatch.setattr(stage, "_run_parser_job", incomplete_job)
-    with pytest.raises(KeyError):
-        await stage._parse_documents(
+    monkeypatch.setattr(stages, "_run_parser_job", incomplete_job)
+    with pytest.raises(ParsingInternalError, match="Parser returned malformed documents") as error:
+        await stages._parse_documents(
             db=object(),
             file_path=Path("document.docx"),
             document_id=uuid4(),
@@ -101,11 +99,13 @@ async def test_live_parser_response_cannot_omit_its_resolved_backend(monkeypatch
             effective_parser_backend=None,
             pdf_quality=None,
             html_xpath=None,
+            artifact_dirs=set(),
         )
+    assert isinstance(error.value.__cause__, KeyError)
 
 
 @pytest.mark.asyncio
-async def test_legacy_indexed_checkpoint_without_provenance_is_not_reused() -> None:
+async def test_legacy_indexed_checkpoint_without_provenance_is_not_reused(monkeypatch) -> None:
     metadata = upsert_ingest_checkpoint(
         {"pipeline_hash": "config", "file_sha256": "sha"}, stage="indexed", source="test"
     )
@@ -113,15 +113,13 @@ async def test_legacy_indexed_checkpoint_without_provenance_is_not_reused() -> N
     def unexpected_query(*_args):
         pytest.fail("A checkpoint without parser provenance cannot start index finalization")
 
+    monkeypatch.setattr(flow, "_require_primary_index_channels_ready", lambda *_args, **_kwargs: "config")
     result = await flow._resume_from_indexed_checkpoint(
-        object(),
         db=SimpleNamespace(query=unexpected_query),
         db_document=SimpleNamespace(doc_metadata=metadata),
         tenant_id=uuid4(),
         document_id=uuid4(),
-        parser_backend="requested",
-        chunk_strategy="requested",
-        prepared_state=SimpleNamespace(),
+        prepared_state=SimpleNamespace(pipeline_effective=SimpleNamespace()),
         with_stage_durations=lambda value: value,
     )
     assert result is None

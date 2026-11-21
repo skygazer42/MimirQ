@@ -90,7 +90,7 @@ function getDetailsButtonLabel({
 // Use a stable rough estimate so the card aligns with the design
 // without pretending the number is exact.
 function estimateIndexSizeBytes(vectorCount: number): number {
-  const normalizedCount = Math.max(0, Math.trunc(vectorCount || 0))
+  const normalizedCount = Math.max(0, Math.trunc(vectorCount))
   const embeddingDims = 3072
   const bytesPerDim = 4
   const storageOverheadMultiplier = 2.2
@@ -101,8 +101,8 @@ export function KnowledgeRetrievalPanel({
   selectedDatasetId,
   selectedDocumentIds = [],
   compact = false,
-  aggregateDocuments = 0,
-  aggregateChunks = 0,
+  aggregateDocuments,
+  aggregateChunks,
 }: Readonly<KnowledgeRetrievalPanelProps>) {
   const t = useTranslations('KnowledgeRetrievalPanel')
   // t("empty.title")
@@ -116,8 +116,12 @@ export function KnowledgeRetrievalPanel({
     reconcileIndexAudit,
     runIndexAudit,
   } = useIndexAudit({ selectedDatasetId, selectedDocumentIds })
-  const [detailsExpanded, setDetailsExpanded] = useState(false)
-  const hasAggregateOverview = !selectedDatasetId && (aggregateDocuments > 0 || aggregateChunks > 0)
+  const [detailsRequested, setDetailsRequested] = useState(false)
+  const hasAggregateOverview = !selectedDatasetId && (aggregateDocuments !== undefined || aggregateChunks !== undefined)
+  const aggregateDocumentLabel = aggregateDocuments?.toLocaleString() ?? '未返回'
+  const aggregateChunkLabel = aggregateChunks?.toLocaleString() ?? '未返回'
+  const aggregateIndexSizeLabel =
+    aggregateChunks === undefined ? '未返回' : formatBytesCompact(estimateIndexSizeBytes(aggregateChunks))
   const overviewDatasetLabel = selectedDatasetId || '全部数据集'
 
   const channelRows = useMemo(() => {
@@ -136,14 +140,14 @@ export function KnowledgeRetrievalPanel({
 
     return channels.map((channel) => {
       const counts = countsByChannel[channel] ?? {}
-      const rowCount = Object.values(counts).reduce((total, value) => total + Math.max(0, Number(value || 0)), 0)
-      const errorCount = Math.max(0, Number(counts.error || 0))
+      const rowCount = Object.values(counts).reduce((total, value) => total + Math.max(0, value), 0)
+      const errorCount = Math.max(0, counts.error ?? 0)
       const nonTerminalCount = Object.entries(counts).reduce(
         (total, [status, value]) =>
-          ['ready', 'disabled', 'skipped', 'error'].includes(status) ? total : total + Math.max(0, Number(value || 0)),
+          ['ready', 'disabled', 'skipped', 'error'].includes(status) ? total : total + Math.max(0, value),
         0,
       )
-      const legacyCount = Math.max(0, Number(legacyByChannel[channel] || 0))
+      const legacyCount = Math.max(0, legacyByChannel[channel] ?? 0)
       const unknown = rowCount === 0
       const state = errorCount
         ? 'warning'
@@ -155,7 +159,7 @@ export function KnowledgeRetrievalPanel({
               ? 'unknown'
               : 'ok'
       const statusParts = Object.entries(counts)
-        .filter(([, count]) => Number(count || 0) > 0)
+        .filter(([, count]) => count > 0)
         .sort(([left], [right]) => left.localeCompare(right))
         .map(([status, count]) => `${status} ${count}`)
       if (legacyCount > 0) statusParts.push(`legacy ${legacyCount}`)
@@ -243,18 +247,9 @@ export function KnowledgeRetrievalPanel({
     if (hasAggregateOverview) {
       return [
         {
-          key: 'checkedIds',
-          label: '向量总数',
-          value: aggregateChunks.toLocaleString(),
-          icon: Fingerprint,
-          tone: 'emerald',
-          meta: '全量向量',
-          estimated: false,
-        },
-        {
           key: 'activeDocuments',
           label: '文档总数',
-          value: aggregateDocuments.toLocaleString(),
+          value: aggregateDocumentLabel,
           icon: FileStack,
           tone: 'blue',
           meta: '全部数据集',
@@ -263,7 +258,7 @@ export function KnowledgeRetrievalPanel({
         {
           key: 'activeChunks',
           label: '分片总数',
-          value: aggregateChunks.toLocaleString(),
+          value: aggregateChunkLabel,
           icon: Layers3,
           tone: 'violet',
           meta: '全量分片',
@@ -272,7 +267,7 @@ export function KnowledgeRetrievalPanel({
         {
           key: 'indexSize',
           label: '索引大小',
-          value: formatBytesCompact(estimateIndexSizeBytes(aggregateChunks)),
+          value: aggregateIndexSizeLabel,
           icon: HardDrive,
           tone: 'sky',
           meta: '全量估算',
@@ -282,7 +277,7 @@ export function KnowledgeRetrievalPanel({
     }
 
     return []
-  }, [aggregateChunks, aggregateDocuments, hasAggregateOverview, indexAudit])
+  }, [aggregateChunkLabel, aggregateDocumentLabel, aggregateIndexSizeLabel, hasAggregateOverview, indexAudit])
 
   const auditStatus = useMemo(() => {
     if (hasAggregateOverview) {
@@ -361,7 +356,8 @@ export function KnowledgeRetrievalPanel({
     ] as const
   }, [channelRows, hasAggregateOverview, indexAudit])
 
-  const hasIndexDetails = Boolean(indexAudit || hasAggregateOverview)
+  const hasIndexDetails = indexAudit !== null || hasAggregateOverview
+  const detailsExpanded = hasIndexDetails && detailsRequested
   const detailsButtonLabel = getDetailsButtonLabel({
     hasIndexDetails,
     detailsExpanded,
@@ -385,14 +381,14 @@ export function KnowledgeRetrievalPanel({
     if (hasAggregateOverview) {
       return [
         ['审计范围', '全部数据集聚合'],
-        ['文档总数', aggregateDocuments.toLocaleString()],
-        ['分片总数', aggregateChunks.toLocaleString()],
-        ['估算索引大小', formatBytesCompact(estimateIndexSizeBytes(aggregateChunks))],
+        ['文档总数', aggregateDocumentLabel],
+        ['分片总数', aggregateChunkLabel],
+        ['估算索引大小', aggregateIndexSizeLabel],
       ]
     }
 
     return []
-  }, [aggregateChunks, aggregateDocuments, hasAggregateOverview, indexAudit])
+  }, [aggregateChunkLabel, aggregateDocumentLabel, aggregateIndexSizeLabel, hasAggregateOverview, indexAudit])
 
   const statusToneClassName = {
     success: 'bg-success/10 text-success border-success/20',
@@ -660,16 +656,6 @@ export function KnowledgeRetrievalPanel({
               ))}
             </div>
 
-            <div className="space-y-2 border-t border-border/60 pt-3.5">
-              <div className="text-[12px] text-muted-foreground/64">最后同步</div>
-              <div className="text-[14px] font-medium text-foreground">
-                {indexAudit || hasAggregateOverview ? '已完成当前数据集索引审计' : '尚未运行'}
-              </div>
-              <div className="inline-flex items-center rounded-full bg-success/10 px-3 py-1 text-[12px] font-medium text-success">
-                {indexAudit || hasAggregateOverview ? '同步完成' : '等待执行'}
-              </div>
-            </div>
-
             <div className="space-y-3 border-t border-border/60 pt-3.5">
               <div className="text-[13px] font-medium text-foreground">健康检查清单</div>
               <div className="space-y-3">
@@ -710,15 +696,14 @@ export function KnowledgeRetrievalPanel({
               type="button"
               variant="outline"
               aria-expanded={detailsExpanded}
-              aria-controls="knowledge-index-detail-panel"
+              aria-controls={detailsExpanded ? 'knowledge-index-detail-panel' : undefined}
               onClick={() => {
                 if (!hasIndexDetails) {
-                  if (selectedDatasetId && !indexAuditLoading) {
-                    detachPromise(runIndexAudit())
-                  }
+                  setDetailsRequested(true)
+                  detachPromise(runIndexAudit())
                   return
                 }
-                setDetailsExpanded((expanded) => !expanded)
+                setDetailsRequested((requested) => !requested)
               }}
               disabled={!hasIndexDetails && (!selectedDatasetId || indexAuditLoading)}
               className="h-11 w-full rounded-[16px] border-border/70 bg-background text-[13px] font-medium"
@@ -729,7 +714,7 @@ export function KnowledgeRetrievalPanel({
                 <ChevronRight className={cn('ml-2 size-4 transition-transform', detailsExpanded && 'rotate-90')} />
               ) : null}
             </Button>
-            {detailsExpanded && hasIndexDetails ? (
+            {detailsExpanded ? (
               <div
                 id="knowledge-index-detail-panel"
                 className="space-y-3 rounded-[18px] border border-border/70 bg-background/76 p-4 text-[12px] shadow-[inset_0_1px_0_rgba(255,255,255,0.72)]"
@@ -760,8 +745,6 @@ export function KnowledgeRetrievalPanel({
                     当前为全局聚合估算；选择单个数据集并运行审计后，可查看缺失向量、孤儿向量和后端一致性明细。
                   </div>
                 )}
-                {renderChannelStatusSummary()}
-                {renderReconcileAction()}
               </div>
             ) : null}
           </div>

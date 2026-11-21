@@ -1,13 +1,13 @@
 import asyncio
+import logging
 import re
 from collections import OrderedDict
 from typing import Any
 
-from app.models.document import DocumentChunk
+from app.models.documents.records import DocumentChunk
 from app.rag.kg.extraction.parser import normalize_entity_name, normalize_entity_type
-from app.rag.kg.utils import get_logger
 
-logger = get_logger("kg.extract.heuristic")
+logger = logging.getLogger("kg.extract.heuristic")
 
 _ACRONYM_OR_STANDARD_RE = re.compile(r"\b(?:RFC\s?-?\d{3,5}|HTTP/[0-9.]+|[A-Z][A-Z0-9][A-Z0-9.+/_-]+)\b")
 _TITLE_PHRASE_RE = re.compile(r"\b[A-Z][A-Za-z0-9.+/_-]{2,}(?:\s+[A-Z][A-Za-z0-9.+/_-]{2,}){0,4}\b")

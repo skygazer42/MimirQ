@@ -7,11 +7,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { globalEventBus } from '@/lib/event-bus'
 import { waitForAssertion } from '@/test/hook-harness'
+import { createChatStreamFixture } from '@/test/chat-stream-fixture'
 
 const api = vi.hoisted(() => ({
   datasetApi: { listAll: vi.fn() },
   settingsApi: { get: vi.fn() },
-  promptTemplateApi: { list: vi.fn() },
+  promptTemplateApi: { listAll: vi.fn() },
   chatApi: { streamChat: vi.fn(), chat: vi.fn(), getMessages: vi.fn() },
 }))
 vi.hoisted(() => vi.stubGlobal('BroadcastChannel', undefined))
@@ -26,7 +27,6 @@ vi.mock('@/store/document-view', () => ({
 vi.mock('@/components/chat/message-item', () => ({
   ChatMessageItem: ({ message }: { message: { content: string } }) => <article>{message.content}</article>,
 }))
-vi.mock('@/components/ui/magnetic', () => ({ Magnetic: ({ children }: { children: React.ReactNode }) => children }))
 vi.mock('@/components/theme-customizer', () => ({
   ThemeCustomizer: ({ trigger }: { trigger: React.ReactNode }) => trigger,
 }))
@@ -107,16 +107,13 @@ beforeEach(() => {
   ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
   vi.resetAllMocks()
   api.datasetApi.listAll.mockResolvedValue([{ id: 'dataset-a', name: 'Dataset A' }])
-  api.promptTemplateApi.list.mockResolvedValue({ total: 0, items: [] })
+  api.promptTemplateApi.listAll.mockResolvedValue({ total: 0, items: [] })
   api.settingsApi.get.mockResolvedValue({ rag: { retrieval_top_k: 5, similarity_threshold: 0.7 } })
-  api.chatApi.streamChat.mockImplementation(async (_request, onJson) => {
-    onJson(JSON.stringify({ type: 'token', data: { content: 'answer' } }))
-    onJson(
-      JSON.stringify({
-        type: 'done',
-        data: { assistant_message_id: `assistant-${api.chatApi.streamChat.mock.calls.length}` },
-      }),
-    )
+  api.chatApi.streamChat.mockImplementation(async (_request, onJson, options) => {
+    const run = createChatStreamFixture({ messageId: `assistant-${api.chatApi.streamChat.mock.calls.length}` })
+    run.start(onJson, options.onOpen)
+    onJson(run.text('answer'))
+    run.finish(onJson)
   })
   vi.spyOn(HTMLElement.prototype, 'scrollIntoView').mockImplementation(() => undefined)
 })
@@ -230,7 +227,7 @@ describe('ChatArea composer intent', () => {
     api.settingsApi.get.mockReturnValue(settings.promise)
     const view = mount({ initialPrompt: 'draft', initialOpenRagSettings: true })
     await ready(view.container)
-    const topK = document.querySelector<HTMLInputElement>('input[type="number"]')!
+    const topK = document.querySelector<HTMLInputElement>('#chat-retrieval-count')!
     expect(topK).not.toBeNull()
     const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!
     for (const value of ['6', '5']) {

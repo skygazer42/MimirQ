@@ -20,6 +20,12 @@ SSE token 的内容原先按分块 trim，独立空格、换行和缩进会丢�
 
 session 保留原加载请求序号，并在 clear/reset/auth 变化／卸载时使旧加载失效；完成时还核对原身份 revision/scope。clear 和历史提交同步更新 messagesRef。初始链接在挂载时加载一次；后续 URL 导航继续由现有 ChatArea 驱动。组合 Hook 只依赖稳定的具体函数，错误与会话 callback 通过 ref 更新，导航 effect 不再因匿名错误处理函数而重启。
 
+## Related decisions
+
+初始/URL 历史加载及接受前普通 POST 回退由[会话历史与发送准入](2026-11-17-chat-session-history-and-send-admission.md)接管：入口统一归属 useChat，未确认发送不自动重放，停止消息保留本地身份。本篇其余控制器、身份和恢复预算决定继续适用。
+
+完成事件后的处理由[流式读取与回答生成边界](2026-11-17-sse-reader-and-chat-completion.md)接管：当前后端在 done 后仍执行持久化，后续错误需要反馈；本篇 controller、身份、停止和恢复预算的归属决定保持。
+
 ## Alternatives considered
 
 - 只调用 abort，能取消支持信号的 fetch；但已进入队列的 callback、无 signal 的 getMessages 和忽略取消的响应仍能完成，因此结果发布还需原请求归属。
@@ -28,6 +34,10 @@ session 保留原加载请求序号，并在 clear/reset/auth 变化／卸载时
 - 给聊天重建通用状态管理器或全局查询 store，可以统一异步状态；当前缺陷集中在五个现有 Hook 的生命周期，使用既有 controller、请求序号和 auth 边界即可，无须迁移架构。
 
 ## Consequences
+
+断流恢复先核对历史响应的会话 ID，再按请求 ID 查找助手消息。取消会结束等待或读取，其余异常继续交给流式请求处理。源码与依据见[断流恢复记录](../../../../.frontend-structure/20261112-full-frontend-guidelines/stream-transport/stream-recovery-evidence.json)。
+
+流式 Hook 改用与历史读取一致的登录会话键和订阅。每次发送通过自己的停止函数关联连接、恢复读取和流计时器，撤销请求时先解除其发布归属。显式停止仍保留已收到的部分回答。断流恢复使用本次已接受的会话 ID。源码与依据见[流式请求生命周期记录](../../../../.frontend-structure/20261112-full-frontend-guidelines/stream-transport/stream-request-lifecycle-evidence.json)。下面的运行结果属于此前改动。
 
 API 载荷、查询 key、历史最后十条、检索范围、结构化输出和记忆字段、短／长超时保持。当前请求错误保留用户消息和原错误；普通回退与明确 stop 保留原体验。输入草稿仍由 ChatArea 持有，本改动不写其输入状态。
 

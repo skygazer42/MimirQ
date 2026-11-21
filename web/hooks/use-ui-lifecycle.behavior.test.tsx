@@ -4,17 +4,7 @@ import React, { act, useRef } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { renderHook } from '@/test/hook-harness'
-
-import { useAnimatedNumber } from './use-animated-number'
 import { useResizeObserver } from './use-resize-observer'
-
-const preference = vi.hoisted(() => ({ reducedMotion: false }))
-
-vi.mock('framer-motion', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('framer-motion')>()),
-  useReducedMotion: () => preference.reducedMotion,
-}))
 
 const cleanups = new Set<() => void>()
 
@@ -24,45 +14,6 @@ afterEach(() => {
   vi.restoreAllMocks()
   vi.unstubAllGlobals()
   document.body.replaceChildren()
-})
-
-describe('useAnimatedNumber', () => {
-  beforeEach(() => {
-    preference.reducedMotion = false
-  })
-
-  it('updates the formatter while the spring is at rest', () => {
-    let format = (value: number) => `Count: ${value}`
-    const hook = renderHook(() => useAnimatedNumber(42, { format }))
-    cleanups.add(hook.unmount)
-    expect(hook.result.current).toBe('Count: 42')
-
-    format = (value) => `${value} items`
-    hook.rerender()
-
-    expect(hook.result.current).toBe('42 items')
-  })
-
-  it('keeps the initial formatted value and default rounding', () => {
-    const hook = renderHook(() => useAnimatedNumber(42.4))
-    cleanups.add(hook.unmount)
-
-    expect(hook.result.current).toBe(Math.round(42.4).toLocaleString())
-  })
-
-  it('shows changed targets immediately when reduced motion is requested', () => {
-    preference.reducedMotion = true
-    let target = 12
-    const format = (value: number) => `Value: ${value}`
-    const hook = renderHook(() => useAnimatedNumber(target, { format }))
-    cleanups.add(hook.unmount)
-    expect(hook.result.current).toBe('Value: 12')
-
-    target = 24
-    hook.rerender()
-
-    expect(hook.result.current).toBe('Value: 24')
-  })
 })
 
 function ResizeHarness({ target }: Readonly<{ target: string | null }>) {

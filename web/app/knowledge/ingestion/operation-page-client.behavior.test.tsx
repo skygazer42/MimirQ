@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ConnectorRunOut } from '@/types/connectors'
+import { queryKeys } from '@/lib/query-keys'
 
 const routeState = vi.hoisted(() => ({
   search: 'datasetId=ds-1',
@@ -456,13 +457,10 @@ describe('knowledge ingestion operation page behavior', () => {
       await act(async () => container.querySelector<HTMLButtonElement>('[data-select-item="ds-2"]')!.click())
       expect(container.querySelector('[data-select-item="ds-2"]')?.getAttribute('data-selected')).toBe('true')
       await act(async () => {
-        queryClient.setQueryData(
-          ['knowledge-ingestion-operation-datasets'],
-          [
-            { id: 'ds-1', name: 'Dataset One refreshed' },
-            { id: 'ds-2', name: 'Dataset Two refreshed' },
-          ],
-        )
+        queryClient.setQueryData(queryKeys.datasets.exhaustive(), [
+          { id: 'ds-1', name: 'Dataset One refreshed' },
+          { id: 'ds-2', name: 'Dataset Two refreshed' },
+        ])
         await new Promise((resolve) => setTimeout(resolve, 0))
       })
       expect(container.querySelector('[data-select-item="ds-2"]')?.getAttribute('data-selected')).toBe('true')
@@ -854,7 +852,7 @@ it.each(['pending request', 'list missing target'] as const)(
         )
         expect(selected(secondId)).toBe('true')
         await act(async () => {
-          queryClient.setQueryData(['knowledge-ingestion-operation-datasets'], arrivedDatasets)
+          queryClient.setQueryData(queryKeys.datasets.exhaustive(), arrivedDatasets)
         })
       }
       await act(async () => {

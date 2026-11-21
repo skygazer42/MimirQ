@@ -1,6 +1,6 @@
 from types import SimpleNamespace
 
-from app.rag.core.conversation import format_history_text
+from app.rag.llm.prompts.templates import format_history_text
 
 
 def test_format_history_text_preserves_latest_system_message_outside_window() -> None:

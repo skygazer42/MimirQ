@@ -6,6 +6,7 @@ fastapi==0.135.3
 anyio==4.15.1
 uvicorn[standard]==0.44.0
 python-multipart==0.0.31
+ag-ui-protocol==1.0.0
 
 # gRPC (pre-built wheels for Windows)
 grpcio==1.80.0
@@ -62,7 +63,6 @@ rapidocr-onnxruntime==1.4.4
 pyclipper==1.4.0
 shapely==2.1.2
 tqdm==4.67.3
-beartype==0.22.9
 hanziconv==0.3.2
 nltk==3.10.2
 html-text==0.7.1
@@ -70,8 +70,6 @@ readability-lxml==0.8.4.1
 
 # Lightweight Text Processing (BM25 runs inside Milvus)
 jieba==0.42.1
-word2number==1.1
-cn2an==0.5.23
 
 # Authentication
 PyJWT[crypto]==2.13.0

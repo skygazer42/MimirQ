@@ -65,6 +65,7 @@ from app.api.schemas.evaluation.references import (
 from app.api.schemas.evaluation.regression import (
     RagasRegressionAblationBatchRequest,
     RagasRegressionAblationBatchResponse,
+    RagasRegressionCaseBundleItem,
     RagasRegressionCaseCreateRequest,
     RagasRegressionCaseExportQuery,
     RagasRegressionCaseImportRequest,
@@ -86,6 +87,7 @@ from app.api.schemas.evaluation.regression import (
     RagasRegressionRunListQuery,
     RagasRegressionRunPurgeQuery,
     RagasRegressionRunSchema,
+    StoredReferenceSource,
     SyntheticHardcaseGenerateRequest,
     SyntheticHardcaseGenerateResponse,
 )
@@ -178,6 +180,7 @@ __all__ = [
     "RagasItemSchema",
     "RagasRegressionAblationBatchRequest",
     "RagasRegressionAblationBatchResponse",
+    "RagasRegressionCaseBundleItem",
     "RagasRegressionCaseCreateRequest",
     "RagasRegressionCaseExportQuery",
     "RagasRegressionCaseImportRequest",
@@ -205,6 +208,7 @@ __all__ = [
     "RagasRunList",
     "RagasRunListQuery",
     "RagasRunSchema",
+    "StoredReferenceSource",
     "SyntheticHardcaseGenerateRequest",
     "SyntheticHardcaseGenerateResponse",
     "TestGenFromConversationsRequest",

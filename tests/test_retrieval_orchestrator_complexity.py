@@ -75,8 +75,9 @@ class _QueryDrivenRetriever:
 def test_run_post_rerank_stage_falls_back_to_single_mode_after_pipeline_noop(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.rag.retrieval.orchestrator as orch_mod
-    from app.core.config import settings
+    from app.infrastructure.config import settings
+    from app.infrastructure.model_policy import PostRerankStageConfig
+    from app.rag.retrieval.stages import post_rerank as post_rerank_stage
 
     docs = [
         _mk_doc(chunk_id="a", score=0.9),
@@ -84,10 +85,12 @@ def test_run_post_rerank_stage_falls_back_to_single_mode_after_pipeline_noop(
     ]
 
     monkeypatch.setattr(settings, "EVIDENCE_POST_RERANK_ENABLED", True, raising=False)
-    monkeypatch.setattr(settings, "EVIDENCE_POST_RERANK_PROVIDER", "pc", raising=False)
+    monkeypatch.setattr(settings, "EVIDENCE_POST_RERANK_PROVIDER", "api", raising=False)
     monkeypatch.setattr(settings, "EVIDENCE_POST_RERANK_TOP_N", 2, raising=False)
     monkeypatch.setattr(settings, "EVIDENCE_POST_RERANK_PIPELINE_ENABLED", True, raising=False)
-    monkeypatch.setattr(settings, "EVIDENCE_POST_RERANK_PIPELINE", "ignored", raising=False)
+    monkeypatch.setattr(
+        settings, "EVIDENCE_POST_RERANK_PIPELINE", [PostRerankStageConfig(provider="stage1", top_n=1)], raising=False
+    )
     monkeypatch.setattr(settings, "EVIDENCE_POST_RERANK_CACHE_ENABLED", True, raising=False)
     monkeypatch.setattr(
         settings,
@@ -100,12 +103,6 @@ def test_run_post_rerank_stage_falls_back_to_single_mode_after_pipeline_noop(
         "EVIDENCE_POST_RERANK_SCORE_CALIBRATION_ALPHA",
         0.25,
         raising=False,
-    )
-    monkeypatch.setattr(
-        orch_mod,
-        "_safe_post_rerank_pipeline_summary",
-        lambda _raw: [{"provider": "stage1", "top_n": 1}],
-        raising=True,
     )
 
     def _pipeline_mode(**_kwargs: Any) -> dict[str, Any]:
@@ -126,19 +123,20 @@ def test_run_post_rerank_stage_falls_back_to_single_mode_after_pipeline_noop(
         return {
             "docs": [docs[1], docs[0]],
             "post_rerank_used": True,
-            "post_rerank_provider": "pc",
+            "post_rerank_provider": "api",
             "post_rerank_model_used": "single-model",
             "post_rerank_candidates_n": 2,
             "post_rerank_elapsed": 0.75,
             "post_rerank_cache_hits": 3,
             "post_rerank_cache_misses": 4,
             "post_rerank_score_calibration_used": True,
+            "post_rerank_skip_reason": None,
         }
 
-    monkeypatch.setattr(orch_mod, "_run_post_rerank_pipeline_mode", _pipeline_mode, raising=False)
-    monkeypatch.setattr(orch_mod, "_run_post_rerank_single_mode", _single_mode, raising=False)
+    monkeypatch.setattr(post_rerank_stage, "_run_post_rerank_pipeline_mode", _pipeline_mode)
+    monkeypatch.setattr(post_rerank_stage, "_run_post_rerank_single_mode", _single_mode)
 
-    result = orch_mod._run_post_rerank_stage(
+    result = post_rerank_stage._run_post_rerank_stage(
         state={"tenant_id": "tenant"},
         docs=docs,
         query_for_retrieval="q",
@@ -149,7 +147,7 @@ def test_run_post_rerank_stage_falls_back_to_single_mode_after_pipeline_noop(
     assert result["post_rerank_pipeline"] == [{"provider": "stage1", "top_n": 1}]
     assert result["post_rerank_pipeline_used"] is True
     assert result["post_rerank_used"] is True
-    assert result["post_rerank_provider"] == "pc"
+    assert result["post_rerank_provider"] == "api"
     assert result["post_rerank_model_used"] == "single-model"
     assert result["post_rerank_candidates_n"] == 2
     assert result["post_rerank_elapsed"] == 0.75
@@ -163,7 +161,10 @@ def test_run_retrieval_empty_hard_fallback_records_empty_diagnostics_and_config_
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     import app.rag.retrieval.orchestrator as orch_mod
-    from app.core.config import settings
+    from app.infrastructure.config import settings
+    from app.rag.retrieval.stages import followup as followup_stage
+    from app.rag.retrieval.stages import preparation as preparation_stage
+    from app.rag.retrieval.stages import requirements as requirements_stage
 
     monkeypatch.setattr(settings, "ENABLE_QUERY_REWRITE", False, raising=False)
     monkeypatch.setattr(settings, "ENABLE_MULTI_QUERY", False, raising=False)
@@ -196,7 +197,9 @@ def test_run_retrieval_empty_hard_fallback_records_empty_diagnostics_and_config_
             "keyword": [],
         }
     )
-    monkeypatch.setattr(orch_mod, "hybrid_retriever", retriever, raising=True)
+    monkeypatch.setattr(preparation_stage, "hybrid_retriever", retriever, raising=True)
+    monkeypatch.setattr(followup_stage, "hybrid_retriever", retriever, raising=True)
+    monkeypatch.setattr(requirements_stage, "hybrid_retriever", retriever, raising=True)
 
     out = orch_mod.run_retrieval(
         {
@@ -245,6 +248,7 @@ def test_run_retrieval_no_retrieval_intent_bypasses_retrieval_with_stable_trace(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     import app.rag.retrieval.orchestrator as orch_mod
+    from app.rag.runtime import engine as engine_module
 
     monkeypatch.setattr(
         orch_mod,
@@ -253,7 +257,7 @@ def test_run_retrieval_no_retrieval_intent_bypasses_retrieval_with_stable_trace(
         raising=True,
     )
     monkeypatch.setattr(
-        orch_mod,
+        engine_module,
         "get_rag_engine",
         lambda: pytest.fail("no-retrieval bypass must not initialize the engine"),
         raising=True,
@@ -309,7 +313,11 @@ def test_run_retrieval_parallel_variant_execution_preserves_public_query_order(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     import app.rag.retrieval.orchestrator as orch_mod
-    from app.core.config import settings
+    from app.infrastructure.config import settings
+    from app.rag.retrieval.planning import planner
+    from app.rag.retrieval.stages import followup as followup_stage
+    from app.rag.retrieval.stages import preparation as preparation_stage
+    from app.rag.retrieval.stages import requirements as requirements_stage
 
     monkeypatch.setattr(settings, "ENABLE_QUERY_REWRITE", False, raising=False)
     monkeypatch.setattr(settings, "ENABLE_MULTI_QUERY", False, raising=False)
@@ -335,23 +343,15 @@ def test_run_retrieval_parallel_variant_execution_preserves_public_query_order(
         raising=True,
     )
     monkeypatch.setattr(
-        orch_mod,
+        planner,
         "generate_alias_queries",
         lambda **_kwargs: (["alias evidence"], {"enabled": True, "used": True}),
         raising=True,
     )
-    monkeypatch.setattr(
-        orch_mod,
-        "hybrid_retriever",
-        _QueryDrivenRetriever(
-            delays_by_query={
-                "q": 0.03,
-                "alias evidence": 0.02,
-                "dict evidence": 0.0,
-            }
-        ),
-        raising=True,
-    )
+    retriever_port = _QueryDrivenRetriever(delays_by_query={"q": 0.03, "alias evidence": 0.02, "dict evidence": 0.0})
+    monkeypatch.setattr(preparation_stage, "hybrid_retriever", retriever_port, raising=True)
+    monkeypatch.setattr(followup_stage, "hybrid_retriever", retriever_port, raising=True)
+    monkeypatch.setattr(requirements_stage, "hybrid_retriever", retriever_port, raising=True)
 
     out = orch_mod.run_retrieval(
         {
@@ -379,10 +379,10 @@ def test_run_retrieval_parallel_variant_execution_preserves_public_query_order(
     assert [item.get("kind") for item in trace_per_query] == ["main", "alias", "dict"]
 
 
-def test_routing_phase_resolves_orchestrator_module_monkeypatch_seams(
+def test_routing_owner_applies_preset_before_adaptive_overrides(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.rag.retrieval.orchestrator as orch_mod
+    from app.rag.retrieval.planning import routing
 
     calls: dict[str, dict[str, Any]] = {}
 
@@ -402,55 +402,36 @@ def test_routing_phase_resolves_orchestrator_module_monkeypatch_seams(
             "seam": "adaptive",
         }
 
-    monkeypatch.setattr(orch_mod, "route_retrieval_preset", _route_preset, raising=True)
+    monkeypatch.setattr(routing, "route_retrieval_preset", _route_preset, raising=True)
     monkeypatch.setattr(
-        orch_mod,
+        routing,
         "route_adaptive_retrieval_overrides",
         _route_adaptive,
         raising=True,
     )
-    monkeypatch.setattr(
-        orch_mod,
-        "hybrid_retriever",
-        _QueryDrivenRetriever(),
-        raising=True,
-    )
-
     state = {
         "retrieval_mode": "vector",
         "intent_router": True,
         "adaptive_router": True,
         "top_k": 3,
     }
-    result = orch_mod._apply_routing_phase(
-        state,
-        query_for_retrieval="patched routing",
-        requested_retrieval_mode="vector",
-        requested_retrieval_profile=None,
-        sparse_enabled=False,
-        sparse_provider="deterministic",
-        hierarchy_recall_enabled=False,
-        hierarchy_family_collapse=False,
-        hierarchy_family_aggregation="combined",
-        hierarchy_tree_dedup=False,
-        hierarchy_parent_depth=0,
-        hierarchy_sibling_window=0,
-        hierarchy_overfetch_factor=1,
-    )
+    result = routing.resolve_query_routing("patched routing", options=state)
 
     assert calls["preset"]["query"] == "patched routing"
     assert calls["preset"]["retrieval_mode"] == "vector"
     assert calls["adaptive"]["retrieval_mode"] == "keyword"
     assert calls["adaptive"]["intent_meta"]["seam"] == "preset"
-    assert result["intent_router_meta"]["seam"] == "preset"
-    assert result["adaptive_router_meta"]["seam"] == "adaptive"
-    assert result["retriever_update"]["k"] == 9
+    assert result.intent_metadata["seam"] == "preset"
+    assert result.adaptive_metadata["seam"] == "adaptive"
+    assert result.normalization.retriever_update["k"] == 9
 
 
-def test_contract_phase_resolves_orchestrator_module_monkeypatch_seams(
+def test_contract_owner_preserves_policy_and_inferred_scope_metadata(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.rag.retrieval.orchestrator as orch_mod
+    from app.rag.retrieval.planning import routing
+
+    monkeypatch.setattr(routing.settings, "RETRIEVAL_MUST_RECALL_SECOND_PASS_ENABLED", True)
 
     calls: dict[str, dict[str, Any]] = {}
 
@@ -480,25 +461,25 @@ def test_contract_phase_resolves_orchestrator_module_monkeypatch_seams(
         }
 
     monkeypatch.setattr(
-        orch_mod,
+        routing,
         "resolve_retrieval_contract_policy",
         _resolve_policy,
         raising=True,
     )
     monkeypatch.setattr(
-        orch_mod,
+        routing,
         "infer_expected_source_keys",
         _infer_sources,
         raising=True,
     )
     monkeypatch.setattr(
-        orch_mod,
+        routing,
         "infer_required_anchor_fields",
         _infer_anchors,
         raising=True,
     )
 
-    result = orch_mod._resolve_contract_phase(
+    result = routing.resolve_evidence_contract(
         {
             "retrieval_contract_mode": "ignored-by-seam",
             "top_k": 4,
@@ -507,7 +488,7 @@ def test_contract_phase_resolves_orchestrator_module_monkeypatch_seams(
             "metadata_filter": {"source": "scope"},
             "dataset_id": "dataset-scope",
         },
-        query_for_retrieval="patched contract",
+        query="patched contract",
     )
 
     assert calls["policy"]["mode"] == "ignored-by-seam"

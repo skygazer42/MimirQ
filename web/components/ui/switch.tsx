@@ -16,6 +16,7 @@ const Switch = React.forwardRef<HTMLButtonElement, SwitchProps>(
 
     const isControlled = typeof checkedProp === 'boolean'
     const checked = isControlled ? checkedProp : uncontrolledChecked
+    const switchState = checked ? 'checked' : 'unchecked'
 
     const toggle = () => {
       if (disabled) return
@@ -29,8 +30,8 @@ const Switch = React.forwardRef<HTMLButtonElement, SwitchProps>(
         type="button"
         role="switch"
         aria-checked={checked}
-        data-state={checked ? 'checked' : 'unchecked'}
-        data-switch-state={checked ? 'checked' : 'unchecked'}
+        data-state={switchState}
+        data-switch-state={switchState}
         disabled={disabled}
         onClick={(event) => {
           onClick?.(event)
@@ -47,8 +48,8 @@ const Switch = React.forwardRef<HTMLButtonElement, SwitchProps>(
       >
         <span
           aria-hidden="true"
-          data-state={checked ? 'checked' : 'unchecked'}
-          data-switch-state={checked ? 'checked' : 'unchecked'}
+          data-state={switchState}
+          data-switch-state={switchState}
           className={cn(
             'pointer-events-none block h-5 w-5 rounded-full shadow-md ring-0 transition-all duration-150',
             checked ? 'bg-primary-foreground' : 'bg-foreground',

@@ -5,7 +5,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-from app.core.config import settings
+from app.infrastructure.config import settings
 
 
 class DifyRetrievalSetting(BaseModel):

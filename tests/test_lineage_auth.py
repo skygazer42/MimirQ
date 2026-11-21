@@ -5,9 +5,8 @@ from types import SimpleNamespace
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from app.api.dependencies.auth import get_current_account_id
-from app.api.dependencies.tenant import get_tenant_id
-from app.core.database import get_db
+from app.api.dependencies import get_current_account_id, get_tenant_id
+from app.infrastructure.database.connection import get_db
 
 
 class _DummyDB:
@@ -38,8 +37,8 @@ class _ConversationDB:
 
 
 def test_answer_lineage_request_id_is_tenant_scoped(monkeypatch, tmp_path):  # noqa: ANN001
-    from app.api.v1.lineage import get_answer_lineage
-    from app.core.config import settings
+    from app.api.v1.documents.lineage import get_answer_lineage
+    from app.infrastructure.config import settings
 
     owner_tenant_id = uuid.uuid4()
     other_tenant_id = uuid.uuid4()
@@ -76,7 +75,7 @@ def test_answer_lineage_request_id_is_tenant_scoped(monkeypatch, tmp_path):  # n
 
 
 def test_authorize_answer_lineage_access_allows_same_account_member(monkeypatch):  # noqa: ANN001
-    import app.services.lineage_service as lineage_service
+    import app.services.documents.lineage as lineage_service
 
     tenant_id = uuid.uuid4()
     account_id = "acct-1"
@@ -101,8 +100,8 @@ def test_authorize_answer_lineage_access_allows_same_account_member(monkeypatch)
 
 
 def test_chunk_lineage_requires_document_acl_when_not_observability_admin(monkeypatch):  # noqa: ANN001
-    import app.api.v1.lineage as lineage_api
-    import app.services.lineage_service as lineage_service
+    import app.api.v1.documents.lineage as lineage_api
+    import app.services.documents.lineage as lineage_service
 
     tenant_id = uuid.uuid4()
     chunk_id = uuid.uuid4()
@@ -110,17 +109,17 @@ def test_chunk_lineage_requires_document_acl_when_not_observability_admin(monkey
     account_id = "acct-2"
     observed: dict[str, object] = {}
 
-    monkeypatch.setattr(
-        lineage_api,
-        "_load_chunk_lineage_dependencies",
-        lambda *_args, **_kwargs: {
-            "chunk": SimpleNamespace(id=chunk_id, document_id=document_id),
-            "document": SimpleNamespace(id=document_id),
-            "permissions": [],
-            "retrieval_usage": {},
-        },
-        raising=True,
-    )
+    class Query:
+        def join(self, *_args):
+            return self
+
+        def filter(self, *_conditions):
+            return self
+
+        def first(self):
+            return SimpleNamespace(id=chunk_id, document_id=document_id), SimpleNamespace(id=document_id)
+
+    lineage_db = SimpleNamespace(query=lambda *_models: Query())
     monkeypatch.setattr(
         lineage_service.dataset_service,
         "ensure_member",
@@ -137,7 +136,7 @@ def test_chunk_lineage_requires_document_acl_when_not_observability_admin(monkey
     monkeypatch.setattr(lineage_service, "get_allowed_document_id_sets", _deny_acl, raising=True)
 
     app = FastAPI()
-    app.dependency_overrides[get_db] = _override_get_db
+    app.dependency_overrides[get_db] = lambda: lineage_db
     app.dependency_overrides[get_tenant_id] = lambda: tenant_id
     app.dependency_overrides[get_current_account_id] = lambda: account_id
     app.get("/api/v1/lineage/chunk/{chunk_id}")(lineage_api.get_chunk_lineage)
@@ -154,8 +153,8 @@ def test_chunk_lineage_requires_document_acl_when_not_observability_admin(monkey
 
 
 def test_answer_lineage_forbidden_when_one_citation_document_is_not_readable(monkeypatch):  # noqa: ANN001
-    import app.api.v1.lineage as lineage_api
-    import app.services.lineage_service as lineage_service
+    import app.api.v1.documents.lineage as lineage_api
+    import app.services.documents.lineage as lineage_service
 
     tenant_id = uuid.uuid4()
     conversation_id = uuid.uuid4()

@@ -6,15 +6,14 @@
  * @param {string | undefined} remoteAddress
  */
 export function sanitizeForwardedHeaders(headers, remoteAddress) {
-  const rawAddress = String(remoteAddress || '').trim()
-  const address = rawAddress.toLowerCase().startsWith('::ffff:') ? rawAddress.slice(7) : rawAddress
+  const address = remoteAddress?.trim().replace(/^::ffff:/i, '')
 
   for (const name of ['x-forwarded-host', 'x-forwarded-port', 'x-forwarded-proto', 'x-real-ip']) {
     delete headers[name]
   }
-  if (address) {
-    headers['x-forwarded-for'] = address
-  } else {
+  if (address === undefined || address === '') {
     delete headers['x-forwarded-for']
+    return
   }
+  headers['x-forwarded-for'] = address
 }

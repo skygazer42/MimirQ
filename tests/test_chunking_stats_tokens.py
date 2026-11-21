@@ -1,5 +1,5 @@
 def test_compute_chunking_stats_from_texts_tokens_counts_and_histogram() -> None:
-    from app.services.chunking_stats_utils import compute_chunking_stats_from_texts_tokens
+    from app.services.chunking.statistics import compute_chunking_stats_from_texts_tokens
 
     stats = compute_chunking_stats_from_texts_tokens(
         [

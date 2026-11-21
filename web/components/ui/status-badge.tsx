@@ -2,7 +2,7 @@ import { useTranslations } from 'next-intl'
 
 import { cn } from '@/lib/utils'
 
-export type StatusBadgeStatus = 'pending' | 'processing' | 'completed' | 'failed' | 'quarantined' | 'cancelled'
+type StatusBadgeStatus = 'pending' | 'processing' | 'completed' | 'failed' | 'quarantined' | 'cancelled' | 'deleting'
 
 function getStatusMeta(
   t: ReturnType<typeof useTranslations<'CommonUi'>>,
@@ -33,6 +33,11 @@ function getStatusMeta(
       label: t('statusBadge.cancelled'),
       dotColor: 'bg-muted-foreground',
     },
+    deleting: {
+      label: t('statusBadge.deleting'),
+      dotColor: 'bg-warning',
+      spin: true,
+    },
   }
 }
 
@@ -45,7 +50,6 @@ export function StatusBadge({
   status: StatusBadgeStatus
   className?: string
   label?: string
-  showIcon?: boolean
   dense?: boolean
 }>) {
   const t = useTranslations('CommonUi')

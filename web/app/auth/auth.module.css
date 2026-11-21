@@ -1,28 +1,21 @@
-@font-face {
-  font-family: 'Ragvia UI';
-  src: url('/brand/explorations/ragvia/fonts/ragvia-ui-sc.woff2') format('woff2');
-  font-style: normal;
-  font-weight: 100 900;
-  font-display: swap;
-}
-
 .frame {
   color-scheme: light;
-  --background: 210 12.5% 96.86%;
+  --background: 38 24% 97%;
   --foreground: 214.3 17.95% 15.3%;
   --card: 0 0% 100%;
   --card-foreground: var(--foreground);
-  --muted-foreground: 211.4 9.86% 41.76%;
+  --muted-foreground: 26 7% 43%;
   --primary: 13.5 62.83% 44.3%;
   --primary-foreground: 0 0% 100%;
-  --border: 205.7 13.2% 89.6%;
-  --input: 210 10.09% 57.25%;
+  --border: 32 14% 82%;
+  --input: 32 16% 86%;
   --ring: var(--primary);
   --destructive: 357 57% 41%;
+  --auth-backdrop-tint: 36 50% 95%;
   --auth-ease: cubic-bezier(0.2, 0.7, 0.3, 1);
   background: hsl(var(--background));
   color: hsl(var(--foreground));
-  font-family: 'Ragvia UI', 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
+  font-family: var(--font-sans);
   font-synthesis: none;
   -webkit-font-smoothing: antialiased;
   scrollbar-gutter: stable both-edges;
@@ -32,8 +25,10 @@
   position: relative;
   isolation: isolate;
   width: 100%;
+  display: grid;
+  place-items: center;
   min-height: 100dvh;
-  padding: max(88px, calc((100dvh - 532px) / 2)) 24px 56px;
+  padding: 56px 24px;
   overflow: hidden;
 }
 
@@ -42,6 +37,7 @@
   z-index: -1;
   inset: -12px;
   pointer-events: none;
+  user-select: none;
   transform: translate3d(var(--auth-px, 0px), var(--auth-py, 0px), 0);
   transition: transform 850ms var(--auth-ease);
 }
@@ -50,6 +46,27 @@
   display: block;
   width: 100%;
   height: 100%;
+  mix-blend-mode: multiply;
+  opacity: 0.85;
+}
+
+.backdrop::before {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  background: hsl(var(--auth-backdrop-tint));
+  mix-blend-mode: multiply;
+  content: '';
+}
+
+.backdrop::after {
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(hsl(var(--foreground) / 0.16) 0.7px, transparent 0.9px);
+  background-size: 24px 24px;
+  mask-image: radial-gradient(ellipse at center, transparent 26%, #000 92%);
+  opacity: 0.28;
+  content: '';
 }
 
 .backdropImage {
@@ -68,16 +85,16 @@
 }
 
 .formPanel {
-  width: min(432px, 100%);
+  width: min(400px, 100%);
   min-width: 0;
   margin: 0 auto;
-  padding: 32px 36px 20px;
+  padding: 32px;
   border: 1px solid hsl(var(--border));
-  border-radius: 20px;
+  border-radius: 16px;
   background: hsl(var(--card));
   box-shadow:
-    0 2px 4px hsl(var(--foreground) / 0.01),
-    0 16px 48px -20px hsl(var(--foreground) / 0.11);
+    0 1px 2px -1px hsl(var(--foreground) / 0.04),
+    0 12px 32px -6px hsl(var(--foreground) / 0.06);
   animation: auth-entrance 500ms var(--auth-ease) both;
 }
 
@@ -102,9 +119,9 @@
 
 .title {
   margin: 0;
-  font-size: 26px;
-  font-weight: 550;
-  line-height: 36px;
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 30px;
   letter-spacing: 0;
 }
 
@@ -113,17 +130,6 @@
   color: hsl(var(--muted-foreground));
   font-size: 14px;
   font-weight: 400;
-  line-height: 24px;
-}
-
-.success {
-  margin: 20px 0 0;
-  padding: 10px 14px;
-  border: 1px solid hsl(var(--border));
-  border-radius: 9px;
-  background: hsl(var(--background));
-  color: hsl(var(--foreground));
-  font-size: 14px;
   line-height: 24px;
 }
 
@@ -143,8 +149,12 @@
   grid-template-columns: 16px minmax(0, 1fr);
   align-items: start;
   gap: 10px;
+  padding: 12px;
+  border: 1px solid hsl(var(--border) / 0.7);
+  border-radius: 8px;
+  background: hsl(var(--background));
   color: hsl(var(--muted-foreground));
-  font-size: 14px;
+  font-size: 13px;
   line-height: 22px;
 }
 
@@ -154,81 +164,15 @@
   margin-top: 3px;
 }
 
-.notice[data-tone='error'] .noticeIcon,
-.notice[data-tone='error'] .noticeMessage {
+.notice[data-tone='error'] {
+  border-color: hsl(var(--destructive) / 0.16);
+  background: hsl(var(--destructive) / 0.04);
   color: hsl(var(--destructive));
-}
-
-.noticeBody {
-  min-width: 0;
 }
 
 .noticeMessage {
   margin: 0;
   overflow-wrap: anywhere;
-}
-
-.noticeActions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: start;
-  gap: 0 16px;
-}
-
-.noticeRetry {
-  display: inline-flex;
-  min-height: 44px;
-  align-items: center;
-  border-radius: 4px;
-  color: hsl(var(--primary));
-  font-weight: 500;
-}
-
-.noticeRetry:hover {
-  text-decoration: underline;
-  text-underline-offset: 4px;
-}
-
-.errorDetails {
-  font-size: 13px;
-}
-
-.errorDetails[open] {
-  flex-basis: 100%;
-}
-
-.errorDetails summary {
-  width: fit-content;
-  min-height: 44px;
-  align-content: center;
-  border-radius: 4px;
-  cursor: pointer;
-}
-
-.errorDetails summary:hover {
-  color: hsl(var(--foreground));
-}
-
-.errorReference {
-  display: grid;
-  justify-items: start;
-  padding: 8px 0 0;
-  border-top: 1px solid hsl(var(--border));
-}
-
-.errorReference code {
-  max-width: 100%;
-  margin-top: 4px;
-  color: hsl(var(--foreground));
-  font-size: 12px;
-  line-height: 20px;
-  overflow-wrap: anywhere;
-}
-
-.copyFeedback {
-  margin: 0;
-  font-size: 13px;
-  line-height: 22px;
 }
 
 .form label {
@@ -241,13 +185,13 @@
   display: block;
   width: 100%;
   min-width: 0;
-  height: 50px;
-  padding-left: 42px;
+  height: 40px;
+  padding-left: 14px;
   border: 1px solid hsl(var(--input));
-  border-radius: 9px;
-  background: hsl(var(--card));
+  border-radius: 8px;
+  background: hsl(var(--background) / 0.55);
   color: hsl(var(--foreground));
-  font-size: 16px;
+  font-size: 14px;
   line-height: 24px;
 }
 
@@ -257,39 +201,63 @@
 }
 
 .input:hover {
-  border-color: hsl(var(--muted-foreground));
+  border-color: hsl(var(--muted-foreground) / 0.5);
 }
 
 .input:focus-visible {
   border-color: hsl(var(--primary));
-  box-shadow: 0 0 0 3px hsl(var(--primary) / 0.08);
+  background: hsl(var(--card));
+  box-shadow: 0 0 0 3px hsl(var(--primary) / 0.14);
   outline: none;
   --tw-ring-shadow: 0 0 #0000;
 }
 
-.inputIcon {
-  position: absolute;
-  top: 15px;
-  left: 14px;
-  width: 20px;
-  height: 20px;
-  color: hsl(var(--muted-foreground));
-  pointer-events: none;
-  stroke-width: 1.5;
+.passwordHeading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 24px;
 }
 
-.form :focus-within > .inputIcon {
+.recoveryButton {
+  min-height: 24px;
+  border-radius: 4px;
+  color: hsl(var(--muted-foreground));
+  font-size: 12px;
+  line-height: 20px;
+}
+
+.recoveryButton:hover {
   color: hsl(var(--primary));
+}
+
+.recoveryHelp {
+  margin: 0;
+  color: hsl(var(--muted-foreground));
+  font-size: 13px;
+  line-height: 22px;
 }
 
 .submit {
   width: 100%;
-  height: 50px;
+  height: 40px;
   margin-top: 4px;
-  border-radius: 9px;
-  font-size: 16px;
+  border-radius: 8px;
+  font-size: 14px;
   font-weight: 600;
   line-height: 24px;
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.14),
+    0 1px 2px hsl(var(--primary) / 0.08);
+}
+
+.submit:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 2px;
+}
+.submit:active:not(:disabled) {
+  transform: scale(0.99);
 }
 
 .modeSwitch {
@@ -319,19 +287,19 @@
 
 .revealButton {
   position: absolute;
-  top: 3px;
-  right: 3px;
+  top: 0;
+  right: 0;
   display: grid;
-  width: 44px;
-  height: 44px;
+  width: 40px;
+  height: 40px;
   place-items: center;
   border-radius: 6px;
   color: hsl(var(--muted-foreground));
 }
 
 .revealButton svg {
-  width: 20px;
-  height: 20px;
+  width: 16px;
+  height: 16px;
   stroke-width: 1.5;
 }
 
@@ -341,11 +309,26 @@
 }
 
 .help {
-  margin-top: 8px;
+  margin-top: 24px;
   color: hsl(var(--muted-foreground));
   text-align: center;
   font-size: 13px;
   line-height: 22px;
+}
+
+.helpLink {
+  display: inline-flex;
+  min-height: 32px;
+  align-items: center;
+  margin-left: 4px;
+  border-radius: 4px;
+  color: hsl(var(--primary));
+  font-weight: 500;
+  text-underline-offset: 4px;
+}
+
+.helpLink:hover {
+  text-decoration: underline;
 }
 
 @keyframes auth-entrance {
@@ -372,12 +355,28 @@
 
 @media (max-width: 620px) {
   .shell {
-    padding: max(80px, calc((100dvh - 524px) / 2 + 8px)) 16px 64px;
+    padding: 40px 16px;
   }
 
   .formPanel {
-    padding: 28px 20px 16px;
-    border-radius: 18px;
+    padding: 28px 24px;
+  }
+
+  .input,
+  .submit {
+    height: 44px;
+    font-size: 16px;
+  }
+
+  .revealButton {
+    width: 44px;
+    height: 44px;
+  }
+}
+
+@media (max-height: 640px) {
+  .shell {
+    padding-block: 24px;
   }
 }
 

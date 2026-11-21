@@ -63,7 +63,7 @@ export function PageScaffold({
   const headerSpacingClass = compactSpacing ? 'px-4 py-2 md:px-5 lg:px-6' : 'px-6 py-3 md:px-8'
   const topSpacingClass = compactSpacing ? 'px-4 md:px-5 lg:px-6 pb-2.5' : 'px-6 md:px-8 pb-6'
   const toolbarSpacingClass = compactSpacing ? 'px-4 md:px-5 lg:px-6 py-2' : 'px-6 md:px-8 py-3 md:py-4'
-  const effectiveBodyGutter = bodyGutter || (isSystemDense ? 'dense' : 'default')
+  const effectiveBodyGutter = bodyGutter ?? (isSystemDense ? 'dense' : 'default')
 
   return (
     <>

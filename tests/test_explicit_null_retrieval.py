@@ -1,8 +1,5 @@
-import importlib.util
-import sys
 import threading
-from pathlib import Path
-from types import ModuleType, SimpleNamespace
+from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
@@ -12,7 +9,7 @@ import pytest
 def test_falsy_redis_enable_callback_keeps_its_decision(monkeypatch, allowed) -> None:
     import redis
 
-    from app.core.redis_client import LazyRedisClient
+    from app.infrastructure.redis.client import LazyRedisClient
 
     class Gate:
         def __init__(self):
@@ -43,7 +40,7 @@ def test_falsy_redis_enable_callback_keeps_its_decision(monkeypatch, allowed) ->
 def test_falsy_redis_options_preserve_zero_and_false_values(monkeypatch) -> None:
     import redis
 
-    from app.core.redis_client import LazyRedisClient
+    from app.infrastructure.redis.client import LazyRedisClient
 
     class Options(dict):
         def __bool__(self):
@@ -62,9 +59,9 @@ def test_falsy_redis_options_preserve_zero_and_false_values(monkeypatch) -> None
 
 @pytest.mark.parametrize("owner", ["scope", "enrichment"])
 def test_falsy_embedding_runtime_is_used_without_a_default_lookup(monkeypatch, owner) -> None:
-    from app.rag.retrieval.hybrid import runtime_scope
-    from app.rag.retrieval.hybrid.post_process import PostProcessMixin
-    from app.services.dataset_embedding_config import DatasetEmbeddingRuntimeConfig
+    from app.rag.retrieval.recall import runtime_scope
+    from app.rag.retrieval.recall.enrichment import CandidateEnrichmentMixin
+    from app.services.datasets.embedding_config import DatasetEmbeddingRuntimeConfig
 
     class Runtime(DatasetEmbeddingRuntimeConfig):
         def __bool__(self):
@@ -98,12 +95,12 @@ def test_falsy_embedding_runtime_is_used_without_a_default_lookup(monkeypatch, o
             _explicit_dataset_scope_ids=lambda: (),
             _resolve_embedding_runtime=unexpected,
         )
-        result = PostProcessMixin._enrichment_runtime_state(retriever, embedding_runtime=runtime)
+        result = CandidateEnrichmentMixin._enrichment_runtime_state(retriever, embedding_runtime=runtime)
         assert result[3] == "explicit-space"
 
 
 def test_falsy_explicit_cancellation_event_stops_retrieval(monkeypatch) -> None:
-    from app.services import rag_runtime_limiter as limiter
+    from app.services.runtime import retrieval_limiter as limiter
 
     class Event(threading.Event):
         def __bool__(self):
@@ -124,7 +121,7 @@ def test_falsy_explicit_cancellation_event_stops_retrieval(monkeypatch) -> None:
 
 @pytest.mark.parametrize("now,scan,expected_now,expected_scan", [(0, 0, 0, 1), (None, None, 1234, None)])
 def test_retention_missing_and_zero_limits_are_distinct(monkeypatch, now, scan, expected_now, expected_scan) -> None:
-    from app.services import semantic_cache
+    from app.services.retrieval import semantic_cache
 
     monkeypatch.setattr(semantic_cache.time, "time", lambda: 1234)
     actual_now, deletes, actual_scan = semantic_cache._semantic_cache_retention_limits(
@@ -137,7 +134,7 @@ def test_retention_missing_and_zero_limits_are_distinct(monkeypatch, now, scan, 
 
 @pytest.mark.parametrize("fields,has_gap", [([], False), (None, True)])
 def test_explicit_empty_anchor_requirements_disable_default_checks(fields, has_gap) -> None:
-    from app.rag.retrieval.evidence_gap import detect_evidence_gap
+    from app.rag.retrieval.evidence.gaps import detect_evidence_gap
 
     result = detect_evidence_gap(citations=[{"source": "source"}], required_anchor_fields=fields)
     assert result["has_gap"] is has_gap
@@ -146,7 +143,7 @@ def test_explicit_empty_anchor_requirements_disable_default_checks(fields, has_g
 
 @pytest.mark.parametrize("enabled,has_gap", [(False, False), (True, True)])
 def test_contextual_gap_keeps_the_mandatory_recall_anchor_policy(enabled, has_gap) -> None:
-    from app.rag.retrieval.orchestrator import _contextual_evidence_gap
+    from app.rag.retrieval.stages.followup import _contextual_evidence_gap
 
     context = SimpleNamespace(
         must_recall_enabled=enabled,
@@ -156,19 +153,3 @@ def test_contextual_gap_keeps_the_mandatory_recall_anchor_policy(enabled, has_ga
     result = _contextual_evidence_gap(context, [{"source": "source"}])
     assert result["has_gap"] is has_gap
     assert result["required_anchor_fields"] == (["chunk_id", "document_id"] if enabled else [])
-
-
-def test_falsy_real_retriever_is_not_replaced_by_the_empty_shim(monkeypatch) -> None:
-    class Retriever:
-        def __bool__(self):
-            return False
-
-    retriever = Retriever()
-    module = ModuleType("app.rag.retriever")
-    module.hybrid_retriever = retriever
-    monkeypatch.setitem(sys.modules, "app.rag.retriever", module)
-    path = Path(__file__).resolve().parents[1] / "app/rag/retrieval/orchestration/retriever_shim.py"
-    spec = importlib.util.spec_from_file_location("explicit_retriever_shim_check", path)
-    loaded = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(loaded)
-    assert loaded.hybrid_retriever is retriever

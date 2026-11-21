@@ -44,18 +44,10 @@ describe('buildRagPreviewDiagnosticsSummary', () => {
           enable_reranker: true,
         },
       },
-      explainEnabled: true,
-      contractReason: null,
     })
 
     expect(summary.profile).toBe('grounded_strict')
     expect(summary.configHash).toBe('abc123def456')
-    expect(summary.channelCandidates).toEqual(
-      expect.arrayContaining([
-        { label: 'vector', value: 'candidate_count=18 · returned_count=8' },
-        { label: 'query_count', value: '2' },
-      ]),
-    )
     expect(summary.filtering).toEqual(expect.arrayContaining([{ label: 'score_threshold', value: '0.55' }]))
     expect(summary.fusion).toEqual(
       expect.arrayContaining([
@@ -95,8 +87,6 @@ describe('buildRagPreviewDiagnosticsSummary', () => {
         },
       },
       configHash: null,
-      explainEnabled: true,
-      contractReason: null,
     })
 
     expect(summary.degraded).toEqual(

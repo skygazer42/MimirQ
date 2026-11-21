@@ -87,6 +87,7 @@ export async function fixture(page: Page, options: { empty?: boolean; long?: boo
         parser_backend: 'markdown',
         markdown_content: markdown,
         original_markdown_content: markdown,
+        edited: false,
       })
     }
     return json(route, { total: state.documents.length, items: state.documents })

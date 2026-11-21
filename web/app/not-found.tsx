@@ -9,7 +9,7 @@ export default function NotFound() {
   const t = useTranslations('RouteBoundaries')
 
   return (
-    <FullScreenFrame showBackground={false} mainClassName="p-0">
+    <FullScreenFrame mainClassName="p-0">
       <PageStatus
         title={t('notFound.title')}
         description={t('notFound.description')}

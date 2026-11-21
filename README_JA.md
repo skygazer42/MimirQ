@@ -239,7 +239,7 @@ Dify 標準の外部ナレッジベースエンドポイントは `POST /api/v1/
 | 機能領域 | **Ragvia** | [Dify](https://github.com/langgenius/dify) | [RAGFlow](https://github.com/infiniflow/ragflow) | [FastGPT](https://github.com/labring/FastGPT) | [AnythingLLM](https://github.com/Mintplex-Labs/anything-llm) | [LangChain](https://github.com/langchain-ai/langchain) |
 |:---|:---|:---|:---|:---|:---|:---|
 | **ドキュメントパース** | **30 のパース基盤**：PDF、OCR、レイアウト、表、数式、VLM | Knowledge Pipeline；PDF、PPT など一般的な形式 | **DeepDoc**；複雑なレイアウトとスキャン；MinerU / Docling | PDF・スキャン・表・数式を Markdown 化 | PDF、TXT、DOCX などのドキュメントパイプライン | Document Loaders とサードパーティパーサー連携 |
-| **チャンク分割** | **86 種の戦略**：再帰、セマンティック、親子、RAPTOR、Late Chunking；可視化プレビュー | 汎用、親子、Q&A、パイプライン定義の処理 | テンプレートベースのチャンク分割；可視化した人手介入 | 自動、手動、Q&A、拡張処理 | ドキュメントパイプラインの自動チャンク分割 | Text Splitters；アプリケーションコードで組み立て |
+| **チャンク分割** | 再帰、セマンティック、親子などの戦略；可視化プレビュー | 汎用、親子、Q&A、パイプライン定義の処理 | テンプレートベースのチャンク分割；可視化した人手介入 | 自動、手動、Q&A、拡張処理 | ドキュメントパイプラインの自動チャンク分割 | Text Splitters；アプリケーションコードで組み立て |
 | **検索 / リランク** | Milvus + BM25 / SPLADE / ColBERT / RRF | セマンティック・全文・ハイブリッド検索；リランク設定可 | 複数リコール + 融合リランク | セマンティック・全文・ハイブリッド検索 + RRF + リランク | 複数のベクトル DB 検索 + 出典引用 | Retriever / reranker コンポーネント；自前で編成 |
 | **ナレッジグラフ** | エンティティ・関係・イベント抽出；エンティティ解決、コミュニティ検出、マルチホップ検索 | ワークフロー・プラグイン・外部サービス経由で接続 | GraphRAG を内蔵 | ワークフローや外部サービス経由で接続 | エージェント / ツール経由で接続 | グラフ連携とカスタムチェーン |
 | **エージェント / MCP** | LangGraph エージェント、Self-RAG / CRAG / FLARE；MCP クライアント / サーバー | Function Calling / ReAct エージェント、ツール、MCP | Agentic Workflow、MCP、コード実行 | Agent V2、ツール、MCP、VM 実行 | ノーコード Agent Builder、MCP、定期タスク | Agents / LangGraph / MCP；コードファースト |

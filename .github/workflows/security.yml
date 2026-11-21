@@ -6,6 +6,7 @@ on:
   push:
     branches:
       - main
+      - feat/ragvia-ui
   schedule:
     - cron: "0 3 * * 1" # weekly
 

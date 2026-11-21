@@ -7,6 +7,7 @@ Start method (container/local):
 
 import asyncio
 import contextlib
+import logging
 import os
 import socket
 from collections.abc import Awaitable, Callable
@@ -15,8 +16,7 @@ from typing import Any
 from arq.connections import RedisSettings
 from arq.worker import func
 
-from app.core.config import settings
-from app.rag.core.logging import get_logger
+from app.infrastructure.config import settings
 from app.tasks.jobs import (
     connector_run_job,
     dataset_precheck_scan_job,
@@ -29,7 +29,7 @@ from app.tasks.jobs import (
     reconcile_index_audit_job,
 )
 
-logger = get_logger("tasks.worker")
+logger = logging.getLogger("tasks.worker")
 
 _WORKER_HEARTBEAT_TASK_KEY = "_mimirq_worker_heartbeat_task"
 
@@ -53,8 +53,6 @@ async def _heartbeat_loop(
     while True:
         try:
             await observe(redis=redis, queue_name=queue_name, worker_id=worker_id)
-        except asyncio.CancelledError:
-            raise
         except Exception as exc:  # noqa: BLE001
             logger.warning("Worker heartbeat failed; retrying: %s", str(exc)[:200])
         await asyncio.sleep(interval)
@@ -69,9 +67,11 @@ def _log_heartbeat_task_exit(task: asyncio.Task[None]) -> None:
 
 
 async def startup(ctx: dict[str, Any]) -> None:
+    import app.models.registry  # noqa: F401
+
     logger.info("Arq worker starting... max_jobs=%s", settings.TASK_WORKER_MAX_JOBS)
     try:
-        from app.services.task_queue_observability_service import observe_task_worker_heartbeat
+        from app.services.observability.task_queue import observe_task_worker_heartbeat
 
         queue_name = settings.TASK_QUEUE_NAME or "mimirq"
         worker_id = f"{socket.gethostname()}:{os.getpid()}"

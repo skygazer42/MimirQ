@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { Edit, Plus, RefreshCw, Save, Trash2 } from '@/components/icons'
@@ -8,6 +8,7 @@ import { Edit, Plus, RefreshCw, Save, Trash2 } from '@/components/icons'
 import { kgApi } from '@/lib/api/graph'
 import { settingsApi } from '@/lib/api/settings'
 import { formatApiError, toApiErrorInfo } from '@/lib/api-errors'
+import { getAuthSessionKey } from '@/lib/auth-storage'
 import { queryKeys } from '@/lib/query-keys'
 import { cn } from '@/lib/utils'
 import type {
@@ -21,16 +22,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 
 type PredicateOntologySnapshot = {
   kgDisabled: boolean
@@ -46,27 +38,24 @@ export function KgPredicateOntologySettings() {
   const [formDescription, setFormDescription] = useState('')
   const [formEnabled, setFormEnabled] = useState(true)
 
-  const [deleteOpen, setDeleteOpen] = useState(false)
-  const [deleteTarget, setDeleteTarget] = useState<KGPredicateOntologyItem | null>(null)
-
   const settingsQuery = useQuery({
     queryKey: queryKeys.settings.snapshot,
-    queryFn: settingsApi.get,
+    queryFn: ({ signal }) => settingsApi.get({ signal }),
   })
 
-  const settingsKgEnabled = Boolean(settingsQuery.data?.feature_flags?.kg_enabled)
+  const settingsKgEnabled = settingsQuery.data?.feature_flags.kg_enabled === true
 
   const predicateOntologyQuery = useQuery({
     queryKey: queryKeys.kg.predicateOntology,
-    queryFn: async (): Promise<PredicateOntologySnapshot> => {
+    queryFn: async ({ signal }): Promise<PredicateOntologySnapshot> => {
       try {
-        const data = await kgApi.listPredicateOntology()
+        const data = await kgApi.listPredicateOntology({ signal })
         return {
           kgDisabled: false,
-          predicates: data.predicates || [],
+          predicates: data.predicates,
         }
       } catch (err) {
-        const info = toApiErrorInfo(err, '')
+        const info = toApiErrorInfo(err, '读取谓词失败')
         if (info.status === 503 && /kg is disabled/i.test(info.message)) {
           return {
             kgDisabled: true,
@@ -79,17 +68,13 @@ export function KgPredicateOntologySettings() {
     enabled: settingsKgEnabled,
   })
 
-  const kgEnabled =
-    settingsQuery.isSuccess && settingsKgEnabled
-      ? !predicateOntologyQuery.data?.kgDisabled
-      : settingsQuery.isSuccess
-        ? false
-        : null
-
-  const rows = kgEnabled ? predicateOntologyQuery.data?.predicates || [] : []
+  const kgDisabled =
+    settingsQuery.data?.feature_flags.kg_enabled === false || predicateOntologyQuery.data?.kgDisabled === true
+  const rows = predicateOntologyQuery.data?.predicates
+  const loadError = settingsQuery.error ?? predicateOntologyQuery.error
   const loading = settingsQuery.isPending || (settingsKgEnabled && predicateOntologyQuery.isPending)
 
-  const hasForm = useMemo(() => Boolean(formPredicate.trim()), [formPredicate])
+  const hasForm = formPredicate.trim() !== ''
 
   const resetForm = () => {
     setEditingId(null)
@@ -100,53 +85,57 @@ export function KgPredicateOntologySettings() {
   }
 
   const refreshStatus = () => {
-    settingsQuery.refetch()
+    void settingsQuery.refetch()
     if (settingsKgEnabled) {
-      predicateOntologyQuery.refetch()
+      void predicateOntologyQuery.refetch()
     }
   }
 
-  const invalidatePredicateOntology = () => {
+  const invalidatePredicateOntology = () =>
     queryClient.invalidateQueries({
       queryKey: queryKeys.kg.predicateOntology,
     })
-  }
 
   const saveMutation = useMutation({
-    mutationFn: (body: KGPredicateOntologyCreateRequest) => kgApi.upsertPredicateOntology(body),
-    onSuccess: () => {
-      toast.success(editingId ? '已更新谓词' : '已添加谓词')
+    onMutate: getAuthSessionKey,
+    mutationFn: ({ predicateId, body }: { predicateId: string | null; body: KGPredicateOntologyCreateRequest }) =>
+      predicateId === null
+        ? kgApi.upsertPredicateOntology(body)
+        : kgApi.updatePredicateOntology(predicateId, {
+            display_name: body.display_name === null ? '' : body.display_name,
+            description: body.description === null ? '' : body.description,
+            is_enabled: body.is_enabled,
+          }),
+    onSuccess: (_result, { predicateId }, sessionKey) => {
+      if (sessionKey !== getAuthSessionKey()) return
+      toast.success(predicateId === null ? '已添加谓词' : '已更新谓词')
       resetForm()
-      invalidatePredicateOntology()
+      return invalidatePredicateOntology()
     },
-    onError: (err) => {
-      toast.error(formatApiError(err, '保存失败'))
+    onError: (error, _input, sessionKey) => {
+      if (sessionKey === getAuthSessionKey()) toast.error(formatApiError(error, '保存失败'))
     },
   })
 
   const updateMutation = useMutation({
+    onMutate: getAuthSessionKey,
     mutationFn: ({ predicateId, body }: { predicateId: string; body: KGPredicateOntologyUpdateRequest }) =>
       kgApi.updatePredicateOntology(predicateId, body),
-    onSuccess: () => {
-      invalidatePredicateOntology()
+    onSuccess: (_result, _input, sessionKey) => {
+      if (sessionKey === getAuthSessionKey()) return invalidatePredicateOntology()
     },
-    onError: (err) => {
-      toast.error(formatApiError(err, '更新失败'))
+    onError: (error, _input, sessionKey) => {
+      if (sessionKey === getAuthSessionKey()) toast.error(formatApiError(error, '更新失败'))
     },
   })
 
   const deleteMutation = useMutation({
+    onMutate: getAuthSessionKey,
     mutationFn: (predicateId: string) => kgApi.deletePredicateOntology(predicateId),
-    onSuccess: () => {
+    onSuccess: (_result, _predicateId, sessionKey) => {
+      if (sessionKey !== getAuthSessionKey()) return
       toast.success('已删除谓词')
-      invalidatePredicateOntology()
-    },
-    onError: (err) => {
-      toast.error(formatApiError(err, '删除失败'))
-    },
-    onSettled: () => {
-      setDeleteOpen(false)
-      setDeleteTarget(null)
+      return invalidatePredicateOntology()
     },
   })
 
@@ -154,22 +143,27 @@ export function KgPredicateOntologySettings() {
 
   const saveForm = () => {
     const predicate = formPredicate.trim()
-    if (!predicate) {
+    if (predicate === '') {
       toast.error('请输入谓词 key（snake_case）')
       return
     }
 
+    const displayName = formDisplayName.trim()
+    const description = formDescription.trim()
     saveMutation.mutate({
-      predicate,
-      display_name: formDisplayName.trim() || null,
-      description: formDescription.trim() || null,
-      is_enabled: formEnabled,
+      predicateId: editingId,
+      body: {
+        predicate,
+        display_name: displayName === '' ? null : displayName,
+        description: description === '' ? null : description,
+        is_enabled: formEnabled,
+      },
     })
   }
 
   const toggleEnabled = (row: KGPredicateOntologyItem, next: boolean) => {
     updateMutation.mutate({
-      predicateId: String(row.id),
+      predicateId: row.id,
       body: {
         is_enabled: next,
       },
@@ -177,22 +171,11 @@ export function KgPredicateOntologySettings() {
   }
 
   const startEdit = (row: KGPredicateOntologyItem) => {
-    setEditingId(String(row.id))
-    setFormPredicate(row.predicate || '')
-    setFormDisplayName(row.display_name || '')
-    setFormDescription(row.description || '')
-    setFormEnabled(Boolean(row.is_enabled))
-  }
-
-  const requestDelete = (row: KGPredicateOntologyItem) => {
-    setDeleteTarget(row)
-    setDeleteOpen(true)
-  }
-
-  const confirmDelete = () => {
-    const target = deleteTarget
-    if (!target) return
-    deleteMutation.mutate(String(target.id))
+    setEditingId(row.id)
+    setFormPredicate(row.predicate)
+    setFormDisplayName(row.display_name ?? '')
+    setFormDescription(row.description ?? '')
+    setFormEnabled(row.is_enabled)
   }
 
   return (
@@ -211,7 +194,19 @@ export function KgPredicateOntologySettings() {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3 p-3">
-        {kgEnabled === false ? (
+        {loadError !== null && (
+          <div className="flex items-center justify-between gap-2" role="alert">
+            <p className="text-xs text-destructive">{formatApiError(loadError, '读取谓词失败')}</p>
+            <Button type="button" variant="outline" size="sm" onClick={refreshStatus}>
+              重试
+            </Button>
+          </div>
+        )}
+        {loading ? (
+          <p role="status" className="text-xs text-muted-foreground">
+            正在读取谓词…
+          </p>
+        ) : kgDisabled ? (
           <>
             <div className="flex items-center justify-between gap-3 rounded-lg border border-warning/30 bg-warning/5 px-3 py-2.5">
               <div className="min-w-0">
@@ -238,7 +233,7 @@ export function KgPredicateOntologySettings() {
               </div>
             </div>
           </>
-        ) : (
+        ) : rows !== undefined ? (
           <>
             <div className="flex items-center justify-between gap-2">
               <div className="text-[11px] text-muted-foreground">
@@ -292,6 +287,7 @@ export function KgPredicateOntologySettings() {
                   <Input
                     id="kg-onto-predicate"
                     value={formPredicate}
+                    disabled={saving || editingId !== null}
                     onChange={(e) => setFormPredicate(e.target.value)}
                     placeholder="例如：works_for"
                     className="h-8 font-mono text-[12px]"
@@ -305,6 +301,7 @@ export function KgPredicateOntologySettings() {
                   <Input
                     id="kg-onto-display"
                     value={formDisplayName}
+                    disabled={saving}
                     onChange={(e) => setFormDisplayName(e.target.value)}
                     placeholder="例如：Works For / 就职于"
                     className="h-8 text-[12px]"
@@ -317,6 +314,7 @@ export function KgPredicateOntologySettings() {
                   <Input
                     id="kg-onto-desc"
                     value={formDescription}
+                    disabled={saving}
                     onChange={(e) => setFormDescription(e.target.value)}
                     placeholder="用于解释该 predicate 的语义与方向性"
                     className="h-8 text-[12px]"
@@ -327,7 +325,12 @@ export function KgPredicateOntologySettings() {
                     <div className="font-semibold text-foreground">启用该谓词</div>
                     <div className="text-[11px] text-muted-foreground">关闭后抽取结果不会写入该关系。</div>
                   </div>
-                  <Switch checked={formEnabled} onCheckedChange={setFormEnabled} />
+                  <Switch
+                    aria-label="启用该谓词"
+                    checked={formEnabled}
+                    disabled={saving}
+                    onCheckedChange={setFormEnabled}
+                  />
                 </div>
               </div>
             </div>
@@ -366,27 +369,43 @@ export function KgPredicateOntologySettings() {
                             type="button"
                             size="sm"
                             variant="outline"
+                            disabled={saving}
                             onClick={() => startEdit(r)}
                             className="h-7 gap-1 px-2 text-[11px]"
                           >
                             <Edit className="w-3 h-3" />
                             编辑
                           </Button>
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="outline"
-                            onClick={() => requestDelete(r)}
-                            className="h-7 gap-1 px-2 text-[11px] hover:bg-destructive/10 hover:text-destructive"
+                          <ConfirmDialog
+                            title="删除谓词？"
+                            description={`删除 ${r.predicate} 后可以重新创建。`}
+                            confirmLabel="删除"
+                            confirmDisabled={saving}
+                            onConfirm={async () => {
+                              await deleteMutation.mutateAsync(r.id)
+                            }}
                           >
-                            <Trash2 className="w-3 h-3" />
-                            删除
-                          </Button>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              disabled={saving}
+                              className="h-7 gap-1 px-2 text-[11px] hover:bg-destructive/10 hover:text-destructive"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                              删除
+                            </Button>
+                          </ConfirmDialog>
                         </div>
                       </div>
 
                       <div className="flex items-center justify-end">
-                        <Switch checked={Boolean(r.is_enabled)} onCheckedChange={(v) => toggleEnabled(r, v)} />
+                        <Switch
+                          aria-label={`启用 ${r.predicate}`}
+                          checked={r.is_enabled}
+                          disabled={saving}
+                          onCheckedChange={(checked) => toggleEnabled(r, checked)}
+                        />
                       </div>
                     </div>
                   ))
@@ -394,32 +413,8 @@ export function KgPredicateOntologySettings() {
               </div>
             </div>
           </>
-        )}
+        ) : null}
       </CardContent>
-
-      <AlertDialog
-        open={deleteOpen}
-        onOpenChange={(open) => {
-          setDeleteOpen(open)
-          if (!open) setDeleteTarget(null)
-        }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>删除谓词？</AlertDialogTitle>
-            <AlertDialogDescription>
-              你将删除 <span className="font-mono">{deleteTarget?.predicate || '-'}</span>
-              <span>。此操作不可撤销（但可以重新创建）。</span>
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={saving}>取消</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmDelete} disabled={saving}>
-              删除
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </Card>
   )
 }

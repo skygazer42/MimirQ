@@ -58,8 +58,6 @@ python scripts/regression_gate.py \
 
 - `--retrieval-profile`：覆盖 `retrieval_profile`（例如 `recall20|recall50|coverage80`）
 - `--fusion-strategy`：覆盖 `fusion_strategy`（例如 `linear|rrf|budgeted_rrf|weighted`）
-- `--enable-sparse-retrieval` / `--disable-sparse-retrieval`：覆盖 `sparse_retrieval_enabled`
-- `--sparse-retrieval-provider`：覆盖 `sparse_retrieval_provider`（例如 `deterministic|splade`）
 - `--enable-query-rewrite` / `--disable-query-rewrite`：覆盖 `enable_query_rewrite`
 - `--enable-multi-query` / `--disable-multi-query`：覆盖 `enable_multi_query`
 - `--enable-reranker` / `--disable-reranker`：覆盖 `enable_reranker`

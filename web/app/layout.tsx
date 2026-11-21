@@ -1,12 +1,12 @@
 import type { Metadata } from 'next'
-import type { CSSProperties, ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import { cookies, headers } from 'next/headers'
 import { connection } from 'next/server'
+import { ThemeProvider } from 'next-themes'
 import { NextIntlClientProvider } from 'next-intl'
 import { getLocale, getMessages } from 'next-intl/server'
 import './globals.css'
 import { ThemeAppearanceProvider } from '@/components/theme-appearance-provider'
-import { ThemeProvider } from '@/components/theme-provider'
 import { SonnerToaster } from '@/components/sonner-toaster'
 import { CommandMenu } from '@/components/command-menu'
 import { FluidCursor } from '@/components/ui/fluid-cursor'
@@ -19,7 +19,6 @@ import { AuthGuard } from '@/components/auth-guard'
 import { resolveRequestDocumentSettings } from '@/lib/document-language'
 import { BRAND_ASSETS, BRAND_DESCRIPTION, BRAND_NAME } from '@/lib/brand'
 import {
-  getThemeColorTokens,
   normalizeSurfaceTheme,
   normalizeThemeColorCookie,
   SURFACE_THEME_COOKIE_KEY,
@@ -47,18 +46,16 @@ export default async function RootLayout({ children }: Readonly<RootLayoutProps>
   await connection()
 
   const enableFluidCursor = process.env.NEXT_PUBLIC_ENABLE_FLUID_CURSOR === '1'
-  const locale = await getLocale()
-  const messages = await getMessages()
-  const requestHeaders = await headers()
-  const appearanceCookies = await cookies()
-  const cspNonce = requestHeaders.get('x-nonce') || undefined
+  const [locale, messages, requestHeaders, appearanceCookies] = await Promise.all([
+    getLocale(),
+    getMessages(),
+    headers(),
+    cookies(),
+  ])
+  const cspNonce = requestHeaders.get('x-nonce') ?? undefined
   const surfaceTheme = normalizeSurfaceTheme(appearanceCookies.get(SURFACE_THEME_COOKIE_KEY)?.value)
   const themeColorOverride = normalizeThemeColorCookie(appearanceCookies.get(THEME_COLOR_COOKIE_KEY)?.value)
-  const themeColorStyle = themeColorOverride ? (getThemeColorTokens(themeColorOverride) as CSSProperties) : undefined
-  const { lang: documentLang, dir: documentDir } = resolveRequestDocumentSettings(
-    requestHeaders,
-    locale || process.env.NEXT_PUBLIC_APP_LANG?.trim() || undefined,
-  )
+  const { lang: documentLang, dir: documentDir } = resolveRequestDocumentSettings(requestHeaders, locale)
 
   return (
     <html
@@ -67,7 +64,7 @@ export default async function RootLayout({ children }: Readonly<RootLayoutProps>
       suppressHydrationWarning
       className="h-full overflow-hidden"
       data-surface-theme={surfaceTheme}
-      style={themeColorStyle}
+      data-theme-color={themeColorOverride?.slice(1)}
     >
       {/* Lock window scrolling: the app uses panel-internal scrolling for better UX. */}
       <body className="font-sans h-dvh overflow-hidden">
@@ -84,11 +81,13 @@ export default async function RootLayout({ children }: Readonly<RootLayoutProps>
               <WebVitalsReporter />
               <SonnerToaster />
               <ThemeAppearanceProvider />
-              <CommandMenu />
               <RouteScrollReset />
               {enableFluidCursor ? <FluidCursor /> : null}
-              <TaskCenter />
-              <AuthGuard>{children}</AuthGuard>
+              <AuthGuard>
+                <CommandMenu />
+                <TaskCenter />
+                {children}
+              </AuthGuard>
             </QueryProvider>
           </ThemeProvider>
         </NextIntlClientProvider>

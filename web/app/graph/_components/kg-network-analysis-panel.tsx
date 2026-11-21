@@ -1,17 +1,7 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
-import {
-  Activity,
-  BarChart3,
-  Filter,
-  GitBranch,
-  GripHorizontal,
-  MousePointer2,
-  Network,
-  PanelRightClose,
-  PanelRightOpen,
-} from '@/components/icons'
+import { useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { Activity, BarChart3, Filter, GitBranch, MousePointer2, Network } from '@/components/icons'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
@@ -20,14 +10,15 @@ import { Label } from '@/components/ui/label'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { OperationResultPanel } from '@/components/ops/operation-result-panel'
+import { SettingsNumberInput } from '@/components/settings/settings-number-input'
 import { kgApi, type KGNetworkEdge, type KGNetworkRequest } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
-import type { GraphData } from '@/lib/graph-parser'
-import { toTrimmedPrimitiveString } from '@/lib/primitive-text'
+import type { GraphData } from '@/lib/graph-types'
+import { readNonEmptyString, toTrimmedPrimitiveString } from '@/lib/primitive-text'
 import { detachPromise } from '@/lib/utils'
+import { getGraphLinkEndpointId } from '../graph-page-utils'
 
 type KgNetworkAnalysisPanelProps = Readonly<{
-  embedded?: boolean
   nodes: GraphData['nodes']
   links: GraphData['links']
   selectedNodeId?: string | null
@@ -39,75 +30,41 @@ type ResultState = {
   payload: unknown
 }
 
-type PanelDragState = {
-  pointerId: number
-  startClientX: number
-  startClientY: number
-  startX: number
-  startY: number
-} | null
-
-function primitiveEndpointString(value: unknown): string {
-  if (typeof value === 'string') return value
-  if (typeof value === 'number' || typeof value === 'boolean' || typeof value === 'bigint') {
-    return String(value)
-  }
-  return ''
-}
-
-function endpointId(value: unknown): string {
-  if (value && typeof value === 'object' && 'id' in value) {
-    return primitiveEndpointString((value as { id?: unknown }).id)
-  }
-  return primitiveEndpointString(value)
-}
-
 function toNetworkEdges(links: GraphData['links']): KGNetworkEdge[] {
   const edges: KGNetworkEdge[] = []
   for (const link of links) {
-    const source = endpointId(link.source)
-    const target = endpointId(link.target)
-    if (!source || !target) continue
+    const source = getGraphLinkEndpointId(link.source)
+    const target = getGraphLinkEndpointId(link.target)
+    if (source === '' || target === '') continue
     const rawWeight = link.weight ?? link.value ?? link.score
-    const weight = Number(rawWeight)
-    edges.push({
-      source,
-      target,
-      ...(Number.isFinite(weight) ? { weight } : {}),
-    })
+    const weight = typeof rawWeight === 'string' && rawWeight.trim() !== '' ? Number(rawWeight) : rawWeight
+    const edge: KGNetworkEdge = { source, target }
+    if (typeof weight === 'number' && Number.isFinite(weight)) edge.weight = weight
+    edges.push(edge)
   }
   return edges
 }
 
 function getNodeType(node: GraphData['nodes'][number]): string {
-  return toTrimmedPrimitiveString(node?.meta?.type ?? node?.type, '未知类型')
+  return toTrimmedPrimitiveString(node.meta?.type ?? node.type, '未知类型')
 }
 
 function getLinkType(link: GraphData['links'][number]): string {
-  return toTrimmedPrimitiveString(link?.label ?? link?.predicate ?? link?.meta?.label ?? link?.kind, '关系')
+  return toTrimmedPrimitiveString(link.label ?? link.predicate ?? link.meta?.label ?? link.kind, '关系')
 }
 
-export function KgNetworkAnalysisPanel({
-  embedded = false,
-  nodes,
-  links,
-  selectedNodeId,
-}: KgNetworkAnalysisPanelProps) {
-  const keyboardMoveStep = 24
+export function KgNetworkAnalysisPanel({ nodes, links, selectedNodeId }: KgNetworkAnalysisPanelProps) {
   const edges = useMemo(() => toNetworkEdges(links), [links])
-  const selectedNode = useMemo(
-    () => nodes.find((node) => String(node?.id ?? '') === String(selectedNodeId || '')) ?? null,
-    [nodes, selectedNodeId],
-  )
+  const selectedNode = useMemo(() => nodes.find((node) => node.id === selectedNodeId) ?? null, [nodes, selectedNodeId])
   const nodeTypeStats = useMemo(() => {
     const countMap = new Map<string, { count: number; color: string }>()
     for (const node of nodes) {
       const label = getNodeType(node)
-      const color = String(node?.color || '').trim() || '#94a3b8'
+      const color = node.color?.trim() || '#94a3b8'
       const entry = countMap.get(label)
       countMap.set(label, {
         count: (entry?.count ?? 0) + 1,
-        color: entry?.color || color,
+        color: entry?.color ?? color,
       })
     }
     return [...countMap.entries()]
@@ -119,11 +76,11 @@ export function KgNetworkAnalysisPanel({
     const countMap = new Map<string, { count: number; color: string }>()
     for (const link of links) {
       const label = getLinkType(link)
-      const color = String(link?.color || '').trim() || '#3b82f6'
+      const color = link.color?.trim() || '#3b82f6'
       const entry = countMap.get(label)
       countMap.set(label, {
         count: (entry?.count ?? 0) + 1,
-        color: entry?.color || color,
+        color: entry?.color ?? color,
       })
     }
     return [...countMap.entries()]
@@ -131,45 +88,37 @@ export function KgNetworkAnalysisPanel({
       .sort((left, right) => right.count - left.count)
       .slice(0, 6)
   }, [links])
-  const firstNodeId = nodes[0]?.id || ''
-  const secondNodeId = nodes[1]?.id || firstNodeId
-  const [startId, setStartId] = useState(selectedNodeId || firstNodeId)
+  const firstNodeId = nodes[0]?.id ?? ''
+  const secondNodeId = nodes[1]?.id ?? firstNodeId
+  const [startId, setStartId] = useState(selectedNodeId ?? firstNodeId)
   const [targetId, setTargetId] = useState(secondNodeId)
-  const [nodeId, setNodeId] = useState(selectedNodeId || firstNodeId)
+  const [nodeId, setNodeId] = useState(selectedNodeId ?? firstNodeId)
   const [algorithm, setAlgorithm] = useState<'degree' | 'pagerank'>('degree')
   const [maxHops, setMaxHops] = useState(3)
   const [topK, setTopK] = useState(10)
-  const [runningKey, setRunningKey] = useState<string | null>(null)
+  const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [result, setResult] = useState<ResultState | null>(null)
-  const [collapsed, setCollapsed] = useState(false)
-  const [panelOffset, setPanelOffset] = useState({ x: 0, y: 0 })
-  const dragStateRef = useRef<PanelDragState>(null)
+  const activeRequest = useRef<AbortController | null>(null)
 
-  useEffect(() => {
-    const narrowViewport = globalThis.window.matchMedia('(max-width: 1279px)')
-    const collapseForNarrowViewport = () => {
-      if (narrowViewport.matches) {
-        setCollapsed(true)
-      }
-    }
-
-    collapseForNarrowViewport()
-    narrowViewport.addEventListener('change', collapseForNarrowViewport)
+  useLayoutEffect(() => {
+    setIsAnalyzing(false)
+    setResult(null)
     return () => {
-      narrowViewport.removeEventListener('change', collapseForNarrowViewport)
+      activeRequest.current?.abort()
+      activeRequest.current = null
     }
-  }, [])
+  }, [edges])
 
   const request: KGNetworkRequest = {
     edges,
-    start_id: startId.trim() || undefined,
-    target_id: targetId.trim() || undefined,
-    node_id: nodeId.trim() || undefined,
+    start_id: readNonEmptyString(startId),
+    target_id: readNonEmptyString(targetId),
+    node_id: readNonEmptyString(nodeId),
     algorithm,
     max_hops: maxHops,
     top_k: topK,
   }
-  const actionDisabled = edges.length === 0 || Boolean(runningKey)
+  const actionDisabled = edges.length === 0 || isAnalyzing
   const operationResult = result
     ? {
         title: result.title,
@@ -177,132 +126,34 @@ export function KgNetworkAnalysisPanel({
       }
     : null
   const buttonClass = 'h-8 gap-1.5 rounded-lg px-3 text-xs font-semibold'
-  const panelDragStyle = {
-    transform: `translate3d(${panelOffset.x}px, ${panelOffset.y}px, 0)`,
-  }
-
-  const movePanelBy = (deltaX: number, deltaY: number) => {
-    setPanelOffset((current) => ({
-      x: current.x + deltaX,
-      y: current.y + deltaY,
-    }))
-  }
-
-  const resetPanelPosition = () => {
-    setPanelOffset({ x: 0, y: 0 })
-  }
-
-  function startPanelDrag(event: ReactPointerEvent<HTMLButtonElement>) {
-    if (event.button !== 0) return
-    event.preventDefault()
-    event.currentTarget.setPointerCapture(event.pointerId)
-    dragStateRef.current = {
-      pointerId: event.pointerId,
-      startClientX: event.clientX,
-      startClientY: event.clientY,
-      startX: panelOffset.x,
-      startY: panelOffset.y,
-    }
-  }
-
-  function movePanel(event: ReactPointerEvent<HTMLButtonElement>) {
-    const drag = dragStateRef.current
-    if (drag?.pointerId !== event.pointerId) return
-    setPanelOffset({
-      x: drag.startX + event.clientX - drag.startClientX,
-      y: drag.startY + event.clientY - drag.startClientY,
-    })
-  }
-
-  function stopPanelDrag(event: ReactPointerEvent<HTMLButtonElement>) {
-    const drag = dragStateRef.current
-    if (drag?.pointerId !== event.pointerId) return
-    dragStateRef.current = null
-    event.currentTarget.releasePointerCapture(event.pointerId)
-  }
-
-  function handlePanelDragKeyDown(event: React.KeyboardEvent<HTMLButtonElement>) {
-    const step = event.shiftKey ? keyboardMoveStep * 2 : keyboardMoveStep
-    if (event.key === 'ArrowLeft') {
-      event.preventDefault()
-      movePanelBy(-step, 0)
-      return
-    }
-    if (event.key === 'ArrowRight') {
-      event.preventDefault()
-      movePanelBy(step, 0)
-      return
-    }
-    if (event.key === 'ArrowUp') {
-      event.preventDefault()
-      movePanelBy(0, -step)
-      return
-    }
-    if (event.key === 'ArrowDown') {
-      event.preventDefault()
-      movePanelBy(0, step)
-      return
-    }
-    if (event.key === 'Home' || event.key === '0') {
-      event.preventDefault()
-      resetPanelPosition()
-    }
-  }
 
   async function runAction(
-    key: string,
     title: string,
     endpoint: string,
-    action: () => Promise<unknown>,
+    analyze: (body: KGNetworkRequest, options: { signal: AbortSignal }) => Promise<unknown>,
   ): Promise<void> {
-    setRunningKey(key)
+    if (edges.length === 0 || activeRequest.current !== null) return
+    const controller = new AbortController()
+    activeRequest.current = controller
+    const isCurrent = () => activeRequest.current === controller
+    setIsAnalyzing(true)
     try {
-      const payload = await action()
+      const payload = await analyze(request, { signal: controller.signal })
+      if (!isCurrent()) return
       setResult({ title, endpoint, payload })
       toast.success(`${title}完成`)
     } catch (error) {
-      toast.error(formatApiError(error, `${title}失败`))
+      if (isCurrent()) toast.error(formatApiError(error, `${title}失败`))
     } finally {
-      setRunningKey(null)
+      if (isCurrent()) {
+        activeRequest.current = null
+        setIsAnalyzing(false)
+      }
     }
   }
 
-  if (collapsed && !embedded) {
-    return (
-      <div
-        className="absolute left-4 top-20 z-20 transition-transform duration-150 md:left-auto md:right-[6.75rem] md:top-24"
-        style={panelDragStyle}
-      >
-        <Button
-          type="button"
-          variant="outline"
-          className="h-10 gap-2 rounded-full border-info/15 bg-background/88 px-3 text-xs font-semibold shadow-none"
-          aria-label="展开图谱统计栏"
-          aria-expanded="false"
-          aria-controls="kg-network-analysis-panel"
-          onClick={() => setCollapsed(false)}
-        >
-          <PanelRightOpen className="h-4 w-4 text-info" />
-          <span>统计</span>
-          <span className="rounded-full bg-muted/60 px-2 py-0.5 font-mono text-[11px] text-muted-foreground">
-            {nodes.length}/{links.length}
-          </span>
-        </Button>
-      </div>
-    )
-  }
-
   return (
-    <div
-      id="kg-network-analysis-panel"
-      data-draggable-kg-analysis-panel={!embedded || undefined}
-      className={
-        embedded
-          ? 'relative w-full space-y-4'
-          : 'absolute right-[6.75rem] top-24 z-20 w-[286px] space-y-3 will-change-transform'
-      }
-      style={embedded ? undefined : panelDragStyle}
-    >
+    <div id="kg-network-analysis-panel" className="relative w-full space-y-4">
       <section className="rounded-xl border border-info/15 bg-background/88 p-4 shadow-none">
         <div className="mb-3 flex items-start justify-between gap-3">
           <div className="flex min-w-0 items-start gap-3">
@@ -313,34 +164,6 @@ export function KgNetworkAnalysisPanel({
               <div className="text-sm font-semibold text-foreground">统计信息</div>
               <p className="mt-0.5 text-[11px] leading-4 text-muted-foreground">数据概览与交互信息</p>
             </div>
-          </div>
-          <div hidden={embedded} className={embedded ? 'hidden' : 'flex shrink-0 items-center gap-1'}>
-            <button
-              type="button"
-              className="flex h-8 w-8 cursor-grab items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-info/[0.08] hover:text-info active:cursor-grabbing"
-              aria-label="拖动图谱统计栏"
-              title="拖动图谱统计栏"
-              aria-keyshortcuts="ArrowLeft ArrowRight ArrowUp ArrowDown Home"
-              onPointerDown={startPanelDrag}
-              onPointerMove={movePanel}
-              onPointerUp={stopPanelDrag}
-              onPointerCancel={stopPanelDrag}
-              onKeyDown={handlePanelDragKeyDown}
-            >
-              <GripHorizontal className="h-4 w-4" />
-            </button>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8 rounded-xl text-muted-foreground hover:bg-muted/60 hover:text-foreground"
-              aria-label="收起图谱统计栏"
-              aria-expanded="true"
-              aria-controls="kg-network-analysis-panel"
-              onClick={() => setCollapsed(true)}
-            >
-              <PanelRightClose className="h-4 w-4" />
-            </Button>
           </div>
         </div>
 
@@ -418,46 +241,58 @@ export function KgNetworkAnalysisPanel({
             </div>
 
             <div className="grid gap-2 sm:grid-cols-3">
-              <Field label="Start">
+              <Field id="kg-network-start" label="Start">
                 <Input
+                  id="kg-network-start"
                   value={startId}
                   onChange={(event) => setStartId(event.target.value)}
                   className="h-8 font-mono text-xs"
                 />
               </Field>
-              <Field label="Target">
+              <Field id="kg-network-target" label="Target">
                 <Input
+                  id="kg-network-target"
                   value={targetId}
                   onChange={(event) => setTargetId(event.target.value)}
                   className="h-8 font-mono text-xs"
                 />
               </Field>
-              <Field label="Node">
+              <Field id="kg-network-node" label="Node">
                 <Input
+                  id="kg-network-node"
                   value={nodeId}
                   onChange={(event) => setNodeId(event.target.value)}
                   className="h-8 font-mono text-xs"
                 />
               </Field>
-              <Field label="Max hops">
-                <Input
-                  value={String(maxHops)}
-                  onChange={(event) => setMaxHops(Number.parseInt(event.target.value || '0', 10) || 3)}
+              <Field id="kg-network-hops" label="Max hops">
+                <SettingsNumberInput
+                  id="kg-network-hops"
+                  value={maxHops}
+                  min={1}
+                  max={10}
+                  onValueChange={setMaxHops}
                   className="h-8 font-mono text-xs"
-                  inputMode="numeric"
                 />
               </Field>
-              <Field label="Top K">
-                <Input
-                  value={String(topK)}
-                  onChange={(event) => setTopK(Number.parseInt(event.target.value || '0', 10) || 10)}
+              <Field id="kg-network-top-k" label="Top K">
+                <SettingsNumberInput
+                  id="kg-network-top-k"
+                  value={topK}
+                  min={1}
+                  max={100}
+                  onValueChange={setTopK}
                   className="h-8 font-mono text-xs"
-                  inputMode="numeric"
                 />
               </Field>
-              <Field label="Centrality">
-                <Select value={algorithm} onValueChange={(value) => setAlgorithm(value as 'degree' | 'pagerank')}>
-                  <SelectTrigger className="h-8 text-xs">
+              <Field id="kg-network-centrality" label="Centrality">
+                <Select
+                  value={algorithm}
+                  onValueChange={(value) => {
+                    if (value === 'degree' || value === 'pagerank') setAlgorithm(value)
+                  }}
+                >
+                  <SelectTrigger id="kg-network-centrality" className="h-8 text-xs">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -474,11 +309,7 @@ export function KgNetworkAnalysisPanel({
                 className={buttonClass}
                 disabled={actionDisabled}
                 onClick={() =>
-                  detachPromise(
-                    runAction('hop', 'K-hop 邻居', 'POST /kg/network/k_hop_neighbors', () =>
-                      kgApi.getKHopNeighbors(request),
-                    ),
-                  )
+                  detachPromise(runAction('K-hop 邻居', 'POST /kg/network/k_hop_neighbors', kgApi.getKHopNeighbors))
                 }
               >
                 <Network className="h-3.5 w-3.5" />
@@ -489,11 +320,7 @@ export function KgNetworkAnalysisPanel({
                 className={buttonClass}
                 disabled={actionDisabled}
                 onClick={() =>
-                  detachPromise(
-                    runAction('shortest', '最短路径', 'POST /kg/network/shortest_path', () =>
-                      kgApi.getShortestPath(request),
-                    ),
-                  )
+                  detachPromise(runAction('最短路径', 'POST /kg/network/shortest_path', kgApi.getShortestPath))
                 }
               >
                 <Network className="h-3.5 w-3.5" />
@@ -504,11 +331,7 @@ export function KgNetworkAnalysisPanel({
                 className={buttonClass}
                 disabled={actionDisabled}
                 onClick={() =>
-                  detachPromise(
-                    runAction('paths', '路径枚举', 'POST /kg/network/paths_between', () =>
-                      kgApi.getPathsBetween(request),
-                    ),
-                  )
+                  detachPromise(runAction('路径枚举', 'POST /kg/network/paths_between', kgApi.getPathsBetween))
                 }
               >
                 <Network className="h-3.5 w-3.5" />
@@ -518,13 +341,7 @@ export function KgNetworkAnalysisPanel({
                 variant="outline"
                 className={buttonClass}
                 disabled={actionDisabled}
-                onClick={() =>
-                  detachPromise(
-                    runAction('centrality', '中心性', 'POST /kg/network/centrality', () =>
-                      kgApi.getCentrality(request),
-                    ),
-                  )
-                }
+                onClick={() => detachPromise(runAction('中心性', 'POST /kg/network/centrality', kgApi.getCentrality))}
               >
                 <Activity className="h-3.5 w-3.5" />
                 中心性
@@ -534,11 +351,7 @@ export function KgNetworkAnalysisPanel({
                 className={buttonClass}
                 disabled={actionDisabled}
                 onClick={() =>
-                  detachPromise(
-                    runAction('community', '社区归属', 'POST /kg/network/community_of', () =>
-                      kgApi.getCommunityOf(request),
-                    ),
-                  )
+                  detachPromise(runAction('社区归属', 'POST /kg/network/community_of', kgApi.getCommunityOf))
                 }
               >
                 <Activity className="h-3.5 w-3.5" />
@@ -550,9 +363,7 @@ export function KgNetworkAnalysisPanel({
                 disabled={actionDisabled}
                 onClick={() =>
                   detachPromise(
-                    runAction('component', '连通分量', 'POST /kg/network/connected_component', () =>
-                      kgApi.getConnectedComponent(request),
-                    ),
+                    runAction('连通分量', 'POST /kg/network/connected_component', kgApi.getConnectedComponent),
                   )
                 }
               >
@@ -596,10 +407,12 @@ function MetricRow({ color, label, count }: Readonly<{ color: string; label: str
   )
 }
 
-function Field({ label, children }: Readonly<{ label: string; children: ReactNode }>) {
+function Field({ id, label, children }: Readonly<{ id: string; label: string; children: ReactNode }>) {
   return (
     <div className="space-y-1">
-      <Label className="text-[11px] font-medium text-muted-foreground">{label}</Label>
+      <Label htmlFor={id} className="text-[11px] font-medium text-muted-foreground">
+        {label}
+      </Label>
       {children}
     </div>
   )

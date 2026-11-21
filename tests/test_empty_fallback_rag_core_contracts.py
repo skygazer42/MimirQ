@@ -2,12 +2,12 @@ from uuid import uuid4
 
 import pytest
 
-from app.rag.core.claim_evidence import build_claim_evidence_map
-from app.rag.core.code_fence import extract_first_code_fence
-from app.rag.core.confidence import compute_confidence_score
-from app.rag.core.evidence_expectations import evaluate_evidence_anchor_expectations
-from app.rag.core.pipeline_scope import apply_active_pipeline_metadata_filter
-from app.rag.core.sentence_citations import render_sentence_citations_inline, render_sentence_citations_markdown
+from app.rag.llm.citation_rendering import render_sentence_citations_inline, render_sentence_citations_markdown
+from app.rag.llm.response_parsing import extract_first_code_fence
+from app.rag.retrieval.evidence.gaps import evaluate_evidence_anchor_expectations
+from app.rag.safety.answer_quality import compute_confidence_score
+from app.rag.safety.claim_evidence import build_claim_evidence_map
+from app.services.documents.pipeline_versions import apply_active_pipeline_metadata_filter
 
 
 @pytest.mark.parametrize("field", [None, False, 0])

@@ -1,111 +1,56 @@
 import type {
   EvidenceRetrieveRequest,
   EvidenceRetrieveResponse,
+  OpenApiSchema,
   PromptPreviewRequest,
   PromptPreviewResponse,
   RetrievePreviewRequest,
   RetrievePreviewResponse,
 } from '@/types/backend'
-import type { JsonObject } from '@/types/common'
 import type {
   RagvizSimilarityCalculateResponse,
   RagvizSimilarityCollectionsResponse,
   RagvizSimilarityRequest,
 } from '@/types/evaluation'
-import type { Citation } from '@/types/processing'
 import { z } from 'zod'
 
 import { API_LONG_TIMEOUT_MS } from '@/lib/env'
-import { apiClient, openapiRequest } from '@/lib/api/core'
+import { apiClient, openapiRequest, type ApiRequestOptions } from '@/lib/api/core'
 
-export type DocumentStructureRequest = {
-  dataset_id: string
-  document_id: string
-  max_nodes?: number
-}
+type DocumentStructureInput = OpenApiSchema<'DocumentStructureRequest'>
+export type DocumentStructureRequest = Pick<DocumentStructureInput, 'dataset_id' | 'document_id'> &
+  Partial<Pick<DocumentStructureInput, 'max_nodes'>>
 
 export type DocumentStructureResponse = Record<string, unknown>
 
-export type TreeSearchPreviewRequest = {
-  query: string
-  dataset_id?: string | null
-  document_ids?: string[]
-  rag_config?: Record<string, unknown>
-  max_structure_docs?: number
-  max_nodes_per_doc?: number
-}
+type TreeSearchPreviewInput = OpenApiSchema<'TreeSearchPreviewRequest'>
+export type TreeSearchPreviewRequest = Pick<TreeSearchPreviewInput, 'query'> &
+  Partial<Omit<TreeSearchPreviewInput, 'query' | 'rag_config'>> & {
+    rag_config?: Partial<NonNullable<TreeSearchPreviewInput['rag_config']>>
+  }
 
-export type TreeSearchPreviewResponse = {
+export type TreeSearchPreviewResponse = Required<OpenApiSchema<'TreeSearchPreviewResponse'>> & {
   schema: 'mimirq.tree_search_preview.v1'
-  query: string
-  query_for_retrieval: string
-  citations: Array<Record<string, unknown>>
-  document_structures: Array<Record<string, unknown>>
-  selected_sections: Array<Record<string, unknown>>
-  metrics: Record<string, unknown>
 }
 
-export type RagConfigTemplate = {
-  id: string
-  tenant_id: string
-  template_key?: string | null
-  name: string
-  description?: string | null
-  config_patch: JsonObject
-  is_active: boolean
-  usage_count: number
-  version: number
-  parent_id?: string | null
-  ab_experiment_key?: string | null
-  ab_variant?: string | null
-  ab_weight: number
-  created_at: string
-  updated_at: string
-}
+export type RagConfigTemplate = OpenApiSchema<'RagConfigTemplateOut'>
+type RagConfigTemplateCreateInput = OpenApiSchema<'RagConfigTemplateCreate'>
+export type RagConfigTemplateCreate = Pick<RagConfigTemplateCreateInput, 'name'> &
+  Partial<Omit<RagConfigTemplateCreateInput, 'name'>>
+export type RagConfigTemplateUpdate = OpenApiSchema<'RagConfigTemplateUpdate'>
+export type RagConfigTemplateNewVersion = Partial<OpenApiSchema<'RagConfigTemplateNewVersion'>>
 
-export type RagConfigTemplateCreate = {
-  template_key?: string
-  name: string
-  description?: string
-  config_patch?: JsonObject
-  is_active?: boolean
-  parent_id?: string | null
-  ab_experiment_key?: string | null
-  ab_variant?: string | null
-  ab_weight?: number
-}
-
-export type RagConfigTemplateUpdate = {
-  template_key?: string | null
-  name?: string
-  description?: string | null
-  config_patch?: JsonObject
-  is_active?: boolean
-  version?: number
-  parent_id?: string | null
-  ab_experiment_key?: string | null
-  ab_variant?: string | null
-  ab_weight?: number
-}
-
-export type RagConfigTemplateNewVersion = {
-  name?: string
-  description?: string | null
-  config_patch?: JsonObject
-  is_active?: boolean
-  deactivate_previous?: boolean
-  ab_experiment_key?: string | null
-  ab_variant?: string | null
-  ab_weight?: number
-}
-
-const evidenceRetrieveResponseSchema = z.looseObject({
+const retrievePreviewResponseSchema = z.looseObject({
   query_for_retrieval: z.string(),
   citations: z.array(z.record(z.string(), z.unknown())),
-  schema: z.string().default('mimirq.evidence.v1'),
   metrics: z.record(z.string(), z.unknown()).optional(),
-  has_evidence: z.boolean().default(false),
-  abstain_triggered: z.boolean().default(false),
+}) satisfies z.ZodType<RetrievePreviewResponse>
+
+const evidenceRetrieveResponseSchema = retrievePreviewResponseSchema.extend({
+  schema: z.string(),
+  metrics: z.record(z.string(), z.unknown()),
+  has_evidence: z.boolean(),
+  abstain_triggered: z.boolean(),
   abstain_reason: z.string().nullable().optional(),
   retrieval_trace: z.record(z.string(), z.unknown()).nullable().optional(),
   evidence_capsule: z.record(z.string(), z.unknown()).nullable().optional(),
@@ -119,9 +64,15 @@ export type EvidenceRetrieveInput = Omit<EvidenceRetrieveRequest, 'rag_config'> 
 }
 
 export const ragApi = {
-  async retrievePreview(params: RetrievePreviewRequest): Promise<RetrievePreviewResponse> {
-    const { data } = await apiClient.post('/rag/retrieve-preview', params)
-    return data
+  async retrievePreview(params: RetrievePreviewRequest, options?: ApiRequestOptions): Promise<RetrievePreviewResponse> {
+    return openapiRequest({
+      path: '/api/v1/rag/retrieve-preview',
+      method: 'post',
+      body: params,
+      signal: options?.signal,
+      responseSchema: retrievePreviewResponseSchema,
+      responseSchemaName: 'RetrievePreviewResponse',
+    })
   },
 
   async documentStructure(params: DocumentStructureRequest): Promise<DocumentStructureResponse> {
@@ -134,11 +85,15 @@ export const ragApi = {
     return data
   },
 
-  async retrieveEvidence(params: EvidenceRetrieveInput): Promise<EvidenceRetrieveResponse> {
+  async retrieveEvidence(
+    params: EvidenceRetrieveInput,
+    options?: ApiRequestOptions,
+  ): Promise<EvidenceRetrieveResponse> {
     const data = await openapiRequest({
       path: '/api/v1/rag/retrieve',
       method: 'post',
       body: params as EvidenceRetrieveRequest,
+      signal: options?.signal,
       responseSchema: evidenceRetrieveResponseSchema,
       responseSchemaName: 'EvidenceRetrieveResponse',
     })
@@ -180,7 +135,7 @@ export const ragConfigTemplateApi = {
     template_key?: string
     ab_experiment_key?: string
     is_active?: boolean
-  }): Promise<{ total: number; items: RagConfigTemplate[] }> {
+  }): Promise<OpenApiSchema<'RagConfigTemplateList'>> {
     const { data } = await apiClient.get('/rag-config-templates', { params })
     return data
   },

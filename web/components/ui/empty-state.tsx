@@ -3,7 +3,7 @@ import type { PlatformIcon } from '@/components/icons'
 
 import { cn } from '@/lib/utils'
 
-export type EmptyStateProps = {
+type EmptyStateProps = {
   title: string
   description?: React.ReactNode
   icon?: PlatformIcon

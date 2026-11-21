@@ -7,13 +7,14 @@ from uuid import UUID
 
 from langchain_core.documents import Document
 
-from app.core.config import settings
-from app.core.exceptions import MimirQError
-from app.rag.core.filters import match_metadata_filter
-from app.rag.retrieval.hybrid.result_values import candidate_metadata_from_doc, result_content_from_doc
+from app.infrastructure.config import settings
+from app.infrastructure.exceptions import MimirQError
+from app.infrastructure.metadata_filters import match_metadata_filter
+from app.rag.retrieval.recall.results import candidate_metadata_from_doc, result_content_from_doc
 
 _SCHEMA_VERSION = "ragvia_native_bm25_v1:chinese"
 _IDENTITY_FIELDS = frozenset({"chunk_id", "tenant_id", "dataset_id", "document_id"})
+_IDENTITY_OPERATORS = {"$eq": "==", "$ne": "!=", "$in": "in", "$nin": "not in"}
 _OUTPUT_FIELDS = ["chunk_id", "tenant_id", "dataset_id", "document_id", "content", "metadata"]
 _REQUIRED_FIELDS = {"id", "sparse", *_OUTPUT_FIELDS}
 
@@ -101,12 +102,12 @@ class _IdentityPushdown:
             elif key in _IDENTITY_FIELDS:
                 condition = value if isinstance(value, dict) else {"$eq": value}
                 for operator, expected in condition.items():
-                    if operator not in {"$eq", "$ne", "$in", "$nin"} or expected is None:
+                    symbol = _IDENTITY_OPERATORS.get(operator)
+                    if symbol is None or expected is None:
                         exact = False
                         continue
                     if operator in {"$in", "$nin"} and not isinstance(expected, list):
                         raise ValueError("BM25 identity membership filter requires a list")
-                    symbol = {"$eq": "==", "$ne": "!=", "$in": "in", "$nin": "not in"}[operator]
                     parts.append(f"{key} {symbol} {_literal(expected)}")
             else:
                 exact = False
@@ -200,10 +201,11 @@ class MilvusBM25Store:
 
     def upsert(self, documents: list[Document], *, tenant_id: UUID) -> int:
         _scoped_filter(tenant_id, None)
+        tenant_key = str(tenant_id)
         rows = []
         for document in documents:
             metadata = dict(document.metadata)
-            if metadata.get("tenant_id") is not None and str(metadata["tenant_id"]) != str(tenant_id):
+            if metadata.get("tenant_id") is not None and str(metadata["tenant_id"]) != tenant_key:
                 raise ValueError("BM25 document tenant does not match its write scope")
             if document.id is None or not metadata.get("document_id"):
                 raise ValueError("BM25 upsert requires chunk and document identities")
@@ -211,13 +213,18 @@ class MilvusBM25Store:
                 raise ValueError("BM25 chunk text exceeds the Milvus VARCHAR byte limit")
             identity = {
                 "chunk_id": str(document.id),
-                "tenant_id": str(tenant_id),
+                "tenant_id": tenant_key,
                 "dataset_id": str(metadata.get("dataset_id") or ""),
                 "document_id": str(metadata["document_id"]),
             }
             metadata.update(identity)
             rows.append(
-                {"id": f"{tenant_id}:{document.id}", **identity, "content": document.page_content, "metadata": metadata}
+                {
+                    "id": f"{tenant_key}:{document.id}",
+                    **identity,
+                    "content": document.page_content,
+                    "metadata": metadata,
+                }
             )
         if not rows:
             return 0
@@ -251,6 +258,7 @@ class MilvusBM25Store:
         client = self._require_collection()
         maximum = settings.MILVUS_BM25_MAX_CANDIDATES
         limit = min(max(32, top_k * 4), maximum)
+        tenant_key = str(tenant_id)
         allowed_datasets, allowed_documents = set(map(str, dataset_ids)), set(map(str, document_ids))
         while True:
             hits = client.search(
@@ -268,7 +276,7 @@ class MilvusBM25Store:
             for hit in hits:
                 entity = hit["entity"]
                 if (
-                    entity["tenant_id"] != str(tenant_id)
+                    entity["tenant_id"] != tenant_key
                     or (allowed_datasets and entity["dataset_id"] not in allowed_datasets)
                     or (allowed_documents and entity["document_id"] not in allowed_documents)
                 ):
@@ -317,13 +325,15 @@ class MilvusBM25Store:
             timeout=settings.MILVUS_BM25_TIMEOUT_SEC,
         )
         deleted = 0
+        tenant_key = str(tenant_id)
+        id_prefix = f"{tenant_key}:"
         try:
             while rows := iterator.next():
                 ids = [
                     row["id"]
                     for row in rows
-                    if row["tenant_id"] == str(tenant_id)
-                    and row["id"].startswith(f"{tenant_id}:")
+                    if row["tenant_id"] == tenant_key
+                    and row["id"].startswith(id_prefix)
                     and match_metadata_filter(_entity_metadata(row), metadata_filter)
                 ]
                 if ids:

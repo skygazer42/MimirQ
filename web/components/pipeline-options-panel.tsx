@@ -631,14 +631,14 @@ export function PipelineOptionsPanel(props: Readonly<PipelineOptionsPanelProps>)
   }
 
   const importPipelineJson = () => {
-    const text = (importText || '').trim()
+    const text = importText.trim()
     if (!text) {
       toast.error('请输入 JSON')
       return
     }
     const res = ctx.importJson(text)
     if (!res.ok) {
-      toast.error(res.error || '导入失败')
+      toast.error(res.error)
       return
     }
     toast.success('已导入管线 JSON')
@@ -787,12 +787,9 @@ export function PipelineOptionsPanel(props: Readonly<PipelineOptionsPanelProps>)
                 </summary>
                 <div className="mt-2 grid gap-1.5 px-2">
                   {pendingPresetDiff.map((d) => {
-                    const label = PIPELINE_OPTION_LABELS[d.key] || String(d.key)
+                    const label = PIPELINE_OPTION_LABELS[d.key] ?? d.key
                     return (
-                      <div
-                        key={String(d.key)}
-                        className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-xs"
-                      >
+                      <div key={d.key} className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-xs">
                         <span className="text-muted-foreground truncate">{label}</span>
                         <span className="font-mono text-foreground/80 shrink-0">
                           {formatPipelineOptionValue(d.from)} → {formatPipelineOptionValue(d.to)}
@@ -897,9 +894,9 @@ export function PipelineOptionsPanel(props: Readonly<PipelineOptionsPanelProps>)
                 )}
               >
                 {group.items.map((item) => {
-                  const depends = item.dependsOn === 'kg_enabled'
-                  const disabled = !enabled || (depends && !kgEnabled)
-                  const checked = !!options[item.key]
+                  const dependsOn = item.dependsOn
+                  const disabled = !enabled || (dependsOn !== undefined && options[dependsOn] !== true)
+                  const checked = options[item.key] === true
                   return (
                     <div
                       key={item.key}
@@ -1035,7 +1032,7 @@ export function PipelineOptionsPanel(props: Readonly<PipelineOptionsPanelProps>)
                               </SelectContent>
                             </Select>
                             <Input
-                              value={options.governance_pii_mask || ''}
+                              value={options.governance_pii_mask ?? ''}
                               disabled={governanceDisabled || options.governance_pii_mode === 'token'}
                               onChange={(e) => updateOption('governance_pii_mask', e.currentTarget.value)}
                               placeholder="[REDACTED]"
@@ -1070,7 +1067,7 @@ export function PipelineOptionsPanel(props: Readonly<PipelineOptionsPanelProps>)
                               </SelectContent>
                             </Select>
                             <Input
-                              value={options.governance_secrets_mask || ''}
+                              value={options.governance_secrets_mask ?? ''}
                               disabled={governanceDisabled || options.governance_secrets_mode === 'token'}
                               onChange={(e) => updateOption('governance_secrets_mask', e.currentTarget.value)}
                               placeholder="[SECRET]"
@@ -1157,7 +1154,7 @@ export function PipelineOptionsPanel(props: Readonly<PipelineOptionsPanelProps>)
                           <div className="text-xs font-medium text-muted-foreground">HTML 提取 (XPath)</div>
                         </div>
                         <Input
-                          value={options.governance_html_xpath || ''}
+                          value={options.governance_html_xpath ?? ''}
                           disabled={governanceDisabled}
                           onChange={(e) => updateOption('governance_html_xpath', e.currentTarget.value)}
                           placeholder="//article | //main"

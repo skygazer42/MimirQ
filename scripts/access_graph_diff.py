@@ -31,7 +31,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from app.services.access_graph_diff_service import diff_access_graph_records  # noqa: E402
+from app.services.identity.access_graph_diff import diff_access_graph_records  # noqa: E402
 
 
 def _now_utc() -> datetime:

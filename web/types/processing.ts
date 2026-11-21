@@ -2,7 +2,9 @@
  * Processing, chunk preview, governance, and ingestion types re-exported by `@/types`.
  */
 
-import type { JsonObject, LooseString } from './common'
+import type { JsonObject } from './common'
+
+type LooseString<T extends string> = T | (string & {})
 
 export type DocumentStats = import('./backend').DocumentStats
 export type DocumentBatchLifecycleRequest = import('./backend').DocumentBatchLifecycleRequest
@@ -106,7 +108,7 @@ export type DocumentParsedContentResponse = import('./backend').DocumentParsedCo
 
 export type ManualChunk = {
   content: string
-  page_number?: number
+  page_number?: number | null
   start_char?: number
   end_char?: number
   metadata?: JsonObject
@@ -148,10 +150,10 @@ export type ChunkPreviewItem = {
   index: number
   content: string
   length: number
-  tokens_est?: number
+  tokens_est?: number | null
   start_index: number
   end_index: number
-  page_number?: number
+  page_number?: number | null
   metadata?: JsonObject
 }
 
@@ -236,15 +238,16 @@ export type ChunkPreviewResponse = {
   total_characters: number
   params: ChunkPreviewParams
   chunks: ChunkPreviewItem[]
-  stats?: ChunkPreviewStats
+  stats?: ChunkPreviewStats | null
+  chunking_stats_tokens?: JsonObject | null
   auto_selected_strategy?: string
   warnings?: string[]
-  review_signals?: ChunkPreviewReviewSignals
+  review_signals?: ChunkPreviewReviewSignals | null
   quality_gate?: ChunkPreviewQualityGate
   recommendations?: string[]
   recommendation_patches?: ChunkPreviewRecommendationPatch[]
-  original_text?: string
-  original_text_cleaned?: string
+  original_text?: string | null
+  original_text_cleaned?: string | null
   original_text_included?: boolean
   original_text_truncated?: boolean
   original_text_max_chars?: number
@@ -400,21 +403,8 @@ export type GovernanceRulePackListResponse = {
 
 // ==================== Governance (Lifecycle) ====================
 
-export type DocumentLifecycleMetadata = {
-  publication_status?: 'draft' | 'published' | 'deprecated'
-  lifecycle_owner?: string | null
-  review_due_at?: string | null
-  authority_level?: number | null
-  supersedes_document_id?: string | null
-}
-
-export type DocumentLifecycleMetadataUpdateRequest = {
-  publication_status?: 'draft' | 'published' | 'deprecated'
-  lifecycle_owner?: string | null
-  review_due_at?: string | null
-  authority_level?: number | null
-  supersedes_document_id?: string | null
-}
+export type DocumentLifecycleMetadata = import('./backend').DocumentLifecycleMetadata
+export type DocumentLifecycleMetadataUpdateRequest = import('./backend').DocumentLifecycleMetadataUpdateRequest
 
 export type StaleDocumentItem = {
   id: string
@@ -445,16 +435,6 @@ export type GovernanceCommonLineCandidate = {
   sample: string
   docs: number
   ratio: number
-}
-
-export type GovernanceCommonLinesLearnRequest = {
-  dataset_id: string
-  limit_docs?: number
-  use_original?: boolean
-  min_docs?: number
-  min_ratio?: number
-  max_line_length?: number
-  max_candidates?: number
 }
 
 export type GovernanceCommonLinesLearnResponse = {

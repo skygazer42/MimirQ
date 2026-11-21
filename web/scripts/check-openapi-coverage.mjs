@@ -19,41 +19,41 @@ import { parseBackendRoutes, normalizeRoute, readText } from './api-contract-lib
 const HTTP_METHODS = new Set(['GET', 'POST', 'PUT', 'PATCH', 'DELETE'])
 
 function stripApiV1Prefix(rawPath) {
-  const p = String(rawPath || '')
-  if (p === '/api/v1') return '/'
-  if (p.startsWith('/api/v1/')) return p.slice('/api/v1'.length)
-  return p
+  if (rawPath === '/api/v1') return '/'
+  if (rawPath.startsWith('/api/v1/')) return rawPath.slice('/api/v1'.length)
+  return rawPath
 }
 
 function parseOpenapiRoutes() {
   const spec = JSON.parse(readText('web/openapi.json'))
-  const paths = spec?.paths && typeof spec.paths === 'object' ? spec.paths : {}
+  const paths = spec?.paths
+  if (paths === null || typeof paths !== 'object' || Array.isArray(paths)) {
+    throw new TypeError('web/openapi.json must contain a paths object')
+  }
 
-  const out = new Map()
+  const routes = new Map()
 
   for (const [rawPath, ops] of Object.entries(paths)) {
     const stripped = stripApiV1Prefix(rawPath)
     const normalized = normalizeRoute(stripped)
-    if (!ops || typeof ops !== 'object') continue
+    if (ops === null || typeof ops !== 'object') continue
 
     for (const method of Object.keys(ops)) {
-      if (String(method || '').startsWith('x-')) continue
-      const upper = String(method || '').toUpperCase()
+      const upper = method.toUpperCase()
       if (!HTTP_METHODS.has(upper)) continue
-      out.set(`${upper} ${normalized}`, { rawPath, method: upper })
+      routes.set(`${upper} ${normalized}`, { rawPath, method: upper })
     }
   }
 
-  return out
+  return routes
 }
 
-function isOpenapiV1Route(route) {
-  const rawPath = String(route?.rawPath || '')
+function isOpenapiV1Route({ rawPath }) {
   return rawPath === '/api/v1' || rawPath.startsWith('/api/v1/')
 }
 
 function main() {
-  const backend = parseBackendRoutes()
+  const backend = parseBackendRoutes({ schemaOnly: true })
   const openapi = parseOpenapiRoutes()
 
   const missing = []

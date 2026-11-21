@@ -87,9 +87,16 @@ function feedback(id: string, overrides: Partial<MessageFeedbackEnriched> = {}):
     rating: 2,
     reason: `反馈原因 ${id}`,
     expected_answer: `期望 ${id}`,
+    category: null,
+    category_source: null,
+    query_hash: null,
+    retrieval_trace_ref: null,
+    profile: null,
+    judge_score_ref: null,
     tags: [],
     extra: { source: 'web' },
     message_content: `原回答 ${id}`,
+    message_created_at: null,
     conversation_title: `问题 ${id}`,
     created_at: '2026-10-22T02:24:00Z',
     updated_at: '2026-10-22T02:24:00Z',
@@ -254,6 +261,10 @@ describe('feedback inbox', () => {
       search.dispatchEvent(new Event('input', { bubbles: true }))
     })
     expect(container.querySelectorAll('[data-feedback-item]')).toHaveLength(1)
-    expect(container.querySelector('[data-feedback-reader]')?.textContent).toContain('原回答 201')
+    await act(async () => {
+      await vi.waitFor(() =>
+        expect(container.querySelector('[data-feedback-reader]')?.textContent).toContain('原回答 201'),
+      )
+    })
   })
 })

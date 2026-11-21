@@ -10,7 +10,7 @@ Status: implemented
 
 ## Decision
 
-本地模型安装部分由[退出 API 内模型推理](../architecture/2026-11-05-retire-in-process-models.md)接管，`requirements-local-models.txt` 与对应实现已退出。[FAISS 退出](../simplification/2026-11-06-retire-faiss.md)和[Chroma 退出](../simplification/2026-11-06-retire-chroma.md)进一步取代相应后端的按需安装边界；下述配置和验证是首次拆分时的决定与历史证据，不代表当前支持清单。
+本地模型安装部分由[退出 API 内模型推理](../architecture/2026-11-05-retire-in-process-models.md)接管，`requirements-local-models.txt` 与对应实现已退出。[FAISS 退出](../../../../docs/development/faiss-retirement-verification.md)和[Chroma 退出](../../../../app/storage/vector/factory.py)进一步取代相应后端的按需安装边界；下述配置和验证是首次拆分时的决定与历史证据，不代表当前支持清单。
 
 这些可选后端退出后，CI 与本地开发直接使用同一个 `requirements-dev.txt`。只剩转发作用的 `requirements-ci.txt` 已删除，CI 安装和缓存入口同步到开发依赖文件，实际包版本和安装选项不变。
 
@@ -37,7 +37,7 @@ Docker CI 同时保留默认基础镜像与独立的 `mimirq-backend-chroma-ci` 
 
 ## Consequences
 
-FAISS 的安装配置、运行时后端和可选加速由[退出 FAISS](../simplification/2026-11-06-retire-faiss.md)接管并删除；本篇其余安装隔离决定及历史验证证据保留。
+FAISS 的安装配置、运行时后端和可选加速由[退出 FAISS](../../../../docs/development/faiss-retirement-verification.md)接管并删除；本篇其余安装隔离决定及历史验证证据保留。
 
 BM25 的依赖与索引所有权现由[Milvus 原生 BM25](../architecture/2026-11-05-milvus-native-bm25.md)接管；本篇关于可选向量后端和安装隔离的决定保持。
 

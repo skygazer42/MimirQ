@@ -3,7 +3,7 @@
  */
 'use client'
 
-import { useEffect, useId, useState } from 'react'
+import { useCallback, useId, useLayoutEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { Eye, EyeOff, FlaskConical, Save, ChevronRight } from '@/components/icons'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle } from '@/components/ui/dialog'
@@ -14,17 +14,23 @@ import { FeedbackToast } from '@/components/feedback-toast'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { ProviderIcon } from '@/components/provider-icon'
 import { cn } from '@/lib/utils'
-import { settingsApi } from '@/lib/api/settings'
+import { settingsApi, type TestLLMResponse } from '@/lib/api/settings'
 import { formatApiError } from '@/lib/api-errors'
-import type { ModelProvider, ProviderConfig } from '@/types/models'
+import type { ModelConfigSubmission, ModelProvider } from '@/types/models'
 
 type ModelEntryMode = 'preset' | 'custom'
+type ModelConfigDraft = Omit<ModelConfigSubmission, 'model' | 'temperature' | 'timeout'> & {
+  temperature: string
+  timeout: number
+}
+const MODEL_CONNECTION_TOAST_ID = 'model-connection-feedback'
 
 type ModelConfigDialogProps = {
   provider: ModelProvider | null
   open: boolean
+  saving?: boolean
   onClose: () => void
-  onSave: (providerId: string, config: ProviderConfig) => void
+  onSave: (providerId: string, config: ModelConfigSubmission) => Promise<void>
 }
 
 function getDefaultApiBase(providerId: string): string {
@@ -46,156 +52,171 @@ function getDefaultApiBase(providerId: string): string {
     openrouter: 'https://openrouter.ai/api/v1',
     together: 'https://api.together.xyz/v1',
   }
-  return defaults[providerId] || ''
+  return Object.hasOwn(defaults, providerId) ? defaults[providerId] : ''
 }
 
-function getProviderModelOptions(provider: ModelProvider | null) {
-  if (!provider) return []
-  return provider.models.filter((model) => {
-    if (provider.category === 'model') return model.type === 'chat'
-    if (provider.category === 'embedding') return model.type === 'embedding'
-    if (provider.category === 'reranker') return model.type === 'reranker'
-    return true
-  })
+function getProviderModelOptions(provider: ModelProvider) {
+  const modelType = provider.category === 'model' ? 'chat' : provider.category
+  return provider.models.filter((model) => model.type === modelType)
 }
 
-export function ModelConfigDialog({ provider, open, onClose, onSave }: Readonly<ModelConfigDialogProps>) {
+export function ModelConfigDialog({ provider, open, saving, onClose, onSave }: Readonly<ModelConfigDialogProps>) {
   const idPrefix = useId()
-  const [config, setConfig] = useState<ProviderConfig>({
+  const [config, setConfig] = useState<ModelConfigDraft>({
     apiKey: '',
     apiBase: '',
-    model: '',
-    temperature: 0.7,
-    maxTokens: 4096,
+    temperature: '0.7',
     timeout: 60,
   })
   const [showApiKey, setShowApiKey] = useState(false)
   const [isTesting, setIsTesting] = useState(false)
-  const [testResult, setTestResult] = useState<{
-    success: boolean
-    message: string
-  } | null>(null)
+  const [testResult, setTestResult] = useState<TestLLMResponse | null>(null)
+  const [saveError, setSaveError] = useState<string | null>(null)
+  const testRequest = useRef<AbortController | null>(null)
   const [showAdvanced, setShowAdvanced] = useState(false)
   const [modelEntryMode, setModelEntryMode] = useState<ModelEntryMode>('preset')
+  const [presetModel, setPresetModel] = useState('')
   const [customModelId, setCustomModelId] = useState('')
   const apiKeyId = `${idPrefix}-apiKey`
   const apiBaseId = `${idPrefix}-apiBase`
   const modelPresetId = `${idPrefix}-model-preset`
   const modelCustomId = `${idPrefix}-model-custom`
   const modelHintId = `${idPrefix}-model-hint`
-  const presetTabId = `${idPrefix}-preset-tab`
-  const customTabId = `${idPrefix}-custom-tab`
   const modelPanelId = `${idPrefix}-model-panel`
   const temperatureId = `${idPrefix}-temperature`
-  const maxTokensId = `${idPrefix}-maxTokens`
 
-  useEffect(() => {
+  const clearConnectionTest = useCallback(() => {
+    testRequest.current?.abort()
+    testRequest.current = null
+    setIsTesting(false)
+    setTestResult(null)
+    toast.dismiss(MODEL_CONNECTION_TOAST_ID)
+  }, [])
+
+  useLayoutEffect(() => {
+    if (!open || provider === null) return
+
     const modelOptions = getProviderModelOptions(provider)
-    const defaultModel = modelOptions[0]?.name || ''
-    const configuredModel = provider?.config?.model || defaultModel
+    const defaultModel = modelOptions[0]?.name ?? ''
+    const savedConfig = provider.config
+    const savedModel = savedConfig?.model
+    const savedApiBase = savedConfig?.apiBase
+    const configuredModel = savedModel === undefined || savedModel === '' ? defaultModel : savedModel
     const usesPreset = modelOptions.some((model) => model.name === configuredModel)
 
-    if (provider?.config) {
-      setConfig({
-        apiKey: provider.config.apiKey || '',
-        apiBase: provider.config.apiBase || getDefaultApiBase(provider.id),
-        model: configuredModel,
-        temperature: provider.config.temperature ?? 0.7,
-        maxTokens: provider.config.maxTokens ?? 4096,
-        timeout: provider.config.timeout ?? 60,
-      })
-    } else if (provider) {
-      setConfig({
-        apiKey: '',
-        apiBase: getDefaultApiBase(provider.id),
-        model: defaultModel,
-        temperature: 0.7,
-        maxTokens: 4096,
-        timeout: 60,
-      })
-    }
+    setConfig({
+      apiKey: savedConfig?.apiKey ?? '',
+      apiBase: savedApiBase === undefined || savedApiBase === '' ? getDefaultApiBase(provider.id) : savedApiBase,
+      temperature: String(savedConfig?.temperature ?? 0.7),
+      timeout: savedConfig?.timeout ?? 60,
+    })
     setModelEntryMode(usesPreset || !configuredModel ? 'preset' : 'custom')
+    setPresetModel(usesPreset ? configuredModel : defaultModel)
     setCustomModelId(usesPreset ? '' : configuredModel)
-    setTestResult(null)
+    clearConnectionTest()
+    setSaveError(null)
     setShowAdvanced(false)
-  }, [provider, open])
+    setShowApiKey(false)
+
+    return () => {
+      testRequest.current?.abort()
+      toast.dismiss(MODEL_CONNECTION_TOAST_ID)
+    }
+  }, [provider, open, clearConnectionTest])
+
+  if (provider === null) return null
+
+  const canTestConnection = provider.category === 'model'
+  const hasMaskedApiKey = config.apiKey.includes('***')
+  const model = modelEntryMode === 'preset' ? presetModel : customModelId
+  const modelOptions = getProviderModelOptions(provider)
+  const selectedPresetModel = modelOptions.find((option) => option.name === presetModel)
+  const docsUrl = getProviderDocsUrl(provider.id)
+  const apiBase = config.apiBase === '' ? getDefaultApiBase(provider.id) : config.apiBase
+  const temperature = Number(config.temperature)
+  const isTemperatureValid = config.temperature.trim() !== '' && Number.isFinite(temperature)
+
+  function updateConfig(patch: Partial<ModelConfigDraft>) {
+    clearConnectionTest()
+    setConfig((current) => ({ ...current, ...patch }))
+  }
 
   const handleModelModeChange = (nextMode: ModelEntryMode) => {
     if (nextMode === modelEntryMode) return
-
-    const modelOptions = getProviderModelOptions(provider)
-    if (nextMode === 'custom') {
-      const nextCustomId = customModelId || config.model || ''
-      setCustomModelId(nextCustomId)
-      setConfig((current) => ({ ...current, model: nextCustomId }))
-    } else {
-      setCustomModelId(config.model || customModelId)
-      setConfig((current) => ({
-        ...current,
-        model: modelOptions.some((model) => model.name === current.model) ? current.model : modelOptions[0]?.name || '',
-      }))
-    }
+    clearConnectionTest()
     setModelEntryMode(nextMode)
-    setTestResult(null)
   }
 
   const handleCustomModelChange = (value: string) => {
+    clearConnectionTest()
     setCustomModelId(value)
-    setConfig((current) => ({ ...current, model: value }))
-    setTestResult(null)
   }
 
-  const handleSave = () => {
-    if (!provider) return
-    onSave(provider.id, config)
-    onClose()
+  const handleSave = async () => {
+    if (!isTemperatureValid) {
+      toast.error('请填写有效的 Temperature')
+      return
+    }
+    clearConnectionTest()
+    setSaveError(null)
+    try {
+      await onSave(provider.id, { ...config, apiBase, model, temperature })
+    } catch (error) {
+      setSaveError(formatApiError(error, '保存配置失败'))
+    }
   }
 
   const handleTest = async () => {
+    if (testRequest.current !== null) return
+    if (config.apiKey.trim() === '' || hasMaskedApiKey) {
+      toast.error('请输入实际的 API Key 后再测试')
+      return
+    }
+    if (model.trim() === '') {
+      toast.error('请选择或输入模型 ID')
+      return
+    }
+    if (!isTemperatureValid) {
+      toast.error('请填写有效的 Temperature')
+      return
+    }
+
+    const controller = new AbortController()
+    testRequest.current = controller
     setIsTesting(true)
     setTestResult(null)
 
     try {
-      if (!provider) return
-      if (provider.category !== 'model') {
-        toast.error('目前仅支持测试聊天模型连接')
-        return
+      const result = await settingsApi.testLLM(
+        {
+          api_key: config.apiKey,
+          api_base: apiBase,
+          model,
+          temperature,
+          timeout: config.timeout,
+          max_retries: 1,
+        },
+        { signal: controller.signal },
+      )
+      if (!controller.signal.aborted) setTestResult(result)
+    } catch (error: unknown) {
+      if (!controller.signal.aborted) {
+        setTestResult({ success: false, message: formatApiError(error, '测试失败') })
       }
-      if (!config.apiKey) {
-        toast.error('请先填写 API Key')
-        return
-      }
-      if (!config.model) {
-        toast.error('请选择或输入模型 ID')
-        return
-      }
-
-      const result = await settingsApi.testLLM({
-        api_key: config.apiKey,
-        api_base: config.apiBase || getDefaultApiBase(provider.id),
-        model: config.model,
-        temperature: config.temperature,
-        timeout: config.timeout,
-        max_retries: 1,
-      })
-      setTestResult({ success: !!result.success, message: result.message })
-    } catch (e: unknown) {
-      setTestResult({ success: false, message: formatApiError(e, '测试失败') })
     } finally {
-      setIsTesting(false)
+      if (!controller.signal.aborted) {
+        testRequest.current = null
+        setIsTesting(false)
+      }
     }
   }
 
-  if (!provider) return null
-
-  const modelOptions = getProviderModelOptions(provider)
-  const selectedPresetModel = modelOptions.find((model) => model.name === config.model)
   let apiKeyRequired = true
   if (provider.category === 'embedding') {
-    if (provider.id === 'local-embedding') apiKeyRequired = false
+    if (provider.id === 'local-embedding' || provider.id === 'ollama-embedding') apiKeyRequired = false
     else if (provider.id === 'openai-embedding') {
       try {
-        apiKeyRequired = new URL(config.apiBase || getDefaultApiBase(provider.id)).hostname === 'api.openai.com'
+        apiKeyRequired = new URL(apiBase).hostname === 'api.openai.com'
       } catch {
         /* Keep API Key required until a valid custom endpoint is entered. */
       }
@@ -203,8 +224,16 @@ export function ModelConfigDialog({ provider, open, onClose, onSave }: Readonly<
   }
 
   return (
-    <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-[600px] p-0 overflow-hidden gap-0 rounded-2xl border-0 shadow-strong">
+    <Dialog
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen && !saving) onClose()
+      }}
+    >
+      <DialogContent
+        showCloseButton={!saving}
+        className="sm:max-w-[600px] p-0 overflow-hidden gap-0 rounded-2xl border-0 shadow-strong"
+      >
         {/* 头部 */}
         <div className="bg-muted/40 border-b border-border p-6 flex items-start gap-4">
           <div className="h-11 w-11 rounded-xl bg-card border border-border flex items-center justify-center shadow-sm flex-shrink-0">
@@ -216,7 +245,7 @@ export function ModelConfigDialog({ provider, open, onClose, onSave }: Readonly<
           </div>
         </div>
 
-        <div className="p-6 space-y-6">
+        <fieldset disabled={saving} className="min-w-0 p-6 space-y-6">
           {/* API Key */}
           <div className="space-y-2">
             <div className="flex items-center justify-between gap-3">
@@ -228,21 +257,23 @@ export function ModelConfigDialog({ provider, open, onClose, onSave }: Readonly<
                   <span className="ml-1 font-normal text-muted-foreground">（可选）</span>
                 )}
               </Label>
-              <a
-                href={getProviderDocsUrl(provider.id)}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-xs font-medium text-primary hover:underline"
-              >
-                获取 Key <span aria-hidden>→</span>
-              </a>
+              {docsUrl !== undefined && (
+                <a
+                  href={docsUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs font-medium text-primary hover:underline"
+                >
+                  获取 Key <span aria-hidden>→</span>
+                </a>
+              )}
             </div>
             <div className="relative">
               <Input
                 id={apiKeyId}
                 type={showApiKey ? 'text' : 'password'}
                 value={config.apiKey}
-                onChange={(e) => setConfig({ ...config, apiKey: e.target.value })}
+                onChange={(event) => updateConfig({ apiKey: event.target.value })}
                 placeholder={apiKeyRequired ? `输入 ${provider.name} API Key` : '服务需要认证时填写'}
                 required={apiKeyRequired}
                 className="pr-10 font-mono"
@@ -257,6 +288,11 @@ export function ModelConfigDialog({ provider, open, onClose, onSave }: Readonly<
                 {showApiKey ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
               </button>
             </div>
+            {canTestConnection && hasMaskedApiKey && (
+              <p className="text-xs text-muted-foreground">
+                连接测试需要输入实际的 API Key。保存配置时可以保留已保存的密钥。
+              </p>
+            )}
           </div>
 
           {/* API Base URL */}
@@ -268,7 +304,7 @@ export function ModelConfigDialog({ provider, open, onClose, onSave }: Readonly<
               id={apiBaseId}
               type="text"
               value={config.apiBase}
-              onChange={(e) => setConfig({ ...config, apiBase: e.target.value })}
+              onChange={(event) => updateConfig({ apiBase: event.target.value })}
               placeholder="https://api.example.com/v1"
               className="font-mono"
             />
@@ -282,15 +318,13 @@ export function ModelConfigDialog({ provider, open, onClose, onSave }: Readonly<
             </div>
 
             <div
-              role="tablist"
+              role="group"
               aria-label="模型 ID 来源"
               className="grid grid-cols-2 gap-1 rounded-lg border border-border/60 bg-muted/35 p-1"
             >
               <button
-                id={presetTabId}
                 type="button"
-                role="tab"
-                aria-selected={modelEntryMode === 'preset'}
+                aria-pressed={modelEntryMode === 'preset'}
                 aria-controls={modelPanelId}
                 onClick={() => handleModelModeChange('preset')}
                 className={cn(
@@ -303,10 +337,8 @@ export function ModelConfigDialog({ provider, open, onClose, onSave }: Readonly<
                 推荐模型
               </button>
               <button
-                id={customTabId}
                 type="button"
-                role="tab"
-                aria-selected={modelEntryMode === 'custom'}
+                aria-pressed={modelEntryMode === 'custom'}
                 aria-controls={modelPanelId}
                 onClick={() => handleModelModeChange('custom')}
                 className={cn(
@@ -320,27 +352,22 @@ export function ModelConfigDialog({ provider, open, onClose, onSave }: Readonly<
               </button>
             </div>
 
-            <div
-              id={modelPanelId}
-              role="tabpanel"
-              aria-labelledby={modelEntryMode === 'preset' ? presetTabId : customTabId}
-              className="space-y-2"
-            >
+            <div id={modelPanelId} className="space-y-2">
               {modelEntryMode === 'preset' ? (
                 <>
                   <Label htmlFor={modelPresetId} className="sr-only">
                     推荐模型
                   </Label>
                   <Select
-                    value={config.model || ''}
-                    onValueChange={(value) => {
-                      setConfig((current) => ({ ...current, model: value }))
-                      setTestResult(null)
+                    value={presetModel}
+                    onValueChange={(nextModel) => {
+                      clearConnectionTest()
+                      setPresetModel(nextModel)
                     }}
                   >
                     <SelectTrigger id={modelPresetId} aria-describedby={modelHintId} className="h-11">
                       <SelectValue placeholder="选择推荐模型">
-                        {selectedPresetModel?.displayName || config.model}
+                        {selectedPresetModel?.displayName ?? presetModel}
                       </SelectValue>
                     </SelectTrigger>
                     <SelectContent>
@@ -363,7 +390,7 @@ export function ModelConfigDialog({ provider, open, onClose, onSave }: Readonly<
                   <Input
                     id={modelCustomId}
                     type="text"
-                    value={config.model || ''}
+                    value={model}
                     onChange={(event) => handleCustomModelChange(event.target.value)}
                     placeholder={
                       provider.id === 'ark' ? '例如 doubao-seed-2-0-lite-260428' : '输入服务商控制台中的完整模型 ID'
@@ -382,7 +409,7 @@ export function ModelConfigDialog({ provider, open, onClose, onSave }: Readonly<
                   <span>{modelEntryMode === 'preset' ? '推荐项' : '自定义'}</span>
                 </div>
                 <code className="block break-all text-[12px] font-medium text-foreground">
-                  {config.model || '尚未填写'}
+                  {model === '' ? '尚未填写' : model}
                 </code>
               </div>
             </div>
@@ -392,81 +419,75 @@ export function ModelConfigDialog({ provider, open, onClose, onSave }: Readonly<
             </p>
           </div>
 
-          {/* 高级设置开关 */}
-          <div>
-            <button
-              type="button"
-              onClick={() => setShowAdvanced(!showAdvanced)}
-              className="flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors motion-reduce:transition-none group"
-            >
-              <ChevronRight className={cn('size-4 transition-transform', showAdvanced && 'rotate-90')} />
-              高级设置
-            </button>
+          {canTestConnection && (
+            <div>
+              <button
+                type="button"
+                onClick={() => setShowAdvanced(!showAdvanced)}
+                className="flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors motion-reduce:transition-none group"
+              >
+                <ChevronRight className={cn('size-4 transition-transform', showAdvanced && 'rotate-90')} />
+                高级设置
+              </button>
 
-            {showAdvanced && (
-              <div className="mt-4 grid grid-cols-2 gap-4 motion-safe:animate-in motion-safe:slide-in-from-top-2 motion-safe:duration-200">
-                <div className="space-y-1.5">
-                  <Label htmlFor={temperatureId} className="text-xs font-medium text-muted-foreground">
-                    Temperature
-                  </Label>
-                  <Input
-                    id={temperatureId}
-                    type="number"
-                    step="0.1"
-                    min="0"
-                    max="2"
-                    value={config.temperature}
-                    onChange={(e) => setConfig({ ...config, temperature: Number.parseFloat(e.target.value) })}
-                    className="h-9 text-sm"
-                  />
+              {showAdvanced && (
+                <div className="mt-4 grid grid-cols-2 gap-4 motion-safe:animate-in motion-safe:slide-in-from-top-2 motion-safe:duration-200">
+                  <div className="space-y-1.5">
+                    <Label htmlFor={temperatureId} className="text-xs font-medium text-muted-foreground">
+                      Temperature
+                    </Label>
+                    <Input
+                      id={temperatureId}
+                      type="number"
+                      step="0.1"
+                      value={config.temperature}
+                      onChange={(event) => updateConfig({ temperature: event.target.value })}
+                      className="h-9 text-sm"
+                    />
+                  </div>
                 </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor={maxTokensId} className="text-xs font-medium text-muted-foreground">
-                    Max Tokens
-                  </Label>
-                  <Input
-                    id={maxTokensId}
-                    type="number"
-                    value={config.maxTokens}
-                    onChange={(e) => setConfig({ ...config, maxTokens: Number.parseInt(e.target.value) })}
-                    className="h-9 text-sm"
-                  />
-                </div>
-              </div>
-            )}
-          </div>
+              )}
+            </div>
+          )}
 
           <FeedbackToast
             type={testResult?.success ? 'success' : 'error'}
             message={testResult?.message}
-            id="model-connection-feedback"
+            id={MODEL_CONNECTION_TOAST_ID}
           />
-        </div>
+          {saveError !== null && (
+            <p role="alert" className="text-sm text-destructive">
+              {saveError}
+            </p>
+          )}
+        </fieldset>
 
         <DialogFooter className="p-6 pt-2 bg-card">
           <div className="flex gap-3 w-full">
-            <Button
-              variant="outline"
-              onClick={handleTest}
-              disabled={!config.apiKey || !config.model || isTesting}
-              className="flex-1 rounded-xl h-11"
-            >
-              {isTesting ? (
-                <span className="animate-pulse motion-reduce:animate-none">测试中...</span>
-              ) : (
-                <>
-                  <FlaskConical className="size-4 mr-2" />
-                  测试连接
-                </>
-              )}
-            </Button>
+            {canTestConnection && (
+              <Button
+                variant="outline"
+                onClick={handleTest}
+                disabled={saving || config.apiKey.trim() === '' || hasMaskedApiKey || model.trim() === '' || isTesting}
+                className="flex-1 rounded-xl h-11"
+              >
+                {isTesting ? (
+                  <span className="animate-pulse motion-reduce:animate-none">测试中...</span>
+                ) : (
+                  <>
+                    <FlaskConical className="size-4 mr-2" />
+                    测试连接
+                  </>
+                )}
+              </Button>
+            )}
             <Button
               onClick={handleSave}
-              disabled={(apiKeyRequired && !config.apiKey?.trim()) || !config.model?.trim()}
+              disabled={saving || (apiKeyRequired && config.apiKey.trim() === '') || model.trim() === ''}
               className="flex-1 rounded-xl h-11"
             >
               <Save className="size-4 mr-2" />
-              保存配置
+              {saving ? '保存中…' : '保存配置'}
             </Button>
           </div>
         </DialogFooter>
@@ -475,8 +496,8 @@ export function ModelConfigDialog({ provider, open, onClose, onSave }: Readonly<
   )
 }
 
-function getProviderDocsUrl(providerId: string): string {
-  const urls: Record<string, string> = {
+function getProviderDocsUrl(providerId: string): string | undefined {
+  const urls: Record<string, string | undefined> = {
     openai: 'https://platform.openai.com/api-keys',
     anthropic: 'https://console.anthropic.com/',
     deepseek: 'https://platform.deepseek.com/',
@@ -492,5 +513,5 @@ function getProviderDocsUrl(providerId: string): string {
     openrouter: 'https://openrouter.ai/keys',
     together: 'https://api.together.xyz/',
   }
-  return urls[providerId] || '#'
+  return urls[providerId]
 }

@@ -6,11 +6,11 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { ChunkStrategyDropdown } from '@/components/business/chunk-strategy-dropdown'
 import { useChunkPreview } from '@/components/chunk-preview/context'
-import { applyChunkOverridesToPreview } from '@/components/chunk-preview/utils/export'
+import { applyChunkEdits } from '@/components/chunk-preview/utils/chunk-edits'
 import { chunkNeedsReview, isChunkOverrideDisabled } from '@/components/chunk-preview/utils/metadata'
 import styles from './compare.module.css'
 
-export function CompareParameters({ variant = 'toolbar' }: Readonly<{ variant?: 'toolbar' | 'form' }> = {}) {
+export function CompareParameters({ variant = 'toolbar' }: Readonly<{ variant?: 'toolbar' | 'form' }>) {
   const {
     chunkStrategy,
     chunkSize,
@@ -158,14 +158,18 @@ export function CompareParameters({ variant = 'toolbar' }: Readonly<{ variant?: 
 
 export function CompareFooter({ onOpenDocuments }: Readonly<{ onOpenDocuments: () => void }>) {
   const { previewData, chunkOverrides, selectedChunkIndex, datasetId, currentFileItem, isLoading } = useChunkPreview()
-  const effective = previewData
-    ? applyChunkOverridesToPreview(previewData, chunkOverrides, { include_disabled: true })
-    : null
-  const reviewCount =
-    effective?.chunks.filter(
-      (chunk, index) => !isChunkOverrideDisabled(chunkOverrides[index]) && chunkNeedsReview(chunk),
-    ).length || 0
-  const disabledCount = Object.values(chunkOverrides).filter(isChunkOverrideDisabled).length
+  let reviewCount = 0
+  let disabledCount = 0
+  if (previewData !== null) {
+    for (const chunk of previewData.chunks) {
+      const override = chunkOverrides[chunk.index]
+      if (isChunkOverrideDisabled(override)) {
+        disabledCount += 1
+      } else if (chunkNeedsReview(applyChunkEdits(chunk, override))) {
+        reviewCount += 1
+      }
+    }
+  }
   const scope = datasetId ? currentFileItem?.datasetName || '已选数据集' : '解析工作区'
   return (
     <footer className={styles.footer}>
@@ -176,13 +180,13 @@ export function CompareFooter({ onOpenDocuments }: Readonly<{ onOpenDocuments: (
             ? `${previewData.total_chunks_full ?? previewData.total_chunks} 个切块`
             : '尚未生成预览'}
       </span>
-      {!!reviewCount && (
+      {reviewCount > 0 && (
         <span className={styles.reviewCount}>
           <AlertCircle />
           {reviewCount} 项待复核
         </span>
       )}
-      {!!disabledCount && <span>{disabledCount} 项已跳过</span>}
+      {disabledCount > 0 && <span>{disabledCount} 项已跳过</span>}
       {selectedChunkIndex !== null && <span className="hidden md:inline">当前第 {selectedChunkIndex + 1} 块</span>}
       <div className={styles.footerScope}>
         <span>数据范围</span>

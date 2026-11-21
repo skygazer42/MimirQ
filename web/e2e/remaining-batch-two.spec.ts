@@ -61,6 +61,12 @@ test('industry tables preserve failed edits, reload saved data and ignore a late
   const state = await batchTwoFixture(page)
   await openRemaining(page, '/governance/industry-rules', '行业规则')
   await expect(page.getByRole('cell', { name: '单点登录', exact: true })).toBeVisible()
+  const patternTab = page.getByRole('tab', { name: '问题模式 1', exact: true })
+  await patternTab.click()
+  await page.getByRole('row').filter({ hasText: '无法连接' }).getByRole('button', { name: '编辑', exact: true }).click()
+  await page.getByRole('textbox', { name: '澄清话术', exact: true }).fill('请提供设备编号')
+  await page.getByRole('button', { name: '完成编辑', exact: true }).click()
+  await page.getByRole('tab', { name: '术语 2', exact: true }).click()
   await page.getByRole('button', { name: '新增术语', exact: true }).click()
   await page.getByRole('dialog').getByRole('textbox', { name: '术语', exact: true }).fill('知识治理')
   await page.getByRole('dialog').getByRole('textbox', { name: '别名，逗号分隔', exact: true }).fill('清洗, 脱敏')
@@ -72,6 +78,19 @@ test('industry tables preserve failed edits, reload saved data and ignore a late
   state.failSave = false
   await page.getByRole('button', { name: '保存术语', exact: true }).click()
   await expect(page.getByText('术语已保存', { exact: true })).toBeVisible()
+  await patternTab.click()
+  await expect(page.getByRole('cell', { name: '请提供设备编号', exact: true })).toBeVisible()
+  state.failRules = true
+  await page.getByRole('button', { name: '保存模式', exact: true }).click()
+  await expect(page.getByText('修改已提交，但暂时无法读回结果。草稿已保留。', { exact: true })).toBeVisible()
+  await expect(page.getByText('问题模式已保存', { exact: true })).toHaveCount(0)
+  await expect(page.getByRole('cell', { name: '请提供设备编号', exact: true })).toBeVisible()
+  expect(state.ruleset.patterns).toEqual([
+    { keywords: ['无法连接'], followup_template: '请提供设备编号', enabled: true, priority: 0 },
+  ])
+  state.failRules = false
+  await page.getByRole('button', { name: '保存模式', exact: true }).click()
+  await expect(page.getByText('问题模式已保存', { exact: true })).toBeVisible()
   await page.reload({ waitUntil: 'domcontentloaded' })
   await expect(page.getByRole('cell', { name: '知识治理', exact: true })).toBeVisible({ timeout: 60000 })
   await remainingShot(page, 'after-industry-rules-filled')

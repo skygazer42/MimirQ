@@ -24,7 +24,7 @@ def _ensure_datetime_utc(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_build_table_schema_graph_orders_edges_by_adjusted_score(monkeypatch: pytest.MonkeyPatch) -> None:
     _ensure_datetime_utc(monkeypatch)
-    from app.services import table_schema_graph as schema_graph
+    from app.services.tables import schema_graph
 
     monkeypatch.setattr(schema_graph.settings, "TABLE_TAG_COST_MODEL_ENABLED", True, raising=False)
     monkeypatch.setattr(schema_graph.settings, "TABLE_TAG_COST_FANOUT_RATIO_ALERT", 2.0, raising=False)
@@ -70,7 +70,7 @@ def test_build_table_schema_graph_orders_edges_by_adjusted_score(monkeypatch: py
 
 
 def test_score_multi_join_plan_candidates_keeps_join_path_ordering() -> None:
-    from app.services.table_schema_graph import score_multi_join_plan_candidates
+    from app.services.tables.schema_graph import score_multi_join_plan_candidates
 
     tables = [
         {
@@ -111,7 +111,7 @@ def test_score_multi_join_plan_candidates_keeps_join_path_ordering() -> None:
 
 
 def test_extract_structured_memory_for_turn_preserves_schema_and_stats() -> None:
-    from app.services.structured_memory_service import extract_structured_memory_for_turn
+    from app.services.chat.structured_memory import extract_structured_memory_for_turn
 
     record = extract_structured_memory_for_turn(
         user_text="ProjectX 使用 Docker 部署。我们的配置保存在仓库里。联系 foo@example.com",
@@ -128,7 +128,7 @@ def test_extract_structured_memory_for_turn_preserves_schema_and_stats() -> None
 
 
 def test_build_structured_memory_context_deduplicates_and_filters_pii() -> None:
-    from app.services.structured_memory_service import build_structured_memory_context
+    from app.services.chat.structured_memory import build_structured_memory_context
 
     context = build_structured_memory_context(
         records=[
@@ -165,7 +165,7 @@ def test_run_shadow_collection_backfill_dry_run_persists_progress_without_writes
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _ensure_datetime_utc(monkeypatch)
-    from app.services import embedding_migration as migration
+    from app.services.embeddings import migration
 
     tenant_id = uuid4()
     dataset_id = uuid4()
@@ -234,7 +234,7 @@ def test_run_shadow_collection_backfill_execute_recovers_after_write_failure(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _ensure_datetime_utc(monkeypatch)
-    from app.services import embedding_migration as migration
+    from app.services.embeddings import migration
 
     tenant_id = uuid4()
     docs = [
@@ -311,7 +311,7 @@ def test_run_embedding_migration_overlap_check_aggregates_overlap_and_self_hits(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _ensure_datetime_utc(monkeypatch)
-    from app.services import embedding_migration as migration
+    from app.services.embeddings import migration
 
     tenant_id = uuid4()
 
