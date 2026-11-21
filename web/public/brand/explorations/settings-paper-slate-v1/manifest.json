@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "project": "Ragvia · A + C 融合首屏",
+  "brief": "按已选方向融合：A 的宋体、暖纸色和细线控件，C 的工具轨、设置索引与配置检查器。保留原 C 作为布局对照。",
+  "round": "02",
+  "nativeViewport": "1395x1004",
+  "candidates": [
+    {
+      "id": "paper-slate",
+      "name": "A + C · 纸页工作区",
+      "concept": "保留纸页的阅读质感，让配置与选项在检查器中清楚对应。",
+      "typography": "Noto Serif SC 宋体：26px 标题、15px 字段、13px 说明；Manrope 拉丁字",
+      "palette": ["#F3F0E8", "#282C2A", "#963E2B", "#E9DFD2"],
+      "traits": ["C 的 64px 工具轨与设置目录", "C 的当前配置 / 解析选项分栏", "A 的暖纸色、宋体和 4px 控件"],
+      "source": "index.html"
+    },
+    {
+      "id": "slate-reference",
+      "name": "原 C · 布局参考",
+      "baseline": true,
+      "kind": "image",
+      "source": "E:/MimirQ/artifacts/rebrand/settings-styles-v1/shots-final/slate.png",
+      "concept": "保留用户选中的原 C，供工具轨、目录和分栏比例对照。",
+      "typography": "DengXian + Bahnschrift",
+      "palette": ["#ECEFF3", "#283344", "#3159A8"],
+      "traits": ["工具轨与设置索引", "当前配置与选项分栏"]
+    }
+  ]
+}

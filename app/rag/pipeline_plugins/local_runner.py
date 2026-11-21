@@ -18,6 +18,7 @@ from app.rag.pipeline_plugins.contracts import (
 from app.rag.pipeline_plugins.golden_drafts import build_golden_draft_bundle_from_chunks
 from app.rag.pipeline_plugins.registry import (
     PLUGIN_TEST_REPORT_FILENAME,
+    PipelinePluginDescriptor,
     PipelinePluginRegistryError,
     describe_plugin_dir,
     load_descriptor_stage_callable,
@@ -26,6 +27,8 @@ from app.rag.pipeline_plugins.runtime import (
     PythonPipelinePluginError,
     _coerce_documents,
     _coerce_kg_events,
+    _coerce_metadata,
+    _coerce_text,
     _invoke_plugin,
 )
 
@@ -44,8 +47,14 @@ def _coerce_input_document(item: Any) -> Document:
             content = item.get("content")
         if content is None:
             content = item.get("text")
-        metadata = item.get("metadata") if isinstance(item.get("metadata"), dict) else {}
-        return Document(page_content=str(content or ""), metadata=dict(metadata))
+        if content is None:
+            raise PipelinePluginRegistryError("input document must provide page_content, content or text")
+        try:
+            metadata = _coerce_metadata(item.get("metadata"))
+            text = _coerce_text(content, field_name="input document content")
+        except PythonPipelinePluginError as exc:
+            raise PipelinePluginRegistryError(str(exc)) from exc
+        return Document(page_content=text, metadata=metadata)
     raise PipelinePluginRegistryError(f"unsupported input document item: {type(item).__name__}")
 
 
@@ -62,7 +71,9 @@ def load_plugin_test_input(input_path: str | Path) -> list[Document]:
 
 
 class _LocalGoldenChunk:
-    def __init__(self, *, document_id: UUID, chunk_id: UUID, chunk_index: int, content: str, metadata: dict[str, Any]):
+    def __init__(
+        self, *, document_id: UUID, chunk_id: UUID, chunk_index: int, content: str, metadata: dict[str, Any]
+    ) -> None:
         self.document_id = document_id
         self.id = chunk_id
         self.chunk_index = chunk_index
@@ -73,7 +84,7 @@ class _LocalGoldenChunk:
 def _local_golden_chunks(documents: list[Document], *, plugin_id: str, version: str) -> list[_LocalGoldenChunk]:
     chunks: list[_LocalGoldenChunk] = []
     for index, doc in enumerate(documents or []):
-        seed = f"{plugin_id}@{version}:{index}:{doc.page_content or ''}"
+        seed = f"{plugin_id}@{version}:{index}:{doc.page_content}"
         document_id = uuid5(_LOCAL_GOLDEN_NAMESPACE, f"doc:{seed}")
         chunk_id = uuid5(_LOCAL_GOLDEN_NAMESPACE, f"chunk:{seed}")
         chunks.append(
@@ -81,7 +92,7 @@ def _local_golden_chunks(documents: list[Document], *, plugin_id: str, version: 
                 document_id=document_id,
                 chunk_id=chunk_id,
                 chunk_index=index,
-                content=str(doc.page_content or ""),
+                content=doc.page_content,
                 metadata=dict(doc.metadata or {}),
             )
         )
@@ -90,7 +101,7 @@ def _local_golden_chunks(documents: list[Document], *, plugin_id: str, version: 
 
 def _build_golden_draft_report(
     *,
-    descriptor: Any,
+    descriptor: PipelinePluginDescriptor,
     output_documents: list[Document],
     max_sample_questions: int = 5,
 ) -> dict[str, Any]:
@@ -104,11 +115,10 @@ def _build_golden_draft_report(
         plugin_package_hash=descriptor.package_hash,
         max_items=50,
     )
-    items = bundle.get("items") if isinstance(bundle, dict) else []
-    items = items if isinstance(items, list) else []
+    items = bundle["items"]
     questions = []
     for item in items[: max(0, int(max_sample_questions or 0))]:
-        if isinstance(item, dict) and str(item.get("question") or "").strip():
+        if isinstance(item, dict) and item["question"].strip():
             questions.append(str(item.get("question")).strip())
     return {
         "passed": bool(items),
@@ -131,7 +141,7 @@ def _plugin_stage_failure_report(*, stage: str, input_count: int, reason: str) -
 
 def _invoke_stage_result(
     *,
-    descriptor: Any,
+    descriptor: PipelinePluginDescriptor,
     stage: str,
     current_documents: list[Document],
     params: dict[str, Any] | None,
@@ -150,7 +160,7 @@ def _invoke_stage_result(
 
 def _run_kg_stage(
     *,
-    descriptor: Any,
+    descriptor: PipelinePluginDescriptor,
     current_documents: list[Document],
     plugin_input_documents: list[Document],
     result: Any,
@@ -172,18 +182,18 @@ def _run_kg_stage(
             "errors": [{"reason": str(exc)}],
         }
     report = {
-        "passed": bool(kg_validation["ok"]),
+        "passed": kg_validation["ok"],
         "input_count": len(current_documents),
         "output_count": len(events),
-        "output_chars": sum(len(event.content or "") for event in events),
+        "output_chars": sum(len(event.content) for event in events),
         "kg_validation": kg_validation,
     }
-    return report, bool(kg_validation["ok"])
+    return report, kg_validation["ok"]
 
 
 def _run_document_stage(
     *,
-    descriptor: Any,
+    descriptor: PipelinePluginDescriptor,
     stage: str,
     current_documents: list[Document],
     result: Any,
@@ -198,10 +208,16 @@ def _run_document_stage(
             metadata_schema=descriptor.metadata_schema,
             stage=stage,
         )
+        if current_documents and not output_documents:
+            metadata_validation = {
+                "ok": False,
+                "checked": 0,
+                "errors": [{"reason": f"{stage} stage emitted no documents"}],
+            }
     except (PipelinePluginContractError, PythonPipelinePluginError) as exc:
         metadata_validation = {"ok": False, "checked": len(output_documents), "errors": [{"reason": str(exc)}]}
 
-    stage_passed = bool(metadata_validation.get("ok"))
+    stage_passed = metadata_validation["ok"]
     if stage_passed:
         try:
             output_documents = apply_metadata_schema_views(
@@ -222,10 +238,10 @@ def _run_document_stage(
                 "errors": [{"reason": str(exc)}],
             }
     report = {
-        "passed": bool(metadata_validation.get("ok")),
+        "passed": metadata_validation["ok"],
         "input_count": len(current_documents),
         "output_count": len(output_documents),
-        "output_chars": sum(len(doc.page_content or "") for doc in output_documents),
+        "output_chars": sum(len(doc.page_content) for doc in output_documents),
         "metadata_validation": metadata_validation,
     }
     return output_documents, report, stage_passed
@@ -233,17 +249,38 @@ def _run_document_stage(
 
 def _run_plugin_stages(
     *,
-    descriptor: Any,
+    descriptor: PipelinePluginDescriptor,
     input_documents: list[Document],
     stages: list[str] | tuple[str, ...],
     params: dict[str, Any] | None = None,
 ) -> tuple[list[Document], dict[str, Any], bool]:
-    current_documents = list(input_documents)
-    stage_reports: dict[str, Any] = {}
-    passed = True
+    if not stages:
+        raise PipelinePluginRegistryError("plugin test must select at least one stage")
+    if len(set(stages)) != len(stages):
+        raise PipelinePluginRegistryError("plugin test must not contain duplicate stages")
     for stage in stages:
         if stage not in descriptor.entries:
             raise PipelinePluginRegistryError(f"plugin has no {stage} entry")
+
+    current_documents = list(input_documents)
+    stage_reports: dict[str, Any] = {}
+    passed = True
+    failed_stage: str | None = None
+    for stage in stages:
+        if failed_stage is not None:
+            stage_reports[stage] = _plugin_stage_failure_report(
+                stage=stage,
+                input_count=0,
+                reason=f"{stage} stage skipped because {failed_stage} failed",
+            )
+            continue
+        if not current_documents:
+            passed = False
+            failed_stage = stage
+            stage_reports[stage] = _plugin_stage_failure_report(
+                stage=stage, input_count=0, reason=f"{stage} stage requires input documents"
+            )
+            continue
         try:
             plugin_input_documents, result = _invoke_stage_result(
                 descriptor=descriptor,
@@ -251,8 +288,24 @@ def _run_plugin_stages(
                 current_documents=current_documents,
                 params=params,
             )
+            if stage == "kg":
+                report, stage_passed = _run_kg_stage(
+                    descriptor=descriptor,
+                    current_documents=current_documents,
+                    plugin_input_documents=plugin_input_documents,
+                    result=result,
+                )
+            else:
+                output_documents, report, stage_passed = _run_document_stage(
+                    descriptor=descriptor,
+                    stage=stage,
+                    current_documents=current_documents,
+                    result=result,
+                )
+                current_documents = output_documents if stage_passed else []
         except Exception as exc:  # noqa: BLE001
             passed = False
+            failed_stage = stage
             stage_reports[stage] = _plugin_stage_failure_report(
                 stage=stage,
                 input_count=len(current_documents),
@@ -260,27 +313,10 @@ def _run_plugin_stages(
             )
             current_documents = []
             continue
-        if stage == "kg":
-            report, stage_passed = _run_kg_stage(
-                descriptor=descriptor,
-                current_documents=current_documents,
-                plugin_input_documents=plugin_input_documents,
-                result=result,
-            )
-            if not stage_passed:
-                passed = False
-            stage_reports[stage] = report
-            continue
-        output_documents, report, stage_passed = _run_document_stage(
-            descriptor=descriptor,
-            stage=stage,
-            current_documents=current_documents,
-            result=result,
-        )
         if not stage_passed:
             passed = False
+            failed_stage = stage
         stage_reports[stage] = report
-        current_documents = output_documents
     return current_documents, stage_reports, passed
 
 
@@ -308,7 +344,7 @@ def run_pipeline_plugin_test(
         stages=stages,
         params=params,
     )
-    report["passed"] = bool(stages_passed)
+    report["passed"] = stages_passed
     report["stages"] = stage_reports
 
     if descriptor.golden_rules and "chunk" in report["stages"]:

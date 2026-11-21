@@ -2,15 +2,15 @@ from typing import Any
 
 from langchain_core.documents import Document
 
-from app.rag.chunking.roles import classify_chunk_semantic_role
-from app.rag.chunking.strategies.book_structured import BookStructuredChunker
-from app.rag.chunking.strategies.chat_history import ChatHistoryChunker
-from app.rag.chunking.strategies.docker_compose import DockerComposeChunker
-from app.rag.chunking.strategies.dockerfile import DockerfileChunker
-from app.rag.chunking.strategies.email_thread import EmailThreadChunker
-from app.rag.chunking.strategies.git_commit_log import GitCommitLogChunker
-from app.rag.chunking.strategies.github_actions import GitHubActionsChunker
-from app.rag.chunking.strategies.glossary import GlossaryChunker
+from app.rag.ingestion.chunking.roles import classify_chunk_semantic_role
+from app.rag.ingestion.chunking.strategies.config.docker_compose import DockerComposeChunker
+from app.rag.ingestion.chunking.strategies.config.dockerfile import DockerfileChunker
+from app.rag.ingestion.chunking.strategies.config.github_actions import GitHubActionsChunker
+from app.rag.ingestion.chunking.strategies.documents.book_structured import BookStructuredChunker
+from app.rag.ingestion.chunking.strategies.documents.glossary import GlossaryChunker
+from app.rag.ingestion.chunking.strategies.records.chat_history import ChatHistoryChunker
+from app.rag.ingestion.chunking.strategies.records.email_thread import EmailThreadChunker
+from app.rag.ingestion.chunking.strategies.records.git_commit_log import GitCommitLogChunker
 
 
 def _summarize_chunks(chunker: Any, text: str) -> list[tuple[str, dict[str, Any]]]:
@@ -474,11 +474,7 @@ def test_github_actions_chunker_characterizes_job_and_fallback_chunks() -> None:
 
 
 def test_glossary_chunker_characterizes_entry_overlap_and_fallback_chunks() -> None:
-    structured = (
-        "API: Application programming interface\n"
-        "SDK: Software development kit\n"
-        "CLI: Command line interface\n"
-    )
+    structured = "API: Application programming interface\nSDK: Software development kit\nCLI: Command line interface\n"
     fallback = "random prose only\nno entries\n"
 
     assert _summarize_chunks(GlossaryChunker(65, 20), structured) == [

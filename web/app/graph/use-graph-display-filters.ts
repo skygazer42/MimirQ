@@ -3,7 +3,7 @@
 import type { Dispatch, SetStateAction } from 'react'
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef } from 'react'
 
-import type { GraphData } from '@/lib/graph-parser'
+import type { GraphData } from '@/lib/graph-types'
 import { reportClientWarning } from '@/lib/client-logging'
 
 import {
@@ -16,7 +16,6 @@ import {
   getGraphLinkPredicate,
   getGraphNodeKind,
   getGraphNodeType,
-  type GraphLinkLike,
   type GraphNodeLike,
 } from './graph-page-utils'
 
@@ -99,7 +98,7 @@ export function useGraphDisplayFilters({
     for (const node of graphData.nodes) {
       if (getGraphNodeKind(node) !== 'entity') continue
       const type = getGraphNodeType(node) || 'unknown'
-      counts.set(type, (counts.get(type) || 0) + 1)
+      counts.set(type, (counts.get(type) ?? 0) + 1)
     }
 
     return Array.from(counts.entries())
@@ -112,8 +111,8 @@ export function useGraphDisplayFilters({
     for (const link of graphData.links) {
       if (getGraphLinkKind(link) !== 'entity_relation') continue
       const predicate = getGraphLinkPredicate(link)
-      if (!predicate) continue
-      counts.set(predicate, (counts.get(predicate) || 0) + 1)
+      if (predicate === '') continue
+      counts.set(predicate, (counts.get(predicate) ?? 0) + 1)
     }
 
     return Array.from(counts.entries())
@@ -123,13 +122,13 @@ export function useGraphDisplayFilters({
 
   const filteredEntityTypes = useMemo(() => {
     const query = entityTypeQuery.trim().toLowerCase()
-    if (!query) return availableEntityTypes.slice(0, 40)
+    if (query === '') return availableEntityTypes.slice(0, 40)
     return availableEntityTypes.filter((item) => item.value.toLowerCase().includes(query)).slice(0, 40)
   }, [availableEntityTypes, entityTypeQuery])
 
   const filteredPredicates = useMemo(() => {
     const query = predicateQuery.trim().toLowerCase()
-    if (!query) return availablePredicates.slice(0, 40)
+    if (query === '') return availablePredicates.slice(0, 40)
     return availablePredicates.filter((item) => item.value.toLowerCase().includes(query)).slice(0, 40)
   }, [availablePredicates, predicateQuery])
 
@@ -148,13 +147,13 @@ export function useGraphDisplayFilters({
       }
     }
 
-    const allowedTypes = new Set(entityTypeFilters.map((value) => coerceTrimmedString(value)))
-    const allowedPredicates = new Set(predicateFilters.map((value) => coerceTrimmedString(value)))
+    const allowedTypes = new Set(entityTypeFilters.map((value) => value.trim()))
+    const allowedPredicates = new Set(predicateFilters.map((value) => value.trim()))
     const allowedBuckets = new Set(confidenceBucketFilters)
 
     const allowedNodeIds = new Set<string>()
     for (const node of graphData.nodes) {
-      const nodeId = coerceTrimmedString(node?.id)
+      const nodeId = coerceTrimmedString(node.id)
       if (!nodeId) continue
 
       const kind = getGraphNodeKind(node)
@@ -170,9 +169,10 @@ export function useGraphDisplayFilters({
     }
 
     const nextLinks: GraphData['links'] = []
+    const linkedNodeIds = new Set<string>()
     for (const link of graphData.links) {
-      const sourceId = getGraphLinkEndpointId(link?.source)
-      const targetId = getGraphLinkEndpointId(link?.target)
+      const sourceId = getGraphLinkEndpointId(link.source)
+      const targetId = getGraphLinkEndpointId(link.target)
       if (!sourceId || !targetId) continue
       if (!allowedNodeIds.has(sourceId) || !allowedNodeIds.has(targetId)) continue
 
@@ -186,42 +186,36 @@ export function useGraphDisplayFilters({
         if (hasConfidenceFilter) {
           const confidence = getGraphLinkConfidence(link)
           const bucket = bucketConfidence(confidence)
-          if (!bucket || !allowedBuckets.has(bucket)) continue
+          if (bucket === null || !allowedBuckets.has(bucket)) continue
         }
       }
 
       nextLinks.push({ ...link, source: sourceId, target: targetId })
+      linkedNodeIds.add(sourceId)
+      linkedNodeIds.add(targetId)
     }
 
-    const linkedNodeIds = new Set<string>()
-    for (const link of nextLinks) {
-      const sourceId = getGraphLinkEndpointId(link?.source)
-      const targetId = getGraphLinkEndpointId(link?.target)
-      if (sourceId) linkedNodeIds.add(sourceId)
-      if (targetId) linkedNodeIds.add(targetId)
-    }
-
-    const nextNodes = graphData.nodes.filter((node) => linkedNodeIds.has(coerceTrimmedString(node?.id)))
+    const nextNodes = graphData.nodes.filter((node) => linkedNodeIds.has(coerceTrimmedString(node.id)))
     return {
       graphData: { nodes: nextNodes, links: nextLinks },
       durationMs: Math.max(0, getNowMs() - startedAt),
     }
   }, [confidenceBucketFilters, entityTypeFilters, graphData, predicateFilters])
-  const displayGraphData = useMemo<GraphData>(() => displayGraphProjection.graphData, [displayGraphProjection.graphData])
+  const displayGraphData = displayGraphProjection.graphData
 
-  const linksWithIds = useMemo<GraphLinkLike[]>(() => {
+  const linksWithIds = useMemo(() => {
     return displayGraphData.links.map((link, index) => ({
       ...link,
-      id: link.id || `link-${index}`,
+      id: link.id ?? `link-${index}`,
     }))
   }, [displayGraphData.links])
 
   const graphRenderData = useMemo<GraphData>(() => {
-    return { nodes: displayGraphData.nodes, links: linksWithIds as GraphData['links'] }
+    return { nodes: displayGraphData.nodes, links: linksWithIds }
   }, [displayGraphData.nodes, linksWithIds])
 
   const displayNodeIds = useMemo(() => {
-    return new Set(displayGraphData.nodes.map((node) => coerceTrimmedString(node?.id)))
+    return new Set(displayGraphData.nodes.map((node) => coerceTrimmedString(node.id)))
   }, [displayGraphData.nodes])
 
   useEffect(() => {
@@ -240,8 +234,7 @@ export function useGraphDisplayFilters({
     if (lastProjectionTraceKeyRef.current === traceKey) return
     lastProjectionTraceKeyRef.current = traceKey
 
-    const page =
-      globalThis.window === undefined ? '/graph' : globalThis.window.location?.pathname || '/graph'
+    const page = globalThis.window === undefined ? '/graph' : globalThis.window.location?.pathname || '/graph'
 
     void import('@/lib/frontend-trace')
       .then(({ reportFrontendTrace }) =>
@@ -257,8 +250,8 @@ export function useGraphDisplayFilters({
             output_link_count: displayGraphData.links.length,
             active_filter_count: activeGraphFilterCount,
           },
-          { keepalive: true }
-        )
+          { keepalive: true },
+        ),
       )
       .catch((error) => {
         reportClientWarning('Failed to report graph projection trace', error)
@@ -274,7 +267,7 @@ export function useGraphDisplayFilters({
 
   useEffect(() => {
     if (!isDetailOpen || !selectedNodeId) return
-    if (displayNodeIds.has(String(selectedNodeId))) return
+    if (displayNodeIds.has(selectedNodeId)) return
     setIsDetailOpen(false)
     setSelectedNode(null)
   }, [displayNodeIds, isDetailOpen, selectedNodeId, setIsDetailOpen, setSelectedNode])
@@ -297,11 +290,11 @@ export function useGraphDisplayFilters({
   const searchMatches = useMemo(() => {
     if (isPathMode || isConnectMode || isExplainMode) return []
     const term = deferredSearchTerm.trim().toLowerCase()
-    if (!term) return []
+    if (term === '') return []
 
     return displayGraphData.nodes.filter((node) => {
-      const label = String(node.label || '').toLowerCase()
-      const nodeId = String(node.id || '').toLowerCase()
+      const label = coerceTrimmedString(node.label).toLowerCase()
+      const nodeId = coerceTrimmedString(node.id).toLowerCase()
       return label.includes(term) || nodeId.includes(term)
     })
   }, [deferredSearchTerm, displayGraphData.nodes, isConnectMode, isExplainMode, isPathMode])
@@ -338,13 +331,7 @@ export function useGraphDisplayFilters({
     setConfidenceBucketFilters([])
     setEntityTypeQuery('')
     setPredicateQuery('')
-  }, [
-    setConfidenceBucketFilters,
-    setEntityTypeFilters,
-    setEntityTypeQuery,
-    setPredicateFilters,
-    setPredicateQuery,
-  ])
+  }, [setConfidenceBucketFilters, setEntityTypeFilters, setEntityTypeQuery, setPredicateFilters, setPredicateQuery])
 
   const handleEntityTypeCheckedChange = useCallback(
     (value: string, checked: boolean) => {
@@ -355,7 +342,7 @@ export function useGraphDisplayFilters({
         return Array.from(next)
       })
     },
-    [setEntityTypeFilters]
+    [setEntityTypeFilters],
   )
 
   const handlePredicateCheckedChange = useCallback(
@@ -367,7 +354,7 @@ export function useGraphDisplayFilters({
         return Array.from(next)
       })
     },
-    [setPredicateFilters]
+    [setPredicateFilters],
   )
 
   const toggleConfidenceBucket = useCallback(
@@ -380,23 +367,10 @@ export function useGraphDisplayFilters({
         return unique
       })
     },
-    [setConfidenceBucketFilters]
-  )
-
-  const toggleEntityTypeFilter = useCallback(
-    (type: string) => {
-      setEntityTypeFilters((prev) => {
-        const next = new Set(prev)
-        if (next.has(type)) next.delete(type)
-        else next.add(type)
-        return Array.from(next)
-      })
-    },
-    [setEntityTypeFilters]
+    [setConfidenceBucketFilters],
   )
 
   return {
-    availableEntityTypes,
     filteredEntityTypes,
     filteredPredicates,
     activeGraphFilterCount,
@@ -407,7 +381,6 @@ export function useGraphDisplayFilters({
     handleEntityTypeCheckedChange,
     handlePredicateCheckedChange,
     toggleConfidenceBucket,
-    toggleEntityTypeFilter,
   }
 }
 

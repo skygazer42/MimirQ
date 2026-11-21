@@ -6,81 +6,27 @@ import type { JsonObject } from './common'
 
 // ==================== 批量上传相关类型 ====================
 
-export interface BatchFileInfo {
-  name: string
-  data_id: string
-}
-
-export interface BatchUploadRequest {
-  files: BatchFileInfo[]
-}
-
-export interface BatchUploadResponse {
-  batch_id: string
-  file_urls: string[]
-  files: BatchFileInfo[]
-  message: string
-}
-
-export interface BatchTaskStatus {
-  batch_id: string
-  status: string
-  total_files: number
-  completed_files: number
-  failed_files: number
-  progress: number
-  result_url?: string | null
-  error?: string | null
-}
-
 export type DocumentBatchUploadSuccess = import('./backend').DocumentBatchUploadSuccess
 export type DocumentBatchUploadFailure = import('./backend').DocumentBatchUploadFailure
 export type DocumentBatchUploadResponse = import('./backend').DocumentBatchUploadResponse
 
 // ==================== RAGAS 回归测试相关类型 ====================
 
-export interface ReferenceSource {
-  document_id: string
-  chunk_id: string
-  chunk_index?: number
-  page_number?: number
-  start_char?: number
-  end_char?: number
-  doc_pipeline_key?: string
-  pipeline_hash?: string
-  quote?: string
-  label?: string
-}
+export type ReferenceSource = import('@/lib/regression-case-schema').RegressionReferenceSource
 
-// Alias kept for UI components that use the older naming.
-export type RegressionReferenceSource = ReferenceSource
+export type RegressionCase = import('@/lib/regression-case-schema').RegressionCase
 
-export interface RegressionCase {
-  id: string
-  tenant_id: string
-  dataset_id?: string
-  document_ids: string[]
+export type RegressionCaseCreate = {
   question: string
-  expected_answer?: string
-  reference_sources: ReferenceSource[]
-  tags: string[]
-  extra: JsonObject
-  created_by?: string
-  created_at: string
-  updated_at: string
-}
-
-export interface RegressionCaseCreate {
-  question: string
-  dataset_id?: string
+  dataset_id: string
   document_ids?: string[]
   expected_answer?: string
-  reference_sources?: ReferenceSource[]
+  reference_sources: ReferenceSource[]
   tags?: string[]
   extra?: JsonObject
 }
 
-export interface RegressionCasePatch {
+export type RegressionCasePatch = {
   question?: string
   document_ids?: string[]
   expected_answer?: string | null
@@ -89,37 +35,12 @@ export interface RegressionCasePatch {
   extra?: JsonObject
 }
 
-export interface RegressionCaseBundleItem {
-  question: string
-  expected_answer?: string | null
-  tags: string[]
-  reference_sources: ReferenceSource[]
-  reasoning_hops?: string[]
-  evidence_chain?: ReferenceSource[]
-  extra?: JsonObject
-}
+export type RegressionCaseBundleItem = import('@/lib/regression-case-schema').RegressionCaseBundleItem
+export type RegressionCaseBundleV1 = import('@/lib/regression-case-schema').RegressionCaseBundleV1
+export type RegressionCaseImportRequest = import('@/lib/regression-case-schema').RegressionCaseImportRequest
+export type RegressionCaseImportResponse = import('@/lib/regression-case-schema').RegressionCaseImportResponse
 
-export interface RegressionCaseBundleV1 {
-  schema: 'mimirq.regression_cases.v1'
-  dataset_id: string
-  items: RegressionCaseBundleItem[]
-}
-
-export interface RegressionCaseImportResponse {
-  created: number
-  updated: number
-  skipped: number
-  errors: JsonObject[]
-  created_case_ids: string[]
-  updated_case_ids: string[]
-  skipped_case_ids: string[]
-  case_ids: string[]
-}
-
-export interface RegressionCaseList {
-  total: number
-  items: RegressionCase[]
-}
+export type RegressionCaseList = import('@/lib/regression-case-schema').RegressionCaseList
 
 // ==================== Evidence Workbench（Ground Truth 证据库） ====================
 
@@ -157,55 +78,44 @@ export type EvidenceReferenceRepairResponse = import('./backend').EvidenceRefere
 export type EvidenceHardcaseCandidate = import('./backend').EvidenceHardcaseCandidate
 export type EvidenceHardcaseDiscovery = import('./backend').EvidenceHardcaseDiscovery
 
-export interface GeneratedQuestion {
-  question: string
-  expected_answer?: string
-  context?: string
-  source_type: 'document' | 'conversation'
-  source_id: string
-  metadata: JsonObject
-}
+export type GeneratedQuestion = import('@/lib/question-generation-schema').GeneratedQuestion
+export type TestGenFromDocsRequest = import('@/lib/question-generation-schema').TestGenFromDocsRequest
+export type TestGenFromConversationsRequest = import('@/lib/question-generation-schema').TestGenFromConversationsRequest
+export type TestGenResponse = import('@/lib/question-generation-schema').TestGenResponse
 
-export interface TestGenFromDocsRequest {
-  dataset_id?: string
-  document_ids?: string[]
-  num_questions?: number
-  question_types?: string[]
-  auto_save_as_cases?: boolean
-}
+export type RagasRun = import('@/lib/ragas-conversation-schema').RagasRun
+export type RagasItem = import('@/lib/ragas-conversation-schema').RagasItem
+export type RagasRunDetail = import('@/lib/ragas-conversation-schema').RagasRunDetail
+export type RagasRunList = import('@/lib/ragas-conversation-schema').RagasRunList
+export type RagasRunCreateRequest = import('@/lib/ragas-conversation-schema').RagasRunCreateRequest
+export type RagasConversationReadinessRequest =
+  import('@/lib/ragas-conversation-schema').RagasConversationReadinessRequest
+export type RagasConversationReadinessItem = import('@/lib/ragas-conversation-schema').RagasConversationReadinessItem
+export type RagasConversationReadinessResponse =
+  import('@/lib/ragas-conversation-schema').RagasConversationReadinessResponse
 
-export interface TestGenFromConversationsRequest {
-  conversation_ids: string[]
-  num_questions?: number
-  quality_threshold?: number
-  auto_save_as_cases?: boolean
-}
+export type KGHardcaseMode = import('@/lib/kg-diagnostics-schema').KGHardcaseMode
+export type KGSearchDiagnosticsRequest = import('@/lib/kg-diagnostics-schema').KGSearchDiagnosticsRequest
+export type KGSearchDiagnosticsItem = import('@/lib/kg-diagnostics-schema').KGSearchDiagnosticsItem
+export type KGSearchDiagnosticsSummary = import('@/lib/kg-diagnostics-schema').KGSearchDiagnosticsSummary
+export type KGSearchDiagnosticsResponse = import('@/lib/kg-diagnostics-schema').KGSearchDiagnosticsResponse
+export type KGSearchDiagnosticsRunOut = import('@/lib/kg-diagnostics-schema').KGSearchDiagnosticsRunOut
+export type KGSearchDiagnosticsRunList = import('@/lib/kg-diagnostics-schema').KGSearchDiagnosticsRunList
+export type KGQualityReport = import('@/lib/kg-diagnostics-schema').KGQualityReport
+export type SyntheticHardcaseGenerateRequest = import('@/lib/evaluation-ops-schema').SyntheticHardcaseGenerateRequest
+export type SyntheticHardcaseGenerateResponse = import('@/lib/evaluation-ops-schema').SyntheticHardcaseGenerateResponse
+export type RegressionRunPurgeRequest = import('@/lib/evaluation-ops-schema').RegressionRunPurgeRequest
+export type RegressionRunPurgeResponse = import('@/lib/evaluation-ops-schema').RegressionRunPurgeResponse
 
-export interface TestGenResponse {
-  status: string
-  generated_questions: GeneratedQuestion[]
-  saved_case_ids: string[]
-  error_message?: string
-}
+export type KGSearchDiagnosticsRunListParams = import('@/lib/kg-diagnostics-schema').KGSearchDiagnosticsRunListParams
 
-export interface RegressionRun {
-  id: string
-  tenant_id: string
-  account_id?: string
-  dataset_id?: string
-  status: string
-  metrics: string[]
-  params: JsonObject
-  summary: JsonObject
-  error_message?: string
-  created_at: string
-  started_at?: string
-  finished_at?: string
-}
+export type KGSearchDiagnosticsRunDetail = import('@/lib/kg-diagnostics-schema').KGSearchDiagnosticsRunDetail
 
-export interface RegressionRunCreate {
+export type RegressionRun = import('@/lib/regression-run-schema').RegressionRun
+
+export type RegressionRunCreate = {
   case_ids?: string[]
-  dataset_id?: string
+  dataset_id: string
   metrics?: string[]
   use_llm_judge?: boolean
   skip_empty_contexts?: boolean
@@ -229,8 +139,6 @@ export interface RegressionRunCreate {
   query_rewrite_strategy?: string | null
   query_rewrite_temperature?: number | null
   query_rewrite_max_chars?: number | null
-  sparse_retrieval_enabled?: boolean | null
-  sparse_retrieval_provider?: string | null
   top_k?: number
   score_threshold?: number
   retrieval_mode?: string
@@ -253,116 +161,30 @@ export interface RegressionRunCreate {
 
 export type RegressionAblationGridValue = string | number | boolean | null | JsonObject
 
-export interface RegressionAblationBatchRequest extends RegressionRunCreate {
+export type RegressionAblationBatchRequest = RegressionRunCreate & {
   grid: Record<string, RegressionAblationGridValue[]>
   max_combinations?: number
   ablation_label_prefix?: string | null
 }
 
-export interface RegressionAblationBatchResponse {
-  ablation_id: string
-  total: number
-  run_ids: string[]
-  variants: JsonObject[]
-  status: string
-}
+export type RegressionAblationBatchResponse = import('@/lib/regression-run-schema').RegressionAblationBatchResponse
 
-export interface RegressionRunList {
-  total: number
-  items: RegressionRun[]
-}
+export type RegressionRunList = import('@/lib/regression-run-schema').RegressionRunList
+export type RegressionRunLeaderboard = import('@/lib/regression-run-schema').RegressionRunLeaderboard
+export type RegressionItem = import('@/lib/regression-run-schema').RegressionItem
+export type RegressionRunDetail = import('@/lib/regression-run-schema').RegressionRunDetail
 
-export interface RegressionItem {
-  id: string
-  run_id: string
-  case_id: string
-  question: string
-  response: string
-  retrieved_contexts?: string[]
-  citations: unknown[]
-  scores: JsonObject
-  meta?: JsonObject
-  created_at: string
-}
-
-export interface RegressionRunDetail {
-  run: RegressionRun
-  items: RegressionItem[]
-}
-
-export interface RegressionRunMetricDiff {
-  key: string
-  before?: unknown
-  after?: unknown
-  delta?: number | null
-}
-
-export interface RegressionRunDiffScore {
-  version: string
-  used_metric_keys: string[]
-  weights: Record<string, number>
-  base_score?: number | null
-  target_score?: number | null
-  delta?: number | null
-  base_metrics: Record<string, number>
-  target_metrics: Record<string, number>
-}
-
-export interface RegressionRunSliceBucketDiff {
-  key: string
-  items_before: number
-  items_after: number
-  metrics: RegressionRunMetricDiff[]
-}
-
-export interface RegressionRunSliceDiff {
-  truncated_before: boolean
-  truncated_after: boolean
-  buckets: RegressionRunSliceBucketDiff[]
-}
-
-export interface RegressionRunCaseDiff {
-  case_id: string
-  question: string
-  metric_diffs: RegressionRunMetricDiff[]
-  mean_delta?: number | null
-  label: string
-}
-
-export interface RegressionRunMetricSignificance {
-  key: string
-  compared: number
-  base_mean?: number | null
-  target_mean?: number | null
-  delta_mean?: number | null
-  bootstrap_ci_low?: number | null
-  bootstrap_ci_high?: number | null
-  p_value?: number | null
-  p_value_method?: string | null
-  p_value_bh?: number | null
-  wilcoxon_p_value?: number | null
-  mcnemar_p_value?: number | null
-  cohen_d?: number | null
-  significant: boolean
-}
-
-export interface RagasRegressionRunDiffResponse {
-  base_run_id: string
-  target_run_id: string
-  generated_at: string
-  base_params: JsonObject
-  target_params: JsonObject
-  metric_diffs: RegressionRunMetricDiff[]
-  diff_score?: RegressionRunDiffScore | null
-  slice_diffs: Record<string, RegressionRunSliceDiff>
-  significance: RegressionRunMetricSignificance[]
-  case_diffs: RegressionRunCaseDiff[]
-  significance_summary: JsonObject
-}
+export type RegressionRunMetricDiff = import('@/lib/regression-diff-schema').RegressionRunMetricDiff
+export type RegressionRunDiffScore = import('@/lib/regression-diff-schema').RegressionRunDiffScore
+export type RegressionRunSliceBucketDiff = import('@/lib/regression-diff-schema').RegressionRunSliceBucketDiff
+export type RegressionRunSliceDiff = import('@/lib/regression-diff-schema').RegressionRunSliceDiff
+export type RegressionRunCaseDiff = import('@/lib/regression-diff-schema').RegressionRunCaseDiff
+export type RegressionRunMetricSignificance = import('@/lib/regression-diff-schema').RegressionRunMetricSignificance
+export type RagasRegressionRunDiffResponse = import('@/lib/regression-diff-schema').RagasRegressionRunDiffResponse
 
 // ==================== RAGViz（相似度热力图） ====================
 
-export interface RagvizSimilarityCollection {
+export type RagvizSimilarityCollection = {
   id: string
   label: string
   kind: string
@@ -370,13 +192,13 @@ export interface RagvizSimilarityCollection {
   meta?: JsonObject
 }
 
-export interface RagvizSimilarityCollectionsResponse {
+export type RagvizSimilarityCollectionsResponse = {
   success: boolean
   collections: RagvizSimilarityCollection[]
   count: number
 }
 
-export interface RagvizSimilarityRequest {
+export type RagvizSimilarityRequest = {
   x_collection: string
   y_collection: string
   x_max_items?: number
@@ -384,7 +206,7 @@ export interface RagvizSimilarityRequest {
   max_items?: number
 }
 
-export interface RagvizSimilarityStats {
+export type RagvizSimilarityStats = {
   total_pairs: number
   avg_similarity: number
   min_similarity: number
@@ -396,17 +218,17 @@ export interface RagvizSimilarityStats {
   compute_time: number
 }
 
-export interface RagvizSimilarityMatrixResult {
+export type RagvizSimilarityMatrixResult = {
   matrix: number[][]
   x_data: JsonObject[]
   y_data: JsonObject[]
   x_available_fields: string[]
   y_available_fields: string[]
-  stats: RagvizSimilarityStats
+  stats?: Partial<RagvizSimilarityStats> | null
   metadata: JsonObject
 }
 
-export interface RagvizSimilarityCalculateResponse {
+export type RagvizSimilarityCalculateResponse = {
   success: boolean
   result?: RagvizSimilarityMatrixResult
   message?: string

@@ -1,11 +1,12 @@
 'use client'
 
 import { useCallback, useRef, useState } from 'react'
+import type { AriaAttributes, ReactNode, PointerEvent as ReactPointerEvent, MouseEvent as ReactMouseEvent } from 'react'
 
 import { cn } from '@/lib/utils'
 
-type ParsingRightPanelProps = {
-  children: React.ReactNode
+type ParsingRightPanelProps = Pick<AriaAttributes, 'aria-busy' | 'aria-label'> & {
+  children: ReactNode
   className?: string
   dragScroll?: boolean
 }
@@ -23,8 +24,8 @@ export function ParsingRightPanel({
   children,
   className,
   dragScroll = false,
+  ...props
 }: Readonly<ParsingRightPanelProps>) {
-  const containerRef = useRef<HTMLDivElement | null>(null)
   const dragStateRef = useRef<DragState | null>(null)
   const suppressClickRef = useRef(false)
   const [isDragging, setIsDragging] = useState(false)
@@ -35,16 +36,17 @@ export function ParsingRightPanel({
   }, [])
 
   const handlePointerDown = useCallback(
-    (event: React.PointerEvent<HTMLDivElement>) => {
+    (event: ReactPointerEvent<HTMLDivElement>) => {
       if (!dragScroll || event.pointerType !== 'mouse' || event.button !== 0) return
+      suppressClickRef.current = false
 
-      const target = event.target as HTMLElement | null
-      if (target?.closest('button, a, input, textarea, select, label, [role="button"], [data-no-drag-scroll="true"]')) {
+      const { target, currentTarget: container } = event
+      if (
+        target instanceof Element &&
+        target.closest('button, a, input, textarea, select, label, [role="button"], [data-no-drag-scroll="true"]')
+      ) {
         return
       }
-
-      const container = containerRef.current
-      if (!container) return
 
       dragStateRef.current = {
         pointerId: event.pointerId,
@@ -55,16 +57,15 @@ export function ParsingRightPanel({
         moved: false,
       }
 
-      suppressClickRef.current = false
       container.setPointerCapture?.(event.pointerId)
     },
-    [dragScroll]
+    [dragScroll],
   )
 
-  const handlePointerMove = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
-    const container = containerRef.current
+  const handlePointerMove = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+    const container = event.currentTarget
     const dragState = dragStateRef.current
-    if (!container || dragState?.pointerId !== event.pointerId) return
+    if (dragState?.pointerId !== event.pointerId) return
 
     const deltaX = event.clientX - dragState.startX
     const deltaY = event.clientY - dragState.startY
@@ -85,16 +86,16 @@ export function ParsingRightPanel({
   }, [])
 
   const handlePointerUp = useCallback(
-    (event: React.PointerEvent<HTMLDivElement>) => {
+    (event: ReactPointerEvent<HTMLDivElement>) => {
       const dragState = dragStateRef.current
       if (dragState?.pointerId !== event.pointerId) return
       clearDragState()
     },
-    [clearDragState]
+    [clearDragState],
   )
 
-  const handleClickCapture = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
-    if (!suppressClickRef.current) return
+  const handleClickCapture = useCallback((event: ReactMouseEvent<HTMLDivElement>) => {
+    if (event.detail === 0 || !suppressClickRef.current) return
     suppressClickRef.current = false
     event.preventDefault()
     event.stopPropagation()
@@ -102,19 +103,22 @@ export function ParsingRightPanel({
 
   return (
     <div
-      ref={containerRef}
+      {...props}
       data-page-scroll-container="true"
       data-drag-scroll={dragScroll ? 'enabled' : 'disabled'}
       className={cn(
         'min-h-0 min-w-0 overflow-y-auto overscroll-contain',
         dragScroll && 'cursor-grab',
         dragScroll && isDragging && 'cursor-grabbing select-none',
-        className
+        className,
       )}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
-      onPointerCancel={clearDragState}
+      onPointerCancel={() => {
+        suppressClickRef.current = false
+        clearDragState()
+      }}
       onLostPointerCapture={clearDragState}
       onClickCapture={handleClickCapture}
     >

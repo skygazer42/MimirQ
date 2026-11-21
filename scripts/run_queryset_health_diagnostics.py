@@ -1,6 +1,7 @@
 import argparse
 import json
 import sys
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -25,7 +26,7 @@ def _load_policy(path: Path | None) -> dict[str, Any]:
 
 
 def _resolve_profile_hash(*, args: argparse.Namespace, benchmark: dict[str, Any]) -> str:
-    from app.rag.core.hashing import stable_hash
+    from app.infrastructure.hashing import stable_hash
 
     explicit = str(args.profile_hash or "").strip()
     if explicit:
@@ -91,7 +92,7 @@ def _effective_policy(
 
 def _history_context(
     history: Path | None,
-    load_history: Any,
+    load_history: Callable[[Path], list[dict[str, Any]]],
 ) -> tuple[list[dict[str, Any]], dict[str, Any] | None]:
     if history is None:
         return [], None
@@ -155,7 +156,7 @@ def run(
     max_history: int,
     cron: bool,
 ) -> dict[str, Any]:
-    from app.services.queryset_health_service import (
+    from app.services.evaluation.queryset_health import (
         build_queryset_health_snapshot,
         load_queryset_health_history,
         update_queryset_health_history,

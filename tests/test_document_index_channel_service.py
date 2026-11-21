@@ -7,12 +7,13 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.core.database import SessionLocal
-from app.models.dataset import Dataset, DatasetPermissionEnum
-from app.models.document import Document as DBDocument
-from app.models.document_index_channel import DocumentIndexChannel
-from app.models.tenant import Tenant
-from app.services import document_index_channel_service as svc
+from app.api.schemas.datasets.dataset import DatasetPermissionEnum
+from app.infrastructure.database.connection import SessionLocal
+from app.models.datasets.records import Dataset
+from app.models.documents.records import Document as DBDocument
+from app.models.documents.records import DocumentIndexChannel
+from app.models.identity.workspaces import Tenant
+from app.rag.ingestion.indexing import index_channels as svc
 
 
 def _document(**overrides):

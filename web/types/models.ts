@@ -4,7 +4,7 @@
 
 export type ProviderCategory = 'model' | 'embedding' | 'reranker'
 
-export interface ModelProvider {
+export type ModelProvider = {
   id: string
   name: string
   description: string
@@ -16,29 +16,23 @@ export interface ModelProvider {
   config?: ProviderConfig
 }
 
-export interface ModelConfig {
+export type ModelConfig = {
   id: string
   name: string
   displayName: string
   type: 'chat' | 'embedding' | 'reranker' | 'image' | 'audio'
-  contextWindow?: number
-  maxTokens?: number
-  pricing?: {
-    input: number // per 1M tokens
-    output: number
-  }
 }
 
-export interface ProviderConfig {
+export type ProviderConfig = {
   apiKey?: string
   apiBase?: string
   model?: string
-  organizationId?: string
-  projectId?: string
   temperature?: number
-  maxTokens?: number
   timeout?: number
 }
+
+export type ModelConfigSubmission = Required<Pick<ProviderConfig, 'apiKey' | 'apiBase' | 'model'>> &
+  Pick<ProviderConfig, 'temperature' | 'timeout'>
 
 export const MODEL_PROVIDERS: ModelProvider[] = [
   // ==================== 语言模型 ====================
@@ -56,74 +50,56 @@ export const MODEL_PROVIDERS: ModelProvider[] = [
         name: 'gpt-5.6',
         displayName: 'GPT-5.6（旗舰别名）',
         type: 'chat',
-        contextWindow: 1050000,
-        maxTokens: 128000,
       },
       {
         id: 'gpt-5.6-sol',
         name: 'gpt-5.6-sol',
         displayName: 'GPT-5.6 Sol',
         type: 'chat',
-        contextWindow: 1050000,
-        maxTokens: 128000,
       },
       {
         id: 'gpt-5.6-terra',
         name: 'gpt-5.6-terra',
         displayName: 'GPT-5.6 Terra',
         type: 'chat',
-        contextWindow: 1050000,
-        maxTokens: 128000,
       },
       {
         id: 'gpt-5.6-luna',
         name: 'gpt-5.6-luna',
         displayName: 'GPT-5.6 Luna',
         type: 'chat',
-        contextWindow: 1050000,
-        maxTokens: 128000,
       },
       {
         id: 'gpt-5.4-mini',
         name: 'gpt-5.4-mini',
         displayName: 'GPT-5.4 mini',
         type: 'chat',
-        contextWindow: 400000,
-        maxTokens: 128000,
       },
       {
         id: 'gpt-5.5',
         name: 'gpt-5.5',
         displayName: 'GPT-5.5',
         type: 'chat',
-        contextWindow: 1050000,
-        maxTokens: 128000,
       },
       {
         id: 'gpt-5.4',
         name: 'gpt-5.4',
         displayName: 'GPT-5.4',
         type: 'chat',
-        contextWindow: 1050000,
-        maxTokens: 128000,
       },
       {
         id: 'gpt-5.4-nano',
         name: 'gpt-5.4-nano',
         displayName: 'GPT-5.4 nano',
         type: 'chat',
-        contextWindow: 400000,
-        maxTokens: 128000,
       },
       {
         id: 'gpt-5.5-pro',
         name: 'gpt-5.5-pro',
         displayName: 'GPT-5.5 pro',
         type: 'chat',
-        contextWindow: 1050000,
-        maxTokens: 128000,
-      }
-    ]
+      },
+    ],
   },
   {
     id: 'anthropic',
@@ -139,23 +115,20 @@ export const MODEL_PROVIDERS: ModelProvider[] = [
         name: 'claude-sonnet-4-6',
         displayName: 'Claude Sonnet 4.6',
         type: 'chat',
-        contextWindow: 1000000,
       },
       {
         id: 'claude-opus-4-7',
         name: 'claude-opus-4-7',
         displayName: 'Claude Opus 4.7',
         type: 'chat',
-        contextWindow: 1000000,
       },
       {
         id: 'claude-haiku-4-5',
         name: 'claude-haiku-4-5',
         displayName: 'Claude Haiku 4.5',
         type: 'chat',
-        contextWindow: 200000,
-      }
-    ]
+      },
+    ],
   },
   {
     id: 'deepseek',
@@ -171,34 +144,26 @@ export const MODEL_PROVIDERS: ModelProvider[] = [
         name: 'deepseek-v4-flash',
         displayName: 'DeepSeek-V4-Flash',
         type: 'chat',
-        contextWindow: 1000000,
-        maxTokens: 384000,
       },
       {
         id: 'deepseek-v4-pro',
         name: 'deepseek-v4-pro',
         displayName: 'DeepSeek-V4-Pro',
         type: 'chat',
-        contextWindow: 1000000,
-        maxTokens: 384000,
       },
       {
         id: 'deepseek-chat',
         name: 'deepseek-chat',
         displayName: 'DeepSeek Chat（兼容别名）',
         type: 'chat',
-        contextWindow: 1000000,
-        maxTokens: 384000,
       },
       {
         id: 'deepseek-reasoner',
         name: 'deepseek-reasoner',
         displayName: 'DeepSeek Reasoner（兼容别名）',
         type: 'chat',
-        contextWindow: 1000000,
-        maxTokens: 384000,
-      }
-    ]
+      },
+    ],
   },
   {
     id: 'zhipu',
@@ -214,37 +179,32 @@ export const MODEL_PROVIDERS: ModelProvider[] = [
         name: 'glm-5.1',
         displayName: 'GLM-5.1',
         type: 'chat',
-        contextWindow: 128000,
       },
       {
         id: 'glm-5',
         name: 'glm-5',
         displayName: 'GLM-5',
         type: 'chat',
-        contextWindow: 128000,
       },
       {
         id: 'glm-5-turbo',
         name: 'glm-5-turbo',
         displayName: 'GLM-5-Turbo',
         type: 'chat',
-        contextWindow: 128000,
       },
       {
         id: 'glm-5v-turbo',
         name: 'glm-5v-turbo',
         displayName: 'GLM-5V-Turbo',
         type: 'image',
-        contextWindow: 128000,
       },
       {
         id: 'glm-4.7',
         name: 'glm-4.7',
         displayName: 'GLM-4.7',
         type: 'chat',
-        contextWindow: 128000,
-      }
-    ]
+      },
+    ],
   },
   {
     id: 'qwen',
@@ -284,8 +244,8 @@ export const MODEL_PROVIDERS: ModelProvider[] = [
         name: 'qwen3.5-omni-plus',
         displayName: 'Qwen3.5-Omni-Plus',
         type: 'image',
-      }
-    ]
+      },
+    ],
   },
   {
     id: 'moonshot',
@@ -301,37 +261,32 @@ export const MODEL_PROVIDERS: ModelProvider[] = [
         name: 'kimi-k2.5',
         displayName: 'Kimi K2.5',
         type: 'chat',
-        contextWindow: 256000,
       },
       {
         id: 'kimi-k2-0905-preview',
         name: 'kimi-k2-0905-preview',
         displayName: 'Kimi K2 0905 Preview',
         type: 'chat',
-        contextWindow: 256000,
       },
       {
         id: 'kimi-k2-turbo-preview',
         name: 'kimi-k2-turbo-preview',
         displayName: 'Kimi K2 Turbo Preview',
         type: 'chat',
-        contextWindow: 256000,
       },
       {
         id: 'kimi-k2-thinking',
         name: 'kimi-k2-thinking',
         displayName: 'Kimi K2 Thinking',
         type: 'chat',
-        contextWindow: 256000,
       },
       {
         id: 'moonshot-v1-128k',
         name: 'moonshot-v1-128k',
         displayName: 'Moonshot v1 128K',
         type: 'chat',
-        contextWindow: 128000,
-      }
-    ]
+      },
+    ],
   },
   {
     id: 'ollama',
@@ -347,44 +302,38 @@ export const MODEL_PROVIDERS: ModelProvider[] = [
         name: 'glm-5.1',
         displayName: 'GLM-5.1',
         type: 'chat',
-        contextWindow: 128000,
       },
       {
         id: 'kimi-k2.5-local',
         name: 'kimi-k2.5',
         displayName: 'Kimi K2.5',
         type: 'chat',
-        contextWindow: 200000,
       },
       {
         id: 'deepseek-v3.2-local',
         name: 'deepseek-v3.2',
         displayName: 'DeepSeek-V3.2',
         type: 'chat',
-        contextWindow: 128000,
       },
       {
         id: 'llama-4-maverick-local',
         name: 'llama-4-maverick',
         displayName: 'Llama 4 Maverick',
         type: 'chat',
-        contextWindow: 128000,
       },
       {
         id: 'qwen3-local',
         name: 'qwen3',
         displayName: 'Qwen3',
         type: 'chat',
-        contextWindow: 128000,
       },
       {
         id: 'mistral-latest-local',
         name: 'mistral-latest',
         displayName: 'Mistral Latest',
         type: 'chat',
-        contextWindow: 128000,
-      }
-    ]
+      },
+    ],
   },
   {
     id: 'ark',
@@ -424,8 +373,8 @@ export const MODEL_PROVIDERS: ModelProvider[] = [
         name: 'doubao-seed-1-8-251228',
         displayName: 'Doubao-Seed-1.8 (251228)',
         type: 'chat',
-      }
-    ]
+      },
+    ],
   },
   {
     id: 'lingyiwanwu',
@@ -441,16 +390,14 @@ export const MODEL_PROVIDERS: ModelProvider[] = [
         name: 'yi-lightning',
         displayName: 'Yi-Lightning',
         type: 'chat',
-        contextWindow: 128000,
       },
       {
         id: 'yi-large',
         name: 'yi-large',
         displayName: 'Yi-Large',
         type: 'chat',
-        contextWindow: 128000,
-      }
-    ]
+      },
+    ],
   },
   {
     id: 'qianfan',
@@ -466,30 +413,26 @@ export const MODEL_PROVIDERS: ModelProvider[] = [
         name: 'ernie-5.0',
         displayName: 'ERNIE 5.0',
         type: 'chat',
-        contextWindow: 128000,
       },
       {
         id: 'ernie-4.5',
         name: 'ernie-4.5',
         displayName: 'ERNIE 4.5',
         type: 'chat',
-        contextWindow: 128000,
       },
       {
         id: 'ernie-4.5-vl',
         name: 'ernie-4.5-vl',
         displayName: 'ERNIE 4.5-VL',
         type: 'image',
-        contextWindow: 128000,
       },
       {
         id: 'ernie-4.5-turbo',
         name: 'ernie-4.5-turbo',
         displayName: 'ERNIE 4.5 Turbo',
         type: 'chat',
-        contextWindow: 128000,
-      }
-    ]
+      },
+    ],
   },
   {
     id: 'siliconflow',
@@ -505,37 +448,32 @@ export const MODEL_PROVIDERS: ModelProvider[] = [
         name: 'glm-5.1',
         displayName: 'GLM-5.1',
         type: 'chat',
-        contextWindow: 128000,
       },
       {
         id: 'kimi-k2.5-sf',
         name: 'kimi-k2.5',
         displayName: 'Kimi K2.5',
         type: 'chat',
-        contextWindow: 200000,
       },
       {
         id: 'deepseek-v4-flash-sf',
         name: 'deepseek-v4-flash',
         displayName: 'DeepSeek-V4-Flash',
         type: 'chat',
-        contextWindow: 1000000,
       },
       {
         id: 'qwen3-max-sf',
         name: 'qwen3-max',
         displayName: 'Qwen3-Max',
         type: 'chat',
-        contextWindow: 128000,
       },
       {
         id: 'minimax-m2.5-sf',
         name: 'minimax-m2.5',
         displayName: 'MiniMax-M2.5',
         type: 'chat',
-        contextWindow: 128000,
-      }
-    ]
+      },
+    ],
   },
   {
     id: 'openrouter',
@@ -551,44 +489,38 @@ export const MODEL_PROVIDERS: ModelProvider[] = [
         name: 'openrouter/auto',
         displayName: 'Auto (智能选择)',
         type: 'chat',
-        contextWindow: 128000
       },
       {
         id: 'gpt-5.5-or',
         name: 'openai/gpt-5.5',
         displayName: 'GPT-5.5',
         type: 'chat',
-        contextWindow: 1050000
       },
       {
         id: 'claude-opus-4.7-or',
         name: 'anthropic/claude-opus-4-7',
         displayName: 'Claude Opus 4.7',
         type: 'chat',
-        contextWindow: 1000000
       },
       {
         id: 'glm-5.1-or',
         name: 'zhipu/glm-5.1',
         displayName: 'GLM-5.1',
         type: 'chat',
-        contextWindow: 128000
       },
       {
         id: 'kimi-k2.5-or',
         name: 'moonshot/kimi-k2.5',
         displayName: 'Kimi K2.5',
         type: 'chat',
-        contextWindow: 200000
       },
       {
         id: 'qwen3-max-or',
         name: 'qwen/qwen3-max',
         displayName: 'Qwen3-Max',
         type: 'chat',
-        contextWindow: 128000
-      }
-    ]
+      },
+    ],
   },
   {
     id: 'together',
@@ -604,44 +536,38 @@ export const MODEL_PROVIDERS: ModelProvider[] = [
         name: 'meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8',
         displayName: 'Llama 4 Maverick',
         type: 'chat',
-        contextWindow: 131072,
       },
       {
         id: 'llama-4-scout',
         name: 'meta-llama/Llama-4-Scout-17B-16E-Instruct',
         displayName: 'Llama 4 Scout',
         type: 'chat',
-        contextWindow: 131072,
       },
       {
         id: 'glm-5.1-together',
         name: 'zai-org/GLM-5.1',
         displayName: 'GLM-5.1',
         type: 'chat',
-        contextWindow: 128000,
       },
       {
         id: 'kimi-k2.5-together',
         name: 'moonshotai/Kimi-K2.5-Instruct',
         displayName: 'Kimi K2.5',
         type: 'chat',
-        contextWindow: 200000,
       },
       {
         id: 'mixtral-latest',
         name: 'mistralai/Mixtral-8x22B-Instruct-v0.1',
         displayName: 'Mixtral Latest',
         type: 'chat',
-        contextWindow: 65536,
       },
       {
         id: 'nemotron-latest',
         name: 'nvidia/Llama-3.1-Nemotron-70B-Instruct-HF',
         displayName: 'Nemotron Latest',
         type: 'chat',
-        contextWindow: 131072,
-      }
-    ]
+      },
+    ],
   },
 
   // ==================== Embedding 向量模型 ====================
@@ -659,18 +585,31 @@ export const MODEL_PROVIDERS: ModelProvider[] = [
         name: 'text-embedding-3-large',
         displayName: 'Embedding 3 Large',
         type: 'embedding',
-        contextWindow: 8191,
-        pricing: { input: 0.13, output: 0 }
       },
       {
         id: 'text-embedding-3-small',
         name: 'text-embedding-3-small',
         displayName: 'Embedding 3 Small',
         type: 'embedding',
-        contextWindow: 8191,
-        pricing: { input: 0.02, output: 0 }
-      }
-    ]
+      },
+    ],
+  },
+  {
+    id: 'ollama-embedding',
+    name: 'Ollama 向量服务',
+    description: '通过 HTTP 接入本机或内网向量服务',
+    icon: 'ollama',
+    color: 'green',
+    category: 'embedding',
+    isConfigured: false,
+    models: [
+      {
+        id: 'nomic-embed-text',
+        name: 'nomic-embed-text',
+        displayName: 'Nomic Embed Text',
+        type: 'embedding',
+      },
+    ],
   },
   {
     id: 'qwen-embedding',
@@ -686,83 +625,18 @@ export const MODEL_PROVIDERS: ModelProvider[] = [
         name: 'text-embedding-v4',
         displayName: 'Text Embedding V4',
         type: 'embedding',
-        contextWindow: 8192,
       },
       {
         id: 'text-embedding-v3',
         name: 'text-embedding-v3',
         displayName: 'Text Embedding V3',
         type: 'embedding',
-        contextWindow: 8192,
-      }
-    ]
-  },
-  {
-    id: 'local-embedding',
-    name: '本地 Embedding',
-    description: 'BGE 中文向量模型',
-    icon: 'local-embedding',
-    color: 'green',
-    category: 'embedding',
-    isConfigured: true,
-    models: [
-      {
-        id: 'bge-large-zh-v1.5',
-        name: 'BAAI/bge-large-zh-v1.5',
-        displayName: 'BGE Large ZH v1.5',
-        type: 'embedding',
-        contextWindow: 512
       },
-      {
-        id: 'bge-base-zh-v1.5',
-        name: 'BAAI/bge-base-zh-v1.5',
-        displayName: 'BGE Base ZH v1.5',
-        type: 'embedding',
-        contextWindow: 512
-      },
-      {
-        id: 'bge-m3',
-        name: 'BAAI/bge-m3',
-        displayName: 'BGE M3 (多语言)',
-        type: 'embedding',
-        contextWindow: 8192
-      }
-    ]
+    ],
   },
 
   // ==================== Reranker 重排序模型 ====================
-  {
-    id: 'local-reranker',
-    name: '本地 Reranker',
-    description: 'BGE 重排序模型',
-    icon: 'reranker',
-    color: 'amber',
-    category: 'reranker',
-    isConfigured: true,
-    models: [
-      {
-        id: 'bge-reranker-v2-m3',
-        name: 'BAAI/bge-reranker-v2-m3',
-        displayName: 'BGE Reranker v2 M3',
-        type: 'reranker',
-        contextWindow: 8192
-      },
-      {
-        id: 'bge-reranker-large',
-        name: 'BAAI/bge-reranker-large',
-        displayName: 'BGE Reranker Large',
-        type: 'reranker',
-        contextWindow: 512
-      },
-      {
-        id: 'bge-reranker-base',
-        name: 'BAAI/bge-reranker-base',
-        displayName: 'BGE Reranker Base',
-        type: 'reranker',
-        contextWindow: 512
-      }
-    ]
-  },
+
   {
     id: 'cohere-reranker',
     name: 'Cohere Reranker',
@@ -776,15 +650,15 @@ export const MODEL_PROVIDERS: ModelProvider[] = [
         id: 'rerank-english-v3.0',
         name: 'rerank-english-v3.0',
         displayName: 'Rerank English v3',
-        type: 'reranker'
+        type: 'reranker',
       },
       {
         id: 'rerank-multilingual-v3.0',
         name: 'rerank-multilingual-v3.0',
         displayName: 'Rerank Multilingual v3',
-        type: 'reranker'
-      }
-    ]
+        type: 'reranker',
+      },
+    ],
   },
   {
     id: 'jina-reranker',
@@ -799,8 +673,8 @@ export const MODEL_PROVIDERS: ModelProvider[] = [
         id: 'jina-reranker-v2-base-multilingual',
         name: 'jina-reranker-v2-base-multilingual',
         displayName: 'Jina Reranker v2 多语言',
-        type: 'reranker'
-      }
-    ]
-  }
+        type: 'reranker',
+      },
+    ],
+  },
 ]

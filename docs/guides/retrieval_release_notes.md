@@ -29,7 +29,6 @@ Use the same structure for every public tag so the release history stays readabl
 - Gate report: `runs/.../gate_report.json`
 - Trace bundle or diff, when relevant: `runs/.../trace_bundle.json`
 - Bounded hybrid summary: `artifacts/sample_retrieval_bench.hybrid.json`
-- Bounded ColBERT fallback summary: `artifacts/sample_retrieval_bench.colbert.json`
 - Claim verifier contract: `artifacts/claim_verifier.contract.json`
 - Queryset diff reports: `artifacts/queryset_health.diff.json`, `artifacts/queryset_health.diff.hybrid.json`
 - Must-recall plus provenance gate: `artifacts/must_recall_provenance_gate.report.json`
@@ -51,7 +50,7 @@ Before publishing retrieval-quality notes:
 2. Confirm the gate thresholds used for pass or fail are attached.
 3. If quality regressed, state why the release still proceeds.
 4. Include one sentence on the ranking-impact root cause: retrieval, fusion, rerank, or cache.
-5. If hybrid or ColBERT behavior changed, include the bounded artifact result and rollout decision.
+5. If hybrid retrieval behavior changed, include the bounded artifact result and rollout decision.
 6. If must-recall or provenance claims are made, attach capsule or gate artifacts.
 7. If contextual follow-up is enabled, include its used rate and average added citations.
 8. If iterative pass is enabled, include hop distribution (`hops_attempted/hops_used`) and latency budget.
@@ -62,4 +61,4 @@ Before publishing retrieval-quality notes:
 - Claiming improvements without artifact links.
 - Mixing datasets or slices in one snapshot table without explicit labels.
 - Hiding regressions by silently changing thresholds in the same release note block.
-- Combining hybrid bounded artifacts and ColBERT fallback artifacts into one conclusion. They reflect different paths.
+- Treating bounded regression artifacts as proof of end-to-end retrieval quality.

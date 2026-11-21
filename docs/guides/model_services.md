@@ -7,7 +7,7 @@
 ## 1. 生成本地配置
 
 ```bash
-git clone --depth 1 --single-branch https://github.com/skygazer42/MimirQ.git
+git clone --depth 1 --single-branch --branch feat/ragvia-ui https://github.com/skygazer42/MimirQ.git
 cd MimirQ
 make init
 ```

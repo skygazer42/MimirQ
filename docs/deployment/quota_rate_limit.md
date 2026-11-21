@@ -1,6 +1,6 @@
-# Quotas & Rate Limits（MimirQ）
+# Quotas & Rate Limits（Ragvia）
 
-本页汇总 MimirQ 的 **限流与配额**相关配置（env / settings），用于：
+本页汇总 Ragvia 的 **限流与配额**相关配置（env / settings），用于：
 
 - 防滥用、防雪崩（保护后端依赖与成本）
 - 多租户公平性（避免单租户打爆系统）

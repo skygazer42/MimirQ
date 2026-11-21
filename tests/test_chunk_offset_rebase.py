@@ -1,6 +1,6 @@
 from langchain_core.documents import Document
 
-from app.parsing.processors.support.chunk_postprocess import (
+from app.rag.ingestion.indexing.support.chunk_postprocess import (
     _build_page_start_offsets,
     _rebase_chunk_offsets_by_page_index,
 )

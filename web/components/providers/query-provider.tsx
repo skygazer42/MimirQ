@@ -1,29 +1,25 @@
 'use client'
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 
-import { AUTH_SCOPE_CHANGED_EVENT } from '@/lib/auth-storage'
-
-function getHttpStatus(error: unknown): number | null {
-  const err = error as { response?: { status?: unknown }; status?: unknown }
-  const status = err?.response?.status ?? err?.status
-  return typeof status === 'number' ? status : null
-}
+import { extractHttpStatus } from '@/lib/api-errors'
+import { getAuthSessionKey, subscribeAuthSession } from '@/lib/auth-storage'
 
 function shouldRetryQuery(failureCount: number, error: unknown): boolean {
   // Avoid retry storms for bad requests, auth issues, etc.
   // Retry a couple of times for transient network/server failures.
   if (failureCount >= 2) return false
 
-  const status = getHttpStatus(error)
-  if (status && status >= 400 && status < 500 && status !== 408 && status !== 429) {
+  const status = extractHttpStatus(error)
+  if (status !== undefined && status >= 400 && status < 500 && status !== 408 && status !== 429) {
     return false
   }
   return true
 }
 
-export function QueryProvider({ children }: Readonly<{ children: React.ReactNode }>) {
+export function QueryProvider({ children }: Readonly<{ children: ReactNode }>) {
+  const sessionKeyRef = useRef(getAuthSessionKey())
   const [queryClient] = useState(
     () =>
       new QueryClient({
@@ -40,16 +36,19 @@ export function QueryProvider({ children }: Readonly<{ children: React.ReactNode
             retry: 0,
           },
         },
-      })
+      }),
   )
 
   useEffect(() => {
-    const clearQueries = () => queryClient.clear()
-
-    globalThis.window.addEventListener(AUTH_SCOPE_CHANGED_EVENT, clearQueries)
-    return () => {
-      globalThis.window.removeEventListener(AUTH_SCOPE_CHANGED_EVENT, clearQueries)
+    const clearChangedSession = () => {
+      const sessionKey = getAuthSessionKey()
+      if (sessionKeyRef.current === sessionKey) return
+      sessionKeyRef.current = sessionKey
+      queryClient.clear()
     }
+    const unsubscribe = subscribeAuthSession(clearChangedSession)
+    clearChangedSession()
+    return unsubscribe
   }, [queryClient])
 
   return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>

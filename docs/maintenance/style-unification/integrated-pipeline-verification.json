@@ -1,0 +1,189 @@
+{
+  "schema": "ragvia.native_file_chunking_verification.v1",
+  "date": "2026-11-15",
+  "branch": "feat/ragvia-ui",
+  "head": "619ba7d1166c96beb85729069f5f79794a904a7a",
+  "scope": {
+    "retired_python_sources": 16,
+    "added_actual_native_sources": [
+      "app/rag/chunking/strategies/book.py",
+      "app/rag/chunking/strategies/email.py",
+      "app/rag/chunking/strategies/laws.py",
+      "app/rag/chunking/strategies/naive.py",
+      "app/rag/chunking/utils/chunk_records.py",
+      "app/rag/chunking/utils/section_merging.py",
+      "app/rag/chunking/utils/section_structure.py",
+      "app/rag/llm/vision_client.py"
+    ],
+    "added_native_count": 8,
+    "net_python_files_removed": 8,
+    "app_python_before": 1179,
+    "app_python_after": 1171,
+    "app_source_lines_before": 347347,
+    "app_source_lines_after": 346563,
+    "source_line_delta": -784,
+    "current_app_files": 1323,
+    "resource_files": 152,
+    "unchanged_API_v1_sources": 102,
+    "unchanged_API_schema_sources": 56
+  },
+  "actual_owners": {
+    "entry": "app.rag.chunking.factory.chunk_file",
+    "four_strategies": [
+      "app.rag.chunking.strategies.naive",
+      "app.rag.chunking.strategies.book",
+      "app.rag.chunking.strategies.laws",
+      "app.rag.chunking.strategies.email"
+    ],
+    "section_and_record_owners": [
+      "app.rag.chunking.utils.section_structure",
+      "app.rag.chunking.utils.section_merging",
+      "app.rag.chunking.utils.chunk_records"
+    ],
+    "vision": "app.rag.llm.vision_client.VisionCaptionClient",
+    "token_count": "app.infrastructure.tokens",
+    "lexical_tokenizer": "app.parsing.utils.tokenizer"
+  },
+  "actual_reductions": {
+    "duplicate_document_builders_before": 4,
+    "duplicate_document_builders_after": 1,
+    "duplicate_default_config_definitions_before": 4,
+    "duplicate_default_config_definitions_after": 1,
+    "retired_unused_NLP_definitions": 12,
+    "retired_Node_wrapper_or_unused_methods": 7,
+    "retired_empty_stub_functions": 4,
+    "retired_naive_closed_helpers_or_methods": 5,
+    "old_tokens_reexport": false,
+    "old_package_or_dynamic_wrapper_entry": false,
+    "old_directory_Ruff_exclusion": false,
+    "retired_direct_dependency_pins": [
+      "word2number==1.1",
+      "cn2an==0.5.23"
+    ]
+  },
+  "checks": {
+    "app_AST311_compile": 1171,
+    "production_import_sources": 1333,
+    "missing_imports": 0,
+    "all_current_app_Ruff_and_format_sources": 1171,
+    "all_current_app_Ruff_and_format_passed": true,
+    "root_canonical_source_AST_checks": 15,
+    "selector_AST_equal": true,
+    "shared_defaults_values_and_object_identity_preserved": true,
+    "isolated_NLP_comparison_cases": 945,
+    "isolated_naive_port_comparison_cases": 26,
+    "isolated_vision_payload_cases": 36,
+    "isolated_vision_MIME_cases": 9,
+    "isolated_vision_config_cases": 10,
+    "isolated_vision_response_cases": 11,
+    "scope_of_comparisons": "Selected source only; imports/resources/real models/transports not executed. Not pytest or real parser acceptance.",
+    "full_cold_OpenAPI_equal": true,
+    "OpenAPI_paths": 358,
+    "OpenAPI_schemas": 671,
+    "OpenAPI_canonical_sha256": "721b11d381dca811c87db81af3e91136b63135ded87095531794a79e643955fe",
+    "runtime": {
+      "native_strategy_modules_imported": [],
+      "native_strategy_import_limit": {
+        "dependency": "trio==0.33.0",
+        "status": "not installed in the current venv",
+        "preexisting_boundary": "app/parsing/parsers/pdf_layout.py",
+        "boundary_source_sha256_unchanged": true,
+        "original_strategy_used_the_same_import": true
+      },
+      "native_entry_callable": true,
+      "strategy_ids_preserved": 4,
+      "tables": 53,
+      "mappers": 53,
+      "ORM_DDL_indexes_defaults_relationships_equal": true,
+      "old_third_party_modules_loaded": false,
+      "scope": "Real factory/ORM imports and DDL compilation; native leaf strategy import attempted but limited by the recorded preexisting missing parser dependency. No parser/model construction, file execution, HTTP, queries or app startup."
+    },
+    "frozen_tests": 610,
+    "tests_changed": 0,
+    "pytest_run": false,
+    "resources_byte_identical": 152,
+    "license_headers_retained": true,
+    "NOTICE_paths_updated": true,
+    "ignored_current_app_sources": [],
+    "git_diff_check_exit": 0,
+    "notes": {
+      "format_count": 240,
+      "format_exit": 0,
+      "archive_exit": 0,
+      "tree_exit": 1,
+      "unchanged_historical_missing_links": 10
+    }
+  },
+  "reviews": {
+    "independent_scopes": [
+      "file strategies/call chain/defaults/entry/lifecycle",
+      "NLP/Vision/protocols/licenses/dependencies"
+    ],
+    "new_unresolved_findings": 0,
+    "resolved": [
+      "Email default dictionary consolidated after independent review"
+    ],
+    "sha256": {
+      "codex-integrated-absorb-pipeline-review-20261115.json": "b48f6fe06997d768bc6263068e6dff2a0abbf40c78676d16370663fa5c90c513",
+      "codex-integrated-absorb-nlp-vision-review-20261115.json": "ea5fa9099cc21d6136c680e37f61236a3cbcc66ed483c337bb1a79796935503b"
+    }
+  },
+  "current_ledgers": {
+    "rows": 1323,
+    "status_counts": {
+      "adjusted": 1001,
+      "conforms": 170,
+      "preserved": 152
+    },
+    "preserved_Python": 0,
+    "layout_opening_rows": 1167,
+    "nonapp_coverage_records_byte_preserved": 3998,
+    "sha256": {
+      "app-review.csv": "3e48e6d4dac345c30f34ac3383b351868b9a192738e23b2c7d57d48d7c86eb11",
+      "api-v1-review.csv": "f38c1e0eb6dd885bca1d14c849e943ac27f5488d8f1fda2a0a2596244bbab45e",
+      "coverage.csv": "8e73a442fac5807f28f1dd8bcd393fe97ddb9bb50b3addc4d4c878096d02c75b",
+      "layout-review.csv": "d067ec7920ffb1cfa0f07da2e3adf8fea2bf1f16c304b7ffad2f77329de7f136"
+    }
+  },
+  "source_tree_sha256": "b11f1e01238819fab63c0d5ae4c8377f66087b86313d7452ea30ffb787e8232e",
+  "ancillary_changes_sha256": {
+    "NOTICE": "9a3420195cfaa43bc526cee3f0151dc310d01b11746d4bb7b23d00e5bcba637e",
+    "requirements.txt": "bc1f2fa4f98ce5807a4d6e5884138c367ed8df9894a702fab02edec0a89f3702",
+    "ruff.toml": "a24c0054a76a139e463f1ac701eb5bd17f2fc17f0b63fb84f2c888709bec54e7"
+  },
+  "directory_cleanup": {
+    "path": "app/third_party",
+    "source_files_remaining": 0,
+    "directory_exists": true,
+    "attempted_cache_cleanup": true,
+    "executed": false,
+    "automatic_review": "rejected",
+    "reason": "blocked by policy"
+  },
+  "git": {
+    "staged": false,
+    "committed": false,
+    "pushed": false
+  },
+  "limits": [
+    "Native leaf module imports encounter the same preexisting pdf_layout import of missing trio==0.33.0; this is not reported as parser success",
+    "No real file parsing, OCR/model construction, HTTP, database queries/transactions, worker or application lifecycle execution",
+    "Frozen Python tests retain retired/private imports and were not migrated or run",
+    "Cache-only retired directories remain after automatic approval rejection",
+    "Historical validation artifacts retain their original code scope; this manifest describes the current worktree"
+  ],
+  "local_evidence_sha256": {
+    "codex-integrated-absorb-opening-20261115.json": "c45c36abd7a3c5a5eb5051b54435c49b05af0382fbe82eeca76b59a701df0427",
+    "codex-integrated-absorb-static-20261115.json": "f092ca6ba9fa3bd31b5f7ec8df7d3fc251416c888ebc0bcbd545130034226490",
+    "codex-integrated-absorb-runtime-20261115.json": "4c05a4a2e41e05a4b3bdf9e3c197bfbfe871f9dc584177319dca82ff12e5cdc8",
+    "codex-integrated-absorb-nlp-20261115.json": "dff0404057540e60a51614c28c131cc09fedeb1a39128d0de4b31e201d5c211b",
+    "codex-integrated-absorb-naive-20261115.json": "304caf2d6665b5e35ee399f1b6acb14ba6a6fa3b5dbee2b371321e72b012cab4",
+    "codex-integrated-absorb-vision-20261115.json": "84f55900e6e7a2d2862bc4750afe535e020f907d0d8f762ffa82f9a3b5b1cc66",
+    "codex-integrated-absorb-root-expected-20261115.json": "162121d8e962bac7802c98a50d6c5b98c8c179b0467fc918d594b85457985502",
+    "codex-integrated-shared-options-before-20261115.json": "762c98cdcd4efd93466d7ac8b32c90245f4ebc7df923a0861ff226d350bf4c4a",
+    "codex-integrated-absorb-ledgers-20261115.json": "293cc8abc6c80176aa2990a36768e7ac27caf4bbfdc4eeb63ffa541b8f307095",
+    "codex-integrated-absorb-doc-references-20261115.json": "675ca42c5b42394bb22d8a4129bbbc5db394c7aad3155f1a8e764bdc04d93c18",
+    "codex-integrated-absorb-pipeline-review-20261115.json": "b48f6fe06997d768bc6263068e6dff2a0abbf40c78676d16370663fa5c90c513",
+    "codex-integrated-absorb-nlp-vision-review-20261115.json": "ea5fa9099cc21d6136c680e37f61236a3cbcc66ed483c337bb1a79796935503b"
+  }
+}

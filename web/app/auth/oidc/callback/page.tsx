@@ -1,96 +1,65 @@
 'use client'
-
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { Loader2, ShieldAlert, ShieldCheck } from 'lucide-react'
-
-import { Button } from '@/components/ui/button'
-import { FullScreenFrame } from '@/components/full-screen-frame'
+import { AuthCallbackState } from '@/components/auth-callback-state'
 import { useRouter } from '@/i18n/navigation'
 import { completeOidcLogin } from '@/lib/oidc'
+import { getAuthSessionRevision, setAuthSession } from '@/lib/auth-storage'
+
+type CallbackResult = { status: 'working' | 'success'; error: null } | { status: 'error'; error: string }
 
 export default function OidcCallbackPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const ranRef = useRef(false)
+  const mountedRef = useRef(false)
 
-  const [status, setStatus] = useState<'working' | 'success' | 'error'>('working')
-  const [error, setError] = useState<string | null>(null)
+  const [result, setResult] = useState<CallbackResult>({ status: 'working', error: null })
+
+  useLayoutEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+    }
+  }, [])
 
   useEffect(() => {
     if (ranRef.current) return
     ranRef.current = true
 
     const errorCode = searchParams.get('error')
-    const errorDesc = searchParams.get('error_description')
+    const errorDescription = searchParams.get('error_description')
     if (errorCode) {
-      setStatus('error')
-      setError([errorCode, errorDesc].filter(Boolean).join(': ') || 'SSO failed')
+      setResult({ status: 'error', error: errorDescription ? `${errorCode}: ${errorDescription}` : errorCode })
       return
     }
 
     const code = searchParams.get('code')
     const state = searchParams.get('state')
     if (!code || !state) {
-      setStatus('error')
-      setError('Missing OAuth callback parameters (code/state).')
+      setResult({ status: 'error', error: '登录信息不完整，请返回登录页重新发起登录。' })
       return
     }
 
-    ;(async () => {
+    const sessionRevision = getAuthSessionRevision()
+    const canPublish = () => mountedRef.current && getAuthSessionRevision() === sessionRevision
+    async function finishLogin(code: string, state: string) {
       try {
-        const { returnTo } = await completeOidcLogin({ code, state })
-        setStatus('success')
-        router.replace(returnTo || '/')
-      } catch (e: unknown) {
-        setStatus('error')
-        setError(e instanceof Error ? e.message : 'SSO failed')
+        const { session, returnTo } = await completeOidcLogin({ code, state })
+        if (!canPublish()) return
+        setAuthSession(session)
+        setResult({ status: 'success', error: null })
+        router.replace(returnTo)
+      } catch (error) {
+        if (!canPublish()) return
+        setResult({
+          status: 'error',
+          error: error instanceof Error ? error.message : '单点登录失败，请重新登录。',
+        })
       }
-    })()
+    }
+    void finishLogin(code, state)
   }, [router, searchParams])
 
-  return (
-    <FullScreenFrame className="relative w-full overflow-hidden">
-      <div className="relative z-10 w-full max-w-md p-6">
-        <div className="rounded-3xl border border-border bg-card p-8 shadow-strong">
-          {(() => {
-    if (status === 'working') {
-        return (<div className="flex items-start gap-3">
-              <Loader2 className="mt-0.5 h-5 w-5 animate-spin motion-reduce:animate-none text-muted-foreground" aria-hidden="true"/>
-              <div className="min-w-0 flex-1">
-                <h1 className="text-base font-semibold text-foreground">Completing SSO sign-in</h1>
-                <p className="mt-2 text-sm text-muted-foreground">Exchanging authorization code for tokens...</p>
-              </div>
-            </div>);
-    }
-    else if (status === 'success') {
-            return (<div className="flex items-start gap-3">
-              <ShieldCheck className="mt-0.5 h-5 w-5 text-primary" aria-hidden="true"/>
-              <div className="min-w-0 flex-1">
-                <h1 className="text-base font-semibold text-foreground">Signed in</h1>
-                <p className="mt-2 text-sm text-muted-foreground">Redirecting...</p>
-              </div>
-            </div>);
-        }
-        else {
-            return (<div className="space-y-4">
-              <div className="flex items-start gap-3">
-                <ShieldAlert className="mt-0.5 h-5 w-5 text-destructive" aria-hidden="true"/>
-                <div className="min-w-0 flex-1">
-                  <h1 className="text-base font-semibold text-foreground">SSO sign-in failed</h1>
-                  <p className="mt-2 break-words text-sm text-muted-foreground">{error || 'Please try again.'}</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <Button type="button" onClick={() => router.replace('/auth')}>
-                  Back to login
-                </Button>
-              </div>
-            </div>);
-        }
-})()}
-        </div>
-      </div>
-    </FullScreenFrame>
-  )
+  return <AuthCallbackState {...result} onBack={() => router.replace('/auth')} />
 }

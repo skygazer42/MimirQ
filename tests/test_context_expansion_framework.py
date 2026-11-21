@@ -26,7 +26,7 @@ class _FakeChunk:
 
 
 def test_expand_ranked_chunk_results_unifies_sibling_and_neighbor_strategies() -> None:
-    from app.rag.retrieval.context_expansion import expand_ranked_chunk_results
+    from app.rag.retrieval.expansion.context import expand_ranked_chunk_results
 
     tenant_id = uuid4()
     short_doc_id = uuid4()
@@ -113,7 +113,7 @@ def test_expand_ranked_chunk_results_unifies_sibling_and_neighbor_strategies() -
 
 
 def test_expand_ranked_chunk_results_can_expand_neighbors_by_score_band() -> None:
-    from app.rag.retrieval.context_expansion import expand_ranked_chunk_results
+    from app.rag.retrieval.expansion.context import expand_ranked_chunk_results
 
     tenant_id = uuid4()
     doc_id = uuid4()
@@ -181,7 +181,7 @@ def test_expand_ranked_chunk_results_can_expand_neighbors_by_score_band() -> Non
 
 
 def test_expand_hierarchy_documents_flows_through_unified_framework() -> None:
-    from app.rag.retrieval.context_expansion import expand_hierarchy_documents
+    from app.rag.retrieval.expansion.context import expand_hierarchy_documents
 
     anchor = Document(
         page_content="anchor",

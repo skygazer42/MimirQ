@@ -20,7 +20,6 @@ Next.js App Router 布局，`[id]` 为数据集 UUID。
 | `/datasets/[id]/ingestion` | `app/datasets/[id]/ingestion/page.tsx` | `DatasetsPage`(入库 Tab) | 入库统计与策略 |
 | `/datasets/[id]/kg` | `app/datasets/[id]/kg/page.tsx` | `DatasetKGWorkbenchPage` | KG 抽取与可视化 |
 | `/datasets/[id]/evidence` | `app/datasets/[id]/evidence/page.tsx` | — | 证据工作台入口 |
-| `/datasets/[id]/workflow` | `app/datasets/[id]/workflow/page.tsx` | — | 工作流管理 |
 
 ## 核心组件
 

@@ -13,6 +13,8 @@ const oidc = vi.hoisted(() => ({
 vi.mock('@/lib/auth-storage', () => ({
   clearAuthSession: auth.clear,
   getAccessToken: () => auth.token,
+  getAuthSessionRevision: () => 0,
+  getAuthCacheScope: () => 'default:user-a',
   setAccessToken: (token: { access_token: string }) => {
     auth.token = token.access_token
   },
@@ -43,9 +45,9 @@ describe('observabilityApi auth handling', () => {
   it('does not clear the app session or redirect on a telemetry 401', async () => {
     globalThis.fetch = vi.fn().mockResolvedValue(new Response('', { status: 401 })) as typeof fetch
 
-    await expect(
-      observabilityApi.reportFrontendVital({ id: 'web-vital-1', name: 'LCP', value: 123 })
-    ).rejects.toThrow('Frontend vital report failed (HTTP 401)')
+    await expect(observabilityApi.reportFrontendVital({ id: 'web-vital-1', name: 'LCP', value: 123 })).rejects.toThrow(
+      'Frontend vital report failed (HTTP 401)',
+    )
 
     expect(oidc.refresh).toHaveBeenCalledTimes(1)
     expect(auth.clear).not.toHaveBeenCalled()

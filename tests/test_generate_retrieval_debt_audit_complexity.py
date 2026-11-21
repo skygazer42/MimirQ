@@ -36,7 +36,7 @@ def test_hierarchy_audit_accepts_profiles_safe_defaults_and_guardrails(
     monkeypatch.setattr(audit, "REPO_ROOT", tmp_path)
     _write(
         tmp_path,
-        "app/rag/core/retrieval_profiles.py",
+        "app/rag/retrieval/configuration/profiles.py",
         "\n".join(
             [
                 "hierarchy_recall20 hierarchy_hybrid_ce hierarchy_grounded_strict",
@@ -52,7 +52,7 @@ def test_hierarchy_audit_accepts_profiles_safe_defaults_and_guardrails(
     )
     _write(
         tmp_path,
-        "app/rag/evaluation/evidence_retrieve_gate.py",
+        "app/rag/evaluation/regression/evidence_retrieve_gate.py",
         "retrieval_doc_recall retrieval_family_recall",
     )
 
@@ -75,7 +75,7 @@ def test_hierarchy_audit_flags_nonzero_overlay_defaults(
     monkeypatch.setattr(audit, "REPO_ROOT", tmp_path)
     _write(
         tmp_path,
-        "app/rag/core/retrieval_profiles.py",
+        "app/rag/retrieval/configuration/profiles.py",
         "\n".join(
             [
                 "hierarchy_recall20 hierarchy_hybrid_ce hierarchy_grounded_strict",

@@ -39,8 +39,8 @@ if __package__ in {None, ""}:
 
 def _parse_uuid(value: str) -> UUID:
     try:
-        return UUID(str(value))
-    except Exception as exc:  # noqa: BLE001
+        return UUID(value)
+    except ValueError as exc:
         raise argparse.ArgumentTypeError("must be a valid UUID") from exc
 
 
@@ -93,8 +93,8 @@ def coerce_case_bundle(obj: Any) -> tuple[UUID, list[dict[str, Any]]]:
 def _normalized_unique_questions(items: list[dict[str, Any]]) -> list[str]:
     out: list[str] = []
     seen: set[str] = set()
-    for it in items or []:
-        q = str((it or {}).get("question") or "").strip()
+    for it in items:
+        q = str(it.get("question") or "").strip()
         if not q:
             continue
         if q in seen:
@@ -120,17 +120,14 @@ def _resolve_case_ids_from_questions(
 
     by_question: dict[str, UUID] = {}
     duplicates: list[str] = []
-    for row in rows or []:
-        question = str(getattr(row, "question", "") or "").strip()
+    for row in rows:
+        question = row.question.strip()
         if not question or question not in want:
-            continue
-        cid = getattr(row, "id", None)
-        if cid is None:
             continue
         if question in by_question:
             duplicates.append(question)
             continue
-        by_question[question] = UUID(str(cid))
+        by_question[question] = row.id
 
     missing = [q for q in questions if q not in by_question]
     if duplicates:
@@ -143,7 +140,7 @@ def _resolve_case_ids_from_questions(
     return [by_question[q] for q in questions]
 
 
-def _default_ablations(*, reranker_top_n: int = 20) -> list[dict]:
+def _default_ablations(*, reranker_top_n: int = 20) -> list[dict[str, Any]]:
     """
     Small, industrial default ablation set (retrieval-only friendly).
 
@@ -162,8 +159,6 @@ def _default_ablations(*, reranker_top_n: int = 20) -> list[dict]:
         "query_rewrite_strategy": None,
         "query_rewrite_temperature": 0.0,
         "query_rewrite_max_chars": 0,
-        "sparse_retrieval_enabled": False,
-        "sparse_retrieval_provider": "deterministic",
         # Core retrieval controls.
         "top_k": 20,
         "score_threshold": 0.0,
@@ -191,7 +186,7 @@ def _default_ablations(*, reranker_top_n: int = 20) -> list[dict]:
         rp = dict(base_rag_params)
         if overrides:
             rp.update(overrides)
-        return {"ablation_key": str(ablation_key), "rag_params": rp}
+        return {"ablation_key": ablation_key, "rag_params": rp}
 
     return [
         _ablation("baseline"),
@@ -206,26 +201,6 @@ def _default_ablations(*, reranker_top_n: int = 20) -> list[dict]:
         _ablation("profile_recall50", {"retrieval_profile": "recall50"}),
         # Fusion strategy ablations (non-LLM).
         _ablation("fusion_linear", {"fusion_strategy": "linear"}),
-        _ablation(
-            "sparse_budgeted_rrf",
-            {
-                "fusion_strategy": "budgeted_rrf",
-                "fusion_budgets": {"vector": 10, "bm25": 8, "lexical": 0, "sparse": 2},
-                "sparse_retrieval_enabled": True,
-                "sparse_retrieval_provider": "deterministic",
-            },
-        ),
-        _ablation(
-            "sparse_bounded_slice",
-            {
-                "retrieval_mode": "keyword",
-                "fusion_strategy": "budgeted_rrf",
-                # Deterministic sparse-heavy bounded slice for nightly regression drift checks.
-                "fusion_budgets": {"vector": 0, "bm25": 4, "lexical": 0, "sparse": 4},
-                "sparse_retrieval_enabled": True,
-                "sparse_retrieval_provider": "deterministic",
-            },
-        ),
         # Reranker wiring: keep it non-LLM for default nightly safety.
         _ablation(
             "hybrid_rerank",
@@ -288,11 +263,12 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 def _load_runtime() -> _Runtime:
-    from app.core.config import settings
-    from app.core.database import SessionLocal
-    from app.models.dataset import Dataset
-    from app.models.evaluation import RagasRegressionCase, RagasRegressionRun
-    from app.rag.evaluation.ragas import run_regression_ragas_evaluation
+    import app.models.registry  # noqa: F401
+    from app.infrastructure.config import settings
+    from app.infrastructure.database.connection import SessionLocal
+    from app.models.datasets.records import Dataset
+    from app.models.evaluation.results import RagasRegressionCase, RagasRegressionRun
+    from app.rag.evaluation.regression.ragas import run_regression_ragas_evaluation
 
     return _Runtime(
         settings=settings,
@@ -308,7 +284,7 @@ def _resolve_case_selection(args: argparse.Namespace) -> tuple[Path | None, list
     raw_cases = str(args.cases or "").strip()
     if not raw_cases:
         return None, []
-    if bool(args.all_datasets):
+    if args.all_datasets:
         raise _CliError({"ok": False, "error": "--cases is only supported with --dataset-id"})
 
     cases_path = Path(raw_cases).expanduser()
@@ -343,7 +319,7 @@ def _resolve_dataset_ids(
 ) -> list[UUID]:
     if args.dataset_id is not None:
         return [args.dataset_id]
-    if not bool(args.all_datasets):
+    if not args.all_datasets:
         return []
 
     db = runtime.session_factory()
@@ -354,7 +330,7 @@ def _resolve_dataset_ids(
             .order_by(runtime.dataset_model.created_at.asc())
         )
         rows = query.limit(max(1, int(args.max_datasets or 0))).all()
-        return [row[0] for row in rows if isinstance(row, tuple) and row and isinstance(row[0], UUID)]
+        return [dataset_id for (dataset_id,) in rows if isinstance(dataset_id, UUID)]
     finally:
         db.close()
 
@@ -418,7 +394,7 @@ def _resolve_dataset_cases(
             }
         ) from exc
 
-    case_ids = list(full_ids[: max(1, int(args.max_cases or 0))])
+    case_ids = full_ids[: max(1, int(args.max_cases or 0))]
     if len(case_ids) < len(full_ids):
         print(
             json.dumps(
@@ -520,12 +496,14 @@ def _execute_ablation(
         max_cases=max(1, int(args.max_cases or 0)),
         rag_params=rag_params,
     )
+    db.refresh(run)
     executed.append(
         {
             "dataset_id": str(dataset_id),
             "account_id": owner_id,
             "ablation_key": key,
             "run_id": str(run.id),
+            "status": run.status,
         }
     )
 
@@ -568,7 +546,7 @@ def _process_dataset(
         for ablation in ablations:
             key = str(ablation.get("ablation_key") or "").strip() or "ablation"
             rag_params = dict(ablation.get("rag_params") or {})
-            if not bool(args.execute):
+            if not args.execute:
                 _append_planned_ablation(
                     planned=planned,
                     args=args,
@@ -634,20 +612,21 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(exc.payload, ensure_ascii=False))
         return 2
 
+    ok = all(run["status"] == "completed" for run in executed)
     print(
         json.dumps(
             {
-                "ok": True,
+                "ok": ok,
                 "tenant_id": str(tenant_id),
                 "job_run_id": job_run_id,
-                "dry_run": not bool(args.execute),
+                "dry_run": not args.execute,
                 "planned": planned,
                 "executed": executed,
             },
             ensure_ascii=False,
         )
     )
-    return 0
+    return 0 if ok else 1
 
 
 if __name__ == "__main__":

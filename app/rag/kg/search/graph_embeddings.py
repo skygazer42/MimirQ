@@ -45,7 +45,7 @@ def _mix32(x: int) -> int:
     return x & 0xFFFFFFFF
 
 
-def _walkhash_config(*, node_count: int, params: WalkHashParams) -> tuple[int, int, int, int, int]:
+def _walkhash_config(params: WalkHashParams) -> tuple[int, int, int, int, int]:
     return (
         max(1, int(params.dim or 0)),
         max(0, int(params.num_walks or 0)),
@@ -60,7 +60,7 @@ def _init_hash_buckets(*, node_count: int, dim: int, seed: int) -> tuple[np.ndar
     sign = np.ones((node_count,), dtype=np.float32)
     base = _mix32(seed ^ 0x9E3779B9)
     for idx in range(node_count):
-        mixed = _mix32(int(idx) ^ int(base))
+        mixed = _mix32(idx ^ int(base))
         bucket[idx] = int(mixed % dim)
         sign[idx] = -1.0 if (mixed & 0x80000000) else 1.0
     return bucket, sign
@@ -106,7 +106,7 @@ def _accumulate_walk_context(
             ctx = walk[ctx_index]
             dist = abs(ctx_index - index)
             weight = 1.0 / float(dist)
-            emb[center, bucket[ctx]] += float(sign[ctx]) * float(weight)
+            emb[center, bucket[ctx]] += float(sign[ctx]) * weight
 
 
 def _normalize_embeddings(emb: np.ndarray) -> np.ndarray:
@@ -131,11 +131,8 @@ def compute_walkhash_embeddings(
     Returns:
         np.ndarray shape (N, dim), L2-normalized rows (rows may be all zeros if isolated).
     """
-    node_count = int(len(neighbors))
-    dim, num_walks, walk_length, window_size, seed = _walkhash_config(
-        node_count=node_count,
-        params=params,
-    )
+    node_count = len(neighbors)
+    dim, num_walks, walk_length, window_size, seed = _walkhash_config(params)
 
     emb = np.zeros((node_count, dim), dtype=np.float32)
     if node_count == 0 or num_walks <= 0 or walk_length <= 0:
@@ -170,13 +167,13 @@ def compute_walkhash_embeddings(
 def _normalize_adj(adjacency: dict[str, Iterable[str]]) -> dict[str, list[str]]:
     adj: dict[str, list[str]] = {}
     for src, nbrs in (adjacency or {}).items():
-        s = str(src or "").strip()
+        s = src.strip()
         if not s:
             continue
         out: list[str] = []
         seen: set[str] = set()
         for nb in nbrs or []:
-            t = str(nb or "").strip()
+            t = nb.strip()
             if not t or t == s:
                 continue
             if t in seen:
@@ -218,17 +215,14 @@ def recall_similar_entity_nodes(
         List of {\"node_key\", \"similarity\", \"seed_node_key\"}.
     """
     adj = _normalize_adj(adjacency)
-    seeds = [str(s or "").strip() for s in (seed_entity_node_keys or []) if str(s or "").strip()]
+    seeds = [s.strip() for s in (seed_entity_node_keys or []) if s.strip()]
     seeds = sorted(set(seeds))
     if not adj or not seeds:
         return []
 
     nodes = sorted(adj.keys())
     idx_by_node = {n: i for i, n in enumerate(nodes)}
-    neighbors_idx: list[list[int]] = []
-    for n in nodes:
-        nbrs = [idx_by_node[t] for t in adj.get(n, []) if t in idx_by_node]
-        neighbors_idx.append(nbrs)
+    neighbors_idx = [[idx_by_node[target] for target in adj[node]] for node in nodes]
 
     seed_idx: list[int] = [idx_by_node[s] for s in seeds if s in idx_by_node]
     if not seed_idx:
@@ -238,8 +232,8 @@ def recall_similar_entity_nodes(
     if not entity_nodes:
         return []
 
-    entity_idx = [idx_by_node[n] for n in entity_nodes]
-    candidate_idx = [i for i in entity_idx if i not in set(seed_idx)]
+    seed_indexes = set(seed_idx)
+    candidate_idx = [idx_by_node[node] for node in entity_nodes if idx_by_node[node] not in seed_indexes]
     if not candidate_idx:
         return []
 
@@ -270,7 +264,7 @@ def recall_similar_entity_nodes(
         )
 
     # Deterministic order: similarity desc, node_key asc.
-    hits.sort(key=lambda x: (-float(x.get("similarity", 0.0) or 0.0), str(x.get("node_key") or "")))
+    hits.sort(key=lambda x: (-float(x.get("similarity", 0.0) or 0.0), x["node_key"]))
     return hits[: max(0, int(top_k or 0))]
 
 
@@ -312,7 +306,7 @@ def _add_undirected_edge(adj: dict[str, set[str]], *, left: str, right: str) -> 
 
 def _add_seed_entity_nodes(*, adj: dict[str, set[str]], seed_entity_ids: Sequence[str]) -> None:
     for entity_id in seed_entity_ids or []:
-        normalized = str(entity_id or "").strip()
+        normalized = entity_id.strip()
         if normalized:
             adj.setdefault(f"ent:{normalized}", set())
 
@@ -340,7 +334,7 @@ def _add_event_entity_edges(
     kept_entity_ids: set[str],
 ) -> None:
     for event_id in event_ids or []:
-        normalized_event = str(event_id or "").strip()
+        normalized_event = event_id.strip()
         if not normalized_event:
             continue
         event_node = f"ev:{normalized_event}"
@@ -349,7 +343,7 @@ def _add_event_entity_edges(
             event_id=event_id,
             event_node=event_node,
         ):
-            entity_id = str(getattr(link, "entity_id", "") or "").strip()
+            entity_id = str(link.entity_id).strip()
             if entity_id and entity_id in kept_entity_ids:
                 _add_undirected_edge(adj, left=event_node, right=f"ent:{entity_id}")
 
@@ -361,8 +355,8 @@ def _add_relation_entity_edges(
     kept_entity_ids: set[str],
 ) -> None:
     for left, right in relation_edges or []:
-        left_id = str(left or "").strip()
-        right_id = str(right or "").strip()
+        left_id = left.strip()
+        right_id = right.strip()
         if not left_id or not right_id:
             continue
         if left_id not in kept_entity_ids or right_id not in kept_entity_ids:
@@ -371,7 +365,4 @@ def _add_relation_entity_edges(
 
 
 def _freeze_sorted_adjacency(adj: dict[str, set[str]]) -> dict[str, list[str]]:
-    out: dict[str, list[str]] = {}
-    for key, values in adj.items():
-        out[str(key)] = sorted(str(value) for value in values if str(value))
-    return out
+    return {node: sorted(neighbors) for node, neighbors in adj.items()}

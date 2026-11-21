@@ -1,0 +1,140 @@
+"""Asset reference collection and inline-asset audit helpers."""
+
+from typing import Any
+
+from langchain_core.documents import Document
+from sqlalchemy.orm import Session
+
+from app.models.documents.records import Document as DBDocument
+from app.rag.ingestion.indexing.support.common import (
+    _PROCESSOR_CLEANUP_LOG_MESSAGE,
+    _commit_document_metadata,
+    logger,
+)
+from app.rag.ingestion.indexing.support.results import InlineAssetResult, ParseResult
+
+
+def _collect_artifact_dir_from_meta(meta: dict[str, Any], artifact_dirs: set[str]) -> None:
+    artifact_dir = meta.get("artifact_dir")
+    if isinstance(artifact_dir, str) and artifact_dir.strip():
+        artifact_dirs.add(artifact_dir.strip())
+
+
+def _collect_image_ids_from_meta(meta: dict[str, Any], document_img_ids: set[str]) -> None:
+    images = meta.get("images")
+    if not isinstance(images, list):
+        return
+    for item in images:
+        img_id = item.get("img_id") if isinstance(item, dict) else None
+        if isinstance(img_id, str) and img_id.strip():
+            document_img_ids.add(img_id)
+
+
+def _collect_item_asset_refs(
+    items: list[Document] | None,
+    *,
+    document_img_ids: set[str],
+    artifact_dirs: set[str],
+    collect_images: bool,
+) -> None:
+    for item in items if items is not None else []:
+        meta = item.metadata
+        _collect_artifact_dir_from_meta(meta, artifact_dirs)
+        if collect_images:
+            _collect_image_ids_from_meta(meta, document_img_ids)
+
+
+def _collect_parser_asset_refs(
+    parsed: ParseResult,
+    *,
+    document_img_ids: set[str],
+    artifact_dirs: set[str],
+) -> None:
+    _collect_item_asset_refs(
+        parsed.documents,
+        document_img_ids=document_img_ids,
+        artifact_dirs=artifact_dirs,
+        collect_images=True,
+    )
+    _collect_item_asset_refs(
+        parsed.chunks,
+        document_img_ids=document_img_ids,
+        artifact_dirs=artifact_dirs,
+        collect_images=False,
+    )
+
+
+def _inline_asset_audit_needed(inline_result: InlineAssetResult) -> bool:
+    return (
+        inline_result.image_codes_added > 0
+        or inline_result.image_code_audit is not None
+        or inline_result.captions_added > 0
+        or inline_result.caption_audit is not None
+        or inline_result.formulas_added > 0
+        or inline_result.formula_audit is not None
+        or inline_result.charts_added > 0
+        or inline_result.chart_audit is not None
+    )
+
+
+def _apply_inline_asset_audit_patch(
+    db: Session,
+    db_document: DBDocument,
+    inline_result: InlineAssetResult,
+) -> None:
+    if not _inline_asset_audit_needed(inline_result):
+        return
+    meta_patch = dict(db_document.doc_metadata or {})
+    try:
+        field_specs = (
+            ("image_codes_added", "image_codes_added", None, None, "image_code_audit", "image_code_audit"),
+            (
+                "image_captions_added",
+                "captions_added",
+                "image_caption_backend",
+                "caption_backend",
+                "image_caption_audit",
+                "caption_audit",
+            ),
+            (
+                "formula_ocr_added",
+                "formulas_added",
+                "formula_ocr_backend",
+                "formula_backend",
+                "formula_ocr_audit",
+                "formula_audit",
+            ),
+            (
+                "chart_data_added",
+                "charts_added",
+                "chart_data_backend",
+                "chart_backend",
+                "chart_data_audit",
+                "chart_audit",
+            ),
+        )
+        for count_key, count_attr, backend_key, backend_attr, audit_key, audit_attr in field_specs:
+            meta_patch[count_key] = getattr(inline_result, count_attr)
+            backend_value = getattr(inline_result, backend_attr) if backend_attr else None
+            if backend_key and backend_value:
+                meta_patch[backend_key] = backend_value
+            audit_value = getattr(inline_result, audit_attr)
+            if audit_value is not None:
+                meta_patch[audit_key] = dict(audit_value)
+    except Exception as exc:
+        logger.debug(_PROCESSOR_CLEANUP_LOG_MESSAGE, exc)
+        return
+    _commit_document_metadata(db, db_document, meta_patch)
+
+
+def _chunk_has_asset(meta: dict[str, Any]) -> bool:
+    raw_type = meta.get("doc_type_kwd")
+    doc_type = raw_type.lower() if isinstance(raw_type, str) else None
+    if doc_type in {"image", "table"}:
+        return True
+    if meta.get("image") is not None:
+        return True
+    image_path = meta.get("image_path")
+    if isinstance(image_path, str) and image_path.strip():
+        return True
+    return bool(meta.get("img_id") or meta.get("image_id") or meta.get("image_url"))

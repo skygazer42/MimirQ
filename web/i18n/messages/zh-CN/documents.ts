@@ -1,11 +1,11 @@
 const documentsMessages = {
-Documents: {
+  Documents: {
     loadingChunks: '正在加载切片数据...',
     loadingTimeline: '正在加载时间线...',
     emptyChunks: '暂无切片数据',
     emptyTimeline: '暂无时间线事件',
   },
-TaskCenter: {
+  TaskCenter: {
     title: '任务中心',
     activeBadge: '进行中',
     failedBadge: '失败',
@@ -35,7 +35,7 @@ TaskCenter: {
       processing: '处理中',
     },
   },
-DatasetFolderTree: {
+  DatasetFolderTree: {
     title: '目录',
     refresh: '刷新目录树',
     loading: '加载中…',
@@ -46,7 +46,7 @@ DatasetFolderTree: {
     unnamed: '(未命名目录)',
     allDirectories: '全部目录',
   },
-DocumentDetailDialog: {
+  DocumentDetailDialog: {
     toasts: {
       tagsUpdated: '已更新标签',
       copySuccess: '已复制到剪贴板',
@@ -54,31 +54,38 @@ DocumentDetailDialog: {
       chunkEnabled: '已启用切片',
       chunkDisabled: '已禁用切片',
       chunkReembedded: '已重新嵌入 {count} 个切片',
-      lifecycleUpdated: '已更新 lifecycle 信息',
+      lifecycleUpdated: '已保存生命周期信息',
       versionActivated: '已切换激活版本',
       versionDeleted: '已删除版本',
       kgExtractStarted: '已提交 KG 抽取任务（可前往图谱页刷新查看）',
       kgDeleted: '已删除 KG 事件 {events}，清理实体 {entities}',
+      cleanDocxDownloadStarted: '已开始下载清洗 DOCX',
       accessUpdated: '已更新文档访问控制',
     },
     errors: {
       saveTagsFailed: '保存标签失败',
+      tagsRefreshRequired: '文档详情已更新，请重新打开详情后确认标签。',
       copyFailed: '复制失败',
       saveChunkFailed: '保存切片失败',
       chunkOperationFailed: '切片操作失败',
       reembedFailed: '重新嵌入失败',
+      reembedDenied: '当前没有重新嵌入此切片的权限。',
+      reembedNotFound: '该切片已不存在，请重新读取文档。',
+      reembedConflict: '此切片未完成重新嵌入，请重新读取后重试。',
       lifecyclePermissionCheckUnknown: '无法确认 lifecycle 编辑权限',
       loadDetailFailed: '获取文档详情失败',
-      saveLifecycleFailed: '保存 lifecycle 信息失败',
+      saveLifecycleFailed: '保存生命周期信息失败',
+      lifecycleRefreshRequired: '生命周期记录已更新，请重新打开详情确认最新值。',
       loadVersionsFailed: '获取文档版本失败',
+      versionsRefreshRequired: '版本记录已更新，请重新打开详情确认最新版本。',
       loadTimelineFailed: '获取文档时间线失败',
       loadChunksFailed: '获取切片失败',
       loadMoreChunksFailed: '加载更多切片失败',
-      activateVersionFailed: '切换版本失败',
-      deleteVersionFailed: '删除版本失败',
       kgExtractFailed: 'KG 抽取失败',
       kgDeleteFailed: '删除 KG 失败',
-      updateAccessFailed: '更新访问控制失败',
+      downloadCleanDocxFailed: '下载清洗 DOCX 失败',
+      loadAccessFailed: '读取文档访问设置失败',
+      accessRefreshRequired: '访问设置已更新，请重新打开详情确认最新值。',
     },
     validation: {
       supersedesUuid: 'supersedes_document_id 不是合法 UUID',
@@ -95,6 +102,8 @@ DocumentDetailDialog: {
       chunkingChip: '切块：{label}',
     },
     accessModes: {
+      loading: '正在读取访问设置',
+      unavailable: '访问设置读取失败',
       inherit: '继承数据集',
       onlyMe: '仅我可见',
       partialMembers: '指定成员/组',
@@ -110,6 +119,29 @@ DocumentDetailDialog: {
       clear: '清除搜索',
     },
     cards: {
+      notProvided: '未提供',
+      emptyValue: '无',
+      enabledValue: '已启用',
+      disabledValue: '未启用',
+      fields: {
+        parser: '实际解析器',
+        requestedParser: '请求解析器',
+        charCount: '正文字符数',
+        pageCount: '页数',
+        tableCount: '表格数',
+        imageCount: '图片数',
+        rulesApplied: '应用规则数',
+        changedDocuments: '更改文档数',
+        droppedDocuments: '过滤文档数',
+        rulePacks: '规则包',
+        viewingVersion: '查看版本',
+        activeVersion: '激活版本',
+        lastVersion: '最近版本',
+        chunkSize: '目标长度',
+        chunkOverlap: '重叠长度',
+        vectorEnabled: '向量索引',
+        bm25Enabled: 'BM25 索引',
+      },
       parse: {
         title: '解析',
       },
@@ -121,31 +153,27 @@ DocumentDetailDialog: {
       },
       chunking: {
         title: '切块',
-        copyPipelineHash: '复制 pipeline_hash',
+        copyPipelineHash: '复制版本标识',
       },
     },
     actions: {
       edit: '编辑',
+      downloadCleanDocx: '下载清洗 DOCX',
     },
     alerts: {
-      saveFailedTitle: '保存失败',
-      permissionFailedTitle: '权限检查失败',
-      permissionCheckFailedTitle: '权限检查失败',
-      inputInvalidTitle: '输入有误',
-      validationFailedTitle: '输入有误',
       loadFailedTitle: '加载失败',
       loadChunksFailedTitle: '加载切片失败',
       loadTimelineFailedTitle: '加载时间线失败',
     },
     tags: {
       title: '标签',
-      description: '用于分组与检索过滤（document_user.tags）',
-      empty: '暂无标签（可用于知识库分组、检索过滤与运维标记）',
+      description: '用于文档分组与检索过滤。',
+      empty: '暂无标签',
     },
     timeline: {
       description: '文档处理时间线（可回溯）',
       refresh: '刷新时间线',
-      emptyDescription: '该文档暂未产生可回溯的事件记录（或审计未启用）。',
+      emptyDescription: '暂无文档处理记录。请确认是否已启用审计。',
       listAriaLabel: '文档时间线',
       synthetic: '系统生成',
       meta: {
@@ -161,33 +189,33 @@ DocumentDetailDialog: {
     },
     lifecycle: {
       title: '生命周期',
-      description: 'owner / review_due / authority / supersedes（用于治理与检索偏好）',
+      description: '维护发布状态、负责人、复核时间和检索权威度。',
       readOnly: '只读：需要数据集编辑权限',
       permissionChecking: '权限确认中',
-      empty: '暂无 lifecycle 信息（可用于 stale 报表、检索偏好与治理审计）',
+      notProvided: '未设置',
+      retry: '重新读取',
       fields: {
         publicationStatus: {
-          label: 'publication_status',
-          placeholder: 'published',
+          label: '发布状态',
           options: {
-            published: 'published（默认参与检索）',
-            draft: 'draft（默认不参与检索）',
-            deprecated: 'deprecated（默认不参与检索）',
+            published: '已发布（参与检索）',
+            draft: '草稿（不参与检索）',
+            deprecated: '已停用（不参与检索）',
           },
         },
         owner: {
-          label: 'owner',
-          placeholder: '团队/负责人（建议使用 team alias，避免个人邮箱）',
+          label: '负责人',
+          placeholder: '团队或负责人',
         },
         reviewDueAt: {
-          label: 'review_due_at',
+          label: '复核时间',
         },
         authorityLevel: {
-          label: 'authority_level',
+          label: '权威度',
           placeholder: '0-100',
         },
         supersedesDocumentId: {
-          label: 'supersedes_document_id',
+          label: '替代的文档',
           placeholder: '被替代的旧文档 UUID（可留空）',
         },
       },
@@ -200,7 +228,8 @@ DocumentDetailDialog: {
       chunkCount: '{count} 个切片',
     },
     chunks: {
-      emptyDescription: '该文档暂未生成可用切片，或后端未返回切片内容。',
+      editContentLabel: '编辑切片 {index} 的内容',
+      emptyDescription: '暂无切片内容。',
       searchEmptyTitle: '未找到匹配切片',
       searchEmptyDescription: '尝试更换关键词，或清空筛选条件。',
       clearFilter: '清空筛选',
@@ -229,14 +258,19 @@ DocumentDetailDialog: {
       },
     },
   },
-DocumentAccessDialog: {
+  DocumentAccessDialog: {
     trigger: '访问控制',
     title: '文档访问控制',
-    description: '用于“安全裁剪（security trimming）”：在数据集权限基础上进一步限制该文档的可见范围。',
-    ownerLabel: 'Owner',
+    description: '在数据集权限基础上，进一步设置此文档的可见范围。',
+    ownerLabel: '所有者',
+    ownerNotSet: '未设置',
+    loading: '正在读取访问设置…',
+    errors: {
+      save: '保存访问设置失败',
+      limit: '允许成员和允许组分别最多填写 200 个，请减少后再保存。',
+    },
     mode: {
       label: '模式',
-      placeholder: '选择访问模式',
       options: {
         inherit: '继承数据集',
         onlyMe: '仅我可见',
@@ -257,9 +291,10 @@ DocumentAccessDialog: {
     actions: {
       save: '保存',
       cancel: '取消',
+      retry: '重新读取',
     },
   },
-DocumentVersionsDialog: {
+  DocumentVersionsDialog: {
     trigger: '版本',
     title: '文档版本（pipeline）',
     description: '用于运维/回滚：不同 pipeline 配置会生成不同的 pipeline_hash 版本；激活版本会影响检索与引用。',
@@ -269,6 +304,8 @@ DocumentVersionsDialog: {
     },
     currentHash: {
       label: '当前激活 pipeline_hash',
+      loading: '尚未读取',
+      empty: '未激活版本',
     },
     activeBadge: 'ACTIVE',
     meta: {
@@ -279,7 +316,6 @@ DocumentVersionsDialog: {
       retry: '重试',
       copyActiveHash: '复制 pipeline_hash',
       copyVersionHash: '复制版本 hash',
-      active: '已激活',
       activate: '激活',
       delete: '删除',
     },
@@ -302,7 +338,7 @@ DocumentVersionsDialog: {
       description: '当前文档还没有可用的 pipeline 版本记录（或尚未生成切片）。',
     },
     hint: '提示：激活/删除版本需要对文档所属数据集有写权限；删除操作不可恢复。',
-  }
+  },
 } as const
 
 export default documentsMessages

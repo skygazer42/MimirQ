@@ -1,4 +1,3 @@
-
 import importlib
 from dataclasses import dataclass
 from types import SimpleNamespace
@@ -8,13 +7,13 @@ import httpx
 import pytest
 from langchain_core.documents import Document
 
-from app.rag.core import vision_reader
 from app.rag.embedding.providers import _embedding_http
 from app.rag.kg.search.graph_embeddings import (
     WalkHashParams,
     build_entity_event_adjacency,
     compute_walkhash_embeddings,
 )
+from app.rag.llm import vision_reader
 
 
 @dataclass
@@ -216,8 +215,7 @@ def test_post_with_retries_sync_retries_retry_after(monkeypatch: pytest.MonkeyPa
         url="https://example.invalid/embeddings",
         request_kwargs={},
         parse_response=lambda resp: resp.json()["ok"],
-        concurrency=_embedding_http.EmbeddingHTTPConcurrency("test"),
-        schema_errors=(ValueError,),
+        concurrency=_embedding_http.EmbeddingHTTPConcurrency(),
     )
 
     assert parsed is True
@@ -248,8 +246,7 @@ async def test_post_with_retries_async_retries_request_error(monkeypatch: pytest
         url="https://example.invalid/embeddings",
         request_kwargs={},
         parse_response=lambda resp: resp.json()["ok"],
-        concurrency=_embedding_http.EmbeddingHTTPConcurrency("test"),
-        schema_errors=(ValueError,),
+        concurrency=_embedding_http.EmbeddingHTTPConcurrency(),
     )
 
     assert parsed == "done"

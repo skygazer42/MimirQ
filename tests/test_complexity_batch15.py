@@ -5,8 +5,8 @@ from types import SimpleNamespace
 import pytest
 from PIL import Image
 
-from app.core.config import settings
-from app.parsing.enrich import (
+from app.infrastructure.config import settings
+from app.rag.ingestion.parsing.enrich import (
     chart_to_data,
     formula_ocr,
     image_caption,
@@ -14,8 +14,8 @@ from app.parsing.enrich import (
     image_understanding,
     vlm_image_caption,
 )
-from app.parsing.enrich.table_cell_schema import TableCell, TableExtraction
-from app.parsing.enrich.table_image_algorithms import bind_ocr_lines_to_table_cells
+from app.rag.ingestion.parsing.enrich.table_cell_schema import TableCell, TableExtraction
+from app.rag.ingestion.parsing.enrich.table_image_algorithms import bind_ocr_lines_to_table_cells
 
 
 def _write_png(path: Path, *, color: str = "white", size: tuple[int, int] = (8, 8)) -> bytes:

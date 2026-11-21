@@ -6,6 +6,7 @@
  */
 
 const nextCoreWebVitals = require('eslint-config-next/core-web-vitals')
+const prettier = require('eslint-config-prettier/flat')
 
 module.exports = [
   // Ignore generated/build artifacts.
@@ -13,7 +14,6 @@ module.exports = [
     ignores: [
       '.next/**',
       '.next_*/**',
-      '.next_build/**',
       'out/**',
       'dist/**',
       'coverage/**',
@@ -34,6 +34,24 @@ module.exports = [
       'react-hooks/set-state-in-effect': 'off',
       'react-hooks/immutability': 'error',
       'react-hooks/preserve-manual-memoization': 'off',
+      'react/function-component-definition': [
+        'error',
+        { namedComponents: 'function-declaration', unnamedComponents: 'arrow-function' },
+      ],
     },
   },
+  {
+    files: ['**/*.{ts,tsx}'],
+    rules: {
+      '@typescript-eslint/consistent-type-definitions': ['error', 'type'],
+    },
+  },
+  {
+    files: ['**/*.d.ts'],
+    rules: {
+      // Ambient interfaces augment library declarations.
+      '@typescript-eslint/consistent-type-definitions': 'off',
+    },
+  },
+  prettier,
 ]

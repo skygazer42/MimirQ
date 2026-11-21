@@ -1,0 +1,243 @@
+"""
+SOP / procedure step-aware chunking strategy.
+
+Targets documents that describe procedures with explicit step markers:
+- Step 1: ...
+- 步骤一：...
+
+The chunker splits by detected steps first, then applies a fallback
+RecursiveCharacterTextSplitter inside each step to respect chunk_size and
+chunk_overlap while preserving offsets.
+"""
+
+from dataclasses import dataclass
+from typing import Any
+
+from langchain_core.documents import Document
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+
+from app.rag.ingestion.chunking.base import BaseChunker
+from app.rag.ingestion.chunking.utils.source_lines import apply_splitter_span
+
+
+@dataclass(frozen=True)
+class StepHeading:
+    start: int
+    text: str
+    step_no: str
+    title: str | None
+
+
+@dataclass(frozen=True)
+class _Section:
+    start: int
+    end: int
+    heading: StepHeading | None
+
+
+_CN_STEP_NUM_CHARS = frozenset("0123456789一二三四五六七八九十百千")
+
+
+def _split_step_tail(num: str, tail: str) -> tuple[str, str | None]:
+    title = tail.strip() or None
+    return num, title
+
+
+def _parse_en_step_heading(line: str) -> tuple[str, str | None] | None:
+    low = line.casefold()
+    if not low.startswith("step"):
+        return None
+
+    rest = line[len("step") :].strip()
+    if not rest:
+        return None
+
+    i = 0
+    while i < len(rest) and i < 3 and rest[i].isdigit():
+        i += 1
+    if i == 0:
+        return None
+
+    num = rest[:i]
+    tail = rest[i:].lstrip()
+    if tail[:1] in (":", "：", ".", "-"):
+        tail = tail[1:].lstrip()
+    return _split_step_tail(num, tail)
+
+
+def _parse_cn_step_heading(line: str) -> tuple[str, str | None] | None:
+    if not line.startswith("步骤"):
+        return None
+
+    rest = line[len("步骤") :].strip()
+    if not rest:
+        return None
+
+    i = 0
+    while i < len(rest) and i < 4 and rest[i] in _CN_STEP_NUM_CHARS:
+        i += 1
+    if i == 0:
+        return None
+
+    num = rest[:i]
+    tail = rest[i:].lstrip()
+    if tail[:1] in (":", "：", ".", "-"):
+        tail = tail[1:].lstrip()
+    return _split_step_tail(num, tail)
+
+
+def _append_split_chunks(
+    *,
+    out: list[Document],
+    splitter: RecursiveCharacterTextSplitter,
+    text: str,
+    base_meta: dict[str, Any],
+    base_start: int,
+    heading: StepHeading | None,
+    fallback: bool = False,
+) -> None:
+    split_docs = splitter.create_documents(texts=[text], metadatas=[base_meta])
+    for sd in split_docs:
+        local_start = sd.metadata.pop("start_index", None)
+        meta: dict[str, Any] = dict(base_meta)
+        meta.update(sd.metadata)
+        meta["chunk_strategy"] = "sop_steps"
+        apply_splitter_span(meta, start_index=local_start, content=sd.page_content, base_offset=base_start)
+        if fallback:
+            meta["sop_fallback"] = True
+        if heading is not None:
+            meta["sop_step_heading"] = heading.text
+            meta["sop_step_no"] = heading.step_no
+            if heading.title:
+                meta["sop_step_title"] = heading.title
+        out.append(Document(page_content=sd.page_content, metadata=meta))
+
+
+def _parse_step_heading(line: str) -> tuple[str, str | None] | None:
+    """
+    Parse a step heading line like:
+      Step 1: Title
+      步骤一：标题
+
+    Returns (num, title).
+
+    We intentionally avoid regex to prevent catastrophic-backtracking hotspots.
+    """
+    s = line.strip()
+    if not s:
+        return None
+
+    return _parse_en_step_heading(s) or _parse_cn_step_heading(s)
+
+
+def _iter_steps(text: str) -> list[StepHeading]:
+    steps: list[StepHeading] = []
+    if not text:
+        return steps
+
+    offset = 0
+    for raw_line in text.splitlines(keepends=True):
+        line_start = offset
+        offset += len(raw_line)
+
+        line = raw_line.strip()
+        if not line:
+            continue
+        if len(line) > 200:
+            continue
+
+        parsed = _parse_step_heading(line)
+        if not parsed:
+            continue
+
+        num, title = parsed
+
+        steps.append(
+            StepHeading(
+                start=line_start,
+                text=line,
+                step_no=num,
+                title=title,
+            )
+        )
+
+    return steps
+
+
+def _build_sections(text: str, steps: list[StepHeading]) -> list[_Section]:
+    if not steps:
+        return [_Section(start=0, end=len(text), heading=None)]
+
+    sections: list[_Section] = []
+    first = steps[0]
+    if first.start > 0:
+        sections.append(_Section(start=0, end=first.start, heading=None))
+    for idx, h in enumerate(steps):
+        start = h.start
+        end = steps[idx + 1].start if idx + 1 < len(steps) else len(text)
+        sections.append(_Section(start=start, end=end, heading=h))
+    return sections
+
+
+def looks_like_sop(text: str) -> bool:
+    if not text or len(text) < 200:
+        return False
+    steps = _iter_steps(text)
+    return len(steps) >= 3
+
+
+class SOPStepsChunker(BaseChunker):
+    def __init__(self, chunk_size: int, chunk_overlap: int) -> None:
+        self.chunk_size = int(chunk_size)
+        self.chunk_overlap = int(chunk_overlap)
+
+        self._fallback_splitter = RecursiveCharacterTextSplitter(
+            chunk_size=self.chunk_size,
+            chunk_overlap=self.chunk_overlap,
+            separators=["\n\n", "\n", "。", "；", "，", ". ", "!", "?", " ", ""],
+            length_function=len,
+            add_start_index=True,
+        )
+
+    def split_documents(self, documents: list[Document]) -> list[Document]:
+        out: list[Document] = []
+
+        for doc in documents:
+            text = doc.page_content
+            base_meta = dict(doc.metadata)
+            if not text.strip():
+                continue
+
+            steps = _iter_steps(text)
+            if not steps:
+                _append_split_chunks(
+                    out=out,
+                    splitter=self._fallback_splitter,
+                    text=text,
+                    base_meta=base_meta,
+                    base_start=0,
+                    heading=None,
+                    fallback=True,
+                )
+                continue
+
+            for section in _build_sections(text, steps):
+                sec_text = text[section.start : section.end]
+                if not sec_text.strip():
+                    continue
+
+                _append_split_chunks(
+                    out=out,
+                    splitter=self._fallback_splitter,
+                    text=sec_text,
+                    base_meta=base_meta,
+                    base_start=section.start,
+                    heading=section.heading,
+                )
+
+        for idx, chunk in enumerate(out):
+            meta = dict(chunk.metadata)
+            meta["chunk_index"] = idx
+            chunk.metadata = meta
+
+        return out

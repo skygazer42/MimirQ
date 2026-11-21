@@ -2,19 +2,32 @@
 LangChain-compatible embeddings adapter.
 
 Adapts app.rag.embedding models to LangChain's Embeddings interface
-for use with LangChain vector stores (Milvus, FAISS, Chroma, etc.).
+for use with Milvus and the development memory vector store.
 """
 
 import hashlib
 import json
+from typing import TYPE_CHECKING
 
+import httpx
 from langchain_core.embeddings import Embeddings
+from redis.exceptions import RedisError
 
-from app.core.config import settings
-from app.core.redis_client import LazyRedisClient
+from app.infrastructure.config import settings
+from app.infrastructure.redis.client import LazyRedisClient
+from app.infrastructure.runtime.async_bridge import run_blocking_in_thread
 from app.rag.embedding.base import BaseEmbeddingModel
-from app.rag.embedding.utils import current_embedding_space_hash, logger
-from app.services.metrics_logger import log_metrics
+from app.rag.embedding.utils import (
+    current_embedding_space_hash,
+    embedding_space_hash_for_config,
+    logger,
+    normalize_embedding_vectors,
+    validate_embedding_vectors,
+)
+from app.services.observability.metrics_log import log_metrics
+
+if TYPE_CHECKING:
+    from redis import Redis
 
 _redis_client_slot = LazyRedisClient(
     url=lambda: settings.REDIS_URL,
@@ -35,92 +48,49 @@ _invalidate_redis_client = _redis_client_slot.invalidate
 def _embed_cache_key(text: str, *, space: str | None = None) -> str:
     # Bind to the current embedding "space" (provider/model/base_url) to avoid serving
     # incompatible vectors after a model/endpoint change.
-    space = space or current_embedding_space_hash()
+    space = current_embedding_space_hash() if space is None else space
     digest = hashlib.sha256(text.encode("utf-8", "ignore")).hexdigest()
-    prefix = getattr(settings, "EMBEDDING_CACHE_PREFIX", "emb")
-    return f"{prefix}:{space}:{digest}"
+    prefix = settings.EMBEDDING_CACHE_PREFIX
+    return ":".join((prefix, space, digest))
 
 
-def _document_cache_client() -> object | None:
-    if bool(getattr(settings, "EMBEDDING_CACHE_ENABLED", True)):
+def _document_cache_client() -> "Redis | None":
+    if settings.EMBEDDING_CACHE_ENABLED:
         return _get_redis_client()
     return None
 
 
-def _read_cached_document_vectors(client: object, keys: list[str]) -> list[bytes | None] | None:
-    try:
-        return client.mget(keys)
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("Embedding cache read failed (mget): %s", str(exc)[:200])
-        _invalidate_redis_client()
-        return None
-
-
-def _missing_document_vectors(
+def _write_cached_vectors(
     *,
-    texts: list[str],
-    cached_raw: list[bytes | None],
-) -> tuple[list[list[float] | None], list[tuple[int, str]], int, int, int]:
-    cache_hits = 0
-    cache_misses = 0
-    cache_corrupt = 0
-    missing: list[tuple[int, str]] = []
-    out: list[list[float] | None] = [None] * len(texts)
-
-    for i, raw in enumerate(cached_raw):
-        if raw:
-            try:
-                out[i] = json.loads(raw)
-                cache_hits += 1
-                continue
-            except Exception:  # noqa: BLE001
-                cache_corrupt += 1
-        cache_misses += 1
-        missing.append((i, texts[i]))
-
-    return out, missing, cache_hits, cache_misses, cache_corrupt
-
-
-def _write_missing_document_vectors(
-    *,
-    client: object,
+    client: "Redis",
     keys: list[str],
-    missing: list[tuple[int, str]],
-    computed: list[list[float]],
-    out: list[list[float] | None],
+    vectors: list[list[float]],
 ) -> None:
-    ttl = int(getattr(settings, "EMBEDDING_CACHE_TTL_SEC", 7 * 24 * 3600) or 0)
+    payloads = [json.dumps(vector, separators=(",", ":"), allow_nan=False).encode("utf-8") for vector in vectors]
+    ttl = settings.EMBEDDING_CACHE_TTL_SEC
     try:
-        pipe = client.pipeline(transaction=False)
-        for (idx, _text), vec in zip(missing, computed, strict=False):
-            out[idx] = vec
-            try:
-                payload = json.dumps(vec, separators=(",", ":")).encode("utf-8")
+        with client.pipeline(transaction=False) as pipe:
+            for key, payload in zip(keys, payloads, strict=True):
                 if ttl > 0:
-                    pipe.set(keys[idx], payload, ex=ttl)
+                    pipe.set(key, payload, ex=ttl)
                 else:
-                    pipe.set(keys[idx], payload)
-            except Exception as exc:  # noqa: BLE001
-                # Cache failures do not affect main flow.
-                logger.debug("Embedding cache write payload failed; continuing without cached vector: %s", exc)
-        try:
+                    pipe.set(key, payload)
             pipe.execute()
-        except Exception:  # noqa: BLE001
-            _invalidate_redis_client()
-    except Exception:  # noqa: BLE001
+    except RedisError as exc:
+        logger.warning("Embedding cache write failed: %s", type(exc).__name__)
         _invalidate_redis_client()
 
 
-def _log_document_cache_metrics(*, total: int, hits: int, misses: int, corrupt: int) -> None:
+def _log_cache_metrics(*, op: str, total: int, hits: int, misses: int, corrupt: int) -> None:
     try:
         log_metrics(
             {
                 "event": "embedding.cache",
-                "op": "documents",
-                "total": int(total),
-                "hits": int(hits),
-                "misses": int(misses),
-                "corrupt": int(corrupt),
+                "op": op,
+                "total": total,
+                "hits": hits,
+                "misses": misses,
+                "corrupt": corrupt,
             }
         )
     except Exception as exc:
@@ -146,7 +116,14 @@ class LangChainEmbeddingsAdapter(Embeddings):
         vectorstore = Milvus(embedding_function=embeddings, ...)
     """
 
-    def __init__(self, model: BaseEmbeddingModel, normalize: bool = True, cache_space_hash: str | None = None):
+    def __init__(
+        self,
+        model: BaseEmbeddingModel,
+        normalize: bool = True,
+        cache_space_hash: str | None = None,
+        *,
+        use_cache: bool = True,
+    ) -> None:
         """Initialize the adapter.
 
         Args:
@@ -156,145 +133,98 @@ class LangChainEmbeddingsAdapter(Embeddings):
         self._model = model
         self._normalize = normalize
         self._dimension = model.dimension
-        self._cache_space_hash = str(cache_space_hash or "").strip() or None
+        self._cache_space_hash = cache_space_hash
+        if cache_space_hash is None:
+            self._cache_space_hash = embedding_space_hash_for_config(
+                provider=type(model).__name__, model=model.model, base_url=model.base_url
+            )
+        self._use_cache = use_cache
 
     def _cache_key(self, text: str) -> str:
-        if self._cache_space_hash:
-            return _embed_cache_key(text, space=self._cache_space_hash)
-        return _embed_cache_key(text)
+        return _embed_cache_key(text, space=self._cache_space_hash)
 
-    def embed_documents(self, texts: list[str]) -> list[list[float]]:
-        """Embed a list of text documents.
-
-        Args:
-            texts: List of text strings
-
-        Returns:
-            List of embedding vectors
-        """
+    def _embed(self, texts: list[str], *, op: str) -> list[list[float]]:
+        """Compute missing vectors and replace corrupt optional cache entries."""
         if not texts:
             return []
-        client = _document_cache_client()
-
-        embeddings: list[list[float]]
+        client = _document_cache_client() if self._use_cache else None
+        cache_hits = 0
+        cache_misses = 0
+        cache_corrupt = 0
         if client is None:
             embeddings = self._model.encode(texts)
         else:
-            keys = [self._cache_key(t) for t in texts]
-            cached_raw = _read_cached_document_vectors(client, keys)
-            if cached_raw is None:
-                embeddings = self._model.encode(texts)
-                if self._normalize:
-                    embeddings = self._normalize_vectors(embeddings)
-                return embeddings
+            keys = [self._cache_key(text) for text in texts]
+            try:
+                cached_raw = client.mget(keys)
+            except RedisError as exc:
+                logger.warning("Embedding cache read failed: %s", type(exc).__name__)
+                _invalidate_redis_client()
+                cached_raw = [None] * len(texts)
 
-            out, missing, cache_hits, cache_misses, cache_corrupt = _missing_document_vectors(
-                texts=texts,
-                cached_raw=cached_raw,
-            )
+            vectors_by_index: dict[int, list[float]] = {}
+            missing: list[int] = []
+            for index, raw in enumerate(cached_raw):
+                if raw is not None:
+                    try:
+                        vectors_by_index[index] = validate_embedding_vectors(
+                            [json.loads(raw)], count=1, dimension=self._dimension
+                        )[0]
+                    except ValueError:
+                        cache_corrupt += 1
+                    else:
+                        cache_hits += 1
+                        continue
+                missing.append(index)
+            cache_misses = len(missing)
             if missing:
-                missing_texts = [t for _, t in missing]
-                computed = self._model.encode(missing_texts)
-                _write_missing_document_vectors(
+                computed = validate_embedding_vectors(
+                    self._model.encode([texts[index] for index in missing]),
+                    count=len(missing),
+                    dimension=self._dimension,
+                )
+                vectors_by_index.update(zip(missing, computed, strict=True))
+
+            embeddings = [vectors_by_index[index] for index in range(len(texts))]
+            if self._dimension is None:
+                embeddings = validate_embedding_vectors(embeddings, count=len(texts))
+            if missing:
+                _write_cached_vectors(
                     client=client,
-                    keys=keys,
-                    missing=missing,
-                    computed=computed,
-                    out=out,
+                    keys=[keys[index] for index in missing],
+                    vectors=[embeddings[index] for index in missing],
                 )
 
-            embeddings = [v if v is not None else [] for v in out]
-            _log_document_cache_metrics(
-                total=len(texts),
-                hits=cache_hits,
-                misses=cache_misses,
-                corrupt=cache_corrupt,
-            )
+        _log_cache_metrics(op=op, total=len(texts), hits=cache_hits, misses=cache_misses, corrupt=cache_corrupt)
+        return normalize_embedding_vectors(embeddings) if self._normalize else embeddings
 
-        if self._normalize:
-            embeddings = self._normalize_vectors(embeddings)
-
-        return embeddings
+    def embed_documents(self, texts: list[str]) -> list[list[float]]:
+        return self._embed(texts, op="documents")
 
     def embed_query(self, text: str) -> list[float]:
-        """Embed a single query text.
-
-        Args:
-            text: Query text string
-
-        Returns:
-            Embedding vector
-        """
-        if bool(getattr(settings, "EMBEDDING_CACHE_ENABLED", True)):
-            client = _get_redis_client()
-        else:
-            client = None
-
-        cache_hits = 0
-        cache_misses = 0
-
-        if client is None:
-            embeddings = self._model.encode([text])
-        else:
-            key = self._cache_key(text)
-            try:
-                raw = client.get(key)
-            except Exception as exc:  # noqa: BLE001
-                logger.warning("Embedding cache read failed (get): %s", str(exc)[:200])
-                _invalidate_redis_client()
-                raw = None
-            if raw:
-                try:
-                    vec = json.loads(raw)
-                    embeddings = [vec]
-                    cache_hits = 1
-                except Exception:  # noqa: BLE001
-                    cache_misses = 1
-                    embeddings = self._model.encode([text])
-            else:
-                cache_misses = 1
-                embeddings = self._model.encode([text])
-                try:
-                    ttl = int(getattr(settings, "EMBEDDING_CACHE_TTL_SEC", 7 * 24 * 3600) or 0)
-                    payload = json.dumps(embeddings[0], separators=(",", ":")).encode("utf-8")
-                    if ttl > 0:
-                        client.set(key, payload, ex=ttl)
-                    else:
-                        client.set(key, payload)
-                except Exception:  # noqa: BLE001
-                    _invalidate_redis_client()
-
-        try:
-            log_metrics(
-                {
-                    "event": "embedding.cache",
-                    "op": "query",
-                    "total": 1,
-                    "hits": int(cache_hits),
-                    "misses": int(cache_misses),
-                }
-            )
-        except Exception as exc:
-            logger.debug("Ignoring non-critical embedding adapter fallback failure: %s", exc)
-
-        if self._normalize:
-            embeddings = self._normalize_vectors(embeddings)
-
-        return embeddings[0]
-
-    def _normalize_vectors(self, vectors: list[list[float]]) -> list[list[float]]:
-        """Normalize embeddings to unit length."""
-        import numpy as np
-
-        array = np.array(vectors, dtype=float)
-        norms = np.linalg.norm(array, axis=1, keepdims=True)
-        norms[norms == 0] = 1.0
-        return (array / norms).tolist()
+        return self._embed([text], op="query")[0]
 
     @property
-    def dimension(self) -> int:
+    def dimension(self) -> int | None:
         """Get the embedding dimension."""
         return self._dimension
+
+    async def aembed_documents(self, texts: list[str]) -> list[list[float]]:
+        """Use native provider IO, retaining the existing synchronous cache boundary."""
+        if self._use_cache and settings.EMBEDDING_CACHE_ENABLED:
+            return await run_blocking_in_thread(self.embed_documents, texts)
+        if not texts:
+            return []
+        vectors = await self._model.aencode(texts)
+        return normalize_embedding_vectors(vectors) if self._normalize else vectors
+
+    async def aembed_query(self, text: str) -> list[float]:
+        if self._use_cache and settings.EMBEDDING_CACHE_ENABLED:
+            return await run_blocking_in_thread(self.embed_query, text)
+        vectors = await self._model.aencode([text])
+        if self._normalize:
+            vectors = normalize_embedding_vectors(vectors)
+        return vectors[0]
 
 
 def create_langchain_embeddings(model_id: str, normalize: bool = True) -> LangChainEmbeddingsAdapter:
@@ -324,54 +254,62 @@ def create_langchain_embeddings(model_id: str, normalize: bool = True) -> LangCh
 def create_langchain_embeddings_from_config(
     provider: str,
     model: str,
-    api_key: str = "",
-    base_url: str = "",
-    dimension: int = None,
+    api_key: str | None = None,
+    base_url: str | None = None,
+    dimension: int | None = None,
     cache_space_hash: str | None = None,
+    *,
+    http_client: httpx.Client | None = None,
+    http_async_client: httpx.AsyncClient | None = None,
+    use_cache: bool = True,
 ) -> LangChainEmbeddingsAdapter:
-    """Create LangChain embeddings from config (for compatibility with milvus.py).
-
-    This function provides backward compatibility with the old embedding setup
-    in app/storage/vector/milvus.py.
+    """Create configured embeddings, borrowing explicitly supplied HTTP clients.
 
     Args:
-        provider: Provider name (e.g., "local", "openai_compatible", "dashscope")
+        provider: Service provider name (e.g., "openai_compatible", "dashscope")
         model: Model name
         api_key: API key (optional)
         base_url: API base URL (optional)
         dimension: Embedding dimension (optional)
+        http_client: Optional caller-owned synchronous transport.
+        http_async_client: Optional caller-owned transport for the caller's event loop.
 
     Returns:
         LangChainEmbeddingsAdapter instance
     """
+    from app.infrastructure.model_policy import reject_retired_provider
     from app.rag.embedding.providers import (
         DashScopeEmbedding,
         DeterministicTestEmbedding,
         OllamaEmbedding,
         OpenAICompatibleEmbedding,
-        SentenceTransformerEmbedding,
     )
 
     provider = provider.lower()
-    base_url = (base_url or "").strip()
-    if provider in {"openai", "openai_compatible", "dashscope"}:
+    reject_retired_provider(provider, capability="embedding")
+    if base_url is not None:
+        base_url = base_url.strip()
+    if provider in {"openai", "openai_compatible", "dashscope"} and base_url is not None:
         stripped = base_url.rstrip("/")
         if stripped.endswith("/v1"):
             base_url = stripped + "/embeddings"
 
+    embedding_model: BaseEmbeddingModel
     if provider == "deterministic_test":
         embedding_model = DeterministicTestEmbedding(model=model, dimension=dimension)
-    elif provider == "local":
-        embedding_model = SentenceTransformerEmbedding(
-            model=model, dimension=dimension, base_url=base_url, api_key=api_key
+    else:
+        provider_class = {"dashscope": DashScopeEmbedding, "ollama": OllamaEmbedding}.get(
+            provider, OpenAICompatibleEmbedding
         )
-    elif provider == "dashscope":
-        embedding_model = DashScopeEmbedding(model=model, dimension=dimension, base_url=base_url, api_key=api_key)
-    elif provider == "ollama":
-        embedding_model = OllamaEmbedding(model=model, dimension=dimension, base_url=base_url, api_key=api_key)
-    else:  # openai_compatible, openai, etc.
-        embedding_model = OpenAICompatibleEmbedding(
-            model=model, dimension=dimension, base_url=base_url, api_key=api_key
+        embedding_model = provider_class(
+            model=model,
+            dimension=dimension,
+            base_url=base_url,
+            api_key=api_key,
+            http_client=http_client,
+            http_async_client=http_async_client,
         )
 
-    return LangChainEmbeddingsAdapter(embedding_model, normalize=True, cache_space_hash=cache_space_hash)
+    return LangChainEmbeddingsAdapter(
+        embedding_model, normalize=True, cache_space_hash=cache_space_hash, use_cache=use_cache
+    )

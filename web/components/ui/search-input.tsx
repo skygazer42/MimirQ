@@ -1,66 +1,83 @@
 'use client'
 
-import * as React from "react"
-import { Search, X } from "lucide-react"
+import * as React from 'react'
+import { Search, X } from '@/components/icons'
 import { useTranslations } from 'next-intl'
 
-import { IconButton } from "@/components/ui/icon-button"
-import { Input } from "@/components/ui/input"
-import { assignRef } from "@/lib/radix-utils"
-import { cn } from "@/lib/utils"
+import { IconButton } from '@/components/ui/icon-button'
+import { Input } from '@/components/ui/input'
+import { assignRef } from '@/lib/radix-utils'
+import { cn } from '@/lib/utils'
 
-export type SearchInputProps = Readonly<Omit<
-  React.InputHTMLAttributes<HTMLInputElement>,
-  "type" | "value" | "onChange"
-> & {
-  value: string
-  onValueChange: (next: string) => void
-  containerClassName?: string
-  inputClassName?: string
-  onClear?: () => void
-}>
+type SearchInputProps = Readonly<
+  Omit<React.InputHTMLAttributes<HTMLInputElement>, 'type' | 'value' | 'defaultValue' | 'onChange'> & {
+    value: string
+    onValueChange: (next: string) => void
+    containerClassName?: string
+    inputClassName?: string
+    onClear?: () => void
+  }
+>
 
 export const SearchInput = React.forwardRef<HTMLInputElement, SearchInputProps>(function SearchInput(
   {
     value,
     onValueChange,
+    className,
     containerClassName,
     inputClassName,
     onClear,
     placeholder,
+    disabled,
+    readOnly,
     ...props
   },
-  forwardedRef
+  forwardedRef,
 ) {
   const t = useTranslations('CommonUi')
   const inputRef = React.useRef<HTMLInputElement | null>(null)
   const resolvedPlaceholder = placeholder ?? t('searchInput.placeholder')
 
-  const setRefs = (node: HTMLInputElement | null) => {
-    inputRef.current = node
-    assignRef(forwardedRef, node)
-  }
+  const setRefs = React.useCallback(
+    (node: HTMLInputElement | null) => {
+      inputRef.current = node
+      const cleanup = assignRef(forwardedRef, node)
+      if (typeof cleanup !== 'function') return
+      return () => {
+        inputRef.current = null
+        cleanup()
+      }
+    },
+    [forwardedRef],
+  )
 
   return (
-    <div className={cn("relative [&:has(input:focus)_svg]:text-primary", containerClassName)}>
+    <div className={cn('relative [&:has(input:focus)_svg]:text-primary', containerClassName)}>
       <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground/70" />
       <Input
         ref={setRefs}
         type="search"
         value={value}
+        disabled={disabled}
+        readOnly={readOnly}
         onChange={(e) => onValueChange(e.target.value)}
         placeholder={resolvedPlaceholder}
-        className={cn("pl-9 pr-10", inputClassName)}
+        className={cn(
+          'pl-9 pr-10 [&::-webkit-search-cancel-button]:appearance-none [&::-webkit-search-decoration]:appearance-none',
+          className,
+          inputClassName,
+        )}
         {...props}
       />
-      {value ? (
+      {value !== '' ? (
         <IconButton
           label={t('searchInput.clearLabel')}
           type="button"
+          disabled={disabled || readOnly}
           variant="ghost"
           className="absolute right-1.5 top-1/2 size-7 -translate-y-1/2 text-muted-foreground hover:text-foreground hover:bg-muted/60"
           onClick={() => {
-            onValueChange("")
+            onValueChange('')
             onClear?.()
             inputRef.current?.focus()
           }}
@@ -72,4 +89,4 @@ export const SearchInput = React.forwardRef<HTMLInputElement, SearchInputProps>(
   )
 })
 
-SearchInput.displayName = "SearchInput"
+SearchInput.displayName = 'SearchInput'

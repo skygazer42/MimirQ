@@ -18,7 +18,7 @@ sidebar_position: 7
 | POST | 否 | **不安全** | 可能创建重复资源 |
 
 :::warning 非幂等 POST
-MimirQ 中创建数据集、上传文档等 POST 操作**默认非幂等**。网络超时后盲目重试可能导致重复资源。
+Ragvia 中创建数据集、上传文档等 POST 操作**默认非幂等**。网络超时后盲目重试可能导致重复资源。
 :::
 
 ## 幂等键（Idempotency-Key）

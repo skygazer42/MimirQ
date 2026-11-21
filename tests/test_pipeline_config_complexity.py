@@ -1,7 +1,7 @@
 import re
 
-from app.services.pipeline_config import _sanitize_regex_rules, build_pipeline_metadata
-from app.types.pipeline import PipelineOptions
+from app.services.pipelines.config import _sanitize_regex_rules, build_pipeline_metadata
+from app.types.pipeline_options import PipelineOptions
 
 
 def test_sanitize_regex_rules_skips_invalid_entries_and_truncates_replacement() -> None:

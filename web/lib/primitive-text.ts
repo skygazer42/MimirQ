@@ -1,3 +1,9 @@
+export function readNonEmptyString(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined
+  const text = value.trim()
+  return text.length === 0 ? undefined : text
+}
+
 export function toPrimitiveString(value: unknown, fallback = ''): string {
   if (typeof value === 'string') return value
   if (typeof value === 'number' || typeof value === 'boolean' || typeof value === 'bigint') return String(value)
@@ -7,11 +13,5 @@ export function toPrimitiveString(value: unknown, fallback = ''): string {
 
 export function toTrimmedPrimitiveString(value: unknown, fallback = ''): string {
   const trimmed = toPrimitiveString(value, fallback).trim()
-  return trimmed || fallback
-}
-
-export function toSingleLinePrimitiveString(value: unknown, fallback = ''): string {
-  return toTrimmedPrimitiveString(value, fallback)
-    .replaceAll(/\s+/g, ' ')
-    .trim()
+  return trimmed === '' ? fallback : trimmed
 }

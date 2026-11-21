@@ -1,9 +1,23 @@
 import argparse
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, TypedDict
 
 _SCHEMA = "mimirq.parsing_retrieval_proof_batch.v1"
+
+
+class _BatchCase(TypedDict):
+    id: str
+    input_file: str
+    queries_json: str
+    parser_backend: str
+    top_k: int
+    retrieval_mode: str
+    governance_rule_packs: list[str]
+    case_family: str
+    case_category: str
+    query_count: int
+    manifest_rel_path: str
 
 
 def _read_json(path: Path) -> Any:
@@ -41,7 +55,7 @@ def _derive_case_family(case_category: str) -> str:
 def _count_queries(path: Path) -> int:
     payload = _read_json(Path(path).resolve())
     if isinstance(payload, list):
-        return int(len(payload))
+        return len(payload)
     return 0
 
 
@@ -61,7 +75,7 @@ def build_batch_spec(
     resolved_manifest_path = Path(manifest_path).resolve()
     resolved_case_queries_path = Path(case_queries_path).resolve() if case_queries_path is not None else None
     manifest_dir = resolved_manifest_path.parent
-    cases: list[dict[str, Any]] = []
+    cases: list[_BatchCase] = []
     for row in rows:
         if not isinstance(row, dict):
             continue
@@ -95,7 +109,7 @@ def build_batch_spec(
             }
         )
 
-    query_count_total = int(sum(int(item.get("query_count") or 0) for item in cases))
+    query_count_total = sum(item["query_count"] for item in cases)
     return {
         "schema": _SCHEMA,
         "defaults": {
@@ -103,7 +117,7 @@ def build_batch_spec(
             "top_k": int(defaults_obj.get("top_k") or 1),
             "retrieval_mode": str(defaults_obj.get("retrieval_mode") or "keyword"),
         },
-        "cases_total": int(len(cases)),
+        "cases_total": len(cases),
         "query_count_total": query_count_total,
         "provenance": {
             "manifest_path": str(resolved_manifest_path),

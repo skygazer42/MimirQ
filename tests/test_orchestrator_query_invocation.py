@@ -1,6 +1,6 @@
 import pytest
 
-from app.rag.retrieval.orchestration.query_invocation import (
+from app.rag.retrieval.stages.search import (
     QueryInvocationRecordInput,
     RetrievalPerQueryItemInput,
     build_query_invocation_record,
@@ -40,7 +40,7 @@ def test_format_retrieval_error_truncates_message_to_contract_limit() -> None:
 
 
 def test_build_query_invocation_record_packages_item_error_and_docs(monkeypatch: pytest.MonkeyPatch) -> None:
-    from app.rag.retrieval.orchestration import query_invocation
+    from app.rag.retrieval.stages import search as query_invocation
 
     monkeypatch.setattr(query_invocation, "num_tokens_from_string", lambda text: len(text.split()))
     docs = ["doc-a", "doc-b"]

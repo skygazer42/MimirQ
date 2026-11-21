@@ -1,5 +1,5 @@
-import { type ClassValue, clsx } from "clsx"
-import { extendTailwindMerge } from "tailwind-merge"
+import { type ClassValue, clsx } from 'clsx'
+import { extendTailwindMerge } from 'tailwind-merge'
 
 // Teach tailwind-merge about our custom font-size scale so it won't confuse
 // `text-caption` / `text-compact` / etc. with text-color utilities.
@@ -21,12 +21,6 @@ export function detachPromise<T>(value: PromiseLike<T> | T): void {
   Promise.resolve(value).catch(() => {})
 }
 
-export function trimTrailingSlashes(value: string): string {
-  let out = String(value || '').trim()
-  while (out.endsWith('/')) out = out.slice(0, -1)
-  return out
-}
-
 /**
  * 格式化文件大小
  */
@@ -37,7 +31,7 @@ export function formatFileSize(bytes: number): string {
   const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB']
   const i = Math.min(Math.floor(Math.log(bytes) / Math.log(k)), sizes.length - 1)
 
-  return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i]
+  return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i]
 }
 
 /**
@@ -45,15 +39,14 @@ export function formatFileSize(bytes: number): string {
  */
 export function formatDate(dateString: string): string {
   const date = new Date(dateString)
-  const now = new Date()
-  const diff = now.getTime() - date.getTime()
+  const elapsedMs = Date.now() - date.getTime()
+  if (Number.isNaN(elapsedMs)) return dateString
 
-  const seconds = Math.floor(diff / 1000)
-  const minutes = Math.floor(seconds / 60)
+  const minutes = Math.floor(elapsedMs / 60_000)
   const hours = Math.floor(minutes / 60)
   const days = Math.floor(hours / 24)
 
-  if (days > 7) {
+  if (elapsedMs < 0 || days > 7) {
     return date.toLocaleDateString('zh-CN', {
       year: 'numeric',
       month: '2-digit',

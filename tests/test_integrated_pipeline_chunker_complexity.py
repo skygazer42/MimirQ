@@ -4,9 +4,9 @@ from types import SimpleNamespace
 
 import pytest
 
-book_chunker = import_module("app.third_party.integrated_pipeline.chunkers.book")
-email_chunker = import_module("app.third_party.integrated_pipeline.chunkers.email")
-laws_chunker = import_module("app.third_party.integrated_pipeline.chunkers.laws")
+book_chunker = import_module("app.rag.ingestion.parsing.files.book")
+email_chunker = import_module("app.rag.ingestion.parsing.files.email")
+laws_chunker = import_module("app.rag.ingestion.parsing.files.laws")
 
 
 def _callback_recorder():
@@ -177,8 +177,8 @@ def test_email_chunk_separates_plain_and_html_sections_and_appends_attachments(m
         recorded["attachment_call"] = (filename, payload, callback, dict(kwargs))
         return [{"content_with_weight": "attachment chunk", "docnm_kwd": filename}]
 
-    monkeypatch.setattr(email_chunker.TxtParser, "parser_txt", staticmethod(_txt_parser))
-    monkeypatch.setattr(email_chunker.HtmlParser, "parser_txt", staticmethod(_html_parser))
+    monkeypatch.setattr(email_chunker, "split_text_sections", _txt_parser)
+    monkeypatch.setattr(email_chunker, "extract_html_sections", _html_parser)
     monkeypatch.setattr(email_chunker, "naive_merge", _naive_merge)
     monkeypatch.setattr(email_chunker, "naive_chunk", _naive_chunk)
 
@@ -321,7 +321,7 @@ def test_laws_chunk_markdown_branch_uses_real_tokenization_and_positions(monkeyp
     recorded = {}
 
     _patch_tokenizer(monkeypatch, laws_chunker)
-    monkeypatch.setattr(laws_chunker, "get_text", lambda filename, binary: "Article 1\nBody line")
+    monkeypatch.setattr(laws_chunker, "read_text_source", lambda filename, binary: "Article 1\nBody line")
     monkeypatch.setattr(
         laws_chunker,
         "remove_contents_table",

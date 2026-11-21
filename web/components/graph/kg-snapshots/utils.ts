@@ -1,6 +1,7 @@
 import { toast } from 'sonner'
 
 import { reportClientError } from '@/lib/client-logging'
+import { downloadBlob } from '@/lib/download'
 import type { Dataset, Document } from '@/types'
 
 import { DELTA_TEXT_CLASSES } from './constants'
@@ -9,20 +10,15 @@ import type {
   DeltaDirection,
   PipelineCandidate,
   SnapshotDiffPayload,
-  SnapshotExactDiffSummary,
   SnapshotInlineStatTone,
-  SnapshotView,
+  SnapshotPayload,
 } from './types'
 
-export function prettyJson(value: unknown): string {
-  try {
-    return JSON.stringify(value, null, 2)
-  } catch {
-    return String(value)
-  }
+export function prettyJson(value: SnapshotPayload | SnapshotDiffPayload): string {
+  return JSON.stringify(value, null, 2)
 }
 
-export function primitiveDisplayString(value: unknown): string {
+function primitiveDisplayString(value: unknown): string {
   if (typeof value === 'string') return value.trim()
   if (typeof value === 'number' || typeof value === 'boolean' || typeof value === 'bigint') {
     return String(value).trim()
@@ -56,22 +52,15 @@ export function deltaSign(value: number): string {
 
 export function deltaFill(value: number): string {
   const direction = deltaDirection(value)
-  if (direction === 'positive') return '#10b981'
-  if (direction === 'negative') return '#f43f5e'
-  return '#94a3b8'
+  if (direction === 'positive') return 'hsl(var(--success))'
+  if (direction === 'negative') return 'hsl(var(--destructive))'
+  return 'hsl(var(--muted-foreground))'
 }
 
 export function driftScoreToneForSeverity(severity: AuditSeverity): SnapshotInlineStatTone {
-  if (severity === 'healthy') return 'positive'
+  if (severity === 'healthy') return 'neutral'
   if (severity === 'notice') return 'warning'
   return 'negative'
-}
-
-export function inlineStatToneForDelta(value: number): SnapshotInlineStatTone {
-  const direction = deltaDirection(value)
-  if (direction === 'positive') return 'positive'
-  if (direction === 'negative') return 'negative'
-  return 'muted'
 }
 
 export function auditSeverityForDriftScore(score: number): AuditSeverity {
@@ -80,62 +69,38 @@ export function auditSeverityForDriftScore(score: number): AuditSeverity {
   return 'healthy'
 }
 
-export function getHashPairStatus(hasA: boolean, hasB: boolean): string {
-  if (hasA && hasB) return '已就绪'
-  if (hasA || hasB) return '待补全'
-  return '未设置'
-}
-
-export function getHashPairTone(hasA: boolean, hasB: boolean): SnapshotInlineStatTone {
-  if (hasA && hasB) return 'positive'
-  if (hasA || hasB) return 'warning'
-  return 'muted'
-}
-
 export function getSnapshotScopeSubtitle(
   documentCount: number,
   datasetId: string | undefined,
-  datasetLabel: string
+  datasetLabel: string,
 ): string {
   if (documentCount > 0) return `${documentCount} 个文档范围`
   if (datasetId) return `${datasetLabel} · 数据集范围`
   return '后端全局范围'
 }
 
-export function getSelectedDatasetLabel(
-  selectedDataset: Dataset | null,
-  selectedDatasetId: string
-): string {
-  if (selectedDataset) return getDatasetLabel(selectedDataset)
+export function getSelectedDatasetLabel(selectedDataset: Dataset | null, selectedDatasetId: string): string {
+  if (selectedDataset !== null) {
+    const name = selectedDataset.name.trim()
+    return name === '' ? selectedDataset.id : name
+  }
   if (selectedDatasetId) return selectedDatasetId
   return '全部数据集'
 }
 
-export function getScopeDocumentCountLabel(documentCount: number, selectedDatasetId: string): string {
-  if (documentCount > 0) return `${documentCount} 个文档`
-  if (selectedDatasetId) return '后端解析'
-  return '全局范围'
-}
-
-export function downloadJson(value: unknown, filename: string): void {
-  const content = JSON.stringify(value ?? {}, null, 2)
+export function downloadJson(value: SnapshotPayload | SnapshotDiffPayload, filename: string): void {
+  const content = prettyJson(value)
   const blob = new Blob([content], { type: 'application/json;charset=utf-8' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = filename
-  a.click()
-  globalThis.window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+  downloadBlob(filename, blob)
 }
 
 export async function copyToClipboard(text: string, label: string): Promise<void> {
-  const v = String(text || '')
-  if (!v.trim()) {
+  if (text.trim() === '') {
     toast.error('无可复制内容')
     return
   }
   try {
-    await navigator.clipboard.writeText(v)
+    await navigator.clipboard.writeText(text)
     toast.success(`已复制 ${label}`)
   } catch (err) {
     reportClientError('Failed to copy KG snapshot value to clipboard', err)
@@ -144,16 +109,10 @@ export async function copyToClipboard(text: string, label: string): Promise<void
 }
 
 export function parseDocumentIds(raw: string): string[] {
-  const input = String(raw || '').trim()
-  if (!input) return []
-  return input
-    .split(/[,\n]/g)
-    .map((s) => s.trim())
-    .filter(Boolean)
-}
-
-export function getDatasetLabel(dataset: Dataset | null | undefined): string {
-  return String(dataset?.name || dataset?.id || '').trim()
+  return raw
+    .split(/[,\n]/)
+    .map((id) => id.trim())
+    .filter((id) => id !== '')
 }
 
 export function getDocumentMetaValue(document: Document, ...keys: string[]): unknown {
@@ -168,26 +127,24 @@ export function getDocumentMetaValue(document: Document, ...keys: string[]): unk
 }
 
 export function compactHashLabel(hash: string): string {
-  const value = String(hash || '').trim()
+  const value = hash.trim()
   if (value.length <= 18) return value
   return `${value.slice(0, 10)}…${value.slice(-6)}`
 }
 
-export function mergePipelineCandidate(
-  map: Map<string, PipelineCandidate>,
-  candidate: PipelineCandidate
-) {
+export function mergePipelineCandidate(map: Map<string, PipelineCandidate>, candidate: PipelineCandidate) {
   const hash = candidate.hash.trim()
-  if (!hash) return
+  if (hash === '' || hash === 'unknown') return
   const current = map.get(hash)
   if (!current) {
     map.set(hash, { ...candidate, hash })
     return
   }
+  const recorded = current.source === 'report' ? current : candidate
   map.set(hash, {
+    ...recorded,
     hash,
-    source: current.source === 'report' ? current.source : candidate.source,
-    documents: Math.max(current.documents, candidate.documents),
+    documents: recorded.source === 'report' ? recorded.documents : current.documents + candidate.documents,
     active: current.active || candidate.active,
   })
 }
@@ -204,28 +161,23 @@ export function toneClassForDelta(value: number) {
   return DELTA_TEXT_CLASSES[deltaDirection(value)]
 }
 
-export function tabLabelForView(view: SnapshotView) {
-  if (view === 'diff') return 'Diff 对比'
-  if (view === 'a') return '视图 A'
-  return '视图 B'
+export function exactDiffTotal(diff: SnapshotDiffPayload | null): number | undefined {
+  let total = 0
+  for (const summary of [diff?.node_diff, diff?.edge_diff]) {
+    if (summary == null) return undefined
+    for (const count of [summary.added_count, summary.removed_count, summary.changed_count]) {
+      if (typeof count !== 'number' || !Number.isSafeInteger(count) || count < 0) return undefined
+      total += count
+    }
+  }
+  return total
 }
 
-export function exactDiffCount(
-  summary: SnapshotExactDiffSummary | null | undefined,
-  key: keyof SnapshotExactDiffSummary
-): number {
-  const value = Number(summary?.[key] ?? 0)
-  return Number.isFinite(value) ? value : 0
-}
-
-export function exactDiffSample(
-  diff: SnapshotDiffPayload | null,
-  key: string
-): Array<Record<string, unknown>> {
+export function exactDiffSample(diff: SnapshotDiffPayload | null, key: string): Array<Record<string, unknown>> {
   const value = diff?.[key]
   return Array.isArray(value)
-    ? value.filter((item): item is Record<string, unknown> =>
-        Boolean(item && typeof item === 'object')
+    ? value.filter(
+        (item): item is Record<string, unknown> => typeof item === 'object' && item !== null && !Array.isArray(item),
       )
     : []
 }

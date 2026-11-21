@@ -1,11 +1,13 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import ts from 'typescript'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 // This script lives under web/scripts/. Repo root is two levels up.
 const ROOT = path.resolve(__dirname, '../..')
+const API_CLIENT_METHODS = new Set(['get', 'post', 'put', 'patch', 'delete'])
 
 export function readText(relPath) {
   return fs.readFileSync(path.join(ROOT, relPath), 'utf8')
@@ -42,8 +44,7 @@ function parsePythonStringConstants(pyText) {
   //   NAME = "value"
   //   NAME: str = "value"
   // with optional trailing comment.
-  const re =
-    /^([A-Za-z_][A-Za-z0-9_]*)\s*(?::[^=]+)?=\s*(?:\"([^\"]*)\"|'([^']*)')\s*(?:#.*)?$/gm
+  const re = /^([A-Za-z_][A-Za-z0-9_]*)\s*(?::[^=]+)?=\s*(?:\"([^\"]*)\"|'([^']*)')\s*(?:#.*)?$/gm
   let m
   while ((m = re.exec(pyText))) {
     const name = m[1]
@@ -54,36 +55,38 @@ function parsePythonStringConstants(pyText) {
   return map
 }
 
-export function parseBackendPrefixes() {
-  const initPy = readText('app/api/v1/__init__.py')
-  const constants = parsePythonStringConstants(initPy)
-  const map = new Map()
-
-  // Matches: router.include_router(documents.router, prefix="/documents", ...)
-  const re = /include_router\(\s*([A-Za-z_][A-Za-z0-9_]*)\.router\b([\s\S]*?)\)/g
-  let m
-  while ((m = re.exec(initPy))) {
-    const mod = m[1]
-    const args = m[2] || ''
-    const prefixMatch = args.match(/prefix\s*=\s*(?:\"([^\"]*)\"|'([^']*)')/)
-    let prefix = prefixMatch ? (prefixMatch[1] || prefixMatch[2] || '') : ''
-    if (!prefix) {
-      const constMatch = args.match(/prefix\s*=\s*([A-Za-z_][A-Za-z0-9_]*)/)
-      const constName = constMatch ? constMatch[1] : ''
-      if (constName && constants.has(constName)) {
-        prefix = constants.get(constName) || ''
-      }
-    }
-    map.set(mod, prefix)
+export function parseBackendModuleImports(source, ownerRel) {
+  const imports = new Map()
+  const text = source.replace(/#[^\n]*/g, '')
+  function modulePath(name) {
+    if (!name.startsWith('.')) return name.replaceAll('.', '/')
+    const relative = name.match(/^(\.+)(.*)$/)
+    return path.posix.join(
+      path.posix.dirname(ownerRel),
+      ...Array(relative[1].length - 1).fill('..'),
+      relative[2].replaceAll('.', '/'),
+    )
   }
-  return map
+  const directImports = /^\s*import\s+([A-Za-z_][\w.]*)\s+as\s+([A-Za-z_]\w*)\s*$/gm
+  for (const match of text.matchAll(directImports)) imports.set(match[2], modulePath(match[1]))
+  const fromImports = /^\s*from\s+([.\w]+)\s+import\s+(?:\(([\s\S]*?)\)|([^\n]+))/gm
+  for (const match of text.matchAll(fromImports)) {
+    const parent = modulePath(match[1])
+    for (const item of (match[2] ?? match[3]).split(',')) {
+      const imported = item.trim().match(/^([A-Za-z_]\w*)(?:\s+as\s+([A-Za-z_]\w*))?$/)
+      if (imported !== null) imports.set(imported[2] ?? imported[1], path.posix.join(parent, imported[1]))
+    }
+  }
+  return imports
 }
 
-function resolveBackendModuleRel(mod) {
-  if (mod === 'kg') {
-    return 'app/rag/kg/api/routes.py'
-  }
-  return `app/api/v1/${mod}.py`
+function resolveBackendModuleRel(alias, imports, ownerRel) {
+  const imported = imports.get(alias)
+  if (imported === undefined) throw new Error(`Cannot resolve registered router ${alias} in ${ownerRel}`)
+  const candidates = [`${imported}.py`, `${imported}/__init__.py`]
+  const resolved = candidates.find((candidate) => fs.existsSync(path.join(ROOT, candidate)))
+  if (resolved === undefined) throw new Error(`Missing registered router module ${imported} in ${ownerRel}`)
+  return resolved
 }
 
 function joinBackendPrefixes(parentPrefix, childPrefix) {
@@ -104,7 +107,7 @@ function parseRouterIncludes(pyText) {
     const mod = m[1]
     const args = m[2] || ''
     const prefixMatch = args.match(/prefix\s*=\s*(?:\"([^\"]*)\"|'([^']*)')/)
-    let prefix = prefixMatch ? (prefixMatch[1] || prefixMatch[2] || '') : ''
+    let prefix = prefixMatch ? prefixMatch[1] || prefixMatch[2] || '' : ''
     if (!prefix) {
       const constMatch = args.match(/prefix\s*=\s*([A-Za-z_][A-Za-z0-9_]*)/)
       const constName = constMatch ? constMatch[1] : ''
@@ -115,8 +118,7 @@ function parseRouterIncludes(pyText) {
     includes.push({ mod, prefix })
   }
 
-  const routesExtendRe =
-    /_?router\.routes\.extend\(\s*([A-Za-z_][A-Za-z0-9_]*)\.router\.routes\s*\)/g
+  const routesExtendRe = /_?router\.routes\.extend\(\s*([A-Za-z_][A-Za-z0-9_]*)\.router\.routes\s*\)/g
   while ((m = routesExtendRe.exec(pyText))) {
     includes.push({ mod: m[1], prefix: '' })
   }
@@ -141,16 +143,19 @@ function parseRouterSelfPrefix(pyText) {
   return ''
 }
 
-export function parseBackendRoutes() {
-  const prefixes = parseBackendPrefixes()
+export function parseBackendRoutes({ schemaOnly = false } = {}) {
+  const rootRel = 'app/api/v1/__init__.py'
+  const rootSource = readText(rootRel)
+  const rootImports = parseBackendModuleImports(rootSource, rootRel)
   const routes = new Map() // key: METHOD PATH -> source
 
-  const backendModules = []
-  for (const [mod, prefix] of prefixes.entries()) {
-    backendModules.push({ mod, prefix, rel: resolveBackendModuleRel(mod) })
-  }
+  const backendModules = parseRouterIncludes(rootSource).map(({ mod, prefix }) => ({
+    prefix,
+    rel: resolveBackendModuleRel(mod, rootImports, rootRel),
+  }))
 
-  const routeRe = /@router\.(get|post|put|patch|delete)\(\s*(?:\"([^\"]*)\"|'([^']*)')/g
+  const routeRe =
+    /@router\.(get|post|put|patch|delete)\(\s*(?:"([^"]*)"|'([^']*)')([\s\S]*?)(?=^\s*(?:@|(?:async )?def\s))/gm
 
   const seenModules = new Set()
   for (let index = 0; index < backendModules.length; index += 1) {
@@ -160,36 +165,22 @@ export function parseBackendRoutes() {
     seenModules.add(seenKey)
 
     const abs = path.join(ROOT, mod.rel)
-    if (!fs.existsSync(abs)) continue
     const text = fs.readFileSync(abs, 'utf8')
+    const imports = parseBackendModuleImports(text, mod.rel)
     const effectivePrefix = joinBackendPrefixes(mod.prefix, parseRouterSelfPrefix(text))
-    let m
-    while ((m = routeRe.exec(text))) {
-      const method = String(m[1] || '').toUpperCase()
-      const rawPath = m[2] ?? m[3] ?? ''
-      const prefix = effectivePrefix || ''
-
-      let full = ''
-      if (!rawPath) {
-        full = prefix || ''
-      } else if (!prefix) {
-        full = rawPath
-      } else if (rawPath.startsWith('/')) {
-        full = `${prefix}${rawPath}`
-      } else {
-        full = `${prefix}/${rawPath}`
-      }
-
-      const normalized = normalizeRoute(full)
+    for (const [, rawMethod, doubleQuotedPath, singleQuotedPath, routeOptions] of text.matchAll(routeRe)) {
+      if (schemaOnly && /,\s*include_in_schema\s*=\s*False\s*[,)]/.test(routeOptions)) continue
+      const method = rawMethod.toUpperCase()
+      const routePath = doubleQuotedPath ?? singleQuotedPath
+      const normalized = normalizeRoute(joinBackendPrefixes(effectivePrefix, routePath))
       const key = `${method} ${normalized}`
       routes.set(key, mod.rel)
     }
 
     for (const child of parseRouterIncludes(text)) {
       backendModules.push({
-        mod: child.mod,
         prefix: joinBackendPrefixes(effectivePrefix, child.prefix),
-        rel: resolveBackendModuleRel(child.mod),
+        rel: resolveBackendModuleRel(child.mod, imports, mod.rel),
       })
     }
   }
@@ -202,14 +193,49 @@ export function extractFrontendRoutesFromFile(rel) {
   const text = fs.readFileSync(abs, 'utf8')
   const out = []
 
-  // axios client calls
-  const axiosRe = /apiClient\.(get|post|put|patch|delete)\(\s*(?:`([^`]+)`|\"([^\"]+)\"|'([^']+)')/g
-  let m
-  while ((m = axiosRe.exec(text))) {
-    const method = String(m[1] || '').toUpperCase()
-    const rawPath = m[2] ?? m[3] ?? m[4] ?? ''
-    out.push({ method, path: normalizeRoute(rawPath), src: rel })
+  const source = ts.createSourceFile(rel, text, ts.ScriptTarget.Latest)
+  function collectRoutes(node) {
+    ts.forEachChild(node, collectRoutes)
+    if (!ts.isCallExpression(node)) return
+    if (ts.isIdentifier(node.expression) && ['fetch', 'authenticatedFetch'].includes(node.expression.text)) {
+      const [route, options] = node.arguments
+      if (route === undefined || !ts.isTemplateExpression(route) || route.head.text !== '') return
+      const [base, ...spans] = route.templateSpans
+      if (!ts.isIdentifier(base.expression) || base.expression.text !== 'API_V1_BASE_URL') return
+      if (options !== undefined && !ts.isObjectLiteralExpression(options)) return
+
+      let method = 'GET'
+      for (const property of options?.properties ?? []) {
+        if (ts.isSpreadAssignment(property)) {
+          method = undefined
+          continue
+        }
+        if ((ts.isIdentifier(property.name) || ts.isStringLiteral(property.name)) && property.name.text === 'method') {
+          method =
+            ts.isPropertyAssignment(property) && ts.isStringLiteralLike(property.initializer)
+              ? property.initializer.text.toUpperCase()
+              : undefined
+        }
+      }
+      const rawPath = base.literal.text + spans.map((span) => `{}${span.literal.text}`).join('')
+      if (method !== undefined) out.push({ method, path: normalizeRoute(rawPath), src: rel })
+      return
+    }
+    if (!ts.isPropertyAccessExpression(node.expression)) return
+    const { expression: client, name } = node.expression
+    if (!ts.isIdentifier(client) || client.text !== 'apiClient' || !API_CLIENT_METHODS.has(name.text)) return
+    const route = node.arguments[0]
+    if (route === undefined) return
+    let rawPath
+    if (ts.isStringLiteralLike(route)) {
+      rawPath = route.text
+    } else if (ts.isTemplateExpression(route)) {
+      rawPath = route.head.text + route.templateSpans.map((span) => `{}${span.literal.text}`).join('')
+    }
+    if (rawPath === undefined || rawPath === '') return
+    out.push({ method: name.text.toUpperCase(), path: normalizeRoute(rawPath), src: rel })
   }
+  collectRoutes(source)
 
   // openapiRequest({ path: '/api/v1/...', method: 'get', ... })
   //
@@ -217,6 +243,7 @@ export function extractFrontendRoutesFromFile(rel) {
   // contract/coverage scripts must understand it.
   const openapiReqRe =
     /openapiRequest\(\s*\{[\s\S]*?\bpath\s*:\s*(?:`([^`]+)`|"([^"]+)"|'([^']+)')[\s\S]*?\bmethod\s*:\s*(?:`([^`]+)`|"([^"]+)"|'([^']+)')/g
+  let m
   while ((m = openapiReqRe.exec(text))) {
     const rawPath = m[1] ?? m[2] ?? m[3] ?? ''
     const rawMethod = m[4] ?? m[5] ?? m[6] ?? ''
@@ -227,28 +254,11 @@ export function extractFrontendRoutesFromFile(rel) {
     out.push({ method, path: stripApiV1Prefix(normalized), src: rel })
   }
 
-  // fetch/authenticatedFetch(`${API_V1_BASE_URL}/...`, { method: 'GET' })
-  const fetchRe =
-    /\b(?:fetch|authenticatedFetch)\(\s*`?\$\{API_V1_BASE_URL\}([^`"']+)`?\s*,\s*\{[\s\S]*?method\s*:\s*'([^']+)'/g
-  while ((m = fetchRe.exec(text))) {
-    const rawPath = m[1] || ''
-    const method = String(m[2] || 'GET').toUpperCase()
-    out.push({ method, path: normalizeRoute(rawPath), src: rel })
-  }
-
-  // fetch/authenticatedFetch(`${API_V1_BASE_URL}/...`) with default method GET
-  const fetchNoOptsRe = /\b(?:fetch|authenticatedFetch)\(\s*`?\$\{API_V1_BASE_URL\}([^`"']+)`?\s*\)/g
-  while ((m = fetchNoOptsRe.exec(text))) {
-    const rawPath = m[1] || ''
-    out.push({ method: 'GET', path: normalizeRoute(rawPath), src: rel })
-  }
-
   return out
 }
 
 export function listFrontendSourceFiles() {
   const webRoot = path.join(ROOT, 'web')
-  if (!fs.existsSync(webRoot)) return []
 
   const IGNORE_DIRS = new Set(['node_modules', '.next', '.next_build', 'out', 'dist', 'coverage'])
 
@@ -267,7 +277,7 @@ export function listFrontendSourceFiles() {
       if (!ent.isFile()) continue
       const ext = path.extname(ent.name)
       if (!exts.has(ext)) continue
-      const rel = path.relative(ROOT, abs)
+      const rel = path.relative(ROOT, abs).replaceAll(path.sep, '/')
       files.push(rel)
     }
   }
@@ -276,15 +286,10 @@ export function listFrontendSourceFiles() {
   return files
 }
 
-export function parseFrontendRoutes({ files } = {}) {
-  const relFiles = Array.isArray(files) && files.length > 0 ? files : listFrontendSourceFiles()
+export function parseFrontendRoutes({ files = listFrontendSourceFiles() } = {}) {
   const routes = []
-  for (const rel of relFiles) {
-    try {
-      routes.push(...extractFrontendRoutesFromFile(rel))
-    } catch {
-      // ignore unreadable files
-    }
+  for (const rel of files) {
+    routes.push(...extractFrontendRoutesFromFile(rel))
   }
 
   // Dedup

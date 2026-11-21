@@ -1,0 +1,156 @@
+{
+  "schema": "ragvia.infrastructure_rename_verification.v1",
+  "date": "2026-11-15",
+  "branch": "feat/ragvia-ui",
+  "head": "619ba7d1166c96beb85729069f5f79794a904a7a",
+  "rename": {
+    "from": "app/core",
+    "to": "app/infrastructure",
+    "source_directory_absent": true,
+    "moved_sources": 43,
+    "unchanged_domain_packages": 7,
+    "layout_changed": false,
+    "old_package_compatibility_added": false
+  },
+  "moves": {
+    "app/core/__init__.py": "app/infrastructure/__init__.py",
+    "app/core/config.py": "app/infrastructure/config.py",
+    "app/core/config_validation.py": "app/infrastructure/config_validation.py",
+    "app/core/database/__init__.py": "app/infrastructure/database/__init__.py",
+    "app/core/database/connection.py": "app/infrastructure/database/connection.py",
+    "app/core/database/migrations.py": "app/infrastructure/database/migrations.py",
+    "app/core/env.py": "app/infrastructure/env.py",
+    "app/core/exceptions.py": "app/infrastructure/exceptions.py",
+    "app/core/hashing.py": "app/infrastructure/hashing.py",
+    "app/core/http/__init__.py": "app/infrastructure/http/__init__.py",
+    "app/core/http/client.py": "app/infrastructure/http/client.py",
+    "app/core/http/environment.py": "app/infrastructure/http/environment.py",
+    "app/core/http/openai.py": "app/infrastructure/http/openai.py",
+    "app/core/metadata_filters.py": "app/infrastructure/metadata_filters.py",
+    "app/core/model_policy.py": "app/infrastructure/model_policy.py",
+    "app/core/observability/__init__.py": "app/infrastructure/observability/__init__.py",
+    "app/core/observability/build_info.py": "app/infrastructure/observability/build_info.py",
+    "app/core/observability/health.py": "app/infrastructure/observability/health.py",
+    "app/core/observability/logging.py": "app/infrastructure/observability/logging.py",
+    "app/core/observability/metrics.py": "app/infrastructure/observability/metrics.py",
+    "app/core/observability/opentelemetry.py": "app/infrastructure/observability/opentelemetry.py",
+    "app/core/observability/sentry.py": "app/infrastructure/observability/sentry.py",
+    "app/core/redis/__init__.py": "app/infrastructure/redis/__init__.py",
+    "app/core/redis/client.py": "app/infrastructure/redis/client.py",
+    "app/core/redis/leases.py": "app/infrastructure/redis/leases.py",
+    "app/core/regex/__init__.py": "app/infrastructure/regex/__init__.py",
+    "app/core/regex/execution.py": "app/infrastructure/regex/execution.py",
+    "app/core/regex/validation.py": "app/infrastructure/regex/validation.py",
+    "app/core/runtime/__init__.py": "app/infrastructure/runtime/__init__.py",
+    "app/core/runtime/async_bridge.py": "app/infrastructure/runtime/async_bridge.py",
+    "app/core/runtime/dependencies.py": "app/infrastructure/runtime/dependencies.py",
+    "app/core/runtime/rate_limit.py": "app/infrastructure/runtime/rate_limit.py",
+    "app/core/runtime/request_state.py": "app/infrastructure/runtime/request_state.py",
+    "app/core/runtime/stream_events.py": "app/infrastructure/runtime/stream_events.py",
+    "app/core/security/__init__.py": "app/infrastructure/security/__init__.py",
+    "app/core/security/jwt_inspect.py": "app/infrastructure/security/jwt_inspect.py",
+    "app/core/security/jwt_tokens.py": "app/infrastructure/security/jwt_tokens.py",
+    "app/core/security/passwords.py": "app/infrastructure/security/passwords.py",
+    "app/core/security/pii.py": "app/infrastructure/security/pii.py",
+    "app/core/security/random.py": "app/infrastructure/security/random.py",
+    "app/core/security/roles.py": "app/infrastructure/security/roles.py",
+    "app/core/security/secrets.py": "app/infrastructure/security/secrets.py",
+    "app/core/tokens.py": "app/infrastructure/tokens.py"
+  },
+  "proof": {
+    "transformed_sources": 509,
+    "main_and_Makefile_addendum_exact_replacement": true,
+    "nonimport_AST_and_import_bindings_match_expected": true,
+    "all_current_source_and_CSV_hashes_verified": true
+  },
+  "checks": {
+    "app_AST311_compile": 1179,
+    "production_import_sources_including_root_main": 1341,
+    "missing_imports": 0,
+    "owned_Ruff_format_sources": 1172,
+    "derived_FI_sources": 7,
+    "changed_caller_Ruff_format_sources": 35,
+    "full_OpenAPI_equal": true,
+    "OpenAPI_paths": 358,
+    "OpenAPI_schemas": 671,
+    "OpenAPI_canonical_sha256": "721b11d381dca811c87db81af3e91136b63135ded87095531794a79e643955fe",
+    "cold_ORM_and_resource_roots": {
+      "tables": 53,
+      "mappers": 53,
+      "ORM_snapshot_equal": true,
+      "env_file": "E:\\MimirQ\\.env",
+      "alembic_heads": [
+        "0027_add_document_index_channels"
+      ],
+      "old_modules_loaded": false,
+      "scope": "Cold metadata/DDL, config and migration-script location; no queries, lifecycle or model execution"
+    },
+    "frozen_tests": 610,
+    "tests_changed": 0,
+    "pytest_run": false,
+    "resources_byte_identical": 152,
+    "git_diff_check_exit": 0,
+    "ignored_app_sources": [],
+    "notes_format_verified": 239,
+    "notes_format_exit": 0,
+    "notes_archive_exit": 0,
+    "notes_tree_exit": 1,
+    "unchanged_missing_note_links": 10
+  },
+  "independent_review": {
+    "open_findings": 0,
+    "resolved": [
+      "root main.py startup settings import",
+      "Makefile production configuration preflight import"
+    ],
+    "telemetry_calls_preserved": 269
+  },
+  "current_ledgers": {
+    "current_app_files": 1331,
+    "current_app_python": 1179,
+    "API_v1_python": 102,
+    "infrastructure_python": 43,
+    "old_directory_absent": true,
+    "original_layout_rows": 1167,
+    "current_hashes_verified": true,
+    "status_counts": {
+      "adjusted": 1002,
+      "conforms": 170,
+      "preserved": 159
+    },
+    "nonapp_coverage_records_byte_preserved": 3998,
+    "note": "Non-app coverage rows retain their historical scope; root main.py and Makefile current edits have separate exact-byte addendum proof.",
+    "csv_sha256": {
+      "app-review.csv": "2d2bc93abb53163a40635d09e5c08c7e33dec4775f6c418f85ec202fbf8b764b",
+      "api-v1-review.csv": "25deb0b996fe9a8fca3e8654cac120d36525a737b6f3f0d0e8ccd9acd1c6bbd6",
+      "layout-review.csv": "41e7938b603c615c3d32bd6267202d5145013f3d5cd6023056674bde658bef4d",
+      "coverage.csv": "f09d5f32883ced5f111a5caea326ac209a20c0a6948550cf6fae12bcf49d3a6d"
+    }
+  },
+  "source_tree_sha256": "7c1169798b5496d267a217699445839d07e544e3cda8164c3f3419d9430d6a42",
+  "root_entry_sha256": {
+    "main.py": "d1227f26dfdb428fd644a451ad639ec66b19816ab9c2a59797a7ac891a42c263",
+    "Makefile": "2dd258c9f67f855a8e3980b79847354c9f87ae9d67f115e166a369cff4263b46"
+  },
+  "git": {
+    "staged": false,
+    "committed": false,
+    "pushed": false
+  },
+  "limits": [
+    "No pytest or frozen-test import migration",
+    "No real HTTP, DB queries/transactions, worker/model execution or application startup",
+    "Historical manifest paths describe their earlier worktree only; this manifest is current",
+    "Unchanged telemetry labels may contain old module names; they are not import entrypoints"
+  ],
+  "local_evidence_sha256": {
+    "codex-infrastructure-rename-opening-20261115.json": "63c6541e0e82877eae2c3ebcdeff611a8e858987f587dd9b0c4a621019ea8a0c",
+    "codex-infrastructure-rename-addendum-20261115.json": "274000384432796de023c21a844296b2256c08b68c27067ef209ec2e000f7872",
+    "codex-infrastructure-rename-static-20261115.json": "81c293601942fff69e5446a0a0db0c526016001c2f15c89337d0c60377b07a22",
+    "codex-infrastructure-rename-runtime-20261115.json": "85cbc1032c0e2fb142967dd54a4c90a5649efece471eddc14288ba75e17e538d",
+    "codex-infrastructure-rename-checks-20261115.json": "ce4246da7aa3de90772d0e86a298a66972a440ef708ef1b117d93f2d5e5f4425",
+    "codex-infrastructure-rename-ledgers-20261115.json": "367ca907ec2e1da1d3da2b5144cf504727bb679b964a01b9de2ada02ec45d721",
+    "codex-infrastructure-rename-independent-review-20261115.json": "95ccb6db04b3b670c25ad4e26041fa03244586d476d332dc29086ae6109d35ca",
+    "codex-infrastructure-rename-doc-references-20261115.json": "1fe1c987c3fd7117d93392c4267b69a0f82edb4d2322200471cac206fdec4817"
+  }
+}

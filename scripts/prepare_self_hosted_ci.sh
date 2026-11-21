@@ -1,20 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-INCLUDE_TORCH_WHEEL_DIR=0
-
-while [ "$#" -gt 0 ]; do
-  case "$1" in
-    --include-torch-wheel-dir)
-      INCLUDE_TORCH_WHEEL_DIR=1
-      ;;
-    *)
-      echo "unknown argument: $1" >&2
-      exit 1
-      ;;
-  esac
-  shift
-done
+if [ "$#" -gt 0 ]; then
+  echo "unknown argument: $1" >&2
+  exit 1
+fi
 
 PY_BIN="${SELF_HOSTED_PYTHON_BIN:-}"
 if [ -n "$PY_BIN" ] && [ -d "$PY_BIN" ]; then
@@ -50,21 +40,13 @@ if [ -n "${SELF_HOSTED_NO_PROXY:-}" ]; then
   NO_PROXY_VALUE="$NO_PROXY_VALUE,${SELF_HOSTED_NO_PROXY}"
 fi
 
-if [ "$INCLUDE_TORCH_WHEEL_DIR" -eq 1 ]; then
-  TORCH_WHEEL_DIR_VALUE="${TORCH_WHEEL_DIR:-$CACHE_ROOT/torch-wheels}"
-  mkdir -p "$(dirname "$VENV_DIR")" "$PIP_CACHE_DIR_VALUE" "$TORCH_WHEEL_DIR_VALUE"
-else
-  mkdir -p "$(dirname "$VENV_DIR")" "$PIP_CACHE_DIR_VALUE"
-fi
+mkdir -p "$(dirname "$VENV_DIR")" "$PIP_CACHE_DIR_VALUE"
 
 "$PY_BIN" -m venv "$VENV_DIR"
 echo "$VENV_DIR/bin" >> "$GITHUB_PATH"
 {
   echo "PIP_INDEX_URL=${PIP_INDEX_URL:-https://pypi.org/simple}"
   echo "PIP_CACHE_DIR=$PIP_CACHE_DIR_VALUE"
-  if [ "$INCLUDE_TORCH_WHEEL_DIR" -eq 1 ]; then
-    echo "TORCH_WHEEL_DIR=$TORCH_WHEEL_DIR_VALUE"
-  fi
   echo "http_proxy=$HTTP_PROXY_VALUE"
   echo "https_proxy=$HTTPS_PROXY_VALUE"
   echo "HTTP_PROXY=$HTTP_PROXY_VALUE"

@@ -1,5 +1,5 @@
 const auditMessages = {
-AuditPage: {
+  AuditPage: {
     title: '审计日志',
     description: '关键操作留痕',
     strip: {

@@ -1,88 +1,120 @@
 'use client'
 
-import { useCallback } from 'react'
-import { useMutation } from '@tanstack/react-query'
+import { useCallback, useRef, useState } from 'react'
+import { CancelledError, useMutation } from '@tanstack/react-query'
 
 import { documentApi } from '@/lib/api/documents'
 import { formatApiError } from '@/lib/api-errors'
 import { reportClientError } from '@/lib/client-logging'
 
-import { mergePolledDocument, type UpdateCachedDocuments } from './use-document-shared'
+import {
+  mergePolledDocumentList,
+  type CaptureDocumentListOperation,
+  type DocumentListOperation,
+} from './use-document-shared'
 
 type UseDocumentActionsOptions = {
   cancelDocumentPolling: (documentId: string) => void
   setActionError: (error: string | null) => void
-  updateCachedDocuments: UpdateCachedDocuments
+  captureDocumentListOperation: CaptureDocumentListOperation
 }
+
+type DocumentAction = { documentId: string; operation: DocumentListOperation }
 
 export function useDocumentActions({
   cancelDocumentPolling,
   setActionError,
-  updateCachedDocuments,
+  captureDocumentListOperation,
 }: UseDocumentActionsOptions) {
-  const {
-    mutateAsync: cancelDocumentMutation,
-    isPending: cancelDocumentPending,
-  } = useMutation({
-    mutationFn: async (documentId: string) => {
+  const activeDocumentIdsRef = useRef(new Set<string>())
+  const [isActing, setIsActing] = useState(false)
+
+  function clearDocumentActionError({ operation }: DocumentAction) {
+    if (operation.isCurrent()) setActionError(null)
+  }
+
+  const { mutateAsync: cancelDocumentMutation } = useMutation({
+    mutationFn: async ({ documentId, operation }: DocumentAction) => {
+      if (!operation.isActive()) throw new CancelledError()
+      const status = await documentApi.cancel(documentId)
+      if (!operation.isActive()) throw new CancelledError()
       cancelDocumentPolling(documentId)
-      return documentApi.cancel(documentId)
+      return status
     },
-    onMutate: () => {
-      setActionError(null)
-    },
-    onSuccess: (status, documentId) => {
-      updateCachedDocuments((current) => {
-        if (!current?.items?.length) return current
+    onMutate: clearDocumentActionError,
+    onSuccess: (status, { documentId, operation }) => {
+      operation.updateCachedDocuments((current) => {
+        if (!current?.items.length) return current
         return {
           ...current,
-          items: current.items.map((doc) => mergePolledDocument(doc, documentId, status)),
+          items: mergePolledDocumentList(current.items, documentId, status),
         }
       })
     },
-    onError: (err) => {
-      setActionError(formatApiError(err, 'Failed to cancel document'))
+    onError: (err, { operation }) => {
+      if (!operation.isActive()) return
+      if (operation.isCurrent()) setActionError(formatApiError(err, 'Failed to cancel document'))
       reportClientError('Cancel document failed', err)
     },
   })
 
-  const {
-    mutateAsync: deleteDocumentMutation,
-    isPending: deleteDocumentPending,
-  } = useMutation({
-    mutationFn: (documentId: string) => documentApi.delete(documentId),
-    onMutate: () => {
-      setActionError(null)
+  const { mutateAsync: deleteDocumentMutation } = useMutation({
+    mutationFn: async ({ documentId, operation }: DocumentAction) => {
+      if (!operation.isActive()) throw new CancelledError()
+      await documentApi.delete(documentId)
+      if (!operation.isActive()) throw new CancelledError()
+      cancelDocumentPolling(documentId)
     },
-    onSuccess: (_result, documentId) => {
-      updateCachedDocuments((current) => {
+    onMutate: clearDocumentActionError,
+    onSuccess: (_result, { documentId, operation }) => {
+      operation.updateCachedDocuments((current) => {
         if (!current) return current
+        const items = current.items
+        const remaining = items.filter((doc) => doc.id !== documentId)
+        if (remaining.length === items.length) return current
         return {
           ...current,
-          items: (current.items || []).filter((doc) => doc.id !== documentId),
-          total: Math.max(0, Number(current.total || 0) - 1),
+          items: remaining,
+          total: Math.max(0, current.total - 1),
         }
       })
     },
-    onError: (err) => {
-      setActionError(formatApiError(err, 'Failed to delete document'))
+    onError: (err, { operation }) => {
+      if (!operation.isActive()) return
+      if (operation.isCurrent()) setActionError(formatApiError(err, 'Failed to delete document'))
       reportClientError('Delete document failed', err)
     },
   })
 
+  const runDocumentAction = useCallback(
+    async <Result>(documentId: string, mutate: (action: DocumentAction) => Promise<Result>): Promise<Result> => {
+      const activeDocumentIds = activeDocumentIdsRef.current
+      if (activeDocumentIds.has(documentId)) throw new CancelledError()
+      activeDocumentIds.add(documentId)
+      setIsActing(true)
+      try {
+        return await mutate({ documentId, operation: captureDocumentListOperation() })
+      } finally {
+        activeDocumentIds.delete(documentId)
+        setIsActing(activeDocumentIds.size > 0)
+      }
+    },
+    [captureDocumentListOperation],
+  )
+
   const cancelDocument = useCallback(
-    async (documentId: string) => cancelDocumentMutation(documentId),
-    [cancelDocumentMutation]
+    (documentId: string) => runDocumentAction(documentId, cancelDocumentMutation),
+    [cancelDocumentMutation, runDocumentAction],
   )
 
   const deleteDocument = useCallback(
-    async (documentId: string) => deleteDocumentMutation(documentId),
-    [deleteDocumentMutation]
+    (documentId: string) => runDocumentAction(documentId, deleteDocumentMutation),
+    [deleteDocumentMutation, runDocumentAction],
   )
 
   return {
     cancelDocument,
     deleteDocument,
-    isActing: cancelDocumentPending || deleteDocumentPending,
+    isActing,
   }
 }

@@ -1,13 +1,12 @@
-
 import time
 
 import pytest
 from langchain_core.documents import Document
 
-from app.api.schemas.chat import ChatRAGConfig
-from app.core.config import settings
-from app.rag.core.retrieval_profiles import apply_retrieval_profile_overrides, is_recall_first_profile
-from app.rag.retriever import HybridRetriever
+from app.api.schemas.conversations.chat import ChatRAGConfig
+from app.infrastructure.config import settings
+from app.rag.retrieval.configuration.profiles import apply_retrieval_profile_overrides, is_recall_first_profile
+from app.rag.retrieval.recall.retriever import HybridRetriever
 
 
 def _mk_result(*, doc_id: str, chunk_index: int, score: float, content: str = "") -> dict:
@@ -241,7 +240,7 @@ def test_candidate_metadata_priors_do_not_query_database(monkeypatch: pytest.Mon
     monkeypatch.setattr(settings, "RETRIEVAL_GOVERNANCE_PREFER_LATEST", True)
     monkeypatch.setattr(settings, "RETRIEVAL_GOVERNANCE_FILTER_SUPERSEDED", True)
     monkeypatch.setattr(
-        "app.rag.retriever.SessionLocal",
+        "app.rag.retrieval.recall.retriever.SessionLocal",
         lambda: (_ for _ in ()).throw(AssertionError("governance must not query the database")),
     )
 

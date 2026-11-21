@@ -1,10 +1,9 @@
-
 from types import SimpleNamespace
 from uuid import uuid4
 
-from app.api.schemas.rag_config_template import RagConfigTemplateUpdate
-from app.api.v1 import rag_config_templates
-from app.core.token_utils import total_token_count_from_response
+from app.api.schemas.conversations.rag_config_templates import RagConfigTemplateUpdate
+from app.api.v1.retrieval import config_templates as rag_config_templates
+from app.infrastructure.tokens import total_token_count_from_response
 
 
 class _TemplateQuery:
@@ -69,7 +68,7 @@ def test_update_rag_config_template_applies_explicit_fields_in_one_write(monkeyp
         ab_variant=" variant ",
         ab_weight=0.4,
     )
-    monkeypatch.setattr(rag_config_templates.DatasetService, "ensure_member", lambda *_args: None)
+    monkeypatch.setattr(rag_config_templates.dataset_service, "ensure_member", lambda *_args: None)
     monkeypatch.setattr(rag_config_templates, "_ensure_write", lambda *_args: None)
 
     result = rag_config_templates.update_rag_config_template(

@@ -1,4 +1,3 @@
-
 import uuid
 from datetime import UTC, datetime
 from types import SimpleNamespace
@@ -34,7 +33,7 @@ class _PromptTemplateDB:
 
 
 def test_apply_chat_runtime_metrics_context_preserves_existing_values_and_gates_optional_meta() -> None:
-    from app.services.chat_runtime import apply_chat_runtime_metrics_context
+    from app.services.chat.response_formatting import apply_chat_runtime_metrics_context
 
     dataset_id = uuid.uuid4()
     prompt_id = uuid.uuid4()
@@ -74,7 +73,7 @@ def test_apply_chat_runtime_metrics_context_preserves_existing_values_and_gates_
 
 
 def test_compute_chunk_coverage_metrics_from_ranges_clips_gaps_and_overlap() -> None:
-    from app.services.chunk_coverage_utils import compute_chunk_coverage_metrics_from_ranges
+    from app.services.chunking.statistics import compute_chunk_coverage_metrics_from_ranges
 
     result = compute_chunk_coverage_metrics_from_ranges(
         [(-3, 4), (2, 6), (8, 12), ("bad", 5), (9, 9)],
@@ -92,8 +91,8 @@ def test_compute_chunk_coverage_metrics_from_ranges_clips_gaps_and_overlap() -> 
 
 
 def test_validate_and_normalize_fls_policy_normalizes_entries_and_trims_duplicates() -> None:
-    from app.api.schemas.fls_policy import FlsPolicy
-    from app.services.fls_policy import validate_and_normalize_fls_policy
+    from app.api.schemas.identity.field_access import FlsPolicy
+    from app.services.tables.field_security import validate_and_normalize_fls_policy
 
     policy = FlsPolicy(
         version="1",
@@ -124,35 +123,8 @@ def test_validate_and_normalize_fls_policy_normalizes_entries_and_trims_duplicat
     assert rule.mask == "[MASKED]"
 
 
-def test_recommend_parser_strategy_prefers_low_confidence_pdf_ocr_layout() -> None:
-    from app.services.parser_strategy_policy import recommend_parser_strategy
-
-    result = recommend_parser_strategy(
-        {
-            "mime_type": "application/pdf",
-            "file_extension": ".pdf",
-            "page_count": 140,
-            "seal_expected": True,
-            "seal_confidence": 0.35,
-            "seal_candidate_count": 3,
-            "table_density": 0.2,
-        }
-    )
-
-    assert result["strategy"] == "pdf_ocr_layout"
-    assert result["reason_codes"] == ["pdf_document", "low_seal_confidence", "large_document"]
-    assert result["parser_options"] == {
-        "ocr_enabled": True,
-        "layout_mode": "full",
-        "table_detection": True,
-        "seal_review": True,
-        "seal_candidate_count": 3,
-        "chunking_profile": "long_doc_balanced",
-    }
-
-
 def test_resolve_prompt_template_uses_uniform_weights_when_all_variant_weights_are_nonpositive() -> None:
-    from app.services.prompt_resolver import resolve_prompt_template
+    from app.services.prompts.resolver import resolve_prompt_template
 
     tenant_id = uuid.uuid4()
     variants = [
@@ -172,8 +144,8 @@ def test_resolve_prompt_template_uses_uniform_weights_when_all_variant_weights_a
 
 
 def test_merge_rag_config_with_dataset_defaults_applies_only_missing_fields() -> None:
-    from app.api.schemas.chat import ChatRAGConfig
-    from app.services.rag_defaults import merge_rag_config_with_dataset_defaults
+    from app.api.schemas.conversations.chat import ChatRAGConfig
+    from app.services.retrieval.defaults import merge_rag_config_with_dataset_defaults
 
     rag_config = ChatRAGConfig(top_k=12, visible_evidence_only=False)
 
@@ -195,7 +167,7 @@ def test_merge_rag_config_with_dataset_defaults_applies_only_missing_fields() ->
 
 
 def test_compare_regression_items_builds_significance_and_case_labels() -> None:
-    from app.services.regression_run_significance import compare_regression_items
+    from app.services.evaluation.run_significance import compare_regression_items
 
     base_items = [
         {"case_id": "c2", "question": "Second", "scores": {"faithfulness": 0.2, "binary": 0.0}},
@@ -225,7 +197,7 @@ def test_compare_regression_items_builds_significance_and_case_labels() -> None:
 
 @pytest.mark.asyncio
 async def test_prom_query_sums_multiple_series_and_ignores_malformed_values() -> None:
-    from app.services.slo_snapshot_service import _prom_query
+    from app.services.observability.slo import _prom_query
 
     request_log: list[tuple[str, dict[str, str]]] = []
     payload = {

@@ -1,6 +1,6 @@
 # MinerU 集成文档
 
-MimirQ 现已集成 **MinerU 在线文档解析服务**，支持高级 PDF 解析功能。
+Ragvia 现已集成 **MinerU 在线文档解析服务**，支持高级 PDF 解析功能。
 
 ## 功能特性
 
@@ -335,10 +335,10 @@ while True:
 
 相关代码文件：
 
-- **服务类**: `app/services/mineru_service.py`
+- **服务类**: `app/services/parsing/mineru.py`
 - **解析器**: `app/parsing/parsers/mineru_parser.py`
 - **API 接口**: `app/api/v1/documents.py`
-- **配置**: `app/core/config.py`
+- **配置**: `app/infrastructure/config.py`
 - **Schema**: `app/api/schemas/document.py`
 
 ---

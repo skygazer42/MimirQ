@@ -1,4 +1,4 @@
-from app.parsing.factory import ParserFactory
+from app.rag.ingestion.parsing.factory import ParserFactory
 
 
 def test_colpali_pdf_backend_is_routable(tmp_path):

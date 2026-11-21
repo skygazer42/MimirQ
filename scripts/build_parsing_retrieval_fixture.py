@@ -169,15 +169,15 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--retrieval-mode", default="keyword", help="Fixture default retrieval mode.")
     args = parser.parse_args(argv)
 
-    documents = _coerce_documents_payload(_read_json(Path(str(args.documents_json)).resolve()))
-    queries = _read_json(Path(str(args.queries_json)).resolve())
+    documents = _coerce_documents_payload(_read_json(Path(args.documents_json).resolve()))
+    queries = _read_json(Path(args.queries_json).resolve())
     fixture = build_retrieval_fixture(
         documents=documents,
         queries=queries if isinstance(queries, list) else [],
-        top_k=int(args.top_k or 1),
-        retrieval_mode=str(args.retrieval_mode or "keyword"),
+        top_k=args.top_k,
+        retrieval_mode=args.retrieval_mode,
     )
-    out_path = Path(str(args.out)).resolve()
+    out_path = Path(args.out).resolve()
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps(fixture, ensure_ascii=False, indent=2), encoding="utf-8")
     return 0

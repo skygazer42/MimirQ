@@ -40,7 +40,7 @@ describe('getAuthHeaders', () => {
           source: 'tab:remote',
           type: 'session-cleared',
         }),
-      })
+      }),
     )
 
     expect(getAccessToken()).toBeNull()
@@ -60,7 +60,7 @@ describe('getAuthHeaders', () => {
         key: 'mimirq_user_id',
         oldValue: 'user-a',
         newValue: 'user-b',
-      })
+      }),
     )
 
     expect(getAccessToken()).toBeNull()

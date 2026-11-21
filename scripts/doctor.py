@@ -22,7 +22,7 @@ def _decode_output(data: bytes) -> str:
     for enc in candidates:
         try:
             return data.decode(enc)
-        except Exception:  # noqa: BLE001
+        except (LookupError, UnicodeError):
             continue
 
     return data.decode("utf-8", errors="replace")
@@ -53,12 +53,13 @@ def _check_cmd(name: str, cmd: list[str], *, required: bool = True) -> bool:
 
 
 def _check_file(path: Path, *, required: bool) -> bool:
-    if path.exists():
+    exists = path.exists()
+    if exists:
         print(f"[doctor] OK: file {path.as_posix()}")
-        return True
-    level = "MISSING" if required else "WARN"
-    print(f"[doctor] {level}: file {path.as_posix()}")
-    return not required
+    else:
+        level = "MISSING" if required else "WARN"
+        print(f"[doctor] {level}: file {path.as_posix()}")
+    return exists
 
 
 def _print_environment_header(repo_root: Path) -> str:
@@ -129,9 +130,7 @@ def _missing_environment_files(repo_root: Path) -> list[Path]:
     )
     missing_env: list[Path] = []
     for path in env_files:
-        exists = path.exists()
-        _check_file(path, required=False)
-        if not exists:
+        if not _check_file(path, required=False):
             missing_env.append(path)
     return missing_env
 

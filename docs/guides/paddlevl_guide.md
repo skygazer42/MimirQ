@@ -1,7 +1,7 @@
 # PaddleOCR-VL (外部服务) 集成指南
 
-MimirQ 支持把 **PaddleOCR-VL** 作为可选的 PDF OCR/版面解析后端，通过 **独立服务** 输出 Markdown（建议返回 ZIP：markdown + images + json）。
-这样可以避免把 `paddlepaddle/paddleocr` 这类重依赖塞进 MimirQ 主后端镜像。
+Ragvia 支持把 **PaddleOCR-VL** 作为可选的 PDF OCR/版面解析后端，通过 **独立服务** 输出 Markdown（建议返回 ZIP：markdown + images + json）。
+这样可以避免把 `paddlepaddle/paddleocr` 这类重依赖塞进 Ragvia 主后端镜像。
 
 ## 1) 启动 PaddleOCR-VL 服务（本仓库自带 Docker 服务）
 
@@ -37,9 +37,9 @@ PADDLEOCR_DEVICE=gpu:0
 - 实际部署建议至少预留 **10 GiB** 可用显存
 - 如果同卡还有别的常驻进程，请按“现有占用 + 8.2 GiB + 安全余量”估算
 
-## 2) 配置 MimirQ 后端
+## 2) 配置 Ragvia 后端
 
-在 MimirQ 后端环境变量（`.env`）中启用：
+在 Ragvia 后端环境变量（`.env`）中启用：
 
 ```bash
 PADDLE_VL_ENABLED=true
@@ -56,11 +56,11 @@ PADDLE_VL_TIMEOUT_SEC=600
 
 当 PaddleOCR-VL 服务返回 ZIP 时：
 
-- MimirQ 会把 ZIP 解压到 `.paddlevl/<run_id>/output/`，并将其 **归一化** 为稳定结构：
+- Ragvia 会把 ZIP 解压到 `.paddlevl/<run_id>/output/`，并将其 **归一化** 为稳定结构：
   - `result.md`
   - `images/`（可选）
-- 当 `MINIO_ENABLED=true` 且存在 `dataset_id/document_id` 时，MimirQ 会上传 ZIP 内的图片到 MinIO，并把 Markdown 内的图片引用改写为可访问的 URL。
-- 当 `MINIO_ENABLED=false` 时，为避免产物清理后出现死链，MimirQ 会在入库文本中移除 `![](...)` 和 `<img ...>` 引用（保留纯文本）。
+- 当 `MINIO_ENABLED=true` 且存在 `dataset_id/document_id` 时，Ragvia 会上传 ZIP 内的图片到 MinIO，并把 Markdown 内的图片引用改写为可访问的 URL。
+- 当 `MINIO_ENABLED=false` 时，为避免产物清理后出现死链，Ragvia 会在入库文本中移除 `![](...)` 和 `<img ...>` 引用（保留纯文本）。
 
 清理策略：
 - 默认会在流程结束后 best-effort 清理 `.paddlevl` 等解析器产物目录。

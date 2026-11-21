@@ -1,6 +1,6 @@
 import json
 
-from app.rag.core.hashing import stable_hash
+from app.infrastructure.hashing import stable_hash
 from scripts import mine_hard_negatives_from_traces as miner
 
 

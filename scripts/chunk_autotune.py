@@ -39,9 +39,9 @@ def _write_json(path: Path, obj: Any) -> None:
 def _headers(args: argparse.Namespace) -> dict[str, str]:
     h: dict[str, str] = {}
     if args.tenant_id:
-        h["X-Tenant-ID"] = str(args.tenant_id)
+        h["X-Tenant-ID"] = args.tenant_id
     if args.user_id:
-        h["X-User-ID"] = str(args.user_id)
+        h["X-User-ID"] = args.user_id
     if args.bearer:
         h["Authorization"] = f"Bearer {args.bearer}"
     return h
@@ -128,8 +128,8 @@ def _hist_counts(token_stats: dict[str, Any]) -> tuple[int, int, int]:
         except Exception:
             by_label[lab] = 0
 
-    short_cnt = int(by_label.get("0-50", 0) + by_label.get("50-100", 0))
-    long_cnt = int(by_label.get("800+", 0))
+    short_cnt = by_label.get("0-50", 0) + by_label.get("50-100", 0)
+    long_cnt = by_label.get("800+", 0)
     return total, short_cnt, long_cnt
 
 
@@ -164,11 +164,11 @@ def _extract_metrics(body: dict[str, Any]) -> dict[str, Any]:
         cov_pct = 0
 
     return {
-        "token_p50": int(token_p50),
-        "short_pct": int(short_pct),
-        "long_pct": int(long_pct),
-        "overlap_waste_pct": int(max(0, min(100, waste_pct))),
-        "coverage_pct": int(max(0, min(100, cov_pct))),
+        "token_p50": token_p50,
+        "short_pct": short_pct,
+        "long_pct": long_pct,
+        "overlap_waste_pct": max(0, min(100, waste_pct)),
+        "coverage_pct": max(0, min(100, cov_pct)),
         "total_chunks": int(body.get("total_chunks") or 0),
         "total_characters": int(body.get("total_characters") or 0),
     }
@@ -268,7 +268,7 @@ def _score(metrics: dict[str, Any], targets: dict[str, int]) -> tuple[int, list[
     for delta, step_reasons in scoring_steps:
         score += delta
         reasons.extend(step_reasons)
-    return int(score), reasons
+    return score, reasons
 
 
 def _candidate_grid(
@@ -297,15 +297,15 @@ def _candidate_grid(
         out.append(
             {
                 "chunk_strategy": s,
-                "chunk_size": int(chunk_size),
-                "chunk_overlap": int(overlap),
+                "chunk_size": chunk_size,
+                "chunk_overlap": overlap,
             }
         )
     # Dedup (same overlap after clamping).
     seen: set[tuple[str, int, int]] = set()
     uniq: list[dict[str, Any]] = []
     for c in out:
-        key = (str(c["chunk_strategy"]), int(c["chunk_size"]), int(c["chunk_overlap"]))
+        key = (c["chunk_strategy"], c["chunk_size"], c["chunk_overlap"])
         if key in seen:
             continue
         seen.add(key)
@@ -432,7 +432,7 @@ def _upload_base_preview(
 
     file_type = (file_path.suffix or "").lstrip(".").lower() or "txt"
     try:
-        file_size = int(file_path.stat().st_size)
+        file_size = file_path.stat().st_size
     except Exception:
         file_size = 0
 
@@ -461,9 +461,9 @@ def _parse_float_values(raw: str) -> list[float]:
 
 
 def _build_candidates(args: argparse.Namespace) -> list[dict[str, Any]]:
-    strategies = [s.strip() for s in str(args.strategies or "").split(",") if s.strip()]
-    chunk_sizes = _parse_int_values(str(args.chunk_sizes or ""))
-    overlap_ratios = _parse_float_values(str(args.overlap_ratios or ""))
+    strategies = [s.strip() for s in args.strategies.split(",") if s.strip()]
+    chunk_sizes = _parse_int_values(args.chunk_sizes)
+    overlap_ratios = _parse_float_values(args.overlap_ratios)
     _require(bool(strategies), "No strategies provided")
     _require(bool(chunk_sizes), "No chunk sizes provided")
     _require(bool(overlap_ratios), "No overlap ratios provided")
@@ -500,7 +500,7 @@ def _build_candidate_row(
     return {
         "rank": None,
         "candidate": candidate,
-        "score": int(score),
+        "score": score,
         "score_reasons": reasons,
         "metrics": metrics,
         "http_status": int(response.status_code),
@@ -508,7 +508,7 @@ def _build_candidate_row(
 
 
 def _candidate_sort_key(row: dict[str, Any]) -> tuple[int, str]:
-    return int(row.get("score") or 9_999_999), str(row.get("candidate") or "")
+    return 9_999_999 if row.get("score") is None else int(row["score"]), str(row.get("candidate") or "")
 
 
 def _evaluate_candidates(
@@ -623,14 +623,14 @@ def _write_outputs(
 
 def main() -> None:
     args = _build_parser().parse_args()
-    base_url = str(args.base_url or "").rstrip("/")
+    base_url = args.base_url.rstrip("/")
     _require(bool(base_url), "--base-url is required")
 
-    file_path = Path(str(args.file))
+    file_path = Path(args.file)
     _require(file_path.exists(), f"file not found: {file_path}")
 
-    dataset_id = str(args.dataset_id or "").strip()
-    out_dir = Path(str(args.out_dir or "chunk_autotune_out"))
+    dataset_id = args.dataset_id.strip()
+    out_dir = Path(args.out_dir or "chunk_autotune_out")
 
     with httpx.Client(timeout=60.0, headers=_headers(args)) as client:
         targets = _resolve_targets(client, base_url=base_url, dataset_id=dataset_id)
@@ -639,7 +639,7 @@ def main() -> None:
             base_url=base_url,
             file_path=file_path,
             dataset_id=dataset_id,
-            parser_backend=str(args.parser_backend),
+            parser_backend=args.parser_backend,
         )
         print(f"[chunk_autotune] upload ok sha={sha[:10]}… elapsed_ms={elapsed_ms}")
 
@@ -652,7 +652,7 @@ def main() -> None:
             file_path=file_path,
             file_type=file_type,
             file_size=file_size,
-            parser_backend=str(args.parser_backend),
+            parser_backend=args.parser_backend,
             dataset_id=dataset_id,
             targets=targets,
         )

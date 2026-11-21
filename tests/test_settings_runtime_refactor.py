@@ -25,8 +25,8 @@ def _make_request(*, headers: list[tuple[bytes, bytes]] | None = None, client_ho
 
 
 def test_apply_runtime_settings_preserves_storage_reset_order(monkeypatch: pytest.MonkeyPatch) -> None:
-    from app.api.v1 import health as health_api
-    from app.api.v1 import settings as settings_api
+    from app.api.v1.system import settings as settings_api
+    from app.services.runtime import readiness_cache as health_readiness
     from app.storage.object import factory as object_factory
     from app.storage.object import minio as minio_module
 
@@ -39,7 +39,9 @@ def test_apply_runtime_settings_preserves_storage_reset_order(monkeypatch: pytes
         SimpleNamespace(reset_runtime_state=lambda: calls.append("reset_minio")),
         raising=True,
     )
-    monkeypatch.setattr(health_api, "invalidate_ready_cache", lambda: calls.append("invalidate_ready"), raising=True)
+    monkeypatch.setattr(
+        health_readiness, "invalidate_ready_cache", lambda: calls.append("invalidate_ready"), raising=True
+    )
 
     settings_api._apply_runtime_settings(
         {
@@ -53,7 +55,7 @@ def test_apply_runtime_settings_preserves_storage_reset_order(monkeypatch: pytes
 
 
 def test_update_settings_preserves_write_apply_and_reset_order(monkeypatch: pytest.MonkeyPatch) -> None:
-    from app.api.v1 import settings as settings_api
+    from app.api.v1.system import settings as settings_api
 
     calls: list[str] = []
     db = SimpleNamespace(commit=lambda: calls.append("db_commit"))
@@ -64,6 +66,7 @@ def test_update_settings_preserves_write_apply_and_reset_order(monkeypatch: pyte
         ]
     )
 
+    monkeypatch.setattr(settings_api.settings, "SETTINGS_ENV_WRITE_ENABLED", True)
     monkeypatch.setattr(settings_api, "_ensure_settings_writable", lambda *_args, **_kwargs: None, raising=True)
     monkeypatch.setattr(settings_api, "_env_file_lock", lambda: nullcontext(), raising=True)
     monkeypatch.setattr(settings_api, "read_env_file", lambda: {}, raising=True)
@@ -87,9 +90,9 @@ def test_update_settings_preserves_write_apply_and_reset_order(monkeypatch: pyte
         calls.append("reset_rag_engine")
 
     monkeypatch.setitem(
-        sys.modules, "app.services.audit_log_service", SimpleNamespace(audit_log_event=_audit_log_event)
+        sys.modules, "app.services.observability.audit_log", SimpleNamespace(audit_log_event=_audit_log_event)
     )
-    monkeypatch.setitem(sys.modules, "app.rag.engine", SimpleNamespace(reset_rag_engine=_reset_rag_engine))
+    monkeypatch.setitem(sys.modules, "app.rag.runtime.engine", SimpleNamespace(reset_rag_engine=_reset_rag_engine))
 
     result = settings_api.update_settings(
         settings_api.UpdateSettingsRequest(
@@ -135,7 +138,7 @@ def test_update_settings_preserves_write_apply_and_reset_order(monkeypatch: pyte
         "LLM_TIMEOUT": "45",
         "LLM_MAX_RETRIES": "5",
     }
-    assert calls[1][1]["request_id"] == "req-header"
+    assert calls[1][1]["request_id"] == "req-state"
     assert calls[1][1]["ip"] == "198.51.100.7"
     assert calls[1][1]["user_agent"] == "pytest"
     assert calls[1][1]["details"] == {"updated_keys": result["updated_keys"]}
@@ -145,8 +148,8 @@ def test_update_settings_preserves_write_apply_and_reset_order(monkeypatch: pyte
 
 
 def test_get_system_status_reports_parser_health_branches(monkeypatch: pytest.MonkeyPatch) -> None:
-    from app.api.v1 import settings as settings_api
-    from app.core.config import settings
+    from app.api.v1.system import settings as settings_api
+    from app.infrastructure.config import settings
 
     class _Session:
         def execute(self, query):
@@ -170,22 +173,22 @@ def test_get_system_status_reports_parser_health_branches(monkeypatch: pytest.Mo
         return None, "unreachable"
 
     def _find_spec(name: str):
-        installed = {"markitdown", "app.deepdoc.parser"}
+        installed = {"markitdown", "app.rag.ingestion.parsing.parsers.deepdoc_parser"}
         return object() if name in installed else None
 
     monkeypatch.setattr(settings_api, "_ensure_settings_readable", lambda *_args, **_kwargs: None, raising=True)
     monkeypatch.setattr(settings_api, "_probe_http_json", _probe_http_json, raising=True)
     monkeypatch.setattr(settings_api.importlib.util, "find_spec", _find_spec, raising=True)
-    monkeypatch.setattr("app.core.database.SessionLocal", lambda: _Session(), raising=True)
+    monkeypatch.setattr("app.infrastructure.database.connection.SessionLocal", lambda: _Session(), raising=True)
     monkeypatch.setitem(sys.modules, "pymilvus", SimpleNamespace(connections=_Connections()))
     monkeypatch.setitem(sys.modules, "sqlalchemy", SimpleNamespace(text=lambda query: query))
     monkeypatch.setattr(
-        "app.parsing.utils.cli.resolve_cli_command",
+        "app.rag.ingestion.parsing.utils.cli.resolve_cli_command",
         lambda command: f"/usr/bin/{command}",
         raising=True,
     )
     monkeypatch.setattr(
-        "app.parsing.parsers.magic_pdf_parser.resolve_magicpdf_models_dir",
+        "app.rag.ingestion.parsing.parsers.magic_pdf_parser.resolve_magicpdf_models_dir",
         lambda _value: "/models/magicpdf",
         raising=True,
     )
@@ -194,6 +197,7 @@ def test_get_system_status_reports_parser_health_branches(monkeypatch: pytest.Mo
     monkeypatch.setattr(settings, "LLM_MODEL", "gpt-5.4-mini", raising=False)
     monkeypatch.setattr(settings, "EMBEDDING_API_KEY", "", raising=False)
     monkeypatch.setattr(settings, "EMBEDDING_MODEL", "text-embedding-3-small", raising=False)
+    monkeypatch.setattr(settings, "VECTOR_BACKEND", "milvus")
     monkeypatch.setattr(settings, "MILVUS_HOST", "milvus.example.test", raising=False)
     monkeypatch.setattr(settings, "MILVUS_PORT", 19530, raising=False)
     monkeypatch.setattr(settings, "MILVUS_USER", "", raising=False)
@@ -266,3 +270,40 @@ def test_get_system_status_reports_parser_health_branches(monkeypatch: pytest.Mo
         "available": True,
         "message": "configured (models: /models/magicpdf)",
     }
+
+
+@pytest.mark.parametrize(
+    ("backend", "expected_vector_status"),
+    [
+        ("memory", {"connected": True, "message": "内存索引（开发模式）"}),
+        ("milvus", {"connected": False, "message": "Milvus 客户端未安装"}),
+    ],
+)
+def test_get_system_status_without_optional_milvus_client(
+    monkeypatch: pytest.MonkeyPatch, backend: str, expected_vector_status: dict[str, object]
+) -> None:
+    from app.api.v1.system import settings as settings_api
+    from app.infrastructure.config import settings
+
+    class _Session:
+        def execute(self, query):
+            assert str(query) == "SELECT 1"
+
+        def close(self):
+            pass
+
+    async def _parser_statuses(**_kwargs):
+        return {"basic": {"enabled": True, "available": True, "message": "built-in"}}
+
+    monkeypatch.setattr(settings_api, "_ensure_settings_readable", lambda *_args: None)
+    monkeypatch.setattr(settings_api, "_build_parser_statuses", _parser_statuses)
+    monkeypatch.setattr("app.infrastructure.database.connection.SessionLocal", _Session)
+    monkeypatch.setattr(settings, "VECTOR_BACKEND", backend)
+    monkeypatch.setitem(sys.modules, "pymilvus", None)
+
+    status = asyncio.run(settings_api.get_system_status(tenant_id=uuid4(), account_id="reader", db=SimpleNamespace()))
+
+    assert status["database"] == {"connected": True, "message": "connected"}
+    assert status["milvus"] == expected_vector_status
+    assert status["parsers"]["basic"]["available"] is True
+    assert "llm" in status and "embedding" in status

@@ -1,0 +1,160 @@
+{
+  "schema": "ragvia.layout_verification.v1",
+  "date": "2026-11-15",
+  "workspace": "E:\\MimirQ",
+  "branch": "feat/ragvia-ui",
+  "opening_head": "619ba7d1166c96beb85729069f5f79794a904a7a",
+  "current_head": "619ba7d1166c96beb85729069f5f79794a904a7a",
+  "source_basis": "Opening worktree; pre-existing parsing/frontend/test work retained",
+  "scope": {
+    "opening_python": 1167,
+    "current_python": 1162,
+    "current_resources": 152,
+    "current_files": 1314,
+    "project_maintained_python": 1155,
+    "derived_python": 7,
+    "services_domains": 21,
+    "core_python_before": 40,
+    "core_python_after": 36,
+    "API_v1_python": 92,
+    "API_schema_python": 56,
+    "API_schema_domains": 10,
+    "source_lines_before": 348935,
+    "source_lines_after": 347563,
+    "implementation_modules_removed": 25,
+    "package_markers_net_added": 20
+  },
+  "inspection": "Naming/declaration/import/consumer coverage for all 1167 opening files, targeted full/section reading and independent merge reviews. Not a new full semantic review of every function.",
+  "source_tree_sha256": "238a8423366fa16fc2f1c5fd93526bb967c7ccebcad3b1140f27c1f78d024bf4",
+  "checks": {
+    "app_AST311_compile": 1162,
+    "production_import_sources": 1323,
+    "missing_imports": 0,
+    "project_Ruff_format": {
+      "config_walk": 1146,
+      "explicit_no_force_exclude": 9,
+      "total": 1155,
+      "passed": true
+    },
+    "changed_callers_Ruff_format": {
+      "files": 38,
+      "passed": true
+    },
+    "cold_assembly": {
+      "paths": 358,
+      "routes": 422,
+      "schemas": 671,
+      "tables": 53,
+      "mappers": 53,
+      "OpenAPI_diffs": [],
+      "ORM_diffs": [],
+      "scope": "Cold import/OpenAPI/Pydantic/mapper/DDL only; no startup, DB queries, HTTP requests, workers or model execution"
+    },
+    "OpenAPI_canonical_sha256_before": "721b11d381dca811c87db81af3e91136b63135ded87095531794a79e643955fe",
+    "OpenAPI_canonical_sha256_after": "721b11d381dca811c87db81af3e91136b63135ded87095531794a79e643955fe",
+    "ORM_canonical_sha256_before": "0c71ee58e291b36f673204c43910f47273b9fc6d78242cece0adc9034d63e516",
+    "ORM_canonical_sha256_after": "0c71ee58e291b36f673204c43910f47273b9fc6d78242cece0adc9034d63e516",
+    "frozen_tests": 610,
+    "tests_changed": 0,
+    "pytest_run": false,
+    "resources_byte_identical": 152,
+    "ci_Python_heredocs_compiled": 9,
+    "stable_log_calls": 102,
+    "stable_log_files": 69,
+    "factory_module_attribute_targets": 139,
+    "lazy_module_targets": 40,
+    "isolated_followup_comparisons": 35232,
+    "isolated_sentence_boundary_comparisons": 23368,
+    "prompt_literals_identical": 6,
+    "notes": {
+      "format_verified": 234,
+      "format_exit": 0,
+      "archive_exit": 0,
+      "tree_exit": 1,
+      "existing_missing_links": 10,
+      "new_missing_links": 0
+    },
+    "git_diff_check_exit": 0,
+    "git_line_ending_notices": "CRLF-to-LF normalization notices only; no whitespace errors",
+    "ignored_app_source_files": []
+  },
+  "derived_lint": {
+    "opening_diagnostics": 13,
+    "current_diagnostics": 13,
+    "same_file_code_message_multiset": true,
+    "new": [],
+    "resolved": [],
+    "scope": "Direct current Ruff rules on the 7 derived files; distinct from previous owner-adjusted 11-debt report"
+  },
+  "ledger": {
+    "app_review_rows": 1314,
+    "status_counts": {
+      "adjusted": 930,
+      "conforms": 225,
+      "preserved": 159
+    },
+    "layout_opening_rows": 1167,
+    "retired_opening_paths": 317,
+    "coverage_current_app": 1314,
+    "coverage_historical_app": 741,
+    "coverage_non_app_byte_preserved": 3998
+  },
+  "code_review": {
+    "independent_scopes": [
+      "API/ORM/contracts",
+      "dependencies/dynamic targets/resources/CI",
+      "consolidation behavior"
+    ],
+    "resolved": [
+      "KGSnapshotDiffRequest moved to schema",
+      "KG manual imports use public schema domain",
+      "logger identities retained",
+      "CI embedded imports and indentation repaired",
+      "existing stale TYPE_CHECKING export and seed parser-class caller migrated"
+    ],
+    "unresolved_new_source_findings": 0
+  },
+  "optional_directory_cleanup": {
+    "requested_directories": 9,
+    "executed": false,
+    "auto_approval": "rejected",
+    "reason": "blocked by policy",
+    "contents": "empty or __pycache__ only; no source files"
+  },
+  "runtime_limits": [
+    "No actual service startup or Docker business flows",
+    "No HTTP requests, database queries/transactions, workers or model execution",
+    "Frozen Python tests may retain retired module/private imports; full pytest/CI not run"
+  ],
+  "git": {
+    "staged_files": [],
+    "committed": false,
+    "pushed": false
+  },
+  "repository_ledgers": {
+    "app-review.csv": "fcd7383e1cb026519f81f3f869d1a469b45f106831d169aadf5af772dc791a17",
+    "api-v1-review.csv": "6d94fc112e9cf23b20c1f8a7dddfc40184b10775fce06cfde51e3d0abaf3e45f",
+    "coverage.csv": "126ba448e2bdb6fb4a042138732adb028213dbad72b41fe2a7e1591295cc3d53",
+    "layout-review.csv": "ed1cd5347a047771deb58c038300189b0b2e0498297160bb970aea752b2d76ea"
+  },
+  "local_evidence": {
+    "codex-layout-baseline-20261115.json": "df323afb24233b29c82aed885e731225e4dff91f04009e64bc8b20aed3ac2380",
+    "codex-layout-static-20261115.json": "417de91f7aada34de0566bcce2d700fe3b261cb6732e08f07c96969fafad6508",
+    "codex-layout-runtime-20261115.json": "db98dd34586589be7d133827478da8208937d9ec25e02c20a2249762d7c0a859",
+    "codex-layout-models-audit-20261115.json": "219bd8522c9dfda4ee3a186ae5e155f6f77a3f0bc1ac0641b04e28a2436d901e",
+    "codex-layout-rag-audit-20261115.json": "215f91867ef635cbebdd4ec0d082fa61b4c366c1e8d2b57bad4fc41f24d7fe9c",
+    "codex-layout-rest-audit-20261115.json": "b265d1031247bcbfca9e23c54577db8a17ae369c745a1d7be0a89beaa6137f07",
+    "codex-layout-services-map-20261115.json": "65e260e9826e301f56e4194b3e90fc52532396d9001dbcb04088b6cc38905cfc",
+    "codex-layout-ledgers-final-20261115.json": "5acd6b7f13f0663b8377f3a312613b93a4627fd44139a4476b13e2bf330ff25a",
+    "codex-layout-contracts-review-20261115.json": "9efbbe241b61407885b62f9ab4af656c351ca50e8d8e77266afb2859b467196d",
+    "codex-layout-dependencies-review-20261115.json": "902384a0bb526f51d3b7245fe3ef07c8428b7bd14cc887a76e7ad92d070e2fa0",
+    "codex-layout-consolidation-review-20261115.json": "a87c20f69bfdc457ea23fc06e74d1e9ada1d6ad8dd6fdd245d24b8cc576df4c4",
+    "codex-layout-log-identities-fixed-20261115.json": "5d5933beb1ee6408c1106dafa029536034968a04157cf328724af3de3c385531",
+    "codex-layout-derived-lint-baseline-20261115.json": "80675ae4578f1cbf72374920a810eea985dd7ab0f8aa6fb48961224992498643",
+    "codex-rag-text-consolidation-evidence-20261115.json": "80bae58099bf016ce674616240a8c67e54ac17978853aa2efe3106c7679ed333",
+    "codex-rag-sentence-boundaries-evidence-20261115.json": "15dfd8cf73f1d14ac98ec3a48993268b3a92dbbf74f8119043cf07226b4c492d",
+    "codex-rest-merges-evidence-20261115.json": "8559b8d8f2d61c15cce04a47fda316be3de91b4e8b710227588699b2b2881089",
+    "codex-layout-doc-references-20261115.json": "ba51240a700122121b689d569261b0aca7bbbee09aa8f39342db45c2ca4e8624",
+    "codex-orm-entry-bootstrap-implementation-20261115.json": "12def64b7b32368b1fc8da75cf08a4b4c97f10c8c0b366c096d2998ae5538f88"
+  }
+}

@@ -1,6 +1,8 @@
-const CACHE_VERSION = 'v4'
-const STATIC_CACHE = `mimirq-static-${CACHE_VERSION}`
-const APP_SHELL_CACHE = `mimirq-app-shell-${CACHE_VERSION}`
+const CACHE_VERSION = 'v5'
+const STATIC_CACHE_PREFIX = 'mimirq-static-'
+const APP_SHELL_CACHE_PREFIX = 'mimirq-app-shell-'
+const STATIC_CACHE = `${STATIC_CACHE_PREFIX}${CACHE_VERSION}`
+const APP_SHELL_CACHE = `${APP_SHELL_CACHE_PREFIX}${CACHE_VERSION}`
 const APP_SHELL_URLS = [
   '/',
   '/knowledge',
@@ -22,7 +24,12 @@ globalThis.addEventListener('activate', (event) => {
     caches.keys().then((keys) =>
       Promise.all(
         keys
-          .filter((key) => key !== STATIC_CACHE && key !== APP_SHELL_CACHE)
+          .filter(
+            (key) =>
+              (key.startsWith(STATIC_CACHE_PREFIX) || key.startsWith(APP_SHELL_CACHE_PREFIX)) &&
+              key !== STATIC_CACHE &&
+              key !== APP_SHELL_CACHE,
+          )
           .map((key) => caches.delete(key))
       )
     ).then(() => globalThis.clients.claim())
@@ -40,6 +47,7 @@ function isSupportedStaticPath(url) {
     url.pathname.startsWith('/_next/static/') ||
     url.pathname.startsWith('/monaco/') ||
     url.pathname.startsWith('/fonts/') ||
+    url.pathname.startsWith('/pdfjs-compat/') ||
     url.pathname.startsWith('/pdfjs-dist/') ||
     url.pathname.endsWith('.svg') ||
     url.pathname.endsWith('.woff2')
@@ -77,7 +85,7 @@ self.addEventListener('fetch', (event) => {
       const cached = await cache.match(request)
       if (cached) return cached
       const response = await fetch(request)
-      cache.put(request, response.clone())
+      if (response.status === 200) event.waitUntil(cache.put(request, response.clone()))
       return response
     })
   )

@@ -1,143 +1,53 @@
-import type { Document } from '@/types'
+import type { Document, OpenApiSchema } from '@/types/backend'
 import { z } from 'zod'
 
 import { API_LONG_TIMEOUT_MS } from '@/lib/env'
-import { apiClient, openapiRequest } from '@/lib/api/core'
+import { apiClient, openapiRequest, type ApiRequestOptions } from '@/lib/api/core'
 
-export interface ParsingElement {
-  id: string
-  kind: 'heading' | 'paragraph' | 'list' | 'table' | 'image' | 'equation' | 'seal' | 'unknown'
-  page?: number | null
-  pages?: number[] | null
-  visual_kind?: string | null
-  text?: string | null
-  confidence?: number | null
-  source_backend?: string | null
-  source_element_id?: string | null
-  bbox?: {
-    x0: number
-    y0: number
-    x1: number
-    y1: number
-  } | null
-  attributes?: Record<string, unknown> | null
+export type ParsingElement = OpenApiSchema<'ParsingElementOut'>
+
+export type ParsingExtractFieldSpec = OpenApiSchema<'ParsingExtractFieldSpec'>
+export type ParsingExtractRequest = OpenApiSchema<'ParsingExtractRequest'>
+
+export type ParsingExtractEvidence = OpenApiSchema<'ParsingExtractEvidence'>
+
+type ParsingDocumentListParams = {
+  skip?: number
+  limit?: number
+  status?: string
+  dataset_id?: string
 }
 
-export interface ParsingExtractFieldSpec {
-  type?: 'string'
-  source_kind?: string | null
-  source_visual_kind?: string | null
-  aliases?: string[]
+type ParsingDocumentListResponse = {
+  total: number
+  items: Document[]
 }
 
-export interface ParsingExtractRequest {
-  mode?: 'schema' | 'prompt'
-  schema?: Record<string, ParsingExtractFieldSpec> | null
-  prompt?: string | null
-  field_hints?: Record<string, ParsingExtractFieldSpec> | null
-  max_evidence?: number
-}
+export type ParsingContentUpdateRequest = OpenApiSchema<'ParsingContentUpdateRequest'>
 
-export interface ParsingExtractEvidence {
-  element_id?: string | null
-  kind?: ParsingElement['kind'] | null
-  page?: number | null
-  pages?: number[] | null
-  visual_kind?: string | null
-  bbox?: {
-    x0: number
-    y0: number
-    x1: number
-    y1: number
-  } | null
-  text?: string | null
-  score?: number | null
-}
+const parsingContentStatsSchema = z
+  .object({
+    page_count: z.number().int().optional(),
+    table_count: z.number().int().optional(),
+    image_count: z.number().int().optional(),
+    block_count: z.number().int().optional(),
+  })
+  .catchall(z.number().int())
 
-export interface ParsingExtractFieldResult {
-  value?: string | null
-  confidence?: number | null
-  evidence: ParsingExtractEvidence[]
-  strategy?: string | null
-}
-
-export interface ParsingExtractResponse {
-  document_id: string
-  mode: 'schema' | 'prompt'
-  result: Record<string, ParsingExtractFieldResult>
-}
-
-function normalizeExtractFieldSpecMap(
-  value: Record<string, ParsingExtractFieldSpec> | null | undefined
-): Record<string, { type: 'string'; source_kind?: string | null; aliases?: string[] }> | undefined {
-  if (!value) return undefined
-  const entries = Object.entries(value)
-  if (entries.length === 0) return undefined
-  const out: Record<string, { type: 'string'; source_kind?: string | null; source_visual_kind?: string | null; aliases?: string[] }> = {}
-  for (const [key, spec] of entries) {
-    out[key] = {
-      type: 'string',
-      source_kind: spec?.source_kind ?? undefined,
-      source_visual_kind: spec?.source_visual_kind ?? undefined,
-      aliases: spec?.aliases ?? undefined,
-    }
-  }
-  return out
-}
-
-export interface ParsingContentResponse {
-  document_id: string
-  parser_backend: string
-  markdown_content: string
-  original_markdown_content: string
-  stats?: {
-    page_count?: number
-    table_count?: number
-    image_count?: number
-    block_count?: number
-  } | null
-  parse_duration_sec?: number | null
-  pdf_quality?: {
-    score: number
-    text_quality_score: number
-    format_consistency_score: number
-    table_quality_score: number
-    is_scanned: boolean
-    page_count: number
-  } | null
-  quality_gate?: {
-    grade: 'pass' | 'warn' | 'fail'
-    reasons: string[]
-    evidence?: Record<string, unknown>
-  } | null
-  elements?: ParsingElement[] | null
-}
-
-export interface ParsingContentUpdateRequest {
-  markdown_content: string
-  original_markdown_content?: string | null
-}
-
-const parsingContentStatsSchema = z.looseObject({
-  page_count: z.number().int().optional(),
-  table_count: z.number().int().optional(),
-  image_count: z.number().int().optional(),
-  block_count: z.number().int().optional(),
-})
-
-const parsingPdfQualitySchema = z
+export const parsingPdfQualitySchema = z
   .object({
     score: z.number(),
     text_quality_score: z.number(),
     format_consistency_score: z.number(),
     table_quality_score: z.number(),
+    reading_order_score: z.number().nullable().optional(),
     is_scanned: z.boolean(),
     page_count: z.number().int(),
   })
   .nullable()
   .optional()
 
-const parsingQualityGateSchema = z
+export const parsingQualityGateSchema = z
   .object({
     grade: z.enum(['pass', 'warn', 'fail']),
     reasons: z.array(z.string()),
@@ -146,7 +56,16 @@ const parsingQualityGateSchema = z
   .nullable()
   .optional()
 
-const parsingElementKindSchema = z.enum(['heading', 'paragraph', 'list', 'table', 'image', 'equation', 'seal', 'unknown'])
+const parsingElementKindSchema = z.enum([
+  'heading',
+  'paragraph',
+  'list',
+  'table',
+  'image',
+  'equation',
+  'seal',
+  'unknown',
+])
 
 const parsingElementSchema = z.looseObject({
   id: z.string(),
@@ -168,13 +87,6 @@ const parsingElementSchema = z.looseObject({
     .nullable()
     .optional(),
   attributes: z.record(z.string(), z.unknown()).nullable().optional(),
-})
-
-const parsingExtractFieldSpecSchema = z.looseObject({
-  type: z.enum(['string']).optional(),
-  source_kind: z.string().nullable().optional(),
-  source_visual_kind: z.string().nullable().optional(),
-  aliases: z.array(z.string()).optional(),
 })
 
 const parsingExtractEvidenceSchema = z.looseObject({
@@ -203,10 +115,22 @@ const parsingExtractFieldResultSchema = z.looseObject({
   strategy: z.string().nullable().optional(),
 })
 
+const parsingExtractResultsSchema = z
+  .preprocess(
+    (value) => {
+      if (typeof value !== 'object' || value === null) return z.NEVER
+      const prototype = Object.getPrototypeOf(value)
+      if (prototype !== Object.prototype && prototype !== null) return z.NEVER
+      return new Map(Object.entries(value))
+    },
+    z.map(z.string(), parsingExtractFieldResultSchema, { error: '抽取结果必须是字段对象' }),
+  )
+  .transform((fields) => Object.fromEntries(fields))
+
 const parsingExtractResponseSchema = z.looseObject({
   document_id: z.string(),
   mode: z.enum(['schema', 'prompt']),
-  result: z.record(z.string(), parsingExtractFieldResultSchema),
+  result: parsingExtractResultsSchema,
 })
 
 const parsingContentResponseSchema = z.looseObject({
@@ -219,21 +143,26 @@ const parsingContentResponseSchema = z.looseObject({
   pdf_quality: parsingPdfQualitySchema,
   quality_gate: parsingQualityGateSchema,
   elements: z.array(parsingElementSchema).nullable().optional(),
+  edited: z.boolean(),
 })
 
-const parsingContentResponseTypedSchema = parsingContentResponseSchema as unknown as z.ZodType<ParsingContentResponse>
-const parsingExtractResponseTypedSchema = parsingExtractResponseSchema as unknown as z.ZodType<ParsingExtractResponse>
+export type ParsingExtractFieldResult = z.output<typeof parsingExtractFieldResultSchema>
+export type ParsingExtractResponse = z.output<typeof parsingExtractResponseSchema>
+export type ParsingContentResponse = z.output<typeof parsingContentResponseSchema>
 
 export const parsingApi = {
-  async listDocuments(params?: { skip?: number; limit?: number; status?: string; dataset_id?: string }): Promise<{ total: number; items: Document[] }> {
-    const { data } = await apiClient.get('/parsing/documents', { params })
+  async listDocuments(
+    params?: ParsingDocumentListParams,
+    options?: ApiRequestOptions,
+  ): Promise<ParsingDocumentListResponse> {
+    const { data } = await apiClient.get('/parsing/documents', { params, signal: options?.signal })
     return data
   },
 
   async upload(file: File, options?: { parser_backend?: string; dataset_id?: string | null }): Promise<Document> {
     const formData = new FormData()
     formData.append('file', file)
-    formData.append('parser_backend', (options?.parser_backend || 'auto').toString())
+    if (options?.parser_backend) formData.append('parser_backend', options.parser_backend)
     if (options?.dataset_id) formData.append('dataset_id', options.dataset_id)
     const { data } = await apiClient.post('/parsing/documents', formData)
     return data
@@ -247,7 +176,7 @@ export const parsingApi = {
       image_ocr_enabled?: boolean
       vlm_correction_enabled?: boolean
       signal?: AbortSignal
-    }
+    },
   ): Promise<ParsingContentResponse> {
     const params: {
       parser_backend?: string
@@ -256,9 +185,13 @@ export const parsingApi = {
       vlm_correction_enabled?: boolean
     } = {}
     if (options?.parser_backend) params.parser_backend = options.parser_backend
-    if (typeof options?.image_caption_enabled === 'boolean') params.image_caption_enabled = options.image_caption_enabled
+    if (typeof options?.image_caption_enabled === 'boolean') {
+      params.image_caption_enabled = options.image_caption_enabled
+    }
     if (typeof options?.image_ocr_enabled === 'boolean') params.image_ocr_enabled = options.image_ocr_enabled
-    if (typeof options?.vlm_correction_enabled === 'boolean') params.vlm_correction_enabled = options.vlm_correction_enabled
+    if (typeof options?.vlm_correction_enabled === 'boolean') {
+      params.vlm_correction_enabled = options.vlm_correction_enabled
+    }
 
     const data = await openapiRequest({
       path: '/api/v1/parsing/documents/{document_id}/parse',
@@ -267,19 +200,20 @@ export const parsingApi = {
       query: Object.keys(params).length ? params : undefined,
       signal: options?.signal,
       timeoutMs: API_LONG_TIMEOUT_MS,
-      responseSchema: parsingContentResponseTypedSchema,
+      responseSchema: parsingContentResponseSchema,
       responseSchemaName: 'ParsingContentResponse',
     })
     return data as ParsingContentResponse
   },
 
-  async getContent(documentId: string): Promise<ParsingContentResponse> {
+  async getContent(documentId: string, options?: ApiRequestOptions): Promise<ParsingContentResponse> {
     const data = await openapiRequest({
       path: '/api/v1/parsing/documents/{document_id}/content',
       method: 'get',
       pathParams: { document_id: documentId },
-      responseSchema: parsingContentResponseTypedSchema,
+      responseSchema: parsingContentResponseSchema,
       responseSchemaName: 'ParsingContentResponse',
+      signal: options?.signal,
     })
     return data as ParsingContentResponse
   },
@@ -290,28 +224,26 @@ export const parsingApi = {
       method: 'patch',
       pathParams: { document_id: documentId },
       body: payload,
-      responseSchema: parsingContentResponseTypedSchema,
+      responseSchema: parsingContentResponseSchema,
       responseSchemaName: 'ParsingContentResponse',
     })
     return data as ParsingContentResponse
   },
 
-  async extract(documentId: string, payload: ParsingExtractRequest): Promise<ParsingExtractResponse> {
-    const requestBody = {
-      mode: payload.mode ?? 'schema',
-      schema: normalizeExtractFieldSpecMap(payload.schema),
-      prompt: payload.prompt ?? undefined,
-      field_hints: normalizeExtractFieldSpecMap(payload.field_hints),
-      max_evidence: payload.max_evidence ?? 1,
-    }
+  async extract(
+    documentId: string,
+    payload: ParsingExtractRequest,
+    options?: ApiRequestOptions,
+  ): Promise<ParsingExtractResponse> {
     const data = await openapiRequest({
       path: '/api/v1/parsing/documents/{document_id}/extract',
       method: 'post',
       pathParams: { document_id: documentId },
-      body: requestBody,
-      responseSchema: parsingExtractResponseTypedSchema,
+      body: payload,
+      responseSchema: parsingExtractResponseSchema,
       responseSchemaName: 'ParsingExtractResponse',
       timeoutMs: API_LONG_TIMEOUT_MS,
+      signal: options?.signal,
     })
     return data as ParsingExtractResponse
   },

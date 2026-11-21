@@ -2,21 +2,19 @@ import type { Document, DocumentChunk } from '@/types'
 
 import { documentApi } from './api'
 import { AUTH_SCOPE_CHANGED_EVENT, getAuthCacheScope } from './auth-storage'
-import { getDocCacheScopeGuard, isDocCacheScopeGuardCurrent, saveDocContentToCache } from './doc-content-cache'
-import { fetchAuthAssetUrl } from './image-auth-proxy'
+import { getDocCacheScopeGuard, isDocCacheScopeGuardCurrent, cacheDocContentIfMissing } from './doc-content-cache'
+import { reportClientWarning } from './client-logging'
 
 type PrefetchDocumentViewOptions = Readonly<{
   documentId?: string | null
   chunkId?: string | null
-  rawFileUrl?: string | null
 }>
 
 const prefetchedDocuments = new Map<string, Document>()
 const prefetchedChunks = new Map<string, DocumentChunk>()
 const documentInflight = new Map<string, Promise<void>>()
 const chunkInflight = new Map<string, Promise<void>>()
-const parsedInflight = new Map<string, Promise<unknown>>()
-const fileInflight = new Map<string, Promise<unknown>>()
+const parsedInflight = new Map<string, Promise<void>>()
 
 function chunkCacheKey(documentId: string, chunkId: string): string {
   return `${getAuthCacheScope()}:${documentId}:${chunkId}`
@@ -32,26 +30,24 @@ function clearPrefetchCaches() {
   documentInflight.clear()
   chunkInflight.clear()
   parsedInflight.clear()
-  fileInflight.clear()
 }
 
 globalThis.window?.addEventListener(AUTH_SCOPE_CHANGED_EVENT, clearPrefetchCaches)
 
 export function getPrefetchedDocument(documentId?: string | null): Document | undefined {
-  const id = String(documentId || '').trim()
+  const id = documentId?.trim()
   return id ? prefetchedDocuments.get(documentCacheKey(id)) : undefined
 }
 
 export function getPrefetchedChunk(documentId?: string | null, chunkId?: string | null): DocumentChunk | undefined {
-  const docId = String(documentId || '').trim()
-  const cid = String(chunkId || '').trim()
+  const docId = documentId?.trim()
+  const cid = chunkId?.trim()
   return docId && cid ? prefetchedChunks.get(chunkCacheKey(docId, cid)) : undefined
 }
 
-export function prefetchDocumentView({ documentId, chunkId, rawFileUrl }: PrefetchDocumentViewOptions): void {
-  const docId = String(documentId || '').trim()
-  const cid = String(chunkId || '').trim()
-  const fileUrl = String(rawFileUrl || '').trim()
+export function prefetchDocumentView({ documentId, chunkId }: PrefetchDocumentViewOptions): void {
+  const docId = documentId?.trim()
+  const cid = chunkId?.trim()
 
   if (!docId) return
 
@@ -65,7 +61,9 @@ export function prefetchDocumentView({ documentId, chunkId, rawFileUrl }: Prefet
         if (!isDocCacheScopeGuardCurrent(scopeGuard) || documentKey !== documentCacheKey(docId)) return
         prefetchedDocuments.set(documentKey, doc)
       })
-      .catch(() => undefined)
+      .catch((error) => {
+        if (isDocCacheScopeGuardCurrent(scopeGuard)) reportClientWarning('Failed to prefetch document details', error)
+      })
     documentInflight.set(documentKey, request)
     void request.finally(() => {
       if (documentInflight.get(documentKey) === request) {
@@ -83,7 +81,9 @@ export function prefetchDocumentView({ documentId, chunkId, rawFileUrl }: Prefet
           if (!isDocCacheScopeGuardCurrent(scopeGuard) || key !== chunkCacheKey(docId, cid)) return
           prefetchedChunks.set(key, chunk)
         })
-        .catch(() => undefined)
+        .catch((error) => {
+          if (isDocCacheScopeGuardCurrent(scopeGuard)) reportClientWarning('Failed to prefetch document chunk', error)
+        })
       chunkInflight.set(key, request)
       void request.finally(() => {
         if (chunkInflight.get(key) === request) {
@@ -97,30 +97,26 @@ export function prefetchDocumentView({ documentId, chunkId, rawFileUrl }: Prefet
     const request = documentApi
       .getParsedContent(docId, { max_chars: 200_000 })
       .then(async (data) => {
-        if (!data?.available || !isDocCacheScopeGuardCurrent(scopeGuard) || documentKey !== documentCacheKey(docId)) return
-        await saveDocContentToCache({
-          id: docId,
-          markdownContent: data.markdown_content || '',
-          originalMarkdownContent: data.original_markdown_content || '',
-        }, scopeGuard)
+        if (!data.available || !isDocCacheScopeGuardCurrent(scopeGuard) || documentKey !== documentCacheKey(docId))
+          return
+        if (data.markdown_truncated || data.original_markdown_truncated) return
+        await cacheDocContentIfMissing(
+          {
+            id: docId,
+            markdownContent: data.markdown_content,
+            originalMarkdownContent: data.original_markdown_content,
+          },
+          scopeGuard,
+        )
       })
-      .catch(() => undefined)
+      .catch((error) => {
+        if (isDocCacheScopeGuardCurrent(scopeGuard))
+          reportClientWarning('Failed to prefetch parsed document content', error)
+      })
     parsedInflight.set(documentKey, request)
     void request.finally(() => {
       if (parsedInflight.get(documentKey) === request) {
         parsedInflight.delete(documentKey)
-      }
-    })
-  }
-
-  if (fileUrl && !fileInflight.has(documentKey)) {
-    const request = fetchAuthAssetUrl(fileUrl)
-      .then((result) => (isDocCacheScopeGuardCurrent(scopeGuard) ? result : null))
-      .catch(() => null)
-    fileInflight.set(documentKey, request)
-    void request.finally(() => {
-      if (fileInflight.get(documentKey) === request) {
-        fileInflight.delete(documentKey)
       }
     })
   }

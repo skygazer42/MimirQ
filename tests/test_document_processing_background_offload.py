@@ -1,10 +1,11 @@
 import asyncio
 import threading
 import time
+from uuid import UUID
 
 import pytest
 
-from app.api.v1 import documents as documents_module
+import app.services.documents.processing_dispatch as documents_module
 
 
 @pytest.fixture(autouse=True)
@@ -36,11 +37,13 @@ async def test_document_processing_offloads_blocking_processor_off_event_loop(
             heartbeat_count += 1
             await asyncio.sleep(0.01)
 
-    monkeypatch.setattr(documents_module.document_processor, "process_document", _process, raising=True)
+    monkeypatch.setattr(documents_module, "process_document", _process, raising=True)
 
     heartbeat_task = asyncio.create_task(_heartbeat())
     try:
-        result = await documents_module.run_document_processing_limited("doc-1")
+        result = await documents_module.run_document_processing_limited(
+            "doc-1", document_id=UUID(int=0), tenant_id=UUID(int=0)
+        )
     finally:
         stop_heartbeat.set()
         await heartbeat_task
@@ -72,12 +75,16 @@ async def test_document_processing_offload_respects_background_concurrency_limit
         events.append(("end", label))
         return label
 
-    monkeypatch.setattr(documents_module.document_processor, "process_document", _process, raising=True)
+    monkeypatch.setattr(documents_module, "process_document", _process, raising=True)
 
-    first_task = asyncio.create_task(documents_module.run_document_processing_limited("first"))
+    first_task = asyncio.create_task(
+        documents_module.run_document_processing_limited("first", document_id=UUID(int=0), tenant_id=UUID(int=0))
+    )
     assert await asyncio.to_thread(first_started.wait, 3.0)
 
-    second_task = asyncio.create_task(documents_module.run_document_processing_limited("second"))
+    second_task = asyncio.create_task(
+        documents_module.run_document_processing_limited("second", document_id=UUID(int=0), tenant_id=UUID(int=0))
+    )
     await asyncio.sleep(0.05)
     assert events == [("start", "first")]
 
@@ -115,12 +122,16 @@ async def test_document_processing_offload_holds_semaphore_until_cancelled_worke
         events.append(("end", label))
         return label
 
-    monkeypatch.setattr(documents_module.document_processor, "process_document", _process, raising=True)
+    monkeypatch.setattr(documents_module, "process_document", _process, raising=True)
 
-    first_task = asyncio.create_task(documents_module.run_document_processing_limited("first"))
+    first_task = asyncio.create_task(
+        documents_module.run_document_processing_limited("first", document_id=UUID(int=0), tenant_id=UUID(int=0))
+    )
     assert await asyncio.to_thread(first_started.wait, 3.0)
 
-    second_task = asyncio.create_task(documents_module.run_document_processing_limited("second"))
+    second_task = asyncio.create_task(
+        documents_module.run_document_processing_limited("second", document_id=UUID(int=0), tenant_id=UUID(int=0))
+    )
     await asyncio.sleep(0.05)
     assert events == [("start", "first")]
 
@@ -166,12 +177,16 @@ async def test_document_processing_offload_preserves_cancellation_when_worker_fa
         events.append(("end", label))
         return label
 
-    monkeypatch.setattr(documents_module.document_processor, "process_document", _process, raising=True)
+    monkeypatch.setattr(documents_module, "process_document", _process, raising=True)
 
-    first_task = asyncio.create_task(documents_module.run_document_processing_limited("first"))
+    first_task = asyncio.create_task(
+        documents_module.run_document_processing_limited("first", document_id=UUID(int=0), tenant_id=UUID(int=0))
+    )
     assert await asyncio.to_thread(first_started.wait, 3.0)
 
-    second_task = asyncio.create_task(documents_module.run_document_processing_limited("second"))
+    second_task = asyncio.create_task(
+        documents_module.run_document_processing_limited("second", document_id=UUID(int=0), tenant_id=UUID(int=0))
+    )
     await asyncio.sleep(0.05)
     assert events == [("start", "first")]
 

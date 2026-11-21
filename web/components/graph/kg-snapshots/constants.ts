@@ -1,8 +1,4 @@
-import type {
-  DeltaDirection,
-  SnapshotInlineStatTone,
-  SnapshotStudioNode,
-} from './types'
+import type { DeltaDirection, SnapshotInlineStatTone, SnapshotStudioNode } from './types'
 
 export const DIFF_KEYS = ['docs', 'events', 'entities', 'links', 'relations'] as const
 
@@ -23,13 +19,13 @@ export const INLINE_STAT_VALUE_TONE_CLASSES: Record<SnapshotInlineStatTone, stri
 }
 
 export const SNAPSHOT_NODE_TONE_CLASSES: Record<SnapshotStudioNode['tone'], string> = {
-  amber: 'from-warning to-warning ring-warning/30',
-  blue: 'from-primary to-info ring-primary/30',
-  green: 'from-success to-success ring-success/30',
-  orange: 'from-warning to-destructive ring-warning/30',
-  purple: 'from-accent to-primary ring-accent/30',
-  rose: 'from-destructive to-destructive ring-destructive/30',
-  teal: 'from-success to-info ring-success/30',
+  amber: 'bg-warning/15 text-foreground ring-warning/40',
+  blue: 'bg-info/15 text-foreground ring-info/40',
+  green: 'bg-success/15 text-foreground ring-success/40',
+  orange: 'bg-warning/15 text-foreground ring-warning/40',
+  purple: 'bg-primary/10 text-foreground ring-primary/35',
+  rose: 'bg-destructive/10 text-foreground ring-destructive/35',
+  teal: 'bg-success/15 text-foreground ring-success/35',
 }
 
 export const DELTA_TEXT_CLASSES: Record<DeltaDirection, string> = {
@@ -49,15 +45,6 @@ export const DELTA_BADGE_VARIANTS: Record<DeltaDirection, 'soft' | 'outline' | '
   negative: 'destructive',
   positive: 'soft',
 }
-
-export const SNAPSHOT_HEADER_ACTION_CLASS =
-  'h-8 rounded-full border-border/40 bg-card/58 px-3 text-[11px] font-medium text-muted-foreground shadow-none hover:border-primary/28 hover:bg-background/72 hover:text-foreground'
-export const SNAPSHOT_ICON_ACTION_CLASS =
-  'h-8 w-8 rounded-full border-border/36 bg-card/54 text-muted-foreground shadow-none hover:border-primary/28 hover:bg-background/72 hover:text-foreground'
-export const SNAPSHOT_PRIMARY_COMPARE_CLASS =
-  'h-10 w-full gap-2 rounded-full bg-primary text-sm font-semibold text-primary-foreground shadow-[0_16px_32px_-22px_hsl(var(--primary)/0.72)] transition-shadow hover:bg-primary/92 hover:shadow-[0_18px_38px_-24px_hsl(var(--primary)/0.72)]'
-export const SNAPSHOT_SECONDARY_ACTION_CLASS =
-  'h-8 gap-1.5 rounded-full border-border/38 bg-background/48 px-2 text-[11px] font-medium text-muted-foreground shadow-none hover:border-primary/28 hover:bg-background/72 hover:text-foreground'
 
 export const DELTA_LABELS: Record<DeltaDirection, string> = {
   flat: 'flat',

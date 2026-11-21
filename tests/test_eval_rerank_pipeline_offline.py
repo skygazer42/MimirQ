@@ -25,6 +25,14 @@ def _load_module():
     return mod
 
 
+def test_real_supported_colbert_builder_remains_usable_after_ltr_removal():
+    mod = _load_module()
+    reranker = mod.build_colbert_reranker(Namespace(colbert_provider="deterministic", colbert_deterministic_dim=32))
+    candidates = [mod.RerankCandidate(id="a", text="query evidence", metadata={})]
+    result = reranker.rerank(query="query", candidates=candidates, top_n=1)
+    assert result.ordered_ids == ["a"]
+
+
 def test_build_pipeline_summary_tracks_wins_losses_and_ties() -> None:
     mod = _load_module()
 
@@ -69,19 +77,12 @@ def test_build_colbert_reranker_uses_provider_options(monkeypatch) -> None:  # n
     monkeypatch.setattr(mod, "ColBERTReranker", _FakeColBERTReranker, raising=True)
 
     args = Namespace(
-        colbert_provider="hf",
-        colbert_model_name="colbert-ir/colbertv2.0",
-        colbert_device="cpu",
-        colbert_batch_size=4,
-        colbert_max_length=64,
+        colbert_provider="deterministic",
         colbert_deterministic_dim=32,
     )
 
     _ = mod.build_colbert_reranker(args)  # type: ignore[attr-defined]
-    assert captured["provider_name"] == "hf"
-    assert captured["model_name"] == "colbert-ir/colbertv2.0"
-    assert captured["batch_size"] == 4
-    assert captured["max_length"] == 64
+    assert captured == {"provider_name": "deterministic", "deterministic_dim": 32}
 
 
 class _FakeResponse:
@@ -204,7 +205,7 @@ def test_main_reports_missing_cases_and_empty_pipeline(tmp_path, capsys) -> None
     assert "pipeline is empty" in empty_error
 
 
-def test_main_reports_missing_ltr_model(tmp_path, capsys) -> None:
+def test_main_reports_retired_ltr_selection(tmp_path, capsys) -> None:
     mod = _load_module()
     cases_path = tmp_path / "cases.json"
     cases_path.write_text('{"dataset_id":"dataset-1","items":[]}', encoding="utf-8")
@@ -219,7 +220,7 @@ def test_main_reports_missing_ltr_model(tmp_path, capsys) -> None:
     )
 
     assert result == 2
-    assert "pipeline includes 'ltr' but --ltr-model is missing/not found" in capsys.readouterr().err
+    assert "retired" in capsys.readouterr().err
 
 
 def test_main_initializes_colbert_only_when_pipeline_requires_it(monkeypatch, tmp_path) -> None:

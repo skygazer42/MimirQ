@@ -1,4 +1,4 @@
-from app.services import report_html
+from app.services.reports import html as report_html
 
 
 def _assert_in_order(text: str, parts: list[str]) -> None:

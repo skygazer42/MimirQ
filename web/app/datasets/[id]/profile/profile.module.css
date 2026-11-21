@@ -1,0 +1,165 @@
+.content {
+  width: 100%;
+  max-width: 1440px;
+  margin: 0 auto;
+}
+.primaryAction {
+  background: hsl(var(--accent));
+  color: hsl(var(--accent-foreground));
+}
+.primaryAction:hover {
+  background: hsl(var(--accent) / 0.9);
+}
+.guide {
+  min-height: 320px;
+  margin-top: 24px;
+  border-radius: 12px;
+  background: hsl(var(--card));
+}
+.loading {
+  padding: 24px 0;
+  color: hsl(var(--muted-foreground));
+  font-size: 14px;
+}
+.metrics {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 12px;
+  margin: 20px 0 4px;
+}
+.metrics > div {
+  min-width: 0;
+  border: 1px solid hsl(var(--border));
+  border-radius: 10px;
+  padding: 14px;
+  background: hsl(var(--card));
+}
+.metrics dt {
+  color: hsl(var(--muted-foreground));
+  font-size: 12px;
+  line-height: 20px;
+}
+.metrics dd {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  margin-top: 8px;
+  font-size: 24px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 32px;
+  white-space: nowrap;
+}
+.metrics small {
+  color: hsl(var(--muted-foreground));
+  font-size: 12px;
+  font-weight: 400;
+}
+.segmentedTabs {
+  display: flex;
+  width: fit-content;
+  max-width: 100%;
+  height: auto;
+  gap: 4px;
+  margin: 20px 0;
+  overflow-x: auto;
+  border: 1px solid hsl(var(--border));
+  border-radius: 9px;
+  padding: 4px;
+  background: hsl(var(--muted) / 0.5);
+}
+.segmentedTabs > button {
+  min-height: 32px;
+  flex-shrink: 0;
+  border-radius: 6px;
+  padding: 0 14px;
+  color: hsl(var(--muted-foreground));
+  font-size: 13px;
+}
+.segmentedTabs > button[data-state='active'] {
+  background: hsl(var(--card));
+  color: hsl(var(--foreground));
+  box-shadow: 0 1px 3px hsl(var(--foreground) / 0.06);
+}
+.charts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  padding-bottom: 24px;
+}
+.chartPanel {
+  min-width: 0;
+  border: 1px solid hsl(var(--border));
+  border-radius: 12px;
+  padding: 18px;
+  background: hsl(var(--card));
+  box-shadow: none;
+}
+.chartEmpty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  min-height: 220px;
+  height: 220px;
+  border: 0;
+  border-radius: 8px;
+  padding: 16px;
+  background: hsl(var(--background));
+  color: hsl(var(--muted-foreground));
+  font-size: 13px;
+}
+.historyActions {
+  display: flex;
+  justify-content: flex-end;
+  margin: 14px 0;
+}
+.historyPanel {
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.scanTable {
+  border: 1px solid hsl(var(--border));
+  border-radius: 10px;
+}
+.scanTable > table {
+  min-width: 680px;
+}
+.historyComparison {
+  margin-top: 24px;
+  border: 1px solid hsl(var(--border));
+  border-radius: 12px;
+  padding: 18px;
+  background: hsl(var(--card));
+}
+@media (max-width: 1180px) {
+  .metrics {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+@media (max-width: 767px) {
+  .metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+  .metrics > div {
+    padding: 12px;
+  }
+  .metrics dd {
+    font-size: 20px;
+  }
+  .charts {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .chartPanel {
+    padding: 14px;
+  }
+  .segmentedTabs > button {
+    min-height: 44px;
+    padding: 0 10px;
+  }
+}

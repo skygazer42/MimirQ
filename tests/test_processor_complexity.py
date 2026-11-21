@@ -5,16 +5,15 @@ from uuid import uuid4
 import pytest
 from langchain_core.documents import Document
 
-from app.parsing.processors.processor import DocumentProcessorService
-from app.parsing.processors.support.process_document_flow import _filter_short_chunks
-from app.rag.preprocessing.llm_tagger import LLMDocumentTag, LLMTaggingResult
+from app.rag.ingestion.governance.tagging import DocumentTag, TaggingResult
+from app.rag.ingestion.indexing.processor import _apply_llm_auto_tagging
+from app.rag.ingestion.pipeline import _filter_short_chunks
 
 
 @pytest.mark.asyncio
 async def test_apply_llm_auto_tagging_merges_tags_keywords_and_summary(monkeypatch: pytest.MonkeyPatch) -> None:
-    from app.rag.preprocessing import llm_tagger
+    from app.rag.ingestion.governance.tagging import llm_tagger
 
-    service = DocumentProcessorService()
     items = [
         Document(
             page_content="Alpha body",
@@ -26,20 +25,20 @@ async def test_apply_llm_auto_tagging_merges_tags_keywords_and_summary(monkeypat
         Document(page_content="Beta body", metadata={}),
     ]
 
-    async def _extract_llm_tags(**_kwargs: Any) -> LLMTaggingResult:
-        return LLMTaggingResult(
+    async def _extract_llm_tags(**_kwargs: Any) -> TaggingResult:
+        return TaggingResult(
             summary="summary text",
-            provider="stub-provider",
+            provider="llm",
             document_tags=[
-                LLMDocumentTag(type="topic", value="new-tag"),
-                LLMDocumentTag(type="keyword", value="new-keyword"),
-                LLMDocumentTag(type="topic", value="existing-tag"),
+                DocumentTag(type="topic", value="new-tag", label="", confidence=0.85, source="llm"),
+                DocumentTag(type="keyword", value="new-keyword", label="", confidence=0.85, source="llm"),
+                DocumentTag(type="topic", value="existing-tag", label="", confidence=0.85, source="llm"),
             ],
         )
 
     monkeypatch.setattr(llm_tagger, "extract_llm_tags", _extract_llm_tags, raising=True)
 
-    result = await service._apply_llm_auto_tagging(
+    result = await _apply_llm_auto_tagging(
         items,
         pipeline_effective=SimpleNamespace(
             governance_llm_auto_tagging_enabled=True,
@@ -51,7 +50,7 @@ async def test_apply_llm_auto_tagging_merges_tags_keywords_and_summary(monkeypat
     assert result == {
         "enabled": True,
         "used": True,
-        "provider": "stub-provider",
+        "provider": "llm",
         "tag_count": 2,
         "keyword_count": 2,
     }
@@ -86,10 +85,9 @@ async def test_apply_llm_auto_tagging_merges_tags_keywords_and_summary(monkeypat
 
 @pytest.mark.asyncio
 async def test_apply_llm_auto_tagging_reports_empty_text_without_mutation() -> None:
-    service = DocumentProcessorService()
     items = [Document(page_content="   ", metadata={"document_tags": ["keep-me"]})]
 
-    result = await service._apply_llm_auto_tagging(
+    result = await _apply_llm_auto_tagging(
         items,
         pipeline_effective=SimpleNamespace(
             governance_llm_auto_tagging_enabled=True,

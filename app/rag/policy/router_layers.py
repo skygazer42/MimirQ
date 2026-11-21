@@ -1,9 +1,8 @@
-
 import re
 from typing import Any
 
-from app.rag.policy.intent_router import route_intent
-from app.rag.utils.entity_matcher import extract_partition_keys
+from app.rag.policy.intent_router import _bounded_reason_codes, route_intent
+from app.rag.retrieval.planning.entities import extract_partition_keys
 
 ROUTER_LAYERS_SCHEMA_V1 = "mimirq.router_layers.v1"
 
@@ -17,20 +16,6 @@ _MULTI_CLAUSE_RE = re.compile(
 )
 
 
-def _bounded_reason_codes(items: list[str], *, max_items: int = 8) -> list[str]:
-    out: list[str] = []
-    seen: set[str] = set()
-    for raw in items:
-        text = str(raw or "").strip().lower()
-        if not text or text in seen:
-            continue
-        seen.add(text)
-        out.append(text[:40])
-        if len(out) >= max_items:
-            break
-    return out
-
-
 def _normalize_partition_keys(raw: Any, *, max_items: int = 8) -> list[str]:
     if isinstance(raw, str):
         values = [raw]
@@ -42,7 +27,9 @@ def _normalize_partition_keys(raw: Any, *, max_items: int = 8) -> list[str]:
     out: list[str] = []
     seen: set[str] = set()
     for item in values:
-        text = str(item or "").strip()
+        if item is None:
+            continue
+        text = str(item).strip()
         if not text:
             continue
         key = text.casefold()
@@ -56,7 +43,7 @@ def _normalize_partition_keys(raw: Any, *, max_items: int = 8) -> list[str]:
 
 
 def classify_composite_query(query: str) -> tuple[str, list[str]]:
-    q = str(query or "").strip()
+    q = query.strip()
     if not q:
         return "single", ["empty_query"]
     if _COMPARE_RE.search(q):
@@ -73,9 +60,11 @@ def build_router_layers(
     partition_keys: list[str] | None = None,
     entity_candidates: list[str] | None = None,
     intent_meta: dict[str, Any] | None = None,
+    max_reason_codes: int = 8,
 ) -> dict[str, Any]:
+    """Build routing diagnostics; orchestration retains its six-reason trace budget."""
     explicit_partition_keys = _normalize_partition_keys(partition_keys)
-    explicit_entity_key = str(entity_key or "").strip()
+    explicit_entity_key = entity_key.strip() if entity_key is not None else None
 
     entity_reason_codes: list[str] = []
     entity_keys: list[str] = []
@@ -94,16 +83,17 @@ def build_router_layers(
         "decision": "partition_keys" if entity_keys else "none",
         "used": bool(entity_keys),
         "partition_keys": list(entity_keys),
-        "reason_codes": _bounded_reason_codes(entity_reason_codes),
+        "reason_codes": _bounded_reason_codes(entity_reason_codes, max_items=max_reason_codes),
     }
 
     intent_payload = dict(intent_meta or {})
-    if not str(intent_payload.get("intent") or "").strip():
+    intent = intent_payload.get("intent")
+    if intent is None or not intent.strip():
         intent_payload = route_intent(query)
     intent_layer = {
         "decision": str(intent_payload.get("intent") or "general"),
         "used": bool(intent_payload.get("skip_retrieval") or intent_payload.get("used") or False),
-        "reason_codes": _bounded_reason_codes(list(intent_payload.get("reasons") or [])),
+        "reason_codes": _bounded_reason_codes(list(intent_payload.get("reasons") or []), max_items=max_reason_codes),
         "skip_retrieval": bool(intent_payload.get("skip_retrieval") or False),
     }
 
@@ -111,7 +101,7 @@ def build_router_layers(
     composite_layer = {
         "decision": composite_decision,
         "used": bool(composite_decision != "single"),
-        "reason_codes": _bounded_reason_codes(composite_reasons),
+        "reason_codes": _bounded_reason_codes(composite_reasons, max_items=max_reason_codes),
     }
 
     return {

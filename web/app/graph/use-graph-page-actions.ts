@@ -1,13 +1,16 @@
 'use client'
 
 import type { Dispatch, RefObject, SetStateAction } from 'react'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 
 import { toast } from 'sonner'
 
 import { useRouter } from '@/i18n/navigation'
 import { kgApi } from '@/lib/api/graph'
+import { formatApiError } from '@/lib/api-errors'
+import { getAuthSessionKey } from '@/lib/auth-storage'
 import { reportClientError } from '@/lib/client-logging'
+import { downloadBlob } from '@/lib/download'
 import { sanitizeFilename } from '@/lib/sanitize'
 import { detachPromise } from '@/lib/utils'
 
@@ -20,22 +23,12 @@ import {
   type GraphNodeLike,
   stripFilenameExtension,
 } from './graph-page-utils'
+import type { UseGraphPageStateResult } from './use-graph-page-state'
 
 type GraphViewportApi = {
   zoomToFit?: () => void
   exportPngDataUrl?: () => string | null
   exportSvgString?: () => string | null
-} | null
-
-type GraphScopeParams = Readonly<{
-  document_ids?: string[]
-  dataset_id?: string
-  pipeline_hash?: string
-}> | null
-
-type DeleteNodeTarget = {
-  id: string
-  label: string
 } | null
 
 function getGraphNodeDocumentId(node: GraphNodeLike | null | undefined): string {
@@ -70,18 +63,17 @@ type UseGraphPageActionsParams = Readonly<{
   viewMode: '2d' | '3d'
   datasetId: string | null
   dataSource: 'live' | 'file'
-  scopeParams: GraphScopeParams
+  scopeParams: UseGraphPageStateResult['scopeParams']
   includeEntityLinks: boolean
   includeRelationLinks: boolean
   minSharedEvents: number
   maxEntityLinks: number
-  setIsLoading: Dispatch<SetStateAction<boolean>>
   setIsDetailOpen: Dispatch<SetStateAction<boolean>>
   setIsLinkDetailOpen: Dispatch<SetStateAction<boolean>>
   setSelectedNode: Dispatch<SetStateAction<GraphNodeLike | null>>
   setSelectedLink: Dispatch<SetStateAction<GraphLinkLike | null>>
   setDeleteNodeOpen: Dispatch<SetStateAction<boolean>>
-  setDeleteNodeTarget: Dispatch<SetStateAction<DeleteNodeTarget>>
+  setDeleteNodeTarget: Dispatch<SetStateAction<UseGraphPageStateResult['deleteNodeTarget']>>
 }>
 
 export function useGraphPageActions({
@@ -97,7 +89,6 @@ export function useGraphPageActions({
   includeRelationLinks,
   minSharedEvents,
   maxEntityLinks,
-  setIsLoading,
   setIsDetailOpen,
   setIsLinkDetailOpen,
   setSelectedNode,
@@ -109,6 +100,9 @@ export function useGraphPageActions({
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [contextMenu, setContextMenu] = useState<GraphContextMenuState | null>(null)
   const [exportOpen, setExportOpen] = useState(false)
+  const [isExportingGraphML, setIsExportingGraphML] = useState(false)
+  const graphMLRequestRef = useRef<AbortController | null>(null)
+  useLayoutEffect(() => () => graphMLRequestRef.current?.abort(), [])
 
   const closeContextMenu = useCallback(() => {
     setContextMenu(null)
@@ -116,10 +110,8 @@ export function useGraphPageActions({
 
   const openContextMenu = useCallback(
     (event: MouseEvent, target: GraphContextMenuTarget) => {
-      try {
-        event.preventDefault?.()
-        event.stopPropagation?.()
-      } catch {}
+      event.preventDefault()
+      event.stopPropagation()
 
       const rect = graphViewportRef.current?.getBoundingClientRect()
       if (!rect) return
@@ -133,7 +125,7 @@ export function useGraphPageActions({
       y = Math.max(padding, Math.min(y, rect.height - menuHeight - padding))
       setContextMenu({ x, y, target })
     },
-    [graphViewportRef]
+    [graphViewportRef],
   )
 
   useEffect(() => {
@@ -189,7 +181,7 @@ export function useGraphPageActions({
       setIsLinkDetailOpen(false)
       openContextMenu(event, { type: 'node', node })
     },
-    [openContextMenu, setIsDetailOpen, setIsLinkDetailOpen, setSelectedLink, setSelectedNode]
+    [openContextMenu, setIsDetailOpen, setIsLinkDetailOpen, setSelectedLink, setSelectedNode],
   )
 
   const handleLinkRightClick = useCallback(
@@ -200,7 +192,7 @@ export function useGraphPageActions({
       setIsLinkDetailOpen(false)
       openContextMenu(event, { type: 'link', link })
     },
-    [openContextMenu, setIsDetailOpen, setIsLinkDetailOpen, setSelectedLink, setSelectedNode]
+    [openContextMenu, setIsDetailOpen, setIsLinkDetailOpen, setSelectedLink, setSelectedNode],
   )
 
   const handleBackgroundRightClick = useCallback(
@@ -209,12 +201,12 @@ export function useGraphPageActions({
       setIsLinkDetailOpen(false)
       openContextMenu(event, { type: 'background' })
     },
-    [openContextMenu, setIsDetailOpen, setIsLinkDetailOpen]
+    [openContextMenu, setIsDetailOpen, setIsLinkDetailOpen],
   )
 
   const copyToClipboard = useCallback(async (text: string, label: string) => {
-    const value = String(text || '').trim()
-    if (!value) {
+    const value = text.trim()
+    if (value === '') {
       toast.error('无可复制内容')
       return
     }
@@ -235,14 +227,14 @@ export function useGraphPageActions({
     (nodeId: string) => {
       detachPromise(copyToClipboard(nodeId, '节点 ID'))
     },
-    [copyToClipboard]
+    [copyToClipboard],
   )
 
   const handleCopyLinkPredicate = useCallback(
     (predicate: string) => {
       detachPromise(copyToClipboard(predicate, 'Predicate'))
     },
-    [copyToClipboard]
+    [copyToClipboard],
   )
 
   const chatWithNode = useCallback(
@@ -256,7 +248,7 @@ export function useGraphPageActions({
       })
       router.push(`/?${params.toString()}`)
     },
-    [router, selectedNode]
+    [router, selectedNode],
   )
 
   const handleChatWithNode = useCallback(() => {
@@ -266,16 +258,10 @@ export function useGraphPageActions({
   const viewSourceForNode = useCallback(
     (node?: GraphNodeLike) => {
       const target = node ?? selectedNode
-      const documentId = target?.meta?.document_id || target?.source
-      if (documentId) {
-        const documentLabel =
-          typeof documentId === 'string' || typeof documentId === 'number' ? String(documentId) : ''
-        toast(documentLabel ? `源文档：${documentLabel}` : '未找到源文档信息')
-        return
-      }
-      toast('未找到源文档信息')
+      const documentId = getGraphNodeDocumentId(target)
+      toast(documentId === '' ? '未找到源文档信息' : `源文档：${documentId}`)
     },
-    [selectedNode]
+    [selectedNode],
   )
 
   const handleViewSource = useCallback(() => {
@@ -283,10 +269,9 @@ export function useGraphPageActions({
   }, [viewSourceForNode])
 
   const exportBaseName = useMemo(() => {
-    const base =
-      stripFilenameExtension(fileName || '') ||
-      (datasetId ? `dataset-${datasetId}` : '') ||
-      'mimirq-kg'
+    const fileStem = fileName === null ? null : stripFilenameExtension(fileName)
+    const defaultName = datasetId === null ? 'ragvia-kg' : `dataset-${datasetId}`
+    const base = fileStem === null || fileStem === '' ? defaultName : fileStem
     return sanitizeFilename(`${base}-${viewMode}`)
   }, [datasetId, fileName, viewMode])
 
@@ -326,16 +311,10 @@ export function useGraphPageActions({
         return
       }
 
-      const blob = new Blob([svg], { type: 'image/svg+xml;charset=utf-8' })
-      const url = URL.createObjectURL(blob)
-      const anchor = document.createElement('a')
-      anchor.href = url
-      anchor.download = `${exportBaseName}.svg`
-      anchor.click()
-      globalThis.window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+      downloadBlob(`${exportBaseName}.svg`, new Blob([svg], { type: 'image/svg+xml;charset=utf-8' }))
       toast.success('已导出 SVG')
     },
-    [copyToClipboard, exportBaseName, getActiveGraph]
+    [copyToClipboard, exportBaseName, getActiveGraph],
   )
 
   const handleExportPngDownload = useCallback(() => {
@@ -364,51 +343,49 @@ export function useGraphPageActions({
       return
     }
 
-    setIsLoading(true)
+    if (graphMLRequestRef.current !== null) return
+    const controller = new AbortController()
+    graphMLRequestRef.current = controller
+    const sessionKey = getAuthSessionKey()
+    const isCurrent = () => !controller.signal.aborted && getAuthSessionKey() === sessionKey
+    setIsExportingGraphML(true)
     try {
-      const xml = await kgApi.exportGraphML({
-        document_ids: scopeParams?.document_ids,
-        dataset_id: scopeParams?.dataset_id,
-        pipeline_hash: scopeParams?.pipeline_hash,
-        include_entity_links: includeEntityLinks,
-        include_relation_links: includeRelationLinks,
-        min_shared_events: minSharedEvents,
-        max_entity_links: maxEntityLinks,
-      })
-      const blob = new Blob([xml], { type: 'application/graphml+xml;charset=utf-8' })
-      const url = URL.createObjectURL(blob)
-      const anchor = document.createElement('a')
-      anchor.href = url
-      anchor.download = 'mimirq-kg.graphml'
-      anchor.click()
-      URL.revokeObjectURL(url)
+      const xml = await kgApi.exportGraphML(
+        {
+          document_ids: scopeParams?.document_ids,
+          dataset_id: scopeParams?.dataset_id,
+          pipeline_hash: scopeParams?.pipeline_hash,
+          include_entity_links: includeEntityLinks,
+          include_relation_links: includeRelationLinks,
+          min_shared_events: minSharedEvents,
+          max_entity_links: maxEntityLinks,
+        },
+        { signal: controller.signal },
+      )
+      if (!isCurrent()) return
+      downloadBlob('ragvia-kg.graphml', new Blob([xml], { type: 'application/graphml+xml;charset=utf-8' }))
       toast.success('已导出 GraphML')
     } catch (error) {
+      if (!isCurrent()) return
       reportClientError('Failed to export GraphML', error)
-      toast.error('导出 GraphML 失败')
+      toast.error(formatApiError(error, '导出 GraphML 失败'))
     } finally {
-      setIsLoading(false)
+      graphMLRequestRef.current = null
+      if (!controller.signal.aborted) setIsExportingGraphML(false)
     }
-  }, [
-    dataSource,
-    includeEntityLinks,
-    includeRelationLinks,
-    maxEntityLinks,
-    minSharedEvents,
-    scopeParams,
-    setIsLoading,
-  ])
+  }, [dataSource, includeEntityLinks, includeRelationLinks, maxEntityLinks, minSharedEvents, scopeParams])
 
   const handleDeleteNodeOpenChange = useCallback(
     (open: boolean) => {
       setDeleteNodeOpen(open)
       if (!open) setDeleteNodeTarget(null)
     },
-    [setDeleteNodeOpen, setDeleteNodeTarget]
+    [setDeleteNodeOpen, setDeleteNodeTarget],
   )
 
   return {
     isFullscreen,
+    isExportingGraphML,
     contextMenu,
     exportOpen,
     setExportOpen,

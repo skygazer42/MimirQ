@@ -4,8 +4,8 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from app.core.database import Base
-from app.models.tenant import Tenant, TenantMember
+from app.infrastructure.database.connection import Base
+from app.models.identity.workspaces import Tenant, TenantMember
 from scripts.seed_ci_kg_search_regression import ensure_fixture_tenant_owner
 
 

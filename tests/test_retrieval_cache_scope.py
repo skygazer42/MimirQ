@@ -1,7 +1,6 @@
-
 import uuid
 
-from app.rag.retrieval.hybrid.cache_scope import prepare_hybrid_cache_scope
+from app.rag.retrieval.recall.cache_scope import prepare_hybrid_cache_scope
 
 
 def test_prepare_hybrid_cache_scope_fail_closed_for_missing_document_runtime() -> None:

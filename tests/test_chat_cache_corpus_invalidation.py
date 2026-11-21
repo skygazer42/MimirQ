@@ -1,4 +1,3 @@
-
 from uuid import uuid4
 
 import pytest
@@ -7,7 +6,7 @@ import pytest
 def test_resolve_chat_response_cache_key_changes_with_dataset_corpus_token(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.services.chat_response_cache as cache_mod
+    import app.services.chat.response_cache as cache_mod
 
     base = {
         "db": object(),
@@ -39,7 +38,7 @@ def test_resolve_chat_response_cache_key_changes_with_dataset_corpus_token(
 def test_resolve_chat_response_cache_key_fails_closed_when_corpus_token_missing(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.services.chat_response_cache as cache_mod
+    import app.services.chat.response_cache as cache_mod
 
     monkeypatch.setattr(cache_mod, "resolve_corpus_cache_token", lambda *_a, **_k: None, raising=False)
 
@@ -88,7 +87,7 @@ class _CorpusTokenDB:
 
 
 def test_build_dataset_scope_corpus_cache_token_changes_with_dataset_embedding_binding() -> None:
-    import app.services.corpus_cache_tokens as token_mod
+    import app.services.retrieval.corpus_tokens as token_mod
 
     dataset_id = uuid4()
     token_a = token_mod.build_dataset_scope_corpus_cache_token(
@@ -108,7 +107,7 @@ def test_build_dataset_scope_corpus_cache_token_changes_with_dataset_embedding_b
 
 
 def test_resolve_corpus_cache_token_fails_closed_when_document_scope_row_missing() -> None:
-    import app.services.corpus_cache_tokens as token_mod
+    import app.services.retrieval.corpus_tokens as token_mod
 
     token = token_mod.resolve_corpus_cache_token(
         _CorpusTokenDB(document_rows=[], dataset_rows=[]),
@@ -121,18 +120,18 @@ def test_resolve_corpus_cache_token_fails_closed_when_document_scope_row_missing
 
 
 def test_resolve_corpus_cache_token_changes_when_document_scope_dataset_embedding_defaults_change() -> None:
-    import app.services.corpus_cache_tokens as token_mod
+    import app.services.retrieval.corpus_tokens as token_mod
 
     tenant_id = uuid4()
     document_id = uuid4()
     dataset_id = uuid4()
     db_a = _CorpusTokenDB(
         document_rows=[(document_id, dataset_id, None, {})],
-        dataset_rows=[(dataset_id, {"embedding_defaults": {"provider": "local", "model": "embed-a"}})],
+        dataset_rows=[(dataset_id, {"embedding_defaults": {"provider": "openai_compatible", "model": "embed-a"}})],
     )
     db_b = _CorpusTokenDB(
         document_rows=[(document_id, dataset_id, None, {})],
-        dataset_rows=[(dataset_id, {"embedding_defaults": {"provider": "local", "model": "embed-b"}})],
+        dataset_rows=[(dataset_id, {"embedding_defaults": {"provider": "openai_compatible", "model": "embed-b"}})],
     )
 
     token_a = token_mod.resolve_corpus_cache_token(
@@ -160,18 +159,34 @@ class _DatasetScopeTokenDB:
 
 
 def test_resolve_corpus_cache_token_for_multi_dataset_scope_is_order_stable_and_binding_sensitive() -> None:
-    import app.services.corpus_cache_tokens as token_mod
+    import app.services.retrieval.corpus_tokens as token_mod
 
     tenant_id = uuid4()
     dataset_a = uuid4()
     dataset_b = uuid4()
     rows_a = [
-        (dataset_a, "2026-01-01T00:00:00+00:00", {"embedding_defaults": {"provider": "local", "model": "embed-a"}}),
-        (dataset_b, "2026-01-02T00:00:00+00:00", {"embedding_defaults": {"provider": "local", "model": "embed-b"}}),
+        (
+            dataset_a,
+            "2026-01-01T00:00:00+00:00",
+            {"embedding_defaults": {"provider": "openai_compatible", "model": "embed-a"}},
+        ),
+        (
+            dataset_b,
+            "2026-01-02T00:00:00+00:00",
+            {"embedding_defaults": {"provider": "openai_compatible", "model": "embed-b"}},
+        ),
     ]
     rows_b = [
-        (dataset_a, "2026-01-01T00:00:00+00:00", {"embedding_defaults": {"provider": "local", "model": "embed-a"}}),
-        (dataset_b, "2026-01-03T00:00:00+00:00", {"embedding_defaults": {"provider": "local", "model": "embed-c"}}),
+        (
+            dataset_a,
+            "2026-01-01T00:00:00+00:00",
+            {"embedding_defaults": {"provider": "openai_compatible", "model": "embed-a"}},
+        ),
+        (
+            dataset_b,
+            "2026-01-03T00:00:00+00:00",
+            {"embedding_defaults": {"provider": "openai_compatible", "model": "embed-c"}},
+        ),
     ]
 
     token_a = token_mod.resolve_corpus_cache_token(

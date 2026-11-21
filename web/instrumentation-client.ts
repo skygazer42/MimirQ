@@ -8,7 +8,6 @@ type StaleChunkRecoveryGlobal = typeof globalThis & {
 }
 
 let sentryModulePromise: Promise<typeof import('@sentry/nextjs') | null> | null = null
-let sentryInitialized = false
 
 function installStaleChunkRecovery() {
   if (globalThis.window === undefined) return
@@ -18,7 +17,7 @@ function installStaleChunkRecovery() {
   runtime.__mimirqStaleChunkRecoveryInstalled__ = true
 
   globalThis.window.addEventListener('error', (event) => {
-    const error = event.error || event.message
+    const error = event.error ?? event.message
     if (reloadOnceForStaleChunk(error)) event.preventDefault()
   })
 
@@ -29,26 +28,22 @@ function installStaleChunkRecovery() {
 
 installStaleChunkRecovery()
 
-async function loadSentryModule() {
-  if (!shouldEnableSentry) return null
+function loadSentryModule() {
   sentryModulePromise ??= import('@sentry/nextjs')
     .then((Sentry) => {
-      if (!sentryInitialized) {
-        Sentry.init({
-          dsn,
-          tracesSampleRate: Number(process.env.NEXT_PUBLIC_SENTRY_TRACES_SAMPLE_RATE || 0),
-          sendDefaultPii: false,
-        })
-        sentryInitialized = true
-      }
+      Sentry.init({
+        dsn,
+        tracesSampleRate: Number(process.env.NEXT_PUBLIC_SENTRY_TRACES_SAMPLE_RATE ?? 0),
+        sendDefaultPii: false,
+      })
       return Sentry
     })
     .catch(() => null)
   return sentryModulePromise
 }
 
-export const onRouterTransitionStart = (...args: RouterTransitionArgs) => {
-  if (!shouldEnableSentry) return undefined
+export function onRouterTransitionStart(...args: RouterTransitionArgs) {
+  if (!shouldEnableSentry) return
   void loadSentryModule().then((Sentry) => {
     if (!Sentry) return
     try {
@@ -57,5 +52,4 @@ export const onRouterTransitionStart = (...args: RouterTransitionArgs) => {
       // ignore best-effort telemetry failures
     }
   })
-  return undefined
 }

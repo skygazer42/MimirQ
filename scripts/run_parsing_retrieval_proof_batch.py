@@ -56,7 +56,7 @@ def _derive_case_family(*, case_category: str, declared: Any = None) -> str:
 def _count_queries(path: Path) -> int:
     payload = _read_json(Path(path).resolve())
     if isinstance(payload, list):
-        return int(len(payload))
+        return len(payload)
     return 0
 
 
@@ -118,15 +118,15 @@ def run_batch(*, spec_path: Path, out_dir: Path) -> dict[str, Any]:
         hit_vals.append(hit_at_k)
         mrr_vals.append(mrr)
         query_count_total += query_count
-        family_counts[case_family] = int(family_counts.get(case_family) or 0) + 1
-        category_counts[case_category] = int(category_counts.get(case_category) or 0) + 1
+        family_counts[case_family] = family_counts.get(case_family, 0) + 1
+        category_counts[case_category] = category_counts.get(case_category, 0) + 1
         case_reports.append(
             {
                 "id": case_id,
                 "input_file": str(input_file),
                 "queries_json": str(queries_json),
                 "parser_backend": parser_backend,
-                "top_k": int(top_k),
+                "top_k": top_k,
                 "retrieval_mode": retrieval_mode,
                 "governance_rule_packs": [
                     str(item).strip() for item in (case.get("governance_rule_packs") or []) if str(item).strip()
@@ -152,8 +152,8 @@ def run_batch(*, spec_path: Path, out_dir: Path) -> dict[str, Any]:
         "schema": _REPORT_SCHEMA,
         "spec_schema": str(spec.get("schema") or ""),
         "spec_path": str(Path(spec_path).resolve()),
-        "cases_total": int(len(case_reports)),
-        "query_count_total": int(query_count_total),
+        "cases_total": len(case_reports),
+        "query_count_total": query_count_total,
         "case_family_counts": family_counts,
         "case_category_counts": category_counts,
         "provenance": {

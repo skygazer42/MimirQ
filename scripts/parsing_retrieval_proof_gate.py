@@ -2,10 +2,30 @@
 
 import argparse
 import json
+import math
 from pathlib import Path
-from typing import Any
+from typing import Any, NotRequired, TypedDict
 
 _THRESHOLDS_SCHEMA_V1 = "mimirq.parsing_retrieval_proof_thresholds.v1"
+
+
+class _MetricCheck(TypedDict):
+    metric: str
+    value: float | None
+    required: bool
+    min: float | None
+    max: float | None
+    passed: bool
+    reason: str | None
+
+
+class _GateReport(TypedDict):
+    schema: str
+    passed: bool
+    checks: list[_MetricCheck]
+    failures: list[str]
+    input: NotRequired[str]
+    thresholds: NotRequired[str]
 
 
 def _load_json(path: Path) -> Any:
@@ -26,25 +46,35 @@ def _validate_threshold_schema(obj: dict[str, Any]) -> None:
         raise ValueError(f"invalid_threshold_schema: expected {_THRESHOLDS_SCHEMA_V1}, got {schema}")
 
 
-def _coerce_rule_bound(row: dict[str, Any], cfg_raw: dict[str, Any], key: str) -> None:
-    if key not in cfg_raw:
-        return
+def _finite_float(raw: Any) -> float | None:
     try:
-        row[key] = float(cfg_raw.get(key))
-    except Exception:
-        return
+        value = float(raw)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    return value if math.isfinite(value) else None
 
 
-def _normalize_threshold_rule(cfg_raw: Any) -> dict[str, Any] | None:
+def _threshold_bound(metric: str, rule: dict[str, Any], bound: str) -> float | None:
+    if bound not in rule:
+        return None
+    value = _finite_float(rule[bound])
+    if value is None:
+        raise ValueError(f"invalid_threshold_bound: {metric}.{bound} must be a finite number")
+    return value
+
+
+def _normalize_threshold_rule(metric: str, cfg_raw: Any) -> dict[str, Any] | None:
     if isinstance(cfg_raw, (int, float)) and not isinstance(cfg_raw, bool):
-        return {"min": float(cfg_raw), "required": True}
+        cfg_raw = {"min": cfg_raw}
     if not isinstance(cfg_raw, dict):
         return None
     row: dict[str, Any] = {}
-    _coerce_rule_bound(row, cfg_raw, "min")
-    _coerce_rule_bound(row, cfg_raw, "max")
+    for bound in ("min", "max"):
+        value = _threshold_bound(metric, cfg_raw, bound)
+        if value is not None:
+            row[bound] = value
     row["required"] = bool(cfg_raw.get("required", True))
-    return row if row else None
+    return row
 
 
 def normalize_thresholds(payload: Any) -> dict[str, dict[str, Any]]:
@@ -57,7 +87,7 @@ def normalize_thresholds(payload: Any) -> dict[str, dict[str, Any]]:
         key = str(metric or "").strip()
         if not key:
             continue
-        row = _normalize_threshold_rule(cfg_raw)
+        row = _normalize_threshold_rule(key, cfg_raw)
         if row is None:
             continue
         out[key] = row
@@ -68,26 +98,20 @@ def evaluate_parsing_proof(
     *,
     summary: dict[str, Any],
     thresholds: dict[str, dict[str, Any]],
-) -> dict[str, Any]:
-    checks: list[dict[str, Any]] = []
+) -> _GateReport:
+    checks: list[_MetricCheck] = []
     failures: list[str] = []
 
     for metric, rule in (thresholds or {}).items():
         required = bool(rule.get("required", True))
-        raw_value = summary.get(metric)
-        value = None
-        if raw_value is not None:
-            try:
-                value = float(raw_value)
-            except Exception:
-                value = None
+        value = _finite_float(summary.get(metric))
 
-        row = {
+        row: _MetricCheck = {
             "metric": metric,
             "value": value,
             "required": required,
-            "min": (float(rule.get("min")) if rule.get("min") is not None else None),
-            "max": (float(rule.get("max")) if rule.get("max") is not None else None),
+            "min": _threshold_bound(metric, rule, "min"),
+            "max": _threshold_bound(metric, rule, "max"),
             "passed": True,
             "reason": None,
         }
@@ -101,19 +125,19 @@ def evaluate_parsing_proof(
 
         low = row["min"]
         high = row["max"]
-        if low is not None and float(value) < float(low):
+        if low is not None and value < low:
             row["passed"] = False
             row["reason"] = "lt_min"
-            failures.append(f"{metric}: {value:.6f} < min {float(low):.6f}")
-        if high is not None and float(value) > float(high):
+            failures.append(f"{metric}: {value:.6f} < min {low:.6f}")
+        if high is not None and value > high:
             row["passed"] = False
             row["reason"] = "gt_max"
-            failures.append(f"{metric}: {value:.6f} > max {float(high):.6f}")
+            failures.append(f"{metric}: {value:.6f} > max {high:.6f}")
         checks.append(row)
 
     return {
         "schema": "mimirq.parsing_retrieval_proof_gate_report.v1",
-        "passed": bool(len(failures) == 0),
+        "passed": len(failures) == 0,
         "checks": checks,
         "failures": failures,
     }
@@ -147,7 +171,7 @@ def main(argv: list[str] | None = None) -> int:
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(f"[parsing-proof-gate] wrote {out_path}")
-    if not bool(report.get("passed")):
+    if not report["passed"]:
         print("[parsing-proof-gate] FAIL")
         return 2
     print("[parsing-proof-gate] PASS")

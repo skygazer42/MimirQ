@@ -5,7 +5,7 @@ sidebar_position: 4
 
 # 部署指南
 
-MimirQ 提供两条开箱即用路径：完整 Docker Web 栈，以及“基础设施在 Docker、API/Web（可选 Arq Worker）在主机”的源码模式。Kubernetes 生产部署使用仓库内 Helm Chart。
+Ragvia 提供两条开箱即用路径：完整 Docker Web 栈，以及“基础设施在 Docker、API/Web（可选 Arq Worker）在主机”的源码模式。Kubernetes 生产部署使用仓库内 Helm Chart。
 
 开始前先完成[快速开始](./getting-started)中的 `.env`、模型服务和首个管理员配置。
 
@@ -27,7 +27,7 @@ make logs
 make down
 ```
 
-默认主栈使用内置 DeepDoc，不会启动 GPU 解析器。Marker、ETL4LLM、MinerU、PaddleOCR-VL 等都是可选 profile，只启动业务需要的服务；完整命令见仓库的 [Docker Compose 指南](https://github.com/skygazer42/MimirQ/blob/main/docs/deployment/docker_compose.md)。
+默认主栈使用内置 DeepDoc，不会启动 GPU 解析器。Marker、ETL4LLM、MinerU、PaddleOCR-VL 等都是可选 profile，只启动业务需要的服务；完整命令见仓库的 [Docker Compose 指南](https://github.com/skygazer42/MimirQ/blob/feat/ragvia-ui/docs/deployment/docker_compose.md)。
 
 ### 停止与重新开始
 
@@ -37,7 +37,7 @@ make down
 | 清空数据重建 | `make docker-reset` | 删除 | 保留 |
 | 从镜像开始完全重建 | `make docker-purge` | 删除 | 删除 |
 
-后两项不可恢复。MimirQ 默认使用独立的 `mimirq` Compose 项目名，不会把 Dify 等其他栈当作 orphan；命令不会删除 `.env` 或源码。数据库、上传文件、向量索引、解析器缓存和共享镜像的完整影响范围见 [Docker Compose 指南](https://github.com/skygazer42/MimirQ/blob/main/docs/deployment/docker_compose.md#4-%E6%95%B0%E6%8D%AE%E5%8D%B7%E4%B8%8E%E6%B8%85%E7%90%86)。
+后两项不可恢复。Ragvia 默认使用独立的 `mimirq` Compose 项目名，不会把 Dify 等其他栈当作 orphan；命令不会删除 `.env` 或源码。数据库、上传文件、向量索引、解析器缓存和共享镜像的完整影响范围见 [Docker Compose 指南](https://github.com/skygazer42/MimirQ/blob/feat/ragvia-ui/docs/deployment/docker_compose.md#4-%E6%95%B0%E6%8D%AE%E5%8D%B7%E4%B8%8E%E6%B8%85%E7%90%86)。
 
 ### 项目归属与异常恢复
 
@@ -48,16 +48,16 @@ docker compose ls
 docker ps -a --filter "label=com.docker.compose.project=mimirq"
 ```
 
-`mimirq` 项目下只能出现 MimirQ 服务。Compose 的 `[+] Running N/N` 是容器、卷、镜像和
+`mimirq` 项目下只能出现 Ragvia 服务。Compose 的 `[+] Running N/N` 是容器、卷、镜像和
 网络等资源动作总数，并不表示启动了 N 个容器；未启用可选解析器时，标准 Web 栈为 8 个
 容器。
 
 如果旧版清理误删了 Dify 容器，立即停止操作，不要运行 `docker system prune` 或
 `docker volume prune`。进入原 Dify Compose 目录并复用原项目名运行 `docker compose up -d`，
-确认 Dify 数据后，再在 MimirQ 目录执行 `git pull`、`make up-web`、`make ps` 和
-`make api-ping`。旧版 MimirQ 的 `docker_*` 卷不会自动迁移到新的 `mimirq_*` 卷；保留数据时
+确认 Dify 数据后，再在 Ragvia 目录执行 `git pull`、`make up-web`、`make ps` 和
+`make api-ping`。旧版 Ragvia 的 `docker_*` 卷不会自动迁移到新的 `mimirq_*` 卷；保留数据时
 应先备份再迁移。PowerShell 完整命令、项目名判断和恢复细节见仓库的
-[Docker Compose 指南](https://github.com/skygazer42/MimirQ/blob/main/docs/deployment/docker_compose.md#4-%E6%95%B0%E6%8D%AE%E5%8D%B7%E4%B8%8E%E6%B8%85%E7%90%86)。
+[Docker Compose 指南](https://github.com/skygazer42/MimirQ/blob/feat/ragvia-ui/docs/deployment/docker_compose.md#4-%E6%95%B0%E6%8D%AE%E5%8D%B7%E4%B8%8E%E6%B8%85%E7%90%86)。
 
 ## 方式二：主机源码运行
 
@@ -122,7 +122,7 @@ make up-prod-web
 make ps
 ```
 
-生产前按 [Docker Compose 指南](https://github.com/skygazer42/MimirQ/blob/main/docs/deployment/docker_compose.md) 完成全部 guardrail，不要只复制本页摘要。
+生产前按 [Docker Compose 指南](https://github.com/skygazer42/MimirQ/blob/feat/ragvia-ui/docs/deployment/docker_compose.md) 完成全部 guardrail，不要只复制本页摘要。
 
 ## Helm / Kubernetes
 
@@ -136,7 +136,7 @@ helm upgrade --install mimirq deploy/helm/mimirq \
   -f <values-file>
 ```
 
-生产环境优先通过 `existingSecretName` 引用外部 Secret。完整 values、NetworkPolicy、多副本 guardrail 与回滚步骤见 [Helm / Kubernetes 指南](https://github.com/skygazer42/MimirQ/blob/main/docs/deployment/helm.md)。
+生产环境优先通过 `existingSecretName` 引用外部 Secret。完整 values、NetworkPolicy、多副本 guardrail 与回滚步骤见 [Helm / Kubernetes 指南](https://github.com/skygazer42/MimirQ/blob/feat/ragvia-ui/docs/deployment/helm.md)。
 
 ## 部署后验收
 

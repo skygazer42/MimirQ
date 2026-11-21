@@ -1,0 +1,11 @@
+/** Approved Yuanxu brand colors; product state colors remain separate. */
+:root {
+  --yuanxu-ink: #20262E;
+  --yuanxu-rust: #B84A2A;
+  --yuanxu-fog: #F6F7F8;
+  --yuanxu-white: #FFFFFF;
+  --yuanxu-line: #DDE1E4;
+  --yuanxu-selected: #F9ECE6;
+  --yuanxu-muted: #606A75;
+  --yuanxu-rustOnDark: #F09A77;
+}

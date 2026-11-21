@@ -1,7 +1,7 @@
 import pytest
 from fastapi import HTTPException
 
-import app.services.saml_bridge_service as saml_bridge_service
+import app.services.identity.saml_bridge as saml_bridge_service
 
 
 def test_memory_bridge_sessions_are_one_time(monkeypatch: pytest.MonkeyPatch) -> None:

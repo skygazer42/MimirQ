@@ -1,4 +1,3 @@
-
 import argparse
 import json
 import sys
@@ -19,7 +18,7 @@ def _load_json(path: Path) -> dict[str, Any]:
 
 
 def run(*, policy_path: Path, out: Path | None = None) -> dict[str, Any]:
-    from app.services.queryset_health_service import validate_and_normalize_queryset_health_policy
+    from app.services.evaluation.queryset_health import validate_and_normalize_queryset_health_policy
 
     raw = _load_json(policy_path)
     normalized = validate_and_normalize_queryset_health_policy(raw)
@@ -37,7 +36,7 @@ def main(argv: list[str] | None = None) -> int:
     args = p.parse_args(argv)
 
     try:
-        out = Path(args.out) if str(args.out or "").strip() else None
+        out = Path(args.out) if args.out.strip() else None
         run(policy_path=Path(args.policy), out=out)
     except Exception as exc:
         print(f"[queryset-health-policy] invalid policy: {exc}", file=sys.stderr)

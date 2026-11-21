@@ -1,4 +1,4 @@
-from app.api.v1.document_timeline import _sanitize_timeline_details
+from app.api.v1.documents.timeline import _sanitize_timeline_details
 
 
 def test_timeline_details_redact_sensitive_keys_recursively() -> None:

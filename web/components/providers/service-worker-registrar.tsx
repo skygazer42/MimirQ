@@ -14,7 +14,7 @@ type RegistrationEnv = {
 export const LOCAL_SERVICE_WORKER_CLEANUP_RETRY_DELAYS_MS = [1000, 3000] as const
 
 function normalizeHostname(hostname: string): string {
-  return String(hostname || '')
+  return hostname
     .trim()
     .toLowerCase()
     .replace(/^\[(.*)\]$/, '$1')
@@ -30,14 +30,14 @@ export function shouldRegisterServiceWorker(env: RegistrationEnv): boolean {
   const hostname = normalizeHostname(env.hostname)
   if (!hostname) return false
   if (isLocalhostHostname(hostname)) return false
-  const protocol = String(env.protocol || '').trim().toLowerCase()
+  const protocol = env.protocol?.trim().toLowerCase()
   if (protocol && protocol !== 'https:') return false
   if (env.isSecureContext === false) return false
   return true
 }
 
 export function shouldClearLocalServiceWorker(env: RegistrationEnv): boolean {
-  return Boolean(env.hasWindow && env.hasServiceWorker && isLocalhostHostname(env.hostname))
+  return env.hasWindow && env.hasServiceWorker && isLocalhostHostname(env.hostname)
 }
 
 export async function clearLocalMimirqCaches() {
@@ -47,7 +47,7 @@ export async function clearLocalMimirqCaches() {
   await Promise.all(keys.filter((key) => key.startsWith('mimirq-')).map((key) => caches.delete(key)))
 }
 
-export async function clearLocalMimirqServiceWorkerState() {
+async function clearLocalMimirqServiceWorkerState() {
   if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return
 
   const registrations = await navigator.serviceWorker.getRegistrations()
@@ -67,8 +67,6 @@ function scheduleLocalMimirqServiceWorkerCleanup() {
 
   runCleanup()
 
-  if (globalThis.window === undefined) return undefined
-
   const timers = LOCAL_SERVICE_WORKER_CLEANUP_RETRY_DELAYS_MS.map((delay) => globalThis.setTimeout(runCleanup, delay))
   return () => {
     timers.forEach((timer) => globalThis.clearTimeout(timer))
@@ -78,11 +76,11 @@ function scheduleLocalMimirqServiceWorkerCleanup() {
 export function ServiceWorkerRegistrar() {
   useEffect(() => {
     const env = {
-      hasWindow: globalThis.window !== undefined,
-      hasServiceWorker: typeof navigator !== 'undefined' && 'serviceWorker' in navigator,
-      hostname: globalThis.window?.location?.hostname || '',
-      protocol: globalThis.window?.location?.protocol || '',
-      isSecureContext: globalThis.window?.isSecureContext,
+      hasWindow: true,
+      hasServiceWorker: 'serviceWorker' in navigator,
+      hostname: window.location.hostname,
+      protocol: window.location.protocol,
+      isSecureContext: window.isSecureContext,
     }
     const enabled = shouldRegisterServiceWorker(env)
     if (!enabled) {

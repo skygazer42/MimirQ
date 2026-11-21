@@ -1,3 +1,5 @@
+import type { OpenApiSchema } from '@/types/backend'
+
 export const TENANT_PERMISSIONS = {
   SETTINGS_READ: 'settings.read',
   SETTINGS_WRITE: 'settings.write',
@@ -11,17 +13,9 @@ export const TENANT_PERMISSIONS = {
 
 export type TenantPermission = (typeof TENANT_PERMISSIONS)[keyof typeof TENANT_PERMISSIONS]
 
-export type TenantAccess = {
-  tenant_id: string
-  account_id: string
-  role: string
-  permissions: string[]
-  navigation_user_visible_modules?: string[]
-  is_active: boolean
-  is_current: boolean
-}
+export type TenantAccess = OpenApiSchema<'TenantAccessOut'>
 
 export function tenantAccessAllows(access: TenantAccess | null | undefined, permission: TenantPermission): boolean {
-  if (!access?.is_active) return false
-  return new Set(access.permissions || []).has(permission)
+  if (access?.is_active !== true) return false
+  return Array.isArray(access.permissions) && access.permissions.includes(permission)
 }

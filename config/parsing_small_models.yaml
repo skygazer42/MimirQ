@@ -3,7 +3,7 @@ layout:
   models:
     deepdoc_layout_onnx:
       kind: onnx
-      path: app/deepdoc/resources/models/layout/layout.onnx
+      path: app/rag/ingestion/parsing/resources/models/layout/layout.onnx
       task: document_layout
       optional: false
       max_size_mb: 500
@@ -27,7 +27,7 @@ table_detection:
   models:
     deepdoc_layout_table_signal:
       kind: onnx
-      path: app/deepdoc/resources/models/layout/layout.onnx
+      path: app/rag/ingestion/parsing/resources/models/layout/layout.onnx
       task: object_detection
       optional: false
       max_size_mb: 500
@@ -49,7 +49,7 @@ table_detection:
         reason: conversion_requires_timm_not_installed
     tatr_detection_onnx:
       kind: onnx
-      path: app/deepdoc/resources/models/hf_onnx/table_detection__tatr_detection__microsoft__table-transformer-detection/model.onnx
+      path: app/rag/ingestion/parsing/resources/models/hf_onnx/table_detection__tatr_detection__microsoft__table-transformer-detection/model.onnx
       task: object_detection
       optional: true
       max_size_mb: 500
@@ -60,7 +60,7 @@ table_detection:
       metadata:
         source: huggingface_converted
         repo_id: microsoft/table-transformer-detection
-        preprocessor_path: app/deepdoc/resources/models/hf/table_detection__tatr_detection__microsoft__table-transformer-detection
+        preprocessor_path: app/rag/ingestion/parsing/resources/models/hf/table_detection__tatr_detection__microsoft__table-transformer-detection
         family: table_transformer
         conversion_backend: torch.onnx
 
@@ -69,7 +69,7 @@ table_structure:
   models:
     deepdoc_tsr_onnx:
       kind: onnx
-      path: app/deepdoc/resources/models/table/tsr.onnx
+      path: app/rag/ingestion/parsing/resources/models/table/tsr.onnx
       task: table_structure
       optional: false
       max_size_mb: 500
@@ -80,7 +80,7 @@ table_structure:
     tatr_v1_1_all:
       kind: hf_transformers
       repo_id: microsoft/table-transformer-structure-recognition-v1.1-all
-      path: app/deepdoc/resources/models/hf/table_structure__tatr_v1_1_all__microsoft__table-transformer-structure-recognition-v1.1-all
+      path: app/rag/ingestion/parsing/resources/models/hf/table_structure__tatr_v1_1_all__microsoft__table-transformer-structure-recognition-v1.1-all
       task: object_detection
       optional: true
       max_size_mb: 500
@@ -91,7 +91,7 @@ table_structure:
         estimated_size_mb: 120
     tatr_v1_1_all_onnx:
       kind: onnx
-      path: app/deepdoc/resources/models/hf_onnx/table_structure__tatr_v1_1_all__microsoft__table-transformer-structure-recognition-v1.1-all/model.onnx
+      path: app/rag/ingestion/parsing/resources/models/hf_onnx/table_structure__tatr_v1_1_all__microsoft__table-transformer-structure-recognition-v1.1-all/model.onnx
       task: table_structure
       optional: true
       max_size_mb: 500
@@ -102,7 +102,7 @@ table_structure:
       metadata:
         source: huggingface_converted
         repo_id: microsoft/table-transformer-structure-recognition-v1.1-all
-        preprocessor_path: app/deepdoc/resources/models/hf/table_structure__tatr_v1_1_all__microsoft__table-transformer-structure-recognition-v1.1-all
+        preprocessor_path: app/rag/ingestion/parsing/resources/models/hf/table_structure__tatr_v1_1_all__microsoft__table-transformer-structure-recognition-v1.1-all
         family: table_transformer
         conversion_backend: torch.onnx
     slanext_wireless:
@@ -121,7 +121,7 @@ ocr_detection:
   models:
     monkt_paddleocr_v5_det_onnx:
       kind: onnx
-      path: app/deepdoc/resources/models/hf_onnx/ocr_pipeline__paddleocr_onnx__monkt__paddleocr-onnx/detection/v5/det.onnx
+      path: app/rag/ingestion/parsing/resources/models/hf_onnx/ocr_pipeline__paddleocr_onnx__monkt__paddleocr-onnx/detection/v5/det.onnx
       task: ocr_detection
       optional: true
       max_size_mb: 500
@@ -141,7 +141,7 @@ ocr_recognition:
   models:
     deepdoc_ocr_rec_onnx:
       kind: onnx
-      path: app/deepdoc/resources/models/ocr/PP-OCRv4/PP-OCRv4/ch_PP-OCRv4_rec_infer.onnx
+      path: app/rag/ingestion/parsing/resources/models/ocr/PP-OCRv4/PP-OCRv4/ch_PP-OCRv4_rec_infer.onnx
       task: ocr_recognition
       optional: false
       max_size_mb: 500
@@ -151,7 +151,7 @@ ocr_recognition:
         language: zh
     monkt_paddleocr_chinese_rec_onnx:
       kind: onnx
-      path: app/deepdoc/resources/models/hf_onnx/ocr_pipeline__paddleocr_onnx__monkt__paddleocr-onnx/languages/chinese/rec.onnx
+      path: app/rag/ingestion/parsing/resources/models/hf_onnx/ocr_pipeline__paddleocr_onnx__monkt__paddleocr-onnx/languages/chinese/rec.onnx
       task: ocr_recognition
       optional: true
       max_size_mb: 500
@@ -165,14 +165,14 @@ ocr_recognition:
         family: paddleocr
         version: ppocrv5
         language: zh,ja
-        rec_keys_path: app/deepdoc/resources/models/hf_onnx/ocr_pipeline__paddleocr_onnx__monkt__paddleocr-onnx/languages/chinese/dict.txt
+        rec_keys_path: app/rag/ingestion/parsing/resources/models/hf_onnx/ocr_pipeline__paddleocr_onnx__monkt__paddleocr-onnx/languages/chinese/dict.txt
 
 document_orientation:
   default: monkt_pp_lcnet_doc_ori_onnx
   models:
     monkt_pp_lcnet_doc_ori_onnx:
       kind: onnx
-      path: app/deepdoc/resources/models/hf_onnx/ocr_pipeline__paddleocr_onnx__monkt__paddleocr-onnx/preprocessing/doc-orientation/PP-LCNet_x1_0_doc_ori.onnx
+      path: app/rag/ingestion/parsing/resources/models/hf_onnx/ocr_pipeline__paddleocr_onnx__monkt__paddleocr-onnx/preprocessing/doc-orientation/PP-LCNet_x1_0_doc_ori.onnx
       task: document_orientation
       optional: true
       max_size_mb: 500
@@ -191,7 +191,7 @@ document_rectification:
   models:
     monkt_uvdoc_onnx:
       kind: onnx
-      path: app/deepdoc/resources/models/hf_onnx/ocr_pipeline__paddleocr_onnx__monkt__paddleocr-onnx/preprocessing/doc-unwarping/UVDoc.onnx
+      path: app/rag/ingestion/parsing/resources/models/hf_onnx/ocr_pipeline__paddleocr_onnx__monkt__paddleocr-onnx/preprocessing/doc-unwarping/UVDoc.onnx
       task: document_unwarping
       optional: true
       max_size_mb: 500
@@ -220,7 +220,7 @@ textline_orientation:
   models:
     monkt_pp_lcnet_textline_ori_onnx:
       kind: onnx
-      path: app/deepdoc/resources/models/hf_onnx/ocr_pipeline__paddleocr_onnx__monkt__paddleocr-onnx/preprocessing/textline-orientation/PP-LCNet_x1_0_textline_ori.onnx
+      path: app/rag/ingestion/parsing/resources/models/hf_onnx/ocr_pipeline__paddleocr_onnx__monkt__paddleocr-onnx/preprocessing/textline-orientation/PP-LCNet_x1_0_textline_ori.onnx
       task: textline_orientation
       optional: true
       max_size_mb: 500

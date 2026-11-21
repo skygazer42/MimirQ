@@ -1,49 +1,76 @@
 import { create } from 'zustand'
-import { persist, createJSONStorage, type StateStorage } from 'zustand/middleware'
+import { persist, type PersistStorage } from 'zustand/middleware'
+import { z } from 'zod'
 import { AUTH_SCOPE_CHANGED_EVENT, getAuthCacheScope } from '@/lib/auth-storage'
 import {
   clearDocCachesForScope,
   deleteDocContentFromCache,
   deleteDocSourceFromCache,
+  getDocCacheScopeGuard,
   invalidateDocCacheScopeWrites,
-  saveDocContentToCache,
+  isDocCacheScopeGuardCurrent,
+  updateDocContentInCache,
+  type DocContentCacheUpdate,
 } from '@/lib/doc-content-cache'
 import { getClientStorage } from '@/lib/client-storage'
 import { collectFolderDescendantIds } from '@/lib/folder-tree-index'
-import { toTrimmedPrimitiveString } from '@/lib/primitive-text'
 import { generateRequestId } from '@/lib/request-id'
-import { detachPromise } from '@/lib/utils'
-import type { ParsingElement } from '@/lib/api/parsing'
-
+import { isParsingElement } from '@/lib/parsing-elements'
+import type { ParsingContentResponse, ParsingElement } from '@/lib/api/parsing'
 
 export const ROOT_FOLDER_ID = 'root'
 const PARSED_FILES_STORAGE_KEY = 'mimirq_parsed_files'
 
-export interface FolderNode {
+export type FolderNode = {
   id: string
   name: string
   parentId: string
   createdAt: string
 }
 
-export interface ParsedFileData {
+export type ParsedFileData = {
   id: string
   filename: string
   fileType: string
   fileSize: number
   markdownContent: string
   originalMarkdownContent?: string
+  /** Session content is loaded even when both Markdown fields are empty. */
+  contentLoaded?: true
+  contentEdited?: boolean
   parsedAt: string
   parser: string
   parserBackend?: string
   durationSec?: number
   elements?: ParsingElement[]
+  pdfQuality?: ParsingContentResponse['pdf_quality']
+  qualityGate?: ParsingContentResponse['quality_gate']
   folderId?: string
   datasetId?: string | null
   datasetName?: string | null
   source?: 'parsing_workspace' | 'knowledge_base'
   sourcePath?: string | null
   governanceStatus?: 'draft' | 'ready' | 'submitted'
+  /** Review metadata for the saved Markdown; drafts remain in the governance workspace. */
+  governanceReview?: {
+    qualityScore: number | null
+    issues: Array<{
+      id: string
+      type: 'error' | 'warning' | 'info'
+      message: string
+      position?: { start: number; end: number }
+    }>
+    annotations: Array<{
+      id: string
+      text: string
+      type: 'entity' | 'keyword' | 'sensitive' | 'custom'
+      label: string
+      start: number
+      end: number
+    }>
+    tags: string[]
+    category: string | null
+  }
   chunkStatus?: 'draft' | 'ready' | 'submitted'
   /**
    * UI status for the document library.
@@ -54,55 +81,126 @@ export interface ParsedFileData {
 }
 
 type ParsedFileUpdates = Partial<Omit<ParsedFileData, 'id'>>
-type ParsedFileUpdateToken = `${number}:${number}`
+type PendingParsedFileUpdate = {
+  controller: AbortController
+  content: DocContentCacheUpdate
+  appliedContent?: DocContentCacheUpdate
+  isApplied: boolean
+}
 
-const RELIABLE_SYNC_MAX_ATTEMPTS = 3
-const parsedFileUpdateVersions = new Map<string, number>()
-const parsedFileUpdateScopeEpochs = new Map<string, number>()
+const pendingParsedFileUpdates = new Map<string, PendingParsedFileUpdate>()
 let isSwitchingParsedFilesScope = false
+let isUpdatingParsedFilesViewState = false
 let parsedFilesScopeSwitchGeneration = 0
-let lastKnownParsedFilesScope = getAuthCacheScope()
+
+function updateParsedFilesViewState(update: () => void) {
+  const wasUpdatingViewState = isUpdatingParsedFilesViewState
+  isUpdatingParsedFilesViewState = true
+  try {
+    update()
+  } finally {
+    isUpdatingParsedFilesViewState = wasUpdatingViewState
+  }
+}
+
+function updateParsedFilesIndex(update: () => void) {
+  const previous = useParsedFiles.getState()
+  try {
+    update()
+  } catch (error) {
+    updateParsedFilesViewState(() => useParsedFiles.setState(previous, true))
+    throw error
+  }
+}
+
+function assertParsedFilesWritable(requirePersistence = false) {
+  const loadError = useParsedFiles.getState().loadError
+  if (loadError !== undefined) throw loadError
+  if (requirePersistence && getClientStorage() === null) {
+    throw new Error('当前浏览器无法保存本地文档，请允许浏览器存储后重试')
+  }
+}
 
 function getParsedFileUpdateKey(scope: string, id: string): string {
   return `${scope}:${id}`
 }
 
-function clearParsedFileUpdateVersions() {
-  parsedFileUpdateVersions.clear()
-}
-
-function getParsedFileUpdateScopeEpoch(scope: string): number {
-  return parsedFileUpdateScopeEpochs.get(scope) || 0
-}
-
-function bumpParsedFileUpdateScopeEpoch(scope: string): number {
-  const nextEpoch = getParsedFileUpdateScopeEpoch(scope) + 1
-  parsedFileUpdateScopeEpochs.set(scope, nextEpoch)
-  return nextEpoch
-}
-
-function clearParsedFileUpdateVersionsForScope(scope: string) {
+function cancelParsedFileUpdatesForScope(scope: string) {
   const scopedPrefix = `${scope}:`
-  for (const key of parsedFileUpdateVersions.keys()) {
+  for (const [key, update] of pendingParsedFileUpdates) {
     if (key.startsWith(scopedPrefix)) {
-      parsedFileUpdateVersions.delete(key)
+      update.controller.abort()
+      pendingParsedFileUpdates.delete(key)
     }
   }
 }
 
-interface ParsedFilesState {
+function cancelParsedFileUpdate(scope: string, id: string) {
+  const key = getParsedFileUpdateKey(scope, id)
+  pendingParsedFileUpdates.get(key)?.controller.abort()
+  pendingParsedFileUpdates.delete(key)
+}
+
+function beginParsedFileUpdate(scope: string, content: DocContentCacheUpdate): PendingParsedFileUpdate {
+  const key = getParsedFileUpdateKey(scope, content.id)
+  const previous = pendingParsedFileUpdates.get(key)
+  const appliedContent = previous?.appliedContent
+  cancelParsedFileUpdate(scope, content.id)
+  const update = {
+    controller: new AbortController(),
+    content: {
+      id: content.id,
+      markdownContent: content.markdownContent ?? appliedContent?.markdownContent,
+      originalMarkdownContent: content.originalMarkdownContent ?? appliedContent?.originalMarkdownContent,
+    },
+    appliedContent,
+    isApplied: false,
+  }
+  pendingParsedFileUpdates.set(key, update)
+  return update
+}
+
+function finishParsedFileUpdate(scope: string, id: string, controller: AbortController) {
+  const key = getParsedFileUpdateKey(scope, id)
+  if (pendingParsedFileUpdates.get(key)?.controller === controller) pendingParsedFileUpdates.delete(key)
+}
+
+function persistAppliedParsedFileUpdate(scope: string, update: PendingParsedFileUpdate) {
+  update.isApplied = true
+  update.appliedContent = update.content
+  void updateDocContentInCache(update.content, scope, update.controller.signal)
+    .catch((error) => {
+      if (update.controller.signal.aborted || getAuthCacheScope() !== scope) return
+      console.warn('Failed to cache the parsed file working copy', error)
+    })
+    .finally(() => finishParsedFileUpdate(scope, update.content.id, update.controller))
+}
+
+function deleteParsedFileCaches(id: string, scope: string) {
+  void Promise.all([deleteDocContentFromCache(id, scope), deleteDocSourceFromCache(id, scope)]).catch((error) => {
+    console.warn('Failed to delete parsed file browser caches', error)
+  })
+}
+
+type ParsedFilesState = {
   files: ParsedFileData[]
   folders: FolderNode[]
   activeFolderId: string
   isLoaded: boolean
+  loadError: unknown
 
   // Actions
-  addParsedFile: (file: Omit<ParsedFileData, 'id' | 'parsedAt'>) => string
+  addParsedFile: (file: Omit<ParsedFileData, 'id' | 'parsedAt'>, options?: { signal?: AbortSignal }) => Promise<string>
   upsertParsedFile: (file: ParsedFileData) => void
+  replaceParsedFile: (id: string, file: ParsedFileData) => void
   setParsedFiles: (files: ParsedFileData[]) => void
   getFile: (id: string) => ParsedFileData | null
   removeFile: (id: string) => void
-  updateParsedFile: (id: string, updates: ParsedFileUpdates) => Promise<void>
+  updateParsedFile: (
+    id: string,
+    updates: ParsedFileUpdates,
+    options?: { requirePersistence?: boolean },
+  ) => Promise<void>
   clearAll: () => void
 
   createFolder: (name: string, parentId?: string) => string
@@ -112,88 +210,39 @@ interface ParsedFilesState {
   setActiveFolderId: (id: string) => void
 
   // Internal
-  setLoaded: (loaded: boolean) => void
-}
-
-const makeId = () => generateRequestId()
-
-function getUpdatedMarkdownFields(updates: ParsedFileUpdates): {
-  nextMarkdown: string | undefined
-  nextOriginal: string | undefined
-} {
-  return {
-    nextMarkdown: typeof updates.markdownContent === 'string' ? updates.markdownContent : undefined,
-    nextOriginal:
-      typeof updates.originalMarkdownContent === 'string' ? updates.originalMarkdownContent : undefined,
-  }
-}
-
-function isIndexedDbUnavailableError(error: unknown): boolean {
-  const message = error instanceof Error ? error.message : toTrimmedPrimitiveString(error)
-  const normalized = message.toLowerCase()
-  return (
-    normalized.includes('indexeddb') ||
-    normalized.includes('private') ||
-    normalized.includes('securityerror') ||
-    normalized.includes('invalidstateerror')
-  )
-}
-
-async function persistParsedMarkdownReliably(
-  id: string,
-  markdownContent: string,
-  originalMarkdownContent: string,
-  scope: string
-) {
-  let lastError: unknown = null
-  for (let attempt = 0; attempt < RELIABLE_SYNC_MAX_ATTEMPTS; attempt += 1) {
-    try {
-      await saveDocContentToCache({
-        id,
-        markdownContent,
-        originalMarkdownContent,
-      }, scope)
-      return
-    } catch (error) {
-      lastError = error
-    }
-  }
-  throw lastError
-}
-
-function registerParsedFileUpdate(scope: string, id: string): ParsedFileUpdateToken {
-  const key = getParsedFileUpdateKey(scope, id)
-  const nextVersion = (parsedFileUpdateVersions.get(key) || 0) + 1
-  parsedFileUpdateVersions.set(key, nextVersion)
-  return `${getParsedFileUpdateScopeEpoch(scope)}:${nextVersion}`
-}
-
-function isCurrentParsedFileUpdate(scope: string, id: string, token: ParsedFileUpdateToken): boolean {
-  const currentVersion = parsedFileUpdateVersions.get(getParsedFileUpdateKey(scope, id))
-  if (currentVersion == null) return false
-  return token === `${getParsedFileUpdateScopeEpoch(scope)}:${currentVersion}`
+  finishHydration: (error: unknown) => void
 }
 
 function getParsedFilesStorageKey(scope = getAuthCacheScope()): string {
   return `${PARSED_FILES_STORAGE_KEY}:${scope}`
 }
 
-const parsedFilesPersistStorage: StateStorage = {
-  getItem: (name) => {
+const parsedFilesPersistStorage: PersistStorage<unknown> = {
+  // Settle restoration after Store creation so initial failures can update its state.
+  getItem: async (name) => {
     const storage = getClientStorage()
     if (!storage) return null
 
     const scopedKey = getParsedFilesStorageKey()
     const scopedValue = storage.getItem(scopedKey)
     storage.removeItem(name)
-    return scopedValue
+    if (scopedValue === null) return null
+    const snapshot: unknown = JSON.parse(scopedValue)
+    if (!isRecord(snapshot) || !Object.prototype.hasOwnProperty.call(snapshot, 'state')) {
+      throw new Error('本地文档记录格式不正确')
+    }
+    if (snapshot.version !== undefined && typeof snapshot.version !== 'number') {
+      throw new Error('本地文档记录版本格式不正确')
+    }
+    return { state: snapshot.state, version: snapshot.version }
   },
   setItem: (_name, value) => {
-    if (isSwitchingParsedFilesScope) return
+    if (isSwitchingParsedFilesScope || isUpdatingParsedFilesViewState) return
+    assertParsedFilesWritable()
     const storage = getClientStorage()
     if (!storage) return
     storage.removeItem(PARSED_FILES_STORAGE_KEY)
-    storage.setItem(getParsedFilesStorageKey(), value)
+    storage.setItem(getParsedFilesStorageKey(), JSON.stringify(value))
   },
   removeItem: (name) => {
     const storage = getClientStorage()
@@ -203,37 +252,128 @@ const parsedFilesPersistStorage: StateStorage = {
   },
 }
 
-type UnknownRecord = Record<string, unknown>
-
-function isRecord(value: unknown): value is UnknownRecord {
-  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
 function isPresent<T>(value: T | null): value is T {
   return value !== null
 }
 
+const governanceReviewSchema = z.looseObject({
+  qualityScore: z.number().nullable(),
+  category: z.string().nullable(),
+  tags: z.array(z.string()),
+  issues: z.array(
+    z.looseObject({
+      id: z.string(),
+      type: z.enum(['error', 'warning', 'info']),
+      message: z.string(),
+      position: z.looseObject({ start: z.number(), end: z.number() }).optional(),
+    }),
+  ),
+  annotations: z.array(
+    z.looseObject({
+      id: z.string(),
+      type: z.enum(['entity', 'keyword', 'sensitive', 'custom']),
+      text: z.string(),
+      label: z.string(),
+      start: z.number(),
+      end: z.number(),
+    }),
+  ),
+}) satisfies z.ZodType<NonNullable<ParsedFileData['governanceReview']>>
+
+const workflowStatusSchema = z.enum(['draft', 'ready', 'submitted']).optional()
+const persistedParsedFileSchema = z.looseObject({
+  id: z.string(),
+  filename: z.string(),
+  fileType: z.string(),
+  fileSize: z.number(),
+  parsedAt: z.string(),
+  parser: z.string(),
+  markdownContent: z.string().optional(),
+  originalMarkdownContent: z.string().optional(),
+  parserBackend: z.string().optional(),
+  folderId: z.string().optional(),
+  error: z.string().optional(),
+  datasetId: z.string().nullish(),
+  datasetName: z.string().nullish(),
+  sourcePath: z.string().nullish(),
+  durationSec: z.number().optional(),
+  contentEdited: z.boolean().optional(),
+  source: z.enum(['parsing_workspace', 'knowledge_base']).optional(),
+  governanceStatus: workflowStatusSchema,
+  chunkStatus: workflowStatusSchema,
+  status: z.enum(['pending', 'parsing', 'parsed', 'error']).optional(),
+  elements: z.array(z.custom<ParsingElement>(isParsingElement)).optional(),
+  governanceReview: governanceReviewSchema.optional(),
+})
+
 function normalizePersistedFile(value: unknown): ParsedFileData | null {
-  if (!isRecord(value)) return null
-  const markdownContent = typeof value.markdownContent === 'string' ? value.markdownContent : ''
-  const originalMarkdownContent =
-    typeof value.originalMarkdownContent === 'string' ? value.originalMarkdownContent : markdownContent
+  const result = persistedParsedFileSchema.safeParse(value)
+  if (!result.success) return null
+
+  const file = result.data
+  const markdownContent = file.markdownContent ?? ''
   return {
-    ...(value as Partial<ParsedFileData>),
+    ...file,
     markdownContent,
-    originalMarkdownContent,
-    folderId: typeof value.folderId === 'string' && value.folderId ? value.folderId : ROOT_FOLDER_ID,
-  } as ParsedFileData
+    originalMarkdownContent: file.originalMarkdownContent ?? markdownContent,
+    contentLoaded: undefined,
+    folderId: file.folderId === undefined || file.folderId === '' ? ROOT_FOLDER_ID : file.folderId,
+  }
 }
 
 function normalizePersistedFolder(value: unknown): FolderNode | null {
   if (!isRecord(value)) return null
   if (typeof value.id !== 'string' || typeof value.name !== 'string' || typeof value.parentId !== 'string') return null
+  if (typeof value.createdAt !== 'string') return null
   return {
     id: value.id,
     name: value.name,
-    parentId: value.parentId || ROOT_FOLDER_ID,
-    createdAt: typeof value.createdAt === 'string' ? value.createdAt : new Date().toISOString(),
+    parentId: value.parentId === '' ? ROOT_FOLDER_ID : value.parentId,
+    createdAt: value.createdAt,
+  }
+}
+
+function validateFolderHierarchy(folders: FolderNode[]) {
+  const byId = new Map<string, FolderNode>()
+  for (const folder of folders) {
+    if (folder.id === ROOT_FOLDER_ID || byId.has(folder.id))
+      throw new Error(`本地文件夹身份重复或与根目录冲突：${folder.name}`)
+    byId.set(folder.id, folder)
+  }
+  const validatedIds = new Set([ROOT_FOLDER_ID])
+  for (const folder of folders) {
+    const ancestors = new Set<string>()
+    let currentId = folder.id
+    while (!validatedIds.has(currentId)) {
+      if (ancestors.has(currentId)) throw new Error(`本地文件夹层级存在循环引用：${folder.name}`)
+      const current = byId.get(currentId)
+      if (current === undefined) throw new Error(`本地文件夹「${folder.name}」的父级不存在`)
+      ancestors.add(currentId)
+      currentId = current.parentId
+    }
+    for (const id of ancestors) validatedIds.add(id)
+  }
+}
+
+function restoreParsedFilesState(persisted: unknown): Pick<ParsedFilesState, 'files' | 'folders' | 'activeFolderId'> {
+  const saved = Array.isArray(persisted) ? { files: persisted } : persisted
+  if (!isRecord(saved) || !Array.isArray(saved.files)) throw new Error('本地文档列表格式不正确')
+  if (saved.folders !== undefined && !Array.isArray(saved.folders)) throw new Error('本地文件夹列表格式不正确')
+  const folders = saved.folders === undefined ? [] : saved.folders.map(normalizePersistedFolder).filter(isPresent)
+  validateFolderHierarchy(folders)
+  const activeFolderId = saved.activeFolderId
+
+  return {
+    files: saved.files.map(normalizePersistedFile).filter(isPresent),
+    folders,
+    activeFolderId:
+      typeof activeFolderId === 'string' && folders.some((folder) => folder.id === activeFolderId)
+        ? activeFolderId
+        : ROOT_FOLDER_ID,
   }
 }
 
@@ -244,142 +384,231 @@ export const useParsedFiles = create<ParsedFilesState>()(
       folders: [],
       activeFolderId: ROOT_FOLDER_ID,
       isLoaded: false,
+      loadError: undefined,
 
-      addParsedFile: (file) => {
+      addParsedFile: async (file, { signal } = {}) => {
+        assertParsedFilesWritable(true)
+        const scope = getAuthCacheScope()
+        const guard = getDocCacheScopeGuard(scope)
         const newFile: ParsedFileData = {
           ...file,
+          contentLoaded: true,
           originalMarkdownContent: file.originalMarkdownContent ?? file.markdownContent,
-          id: makeId(),
+          id: generateRequestId(),
           parsedAt: new Date().toISOString(),
           folderId: file.folderId || ROOT_FOLDER_ID,
           status: file.status ?? 'parsed',
         }
-
-        set((state) => ({ files: [...state.files, newFile] }))
+        await updateDocContentInCache(
+          {
+            id: newFile.id,
+            markdownContent: newFile.markdownContent,
+            originalMarkdownContent: newFile.originalMarkdownContent,
+          },
+          scope,
+          signal,
+        )
+        try {
+          if (signal?.aborted || !isDocCacheScopeGuardCurrent(guard)) {
+            throw new DOMException('文档导入已取消，请重试', 'AbortError')
+          }
+          assertParsedFilesWritable(true)
+          updateParsedFilesIndex(() => set((state) => ({ files: [...state.files, newFile] })))
+        } catch (error) {
+          await deleteDocContentFromCache(newFile.id, scope).catch((cleanupError) => {
+            console.warn('Failed to remove an unpublished imported body', cleanupError)
+          })
+          throw error
+        }
 
         return newFile.id
       },
 
       upsertParsedFile: (file) => {
+        assertParsedFilesWritable()
         const incoming: ParsedFileData = {
           ...file,
-          id: String(file.id),
           folderId: file.folderId || ROOT_FOLDER_ID,
           status: file.status ?? 'parsed',
-          parsedAt: file.parsedAt || new Date().toISOString(),
           originalMarkdownContent: file.originalMarkdownContent ?? file.markdownContent,
         }
 
-        set((state) => {
-          const exists = state.files.some((f) => f.id === incoming.id)
-          return {
-            files: exists
-              ? state.files.map((f) => (f.id === incoming.id ? { ...f, ...incoming, id: f.id } : f))
-              : [...state.files, incoming],
-          }
-        })
+        updateParsedFilesIndex(() =>
+          set((state) => {
+            const exists = state.files.some((file) => file.id === incoming.id)
+            return {
+              files: exists
+                ? state.files.map((file) => (file.id === incoming.id ? { ...file, ...incoming, id: file.id } : file))
+                : [...state.files, incoming],
+            }
+          }),
+        )
+      },
+
+      replaceParsedFile: (id, file) => {
+        assertParsedFilesWritable(true)
+        const previousFiles = get().files
+        if (!previousFiles.some((entry) => entry.id === id)) throw new Error('原文档已移除，请重新选择')
+        const scope = getAuthCacheScope()
+        updateParsedFilesIndex(() =>
+          set({
+            files: previousFiles
+              .filter((entry) => entry.id === id || entry.id !== file.id)
+              .map((entry) => (entry.id === id ? { ...entry, ...file, folderId: entry.folderId } : entry)),
+          }),
+        )
+        persistAppliedParsedFileUpdate(scope, beginParsedFileUpdate(scope, file))
+        if (id !== file.id) {
+          cancelParsedFileUpdate(scope, id)
+          deleteParsedFileCaches(id, scope)
+        }
       },
 
       setParsedFiles: (files) => {
-        const normalized = (files || []).map((file) => ({
+        assertParsedFilesWritable()
+        const normalized = files.map((file) => ({
           ...file,
-          id: String(file.id),
           folderId: file.folderId || ROOT_FOLDER_ID,
           status: file.status ?? 'parsed',
-          parsedAt: file.parsedAt || new Date().toISOString(),
           originalMarkdownContent: file.originalMarkdownContent ?? file.markdownContent,
         }))
-        set({ files: normalized })
+        updateParsedFilesIndex(() => set({ files: normalized }))
       },
 
       getFile: (id) => {
-        return get().files.find((f) => f.id === id) || null
+        return get().files.find((file) => file.id === id) ?? null
       },
 
       removeFile: (id) => {
+        assertParsedFilesWritable()
         const scope = getAuthCacheScope()
-        set((state) => ({
-          files: state.files.filter((f) => f.id !== id),
-        }))
-        // Best-effort cleanup of large content cache.
-        if (globalThis.window !== undefined) {
-          detachPromise(deleteDocContentFromCache(id, scope))
-          detachPromise(deleteDocSourceFromCache(id, scope))
-        }
+        updateParsedFilesIndex(() =>
+          set((state) => ({
+            files: state.files.filter((file) => file.id !== id),
+          })),
+        )
+        cancelParsedFileUpdate(scope, id)
+        deleteParsedFileCaches(id, scope)
       },
 
-      updateParsedFile: async (id, updates) => {
+      updateParsedFile: async (id, updates, { requirePersistence = false } = {}) => {
         const updateScope = getAuthCacheScope()
-        const updateVersion = registerParsedFileUpdate(updateScope, id)
-        const applyUpdates = () =>
-          set((state) => ({
-            files: state.files.map((f) =>
-              f.id === id ? { ...f, ...updates, id: f.id } : f
-            ),
-          }))
+        const { markdownContent, originalMarkdownContent, ...metadataUpdates } = updates
+        if (
+          markdownContent === undefined &&
+          originalMarkdownContent === undefined &&
+          Object.keys(metadataUpdates).length === 0
+        )
+          return
+        assertParsedFilesWritable(requirePersistence)
+        const applyUpdates = () => {
+          assertParsedFilesWritable(requirePersistence)
+          if (requirePersistence && !get().files.some((file) => file.id === id)) {
+            throw new Error('文档已移除，请重新选择')
+          }
+          updateParsedFilesIndex(() =>
+            set((state) => ({
+              files: state.files.map((file) =>
+                file.id === id
+                  ? {
+                      ...file,
+                      ...metadataUpdates,
+                      id: file.id,
+                      markdownContent: markdownContent ?? file.markdownContent,
+                      originalMarkdownContent: originalMarkdownContent ?? file.originalMarkdownContent,
+                      contentLoaded:
+                        markdownContent !== undefined || originalMarkdownContent !== undefined
+                          ? true
+                          : file.contentLoaded,
+                    }
+                  : file,
+              ),
+            })),
+          )
+        }
 
-        const { nextMarkdown, nextOriginal } = getUpdatedMarkdownFields(updates)
-        const shouldPersistMarkdown =
-          globalThis.window !== undefined && (typeof nextMarkdown === 'string' || typeof nextOriginal === 'string')
-        const shouldAwaitPersistence = shouldPersistMarkdown && updates.status === 'parsed'
-        const markdownContent = nextMarkdown ?? ''
-        const originalMarkdownContent = nextOriginal ?? ''
+        if (markdownContent === undefined && originalMarkdownContent === undefined) {
+          const pending = pendingParsedFileUpdates.get(getParsedFileUpdateKey(updateScope, id))
+          const supersedesContent =
+            (metadataUpdates.status !== undefined && metadataUpdates.status !== 'parsed') ||
+            ('source' in metadataUpdates &&
+              metadataUpdates.source !== get().files.find((file) => file.id === id)?.source) ||
+            metadataUpdates.governanceStatus !== undefined ||
+            metadataUpdates.chunkStatus !== undefined
+          applyUpdates()
+          // Independent metadata does not invalidate a body awaiting persistence.
+          if (pending !== undefined && !pending.isApplied && supersedesContent) {
+            cancelParsedFileUpdate(updateScope, id)
+            if (pending.appliedContent !== undefined) {
+              persistAppliedParsedFileUpdate(updateScope, beginParsedFileUpdate(updateScope, pending.appliedContent))
+            }
+          }
+          return
+        }
 
-        if (!shouldPersistMarkdown) {
+        if (globalThis.window === undefined) {
           applyUpdates()
           return
         }
 
-        if (!shouldAwaitPersistence) {
+        if (updates.status !== 'parsed' && !requirePersistence) {
           applyUpdates()
-          detachPromise(saveDocContentToCache({
-            id,
-            markdownContent,
-            originalMarkdownContent,
-          }, updateScope))
+          const pendingUpdate = beginParsedFileUpdate(updateScope, { id, markdownContent, originalMarkdownContent })
+          persistAppliedParsedFileUpdate(updateScope, pendingUpdate)
           return
         }
 
+        const pendingUpdate = beginParsedFileUpdate(updateScope, { id, markdownContent, originalMarkdownContent })
+        const { signal } = pendingUpdate.controller
         try {
-          await persistParsedMarkdownReliably(id, markdownContent, originalMarkdownContent, updateScope)
-          if (!isCurrentParsedFileUpdate(updateScope, id, updateVersion)) return
-          if (getAuthCacheScope() !== updateScope) return
-          applyUpdates()
-        } catch (error) {
-          const reason = isIndexedDbUnavailableError(error)
-            ? 'IndexedDB unavailable, applying in-memory fallback for parsed markdown'
-            : 'Failed to persist parsed markdown to IndexedDB, applying in-memory fallback'
-          console.warn(reason, error)
-          if (!isCurrentParsedFileUpdate(updateScope, id, updateVersion)) return
-          if (getAuthCacheScope() !== updateScope) return
-          applyUpdates()
+          const restoreContent = await updateDocContentInCache(pendingUpdate.content, updateScope, signal).catch(
+            (error) => {
+              if (requirePersistence) throw error
+              if (signal.aborted || getAuthCacheScope() !== updateScope) return
+              console.warn('Failed to persist parsed markdown to IndexedDB, applying in-memory fallback', error)
+            },
+          )
+          if (signal.aborted || getAuthCacheScope() !== updateScope) {
+            if (requirePersistence) throw new DOMException('文档保存已取消，请重试', 'AbortError')
+            return
+          }
+          try {
+            applyUpdates()
+          } catch (indexError) {
+            await restoreContent?.().catch((restoreError) => {
+              throw new AggregateError([indexError, restoreError], '无法保存文档目录，也无法恢复原正文')
+            })
+            throw indexError
+          }
+        } finally {
+          finishParsedFileUpdate(updateScope, id, pendingUpdate.controller)
         }
       },
 
       clearAll: () => {
+        assertParsedFilesWritable()
         const scope = getAuthCacheScope()
-        bumpParsedFileUpdateScopeEpoch(scope)
-        clearParsedFileUpdateVersionsForScope(scope)
+        updateParsedFilesIndex(() => set({ files: [], folders: [], activeFolderId: ROOT_FOLDER_ID }))
+        cancelParsedFileUpdatesForScope(scope)
         invalidateDocCacheScopeWrites(scope)
-        set({ files: [], folders: [], activeFolderId: ROOT_FOLDER_ID })
-        if (globalThis.window !== undefined) {
-          detachPromise(
-            clearDocCachesForScope(scope).catch((error) => {
-              console.warn('Failed to clear parsed file browser cache for auth scope', error)
-            })
-          )
-        }
+        void clearDocCachesForScope(scope).catch((error) => {
+          console.warn('Failed to clear parsed file browser cache for auth scope', error)
+        })
       },
 
       createFolder: (name, parentId) => {
+        assertParsedFilesWritable()
         const trimmed = name.trim()
+        const parent = parentId ?? get().activeFolderId
+        if (parent !== ROOT_FOLDER_ID && !get().folders.some((folder) => folder.id === parent))
+          throw new Error('父文件夹不存在，请重新选择')
         const newFolder: FolderNode = {
-          id: makeId(),
+          id: generateRequestId(),
           name: trimmed || '新建文件夹',
-          parentId: parentId || get().activeFolderId || ROOT_FOLDER_ID,
+          parentId: parent,
           createdAt: new Date().toISOString(),
         }
-        set((state) => ({ folders: [...state.folders, newFolder] }))
+        updateParsedFilesIndex(() => set((state) => ({ folders: [...state.folders, newFolder] })))
         return newFolder.id
       },
 
@@ -387,143 +616,128 @@ export const useParsedFiles = create<ParsedFilesState>()(
         if (id === ROOT_FOLDER_ID) return
         const trimmed = name.trim()
         if (!trimmed) return
-        set((state) => ({
-          folders: state.folders.map((f) => (f.id === id ? { ...f, name: trimmed } : f)),
-        }))
+        assertParsedFilesWritable()
+        updateParsedFilesIndex(() =>
+          set((state) => ({
+            folders: state.folders.map((folder) => (folder.id === id ? { ...folder, name: trimmed } : folder)),
+          })),
+        )
       },
 
       deleteFolder: (id) => {
         if (id === ROOT_FOLDER_ID) return
+        assertParsedFilesWritable()
 
         const scope = getAuthCacheScope()
         const folders = get().folders
         const idsToDelete = new Set([id, ...collectFolderDescendantIds(folders, id)])
         const fileIdsToDelete = get()
-          .files
-          .filter((file) => Boolean(file.folderId) && idsToDelete.has(String(file.folderId)))
+          .files.filter((file) => file.folderId && idsToDelete.has(file.folderId))
           .map((file) => file.id)
+        updateParsedFilesIndex(() =>
+          set((state) => ({
+            folders: state.folders.filter((folder) => !idsToDelete.has(folder.id)),
+            files: state.files.filter((file) => !(file.folderId && idsToDelete.has(file.folderId))),
+            activeFolderId: idsToDelete.has(state.activeFolderId) ? ROOT_FOLDER_ID : state.activeFolderId,
+          })),
+        )
 
-        set((state) => ({
-          folders: state.folders.filter((f) => !idsToDelete.has(f.id)),
-          files: state.files.filter((file) =>
-            !(file.folderId && idsToDelete.has(file.folderId))
-          ),
-          activeFolderId: idsToDelete.has(state.activeFolderId) ? ROOT_FOLDER_ID : state.activeFolderId,
-        }))
-
-        if (globalThis.window !== undefined && fileIdsToDelete.length > 0) {
-          for (const fileId of fileIdsToDelete) {
-            detachPromise(deleteDocContentFromCache(fileId, scope))
-            detachPromise(deleteDocSourceFromCache(fileId, scope))
-          }
-        }
+        for (const fileId of fileIdsToDelete) cancelParsedFileUpdate(scope, fileId)
+        for (const fileId of fileIdsToDelete) deleteParsedFileCaches(fileId, scope)
       },
 
       moveFolder: (id, parentId) => {
-        if (!id || id === ROOT_FOLDER_ID) return false
+        if (id === ROOT_FOLDER_ID || id === parentId) return false
 
         const folders = get().folders
-        const byId = new Map(folders.map((f) => [f.id, f]))
-        if (!byId.has(id)) return false
-        const normalizedParentId =
-          parentId && parentId !== id && (parentId === ROOT_FOLDER_ID || byId.has(parentId)) ? parentId : ROOT_FOLDER_ID
+        const byId = new Map(folders.map((folder) => [folder.id, folder]))
+        const folder = byId.get(id)
+        if (folder === undefined) return false
+        if (parentId !== ROOT_FOLDER_ID && !byId.has(parentId)) return false
 
-        // Prevent cycles: cannot move a folder into itself or its descendants
-        let current = normalizedParentId
-        while (current && current !== ROOT_FOLDER_ID) {
-          if (current === id) return false
-          current = byId.get(current)?.parentId || ROOT_FOLDER_ID
+        const ancestors = new Set<string>()
+        let current = parentId
+        while (current !== ROOT_FOLDER_ID) {
+          if (current === id || ancestors.has(current)) return false
+          ancestors.add(current)
+          const ancestor = byId.get(current)
+          if (ancestor === undefined) return false
+          current = ancestor.parentId
         }
 
-        const prevParentId = byId.get(id)?.parentId || ROOT_FOLDER_ID
-        if ((prevParentId || ROOT_FOLDER_ID) === (normalizedParentId || ROOT_FOLDER_ID)) return false
+        if (folder.parentId === parentId) return false
 
-        set((state) => ({
-          folders: state.folders.map((f) => (f.id === id ? { ...f, parentId: normalizedParentId } : f)),
-        }))
+        assertParsedFilesWritable()
+        updateParsedFilesIndex(() =>
+          set((state) => ({
+            folders: state.folders.map((folder) => (folder.id === id ? { ...folder, parentId } : folder)),
+          })),
+        )
         return true
       },
 
       setActiveFolderId: (id) => {
-        set({ activeFolderId: id || ROOT_FOLDER_ID })
+        if (get().loadError !== undefined) {
+          updateParsedFilesViewState(() => set({ activeFolderId: id || ROOT_FOLDER_ID }))
+          return
+        }
+        updateParsedFilesIndex(() => set({ activeFolderId: id || ROOT_FOLDER_ID }))
       },
 
-      setLoaded: (loaded) => set({ isLoaded: loaded }),
+      finishHydration: (error) => {
+        updateParsedFilesViewState(() => set({ isLoaded: error === undefined, loadError: error }))
+      },
     }),
     {
       name: PARSED_FILES_STORAGE_KEY,
-      storage: createJSONStorage(() => parsedFilesPersistStorage),
+      storage: parsedFilesPersistStorage,
       partialize: (state) => ({
-        files: state.files.map((f) => ({
-          ...f,
+        files: state.files.map((file) => ({
+          ...file,
           markdownContent: '', // Exclude large content from persisted JSON to prevent quota crashes.
           originalMarkdownContent: '',
+          contentLoaded: undefined,
         })),
         folders: state.folders,
         activeFolderId: state.activeFolderId,
       }),
-      onRehydrateStorage: () => (state) => {
-        if (globalThis.window !== undefined) {
-          state?.setLoaded(true)
-        }
-      },
-      migrate: (persistedState: unknown, _version) => {
-        // Handle migration from legacy React State hook (raw array)
-        if (Array.isArray(persistedState)) {
-          const migrated = persistedState.map(normalizePersistedFile).filter(isPresent)
-          return {
-            files: migrated,
-            folders: [],
-            activeFolderId: ROOT_FOLDER_ID,
-            isLoaded: true,
+      onRehydrateStorage: (state) => {
+        const previousReadError =
+          state.loadError !== undefined && getClientStorage() === null ? state.loadError : undefined
+        return (_restored, error) => {
+          if (globalThis.window !== undefined) {
+            state.finishHydration(error === undefined ? previousReadError : error)
           }
         }
-
-        const normalized = isRecord(persistedState) ? persistedState : {}
-        const normalizedFiles = Array.isArray(normalized.files)
-          ? normalized.files.map(normalizePersistedFile).filter(isPresent)
-          : []
-
-        const normalizedFolders = Array.isArray(normalized.folders)
-          ? normalized.folders.map(normalizePersistedFolder).filter(isPresent)
-          : []
-
-        return {
-          ...(normalized as Partial<ParsedFilesState>),
-          files: normalizedFiles,
-          folders: normalizedFolders,
-          activeFolderId: typeof normalized.activeFolderId === 'string' && normalized.activeFolderId ? normalized.activeFolderId : ROOT_FOLDER_ID,
-          isLoaded: true,
-        }
-      }
-    }
-  )
+      },
+      migrate: restoreParsedFilesState,
+      merge: (persisted, current) =>
+        persisted === undefined ? current : { ...current, ...restoreParsedFilesState(persisted), loadError: undefined },
+    },
+  ),
 )
 
 globalThis.window?.addEventListener(AUTH_SCOPE_CHANGED_EVENT, () => {
-  const previousScope = lastKnownParsedFilesScope
-  if (previousScope) {
-    bumpParsedFileUpdateScopeEpoch(previousScope)
-  }
-  lastKnownParsedFilesScope = getAuthCacheScope()
   const switchGeneration = ++parsedFilesScopeSwitchGeneration
   isSwitchingParsedFilesScope = true
-  clearParsedFileUpdateVersions()
+  for (const update of pendingParsedFileUpdates.values()) update.controller.abort()
+  pendingParsedFileUpdates.clear()
   useParsedFiles.setState({
     files: [],
     folders: [],
     activeFolderId: ROOT_FOLDER_ID,
     isLoaded: false,
+    loadError: undefined,
   })
-  detachPromise(
-    (async () => {
-      try {
-        await useParsedFiles.persist.rehydrate()
-      } finally {
-        if (parsedFilesScopeSwitchGeneration === switchGeneration) {
-          isSwitchingParsedFilesScope = false
-        }
+  void (async () => {
+    try {
+      await useParsedFiles.persist.rehydrate()
+    } finally {
+      if (parsedFilesScopeSwitchGeneration === switchGeneration) {
+        isSwitchingParsedFilesScope = false
       }
-    })()
-  )
+    }
+  })().catch((error) => {
+    console.warn('Failed to restore the parsed file workspace after a scope change', error)
+  })
 })

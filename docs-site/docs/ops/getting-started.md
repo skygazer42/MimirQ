@@ -5,12 +5,12 @@ sidebar_position: 2
 
 # 从 `.env` 到首次登录
 
-这页是新用户的配置入口。先生成 `.env`，确认模型服务和首个管理员方案，再选择 Docker 一键启动或主机源码启动。完整变量定义以仓库根目录的 [`.env.example`](https://github.com/skygazer42/MimirQ/blob/main/.env.example) 为准。
+这页是新用户的配置入口。先生成 `.env`，确认模型服务和首个管理员方案，再选择 Docker 一键启动或主机源码启动。完整变量定义以仓库根目录的 [`.env.example`](https://github.com/skygazer42/MimirQ/blob/feat/ragvia-ui/.env.example) 为准。
 
 ## 1. 生成本地配置
 
 ```bash
-git clone --depth 1 --single-branch https://github.com/skygazer42/MimirQ.git
+git clone --depth 1 --single-branch --branch feat/ragvia-ui https://github.com/skygazer42/MimirQ.git
 cd MimirQ
 make init
 ```

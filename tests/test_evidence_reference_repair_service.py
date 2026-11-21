@@ -1,10 +1,9 @@
-
 import uuid
 from types import SimpleNamespace
 
 import pytest
 
-from app.services import evidence_reference_repair_service as repair_mod
+from app.services.evidence import reference_repair as repair_mod
 
 
 class _FakeQuery:

@@ -119,7 +119,7 @@ def _enable_distributed(  # noqa: ANN001
 async def test_distributed_retrieval_admission_blocks_without_process_gate(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.services.rag_runtime_limiter as limiter
+    import app.services.runtime.retrieval_limiter as limiter
 
     redis = _FakeRedis()
     first_started = threading.Event()
@@ -149,7 +149,7 @@ async def test_distributed_retrieval_admission_blocks_without_process_gate(
 async def test_distributed_retrieval_admission_keeps_slot_after_outer_cancellation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.services.rag_runtime_limiter as limiter
+    import app.services.runtime.retrieval_limiter as limiter
 
     redis = _FakeRedis()
     first_started = threading.Event()
@@ -184,7 +184,7 @@ async def test_distributed_retrieval_admission_keeps_slot_after_outer_cancellati
 async def test_distributed_retrieval_admission_releases_slot_when_local_gate_times_out(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.services.rag_runtime_limiter as limiter
+    import app.services.runtime.retrieval_limiter as limiter
 
     redis = _FakeRedis()
     gate = threading.BoundedSemaphore(1)
@@ -207,7 +207,7 @@ async def test_distributed_retrieval_admission_releases_slot_when_local_gate_tim
 async def test_distributed_retrieval_admission_releases_slot_when_local_gate_wait_is_cancelled(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.services.rag_runtime_limiter as limiter
+    import app.services.runtime.retrieval_limiter as limiter
 
     redis = _FakeRedis()
     gate = threading.BoundedSemaphore(1)
@@ -234,7 +234,7 @@ async def test_distributed_retrieval_admission_releases_slot_when_local_gate_wai
 async def test_distributed_retrieval_admission_heartbeats_until_worker_release(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.services.rag_runtime_limiter as limiter
+    import app.services.runtime.retrieval_limiter as limiter
 
     redis = _FakeRedis()
     started = threading.Event()
@@ -279,7 +279,7 @@ async def test_distributed_retrieval_admission_heartbeats_until_worker_release(
 def test_distributed_retrieval_admission_slot_keys_do_not_encode_capacity(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.services.rag_runtime_limiter as limiter
+    import app.services.runtime.retrieval_limiter as limiter
 
     redis = _FakeRedis()
     _enable_distributed(monkeypatch, limiter, redis, distributed_limit=4)
@@ -292,7 +292,7 @@ def test_distributed_retrieval_admission_slot_keys_do_not_encode_capacity(
 def test_distributed_retrieval_admission_zero_global_limit_inherits_local_limit(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.services.rag_runtime_limiter as limiter
+    import app.services.runtime.retrieval_limiter as limiter
 
     redis = _FakeRedis()
     _enable_distributed(monkeypatch, limiter, redis, local_limit=3, distributed_limit=0)
@@ -317,7 +317,7 @@ def test_distributed_retrieval_admission_zero_global_limit_inherits_local_limit(
 def test_distributed_backend_budget_uses_separate_global_slots(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.services.rag_runtime_limiter as limiter
+    import app.services.runtime.retrieval_limiter as limiter
 
     redis = _FakeRedis()
     _enable_distributed(monkeypatch, limiter, redis, local_limit=2, distributed_limit=2)
@@ -335,7 +335,7 @@ def test_distributed_backend_budget_uses_separate_global_slots(
 def test_distributed_backend_budget_is_shared_across_processes(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.services.rag_runtime_limiter as limiter
+    import app.services.runtime.retrieval_limiter as limiter
 
     context = multiprocessing.get_context("fork")
     slots = context.Array("Q", 2, lock=False)
@@ -384,7 +384,7 @@ def test_distributed_backend_budget_is_shared_across_processes(
 def test_sync_distributed_wait_releases_local_gate_between_attempts(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.services.rag_runtime_limiter as limiter
+    import app.services.runtime.retrieval_limiter as limiter
 
     redis = _FakeRedis()
     events: list[str] = []
@@ -418,7 +418,7 @@ def test_sync_distributed_wait_releases_local_gate_between_attempts(
 async def test_async_distributed_wait_releases_local_gate_between_attempts(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.services.rag_runtime_limiter as limiter
+    import app.services.runtime.retrieval_limiter as limiter
 
     redis = _FakeRedis()
     events: list[str] = []
@@ -455,7 +455,7 @@ async def test_async_distributed_wait_releases_local_gate_between_attempts(
 def test_explicit_global_limit_works_when_local_gate_is_unlimited(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.services.rag_runtime_limiter as limiter
+    import app.services.runtime.retrieval_limiter as limiter
 
     redis = _FakeRedis()
     _enable_distributed(monkeypatch, limiter, redis, local_limit=0, distributed_limit=2)
@@ -473,7 +473,7 @@ def test_explicit_global_limit_works_when_local_gate_is_unlimited(
 def test_distributed_retrieval_admission_nested_sync_call_does_not_double_acquire(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.services.rag_runtime_limiter as limiter
+    import app.services.runtime.retrieval_limiter as limiter
 
     redis = _FakeRedis()
     _enable_distributed(monkeypatch, limiter, redis)
@@ -494,7 +494,7 @@ def test_distributed_retrieval_admission_nested_sync_call_does_not_double_acquir
 async def test_distributed_retrieval_admission_degrades_to_local_gate_when_redis_fails(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.services.rag_runtime_limiter as limiter
+    import app.services.runtime.retrieval_limiter as limiter
 
     invalidations = 0
     redis = _BrokenRedis()
@@ -538,7 +538,7 @@ async def test_distributed_retrieval_admission_degrades_to_local_gate_when_redis
 def test_distributed_retrieval_admission_releases_slot_after_sync_failure(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.services.rag_runtime_limiter as limiter
+    import app.services.runtime.retrieval_limiter as limiter
 
     redis = _FakeRedis()
     _enable_distributed(monkeypatch, limiter, redis)
@@ -557,7 +557,7 @@ def test_distributed_retrieval_admission_releases_slot_after_sync_failure(
 def test_retrieval_backend_budget_is_globally_bounded(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.services.rag_runtime_limiter as limiter
+    import app.services.runtime.retrieval_limiter as limiter
 
     first_started = threading.Event()
     release_first = threading.Event()
@@ -604,7 +604,7 @@ def test_retrieval_backend_budget_is_globally_bounded(
 def test_retrieval_backend_budget_is_reentrant(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.services.rag_runtime_limiter as limiter
+    import app.services.runtime.retrieval_limiter as limiter
 
     monkeypatch.setattr(limiter.settings, "RAG_VECTOR_SHARD_GLOBAL_MAX_CONCURRENCY", 1, raising=False)
     monkeypatch.setattr(limiter, "_backend_gate", None, raising=False)

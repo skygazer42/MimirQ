@@ -2,10 +2,6 @@ export function encodeUtf8(value: string): Uint8Array {
   return new TextEncoder().encode(value)
 }
 
-export function decodeUtf8(value: Uint8Array): string {
-  return new TextDecoder().decode(value)
-}
-
 function bytesToBase64(bytes: Uint8Array): string {
   if (typeof Buffer !== 'undefined') {
     return Buffer.from(bytes).toString('base64')
@@ -26,21 +22,17 @@ function base64ToBytes(base64: string): Uint8Array {
   const binary = atob(base64)
   const out = new Uint8Array(binary.length)
   for (let i = 0; i < binary.length; i++) {
-    out[i] = binary.codePointAt(i) ?? 0
+    out[i] = binary.charCodeAt(i)
   }
   return out
 }
 
 export function base64UrlEncode(bytes: Uint8Array): string {
-  let encoded = bytesToBase64(bytes).replaceAll('+', '-').replaceAll('/', '_')
-  while (encoded.endsWith('=')) {
-    encoded = encoded.slice(0, -1)
-  }
-  return encoded
+  return bytesToBase64(bytes).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/, '')
 }
 
 export function base64UrlDecodeToBytes(base64Url: string): Uint8Array {
-  const raw = String(base64Url || '').trim()
+  const raw = base64Url.trim()
   if (!raw) return new Uint8Array()
 
   let base64 = raw.replaceAll('-', '+').replaceAll('_', '/')

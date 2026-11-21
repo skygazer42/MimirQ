@@ -5,20 +5,59 @@ Defines the abstract base class for all workflow patterns
 and the WorkflowMode enumeration.
 """
 
-
 import asyncio
+import logging
 from abc import ABC, abstractmethod
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass, field
 from enum import Enum
 from functools import wraps
 from typing import Any, TypedDict
 
-from app.core.config import settings
+import anyio
+from langchain_core.messages import BaseMessage
+
+from app.infrastructure.config import settings
+
+logger = logging.getLogger("rag.workflows.base")
+_TASK_CLEANUP_TIMEOUT_SEC = 5.0
+
+
+async def cancel_and_drain_tasks(tasks: Sequence[asyncio.Task[Any]], *, pending_error: BaseException | None) -> None:
+    if not tasks:
+        return
+    for task in tasks:
+        if not task.done() and not task.cancelling():
+            task.cancel()
+    try:
+        with anyio.CancelScope(shield=True):
+            done, pending = await asyncio.wait(tasks, timeout=_TASK_CLEANUP_TIMEOUT_SEC)
+            for task in done:
+                if not task.cancelled():
+                    task.exception()
+            if pending:
+                raise TimeoutError("Workflow tasks did not finish cancellation within the cleanup budget")
+    except BaseException as cleanup_error:
+        if pending_error is None or isinstance(pending_error, GeneratorExit):
+            raise
+        pending_error.add_note(f"Workflow task cleanup failed: {type(cleanup_error).__name__}")
+        logger.warning("Workflow task cleanup failed while propagating an error", exc_info=True)
+
+
+def model_response_text(response: Any) -> str:
+    if isinstance(response, str):
+        return response
+    if isinstance(response, BaseMessage):
+        return response.text
+    content = response.content
+    if not isinstance(content, str):
+        raise TypeError("Workflow model response must contain text")
+    return content
 
 
 class WorkflowMode(str, Enum):
     """Available workflow modes."""
+
     CHAIN = "chain"
     ROUTING = "routing"
     PARALLEL = "parallel"
@@ -27,8 +66,15 @@ class WorkflowMode(str, Enum):
     EVALUATOR = "evaluator"
 
 
+class WorkflowPlanStep(TypedDict):
+    id: str
+    description: str
+    dependencies: list[str]
+
+
 class WorkflowState(TypedDict, total=False):
     """Standard workflow state structure."""
+
     question: str
     query: str
     history: list[dict[str, str]]
@@ -40,7 +86,7 @@ class WorkflowState(TypedDict, total=False):
     error: str | None
     # Workflow-specific fields
     route: str | None
-    plan: list[str] | None
+    plan: list[str] | list[WorkflowPlanStep] | None
     current_step: int
     iterations: int
     score: float
@@ -50,6 +96,7 @@ class WorkflowState(TypedDict, total=False):
 @dataclass
 class WorkflowResult:
     """Result of a workflow execution."""
+
     success: bool
     state: dict[str, Any]
     answer: str = ""
@@ -70,7 +117,7 @@ class BaseWorkflow(ABC):
         name: Workflow name for logging/tracing
         mode: WorkflowMode enumeration value
         max_iterations: Maximum iterations for iterative workflows
-        timeout_sec: Execution timeout in seconds
+        timeout_sec: Stored timeout setting; run implementations do not enforce a deadline
     """
 
     def __init__(
@@ -78,15 +125,15 @@ class BaseWorkflow(ABC):
         name: str | None = None,
         max_iterations: int = 10,
         timeout_sec: int = 120,
-        **kwargs,
-    ):
+        **kwargs: Any,
+    ) -> None:
         """
         Initialize the workflow.
 
         Args:
             name: Optional workflow name
             max_iterations: Maximum iterations
-            timeout_sec: Execution timeout
+            timeout_sec: Stored timeout setting without automatic deadline enforcement
             **kwargs: Additional configuration
         """
         self.name = name or self.__class__.__name__
@@ -96,11 +143,11 @@ class BaseWorkflow(ABC):
         self._wrap_agent_middlewares()
 
     def _wrap_agent_middlewares(self) -> None:
-        enabled = bool(getattr(settings, "MIDDLEWARE_ENABLED", True))
+        enabled = settings.MIDDLEWARE_ENABLED
         if not enabled:
             return
 
-        from app.rag.middleware import AgentMiddlewareChain
+        from app.rag.agents.middleware import AgentMiddlewareChain
 
         chain = AgentMiddlewareChain()
         original_run = self.run
@@ -109,7 +156,7 @@ class BaseWorkflow(ABC):
 
         @wraps(original_run)
         async def wrapped(state: dict[str, Any]) -> "WorkflowResult":
-            initial_state = dict(state or {})
+            initial_state = dict(state)
             initial_state["_agent"] = {
                 "workflow": self.name,
                 "mode": self.mode.value,
@@ -118,7 +165,7 @@ class BaseWorkflow(ABC):
 
             result = await original_run(initial_state)
 
-            final_state = dict((result.state or {}))
+            final_state = dict(result.state)
             agent_ctx = dict(final_state.get("_agent") or {})
             agent_ctx.update(
                 {
@@ -136,7 +183,7 @@ class BaseWorkflow(ABC):
 
             result.state = final_state
             if "answer" in final_state:
-                result.answer = final_state.get("answer") or result.answer
+                result.answer = final_state["answer"]
             return result
 
         # Monkey-patch instance method to keep API stable for all workflows.
@@ -171,18 +218,27 @@ class BaseWorkflow(ABC):
         Returns:
             True if valid
         """
-        return "question" in state or "query" in state
+        question = state.get("question")
+        if question is None:
+            question = state.get("query")
+        return isinstance(question, str)
 
-    def get_question(self, state: dict[str, Any]) -> str:
+    @staticmethod
+    def get_question(state: dict[str, Any]) -> str:
         """Extract question from state."""
-        return state.get("question") or state.get("query") or ""
+        question = state.get("question")
+        if question is None:
+            question = state["query"]
+        if not isinstance(question, str):
+            raise TypeError("workflow question must be a string")
+        return question
 
     def create_result(
         self,
         state: dict[str, Any],
         success: bool = True,
         error: str | None = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> WorkflowResult:
         """
         Create a WorkflowResult from state.
@@ -219,7 +275,7 @@ class WorkflowStep:
         name: str,
         func: Callable[[dict[str, Any]], Awaitable[dict[str, Any]]],
         condition: Callable[[dict[str, Any]], bool] | None = None,
-    ):
+    ) -> None:
         """
         Initialize a workflow step.
 

@@ -1,9 +1,9 @@
 from langchain_core.documents import Document
 
-from app.rag.retrieval.context_expansion import expand_ranked_chunk_results
-from app.rag.retrieval.contextual_followup import build_contextual_followup_query
-from app.rag.retrieval.hierarchy_expand import expand_hierarchy_context
-from app.rag.retriever import HybridRetriever
+from app.rag.retrieval.expansion.context import expand_ranked_chunk_results
+from app.rag.retrieval.expansion.hierarchy import expand_hierarchy_context
+from app.rag.retrieval.planning.followup import build_contextual_followup_query
+from app.rag.retrieval.recall.retriever import HybridRetriever
 
 
 class _Chunk:

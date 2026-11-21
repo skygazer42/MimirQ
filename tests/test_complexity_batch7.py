@@ -5,24 +5,24 @@ import pytest
 from fastapi import BackgroundTasks, HTTPException
 from langchain_core.documents import Document
 
-from app.api.v1 import ingestion_runs
-from app.rag.chunking.strategies.markdown_hierarchy import MarkdownHierarchyChunker
-from app.rag.chunking.strategies.recursive import LangChainRecursiveChunker
-from app.rag.chunking.strategies.subtitles import SubtitlesChunker
+from app.api.v1.documents import ingestion_runs
 from app.rag.evaluation.datasets.validator import validate_eval_dataset
 from app.rag.evaluation.parse_bench import build_doc_type_matrix
+from app.rag.ingestion.chunking.strategies.markup.markdown_hierarchy import MarkdownHierarchyChunker
+from app.rag.ingestion.chunking.strategies.records.subtitles import SubtitlesChunker
+from app.rag.ingestion.chunking.strategies.text.recursive import LangChainRecursiveChunker
+from app.rag.ingestion.governance.markup.images import strip_images
 from app.rag.policy.intent_router_model import (
     INTENT_ROUTER_MODEL_SCHEMA_V1,
     normalize_intent_router_model,
 )
-from app.rag.preprocessing.images import strip_images
-from app.rag.retrieval.orchestration.query_contract import (
+from app.rag.retrieval.planning.normalization import (
     HierarchyContractSettings,
     QueryContractDefaults,
     QueryContractNormalizationInput,
     normalize_query_contract,
 )
-from app.services.evidence_drift_audit import (
+from app.services.evidence.drift import (
     DRIFT_REASON_CHUNK_DOCUMENT_MISMATCH,
     DRIFT_REASON_DOCUMENT_DATASET_MISMATCH,
     classify_reference_source_drift,
@@ -366,9 +366,9 @@ def test_replay_ingestion_run_creates_new_run_and_schedules_background_work(monk
     db = _DB(base_run)
     add_calls: list[dict[str, object]] = []
 
-    monkeypatch.setattr(ingestion_runs.DatasetService, "ensure_member", lambda *_a, **_k: None, raising=True)
-    monkeypatch.setattr(ingestion_runs.DatasetService, "get_dataset", lambda *_a, **_k: object(), raising=True)
-    monkeypatch.setattr(ingestion_runs.DatasetService, "assert_dataset_writable", lambda *_a, **_k: None, raising=True)
+    monkeypatch.setattr(ingestion_runs.dataset_service, "ensure_member", lambda *_a, **_k: None, raising=True)
+    monkeypatch.setattr(ingestion_runs.dataset_service, "get_dataset", lambda *_a, **_k: object(), raising=True)
+    monkeypatch.setattr(ingestion_runs.dataset_service, "assert_dataset_writable", lambda *_a, **_k: None, raising=True)
     monkeypatch.setattr(
         ingestion_runs,
         "audit_log_event",
@@ -376,7 +376,7 @@ def test_replay_ingestion_run_creates_new_run_and_schedules_background_work(monk
         raising=True,
     )
     monkeypatch.setattr(
-        ingestion_runs.IngestionRunService,
+        ingestion_runs.ingestion_run_service,
         "create_run",
         lambda *_a, **_k: new_run,
         raising=True,
@@ -385,7 +385,7 @@ def test_replay_ingestion_run_creates_new_run_and_schedules_background_work(monk
     def _add_document(*_args, **kwargs):
         add_calls.append(kwargs)
 
-    monkeypatch.setattr(ingestion_runs.IngestionRunService, "add_document", _add_document, raising=True)
+    monkeypatch.setattr(ingestion_runs.ingestion_run_service, "add_document", _add_document, raising=True)
 
     background_tasks = BackgroundTasks()
     result = ingestion_runs.replay_ingestion_run(
@@ -429,7 +429,7 @@ def test_replay_ingestion_run_rejects_runs_without_documents(monkeypatch: pytest
         def query(self, _model):
             return _Query()
 
-    monkeypatch.setattr(ingestion_runs.DatasetService, "ensure_member", lambda *_a, **_k: None, raising=True)
+    monkeypatch.setattr(ingestion_runs.dataset_service, "ensure_member", lambda *_a, **_k: None, raising=True)
 
     with pytest.raises(HTTPException, match="No documents to replay") as exc_info:
         ingestion_runs.replay_ingestion_run(
@@ -450,7 +450,7 @@ def test_markdown_hierarchy_chunker_preserves_order_offsets_and_heading_context(
     alpha_start = text.index("Alpha")
     beta_start = text.index("Beta")
     monkeypatch.setattr(
-        "app.rag.chunking.strategies.markdown_hierarchy.hierarchical_chunk_markdown",
+        "app.rag.ingestion.chunking.strategies.markup.markdown_hierarchy.hierarchical_chunk_markdown",
         lambda _text: {
             "paragraphs": [
                 {

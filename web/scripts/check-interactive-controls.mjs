@@ -20,6 +20,7 @@ const actionWrappers = new Set([
   'AlertDialogTrigger',
   'ConfirmDialog',
   'ContextMenuTrigger',
+  'DialogClose',
   'DialogTrigger',
   'DocumentDetailDialog',
   'DrawerTrigger',
@@ -37,11 +38,7 @@ function walk(directory) {
     if (entry.isDirectory() && ignoredDirectories.has(entry.name)) continue
     const absolutePath = path.join(directory, entry.name)
     if (entry.isDirectory()) files.push(...walk(absolutePath))
-    else if (
-      entry.isFile() &&
-      absolutePath.endsWith('.tsx') &&
-      !/\.(?:test|spec|stories)\.tsx$/.test(absolutePath)
-    ) {
+    else if (entry.isFile() && absolutePath.endsWith('.tsx') && !/\.(?:test|spec|stories)\.tsx$/.test(absolutePath)) {
       files.push(absolutePath)
     }
   }
@@ -63,14 +60,11 @@ function attributes(node) {
 
 function hasPermanentDisabledAttribute(node) {
   const disabled = attributes(node).properties.find(
-    (property) => ts.isJsxAttribute(property) && property.name.text === 'disabled'
+    (property) => ts.isJsxAttribute(property) && property.name.text === 'disabled',
   )
   if (!disabled || !ts.isJsxAttribute(disabled)) return false
   if (!disabled.initializer) return true
-  return (
-    ts.isJsxExpression(disabled.initializer) &&
-    disabled.initializer.expression?.kind === ts.SyntaxKind.TrueKeyword
-  )
+  return ts.isJsxExpression(disabled.initializer) && disabled.initializer.expression?.kind === ts.SyntaxKind.TrueKeyword
 }
 
 function hasDirectAction(node) {
@@ -96,10 +90,7 @@ function hasActionWrapper(node, source) {
       const name = tagName(parent)
       if (name === 'form' || actionWrappers.has(name)) return true
       const parentText = jsxAncestorDepth === 0 ? parent.getText(source) : ''
-      if (
-        parentText.includes('group-focus-within') &&
-        parentText.includes('group-hover')
-      ) {
+      if (parentText.includes('group-focus-within') && parentText.includes('group-hover')) {
         return true
       }
       jsxAncestorDepth += 1
@@ -113,13 +104,7 @@ let controlsChecked = 0
 
 for (const sourcePath of sourceRoots.flatMap(walk)) {
   const sourceText = fs.readFileSync(sourcePath, 'utf8')
-  const source = ts.createSourceFile(
-    sourcePath,
-    sourceText,
-    ts.ScriptTarget.Latest,
-    true,
-    ts.ScriptKind.TSX
-  )
+  const source = ts.createSourceFile(sourcePath, sourceText, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX)
 
   function visit(node) {
     if (ts.isJsxElement(node) || ts.isJsxSelfClosingElement(node)) {
@@ -148,5 +133,7 @@ if (failures.length > 0) {
   for (const failure of failures) console.error(`- ${failure}`)
   process.exitCode = 1
 } else {
-  console.log(`[interactive-controls] OK: ${controlsChecked} buttons have actions, triggers, or explicit disabled states`)
+  console.log(
+    `[interactive-controls] OK: ${controlsChecked} buttons have actions, triggers, or explicit disabled states`,
+  )
 }

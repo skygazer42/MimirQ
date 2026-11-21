@@ -34,9 +34,7 @@ def find_h1_lines(lines: list[str]) -> list[int]:
         if s.startswith("```"):
             in_fence = not in_fence
             continue
-        if in_fence:
-            continue
-        if H1_RE.match(ln):
+        if not in_fence and H1_RE.match(ln):
             indices.append(i)
     return indices
 

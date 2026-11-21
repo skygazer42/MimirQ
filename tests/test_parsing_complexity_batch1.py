@@ -6,12 +6,11 @@ from types import ModuleType, SimpleNamespace
 import pytest
 from PIL import Image
 
-from app.parsing.parsers.csv_parser import CsvParser
-from app.parsing.parsers.docx_parser import DocxParser
-from app.parsing.parsers.pdf_parser import PDFParser
-from app.parsing.preprocess.llm_noise_miner import mine_noise_rule_candidates
-from app.parsing.preprocess.orientation import normalize_pdf_rotation
-from app.parsing.utils.cli import resolve_cli_command
+from app.rag.ingestion.parsing.parsers.csv_parser import CsvParser
+from app.rag.ingestion.parsing.parsers.docx_parser import DocxParser
+from app.rag.ingestion.parsing.parsers.pdf_parser import _extract_image_documents
+from app.rag.ingestion.parsing.preprocess.orientation import normalize_pdf_rotation
+from app.rag.ingestion.parsing.utils.cli import resolve_cli_command
 
 
 def test_csv_parser_characterizes_headerless_rows(tmp_path: Path) -> None:
@@ -34,7 +33,9 @@ def test_csv_parser_characterizes_empty_cells_and_truncation(
 ) -> None:
     path = tmp_path / "sample.csv"
     path.write_text('name,,notes\nAlice,,"line 1\nline 2"\n', encoding="utf-8")
-    monkeypatch.setattr("app.parsing.parsers.csv_parser.csv.Sniffer.has_header", lambda _self, _sample: True)
+    monkeypatch.setattr(
+        "app.rag.ingestion.parsing.parsers.csv_parser.csv.Sniffer.has_header", lambda _self, _sample: True
+    )
 
     document = CsvParser(max_cell_chars=6).parse(path)[0]
 
@@ -64,13 +65,15 @@ def test_docx_parser_preserves_block_order_and_formats_structures(
     )
 
     monkeypatch.setattr(
-        "app.parsing.parsers.docx_parser._iter_docx_blocks", lambda _doc: [heading, bullet, paragraph, table]
+        "app.rag.ingestion.parsing.parsers.docx_parser._iter_docx_blocks",
+        lambda _doc: [heading, bullet, paragraph, table],
     )
     monkeypatch.setattr(
-        "app.parsing.parsers.docx_parser._is_list_paragraph", lambda block: bool(getattr(block, "is_list", False))
+        "app.rag.ingestion.parsing.parsers.docx_parser._is_list_paragraph",
+        lambda block: bool(getattr(block, "is_list", False)),
     )
     monkeypatch.setattr(
-        "app.parsing.parsers.docx_parser._list_level", lambda block: int(getattr(block, "list_level", 0))
+        "app.rag.ingestion.parsing.parsers.docx_parser._list_level", lambda block: int(getattr(block, "list_level", 0))
     )
 
     path = tmp_path / "brief.docx"
@@ -93,6 +96,8 @@ def test_pdf_parser_extract_image_documents_deduplicates_xrefs_and_keeps_code_me
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
+    from contextlib import ExitStack
+
     image_buffer = io.BytesIO()
     Image.new("RGB", (4, 4), color="white").save(image_buffer, format="PNG")
     image_bytes = image_buffer.getvalue()
@@ -111,63 +116,35 @@ def test_pdf_parser_extract_image_documents_deduplicates_xrefs_and_keeps_code_me
             return [(7,), (7,)]
 
     monkeypatch.setattr(
-        "app.parsing.parsers.pdf_parser.decode_image_codes",
+        "app.rag.ingestion.parsing.parsers.pdf_parser.decode_image_codes",
         lambda image: {"visual_kind": "qr", "text": "HELLO-QR", "values": ["HELLO-QR", ""]},
     )
-    monkeypatch.setattr("app.parsing.parsers.pdf_parser.infer_visual_kind_from_pixels", lambda image: "ignored")
-
-    documents = PDFParser()._extract_image_documents(
-        pdf_document=_FakePdf(),
-        page=_FakePage(),
-        file_path=tmp_path / "scan.pdf",
-        page_num=1,
+    monkeypatch.setattr(
+        "app.rag.ingestion.parsing.parsers.pdf_parser.infer_visual_kind_from_pixels", lambda image: "ignored"
     )
 
-    assert len(documents) == 1
-    document = documents[0]
-    assert document.page_content == "HELLO-QR"
-    assert document.metadata["source"] == "scan.pdf"
-    assert document.metadata["page"] == 2
-    assert document.metadata["total_pages"] == 2
-    assert document.metadata["visual_kind"] == "qr"
-    assert document.metadata["image_code_text"] == "HELLO-QR"
-    assert document.metadata["image_code_values"] == ["HELLO-QR"]
-    assert document.metadata["image_index"] == 0
+    with ExitStack() as image_resources:
+        documents = _extract_image_documents(
+            pdf_document=_FakePdf(),
+            page=_FakePage(),
+            file_path=tmp_path / "scan.pdf",
+            page_num=1,
+            image_resources=image_resources,
+        )
 
+        assert len(documents) == 1
+        document = documents[0]
+        assert document.page_content == "HELLO-QR"
+        assert document.metadata["source"] == "scan.pdf"
+        assert document.metadata["page"] == 2
+        assert document.metadata["total_pages"] == 2
+        assert document.metadata["visual_kind"] == "qr"
+        assert document.metadata["image_code_text"] == "HELLO-QR"
+        assert document.metadata["image_code_values"] == ["HELLO-QR"]
+        assert document.metadata["image_index"] == 0
 
-def test_mine_noise_rule_candidates_characterizes_template_and_exact_matches() -> None:
-    result = mine_noise_rule_candidates(
-        [
-            "重复行",
-            "回复时间：昨天",
-            "重复行",
-            "【回复 12 - 标题】",
-            "回复时间：今天",
-            "重复行",
-        ],
-        top_k=5,
-        min_frequency=2,
-    )
-
-    assert result["summary"] == {"input_lines": 6, "candidate_count": 2}
-    assert result["candidates"] == [
-        {
-            "pattern_kind": "exact",
-            "pattern_name": "repeated_line",
-            "pattern": r"(?m)^\s*重复行\s*$",
-            "count": 3,
-            "examples": ["重复行"],
-            "review_required": True,
-        },
-        {
-            "pattern_kind": "template",
-            "pattern_name": "reply_time",
-            "pattern": r"(?m)^\s*回复时间：.*$",
-            "count": 2,
-            "examples": ["回复时间：昨天", "回复时间：今天"],
-            "review_required": True,
-        },
-    ]
+    with pytest.raises(ValueError):
+        document.metadata["image"].getpixel((0, 0))
 
 
 def test_normalize_pdf_rotation_characterizes_uniform_rotation(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -277,8 +254,8 @@ def test_resolve_cli_command_characterizes_pathlike_and_env_bin_lookup(
     tool_path = env_bin / "pandoc"
     tool_path.write_text("", encoding="utf-8")
 
-    monkeypatch.setattr("app.parsing.utils.cli.shutil.which", lambda _cmd: None)
-    monkeypatch.setattr("app.parsing.utils.cli.sys.executable", str(env_python))
+    monkeypatch.setattr("app.rag.ingestion.parsing.utils.cli.shutil.which", lambda _cmd: None)
+    monkeypatch.setattr("app.rag.ingestion.parsing.utils.cli.sys.executable", str(env_python))
 
     assert resolve_cli_command(str(tmp_path / "missing" / "pandoc")) is None
     assert resolve_cli_command("pandoc") == str(tool_path.resolve())

@@ -5,7 +5,7 @@ export type GraphViewportRect = Readonly<{
   maxY: number
 }>
 
-export type GraphViewportPoint = Readonly<{
+type GraphViewportPoint = Readonly<{
   x: number
   y: number
 }>
@@ -19,20 +19,20 @@ type GraphEndpoint =
   | null
   | undefined
 
-export type GraphViewportNode = {
+type GraphViewportNode = {
   id?: string | number | null
   x?: number | null
   y?: number | null
 }
 
-export type GraphViewportLink = {
+type GraphViewportLink = {
   id?: string | number | null
   index?: number | null
   source?: GraphEndpoint
   target?: GraphEndpoint
 }
 
-export type GraphViewportTier = 'overview' | 'balanced' | 'detail'
+type GraphViewportTier = 'overview' | 'balanced' | 'detail'
 
 export type GraphViewportLod = Readonly<{
   tier: GraphViewportTier
@@ -43,7 +43,6 @@ export type GraphViewportLod = Readonly<{
 }>
 
 type QuadItem = Readonly<{
-  node: GraphViewportNode
   id: string
   x: number
   y: number
@@ -201,14 +200,13 @@ function queryNode(node: QuadNode, rect: GraphViewportRect, out: QuadItem[]): vo
   }
 }
 
-export function createGraphSpatialIndex(nodes: readonly GraphViewportNode[]) {
+function queryViewportNodeIds(nodes: readonly GraphViewportNode[], viewport: GraphViewportRect): string[] {
   const items = nodes
     .map((node) => {
       const id = coerceNodeId(node)
-      const x = Number(node.x)
-      const y = Number(node.y)
+      const { x, y } = node
       if (!id || !isFiniteNumber(x) || !isFiniteNumber(y)) return null
-      return { node, id, x, y } satisfies QuadItem
+      return { id, x, y } satisfies QuadItem
     })
     .filter((item): item is QuadItem => item != null)
 
@@ -217,28 +215,12 @@ export function createGraphSpatialIndex(nodes: readonly GraphViewportNode[]) {
     insertItem(root, item)
   }
 
-  return {
-    query(rect: GraphViewportRect): GraphViewportNode[] {
-      const out: QuadItem[] = []
-      queryNode(root, normalizeRect(rect), out)
-      return out.map((item) => item.node)
-    },
-    nearest(point: GraphViewportPoint): GraphViewportNode | null {
-      let best: QuadItem | null = null
-      let bestDistance = Number.POSITIVE_INFINITY
-      for (const item of items) {
-        const distance = (item.x - point.x) ** 2 + (item.y - point.y) ** 2
-        if (distance < bestDistance) {
-          best = item
-          bestDistance = distance
-        }
-      }
-      return best?.node ?? null
-    },
-  }
+  const visible: QuadItem[] = []
+  queryNode(root, viewport, visible)
+  return visible.map((item) => item.id)
 }
 
-export function getGraphViewportTier(args: {
+function getGraphViewportTier(args: {
   globalScale: number
   totalNodeCount: number
   largeGraphNodeThreshold?: number
@@ -291,14 +273,11 @@ export function buildGraphViewportLod(args: {
   }
 
   const viewport = expandRect(args.viewport, args.overscanRatio ?? DEFAULT_VIEWPORT_OVERSCAN)
-  const index = createGraphSpatialIndex(args.nodes)
-  const visibleNodes = index.query(viewport)
   const degree = buildDegreeMap(args.links)
   const selectedNodeIds = args.selectedNodeIds ?? new Set<string>()
-  const sortedVisibleNodeIds = visibleNodes
-    .map(coerceNodeId)
-    .filter(Boolean)
-    .sort((a, b) => (degree.get(b) ?? 0) - (degree.get(a) ?? 0) || a.localeCompare(b))
+  const sortedVisibleNodeIds = queryViewportNodeIds(args.nodes, viewport).sort(
+    (a, b) => (degree.get(b) ?? 0) - (degree.get(a) ?? 0) || a.localeCompare(b),
+  )
 
   const maxOverviewNodes = Math.max(1, Math.floor(args.maxOverviewNodes ?? DEFAULT_OVERVIEW_NODE_LIMIT))
   const cappedVisibleNodeIds =

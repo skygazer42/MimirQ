@@ -1,13 +1,23 @@
 'use client'
 
 import { useCallback, useEffect } from 'react'
-import { useSearchParams } from 'next/navigation'
+import { usePathname, useSearchParams } from 'next/navigation'
 
 import { AppFrame } from '@/components/app-frame'
 import { ChatArea } from '@/components/chat-area'
 import { DocumentViewerPanel } from '@/components/document-viewer-panel'
 import { useRouter } from '@/i18n/navigation'
 import { useDocumentView } from '@/store/document-view'
+
+function clearConsumedChatParams(pathname: string, consumedParams: Readonly<Record<string, string>>) {
+  const url = new URL(window.location.href)
+  if (url.pathname !== pathname) return
+  for (const [key, value] of Object.entries(consumedParams)) {
+    if (url.searchParams.get(key) !== value) return
+    url.searchParams.delete(key)
+  }
+  window.history.replaceState(null, '', url)
+}
 
 export function ChatPageClient({
   initialConversationId,
@@ -25,64 +35,58 @@ export function ChatPageClient({
   initialOpenRagSettings?: boolean
   initialDocumentId?: string
   initialChunkId?: string
-  initialHighlightStart?: string
-  initialHighlightEnd?: string
+  initialHighlightStart?: number
+  initialHighlightEnd?: number
 }>) {
   const router = useRouter()
+  const pathname = usePathname()
   const searchParams = useSearchParams()
-  const { openDocument } = useDocumentView()
+  const promptParam = searchParams.get('prompt')
+  const autorunParam = searchParams.get('autorun')
+  const ragParam = searchParams.get('rag')
+  const prompt = promptParam === initialPrompt ? initialPrompt : undefined
+  const shouldAutoSendPrompt = initialAutoSendPrompt === true && (autorunParam === '1' || autorunParam === 'true')
+  const shouldOpenRagSettings = initialOpenRagSettings === true && (ragParam === '1' || ragParam === 'true')
+  const openDocument = useDocumentView((state) => state.openDocument)
 
   const handleConversationId = useCallback(
     (conversationId: string) => {
-      const id = (conversationId || '').trim()
-      if (!id) return
-      if (id === (initialConversationId || '')) return
-      router.replace(`/?conversation=${encodeURIComponent(id)}`)
+      if (conversationId === initialConversationId) return
+      const url = new URL(window.location.href)
+      if (url.pathname !== pathname || url.searchParams.get('conversation') !== (initialConversationId ?? null)) return
+      url.searchParams.set('conversation', conversationId)
+      router.replace(`/${url.search}${url.hash}`)
     },
-    [router, initialConversationId]
+    [router, pathname, initialConversationId],
   )
 
   const handlePromptConsumed = useCallback(() => {
-    if (!searchParams?.get('prompt') && !searchParams?.get('autorun')) return
-    const params = new URLSearchParams(searchParams.toString())
-    params.delete('prompt')
-    params.delete('autorun')
-    const qs = params.toString()
-    router.replace(qs ? `/?${qs}` : '/')
-  }, [router, searchParams])
+    if (prompt === undefined || !shouldAutoSendPrompt) return
+    clearConsumedChatParams(pathname, { prompt, autorun: autorunParam })
+  }, [pathname, prompt, shouldAutoSendPrompt, autorunParam])
 
-  // If we used `?rag=1` to open the popover, clean it up so the URL stays stable.
   useEffect(() => {
-    if (!initialOpenRagSettings) return
-    if (!searchParams?.get('rag')) return
-    const params = new URLSearchParams(searchParams.toString())
-    params.delete('rag')
-    const qs = params.toString()
-    router.replace(qs ? `/?${qs}` : '/')
-  }, [initialOpenRagSettings, router, searchParams])
+    if (shouldOpenRagSettings) clearConsumedChatParams(pathname, { rag: ragParam })
+  }, [pathname, shouldOpenRagSettings, ragParam])
 
-  // Deep link: open document viewer from query params (used by "copy link" actions).
   useEffect(() => {
-    const docId = (initialDocumentId || '').trim()
-    if (!docId) return
-    const chunkId = (initialChunkId || '').trim() || undefined
-    const start = initialHighlightStart == null ? Number.NaN : Number.parseInt(String(initialHighlightStart), 10)
-    const end = initialHighlightEnd == null ? Number.NaN : Number.parseInt(String(initialHighlightEnd), 10)
+    if (initialDocumentId === undefined) return
     const range =
-      Number.isFinite(start) && Number.isFinite(end) && end > start ? { start, end } : undefined
-    openDocument(docId, chunkId, range)
+      initialHighlightStart !== undefined &&
+      initialHighlightEnd !== undefined &&
+      initialHighlightEnd > initialHighlightStart
+        ? { start: initialHighlightStart, end: initialHighlightEnd }
+        : undefined
+    openDocument(initialDocumentId, initialChunkId, range)
   }, [initialDocumentId, initialChunkId, initialHighlightStart, initialHighlightEnd, openDocument])
 
   return (
-    <AppFrame
-      rightPanel={<DocumentViewerPanel />}
-      withDocumentViewerPadding
-    >
+    <AppFrame rightPanel={<DocumentViewerPanel />} withDocumentViewerPadding>
       <ChatArea
         initialConversationId={initialConversationId}
-        initialPrompt={initialPrompt}
-        initialAutoSendPrompt={initialAutoSendPrompt}
-        initialOpenRagSettings={initialOpenRagSettings}
+        initialPrompt={prompt}
+        initialAutoSendPrompt={shouldAutoSendPrompt}
+        initialOpenRagSettings={shouldOpenRagSettings}
         onConversationId={handleConversationId}
         onPromptConsumed={handlePromptConsumed}
       />

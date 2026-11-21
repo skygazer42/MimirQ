@@ -1,4 +1,4 @@
-from app.rag.retrieval.hybrid.channel_health import RetrievalChannelHealth
+from app.rag.retrieval.recall.channel_health import RetrievalChannelHealth
 
 
 def test_retrieval_channel_health_publishes_sorted_channels_and_failures() -> None:

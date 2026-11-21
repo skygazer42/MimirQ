@@ -9,8 +9,10 @@ from uuid import uuid4
 import pytest
 from langchain_core.documents import Document
 
-from app.models.document import Document as DBDocument
-from app.models.document import DocumentParsedContent
+from app.api.schemas.documents import DocumentParsedContentQuery
+from app.api.schemas.system import QuerysetHealthRunsParams
+from app.models.documents.records import Document as DBDocument
+from app.models.documents.records import DocumentParsedContent
 
 
 class _StaticQuery:
@@ -135,28 +137,28 @@ class _ConnectorRunDB:
 
 
 def test_plan_connector_reconcile_applies_stale_disable_and_reenable() -> None:
-    from app.services.connector_reconcile_service import plan_connector_reconcile
+    from app.services.connectors.reconcile import plan_connector_reconcile
 
     now = datetime(2026, 8, 16, 9, 30, tzinfo=UTC)
     active_stale = SimpleNamespace(
         disabled_at=None,
-        doc_metadata={"connector": {"connector_id": "drive_files", "config_id": "cfg-1", "source_ref": "stale-ref"}},
+        doc_metadata={"connector": {"connector_id": "url_batch", "config_id": "cfg-1", "source_ref": "stale-ref"}},
     )
     active_kept = SimpleNamespace(
         disabled_at=None,
-        doc_metadata={"connector": {"connector_id": "drive_files", "config_id": "cfg-1", "source_ref": "keep-ref"}},
+        doc_metadata={"connector": {"connector_id": "url_batch", "config_id": "cfg-1", "source_ref": "keep-ref"}},
     )
     disabled_match = SimpleNamespace(
         disabled_at=now,
-        doc_metadata={"connector": {"connector_id": "drive_files", "config_id": "cfg-1", "source_ref": "reenable-ref"}},
+        doc_metadata={"connector": {"connector_id": "url_batch", "config_id": "cfg-1", "source_ref": "reenable-ref"}},
     )
     missing_identity = SimpleNamespace(
         disabled_at=None,
-        doc_metadata={"connector": {"connector_id": "drive_files", "source_ref": "ignored-ref"}},
+        doc_metadata={"connector": {"connector_id": "url_batch", "source_ref": "ignored-ref"}},
     )
 
     report = plan_connector_reconcile(
-        connector_id="drive_files",
+        connector_id="url_batch",
         config_id="cfg-1",
         dataset_id="dataset-1",
         documents=[active_stale, active_kept, disabled_match, missing_identity],
@@ -183,7 +185,7 @@ def test_plan_connector_reconcile_applies_stale_disable_and_reenable() -> None:
 
 
 def test_parse_qa_faq_import_bytes_csv_normalizes_payload() -> None:
-    from app.services.evidence_item_import import parse_qa_faq_import_bytes
+    from app.services.evidence.item_import import parse_qa_faq_import_bytes
 
     raw = (
         "Question,Expected Answer,Tags,source,extra\n"
@@ -205,7 +207,7 @@ def test_parse_qa_faq_import_bytes_csv_normalizes_payload() -> None:
 
 
 def test_parse_qa_faq_import_bytes_jsonl_reports_line_errors() -> None:
-    from app.services.evidence_item_import import parse_qa_faq_import_bytes
+    from app.services.evidence.item_import import parse_qa_faq_import_bytes
 
     raw = b'{"question":"First","tags":["a"]}\nnot json\n{"question":"   "}\n'
 
@@ -226,7 +228,7 @@ def test_parse_qa_faq_import_bytes_jsonl_reports_line_errors() -> None:
 
 
 def test_get_document_parsed_content_uses_text_fallback_and_metadata(monkeypatch) -> None:
-    from app.api.v1 import document_content
+    from app.api.v1.documents import content as document_content
 
     tenant_id = uuid4()
     document_id = uuid4()
@@ -250,8 +252,8 @@ def test_get_document_parsed_content_uses_text_fallback_and_metadata(monkeypatch
         }
     )
 
-    monkeypatch.setattr(document_content.DatasetService, "ensure_member", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(document_content, "assert_document_acl_readable", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(document_content.dataset_service, "ensure_member", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(document_content, "assert_document_readable_for_lifecycle", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(
         document_content,
         "_read_local_text_source_fallback",
@@ -260,10 +262,10 @@ def test_get_document_parsed_content_uses_text_fallback_and_metadata(monkeypatch
 
     response = document_content.get_document_parsed_content(
         document_id=document_id,
-        max_chars=12,
         tenant_id=tenant_id,
         account_id="acct-1",
         db=db,
+        params=DocumentParsedContentQuery(max_chars=12),
     )
 
     assert response.document_id == document_id
@@ -281,7 +283,7 @@ def test_get_document_parsed_content_uses_text_fallback_and_metadata(monkeypatch
 
 
 def test_list_queryset_health_runs_filters_newest_first_and_timeseries(monkeypatch) -> None:
-    from app.api.v1 import observability
+    from app.api.v1.system import observability
 
     history = [
         {
@@ -306,42 +308,41 @@ def test_list_queryset_health_runs_filters_newest_first_and_timeseries(monkeypat
             "status": "pass",
         },
     ]
-    module = types.ModuleType("app.services.queryset_health_service")
+    module = types.ModuleType("app.services.evaluation.queryset_health")
     module.load_queryset_health_history = lambda _path: list(history)
 
     monkeypatch.setattr(observability, "_ensure_admin", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(
         observability.settings, "QUERYSET_HEALTH_HISTORY_PATH", "/tmp/queryset-history.jsonl", raising=False
     )
-    monkeypatch.setitem(sys.modules, "app.services.queryset_health_service", module)
+    monkeypatch.setitem(sys.modules, "app.services.evaluation.queryset_health", module)
 
     response = observability.list_queryset_health_runs(
-        limit=5,
-        profile_hash="keep",
         tenant_id=uuid4(),
         account_id="admin",
         db=object(),
+        params=QuerysetHealthRunsParams(limit=5, profile_hash="keep"),
     )
 
     assert response.enabled is False
-    assert response.path == "/tmp/queryset-history.jsonl"
+    assert response.path == str(Path("/tmp/queryset-history.jsonl"))
     assert response.total == 2
     assert response.truncated is False
     assert [item["generated_at"] for item in response.items] == [
         "2026-08-15T12:00:00Z",
         "2026-08-15T10:00:00Z",
     ]
-    assert response.timeseries["status"] == ["ok", "pass"]
-    assert response.timeseries["hit_at_k"] == [0.5, 0.8]
-    assert response.timeseries["miss_rate"] == [0.1, 0.0]
-    assert response.timeseries["ts_ms"] == [
+    assert response.timeseries.status == ["ok", "pass"]
+    assert response.timeseries.hit_at_k == [0.5, 0.8]
+    assert response.timeseries.miss_rate == [0.1, 0.0]
+    assert response.timeseries.ts_ms == [
         int(datetime(2026, 8, 15, 10, 0, tzinfo=UTC).timestamp() * 1000),
         int(datetime(2026, 8, 15, 12, 0, tzinfo=UTC).timestamp() * 1000),
     ]
 
 
 def test_execute_graph_chat_once_collects_multimodal_state_and_structured_metrics(monkeypatch) -> None:
-    from app.services import chat_execution_runtime
+    from app.services.chat import execution as chat_execution_runtime
 
     captured = {}
 
@@ -376,13 +377,9 @@ def test_execute_graph_chat_once_collects_multimodal_state_and_structured_metric
         }
         return ([{"kind": "tag"}], {"enabled": True, "used": True, "reason": "matched"})
 
-    def fake_image_docs(_db, **kwargs):
-        captured["image_kwargs"] = kwargs
-        return ([{"kind": "image"}], {"enabled": True, "used": True, "reason": "matched"})
-
     monkeypatch.setitem(
         sys.modules,
-        "app.rag.core.text",
+        "app.rag.llm.response_parsing",
         types.SimpleNamespace(
             parse_json_from_text=lambda text, expected: (
                 {"parsed": text},
@@ -392,8 +389,13 @@ def test_execute_graph_chat_once_collects_multimodal_state_and_structured_metric
     )
     monkeypatch.setitem(
         sys.modules,
-        "app.rag.pipelines.langgraph",
-        types.SimpleNamespace(build_rag_state=fake_build_rag_state, rag_workflow=_FakeWorkflow()),
+        "app.rag.runtime.graph.state",
+        types.SimpleNamespace(build_rag_state=fake_build_rag_state),
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "app.rag.runtime.graph.workflow",
+        types.SimpleNamespace(rag_workflow=_FakeWorkflow()),
     )
     monkeypatch.setitem(
         sys.modules,
@@ -402,13 +404,8 @@ def test_execute_graph_chat_once_collects_multimodal_state_and_structured_metric
     )
     monkeypatch.setitem(
         sys.modules,
-        "app.services.chat_tag_service",
+        "app.services.tables.chat_context",
         types.SimpleNamespace(build_chat_tag_context_docs=fake_tag_docs),
-    )
-    monkeypatch.setitem(
-        sys.modules,
-        "app.services.chat_image_service",
-        types.SimpleNamespace(build_chat_image_context_docs=fake_image_docs),
     )
     monkeypatch.setattr(chat_execution_runtime, "_source_identification_answer_from_citations", lambda **_kwargs: None)
     monkeypatch.setattr(chat_execution_runtime.settings, "LANGGRAPH_RECURSION_LIMIT", 17, raising=False)
@@ -453,18 +450,18 @@ def test_execute_graph_chat_once_collects_multimodal_state_and_structured_metric
     assert result.metrics["structured_preset"] == "json_object"
     assert result.metrics["multimodal_router"]["modality"] == "image"
     assert result.metrics["tag"]["used"] is True
-    assert result.metrics["image"]["used"] is True
+    assert result.metrics["image"]["used"] is False
+    assert result.metrics["image"]["reason"] == "image_vector_retrieval_retired"
     assert captured["tag_kwargs"]["must_recall_expected_source_keys"] == ["policy"]
-    assert captured["image_kwargs"]["dataset_id"] == dataset_id
     assert "db" not in captured["invoke_state"]
-    assert captured["invoke_state"]["tag_docs"] == [{"kind": "tag"}, {"kind": "image"}]
+    assert captured["invoke_state"]["tag_docs"] == [{"kind": "tag"}]
     assert captured["invoke_state"]["rag_config_template"] == {"template": "balanced"}
     assert captured["invoke_config"]["recursion_limit"] == 17
     assert captured["invoke_context"]["tenant_id"] == str(tenant_id)
 
 
 def test_execute_confluence_space_run_probes_completion_before_soft_delete(monkeypatch) -> None:
-    from app.api.v1 import connectors_confluence
+    import app.services.connectors.execution.confluence as connectors_confluence
 
     tenant_id = uuid4()
     run_id = uuid4()
@@ -519,7 +516,8 @@ def test_execute_confluence_space_run_probes_completion_before_soft_delete(monke
         "_finalize_cancelled_confluence_space_run": lambda *_args, **_kwargs: pytest.fail("run should not cancel"),
     }
 
-    monkeypatch.setattr(connectors_confluence, "_resolve_connectors_helper", lambda name: helpers[name])
+    for helper_name, helper in helpers.items():
+        monkeypatch.setattr(connectors_confluence, helper_name, helper, raising=True)
     monkeypatch.setattr(
         connectors_confluence,
         "_build_confluence_space_run_settings",
@@ -541,7 +539,7 @@ def test_execute_confluence_space_run_probes_completion_before_soft_delete(monke
     monkeypatch.setattr(connectors_confluence, "_confluence_space_run_cancelled", lambda *_args, **_kwargs: False)
 
     asyncio.run(
-        connectors_confluence._execute_confluence_space_run(
+        connectors_confluence.execute(
             run_id=run_id,
             tenant_id=tenant_id,
             requested_by="owner",
@@ -558,7 +556,7 @@ def test_execute_confluence_space_run_probes_completion_before_soft_delete(monke
 
 
 def test_merge_small_chunks_preview_merges_with_previous_and_keeps_page_boundaries() -> None:
-    from app.services.document_preview_utils import _merge_small_chunks_preview
+    from app.services.documents.preview import _merge_small_chunks_preview
 
     documents = [
         Document(page_content="abcdefgh", metadata={"page_index": 1}),

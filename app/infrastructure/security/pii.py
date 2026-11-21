@@ -1,0 +1,169 @@
+"""
+PII redaction helpers (dependency-free).
+
+This module is intentionally located under app.infrastructure to avoid import cycles and to
+ensure PII_REDACTION_ENABLED cannot be silently bypassed by internal try-imports.
+"""
+
+import logging
+import re
+from dataclasses import dataclass
+from functools import lru_cache
+from typing import Any
+
+from app.infrastructure.config import settings
+
+logger = logging.getLogger("core.pii_redaction")
+DEFAULT_MASK = "[REDACTED]"
+
+# \b also fails between a Chinese char and an ASCII email local-part, so anchor
+# with character-class lookarounds that tolerate CJK/punctuation on both sides.
+_EMAIL_RE = re.compile(r"(?<![A-Za-z0-9._%+-])[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}(?![A-Za-z])")
+# Use digit-boundary lookarounds instead of \b: a \b between a Chinese char and
+# a digit does not match (both are \w in Unicode), so "\b1[3-9]\d{9}\b" silently
+# fails to redact a phone number embedded in Chinese text like "电话13800138000".
+_CN_MOBILE_RE = re.compile(r"(?<!\d)1[3-9]\d{9}(?!\d)")
+_CN_ID_RE = re.compile(r"(?<!\d)\d{17}[\dXx](?!\d)")
+_OPENAI_KEY_RE = re.compile(r"\bsk-[A-Za-z0-9]{20,}\b")
+_AWS_ACCESS_KEY_RE = re.compile(r"\bAKIA[0-9A-Z]{16}\b")
+_GENERIC_KV_SECRET_RE = re.compile(r"(?i)\b(api[_-]?key|access[_-]?key|secret|token|bearer)\b\s*[:=]\s*([^\s,;]{8,})")
+_CARD_CANDIDATE_RE = re.compile(r"\b(?:\d[ -]*){13,19}\b")
+_TEXT_PATTERNS = (
+    ("openai_key", _OPENAI_KEY_RE),
+    ("aws_access_key", _AWS_ACCESS_KEY_RE),
+    ("email", _EMAIL_RE),
+    ("cn_mobile", _CN_MOBILE_RE),
+    ("cn_id", _CN_ID_RE),
+)
+
+
+def pii_redaction_enabled() -> bool:
+    return settings.PII_REDACTION_ENABLED
+
+
+def _current_mask() -> str:
+    return settings.PII_REDACTION_MASK.strip() or DEFAULT_MASK
+
+
+def _luhn_ok(candidate: str) -> bool:
+    nums = [int(ch) for ch in candidate if ch.isdigit()]
+    if not (13 <= len(nums) <= 19):
+        return False
+
+    total = 0
+    parity = len(nums) % 2
+    for idx, d in enumerate(nums):
+        if idx % 2 == parity:
+            d *= 2
+            if d > 9:
+                d -= 9
+        total += d
+    return total % 10 == 0
+
+
+@dataclass
+class PIIRedactor:
+    mask: str = DEFAULT_MASK
+
+    def redact_text(self, text: str) -> tuple[str, dict[str, Any]]:
+        meta: dict[str, Any] = {"redacted": False, "hits": {}}
+
+        def _mark(kind: str, n: int = 1) -> None:
+            meta["redacted"] = True
+            hits = meta["hits"]
+            hits[kind] = hits.get(kind, 0) + n
+
+        out = text
+
+        # Key/value style secrets: keep the key name but mask the value.
+        def _kv_repl(match: re.Match[str]) -> str:
+            _mark("secret_kv")
+            return f"{match.group(1)}={self.mask}"
+
+        out = _GENERIC_KV_SECRET_RE.sub(_kv_repl, out)
+
+        for kind, pattern in _TEXT_PATTERNS:
+            out, n = pattern.subn(lambda _match: self.mask, out)
+            if n:
+                _mark(kind, n)
+
+        # Credit card candidates: validate with Luhn to reduce false positives.
+        def _card_repl(match: re.Match[str]) -> str:
+            candidate = match.group(0)
+            if _luhn_ok(candidate):
+                _mark("credit_card")
+                return self.mask
+            return candidate
+
+        out = _CARD_CANDIDATE_RE.sub(_card_repl, out)
+        return out, meta
+
+    def redact_obj(self, obj: Any) -> Any:
+        if isinstance(obj, str):
+            return self.redact_text(obj)[0]
+        if isinstance(obj, dict):
+            return {k: self.redact_obj(v) for k, v in obj.items()}
+        if isinstance(obj, (list, tuple)):
+            redacted = [self.redact_obj(v) for v in obj]
+            return type(obj)(redacted) if isinstance(obj, tuple) else redacted
+        return obj
+
+
+@lru_cache(maxsize=8)
+def _get_redactor(mask: str) -> PIIRedactor:
+    return PIIRedactor(mask=mask)
+
+
+def _mask_strings(obj: Any, mask: str) -> Any:
+    if isinstance(obj, str):
+        return mask
+    if isinstance(obj, dict):
+        return {key: _mask_strings(value, mask) for key, value in obj.items()}
+    if isinstance(obj, list):
+        return [_mask_strings(value, mask) for value in obj]
+    if isinstance(obj, tuple):
+        return tuple(_mask_strings(value, mask) for value in obj)
+    return obj
+
+
+def redact_text(text: str) -> str:
+    """Convenience wrapper (no meta)."""
+    if not pii_redaction_enabled():
+        return text
+    try:
+        return _get_redactor(_current_mask()).redact_text(text)[0]
+    except Exception as exc:  # noqa: BLE001
+        # Fail-closed: do not emit raw content when redaction is enabled.
+        logger.exception(
+            "PII redaction failed; content masked: feature=%s reason=%s error=%s",
+            "pii_redaction",
+            "exception",
+            str(exc)[:200],
+        )
+        return _current_mask() if text else text
+
+
+def redact_obj(obj: Any) -> Any:
+    if not pii_redaction_enabled():
+        return obj
+    try:
+        return _get_redactor(_current_mask()).redact_obj(obj)
+    except Exception as exc:  # noqa: BLE001
+        logger.exception(
+            "PII redaction failed; object masked: feature=%s reason=%s error=%s",
+            "pii_redaction",
+            "exception",
+            str(exc)[:200],
+        )
+        # Fail-closed: nested containers must not retain unredacted strings.
+        if isinstance(obj, (dict, list, tuple)):
+            return _mask_strings(obj, _current_mask())
+        return _current_mask()
+
+
+__all__ = [
+    "PIIRedactor",
+    "pii_redaction_enabled",
+    "redact_obj",
+    "redact_text",
+]

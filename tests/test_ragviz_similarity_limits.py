@@ -14,15 +14,14 @@ if not hasattr(_status, "HTTP_413_CONTENT_TOO_LARGE"):
 if not hasattr(_status, "HTTP_422_UNPROCESSABLE_CONTENT"):
     _status.HTTP_422_UNPROCESSABLE_CONTENT = getattr(_status, "HTTP_422_UNPROCESSABLE_ENTITY", 422)  # type: ignore[attr-defined]
 
-from app.api.dependencies.auth import get_current_account_id
-from app.api.dependencies.tenant import get_tenant_id
-from app.api.middleware.request_id import RequestIDMiddleware
-from app.core.database import get_db
-from app.core.exceptions import register_exception_handlers
+from app.api.dependencies import get_current_account_id, get_tenant_id
+from app.api.middleware.request_context import RequestContextMiddleware as RequestIDMiddleware
+from app.infrastructure.database.connection import get_db
+from app.infrastructure.exceptions import register_exception_handlers
 
 
 def _build_app() -> FastAPI:
-    from app.api.v1 import ragviz as ragviz_api
+    from app.api.v1.retrieval import visualization as ragviz_api
 
     app = FastAPI()
     app.add_middleware(RequestIDMiddleware)
@@ -39,7 +38,7 @@ def _build_app() -> FastAPI:
 
 
 def test_resolve_similarity_request_limits_rejects_axis_limit(monkeypatch: pytest.MonkeyPatch) -> None:
-    from app.services import ragviz_similarity
+    from app.services.embeddings import collection_similarity as ragviz_similarity
 
     monkeypatch.setattr(ragviz_similarity.settings, "RAGVIZ_SIMILARITY_MAX_AXIS_ITEMS", 500, raising=False)
     monkeypatch.setattr(ragviz_similarity.settings, "RAGVIZ_SIMILARITY_MAX_PAIRS", 200_000, raising=False)
@@ -56,7 +55,7 @@ def test_resolve_similarity_request_limits_rejects_axis_limit(monkeypatch: pytes
 
 
 def test_resolve_similarity_request_limits_uses_backcompat_max_items(monkeypatch: pytest.MonkeyPatch) -> None:
-    from app.services import ragviz_similarity
+    from app.services.embeddings import collection_similarity as ragviz_similarity
 
     monkeypatch.setattr(ragviz_similarity.settings, "RAGVIZ_SIMILARITY_MAX_AXIS_ITEMS", 500, raising=False)
     monkeypatch.setattr(ragviz_similarity.settings, "RAGVIZ_SIMILARITY_MAX_PAIRS", 200_000, raising=False)
@@ -69,7 +68,7 @@ def test_resolve_similarity_request_limits_uses_backcompat_max_items(monkeypatch
 
 
 def test_resolve_similarity_request_limits_rejects_pair_limit(monkeypatch: pytest.MonkeyPatch) -> None:
-    from app.services import ragviz_similarity
+    from app.services.embeddings import collection_similarity as ragviz_similarity
 
     monkeypatch.setattr(ragviz_similarity.settings, "RAGVIZ_SIMILARITY_MAX_AXIS_ITEMS", 500, raising=False)
     monkeypatch.setattr(ragviz_similarity.settings, "RAGVIZ_SIMILARITY_MAX_PAIRS", 20_000, raising=False)
@@ -92,7 +91,7 @@ def test_resolve_similarity_request_limits_rejects_pair_limit(monkeypatch: pytes
 
 
 def test_calculate_similarity_matrix_rejects_oversize_before_loading_items(monkeypatch: pytest.MonkeyPatch) -> None:
-    from app.services import ragviz_similarity
+    from app.services.embeddings import collection_similarity as ragviz_similarity
 
     monkeypatch.setattr(ragviz_similarity.settings, "RAGVIZ_SIMILARITY_MAX_AXIS_ITEMS", 500, raising=False)
     monkeypatch.setattr(ragviz_similarity.settings, "RAGVIZ_SIMILARITY_MAX_PAIRS", 20_000, raising=False)
@@ -116,8 +115,8 @@ def test_calculate_similarity_matrix_rejects_oversize_before_loading_items(monke
 
 
 def test_similarity_calculate_rejects_oversize_requests_with_422(monkeypatch: pytest.MonkeyPatch) -> None:
-    from app.api.v1 import ragviz as ragviz_api
-    from app.services import ragviz_similarity
+    from app.api.v1.retrieval import visualization as ragviz_api
+    from app.services.embeddings import collection_similarity as ragviz_similarity
 
     monkeypatch.setattr(ragviz_similarity.settings, "RAGVIZ_SIMILARITY_MAX_AXIS_ITEMS", 500, raising=False)
     monkeypatch.setattr(ragviz_similarity.settings, "RAGVIZ_SIMILARITY_MAX_PAIRS", 20_000, raising=False)
@@ -153,8 +152,8 @@ def test_similarity_calculate_rejects_oversize_requests_with_422(monkeypatch: py
 
 
 def test_similarity_calculate_allows_small_matrix(monkeypatch: pytest.MonkeyPatch) -> None:
-    from app.api.v1 import ragviz as ragviz_api
-    from app.services import ragviz_similarity
+    from app.api.v1.retrieval import visualization as ragviz_api
+    from app.services.embeddings import collection_similarity as ragviz_similarity
 
     monkeypatch.setattr(ragviz_similarity.settings, "RAGVIZ_SIMILARITY_MAX_AXIS_ITEMS", 500, raising=False)
     monkeypatch.setattr(ragviz_similarity.settings, "RAGVIZ_SIMILARITY_MAX_PAIRS", 20_000, raising=False)
@@ -190,8 +189,8 @@ def test_similarity_calculate_allows_small_matrix(monkeypatch: pytest.MonkeyPatc
 
 
 def test_similarity_calculate_preserves_dimension_mismatch_response_shape(monkeypatch: pytest.MonkeyPatch) -> None:
-    from app.api.v1 import ragviz as ragviz_api
-    from app.services import ragviz_similarity
+    from app.api.v1.retrieval import visualization as ragviz_api
+    from app.services.embeddings import collection_similarity as ragviz_similarity
 
     monkeypatch.setattr(ragviz_similarity.settings, "RAGVIZ_SIMILARITY_MAX_AXIS_ITEMS", 500, raising=False)
     monkeypatch.setattr(ragviz_similarity.settings, "RAGVIZ_SIMILARITY_MAX_PAIRS", 20_000, raising=False)
@@ -219,8 +218,8 @@ def test_similarity_calculate_preserves_dimension_mismatch_response_shape(monkey
 
 
 def test_similarity_calculate_raises_http_422_for_limit_errors(monkeypatch: pytest.MonkeyPatch) -> None:
-    from app.api.v1 import ragviz as ragviz_api
-    from app.services import ragviz_similarity
+    from app.api.v1.retrieval import visualization as ragviz_api
+    from app.services.embeddings import collection_similarity as ragviz_similarity
 
     monkeypatch.setattr(ragviz_similarity.settings, "RAGVIZ_SIMILARITY_MAX_AXIS_ITEMS", 500, raising=False)
     monkeypatch.setattr(ragviz_similarity.settings, "RAGVIZ_SIMILARITY_MAX_PAIRS", 20_000, raising=False)

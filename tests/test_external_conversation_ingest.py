@@ -6,14 +6,14 @@ from uuid import UUID, uuid4
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-import app.api.v1.integrations_conversations as conversations_integration
-from app.api.schemas.external_conversation import (
+import app.api.v1.integrations.conversations as conversations_integration
+from app.api.schemas.integrations.conversations import (
     ExternalConversationIngestRequest,
     ExternalConversationIngestResponse,
     ExternalConversationMessageIn,
 )
-from app.models.chat import Conversation, Message
-from app.services.external_conversation_ingest import (
+from app.models.conversations.chat import Conversation, Message
+from app.services.chat.external_ingestion import (
     _create_external_conversation,
     _existing_source_message_ids,
     _external_message_citation_candidates,
@@ -209,12 +209,13 @@ def test_external_conversation_ingest_can_ack_async_for_dify(monkeypatch):
     client, captured = _client(monkeypatch)
     queued_calls = []
 
-    def fake_enqueue(**kwargs):  # noqa: ANN001
+    def fake_enqueue(operation, **kwargs):  # noqa: ANN001
+        assert operation is conversations_integration._run_external_conversation_ingest_background
         queued_calls.append(kwargs)
 
     monkeypatch.setattr(
-        conversations_integration,
-        "_enqueue_external_conversation_ingest",
+        conversations_integration._ASYNC_INGEST_EXECUTOR,
+        "submit",
         fake_enqueue,
     )
 
@@ -375,7 +376,7 @@ def test_create_external_conversation_sets_owner_account_id() -> None:
 
 
 def test_find_conversation_by_external_id_is_scoped_to_owner(monkeypatch) -> None:  # noqa: ANN001
-    import app.services.external_conversation_ingest as ingest
+    import app.services.chat.external_ingestion as ingest
 
     monkeypatch.setattr(ingest, "_metadata_text_field", lambda field: _FieldRef(field), raising=True)
     tenant_id = uuid4()
@@ -413,7 +414,7 @@ def test_find_conversation_by_external_id_is_scoped_to_owner(monkeypatch) -> Non
 
 
 def test_existing_source_message_ids_are_scoped_to_conversation(monkeypatch) -> None:  # noqa: ANN001
-    import app.services.external_conversation_ingest as ingest
+    import app.services.chat.external_ingestion as ingest
 
     monkeypatch.setattr(ingest, "_metadata_text_field", lambda field: _FieldRef(field), raising=True)
     tenant_id = uuid4()
@@ -452,7 +453,7 @@ def test_existing_source_message_ids_are_scoped_to_conversation(monkeypatch) -> 
 
 
 def test_ingest_external_conversation_keeps_owner_scope_for_shared_source_ids(monkeypatch) -> None:  # noqa: ANN001
-    import app.services.external_conversation_ingest as ingest
+    import app.services.chat.external_ingestion as ingest
 
     monkeypatch.setattr(ingest, "_metadata_text_field", lambda field: _FieldRef(field), raising=True)
     monkeypatch.setattr(ingest, "_resolve_document_scope", lambda *_a, **_k: (None, []), raising=True)

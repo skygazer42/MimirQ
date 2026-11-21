@@ -1,12 +1,12 @@
 import type { ChunkPreviewItem } from '@/types'
 
 function normalizePath(raw: string) {
-  const s = String(raw || '').trim()
-  if (!s) return ''
+  const text = raw.trim()
+  if (!text) return ''
 
   // markdown_header uses " > " separators; outline uses " / ".
   // Keep a single visual separator for UI grouping.
-  return s
+  return text
     .split('>')
     .flatMap((part) => part.split('/'))
     .map((part) => part.trim().split(/\s+/).filter(Boolean).join(' '))
@@ -14,22 +14,22 @@ function normalizePath(raw: string) {
     .join(' / ')
 }
 
-export function getChunkSectionPath(chunk: ChunkPreviewItem): string | null {
-  const meta = (chunk?.metadata || {})
+export function getChunkSectionPath(chunk: Pick<ChunkPreviewItem, 'metadata'>): string | null {
+  const metadata = chunk.metadata
 
-  const outlineStr = meta.outline_path_str
+  const outlineStr = metadata?.outline_path_str
   if (typeof outlineStr === 'string') {
     const v = normalizePath(outlineStr)
     if (v) return v
   }
 
-  const outlineArr = meta.outline_path
+  const outlineArr = metadata?.outline_path
   if (Array.isArray(outlineArr) && outlineArr.length > 0) {
-    const v = normalizePath(outlineArr.map(String).filter(Boolean).join(' / '))
+    const v = normalizePath(outlineArr.filter((part): part is string => typeof part === 'string').join(' / '))
     if (v) return v
   }
 
-  const headerPath = meta.header_path
+  const headerPath = metadata?.header_path
   if (typeof headerPath === 'string') {
     const v = normalizePath(headerPath)
     if (v) return v
@@ -43,8 +43,9 @@ export function getChunkSectionLabel(chunk: ChunkPreviewItem): { full: string; s
   if (!full) return null
 
   // Use last segment as short label for cards; keep the full path in a tooltip.
-  const parts = full.split(' / ').map((p) => p.trim()).filter(Boolean)
-  const last = parts.at(-1) || full
-  const short = last.length > 40 ? last.slice(0, 39) + '…' : last
+  const parts = full.split(' / ')
+  const last = parts.at(-1)!
+  const characters = Array.from(last)
+  const short = characters.length > 40 ? `${characters.slice(0, 39).join('')}…` : last
   return { full, short }
 }

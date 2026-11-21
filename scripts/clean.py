@@ -1,4 +1,3 @@
-
 import argparse
 import shutil
 from pathlib import Path
@@ -9,11 +8,10 @@ def _iter_pycache_dirs(root: Path) -> list[Path]:
 
 
 def _remove_dir(path: Path, *, dry_run: bool) -> bool:
-    if not path.exists():
+    if not path.is_dir():
         return False
-    if dry_run:
-        return True
-    shutil.rmtree(path, ignore_errors=True)
+    if not dry_run:
+        shutil.rmtree(path)
     return True
 
 
@@ -52,4 +50,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

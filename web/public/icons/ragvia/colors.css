@@ -1,0 +1,65 @@
+/* Generated from scripts/platform-icon-colors.mjs. */
+:root {
+  --icon-source: 176 31% 34%;
+  --icon-knowledge: 13.5 52% 42%;
+  --icon-process: 211 35% 43%;
+  --icon-analysis: 255 27% 46%;
+  --icon-governance: 148 30% 34%;
+  --icon-pdf: 2 55% 44%;
+  --icon-word: 212 52% 43%;
+  --icon-sheet: 151 35% 34%;
+  --icon-slides: 17 58% 43%;
+  --icon-code: 34 65% 33%;
+  --icon-media: 269 28% 46%;
+  --icon-neutral: 217 12% 42%;
+}
+.dark, [data-theme="dark"] {
+  --icon-source: 176 36% 66%;
+  --icon-knowledge: 17 70% 72%;
+  --icon-process: 209 42% 72%;
+  --icon-analysis: 255 45% 76%;
+  --icon-governance: 148 32% 66%;
+  --icon-pdf: 3 65% 70%;
+  --icon-word: 212 64% 73%;
+  --icon-sheet: 151 38% 64%;
+  --icon-slides: 19 70% 70%;
+  --icon-code: 38 58% 65%;
+  --icon-media: 269 40% 75%;
+  --icon-neutral: 215 14% 68%;
+}
+svg[data-icon-appearance="color"][data-icon-tone="source"], .icon-ink-source { color: hsl(var(--icon-source)); }
+svg[data-icon-appearance="color"][data-icon-tone="knowledge"], .icon-ink-knowledge { color: hsl(var(--icon-knowledge)); }
+svg[data-icon-appearance="color"][data-icon-tone="process"], .icon-ink-process { color: hsl(var(--icon-process)); }
+svg[data-icon-appearance="color"][data-icon-tone="analysis"], .icon-ink-analysis { color: hsl(var(--icon-analysis)); }
+svg[data-icon-appearance="color"][data-icon-tone="governance"], .icon-ink-governance { color: hsl(var(--icon-governance)); }
+svg[data-icon-appearance="color"][data-icon-tone="pdf"], .icon-ink-pdf { color: hsl(var(--icon-pdf)); }
+svg[data-icon-appearance="color"][data-icon-tone="word"], .icon-ink-word { color: hsl(var(--icon-word)); }
+svg[data-icon-appearance="color"][data-icon-tone="sheet"], .icon-ink-sheet { color: hsl(var(--icon-sheet)); }
+svg[data-icon-appearance="color"][data-icon-tone="slides"], .icon-ink-slides { color: hsl(var(--icon-slides)); }
+svg[data-icon-appearance="color"][data-icon-tone="code"], .icon-ink-code { color: hsl(var(--icon-code)); }
+svg[data-icon-appearance="color"][data-icon-tone="media"], .icon-ink-media { color: hsl(var(--icon-media)); }
+svg[data-icon-appearance="color"][data-icon-tone="neutral"], .icon-ink-neutral { color: hsl(var(--icon-neutral)); }
+.icon-surface-source { background-color: hsl(var(--icon-source) / 0.08); border-color: hsl(var(--icon-source) / 0.18); }
+.icon-surface-knowledge { background-color: hsl(var(--icon-knowledge) / 0.08); border-color: hsl(var(--icon-knowledge) / 0.18); }
+.icon-surface-process { background-color: hsl(var(--icon-process) / 0.08); border-color: hsl(var(--icon-process) / 0.18); }
+.icon-surface-analysis { background-color: hsl(var(--icon-analysis) / 0.08); border-color: hsl(var(--icon-analysis) / 0.18); }
+.icon-surface-governance { background-color: hsl(var(--icon-governance) / 0.08); border-color: hsl(var(--icon-governance) / 0.18); }
+.icon-surface-pdf { background-color: hsl(var(--icon-pdf) / 0.08); border-color: hsl(var(--icon-pdf) / 0.18); }
+.icon-surface-word { background-color: hsl(var(--icon-word) / 0.08); border-color: hsl(var(--icon-word) / 0.18); }
+.icon-surface-sheet { background-color: hsl(var(--icon-sheet) / 0.08); border-color: hsl(var(--icon-sheet) / 0.18); }
+.icon-surface-slides { background-color: hsl(var(--icon-slides) / 0.08); border-color: hsl(var(--icon-slides) / 0.18); }
+.icon-surface-code { background-color: hsl(var(--icon-code) / 0.08); border-color: hsl(var(--icon-code) / 0.18); }
+.icon-surface-media { background-color: hsl(var(--icon-media) / 0.08); border-color: hsl(var(--icon-media) / 0.18); }
+.icon-surface-neutral { background-color: hsl(var(--icon-neutral) / 0.08); border-color: hsl(var(--icon-neutral) / 0.18); }
+.icon-border-source { border-color: hsl(var(--icon-source) / 0.18); }
+.icon-border-knowledge { border-color: hsl(var(--icon-knowledge) / 0.18); }
+.icon-border-process { border-color: hsl(var(--icon-process) / 0.18); }
+.icon-border-analysis { border-color: hsl(var(--icon-analysis) / 0.18); }
+.icon-border-governance { border-color: hsl(var(--icon-governance) / 0.18); }
+.icon-border-pdf { border-color: hsl(var(--icon-pdf) / 0.18); }
+.icon-border-word { border-color: hsl(var(--icon-word) / 0.18); }
+.icon-border-sheet { border-color: hsl(var(--icon-sheet) / 0.18); }
+.icon-border-slides { border-color: hsl(var(--icon-slides) / 0.18); }
+.icon-border-code { border-color: hsl(var(--icon-code) / 0.18); }
+.icon-border-media { border-color: hsl(var(--icon-media) / 0.18); }
+.icon-border-neutral { border-color: hsl(var(--icon-neutral) / 0.18); }

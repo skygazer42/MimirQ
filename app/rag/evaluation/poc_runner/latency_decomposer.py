@@ -1,6 +1,19 @@
-from typing import Any
+import math
+from typing import Any, TypedDict
 
 _SCHEMA = "mimirq.poc.latency_decomposer.v1"
+
+
+class _LatencyRow(TypedDict):
+    interaction_id: str
+    latency_total_ms: int
+    retrieval_ms: int
+    generation_ms: int
+    active_inference_ms: int
+    wait_in_queue_ms: int
+    model_prefill_ms: int
+    model_decode_ms: int
+    bottleneck: str
 
 
 def _to_int(value: Any) -> int | None:
@@ -8,7 +21,7 @@ def _to_int(value: Any) -> int | None:
         if value is None:
             return None
         return int(value)
-    except Exception:
+    except (OverflowError, TypeError, ValueError):
         return None
 
 
@@ -16,30 +29,32 @@ def _to_float(value: Any) -> float | None:
     try:
         if value is None:
             return None
-        return float(value)
-    except Exception:
+        number = float(value)
+        return number if math.isfinite(number) else None
+    except (OverflowError, TypeError, ValueError):
         return None
 
 
-def _decompose_row(row: dict[str, Any]) -> dict[str, Any]:
+def _decompose_row(row: dict[str, Any]) -> _LatencyRow:
     total_ms = _to_int(row.get("latency_total_ms")) or 0
-    retrieval_ms = int(round((_to_float(row.get("retrieval_elapsed_sec")) or 0.0) * 1000.0))
-    generation_ms = int(round((_to_float(row.get("generation_elapsed_sec")) or 0.0) * 1000.0))
+    retrieval_ms = round((_to_float(row.get("retrieval_elapsed_sec")) or 0.0) * 1000.0)
+    generation_ms = round((_to_float(row.get("generation_elapsed_sec")) or 0.0) * 1000.0)
     active_inference_ms = retrieval_ms + generation_ms
-    wait_in_queue_ms = max(0, int(total_ms - active_inference_ms))
+    wait_in_queue_ms = max(0, total_ms - active_inference_ms)
 
     prompt_tokens = max(0, _to_int(row.get("prompt_tokens")) or 0)
-    completion_tokens = max(0, _to_int(row.get("completion_tokens")) or _to_int(row.get("answer_tokens")) or 0)
+    completion_value = _to_int(row.get("completion_tokens"))
+    if completion_value is None:
+        completion_value = _to_int(row.get("answer_tokens"))
+    completion_tokens = max(0, completion_value if completion_value is not None else 0)
     if generation_ms > 0 and (prompt_tokens + completion_tokens) > 0:
         token_total = max(1, prompt_tokens + completion_tokens)
-        model_prefill_ms = int(round(generation_ms * (prompt_tokens / token_total)))
-        model_decode_ms = max(0, generation_ms - model_prefill_ms)
+        model_prefill_ms = round(generation_ms * (prompt_tokens / token_total))
     elif generation_ms > 0:
-        model_prefill_ms = int(round(generation_ms * 0.35))
-        model_decode_ms = max(0, generation_ms - model_prefill_ms)
+        model_prefill_ms = round(generation_ms * 0.35)
     else:
         model_prefill_ms = 0
-        model_decode_ms = 0
+    model_decode_ms = max(0, generation_ms - model_prefill_ms)
 
     if wait_in_queue_ms >= max(1000, active_inference_ms):
         bottleneck = "concurrency_issue"
@@ -49,20 +64,20 @@ def _decompose_row(row: dict[str, Any]) -> dict[str, Any]:
         bottleneck = "balanced"
 
     return {
-        "interaction_id": str(row.get("interaction_id") or ""),
-        "latency_total_ms": int(total_ms),
-        "retrieval_ms": int(retrieval_ms),
-        "generation_ms": int(generation_ms),
-        "active_inference_ms": int(active_inference_ms),
-        "wait_in_queue_ms": int(wait_in_queue_ms),
-        "model_prefill_ms": int(model_prefill_ms),
-        "model_decode_ms": int(model_decode_ms),
+        "interaction_id": row["interaction_id"],
+        "latency_total_ms": total_ms,
+        "retrieval_ms": retrieval_ms,
+        "generation_ms": generation_ms,
+        "active_inference_ms": active_inference_ms,
+        "wait_in_queue_ms": wait_in_queue_ms,
+        "model_prefill_ms": model_prefill_ms,
+        "model_decode_ms": model_decode_ms,
         "bottleneck": bottleneck,
     }
 
 
 def decompose_latency_rows(rows: list[dict[str, Any]]) -> dict[str, Any]:
-    out_rows = [_decompose_row(dict(row or {})) for row in (rows or []) if isinstance(row, dict)]
+    out_rows: list[_LatencyRow] = [_decompose_row(dict(row)) for row in (rows or []) if isinstance(row, dict)]
     total = max(1, len(out_rows))
     summary = {
         "avg_wait_in_queue_ms": round(sum(row["wait_in_queue_ms"] for row in out_rows) / total, 2) if out_rows else 0.0,

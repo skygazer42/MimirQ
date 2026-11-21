@@ -1,54 +1,42 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { type NextRequest, NextResponse } from 'next/server'
 
 import { API_V1_BASE_URL } from '@/lib/env'
+import { isSamlEnabled } from '@/lib/server-auth-route'
 
 export const runtime = 'nodejs'
 
-function readEnv(name: string): string {
-  return String(process.env[name] || '').trim()
-}
-
-function isFalsey(value: string): boolean {
-  const v = String(value || '').trim().toLowerCase()
-  return v === '0' || v === 'false' || v === 'no' || v === 'off' || v === 'disabled'
-}
-
-function isSamlEnabled(): boolean {
-  const enabled = readEnv('SAML_ENABLED')
-  if (!enabled) return false
-  return !isFalsey(enabled)
-}
-
-function xmlNoStore(xml: string, init?: { status?: number }) {
-  const resp = new NextResponse(xml, { status: init?.status ?? 200 })
-  resp.headers.set('Content-Type', 'application/samlmetadata+xml; charset=utf-8')
-  resp.headers.set('Cache-Control', 'no-store')
-  resp.headers.set('Pragma', 'no-cache')
-  return resp
+function xmlNoStore(xml: string, status = 200) {
+  const response = new NextResponse(xml, { status })
+  response.headers.set('Content-Type', 'application/samlmetadata+xml; charset=utf-8')
+  response.headers.set('Cache-Control', 'no-store')
+  response.headers.set('Pragma', 'no-cache')
+  return response
 }
 
 export async function GET(req: NextRequest) {
   // Safe default: feature is OFF unless explicitly enabled.
   if (!isSamlEnabled()) {
-    return xmlNoStore('Not Found', { status: 404 })
+    return xmlNoStore('Not Found', 404)
   }
 
-  const providerId = String(req.nextUrl.searchParams.get('provider_id') || '').trim() || undefined
+  const providerId = req.nextUrl.searchParams.get('provider_id')?.trim()
   const url = new URL(`${API_V1_BASE_URL}/auth/saml/metadata`)
-  if (providerId) url.searchParams.set('provider_id', providerId)
+  if (providerId !== undefined && providerId !== '') url.searchParams.set('provider_id', providerId)
 
-  const backendRes = await fetch(url, { method: 'GET', cache: 'no-store' }).catch(() => null)
-  if (!backendRes) {
-    return xmlNoStore('Unable to reach auth backend', { status: 502 })
+  const backendResponse = await fetch(url, { method: 'GET', cache: 'no-store' }).catch(() => null)
+  if (backendResponse === null) {
+    return xmlNoStore('Unable to reach auth backend', 502)
   }
-  if (!backendRes.ok) {
-    const errorText = (await backendRes.text().catch(() => null)) || ''
-    return xmlNoStore(errorText || `SAML metadata unavailable (${backendRes.status})`, { status: backendRes.status })
+  const xml = await backendResponse.text().catch(() => null)
+  if (!backendResponse.ok) {
+    const message = xml === null || xml === '' ? `SAML metadata unavailable (${backendResponse.status})` : xml
+    return xmlNoStore(message, backendResponse.status)
   }
-
-  const xml = (await backendRes.text().catch(() => null)) || ''
-  if (!xml) {
-    return xmlNoStore('Empty metadata response', { status: 502 })
+  if (xml === null) {
+    return xmlNoStore('Unable to read metadata response', 502)
+  }
+  if (xml === '') {
+    return xmlNoStore('Empty metadata response', 502)
   }
   return xmlNoStore(xml)
 }

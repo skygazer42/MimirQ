@@ -1,0 +1,67 @@
+{
+  "schemaVersion": 1,
+  "lang": "zh",
+  "project": "Ragvia · 切块预览布局对比",
+  "brief": "固定雾灰／墨色、Manrope 与 Noto Sans SC，保留 Ragvia 全局侧栏和格式／复核语义色。五版共用当前实际 Excel 文档、7,807 字符原文与 14 个切块的预览数据，以第 6 块为关注对象，比较核对原文、逐块复核、批量管理、连续阅读和参数调优五种构图。这轮是静态首屏设计，选择、编辑、复核、导出与入库按钮尚未接入；正式页面保持现有功能。",
+  "round": "切块预览 01",
+  "nativeViewport": "1600x1000",
+  "candidates": [
+    {
+      "id": "a-compare",
+      "name": "A · 原文对照",
+      "concept": "把原文与切块并排放宽，直接核对边界与上下文。",
+      "typography": "Manrope / Noto Sans SC；20px 页标题、14px 正文、13px 元信息",
+      "palette": ["#F6F7F8", "#20262E", "#FFFFFF", "#DCE1E6", "#476F8B", "#805E18", "#31754D"],
+      "traits": ["原文与切块近等宽", "常用参数收成顶部一条", "适合定位边界与核对上下文"],
+      "source": "a-compare.html"
+    },
+    {
+      "id": "b-directory",
+      "name": "B · 目录详情",
+      "concept": "先在目录里找到切块，再完整阅读和复核当前内容。",
+      "typography": "Manrope / Noto Sans SC；20px 页标题、14px 正文、13px 元信息",
+      "palette": ["#F6F7F8", "#20262E", "#FFFFFF", "#DCE1E6", "#476F8B", "#805E18", "#31754D"],
+      "traits": ["切块目录常驻", "单个切块完整展开", "适合逐块编辑与复核"],
+      "source": "b-directory.html"
+    },
+    {
+      "id": "c-table",
+      "name": "C · 管理宽表",
+      "concept": "在一张表里对照章节、内容、长度和复核状态。",
+      "typography": "Manrope / Noto Sans SC；20px 页标题、14px 正文、13px 元信息",
+      "palette": ["#F6F7F8", "#20262E", "#FFFFFF", "#DCE1E6", "#476F8B", "#805E18", "#31754D"],
+      "traits": ["更多切块同屏比较", "当前行展开原文与详情", "适合筛选和批量管理"],
+      "source": "c-table.html"
+    },
+    {
+      "id": "d-reader",
+      "name": "D · 文档批注",
+      "concept": "沿原文连续阅读，让切块边界和复核记录跟着正文走。",
+      "typography": "Manrope / Noto Sans SC；20px 页标题、14px 正文、13px 元信息",
+      "palette": ["#F6F7F8", "#20262E", "#FFFFFF", "#DCE1E6", "#476F8B", "#805E18", "#31754D"],
+      "traits": ["原文是主阅读面", "页边编号标记切分位置", "旁注呈现当前切块与操作"],
+      "source": "d-reader.html"
+    },
+    {
+      "id": "e-workbench",
+      "name": "E · 参数工作台",
+      "concept": "常用参数保持可见，一边调节一边看多块结果。",
+      "typography": "Manrope / Noto Sans SC；20px 页标题、14px 正文、13px 元信息",
+      "palette": ["#F6F7F8", "#20262E", "#FFFFFF", "#DCE1E6", "#476F8B", "#805E18", "#31754D"],
+      "traits": ["256px 参数侧栏", "双列切块结果", "适合反复调优和保存参数"],
+      "source": "e-workbench.html"
+    },
+    {
+      "id": "current",
+      "name": "当前页面 · 参照",
+      "concept": "同一份真实文档在现有工作台中的界面，作为密度与容器层级的比较基线。",
+      "typography": "正式页面当前控件、字重和密度",
+      "palette": ["#F6F7F8", "#20262E", "#FFFFFF", "#4457D8"],
+      "traits": ["实际 14 个切块", "配置长侧栏与原文／结果区域", "1280×720 原始视口"],
+      "baseline": true,
+      "kind": "image",
+      "nativeViewport": "1280x720",
+      "source": "current.png"
+    }
+  ]
+}

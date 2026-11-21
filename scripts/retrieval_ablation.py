@@ -42,8 +42,6 @@ _RUN_PARAM_FIELDS = (
     "query_rewrite_strategy",
     "query_rewrite_temperature",
     "query_rewrite_max_chars",
-    "sparse_retrieval_enabled",
-    "sparse_retrieval_provider",
     "top_k",
     "score_threshold",
     "retrieval_mode",
@@ -139,8 +137,8 @@ def _append_variant(
     label: str,
     override: dict[str, Any],
 ) -> None:
-    effective = {**dict(base_params), **dict(override or {})}
-    if effective == dict(base_params):
+    effective = {**base_params, **dict(override or {})}
+    if effective == base_params:
         return
     variants.append(
         {
@@ -170,7 +168,7 @@ def _grid_variant_specs(matrix: dict[str, Any]) -> list[tuple[str, dict[str, Any
     if not isinstance(raw_grid, dict):
         return []
 
-    grid = {str(key): list(values or []) for key, values in raw_grid.items() if isinstance(values, list)}
+    grid = {str(key): list(values) for key, values in raw_grid.items() if isinstance(values, list)}
     combos = expand_param_grid(grid)
     return [(variant_label_from_params(combo), combo) for combo in combos]
 

@@ -1,7 +1,7 @@
 from langchain_core.documents import Document
 
-from app.rag.core import claim_evidence as claim_evidence_mod
-from app.rag.core.claim_evidence import _extract_span, build_claim_evidence_map
+from app.rag.safety import claim_evidence as claim_evidence_mod
+from app.rag.safety.claim_evidence import _extract_span, build_claim_evidence_map
 
 
 def test_extract_span_prefers_earliest_term_and_marks_trimmed_context() -> None:

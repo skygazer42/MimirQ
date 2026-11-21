@@ -5,11 +5,11 @@ sidebar_position: 5
 
 # 证据与可解释性
 
-MimirQ 提供完整的证据溯源链路，将 LLM 生成的每一个论断关联到检索到的原始文档片段，实现答案可验证、可审计。
+Ragvia 提供完整的证据溯源链路，将 LLM 生成的每一个论断关联到检索到的原始文档片段，实现答案可验证、可审计。
 
 ## Evidence Capsule 概念
 
-Evidence Capsule 是 MimirQ 的证据封装单元，将答案中的每个 claim 与其支撑证据绑定：
+Evidence Capsule 是 Ragvia 的证据封装单元，将答案中的每个 claim 与其支撑证据绑定：
 
 ```mermaid
 flowchart TB
@@ -81,12 +81,12 @@ flowchart TB
 
 | 文件 | 职责 |
 |------|------|
-| `app/rag/core/claim_evidence.py` | Claim → Evidence 确定性映射 |
-| `app/rag/core/citations.py` | 引用构建 |
-| `app/rag/core/sentence_citations.py` | 句级引用标注 |
-| `app/rag/core/confidence.py` | 置信度计算 |
-| `app/rag/core/faithfulness.py` | 忠实度评分 |
-| `app/rag/core/text.py` | Claim 拆分与验证 |
+| `app/rag/safety/claim_evidence.py` | Claim → Evidence 确定性映射 |
+| `app/rag/retrieval/citations.py` | 引用构建 |
+| `app/rag/llm/citation_rendering.py` | 句级引用标注 |
+| `app/rag/safety/answer_quality.py` | 置信度计算 |
+| `app/rag/safety/answer_quality.py` | 忠实度评分 |
+| `app/rag/safety/claim_verification.py` | Claim 拆分与验证 |
 
 ---
 

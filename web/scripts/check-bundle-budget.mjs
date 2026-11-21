@@ -20,8 +20,8 @@ async function resolveDistDir() {
     try {
       await fs.access(path.join(WEB_ROOT, candidate, 'static', 'chunks'))
       return candidate
-    } catch {
-      // try next candidate
+    } catch (error) {
+      if (error.code !== 'ENOENT' && error.code !== 'ENOTDIR') throw error
     }
   }
 
@@ -71,8 +71,11 @@ async function main() {
 
   try {
     await fs.access(chunksDir)
-  } catch {
-    throw new Error(`build output not found at ${path.relative(WEB_ROOT, chunksDir)}; run build first`)
+  } catch (error) {
+    if (error.code !== 'ENOENT' && error.code !== 'ENOTDIR') throw error
+    throw new Error(`build output not found at ${path.relative(WEB_ROOT, chunksDir)}; run build first`, {
+      cause: error,
+    })
   }
 
   const files = await collectFiles(chunksDir)
@@ -106,7 +109,7 @@ async function main() {
     }
   }
 
-  if (failures.length) {
+  if (failures.length > 0) {
     process.stderr.write(`bundle-check: FAILED (${failures.length} violations)\n\n`)
     for (const failure of failures) {
       process.stderr.write(`${failure.id}  ${failure.message}\n`)
@@ -116,13 +119,15 @@ async function main() {
       process.stderr.write(`- ${report}\n`)
     }
     process.stderr.write('\n')
-    process.exit(1)
+    process.exitCode = 1
+    return
   }
 
   process.stdout.write(`bundle-check: OK (${reports.join(', ')})\n`)
 }
 
-main().catch((err) => {
-  process.stderr.write(`bundle-check: ERROR ${String(err?.message || err)}\n`)
-  process.exit(2)
+main().catch((error) => {
+  const message = error instanceof Error ? error.message : String(error)
+  process.stderr.write(`bundle-check: ERROR ${message}\n`)
+  process.exitCode = 2
 })

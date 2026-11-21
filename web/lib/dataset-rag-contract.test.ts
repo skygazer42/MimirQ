@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
-import type { RAGConfig } from '@/lib/api/settings'
-import type { DatasetRagDefaults } from '@/types'
+import type { DatasetRagDefaults } from '@/types/datasets'
+import type { RAGConfig } from '@/types/settings'
 
 import {
   buildDatasetRagDefaultsForUpdate,
@@ -82,7 +82,7 @@ describe('dataset rag contract helpers', () => {
         retrieval_profile: 'grounded_strict',
         retrieval_mode: 'hybrid',
         top_k: 20,
-      })
+      }),
     ).toEqual({
       rag_config: {
         retrieval_profile: 'grounded_strict',

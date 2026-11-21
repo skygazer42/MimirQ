@@ -87,7 +87,11 @@ def _severe_vulnerabilities(vulnerabilities: dict[str, Any], errors: set[str]) -
         if not isinstance(package, str) or not isinstance(vulnerability, dict):
             errors.add(f"invalid npm audit vulnerability: {package!r}={vulnerability!r}")
             continue
-        if vulnerability.get("severity") in {"high", "critical"}:
+        severity = vulnerability.get("severity")
+        if not isinstance(severity, str):
+            errors.add(f"invalid npm audit severity for {package}: {severity!r}")
+            continue
+        if severity in {"high", "critical"}:
             severe[package] = vulnerability
     return severe
 
@@ -95,7 +99,7 @@ def _severe_vulnerabilities(vulnerabilities: dict[str, Any], errors: set[str]) -
 def _validate_severe_count(counts: dict[str, Any], severe: dict[str, dict[str, Any]], errors: set[str]) -> None:
     high = counts.get("high")
     critical = counts.get("critical")
-    if isinstance(high, int) and isinstance(critical, int) and high + critical == len(severe):
+    if type(high) is int and type(critical) is int and high + critical == len(severe):
         return
     errors.add(f"npm audit severe count mismatch: report=high:{high!r}/critical:{critical!r}, details={len(severe)}")
 
@@ -103,13 +107,14 @@ def _validate_severe_count(counts: dict[str, Any], severe: dict[str, dict[str, A
 def _validated_advisory_url(advisory: dict[str, Any], errors: set[str]) -> str | None:
     url = advisory.get("url")
     if (
-        advisory.get("name") == "image-size"
+        isinstance(url, str)
+        and advisory.get("name") == "image-size"
         and advisory.get("dependency") == "image-size"
         and advisory.get("severity") == "high"
         and advisory.get("range") == "<=2.0.2"
         and url in _ALLOWED_ADVISORY_URLS
     ):
-        return url if isinstance(url, str) else None
+        return url
     errors.add(f"unexpected image-size advisory: {advisory!r}")
     return None
 

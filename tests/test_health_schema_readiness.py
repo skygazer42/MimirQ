@@ -4,7 +4,9 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 
-from app.core import health_checks
+from app.infrastructure.observability import health as health_checks
+from app.services.dify import warmup_state
+from app.services.runtime import readiness_cache as health_readiness
 
 
 def _session_local():  # noqa: ANN202
@@ -67,7 +69,7 @@ def test_database_readiness_accepts_current_managed_schema(monkeypatch) -> None:
 
 
 def _build_ready_client() -> tuple[TestClient, object]:
-    from app.api.v1 import health as health_module
+    from app.api.v1.system import health as health_module
 
     app = FastAPI()
     app.include_router(health_module.router, prefix="/api/v1")
@@ -93,7 +95,7 @@ def _stub_ready_dependencies(monkeypatch: pytest.MonkeyPatch, health_module: obj
     )
     monkeypatch.setattr(
         health_module,
-        "check_minio",
+        "check_object_storage",
         lambda *_args, **_kwargs: ({"status": "ok", "enabled": False}, True),
         raising=True,
     )
@@ -119,7 +121,7 @@ def test_ready_returns_200_when_application_manages_schema(
     runtime_migrations_enabled: bool,
 ) -> None:
     client, health_module = _build_ready_client()
-    health_module.invalidate_ready_cache()
+    health_readiness.invalidate_ready_cache()
     _stub_ready_dependencies(monkeypatch, health_module)
     schema_requirements: list[bool] = []
 
@@ -145,7 +147,7 @@ def test_ready_returns_200_when_application_manages_schema(
 
 def test_ready_returns_503_when_external_schema_is_outdated(monkeypatch: pytest.MonkeyPatch) -> None:
     client, health_module = _build_ready_client()
-    health_module.invalidate_ready_cache()
+    health_readiness.invalidate_ready_cache()
     _stub_ready_dependencies(monkeypatch, health_module)
     schema_requirements: list[bool] = []
 
@@ -166,7 +168,7 @@ def test_ready_returns_503_when_external_schema_is_outdated(monkeypatch: pytest.
 
 def test_ready_cache_is_busted_when_schema_management_flags_change(monkeypatch: pytest.MonkeyPatch) -> None:
     client, health_module = _build_ready_client()
-    health_module.invalidate_ready_cache()
+    health_readiness.invalidate_ready_cache()
     _stub_ready_dependencies(monkeypatch, health_module)
     schema_requirements: list[bool] = []
 
@@ -177,11 +179,14 @@ def test_ready_cache_is_busted_when_schema_management_flags_change(monkeypatch: 
         return {"status": "connected"}, True
 
     monkeypatch.setattr(health_module, "check_database", _check_database, raising=True)
-    monkeypatch.setattr(health_module, "_READY_CACHE_TTL_SEC", 60.0, raising=False)
+    monkeypatch.setattr(health_readiness, "_READY_CACHE_TTL_SEC", 60.0)
     monkeypatch.setattr(health_module.settings, "DB_CREATE_ALL_ON_STARTUP", True, raising=False)
     monkeypatch.setattr(health_module.settings, "DB_RUNTIME_MIGRATIONS_ENABLED", False, raising=False)
 
     first_response = client.get("/api/v1/health/ready")
+    cached_response = client.get("/api/v1/health/ready")
+    assert cached_response.json() == first_response.json()
+    assert schema_requirements == [False]
 
     monkeypatch.setattr(health_module.settings, "DB_CREATE_ALL_ON_STARTUP", False, raising=False)
     monkeypatch.setattr(health_module.settings, "DB_RUNTIME_MIGRATIONS_ENABLED", False, raising=False)
@@ -193,3 +198,29 @@ def test_ready_cache_is_busted_when_schema_management_flags_change(monkeypatch: 
     assert second_response.status_code == 503
     assert second_response.json() == {"ok": False, "status": "unready"}
     assert schema_requirements == [False, True]
+
+
+@pytest.mark.parametrize(("required", "running_status"), [(False, 200), (True, 503)])
+def test_ready_reads_dify_warmup_status_from_its_shared_owner(monkeypatch, required, running_status) -> None:
+    client, health_module = _build_ready_client()
+    health_readiness.invalidate_ready_cache()
+    _stub_ready_dependencies(monkeypatch, health_module)
+    monkeypatch.setattr(health_module, "check_database", lambda *_args, **_kwargs: ({"status": "connected"}, True))
+    monkeypatch.setattr(health_module.settings, "DIFY_EXTERNAL_KNOWLEDGE_ENABLED", True)
+    monkeypatch.setattr(health_module.settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_ENABLED", True)
+    monkeypatch.setattr(health_module.settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_REQUIRED_FOR_READY", required)
+    monkeypatch.setattr(warmup_state, "_state", warmup_state.get_dify_external_knowledge_warmup_status())
+    warmup_state.set_dify_external_warmup_status(enabled=True, status="running", completed=0)
+
+    running = client.get("/api/v1/health/ready")
+    assert running.status_code == running_status
+    assert running.json() == (
+        {"ok": True, "status": "ready"} if running_status == 200 else {"ok": False, "status": "unready"}
+    )
+
+    warmup_state.set_dify_external_warmup_status(status="completed", completed=1)
+    health_readiness.invalidate_ready_cache()
+    completed = client.get("/api/v1/health/ready")
+    assert completed.status_code == 200
+    assert completed.json() == {"ok": True, "status": "ready"}
+    health_readiness.invalidate_ready_cache()

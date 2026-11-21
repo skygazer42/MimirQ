@@ -27,18 +27,16 @@ def _render_umap_scatter(report: dict[str, Any]) -> str:
     }
     circles: list[str] = []
     labels: list[str] = []
-    for point in points:
-        x = float(point.get("x") or 0.0)
-        y = float(point.get("y") or 0.0)
+    for point, x, y in zip(points, xs, ys, strict=True):
         cx = padding + ((x - min_x) / span_x) * (width - padding * 2)
         cy = padding + ((max_y - y) / span_y) * (height - padding * 2)
-        color = color_map.get(str(point.get("group") or ""), "#0f172a")
-        radius = 6 if str(point.get("kind") or "") == "document" else 5
+        color = color_map.get(point.get("group"), "#0f172a")
+        radius = 6 if point.get("kind") == "document" else 5
         circles.append(f"<circle cx='{cx:.1f}' cy='{cy:.1f}' r='{radius}' fill='{color}' fill-opacity='0.78' />")
-        if str(point.get("group") or "") == "out_of_scope_candidate":
+        if point.get("group") == "out_of_scope_candidate":
             labels.append(
                 f"<text x='{cx + 8:.1f}' y='{cy - 6:.1f}' font-size='11' fill='#7f1d1d'>"
-                f"{escape(str(point.get('label') or '')[:24])}</text>"
+                f"{escape(str(point['label'])[:24])}</text>"
             )
 
     legend = (
@@ -53,13 +51,14 @@ def _render_umap_scatter(report: dict[str, Any]) -> str:
     )
     svg = (
         f"<svg viewBox='0 0 {int(width)} {int(height)}' width='100%' "
-        f"height='{int(height)}' role='img' aria-label='umap scatter'>"
+        f"height='{int(height)}' role='img' aria-label='projection scatter'>"
         "<rect x='0' y='0' width='100%' height='100%' fill='#f8fafc' rx='16' />"
         + "".join(circles)
         + "".join(labels)
         + "</svg>"
     )
-    return f"<div id='umap-scatter'>{svg}{legend}</div>"
+    method = escape(str(scatter.get("projection_method") or "unknown"))
+    return f"<div id='umap-scatter'><p>Projection: {method}</p>{svg}{legend}</div>"
 
 
 def _render_latency_breakdown(report: dict[str, Any]) -> str:
@@ -101,7 +100,7 @@ def _render_heatmap(report: dict[str, Any]) -> str:
         .set_global_opts(
             title_opts=opts.TitleOpts(title="coverage-heatmap"),
             toolbox_opts=opts.ToolboxOpts(is_show=False),
-            visualmap_opts=opts.VisualMapOpts(min_=0, max_=max([int(v[2]) for v in values] or [1])),
+            visualmap_opts=opts.VisualMapOpts(min_=0, max_=max((value[2] for value in values), default=1)),
             xaxis_opts=opts.AxisOpts(axislabel_opts=opts.LabelOpts(rotate=0)),
         )
     )
@@ -124,14 +123,14 @@ def _render_metric_cards(report: dict[str, Any]) -> str:
             continue
         blocks.append(
             "<div class='metric-card'>"
-            f"<div class='metric-key'><code>{escape(str(card.get('key') or ''))}</code></div>"
+            f"<div class='metric-key'><code>{escape(str(card['key']))}</code></div>"
             f"<div class='metric-value'>{escape(str(card.get('value')))}</div>"
             "</div>"
         )
     if feedback:
         blocks.append(
             "<div class='metric-card feedback-coverage'>"
-            f"<div class='metric-key'><code>{escape(str(feedback.get('key') or ''))}</code></div>"
+            f"<div class='metric-key'><code>{escape(str(feedback['key']))}</code></div>"
             f"<div class='metric-value'>{escape(str(feedback.get('value')))}</div>"
             "</div>"
         )
@@ -144,10 +143,12 @@ def _render_top_examples(top_examples: dict[str, Any]) -> str:
         rows = list(rows or [])
         items: list[str] = []
         for row in rows[:10]:
+            interaction_id = row.get("interaction_id")
+            query = row.get("original_query")
             items.append(
                 "<li>"
-                f"<strong>{escape(str(row.get('interaction_id') or ''))}</strong> "
-                f"{escape(str(row.get('original_query') or ''))}"
+                f"<strong>{escape(str(interaction_id) if interaction_id is not None else '')}</strong> "
+                f"{escape(str(query) if query is not None else '')}"
                 "</li>"
             )
         blocks.append(f"<section><h3>{escape(str(category))}</h3><ul>{''.join(items)}</ul></section>")
@@ -157,14 +158,14 @@ def _render_top_examples(top_examples: dict[str, Any]) -> str:
 def render_dataset_analysis_html(report: dict[str, Any]) -> str:
     meta = dict(report.get("meta") or {})
     dataset_name = str(meta.get("dataset_name") or meta.get("dataset_id") or "Dataset Analysis")
-    generated_at = str(meta.get("generated_at") or "")
+    generated_at = str(meta["generated_at"])
     filters = dict(meta.get("filters") or {})
     scope_summary = dict(meta.get("scope_summary") or {})
     glossary_candidates = list(report.get("glossary_candidates") or [])
 
     glossary_html = (
         "".join(
-            f"<li>{escape(str(item.get('token') or ''))} ({escape(str(item.get('count') or '0'))})</li>"
+            f"<li>{escape(str(item['token']))} ({escape(str(item.get('count') or '0'))})</li>"
             for item in glossary_candidates[:10]
         )
         or "<li>暂无候选</li>"

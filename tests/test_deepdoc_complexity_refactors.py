@@ -1,21 +1,17 @@
-
-import builtins
-import sys
 from pathlib import Path
-from types import ModuleType, SimpleNamespace
-from unittest.mock import ANY
+from types import SimpleNamespace
 
 import numpy as np
 import pandas as pd
 import pytest
 from PIL import Image
 
-import app.deepdoc.parser.figure_parser as figure_parser
-import app.deepdoc.vision.layout_recognizer as layout_module
-import app.deepdoc.vision.ocr as ocr_module
-from app.deepdoc.parser.docx_parser import IntegratedPipelineDocxParser
-from app.deepdoc.vision.layout_recognizer import LayoutRecognizer
-from app.deepdoc.vision.recognizer import Recognizer
+import app.rag.ingestion.parsing.enrich.vlm_image_caption as figure_parser
+import app.rag.ingestion.parsing.models.layout as layout_module
+import app.rag.ingestion.parsing.models.ocr as ocr_module
+from app.rag.ingestion.parsing.models.layout import LayoutRecognizer
+from app.rag.ingestion.parsing.models.recognizer import Recognizer
+from app.rag.ingestion.parsing.parsers.docx_parser import DocxParser
 
 
 def test_recognizer_postprocess_preserves_threshold_scaling_and_class_order() -> None:
@@ -208,13 +204,10 @@ def test_load_model_falls_back_to_cpu_and_reuses_the_cached_session(
         get_available_providers=lambda: ["CUDAExecutionProvider", "CPUExecutionProvider"],
         InferenceSession=_inference_session,
     )
-    fake_torch = ModuleType("torch")
-    fake_torch.cuda = SimpleNamespace(is_available=lambda: True, device_count=lambda: 2)
 
     monkeypatch.setattr(ocr_module, "ort", fake_ort)
     monkeypatch.setattr(ocr_module, "loaded_models", {})
     monkeypatch.setattr(ocr_module, "_deepdoc_onnx_gpu_enabled", lambda: True)
-    monkeypatch.setitem(sys.modules, "torch", fake_torch)
 
     first = ocr_module.load_model(tmp_path, "rec", device_id=1)
     second = ocr_module.load_model(tmp_path, "rec", device_id=1)
@@ -246,8 +239,8 @@ def test_load_model_falls_back_to_cpu_and_reuses_the_cached_session(
 
 
 def test_docx_table_composition_preserves_wide_and_narrow_return_shapes() -> None:
-    parser = IntegratedPipelineDocxParser()
-    compose = parser._IntegratedPipelineDocxParser__compose_table_content
+    parser = DocxParser()
+    compose = parser._DocxParser__compose_table_content
 
     wide = pd.DataFrame(
         [
@@ -271,94 +264,47 @@ def test_docx_table_composition_preserves_wide_and_narrow_return_shapes() -> Non
     assert compose(narrow) == ["Key: Foo;Value: 1\nKey: Bar;Value: 2"]
 
 
-def test_figure_pdf_wrapper_returns_original_non_image_tables_without_runtime_imports(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    seen_imports: list[str] = []
-    original_import = builtins.__import__
-
-    def _guarded_import(name: str, *args, **kwargs):
-        if name.startswith("app.third_party.integrated_pipeline"):
-            seen_imports.append(name)
-            raise AssertionError("optional runtime import should not happen")
-        return original_import(name, *args, **kwargs)
-
-    monkeypatch.setattr(builtins, "__import__", _guarded_import)
+def test_figure_enrichment_keeps_non_image_tables_without_loading_vision(monkeypatch):
+    monkeypatch.setattr(figure_parser, "_load_vision_runtime", lambda _callback: pytest.fail("unexpected runtime load"))
     tables = [("plain text", ["caption"])]
-
-    result = figure_parser.vision_figure_parser_pdf_wrapper(tbls=tables)
-
-    assert result is tables
-    assert seen_imports == []
+    assert figure_parser.enrich_figures(tables) is tables
 
 
-def test_figure_pdf_wrapper_uses_parser_and_preserves_fallback_callback(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    image = Image.new("RGB", (4, 4), "white")
-    tables = figure_parser.vision_figure_parser_figure_data_wraper([("caption", image)])
-    callbacks: list[tuple[int, str]] = []
-    parser_calls: list[dict[str, object]] = []
+def test_figure_enrichment_closes_client_on_success_fallback_and_unexpected_error(monkeypatch):
+    closed = []
+    callbacks = []
+    calls = []
 
-    fake_constants = ModuleType("app.third_party.integrated_pipeline.common.constants")
-    fake_constants.LLMType = SimpleNamespace(IMAGE2TEXT="image2text")
-    fake_llm_service = ModuleType("app.third_party.integrated_pipeline.stubs.llm_service")
+    class Client:
+        def close(self):
+            closed.append(True)
 
-    class _FakeBundle:
-        def __init__(self, tenant_id: str, llm_type: str) -> None:
-            parser_calls.append({"tenant_id": tenant_id, "llm_type": llm_type})
-
-    class _SuccessfulParser:
-        def __init__(self, vision_model: object, figures_data: object, **kwargs) -> None:
-            parser_calls.append(
-                {
-                    "vision_model_type": type(vision_model).__name__,
-                    "figures_data": figures_data,
-                    "kwargs": kwargs,
-                }
-            )
+    class SuccessfulParser:
+        def __init__(self, vision_model, figures_data):
+            assert isinstance(vision_model, Client)
+            calls.append(figures_data)
 
         def __call__(self, **kwargs):
-            parser_calls.append({"call_kwargs": kwargs})
             return [("enriched",)]
 
-    class _FailingParser:
-        def __init__(self, *_args, **_kwargs) -> None:
-            raise RuntimeError("boom")
+    class InvalidParser:
+        def __init__(self, *_args):
+            raise ValueError("invalid figure")
 
-    fake_llm_service.LLMBundle = _FakeBundle
-    monkeypatch.setitem(sys.modules, fake_constants.__name__, fake_constants)
-    monkeypatch.setitem(sys.modules, fake_llm_service.__name__, fake_llm_service)
-    monkeypatch.setattr(figure_parser, "VisionFigureParser", _SuccessfulParser)
+    class BrokenParser:
+        def __init__(self, *_args):
+            raise RuntimeError("unexpected failure")
 
-    success = figure_parser.vision_figure_parser_pdf_wrapper(
-        tbls=tables,
-        tenant_id="tenant-7",
-        callback=lambda prog, msg: callbacks.append((prog, msg)),
-    )
-
-    monkeypatch.setattr(figure_parser, "VisionFigureParser", _FailingParser)
-    failure = figure_parser.vision_figure_parser_pdf_wrapper(
-        tbls=tables,
-        tenant_id="tenant-7",
-        callback=lambda prog, msg: callbacks.append((prog, msg)),
-    )
-
-    assert success == [("enriched",)]
-    assert failure is tables
-    assert parser_calls == [
-        {"tenant_id": "tenant-7", "llm_type": "image2text"},
-        {
-            "vision_model_type": "_FakeBundle",
-            "figures_data": tables,
-            "kwargs": {"tenant_id": "tenant-7"},
-        },
-        {"call_kwargs": {"callback": ANY}},
-        {"tenant_id": "tenant-7", "llm_type": "image2text"},
-    ]
-    assert callbacks == [
-        (
-            -1,
-            "Vision enrichment failed; using parsed tables unchanged. (boom)",
-        )
-    ]
+    monkeypatch.setattr(figure_parser, "_load_vision_runtime", lambda _callback: Client)
+    with Image.new("RGB", (4, 4), "white") as image:
+        tables = [((image, ["caption"]), [])]
+        monkeypatch.setattr(figure_parser, "VisionFigureParser", SuccessfulParser)
+        assert figure_parser.enrich_figures(tables) == [("enriched",)]
+        monkeypatch.setattr(figure_parser, "VisionFigureParser", InvalidParser)
+        assert figure_parser.enrich_figures(tables, callback=lambda *args: callbacks.append(args)) is tables
+        monkeypatch.setattr(figure_parser, "VisionFigureParser", BrokenParser)
+        with pytest.raises(RuntimeError, match="unexpected failure"):
+            figure_parser.enrich_figures(tables)
+    assert calls == [tables]
+    assert closed == [True, True, True]
+    assert callbacks == [(-1, "Vision enrichment failed; using parsed tables unchanged. (invalid figure)")]

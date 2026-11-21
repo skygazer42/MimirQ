@@ -7,20 +7,17 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from scripts.changzhou_gov_plugin_chunk_evidence import _load_json, _markdown_table, _text, _write_text  # noqa: E402
+
 SCHEMA = "mimirq.changzhou_gov.plugin_test_evidence.v1"
 DEFAULT_INPUT = "/tmp/changzhou_gov_plugin_test_report.json"
 DEFAULT_JSON_OUT = "/tmp/changzhou_gov_plugin_test_evidence.json"
 DEFAULT_MARKDOWN_OUT = "/tmp/changzhou_gov_plugin_test_evidence.md"
 REQUIRED_STAGES = ("governance", "chunk", "kg")
-
-
-def _text(value: Any) -> str:
-    return str(value or "").strip()
-
-
-def _load_json(path: str | Path) -> dict[str, Any]:
-    payload = json.loads(Path(path).read_text(encoding="utf-8"))
-    return payload if isinstance(payload, dict) else {}
 
 
 def _stage_summary(report: dict[str, Any]) -> tuple[dict[str, bool], list[str], list[str]]:
@@ -58,17 +55,6 @@ def build_evidence(raw_report_path: str | Path = DEFAULT_INPUT) -> dict[str, Any
     }
 
 
-def _markdown_table(headers: list[str], rows: list[list[str]]) -> list[str]:
-    lines = [
-        "| " + " | ".join(headers) + " |",
-        "| " + " | ".join("---" for _header in headers) + " |",
-    ]
-    lines.extend(
-        "| " + " | ".join(_text(cell).replace("\n", " ").replace("|", "\\|") for cell in row) + " |" for row in rows
-    )
-    return lines
-
-
 def format_markdown(evidence: dict[str, Any]) -> str:
     golden = evidence.get("golden_draft") if isinstance(evidence.get("golden_draft"), dict) else {}
     stages = evidence.get("stages") if isinstance(evidence.get("stages"), dict) else {}
@@ -103,12 +89,6 @@ def format_markdown(evidence: dict[str, Any]) -> str:
         "This evidence file intentionally omits Golden draft sample questions and raw plugin test details.",
     ]
     return "\n".join(lines) + "\n"
-
-
-def _write_text(path: str | Path, text: str) -> None:
-    target = Path(path)
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(text, encoding="utf-8")
 
 
 def build_arg_parser() -> argparse.ArgumentParser:

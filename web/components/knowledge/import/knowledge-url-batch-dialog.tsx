@@ -1,8 +1,10 @@
 'use client'
 
-import type { ConnectorRunOut, Dataset, DocumentAccessMode } from '@/types'
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Loader2 } from 'lucide-react'
+import type { DocumentAccessMode } from '@/types/common'
+import type { ConnectorRunOut } from '@/types/connectors'
+import type { Dataset } from '@/types/datasets'
+import { useId, useLayoutEffect, useMemo, useRef, useState, type FormEvent } from 'react'
+import { Loader2 } from '@/components/icons'
 import { toast } from 'sonner'
 
 import { PipelineOptionsPanel } from '@/components/pipeline-options-panel'
@@ -11,6 +13,7 @@ import { Button } from '@/components/ui/button'
 import { ChunkStrategyDropdown } from '@/components/business/chunk-strategy-dropdown'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { ParserDropdown } from '@/components/business/parser-dropdown'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
@@ -18,46 +21,14 @@ import { useChunkStrategyPreference } from '@/contexts/chunk-strategy-context'
 import { useParserBackendPreference } from '@/contexts/parser-backend-context'
 import { usePipelineOptions } from '@/contexts/pipeline-options-context'
 import { formatApiError } from '@/lib/api-errors'
-import { connectorApi } from '@/lib/api'
-import { detachPromise } from '@/lib/utils'
+import { getAuthSessionRevision } from '@/lib/auth-storage'
+import { connectorApi } from '@/lib/api/connectors'
+import { reportClientError } from '@/lib/client-logging'
+import { documentAccessModeSchema } from '@/lib/document-access-schema'
+import type { LoadConnectorRuns } from '@/hooks/use-connector-runs'
+import { parseAccessMembers, parseHttpUrls } from './knowledge-import-parsers'
 
-
-function parseUrlBatchUrls(raw: string): string[] {
-  const parts = (raw || '')
-    .split(/[\n,;]+/g)
-    .map((s) => s.trim())
-    .filter(Boolean)
-  const out: string[] = []
-  const seen = new Set<string>()
-
-  for (const p of parts) {
-    if (!/^https?:\/\//i.test(p)) continue
-    if (seen.has(p)) continue
-    seen.add(p)
-    out.push(p)
-    if (out.length >= 50) break
-  }
-
-  return out
-}
-
-function parseAccessMembers(raw: string): string[] {
-  const parts = (raw || '')
-    .split(/[\n,;]+/g)
-    .map((s) => s.trim())
-    .filter(Boolean)
-  const out: string[] = []
-  const seen = new Set<string>()
-
-  for (const p of parts) {
-    if (seen.has(p)) continue
-    seen.add(p)
-    out.push(p)
-    if (out.length >= 200) break
-  }
-
-  return out
-}
+const URL_BATCH_LIMIT = 50
 
 type KnowledgeUrlBatchDialogProps = {
   open: boolean
@@ -69,7 +40,7 @@ type KnowledgeUrlBatchDialogProps = {
   datasetDefaultValue: string
 
   loadDocuments: () => void | Promise<void>
-  loadConnectorRuns: (params?: { datasetId?: string }) => void | Promise<void>
+  loadConnectorRuns: LoadConnectorRuns
   onRunCreated?: (run: ConnectorRunOut) => void
 }
 
@@ -95,20 +66,33 @@ export function KnowledgeUrlBatchDialog({
   const [accessMembers, setAccessMembers] = useState('')
   const [accessGroupIds, setAccessGroupIds] = useState<string[]>([])
   const [submitting, setSubmitting] = useState(false)
+  const submissionRef = useRef<{ authRevision: number } | null>(null)
+  const formId = useId()
+  const urlCountId = `${formId}-url-count`
 
-  useEffect(() => {
-    if (!open) return
-    setDatasetId(selectedDatasetId || datasetDefaultValue)
-  }, [datasetDefaultValue, open, selectedDatasetId])
+  useLayoutEffect(() => {
+    setSubmitting(false)
+    if (open) setDatasetId(selectedDatasetId ?? datasetDefaultValue)
+    return () => {
+      submissionRef.current = null
+    }
+  }, [open, selectedDatasetId, datasetDefaultValue])
 
-  const parsedUrls = useMemo(() => parseUrlBatchUrls(urls), [urls])
+  const parsedUrls = useMemo(() => parseHttpUrls(urls, URL_BATCH_LIMIT + 1), [urls])
+  const overLimit = parsedUrls.length > URL_BATCH_LIMIT
 
-  const handleSubmit = useCallback(async () => {
-    if (!parsedUrls.length) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!open || submissionRef.current || overLimit) return
+    if (parsedUrls.length === 0) {
       toast.error('请输入至少 1 个 http(s) URL（每行一个）')
       return
     }
 
+    const submission = { authRevision: getAuthSessionRevision() }
+    submissionRef.current = submission
+    const isSameSession = () => submission.authRevision === getAuthSessionRevision()
+    const ownsSubmission = () => submissionRef.current === submission && isSameSession()
     setSubmitting(true)
     try {
       const access =
@@ -120,12 +104,13 @@ export function KnowledgeUrlBatchDialog({
               partial_group_list: accessMode === 'partial_members' ? accessGroupIds : null,
             }
 
+      const trimmedFilename = filename.trim()
       const run = await connectorApi.createRun({
         connector_id: 'url_batch',
         dataset_id: datasetId === datasetDefaultValue ? undefined : datasetId,
         config: {
           urls: parsedUrls,
-          filename: filename.trim() ? filename.trim() : undefined,
+          filename: trimmedFilename.length === 0 ? undefined : trimmedFilename,
           parser_backend: parserBackend,
           chunk_strategy: chunkStrategy,
           pipeline: pipelineOverridesEnabled ? pipelineOptions : undefined,
@@ -133,11 +118,24 @@ export function KnowledgeUrlBatchDialog({
         },
       })
 
+      for (const refresh of [
+        () => loadConnectorRuns({ datasetId: selectedDatasetId }, { selectScope: false }),
+        loadDocuments,
+      ]) {
+        void Promise.resolve()
+          .then(() => {
+            if (isSameSession()) return refresh()
+          })
+          .catch((error) => reportClientError('Refresh after URL batch import failed', error))
+      }
+      if (!ownsSubmission()) return
       toast.success(`已创建批量导入任务：${run.id.slice(0, 8)}`, {
         action: onRunCreated
           ? {
               label: '查看任务',
-              onClick: () => onRunCreated(run),
+              onClick: () => {
+                if (isSameSession()) onRunCreated(run)
+              },
             }
           : undefined,
       })
@@ -147,81 +145,111 @@ export function KnowledgeUrlBatchDialog({
       setAccessMode('inherit')
       setAccessMembers('')
       setAccessGroupIds([])
-      detachPromise(loadConnectorRuns({ datasetId: selectedDatasetId }))
-      detachPromise(loadDocuments())
     } catch (err: unknown) {
+      if (!ownsSubmission()) return
       toast.error(formatApiError(err, '创建 URL 批量导入失败'))
     } finally {
-      setSubmitting(false)
+      if (submissionRef.current === submission) {
+        submissionRef.current = null
+        setSubmitting(false)
+      }
     }
-  }, [
-    accessMembers,
-    accessGroupIds,
-    accessMode,
-    chunkStrategy,
-    datasetDefaultValue,
-    datasetId,
-    filename,
-    loadConnectorRuns,
-    loadDocuments,
-    onOpenChange,
-    parsedUrls,
-    parserBackend,
-    pipelineOptions,
-    pipelineOverridesEnabled,
-    selectedDatasetId,
-    onRunCreated,
-  ])
+  }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl">
+    <Dialog
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (nextOpen || submissionRef.current === null) onOpenChange(nextOpen)
+      }}
+    >
+      <DialogContent
+        showCloseButton={!submitting}
+        className="max-h-[calc(100dvh-2rem)] max-w-2xl overflow-y-auto overscroll-contain"
+      >
         <DialogHeader>
           <DialogTitle>URL 批量导入（Connector）</DialogTitle>
-          <DialogDescription>一次导入多个 URL，并生成导入运行记录（需要后端开启 URL_INGEST_ENABLED）。</DialogDescription>
+          <DialogDescription>
+            一次导入多个 URL，并生成导入运行记录（需要后端开启 URL_INGEST_ENABLED）。
+          </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
-          <div className="space-y-2">
-            <div className="text-sm font-medium text-foreground/80">URLs（每行一个，最多 50）</div>
-            <Textarea
-              value={urls}
-              onChange={(e) => setUrls(e.target.value)}
-              placeholder={'https://example.com/doc1.pdf\nhttps://example.com/doc2.html'}
-              className="font-mono min-h-[140px]"
-            />
-            <div className="text-xs text-muted-foreground">已识别 {parsedUrls.length} 个 URL（仅统计 http/https）。</div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <form id={formId} onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
-              <div className="text-sm font-medium text-foreground/80">文件名（可选）</div>
-              <Input value={filename} onChange={(e) => setFilename(e.target.value)} placeholder="例如：产品手册.pdf" />
-              <div className="text-xs text-muted-foreground">用于显示名/扩展名推断（对所有 URL 生效）。</div>
+              <Label htmlFor={`${formId}-urls`} className="text-foreground/80">
+                URLs（每行一个，最多 {URL_BATCH_LIMIT}）
+              </Label>
+              <Textarea
+                id={`${formId}-urls`}
+                value={urls}
+                disabled={submitting}
+                onChange={(e) => setUrls(e.target.value)}
+                placeholder={'https://example.com/doc1.pdf\nhttps://example.com/doc2.html'}
+                className="font-mono min-h-[140px]"
+                aria-describedby={urlCountId}
+                aria-invalid={overLimit}
+              />
+              {overLimit ? (
+                <p id={urlCountId} role="alert" className="text-xs text-destructive">
+                  每批最多导入 {URL_BATCH_LIMIT} 个 URL。
+                </p>
+              ) : (
+                <p id={urlCountId} className="text-xs text-muted-foreground">
+                  已识别 {parsedUrls.length} 个 URL（仅统计 http/https）。
+                </p>
+              )}
             </div>
-            <div className="space-y-2">
-              <div className="text-sm font-medium text-foreground/80">目标数据集</div>
-              <Select value={datasetId} onValueChange={setDatasetId}>
-                <SelectTrigger className="h-10 bg-background">
-                  <SelectValue placeholder="选择数据集" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={datasetDefaultValue}>默认（自动选择可写数据集）</SelectItem>
-                  {datasets.map((ds) => (
-                    <SelectItem key={ds.id} value={ds.id}>
-                      {ds.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {datasetsLoading ? <div className="text-xs text-muted-foreground">正在加载数据集...</div> : null}
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor={`${formId}-filename`} className="text-foreground/80">
+                  文件名（可选）
+                </Label>
+                <Input
+                  id={`${formId}-filename`}
+                  value={filename}
+                  disabled={submitting}
+                  onChange={(e) => setFilename(e.target.value)}
+                  placeholder="例如：产品手册.pdf"
+                />
+                <div className="text-xs text-muted-foreground">用于显示名/扩展名推断（对所有 URL 生效）。</div>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor={`${formId}-dataset`} className="text-foreground/80">
+                  目标数据集
+                </Label>
+                <Select value={datasetId} onValueChange={setDatasetId} disabled={submitting}>
+                  <SelectTrigger id={`${formId}-dataset`} className="h-10 bg-background">
+                    <SelectValue placeholder="选择数据集" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={datasetDefaultValue}>默认（自动选择可写数据集）</SelectItem>
+                    {datasets.map((ds) => (
+                      <SelectItem key={ds.id} value={ds.id}>
+                        {ds.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {datasetsLoading ? <div className="text-xs text-muted-foreground">正在加载数据集...</div> : null}
+              </div>
             </div>
-          </div>
+          </form>
 
           <div className="space-y-2">
-            <div className="text-sm font-medium text-foreground/80">文档访问控制（可选）</div>
-            <Select value={accessMode} onValueChange={(v) => setAccessMode(v as DocumentAccessMode)}>
-              <SelectTrigger className="h-10 bg-background">
+            <Label htmlFor={`${formId}-access`} className="text-foreground/80">
+              文档访问控制（可选）
+            </Label>
+            <Select
+              value={accessMode}
+              disabled={submitting}
+              onValueChange={(value) => {
+                const result = documentAccessModeSchema.safeParse(value)
+                if (result.success) setAccessMode(result.data)
+              }}
+            >
+              <SelectTrigger id={`${formId}-access`} className="h-10 bg-background">
                 <SelectValue placeholder="选择访问模式" />
               </SelectTrigger>
               <SelectContent>
@@ -237,6 +265,7 @@ export function KnowledgeUrlBatchDialog({
                   <div className="text-sm font-medium text-foreground/80">允许组（可选）</div>
                   <GroupChipsInput
                     value={accessGroupIds}
+                    disabled={submitting}
                     onChange={setAccessGroupIds}
                     placeholder="选择组（组内成员将自动获得访问权限）"
                   />
@@ -244,9 +273,13 @@ export function KnowledgeUrlBatchDialog({
                 </div>
 
                 <div className="space-y-2">
-                  <div className="text-sm font-medium text-foreground/80">允许成员（每行一个 user_id）</div>
+                  <Label htmlFor={`${formId}-members`} className="text-foreground/80">
+                    允许成员（每行一个 user_id）
+                  </Label>
                   <Textarea
+                    id={`${formId}-members`}
                     value={accessMembers}
+                    disabled={submitting}
                     onChange={(e) => setAccessMembers(e.target.value)}
                     placeholder={'alice\nbob\ncharlie'}
                     className="font-mono min-h-[110px]"
@@ -271,11 +304,11 @@ export function KnowledgeUrlBatchDialog({
           <PipelineOptionsPanel />
 
           <div className="flex items-center justify-end gap-2 pt-2">
-            <Button variant="outline" onClick={() => onOpenChange(false)} disabled={submitting}>
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={submitting}>
               取消
             </Button>
-            <Button onClick={handleSubmit} disabled={submitting} className="gap-2">
-              {submitting ? <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" /> : null}
+            <Button type="submit" form={formId} disabled={submitting || overLimit} className="gap-2">
+              {submitting ? <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" aria-hidden /> : null}
               开始导入
             </Button>
           </div>

@@ -2,8 +2,8 @@ import time
 
 import pytest
 
-from app.core.config import settings
-from app.services import chat_execution_runtime
+from app.infrastructure.config import settings
+from app.services.chat import execution as chat_execution_runtime
 
 
 @pytest.mark.asyncio

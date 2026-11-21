@@ -1,21 +1,23 @@
 import re
 from typing import Any
 
-from app.core.config import settings
+from app.infrastructure.config import settings
 
-PYTHON_PLUGIN_IMPORT_REF_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_.]*(?::[A-Za-z_][A-Za-z0-9_]*)?$")
+PYTHON_PLUGIN_IMPORT_REF_RE = re.compile(
+    r"^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*(?::[A-Za-z_][A-Za-z0-9_]*)?$"
+)
 REGISTERED_PYTHON_PLUGIN_REF_RE = re.compile(
     r"^plugin:[a-z0-9][a-z0-9_.-]{0,63}@[A-Za-z0-9][A-Za-z0-9_.+-]{0,31}:(?P<stage>governance|chunk|kg)$"
 )
 
 
 def python_plugin_allow_prefixes() -> tuple[str, ...]:
-    raw = str(getattr(settings, "PYTHON_PIPELINE_PLUGIN_ALLOW_PREFIXES", "") or "").strip()
+    raw = str(settings.PYTHON_PIPELINE_PLUGIN_ALLOW_PREFIXES).strip()
     return tuple(prefix.strip() for prefix in raw.split(",") if prefix.strip())
 
 
 def registered_python_plugin_stage(plugin_ref: str) -> str | None:
-    match = REGISTERED_PYTHON_PLUGIN_REF_RE.fullmatch(str(plugin_ref or "").strip())
+    match = REGISTERED_PYTHON_PLUGIN_REF_RE.fullmatch(plugin_ref.strip())
     return match.group("stage") if match else None
 
 
@@ -61,7 +63,9 @@ def _validate_python_import_ref(
         raise ValueError(
             disabled_import_message or "python plugin import refs are disabled; use plugin:<id>@<version>:<stage>"
         )
-    if not any(module_name.startswith(prefix) for prefix in allowed):
+    if not any(
+        module_name == prefix.rstrip(".") or module_name.startswith(prefix.rstrip(".") + ".") for prefix in allowed
+    ):
         raise ValueError(f"{field_name} module '{module_name}' is not allowed")
     return value
 

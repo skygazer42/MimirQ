@@ -9,7 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from app.rag.chunking.strategy_matrix import run_chunk_strategy_matrix  # noqa: E402
+from app.rag.ingestion.chunking.strategy_matrix import run_chunk_strategy_matrix  # noqa: E402
 
 
 def _now_id() -> str:

@@ -88,9 +88,10 @@ class _Session:
 
 
 def _patch_runtime(monkeypatch, session_or_factory: object, *, run_model: object, evaluator: object) -> None:
-    from app.core import config, database
-    from app.models import evaluation
-    from app.rag.evaluation import ragas
+    from app.infrastructure import config
+    from app.infrastructure.database import connection as database
+    from app.models.evaluation import results as evaluation
+    from app.rag.evaluation.regression import ragas
 
     monkeypatch.setattr(config.settings, "DEFAULT_TENANT_ID", str(TENANT_ID))
     monkeypatch.setattr(config.settings, "RERANKER_TOP_N", 20)
@@ -118,8 +119,6 @@ def test_main_dry_run_plans_each_default_ablation(monkeypatch, capsys) -> None:
         "vector_only",
         "profile_recall50",
         "fusion_linear",
-        "sparse_budgeted_rrf",
-        "sparse_bounded_slice",
         "hybrid_rerank",
     ]
     assert {item["dataset_id"] for item in payload["planned"]} == {str(DATASET_ID)}
@@ -136,14 +135,19 @@ def test_main_execute_persists_and_evaluates_each_ablation(monkeypatch, capsys) 
         def __init__(self, **values: object) -> None:
             self.id = uuid4()
             self.values = values
+            self.status = "pending"
             created_runs.append(self)
+
+    def evaluate(**kwargs):
+        evaluation_calls.append(kwargs)
+        next(run for run in created_runs if run.id == kwargs["run_id"]).status = "completed"
 
     session = _Session(SimpleNamespace(owner_id=OWNER_ID))
     _patch_runtime(
         monkeypatch,
         session,
         run_model=_Run,
-        evaluator=lambda **kwargs: evaluation_calls.append(kwargs),
+        evaluator=evaluate,
     )
 
     result = nightly.main(["--dataset-id", str(DATASET_ID), "--execute", "--metrics", "recall, precision"])
@@ -152,13 +156,66 @@ def test_main_execute_persists_and_evaluates_each_ablation(monkeypatch, capsys) 
     assert result == 0
     assert payload["dry_run"] is False
     assert payload["planned"] == []
-    assert len(created_runs) == len(session.added) == len(evaluation_calls) == len(payload["executed"]) == 9
-    assert session.commit_count == 9
+    assert len(created_runs) == len(session.added) == len(evaluation_calls) == len(payload["executed"]) == 7
+    assert session.commit_count == 7
     assert all(run.values["params"]["nightly"] is True for run in created_runs)
     assert all(run.values["metrics"] == ["recall", "precision"] for run in created_runs)
     assert all(call["dataset_id"] == DATASET_ID for call in evaluation_calls)
     assert all(call["account_id"] == str(OWNER_ID) for call in evaluation_calls)
     assert session.closed is True
+
+
+@pytest.mark.parametrize("terminal_status,expected_code", [("completed", 0), ("failed", 1), ("running", 1)])
+def test_main_reads_evaluator_status_from_database(monkeypatch, capsys, terminal_status, expected_code) -> None:
+    persisted_status = {}
+    session = _Session(SimpleNamespace(owner_id=OWNER_ID))
+
+    class _Run:
+        def __init__(self, **values):
+            self.id = uuid4()
+            self.status = values["status"]
+
+    def refresh(run):
+        if run.id in persisted_status:
+            run.status = persisted_status[run.id]
+
+    monkeypatch.setattr(session, "refresh", refresh)
+    _patch_runtime(
+        monkeypatch,
+        session,
+        run_model=_Run,
+        evaluator=lambda **kwargs: persisted_status.__setitem__(kwargs["run_id"], terminal_status),
+    )
+
+    result = nightly.main(["--dataset-id", str(DATASET_ID), "--execute"])
+
+    payload = json.loads(capsys.readouterr().out)
+    assert result == expected_code
+    assert payload["ok"] is (expected_code == 0)
+    assert len(payload["executed"]) == 7
+    assert {item["status"] for item in payload["executed"]} == {terminal_status}
+    assert session.closed is True
+
+
+def test_main_keeps_failed_ablation_when_later_runs_complete(monkeypatch, capsys) -> None:
+    session = _Session(SimpleNamespace(owner_id=OWNER_ID))
+    created_runs = []
+
+    class _Run:
+        def __init__(self, **values):
+            self.id = uuid4()
+            self.status = values["status"]
+            created_runs.append(self)
+
+    def evaluate(**kwargs):
+        created_runs[-1].status = "failed" if len(created_runs) == 1 else "completed"
+
+    _patch_runtime(monkeypatch, session, run_model=_Run, evaluator=evaluate)
+
+    assert nightly.main(["--dataset-id", str(DATASET_ID), "--execute"]) == 1
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["ok"] is False
+    assert [item["status"] for item in payload["executed"]] == ["failed"] + ["completed"] * 6
 
 
 def test_main_rejects_cases_bundle_for_another_dataset(monkeypatch, tmp_path, capsys) -> None:
@@ -206,7 +263,7 @@ def test_main_all_datasets_uses_bounded_catalog_and_closes_every_session(monkeyp
 
     payload = json.loads(capsys.readouterr().out)
     assert result == 0
-    assert len(payload["planned"]) == 18
+    assert len(payload["planned"]) == 14
     assert {item["dataset_id"] for item in payload["planned"]} == {
         str(DATASET_ID),
         str(second_dataset_id),

@@ -1,4 +1,4 @@
-import { NextRequest } from 'next/server'
+import type { NextRequest } from 'next/server'
 
 import {
   OIDC_PROVIDER_COOKIE_NAME,
@@ -22,23 +22,8 @@ export async function POST(req: NextRequest) {
 
   const resp = jsonNoStore({ ok: true })
   const secure = process.env.NODE_ENV === 'production'
-  resp.cookies.set({
-    name: OIDC_REFRESH_COOKIE_NAME,
-    value: '',
-    httpOnly: true,
-    secure,
-    sameSite: 'lax',
-    path: '/api/oidc',
-    maxAge: 0,
-  })
-  resp.cookies.set({
-    name: OIDC_PROVIDER_COOKIE_NAME,
-    value: '',
-    httpOnly: true,
-    secure,
-    sameSite: 'lax',
-    path: '/api/oidc',
-    maxAge: 0,
-  })
+  for (const name of [OIDC_REFRESH_COOKIE_NAME, OIDC_PROVIDER_COOKIE_NAME]) {
+    resp.cookies.set({ name, value: '', httpOnly: true, secure, sameSite: 'lax', path: '/api/oidc', maxAge: 0 })
+  }
   return resp
 }

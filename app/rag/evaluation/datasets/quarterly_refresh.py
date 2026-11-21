@@ -1,4 +1,3 @@
-
 import hashlib
 from typing import Any
 
@@ -13,10 +12,7 @@ def _stable_rank(*, quarter_key: str, sample_id: str) -> str:
 
 
 def _normalize_ratio(value: float | int | None) -> float:
-    try:
-        ratio = float(value if value is not None else 0.2)
-    except Exception:
-        ratio = 0.2
+    ratio = float(value) if value is not None else 0.2
     return max(0.0, min(1.0, ratio))
 
 
@@ -26,50 +22,43 @@ def plan_quarterly_refresh(
     quarter_key: str,
     refresh_ratio: float = 0.2,
 ) -> dict[str, Any]:
-    normalized_rows = [normalize_eval_dataset_sample(dict(row or {})) for row in (rows or []) if isinstance(row, dict)]
-    quarter = str(quarter_key or "").strip() or "unknown"
+    normalized_rows = [normalize_eval_dataset_sample(row) for row in (rows or []) if isinstance(row, dict)]
+    quarter = quarter_key.strip() or "unknown"
     ratio = _normalize_ratio(refresh_ratio)
 
     ranked = sorted(
         normalized_rows,
         key=lambda row: (
-            _stable_rank(quarter_key=quarter, sample_id=str(row.get("sample_id") or "")),
-            str(row.get("sample_id") or ""),
+            _stable_rank(quarter_key=quarter, sample_id=row["sample_id"]),
+            row["sample_id"],
         ),
     )
 
     total = len(ranked)
     refresh_count = 0
     if total > 0 and ratio > 0.0:
-        refresh_count = max(1, int(round(total * ratio)))
+        refresh_count = max(1, round(total * ratio))
         refresh_count = min(refresh_count, total)
 
-    refresh_rows: list[dict[str, Any]] = []
-    stable_rows: list[dict[str, Any]] = []
-    for idx, row in enumerate(ranked):
-        row_copy = dict(row)
-        if idx < refresh_count:
-            tags = [str(tag).strip() for tag in (row_copy.get("tags") or []) if str(tag or "").strip()]
-            if "quarterly_refresh" not in tags:
-                tags.append("quarterly_refresh")
-            row_copy["tags"] = tags
-            row_copy["refresh_quarter"] = quarter
-            row_copy["refresh_action"] = "regenerate"
-            refresh_rows.append(row_copy)
-        else:
-            stable_rows.append(row_copy)
+    refresh_rows = ranked[:refresh_count]
+    stable_rows = ranked[refresh_count:]
+    for row in refresh_rows:
+        if "quarterly_refresh" not in row["tags"]:
+            row["tags"].append("quarterly_refresh")
+        row["refresh_quarter"] = quarter
+        row["refresh_action"] = "regenerate"
 
     return {
         "schema": QUARTERLY_REFRESH_SCHEMA_V1,
         "quarter_key": quarter,
         "refresh_ratio": ratio,
         "summary": {
-            "total_samples": int(total),
-            "refresh_samples": int(len(refresh_rows)),
-            "stable_samples": int(len(stable_rows)),
+            "total_samples": total,
+            "refresh_samples": len(refresh_rows),
+            "stable_samples": len(stable_rows),
         },
-        "refresh_sample_ids": [str(row.get("sample_id") or "") for row in refresh_rows],
-        "stable_sample_ids": [str(row.get("sample_id") or "") for row in stable_rows],
+        "refresh_sample_ids": [row["sample_id"] for row in refresh_rows],
+        "stable_sample_ids": [row["sample_id"] for row in stable_rows],
         "refresh_rows": refresh_rows,
         "stable_rows": stable_rows,
     }

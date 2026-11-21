@@ -1,4 +1,4 @@
-# MimirQ API 文档索引
+# Ragvia API 文档索引
 
 > **SSOT 提示**：接口字段以 OpenAPI（`web/openapi.json`）与 [在线 Redoc](https://skygazer42.github.io/MimirQ/) 为准。以下为导航入口；长篇叙述已按一级标题拆分为多文件。
 

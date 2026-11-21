@@ -1,12 +1,13 @@
-"use client"
+'use client'
 
-import type { Key, KeyboardEvent, RefObject } from "react"
-import { Loader2 } from "lucide-react"
+import type { Key, KeyboardEvent, RefObject } from 'react'
+import { Loader2 } from '@/components/icons'
 
-import type { DocumentChunk } from "@/types"
+import type { DocumentChunk } from '@/types/backend'
 
-import { DocumentChunkCard } from "./chunk-renderer"
-import { ChunksToolbarPanel } from "./chunks-toolbar-panel"
+import { DocumentChunkCard } from './chunk-renderer'
+import { ChunksToolbarPanel } from './chunks-toolbar-panel'
+import type { DocumentChunkLocation, DocumentViewerHighlight } from './document-viewer-models'
 
 type VirtualRow = {
   index: number
@@ -31,11 +32,11 @@ type ChunksTabPanelProps = {
   canEditChunks: boolean
   serverMatchTruncatedHint: boolean
   highlightChunkId: string | null
-  loadAllChunks: boolean
   chunksLoaded: boolean
   chunksLoading: boolean
   highlightChunkLoading: boolean
-  highlightChunk: DocumentChunk | null
+  highlightChunkError: string | null
+  highlightContent: DocumentViewerHighlight | null
   chunkEditorSubmitting: boolean
   chunkDeleteSubmitting: string | null
   matchCursor: number
@@ -47,10 +48,10 @@ type ChunksTabPanelProps = {
   onOpenQaDialog: () => void
   onClearHighlight: () => void
   onLoadAllChunks: () => void
-  onCopyContent: (content: string) => void
-  onCopyLink: (chunk: DocumentChunk) => void
+  onCopyContent: (content: string) => Promise<void>
+  onCopyLink: (location: DocumentChunkLocation) => Promise<void>
   onEditChunk: (chunk: DocumentChunk) => void
-  onDeleteChunk: (chunk: DocumentChunk) => void
+  onDeleteChunk: (chunk: DocumentChunk) => Promise<void>
 }
 
 export function ChunksTabPanel({
@@ -64,11 +65,11 @@ export function ChunksTabPanel({
   canEditChunks,
   serverMatchTruncatedHint,
   highlightChunkId,
-  loadAllChunks,
   chunksLoaded,
   chunksLoading,
   highlightChunkLoading,
-  highlightChunk,
+  highlightChunkError,
+  highlightContent,
   chunkEditorSubmitting,
   chunkDeleteSubmitting,
   matchCursor,
@@ -96,11 +97,11 @@ export function ChunksTabPanel({
         canEditChunks={canEditChunks}
         serverMatchTruncatedHint={serverMatchTruncatedHint}
         highlightChunkId={highlightChunkId}
-        loadAllChunks={loadAllChunks}
         chunksLoaded={chunksLoaded}
         chunksLoading={chunksLoading}
         highlightChunkLoading={highlightChunkLoading}
-        highlightChunk={highlightChunk}
+        highlightChunkError={highlightChunkError}
+        highlightContent={highlightContent}
         chunkEditorSubmitting={chunkEditorSubmitting}
         chunkDeleteSubmitting={chunkDeleteSubmitting}
         onChunkQueryChange={onChunkQueryChange}
@@ -119,7 +120,11 @@ export function ChunksTabPanel({
 
       <div className="no-scrollbar flex-1 overflow-y-auto overscroll-contain p-4 scroll-smooth" ref={chunksListRef}>
         {chunksLoading && chunks.length === 0 ? (
-          <div className="flex items-center justify-center py-10 text-muted-foreground">
+          <div
+            role="status"
+            aria-label="正在读取切片"
+            className="flex items-center justify-center py-10 text-muted-foreground"
+          >
             <Loader2 className="size-6 animate-spin motion-reduce:animate-none" />
           </div>
         ) : null}
@@ -128,8 +133,8 @@ export function ChunksTabPanel({
           <div
             style={{
               height: `${rowVirtualizer.getTotalSize()}px`,
-              width: "100%",
-              position: "relative",
+              width: '100%',
+              position: 'relative',
             }}
           >
             {rowVirtualizer.getVirtualItems().map((virtualRow) => {
@@ -142,15 +147,16 @@ export function ChunksTabPanel({
                   data-index={virtualRow.index}
                   ref={rowVirtualizer.measureElement}
                   style={{
-                    position: "absolute",
+                    position: 'absolute',
                     top: 0,
                     left: 0,
-                    width: "100%",
+                    width: '100%',
                     transform: `translateY(${virtualRow.start}px)`,
                   }}
                   className="pb-4"
                 >
                   <DocumentChunkCard
+                    id={`chunk-${chunk.id}`}
                     chunk={chunk}
                     query={chunkQuery}
                     isActive={highlightChunkId === chunk.id}

@@ -1,8 +1,8 @@
+from math import isfinite
 from uuid import UUID
 
-from pydantic import Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from app.rag.kg.schemas import KGBaseModel
 from app.rag.pipeline_plugins.refs import clean_python_plugin_ref
 
 
@@ -14,6 +14,8 @@ def _clean_kg_python_param_item(key: object, value: object) -> tuple[str, object
         return None
     if len(cleaned_key) > 80:
         raise ValueError("kg_python_params key too long (max=80)")
+    if isinstance(value, float) and not isfinite(value):
+        raise ValueError("kg_python_params values must be finite JSON primitives")
     if value is None or isinstance(value, (bool, int, float)):
         return cleaned_key, value
     if isinstance(value, str):
@@ -38,7 +40,7 @@ def _clean_kg_python_params(raw: object) -> dict | None:
             continue
         cleaned_key, cleaned_value = item
         cleaned[cleaned_key] = cleaned_value
-    return cleaned or None
+    return cleaned
 
 
 def _clean_kg_python_plugin(raw: object) -> str | None:
@@ -52,8 +54,10 @@ def _clean_kg_python_plugin(raw: object) -> str | None:
     )
 
 
-class ExtractConfig(KGBaseModel):
+class ExtractConfig(BaseModel):
     """Configuration for event extraction from document chunks."""
+
+    model_config = ConfigDict(from_attributes=True)
 
     chunk_ids: list[UUID] = Field(default_factory=list, description="DocumentChunk IDs to process")
     tenant_id: UUID | None = None
@@ -69,9 +73,7 @@ class ExtractConfig(KGBaseModel):
     prompt_template_key: str | None = None
     prompt_ab_experiment_key: str | None = None
     ab_user_key: str | None = None
-    extraction_backend: str | None = Field(
-        default=None, description="Extraction backend override: llm|gliner|hybrid|heuristic"
-    )
+    extraction_backend: str | None = Field(default=None, description="Extraction backend override: llm|heuristic")
     kg_python_plugin: str | None = Field(
         default=None,
         description=(
@@ -85,7 +87,3 @@ class ExtractConfig(KGBaseModel):
         self.kg_python_plugin = _clean_kg_python_plugin(self.kg_python_plugin)
         self.kg_python_params = _clean_kg_python_params(self.kg_python_params)
         return self
-
-
-# Legacy compatibility alias
-ExtractBaseConfig = ExtractConfig

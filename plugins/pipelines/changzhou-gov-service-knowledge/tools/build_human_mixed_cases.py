@@ -19,6 +19,8 @@ from itertools import combinations
 from pathlib import Path
 from typing import Any
 
+DimensionProfile = tuple[str, tuple[str, ...], tuple[str, ...]]
+
 CASES_SCHEMA = "mimirq.mixed_rag_eval_cases.v1"
 CASE_GENERATION = "human_mixed_v1"
 QA_LIKE_SECTIONS = (
@@ -32,7 +34,7 @@ SERVICE_TITLE_RE = re.compile(r"事项名称[:：]\s*(?P<title>[^，。\n]+)")
 QUOTED_TITLE_RE = re.compile(r"[“「](?P<title>[^”」]{2,120})[”」]")
 FIELD_RE = re.compile(r"^(?P<name>[\u4e00-\u9fffA-Za-z0-9（）()·、/\-]{2,32})[：:](?P<value>.*)$")
 ITEM_SEPARATOR = "==##########=="
-DIMENSION_PROFILES: tuple[tuple[str, tuple[str, ...], tuple[str, ...]], ...] = (
+DIMENSION_PROFILES: tuple[DimensionProfile, ...] = (
     (
         "办理材料+办理地点+收费情况",
         ("办理材料", "办理地点", "收费情况"),
@@ -206,7 +208,7 @@ def _title_from_question(case: dict[str, Any]) -> str:
 
 
 def _clean_title(value: str) -> str:
-    title = _text(value).strip("[]【】")
+    title = value.strip().strip("[]【】")
     for prefix in ("事项名称：", "事项名称:"):
         if title.startswith(prefix):
             title = title[len(prefix) :]
@@ -214,7 +216,7 @@ def _clean_title(value: str) -> str:
 
 
 def _identity_text(value: str) -> str:
-    return re.sub(r"\s+", "", _text(value).translate(str.maketrans({"（": "(", "）": ")"})))
+    return re.sub(r"\s+", "", value.strip().translate(str.maketrans({"（": "(", "）": ")"})))
 
 
 def _case_title(case: dict[str, Any]) -> str:
@@ -319,12 +321,12 @@ def _record_fields(case: dict[str, Any]) -> dict[str, str]:
     return fields
 
 
-def _available_dimension_profiles(case: dict[str, Any]) -> list[tuple[str, tuple[str, ...], tuple[str, ...]]]:
+def _available_dimension_profiles(case: dict[str, Any]) -> list[DimensionProfile]:
     if _case_type(case) != "service_item_composite":
         return []
     fields = _record_fields(case)
     dynamic_profiles = [_make_dynamic_profile(names) for names in combinations(DYNAMIC_DIMENSION_FIELDS, 3)]
-    out: list[tuple[str, tuple[str, ...], tuple[str, ...]]] = []
+    out: list[DimensionProfile] = []
     seen_dimension_sets: set[frozenset[str]] = set()
     for profile in (*DIMENSION_PROFILES, *dynamic_profiles):
         signature, names, _ = profile
@@ -337,7 +339,7 @@ def _available_dimension_profiles(case: dict[str, Any]) -> list[tuple[str, tuple
     return out
 
 
-def _make_dynamic_profile(names: tuple[str, ...]) -> tuple[str, tuple[str, ...], tuple[str, ...]]:
+def _make_dynamic_profile(names: tuple[str, ...]) -> DimensionProfile:
     signature = "+".join(names)
     phrase = "、".join(FIELD_PHRASES.get(name, name) for name in names)
     return (
@@ -351,7 +353,7 @@ def _make_dynamic_profile(names: tuple[str, ...]) -> tuple[str, tuple[str, ...],
 
 
 def _evidence_value(value: str) -> str:
-    text = re.sub(r"\s+", " ", _text(value))
+    text = re.sub(r"\s+", " ", value.strip())
     return text[:120].strip()
 
 
@@ -361,7 +363,7 @@ def _dimension_id(signature: str) -> str:
 
 def _build_dimension_case(
     case: dict[str, Any],
-    profile: tuple[str, tuple[str, ...], tuple[str, ...]],
+    profile: DimensionProfile,
     *,
     variant_index: int = 0,
 ) -> dict[str, Any]:

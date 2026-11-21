@@ -1,9 +1,10 @@
 'use client'
 
+import { PopoverAnchor } from '@radix-ui/react-popover'
 import * as React from 'react'
-import { Sparkles, FileText, Eraser, Settings2, Database, History } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 
+import { Sparkles, FileText, Eraser, Settings2, Database, History } from '@/components/icons'
 import {
   Command,
   CommandEmpty,
@@ -13,85 +14,89 @@ import {
   CommandList,
   CommandShortcut,
 } from '@/components/ui/command'
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@/components/ui/popover'
+import { Popover, PopoverContent } from '@/components/ui/popover'
 
-interface SlashMenuProps {
+const COMMANDS = [
+  { id: 'knowledge', icon: Database },
+  { id: 'history', icon: History },
+  { id: 'prompt', icon: Sparkles },
+  { id: 'cite_analysis', icon: FileText },
+  { id: 'config', icon: Settings2 },
+  { id: 'clear', icon: Eraser },
+] as const
+
+type SlashCommandId = (typeof COMMANDS)[number]['id']
+
+type SlashMenuProps = {
   open: boolean
   onOpenChange: (open: boolean) => void
-  onSelect: (command: string) => void
+  onSelect: (command: SlashCommandId) => void
   position: { top: number; left: number }
-}
-
-type SlashCommandId = 'knowledge' | 'history' | 'prompt' | 'cite_analysis' | 'config' | 'clear'
-
-const COMMAND_ICONS: Record<SlashCommandId, React.ComponentType<{ className?: string }>> = {
-  knowledge: Database,
-  history: History,
-  prompt: Sparkles,
-  cite_analysis: FileText,
-  config: Settings2,
-  clear: Eraser,
 }
 
 export function SlashMenu({ open, onOpenChange, onSelect, position }: Readonly<SlashMenuProps>) {
   const t = useTranslations('SlashMenu')
-  const commands = React.useMemo(
-    () =>
-      (Object.keys(COMMAND_ICONS) as SlashCommandId[]).map((id) => ({
-        id,
-        icon: COMMAND_ICONS[id],
-        label: t(`commands.${id}.label`),
-        description: t(`commands.${id}.description`),
-        keywords: t.raw(`commands.${id}.keywords`) as string[],
-      })),
-    [t]
-  )
+  const heading = t('heading')
+  const returnFocusRef = React.useRef<HTMLTextAreaElement>(null)
 
   return (
     <Popover open={open} onOpenChange={onOpenChange}>
-      <PopoverTrigger asChild>
-        <div
-          style={{
-            position: 'fixed',
-            top: position.top,
-            left: position.left,
-            width: 1,
-            height: 1,
-          }}
-        />
-      </PopoverTrigger>
+      <PopoverAnchor
+        style={{ position: 'fixed', top: position.top, left: position.left, width: 1, height: 1 }}
+        aria-hidden="true"
+      />
       <PopoverContent
         className="w-80 overflow-hidden border border-border/70 bg-popover/95 p-0 shadow-strong backdrop-blur"
         align="start"
         side="top"
+        aria-label={heading}
+        onOpenAutoFocus={() => {
+          const focusedElement = document.activeElement
+          returnFocusRef.current = focusedElement instanceof HTMLTextAreaElement ? focusedElement : null
+        }}
+        onInteractOutside={() => {
+          returnFocusRef.current = null
+        }}
+        onCloseAutoFocus={(event) => {
+          const opener = returnFocusRef.current
+          returnFocusRef.current = null
+          if (opener?.isConnected && document.activeElement === document.body) {
+            event.preventDefault()
+            opener.focus({ preventScroll: true })
+          }
+        }}
       >
-        <Command loop>
-          <CommandInput placeholder={t('placeholder')} autoFocus />
+        <Command loop label={heading}>
+          <CommandInput placeholder={t('placeholder')} />
           <CommandList>
             <CommandEmpty>{t('empty')}</CommandEmpty>
-            <CommandGroup heading={t('heading')}>
-              {commands.map((cmd) => (
-                <CommandItem
-                  key={cmd.id}
-                  value={`${cmd.id} ${cmd.label} ${cmd.description} ${cmd.keywords.join(' ')}`}
-                  keywords={[...cmd.keywords]}
-                  onSelect={() => onSelect(cmd.id)}
-                  className="items-start gap-3 rounded-xl px-3 py-3"
-                >
-                  <div className="mt-0.5 flex size-8 items-center justify-center rounded-xl border border-primary/15 bg-primary/10 text-primary">
-                    <cmd.icon className="size-4" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="text-sm font-medium text-foreground">{cmd.label}</div>
-                    <div className="mt-1 text-xs leading-5 text-muted-foreground">{cmd.description}</div>
-                  </div>
-                  <CommandShortcut>↵</CommandShortcut>
-                </CommandItem>
-              ))}
+            <CommandGroup heading={heading}>
+              {COMMANDS.map(({ id, icon: Icon }) => {
+                const label = t(`commands.${id}.label`)
+                const description = t(`commands.${id}.description`)
+                const keywords = t.raw(`commands.${id}.keywords`) as string[]
+                return (
+                  <CommandItem
+                    key={id}
+                    value={id}
+                    keywords={[label, description, ...keywords]}
+                    onSelect={() => {
+                      returnFocusRef.current = null
+                      onSelect(id)
+                    }}
+                    className="items-start gap-3 rounded-xl px-3 py-3"
+                  >
+                    <div className="mt-0.5 flex size-8 items-center justify-center rounded-xl border border-primary/15 bg-primary/10 text-primary">
+                      <Icon className="size-4" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="text-sm font-medium text-foreground">{label}</div>
+                      <div className="mt-1 text-xs leading-5 text-muted-foreground">{description}</div>
+                    </div>
+                    <CommandShortcut>↵</CommandShortcut>
+                  </CommandItem>
+                )
+              })}
             </CommandGroup>
           </CommandList>
         </Command>

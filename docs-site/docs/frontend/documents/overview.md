@@ -16,7 +16,7 @@ sidebar_position: 1
 | `/knowledge/quarantine` | `app/knowledge/quarantine/page.tsx` | — | 隔离区审核 |
 | `/knowledge/evidence` | `app/knowledge/evidence/page.tsx` | — | 证据工作台入口 |
 | `/knowledge/[id]` | `app/knowledge/[id]/page.tsx` | — | 单文档详情 |
-| `/parsing` | `app/parsing/page.tsx` | `ParsingPage` | 解析工作台 |
+| `/parsing` | `app/rag/ingestion/parsing/page.tsx` | `ParsingPage` | 解析工作台 |
 | `/datasets/[id]/ingestion` | `app/datasets/[id]/ingestion/page.tsx` | — | 数据集入库统计 |
 
 ## 核心组件
@@ -28,7 +28,7 @@ graph TD
   A --> D[KnowledgeInspector 右侧检查器]
   A --> E[KnowledgeSettingsPanel 设置]
   C --> F[DocumentDetailDialog 详情弹窗]
-  C --> G[ManualUploadDialog 手动上传]
+  N[全局导航] --> G[入库操作]
   F --> H[DocumentViewerPanel 文档查看器]
 ```
 

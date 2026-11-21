@@ -1,4 +1,3 @@
-
 import datetime as dt
 
 from langchain_core.documents import Document
@@ -6,11 +5,11 @@ from langchain_core.documents import Document
 if not hasattr(dt, "UTC"):
     dt.UTC = dt.timezone.utc
 
-from app.rag.chunking.strategies.openapi_spec import OpenAPISpecChunker, looks_like_openapi_spec
-from app.rag.chunking.strategies.outline import OutlineChunker, looks_like_outline
-from app.rag.chunking.strategies.pdf_layout import PDFLayoutChunker
-from app.rag.chunking.strategies.sop_steps import SOPStepsChunker, looks_like_sop
-from app.rag.chunking.strategies.yaml_manifest import YAMLManifestChunker, looks_like_yaml_manifest
+from app.rag.ingestion.chunking.strategies.code.openapi_spec import OpenAPISpecChunker, looks_like_openapi_spec
+from app.rag.ingestion.chunking.strategies.config.yaml_manifest import YAMLManifestChunker, looks_like_yaml_manifest
+from app.rag.ingestion.chunking.strategies.documents.pdf_layout import PDFLayoutChunker
+from app.rag.ingestion.chunking.strategies.documents.sop_steps import SOPStepsChunker, looks_like_sop
+from app.rag.ingestion.chunking.strategies.text.outline import OutlineChunker, looks_like_outline
 
 
 def test_yaml_manifest_chunker_preserves_multi_doc_offsets_and_metadata() -> None:

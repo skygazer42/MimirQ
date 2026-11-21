@@ -1,0 +1,129 @@
+{
+  "schemaVersion": 1,
+  "lang": "zh",
+  "project": "Ragvia · 隔离队列布局对比",
+  "brief": "固定雾灰／墨色、Manrope 与 Noto Sans SC，以及现有全局侧栏。五版共用 12 份预览文档与相同复核动作，保留风险、复核状态和文件类型的语义色；比较右侧工作区的信息组织与构图。候选为静态首屏，不执行真实复核。",
+  "round": "隔离队列 01",
+  "nativeViewport": "1600x1000",
+  "candidates": [
+    {
+      "id": "a-table",
+      "name": "A · 管理宽表",
+      "concept": "把文档、隔离依据与复核状态对齐比较，选中后在行内处理。",
+      "typography": "Manrope / Noto Sans SC；13px 表格正文，12px 辅助项，14px 隔离依据",
+      "palette": [
+        "#F6F7F8",
+        "#20262E",
+        "#FFFFFF",
+        "#A74740",
+        "#805E18",
+        "#31754D"
+      ],
+      "traits": [
+        "全宽连续表格，首屏可见 12 条",
+        "当前记录行内展开",
+        "操作贴着隔离依据与摘录"
+      ],
+      "source": "a-table.html"
+    },
+    {
+      "id": "b-inbox",
+      "name": "B · 收件箱复核",
+      "concept": "左边定位待复核文档，右边核对当前内容并决定如何处理。",
+      "typography": "Manrope / Noto Sans SC；13px 队列文档名，14px 原文，22px 当前标题",
+      "palette": [
+        "#F6F7F8",
+        "#20262E",
+        "#FFFFFF",
+        "#A74740",
+        "#805E18",
+        "#31754D"
+      ],
+      "traits": [
+        "文档队列与当前详情双栏",
+        "原文与命中原因同时可见",
+        "适合连续逐条复核"
+      ],
+      "source": "b-inbox.html"
+    },
+    {
+      "id": "c-board",
+      "name": "C · 原因分组看板",
+      "concept": "先看哪类问题积压，再在同一原因组内逐条复核。",
+      "typography": "Manrope / Noto Sans SC；14px 文档名，12px 原因，11px 元信息",
+      "palette": [
+        "#F6F7F8",
+        "#20262E",
+        "#FFFFFF",
+        "#A74740",
+        "#805E18",
+        "#31754D"
+      ],
+      "traits": [
+        "敏感信息／内容质量／处理失败三组",
+        "每组四份文档并排比较",
+        "原因与对象优先，无图表指标墙"
+      ],
+      "source": "c-board.html"
+    },
+    {
+      "id": "d-focus",
+      "name": "D · 焦点复核",
+      "concept": "一屏专注一份文档，核对原文后再继续处理下一份。",
+      "typography": "Manrope / Noto Sans SC；15px / 31px 原文，13px 复核依据，27px 当前文档标题",
+      "palette": [
+        "#F6F7F8",
+        "#20262E",
+        "#FFFFFF",
+        "#A74740",
+        "#805E18",
+        "#31754D"
+      ],
+      "traits": [
+        "原文占据主视野",
+        "右侧当前复核与处理动作",
+        "底部只预告接下来的文档"
+      ],
+      "source": "d-focus.html"
+    },
+    {
+      "id": "e-audit",
+      "name": "E · 上下分区审计台",
+      "concept": "上半区选记录，下半区同时核对隔离依据、原文与入库阶段。",
+      "typography": "Manrope / Noto Sans SC；12px 紧凑记录表，13px 原文与依据",
+      "palette": [
+        "#F6F7F8",
+        "#20262E",
+        "#FFFFFF",
+        "#A74740",
+        "#805E18",
+        "#31754D"
+      ],
+      "traits": [
+        "上方记录表与下方检查面",
+        "处理阶段和隔离依据并列",
+        "适合排查解析与入库异常"
+      ],
+      "source": "e-audit.html"
+    },
+    {
+      "id": "current",
+      "name": "当前页面 · 参照",
+      "concept": "真实本地页面截图，当前队列为空。",
+      "typography": "当前生产页面字体与样式",
+      "palette": [
+        "#F6F7F8",
+        "#20262E",
+        "#FFFFFF"
+      ],
+      "traits": [
+        "真实空队列",
+        "现有统计卡与图表",
+        "仅供对照现状"
+      ],
+      "kind": "image",
+      "baseline": true,
+      "source": "current.png"
+    }
+  ]
+}

@@ -4,7 +4,6 @@
 
 import argparse
 import json
-import math
 import multiprocessing
 import sys
 import time
@@ -22,25 +21,11 @@ def ensure_repo_root_on_sys_path(script_path: str | Path) -> str:
 ensure_repo_root_on_sys_path(__file__)
 
 from scripts.remote_parser_service_matrix import write_fixture_pdf
+from scripts.remote_parser_concurrency_probe import percentile
 from scripts.remote_pdf_parser_performance import Api, classify_result, summarize_body
 
 
 DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000000"
-
-
-def percentile(values: list[float], pct: float) -> float:
-    if not values:
-        return 0.0
-    ordered = sorted(float(v) for v in values)
-    if len(ordered) == 1:
-        return ordered[0]
-    pos = max(0.0, min(100.0, float(pct))) / 100.0 * (len(ordered) - 1)
-    low = int(math.floor(pos))
-    high = int(math.ceil(pos))
-    if low == high:
-        return ordered[low]
-    weight = pos - low
-    return ordered[low] * (1.0 - weight) + ordered[high] * weight
 
 
 def summarize_backend_stats(*, backend: str, results: list[dict[str, Any]]) -> dict[str, Any]:
@@ -49,9 +34,9 @@ def summarize_backend_stats(*, backend: str, results: list[dict[str, Any]]) -> d
     request_count = len(results)
     return {
         "backend": str(backend),
-        "request_count": int(request_count),
-        "success_count": int(success_count),
-        "failure_count": int(request_count - success_count),
+        "request_count": request_count,
+        "success_count": success_count,
+        "failure_count": request_count - success_count,
         "latency_p50_sec": round(percentile(latencies, 50), 3),
         "latency_p95_sec": round(percentile(latencies, 95), 3),
     }

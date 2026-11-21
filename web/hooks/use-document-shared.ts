@@ -1,186 +1,123 @@
 'use client'
 
+import { CancelledError } from '@tanstack/react-query'
+
+import { DOCUMENT_UPLOAD_BATCH_LIMIT, matchUploadReceipts } from '@/lib/api/document-helpers'
 import { documentApi } from '@/lib/api/documents'
-import type {
-  Document,
-  DocumentBatchUploadFailure,
-  DocumentBatchUploadSuccess,
-  DocumentPipelineOptions,
-} from '@/types'
+import type { Document, DocumentBatchUploadFailure, DocumentBatchUploadSuccess } from '@/types/backend'
 
-export type DocumentListParams = {
-  skip?: number
-  limit?: number
-  status?: string
-  lifecycle?: 'active' | 'archived' | 'disabled' | 'all'
-  dataset_id?: string
-  source_path_prefix?: string
-  q?: string
-  order_by?: 'created_at' | 'filename' | 'file_size'
-  order_dir?: 'asc' | 'desc'
-}
+export type DocumentListParams = NonNullable<Parameters<typeof documentApi.list>[0]>
 
-export type UploadBatchRequestOptions = {
-  parser_backend: string
-  chunk_strategy: string
-  dataset_id?: string
-  pipeline?: DocumentPipelineOptions
-  max_concurrent: number
-}
+type UploadBatchRequestOptions = NonNullable<Parameters<typeof documentApi.uploadBatch>[1]>
 
-export type DocumentStatusSnapshot = Pick<
-  Document,
-  'status' | 'processing_progress' | 'current_stage' | 'error_message'
->
+type DocumentStatusSnapshot = Pick<Document, 'status' | 'processing_progress' | 'current_stage' | 'error_message'>
 
 export type DocumentListResponse = Awaited<ReturnType<typeof documentApi.list>>
 
 export type UpdateCachedDocuments = (
-  updater: (current: DocumentListResponse | undefined) => DocumentListResponse | undefined
+  updater: (current: DocumentListResponse | undefined) => DocumentListResponse | undefined,
 ) => void
+
+export type DocumentListOperation = {
+  params: DocumentListParams
+  isActive: () => boolean
+  isCurrent: () => boolean
+  updateCachedDocuments: UpdateCachedDocuments
+  refresh: () => Promise<void>
+}
+
+export type CaptureDocumentListOperation = () => DocumentListOperation
 
 const TERMINAL_DOCUMENT_STATUSES = new Set(['completed', 'failed', 'cancelled', 'quarantined'])
 
-function getDocumentSourcePath(doc: Document): string {
-  const metadata = doc.metadata
-  if (!metadata || typeof metadata !== 'object') return ''
-
-  const sourcePath = (metadata as Record<string, unknown>).source_path
-  return typeof sourcePath === 'string' ? sourcePath.trim() : ''
-}
-
-export function matchesStatusFilter(doc: Document, statusFilter: string | undefined): boolean {
-  const status = String(statusFilter || '').trim().toLowerCase()
-  if (!status || status === 'all') return true
-  if (status === 'processing') {
-    return doc.status === 'pending' || doc.status === 'processing'
-  }
-  return doc.status === status
-}
-
-export function matchesLifecycleFilter(doc: Document, lifecycleFilter: string | undefined): boolean {
-  const lifecycle = String(lifecycleFilter || '').trim().toLowerCase()
-  if (!lifecycle || lifecycle === 'all') return true
-
-  const isArchived = Boolean(doc.archived_at)
-  const isDisabled = Boolean(doc.disabled_at)
-  if (lifecycle === 'active') return !isArchived && !isDisabled
-  if (lifecycle === 'archived') return isArchived
-  if (lifecycle === 'disabled') return isDisabled
-  return true
-}
-
-export function matchesDocumentListParams(doc: Document, params: DocumentListParams): boolean {
-  if (!matchesStatusFilter(doc, params.status)) return false
-
-  const datasetId = String(params.dataset_id || '').trim()
-  if (datasetId && String(doc.dataset_id || '') !== datasetId) return false
-
-  const sourcePathPrefix = String(params.source_path_prefix || '').trim()
-  if (sourcePathPrefix && !getDocumentSourcePath(doc).startsWith(sourcePathPrefix)) {
-    return false
-  }
-
-  if (!matchesLifecycleFilter(doc, params.lifecycle)) return false
-
-  const query = String(params.q || '').trim().toLowerCase()
-  if (query && !String(doc.filename || '').toLowerCase().includes(query)) return false
-
-  return true
-}
-
-export function isTerminalDocumentStatus(status: string | undefined): boolean {
-  return TERMINAL_DOCUMENT_STATUSES.has(String(status || '').toLowerCase())
-}
-
-export function mergePolledDocument(
-  doc: Document,
-  documentId: string,
-  status: DocumentStatusSnapshot
-): Document {
-  if (doc.id !== documentId) return doc
-
-  return {
-    ...doc,
-    status: status.status,
-    processing_progress: status.processing_progress,
-    current_stage: status.current_stage,
-    error_message: status.error_message,
-  }
-}
-
-export function replacePolledDocument(doc: Document, documentId: string, nextDocument: Document): Document {
-  return doc.id === documentId ? nextDocument : doc
+export function isTerminalDocumentStatus(status: Document['status']): boolean {
+  return TERMINAL_DOCUMENT_STATUSES.has(status)
 }
 
 export function mergePolledDocumentList(
   documents: Document[],
   documentId: string,
-  status: DocumentStatusSnapshot
+  status: DocumentStatusSnapshot,
 ): Document[] {
-  return documents.map((doc) => mergePolledDocument(doc, documentId, status))
+  return documents.map((doc) => {
+    if (doc.id !== documentId) return doc
+    return {
+      ...doc,
+      status: status.status,
+      processing_progress: status.processing_progress,
+      current_stage: status.current_stage,
+      error_message: status.error_message,
+    }
+  })
 }
 
 export function replacePolledDocumentList(
   documents: Document[],
   documentId: string,
-  nextDocument: Document
+  nextDocument: Document,
 ): Document[] {
-  return documents.map((doc) => replacePolledDocument(doc, documentId, nextDocument))
+  return documents.map((doc) => (doc.id === documentId ? nextDocument : doc))
 }
 
-export function clampUploadOption(
-  value: number | undefined,
-  fallback: number,
-  min: number,
-  max: number
-): number {
-  return Math.max(min, Math.min(max, Number(value ?? fallback)))
+export function clampUploadOption(value: number | undefined, fallback: number, min: number, max: number): number {
+  const count = value === undefined || Number.isNaN(value) ? fallback : Math.trunc(value)
+  return Math.max(min, Math.min(max, count))
 }
 
-export function getUploadFileKey(
-  file: Pick<File, 'name'> & { webkitRelativePath?: string } | DocumentBatchUploadFailure
-): string {
-  if ('source_path' in file || 'filename' in file) {
-    return String(file.source_path || file.filename || '').trim()
-  }
-  return String(file.webkitRelativePath || file.name || '').trim()
-}
-
-export function collectRetryFiles(
-  failed: DocumentBatchUploadFailure[],
-  fileByKey: Map<string, File>
-): File[] {
-  const nextRemaining: File[] = []
-  for (const item of failed) {
-    const retryFile = fileByKey.get(getUploadFileKey(item))
-    if (retryFile) nextRemaining.push(retryFile)
-  }
-  return nextRemaining
-}
+export type UploadBatchItem = { file: File; previousFailure?: DocumentBatchUploadFailure }
 
 export async function uploadBatchRound(
-  files: File[],
+  items: readonly UploadBatchItem[],
   options: UploadBatchRequestOptions,
-  fileByKey: Map<string, File>
+  { isActive, retryFailures }: Readonly<{ isActive: () => boolean; retryFailures: boolean }>,
 ): Promise<{
   successful: DocumentBatchUploadSuccess[]
   failed: DocumentBatchUploadFailure[]
-  nextRemaining: File[]
+  retryItems: UploadBatchItem[]
+  interruption?: { error: unknown }
 }> {
   const successful: DocumentBatchUploadSuccess[] = []
   const failed: DocumentBatchUploadFailure[] = []
+  const retries: Array<{ file: File; previousFailure: DocumentBatchUploadFailure }> = []
 
-  for (let i = 0; i < files.length; i += 50) {
-    const batch = files.slice(i, i + 50)
-    const response = await documentApi.uploadBatch(batch, options)
-    successful.push(...(response.successful || []))
-    failed.push(...(response.failed || []))
+  for (let offset = 0; offset < items.length; offset += DOCUMENT_UPLOAD_BATCH_LIMIT) {
+    if (!isActive()) throw new CancelledError()
+    const batch = items.slice(offset, offset + DOCUMENT_UPLOAD_BATCH_LIMIT).map(({ file }) => file)
+    let response: Awaited<ReturnType<typeof documentApi.uploadBatch>>
+    try {
+      response = await documentApi.uploadBatch(batch, options)
+    } catch (error) {
+      if (!isActive()) throw new CancelledError()
+      for (const { previousFailure } of items.slice(offset + batch.length)) {
+        if (previousFailure !== undefined) failed.push(previousFailure)
+      }
+      return {
+        successful,
+        failed: [...failed, ...retries.map(({ previousFailure }) => previousFailure)],
+        retryItems: [],
+        interruption: { error },
+      }
+    }
+    if (!isActive()) throw new CancelledError()
+    const { successful: uploaded, failed: batchFailures } = response
+    successful.push(...uploaded)
+    if (batchFailures.length === 0) continue
+    if (!retryFailures) {
+      failed.push(...batchFailures)
+      continue
+    }
+
+    const filesByReceipt = matchUploadReceipts(batch, [...uploaded, ...batchFailures])
+    for (const failure of batchFailures) {
+      const retryFile = filesByReceipt.get(failure)
+      if (retryFile !== undefined) retries.push({ file: retryFile, previousFailure: failure })
+      else failed.push(failure)
+    }
   }
 
   return {
     successful,
     failed,
-    nextRemaining: collectRetryFiles(failed, fileByKey),
+    retryItems: retries,
   }
 }

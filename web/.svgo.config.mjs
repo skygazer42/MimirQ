@@ -1,16 +1,6 @@
 const config = {
   multipass: true,
-  plugins: [
-    'preset-default',
-    {
-      name: 'removeViewBox',
-      active: false,
-    },
-    {
-      name: 'removeDimensions',
-      active: true,
-    },
-  ],
+  plugins: ['preset-default', 'removeDimensions'],
 }
 
 export default config

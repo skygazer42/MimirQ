@@ -7,7 +7,7 @@ sidebar_position: 4
 
 ## 功能概述
 
-对话界面是 MimirQ 的核心交互入口，支持 RAG 增强的多轮对话、Streaming 输出、引用展示和语音模式。
+对话界面是 Ragvia 的核心交互入口，支持 RAG 增强的多轮对话、Streaming 输出、引用展示和语音模式。
 
 ## 路由
 

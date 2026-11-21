@@ -1,19 +1,18 @@
-import type { DatasetCategoryNode } from '@/types'
+import type { DatasetCategoryNode } from '@/types/datasets'
 
-export function flattenDatasetCategoryTree(items: DatasetCategoryNode[]) {
-  const out: Array<{ id: string; name: string; depth: number }> = []
+export function flattenDatasetCategoryTree(items: readonly DatasetCategoryNode[]) {
+  const categories: DatasetCategoryNode[] = []
 
-  const walk = (node: DatasetCategoryNode) => {
-    out.push({ id: node.id, name: node.name, depth: Number(node.depth || 0) })
-    for (const child of node.children || []) {
-      walk(child)
+  function visitCategory(node: DatasetCategoryNode) {
+    categories.push(node)
+    for (const child of node.children ?? []) {
+      visitCategory(child)
     }
   }
 
-  for (const n of items || []) {
-    walk(n)
+  for (const node of items) {
+    visitCategory(node)
   }
 
-  return out
+  return categories
 }
-

@@ -3,11 +3,12 @@ from uuid import uuid4
 
 import pytest
 
-from app.services import dataset_analysis_service, dataset_profile_service
-from app.services.db_catalog_schema_doc_service import (
+from app.services.connectors.catalog_schema_documents import (
     extract_schema_from_markdown,
     render_virtual_schema_markdown,
 )
+from app.services.datasets import analysis as dataset_analysis_service
+from app.services.datasets import profile as dataset_profile_service
 
 
 class _IterableQuery:

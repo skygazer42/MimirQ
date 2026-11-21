@@ -98,6 +98,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/auth/policy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Auth Policy
+         * @description Advertise usable local account entry points without exposing credentials.
+         */
+        get: operations["get_auth_policy_api_v1_auth_policy_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/signup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Signup User
+         * @description Register an ordinary local account with viewer access in the default workspace.
+         */
+        post: operations["signup_user_api_v1_auth_signup_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/auth/register": {
         parameters: {
             query?: never;
@@ -225,15 +265,9 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /**
-         * Get Document Access
-         * @description Get document-level ACL settings (requires document read access).
-         */
+        /** Get Document Access */
         get: operations["get_document_access_api_v1_documents__document_id__access_get"];
-        /**
-         * Put Document Access
-         * @description Update document ACL settings using dataset or unassigned-document ownership policy.
-         */
+        /** Put Document Access */
         put: operations["put_document_access_api_v1_documents__document_id__access_put"];
         post?: never;
         delete?: never;
@@ -251,10 +285,7 @@ export interface paths {
         };
         /**
          * Download Document
-         * @description Download (or inline-preview) a document file.
-         *
-         *     JWT-authenticated requests must supply an Authorization header.
-         *     Tenant selection may still be provided via header or query parameter.
+         * @description Download or preview a document in the current account and workspace.
          */
         get: operations["download_document_api_v1_documents__document_id__download_get"];
         put?: never;
@@ -315,12 +346,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /**
-         * Batch Patch Document User Metadata
-         * @description Batch patch `documents.metadata.user`.
-         *
-         *     For any documents the caller cannot write, they will be returned in `denied`.
-         */
+        /** Batch Patch Document User Metadata */
         post: operations["batch_patch_document_user_metadata_api_v1_documents_batch_metadata_post"];
         delete?: never;
         options?: never;
@@ -337,10 +363,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /**
-         * Batch Retry Documents
-         * @description Batch retry/reprocess documents (best-effort per id).
-         */
+        /** Batch Retry Documents */
         post: operations["batch_retry_documents_api_v1_documents_batch_retry_post"];
         delete?: never;
         options?: never;
@@ -357,14 +380,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /**
-         * Batch Reingest Documents
-         * @description Batch re-ingest documents by (optionally) patching pipeline overrides and forcing a retry.
-         *
-         *     Notes:
-         *     - This is best-effort per id: failures are returned in `not_found/denied/conflicts`.
-         *     - Intended for generating new pipeline_hash versions and/or rebuilding indexes.
-         */
+        /** Batch Reingest Documents */
         post: operations["batch_reingest_documents_api_v1_documents_batch_reingest_post"];
         delete?: never;
         options?: never;
@@ -381,10 +397,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /**
-         * Batch Update Document Access
-         * @description Batch update document ACL (best-effort per id).
-         */
+        /** Batch Update Document Access */
         post: operations["batch_update_document_access_api_v1_documents_batch_access_post"];
         delete?: never;
         options?: never;
@@ -401,15 +414,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /**
-         * Batch Move Documents
-         * @description Batch move documents between datasets (best-effort).
-         *
-         *     Notes:
-         *     - Disallows moving MinIO-backed documents or documents with MinIO image assets (`metadata.img_ids`)
-         *       because dataset_id is part of the object/key namespace.
-         *     - Disallows moving documents that are pending/processing.
-         */
+        /** Batch Move Documents */
         post: operations["batch_move_documents_api_v1_documents_batch_move_post"];
         delete?: never;
         options?: never;
@@ -426,10 +431,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /**
-         * Batch Disable Documents
-         * @description Batch disable documents (best-effort).
-         */
+        /** Batch Disable Documents */
         post: operations["batch_disable_documents_api_v1_documents_batch_disable_post"];
         delete?: never;
         options?: never;
@@ -446,10 +448,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /**
-         * Batch Enable Documents
-         * @description Batch enable documents (best-effort).
-         */
+        /** Batch Enable Documents */
         post: operations["batch_enable_documents_api_v1_documents_batch_enable_post"];
         delete?: never;
         options?: never;
@@ -466,10 +465,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /**
-         * Batch Archive Documents
-         * @description Batch archive documents (best-effort).
-         */
+        /** Batch Archive Documents */
         post: operations["batch_archive_documents_api_v1_documents_batch_archive_post"];
         delete?: never;
         options?: never;
@@ -486,10 +482,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /**
-         * Batch Unarchive Documents
-         * @description Batch unarchive documents (best-effort).
-         */
+        /** Batch Unarchive Documents */
         post: operations["batch_unarchive_documents_api_v1_documents_batch_unarchive_post"];
         delete?: never;
         options?: never;
@@ -506,10 +499,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /**
-         * Batch Delete Documents
-         * @description Batch delete documents (best-effort per id).
-         */
+        /** Batch Delete Documents */
         post: operations["batch_delete_documents_api_v1_documents_batch_delete_post"];
         delete?: never;
         options?: never;
@@ -648,12 +638,7 @@ export interface paths {
          */
         get: operations["list_document_chunks_api_v1_documents__document_id__chunks_get"];
         put?: never;
-        /**
-         * Create Document Chunk
-         * @description Create a new chunk for a document (appends to the active pipeline version).
-         *
-         *     This is intended for post-ingest manual chunk editing. It does not re-parse the source file.
-         */
+        /** Create Document Chunk */
         post: operations["create_document_chunk_api_v1_documents__document_id__chunks_post"];
         delete?: never;
         options?: never;
@@ -699,17 +684,11 @@ export interface paths {
         get: operations["get_document_chunk_api_v1_documents__document_id__chunks__chunk_id__get"];
         put?: never;
         post?: never;
-        /**
-         * Delete Document Chunk
-         * @description Delete a chunk and update its indexes (vector + BM25) best-effort.
-         */
+        /** Delete Document Chunk */
         delete: operations["delete_document_chunk_api_v1_documents__document_id__chunks__chunk_id__delete"];
         options?: never;
         head?: never;
-        /**
-         * Patch Document Chunk
-         * @description Patch a chunk and update its indexes (vector + BM25) best-effort.
-         */
+        /** Patch Document Chunk */
         patch: operations["patch_document_chunk_api_v1_documents__document_id__chunks__chunk_id__patch"];
         trace?: never;
     };
@@ -818,10 +797,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /**
-         * Create Document With Manual Chunks
-         * @description Create a document from frontend custom chunks.
-         */
+        /** Create Document With Manual Chunks */
         post: operations["create_document_with_manual_chunks_api_v1_documents_manual_post"];
         delete?: never;
         options?: never;
@@ -866,10 +842,7 @@ export interface paths {
         get: operations["get_document_api_v1_documents__document_id__get"];
         put?: never;
         post?: never;
-        /**
-         * Delete Document
-         * @description Delete document.
-         */
+        /** Delete Document */
         delete: operations["delete_document_api_v1_documents__document_id__delete"];
         options?: never;
         head?: never;
@@ -905,28 +878,14 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /**
-         * Get Document Lifecycle Metadata
-         * @description Get document lifecycle governance metadata.
-         *
-         *     RBAC: dataset editor/admin (dataset writable) when the document belongs to a dataset.
-         */
+        /** Get Document Lifecycle Metadata */
         get: operations["get_document_lifecycle_metadata_api_v1_documents__document_id__lifecycle_metadata_get"];
         put?: never;
         post?: never;
         delete?: never;
         options?: never;
         head?: never;
-        /**
-         * Patch Document Lifecycle Metadata
-         * @description Patch document lifecycle governance metadata (owner/review_due/authority/supersedes).
-         *
-         *     Notes:
-         *     - This does not mutate `documents.metadata.*`; it updates first-class columns.
-         *     - Audit log is best-effort and PII-minimal by construction.
-         *
-         *     RBAC: dataset editor/admin (dataset writable) when the document belongs to a dataset.
-         */
+        /** Patch Document Lifecycle Metadata */
         patch: operations["patch_document_lifecycle_metadata_api_v1_documents__document_id__lifecycle_metadata_patch"];
         trace?: never;
     };
@@ -939,12 +898,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /**
-         * Generate Document Qa
-         * @description Generate (or extract) FAQ-style Q&A pairs for a document and index them as extra chunks.
-         *
-         *     Generated chunks are tagged with `file_type=qa` in chunk metadata.
-         */
+        /** Generate Document Qa */
         post: operations["generate_document_qa_api_v1_documents__document_id__qa_generate_post"];
         delete?: never;
         options?: never;
@@ -965,10 +919,7 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        /**
-         * Patch Document Pipeline
-         * @description Patch `documents.metadata.pipeline` for document-level pipeline overrides.
-         */
+        /** Patch Document Pipeline */
         patch: operations["patch_document_pipeline_api_v1_documents__document_id__pipeline_patch"];
         trace?: never;
     };
@@ -985,10 +936,7 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        /**
-         * Patch Document User Metadata
-         * @description Patch `documents.metadata.user` for user-editable document metadata.
-         */
+        /** Patch Document User Metadata */
         patch: operations["patch_document_user_metadata_api_v1_documents__document_id__metadata_patch"];
         trace?: never;
     };
@@ -999,10 +947,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /**
-         * Get Document Status
-         * @description Get document processing status (for polling).
-         */
+        /** Get Document Status */
         get: operations["get_document_status_api_v1_documents__document_id__status_get"];
         put?: never;
         post?: never;
@@ -1021,14 +966,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /**
-         * Cancel Document Processing
-         * @description Cancel an in-progress document processing task.
-         *
-         *     Notes:
-         *     - When TASK_QUEUE_ENABLED=true, this will best-effort abort the arq job.
-         *     - When queue is disabled, the in-process/background worker cooperatively checks the cancelled status.
-         */
+        /** Cancel Document Processing */
         post: operations["cancel_document_processing_api_v1_documents__document_id__cancel_post"];
         delete?: never;
         options?: never;
@@ -1045,14 +983,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /**
-         * Retry Document Processing
-         * @description Retry a failed/cancelled document processing task.
-         *
-         *     Notes:
-         *     - Existing chunks and indexes are cleaned by the accepted worker before reprocessing.
-         *     - Use `force=true` to allow retrying completed documents.
-         */
+        /** Retry Document Processing */
         post: operations["retry_document_processing_api_v1_documents__document_id__retry_post"];
         delete?: never;
         options?: never;
@@ -1163,11 +1094,12 @@ export interface paths {
         post?: never;
         /**
          * Delete Document Version
-         * @description Delete a non-active document pipeline version (best-effort cleanup).
+         * @description Delete a non-active document pipeline version.
          *
          *     Notes:
-         *     - This deletes DB chunks for the requested pipeline_hash and best-effort removes
-         *       vectors/BM25 index entries for that version.
+         *     - This deletes DB chunks and KG state for the requested pipeline_hash.
+         *     - Vector/BM25 index cleanup is best-effort and logs failures for later repair.
+         *     - Database cleanup failures propagate instead of returning a successful 204.
          *     - The currently-active version cannot be deleted (use activate to switch first).
          *     - This endpoint is intended for ops/debug cleanup; it does not re-run processing.
          */
@@ -1244,10 +1176,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /**
-         * Disable Document Chunk
-         * @description Disable a chunk (exclude it from retrieval/indexing).
-         */
+        /** Disable Document Chunk */
         post: operations["disable_document_chunk_api_v1_documents__document_id__chunks__chunk_id__disable_post"];
         delete?: never;
         options?: never;
@@ -1264,10 +1193,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /**
-         * Enable Document Chunk
-         * @description Enable a previously-disabled chunk (requires re-embed to restore vector index).
-         */
+        /** Enable Document Chunk */
         post: operations["enable_document_chunk_api_v1_documents__document_id__chunks__chunk_id__enable_post"];
         delete?: never;
         options?: never;
@@ -1284,10 +1210,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /**
-         * Reembed Document Chunks
-         * @description Re-embed selected chunks (vector + BM25) best-effort.
-         */
+        /** Reembed Document Chunks */
         post: operations["reembed_document_chunks_api_v1_documents__document_id__chunks_reembed_post"];
         delete?: never;
         options?: never;
@@ -1692,7 +1615,7 @@ export interface paths {
         put?: never;
         /**
          * Stream Chat
-         * @description Streaming chat endpoint (core flow).
+         * @description Run text chat using the AG-UI protocol and server-owned tools.
          */
         post: operations["stream_chat_api_v1_chat_stream_post"];
         delete?: never;
@@ -3823,35 +3746,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/evidence/suites/{suite_id}/export-ltr-training": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Export Evidence Suite Ltr Training Bundle
-         * @description Export a PII-minimized LTR training bundle from an Evidence Suite.
-         *
-         *     Contents:
-         *     - manifest.json: export metadata + feature spec
-         *     - training_rows.ndjson: per-citation features + labels (0/1), grouped by query_hash
-         *     - hard_negatives.ndjson: mined near-miss negatives (PII-safe) per query_hash
-         *
-         *     Notes:
-         *     - This endpoint intentionally avoids including raw query text in training rows.
-         *     - It relies on per-item retrieval_snapshot for reproducibility; items without a snapshot are skipped.
-         */
-        get: operations["export_evidence_suite_ltr_training_bundle_api_v1_evidence_suites__suite_id__export_ltr_training_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/evidence/capsules": {
         parameters: {
             query?: never;
@@ -3903,74 +3797,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/ltr/models": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List Ltr Models */
-        get: operations["list_ltr_models_api_v1_ltr_models_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/ltr/models/register": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Register Ltr Model */
-        post: operations["register_ltr_model_api_v1_ltr_models_register_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/ltr/models/activate": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Activate Ltr Model */
-        post: operations["activate_ltr_model_api_v1_ltr_models_activate_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/ltr/models/rollback": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Rollback Ltr Model */
-        post: operations["rollback_ltr_model_api_v1_ltr_models_rollback_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/settings": {
         parameters: {
             query?: never;
@@ -4004,7 +3830,7 @@ export interface paths {
         };
         /**
          * Get System Status
-         * @description Get system status.
+         * @description Get system status without blocking the request event loop.
          */
         get: operations["get_system_status_api_v1_settings_status_get"];
         put?: never;
@@ -4215,10 +4041,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /**
-         * Import Ragas Regression Cases
-         * @description Import (upsert) regression cases by (dataset_id + question.strip()).
-         */
+        /** Import Ragas Regression Cases */
         post: operations["import_ragas_regression_cases_api_v1_evaluations_ragas_regression_cases_import_post"];
         delete?: never;
         options?: never;
@@ -4446,9 +4269,7 @@ export interface paths {
         put?: never;
         /**
          * Run Kg Search Diagnostics
-         * @description Run a Dynamic OneEval-style diagnostics pass for KG search.
-         *
-         *     Seed source: RAGAS regression cases (human-verified evidence pointers).
+         * @description Run KG diagnostics while keeping its synchronous database work off-loop.
          */
         post: operations["run_kg_search_diagnostics_api_v1_evaluations_kg_search_diagnostics_post"];
         delete?: never;
@@ -4569,10 +4390,7 @@ export interface paths {
          *     system status, usage count, and update time.
          *
          *     Args:
-         *         skip: Number of records to skip for pagination (default: 0)
-         *         limit: Maximum number of records to return (default: 50)
-         *         category: Optional category filter
-         *         is_active: Optional active status filter
+         *         query: Validated pagination, category, and active-status filters
          *         tenant_id: Current tenant identifier (from auth context)
          *         account_id: Current user account identifier (from auth context)
          *         db: Database session
@@ -5536,10 +5354,9 @@ export interface paths {
          * @description Extract keywords (for governance/annotation/classification).
          *
          *     Supported providers:
-         *     - provider=auto (prefer HanLP, fallback to jieba)
+         *     - provider=auto (jieba)
          *     - provider=jieba / jieba_tfidf (default)
          *     - provider=jieba_textrank
-         *     - provider=hanlp (optional dependency; requires `hanlp` and `HANLP_TOKENIZER_MODEL`)
          *     - provider=simple (lightweight regex tokenization + term frequency)
          */
         post: operations["extract_keywords_api_v1_pipeline_extract_keywords_post"];
@@ -5667,12 +5484,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /**
-         * Validate Connector Config
-         * @description Validate connector config (best-effort).
-         *
-         *     Returns ok/errors/warnings so UIs can surface issues without throwing hard 4xx/5xx on validation.
-         */
+        /** Validate Connector Config */
         post: operations["validate_connector_config_api_v1_connectors_validate_post"];
         delete?: never;
         options?: never;
@@ -5687,18 +5499,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /**
-         * List Connector Runs
-         * @description List connector runs (requires dataset write permission for each returned run's dataset).
-         */
+        /** List Connector Runs */
         get: operations["list_connector_runs_api_v1_connectors_runs_get"];
         put?: never;
-        /**
-         * Create Connector Run
-         * @description Create a connector run.
-         *
-         *     Requires dataset write permission.
-         */
+        /** Create Connector Run */
         post: operations["create_connector_run_api_v1_connectors_runs_post"];
         delete?: never;
         options?: never;
@@ -5713,10 +5517,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /**
-         * Get Connector Run
-         * @description Get connector run detail (requires dataset write permission).
-         */
+        /** Get Connector Run */
         get: operations["get_connector_run_api_v1_connectors_runs__run_id__get"];
         put?: never;
         post?: never;
@@ -5735,10 +5536,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /**
-         * Retry Failed Connector Run
-         * @description Create a new connector run that retries only the failed URLs (best-effort).
-         */
+        /** Retry Failed Connector Run */
         post: operations["retry_failed_connector_run_api_v1_connectors_runs__run_id__retry_failed_post"];
         delete?: never;
         options?: never;
@@ -5755,10 +5553,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /**
-         * Resume Connector Run
-         * @description Create a new connector run that resumes from where the previous run stopped (best-effort).
-         */
+        /** Resume Connector Run */
         post: operations["resume_connector_run_api_v1_connectors_runs__run_id__resume_post"];
         delete?: never;
         options?: never;
@@ -5775,10 +5570,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /**
-         * Cancel Connector Run
-         * @description Cancel a running connector run (best-effort).
-         */
+        /** Cancel Connector Run */
         post: operations["cancel_connector_run_api_v1_connectors_runs__run_id__cancel_post"];
         delete?: never;
         options?: never;
@@ -5793,19 +5585,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /**
-         * List Connector Configs
-         * @description List saved connector configurations.
-         *
-         *     Note: configs may contain secrets (even if encrypted); we enforce dataset write permission
-         *     semantics similar to connector runs to avoid leaking URLs/auth details to readers.
-         */
+        /** List Connector Configs */
         get: operations["list_connector_configs_api_v1_connectors_configs_get"];
         put?: never;
-        /**
-         * Create Connector Config
-         * @description Create a saved connector configuration.
-         */
+        /** Create Connector Config */
         post: operations["create_connector_config_api_v1_connectors_configs_post"];
         delete?: never;
         options?: never;
@@ -5821,16 +5604,10 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        /**
-         * Update Connector Config
-         * @description Update a saved connector configuration (best-effort).
-         */
+        /** Update Connector Config */
         put: operations["update_connector_config_api_v1_connectors_configs__config_id__put"];
         post?: never;
-        /**
-         * Delete Connector Config
-         * @description Delete a saved connector configuration.
-         */
+        /** Delete Connector Config */
         delete: operations["delete_connector_config_api_v1_connectors_configs__config_id__delete"];
         options?: never;
         head?: never;
@@ -5846,10 +5623,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /**
-         * Run Connector Config
-         * @description Create a connector run from a saved connector configuration.
-         */
+        /** Run Connector Config */
         post: operations["run_connector_config_api_v1_connectors_configs__config_id__run_post"];
         delete?: never;
         options?: never;
@@ -5866,14 +5640,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /**
-         * Reconcile Connector Config
-         * @description Reconcile connector-managed documents for a saved config using the last known local source set.
-         *
-         *     Single-node scope:
-         *     - dry-run: show stale / disabled / missing refs
-         *     - apply: disable stale docs and re-enable matching disabled docs
-         */
+        /** Reconcile Connector Config */
         post: operations["reconcile_connector_config_api_v1_connectors_configs__config_id__reconcile_post"];
         delete?: never;
         options?: never;
@@ -5892,9 +5659,7 @@ export interface paths {
         put?: never;
         /**
          * Scheduled Tick
-         * @description Evaluate saved connector schedules and enqueue due runs (best-effort).
-         *
-         *     This endpoint is intentionally simple and deterministic; it is a "tick hook" for an external scheduler.
+         * @description Evaluate saved connector schedules and enqueue due runs.
          */
         post: operations["scheduled_tick_api_v1_connectors_scheduled_tick_post"];
         delete?: never;
@@ -6038,7 +5803,7 @@ export interface paths {
         put?: never;
         /**
          * Ingest Conversation History
-         * @description Import externally generated chat turns into the standard MimirQ history.
+         * @description Import externally generated chat turns into the standard Ragvia history.
          */
         post: operations["ingest_conversation_history_api_v1_integrations_conversations_ingest_post"];
         delete?: never;
@@ -6144,7 +5909,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/rag/image-index": {
+    "/api/v1/rag/prompt-preview": {
         parameters: {
             query?: never;
             header?: never;
@@ -6154,37 +5919,10 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Index Image Embeddings
-         * @description Build/update the CLIP image embedding index for a dataset (best-effort).
-         *
-         *     Security:
-         *     - Requires dataset write permission (indexing is a compute-heavy admin action).
+         * Prompt Preview
+         * @description Execute retrieval and return final prompt (no LLM call); for debugging prompt/context assembly.
          */
-        post: operations["index_image_embeddings_api_v1_rag_image_index_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/rag/image-search-preview": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Image Search Preview
-         * @description Search the image embedding index using CLIP (text -> image space).
-         *
-         *     Notes:
-         *     - Dataset-scoped only.
-         *     - Returns citation-like chunk payloads (including img_id/img_url) for UI consumers.
-         */
-        post: operations["image_search_preview_api_v1_rag_image_search_preview_post"];
+        post: operations["prompt_preview_api_v1_rag_prompt_preview_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -6200,33 +5938,8 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /**
-         * Retrieve Evidence
-         * @description Execute retrieval only (no answer generation) and return evidence chunks.
-         *
-         *     Defaults to a recall-first profile when the caller omits rag_config.
-         */
+        /** Retrieve Evidence */
         post: operations["retrieve_evidence_api_v1_rag_retrieve_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/rag/prompt-preview": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Prompt Preview
-         * @description Execute retrieval and return final prompt (no LLM call); for debugging prompt/context assembly.
-         */
-        post: operations["prompt_preview_api_v1_rag_prompt_preview_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -7197,23 +6910,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/rtbf/status/{ticket_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Rtbf Status */
-        get: operations["get_rtbf_status_api_v1_rtbf_status__ticket_id__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/audit/logs": {
         parameters: {
             query?: never;
@@ -7508,6 +7204,110 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * ActivityMessage
+         * @description Structured progress that is not conversation content, materialised as a
+         *     message so it keeps its place in the sequence. Stands alone rather than
+         *     composing BaseMessage, because its content is an object rather than a
+         *     string.
+         */
+        ActivityMessage: {
+            /** Subagentrunid */
+            subagentRunId?: string | null;
+            /** Id */
+            id: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            role: "activity";
+            /** Activitytype */
+            activityType: string;
+            /** Content */
+            content: {
+                [key: string]: unknown;
+            };
+            /** Metadata */
+            metadata?: {
+                [key: string]: unknown;
+            } | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** AnswerLineageResponse */
+        AnswerLineageResponse: {
+            /** Schema */
+            schema: string;
+            /** Request Id */
+            request_id: string | null;
+            /** Conversation Id */
+            conversation_id: string | null;
+            /** Ts Ms */
+            ts_ms: number | null;
+            /** Retrieval */
+            retrieval: {
+                [key: string]: unknown;
+            };
+            /** Citations Count */
+            citations_count: number;
+            /** Documents */
+            documents: {
+                [key: string]: unknown;
+            }[];
+            /** Chunks */
+            chunks: {
+                [key: string]: unknown;
+            }[];
+        };
+        /**
+         * AssistantMessage
+         * @description A message from the agent. Content is optional because a turn may consist
+         *     only of tool calls.
+         */
+        AssistantMessage: {
+            /** Subagentrunid */
+            subagentRunId?: string | null;
+            /** Id */
+            id: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            role: "assistant";
+            /** Name */
+            name?: string | null;
+            /** Encryptedvalue */
+            encryptedValue?: string | null;
+            /** Metadata */
+            metadata?: {
+                [key: string]: unknown;
+            } | null;
+            /** Content */
+            content?: string | null;
+            /** Toolcalls */
+            toolCalls?: components["schemas"]["ToolCall"][] | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * AudioPart
+         * @description An audio part.
+         */
+        AudioPart: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "audio";
+            /** Id */
+            id?: string | null;
+            /** Source */
+            source: components["schemas"]["DataSource"] | components["schemas"]["UrlSource"] | components["schemas"]["FileSource"];
+            /** Metadata */
+            metadata?: unknown | null;
+        } & {
+            [key: string]: unknown;
+        };
         /** AuditLogDeleteRequest */
         AuditLogDeleteRequest: {
             /** Ids */
@@ -7557,11 +7357,8 @@ export interface components {
             ip?: string | null;
             /** User Agent */
             user_agent?: string | null;
-            /**
-             * Details
-             * @default {}
-             */
-            details: {
+            /** Details */
+            details?: {
                 [key: string]: unknown;
             };
             /**
@@ -7599,6 +7396,19 @@ export interface components {
             filters?: {
                 [key: string]: unknown;
             };
+        };
+        /** AuthPolicy */
+        AuthPolicy: {
+            /** Initialized */
+            initialized: boolean;
+            /** Registration Enabled */
+            registration_enabled: boolean;
+            /** Bootstrap Enabled */
+            bootstrap_enabled: boolean;
+            /** Bootstrap Token Required */
+            bootstrap_token_required: boolean;
+            /** Password Min Length */
+            password_min_length: number;
         };
         /** AuthResponse */
         AuthResponse: {
@@ -7650,7 +7460,7 @@ export interface components {
              * Providers
              * @description Optional explicit provider list. When omitted, legacy enable_* switches decide providers.
              */
-            providers?: ("cpu" | "llm" | "gliner" | "keyword" | "entity" | "regex" | "pii" | "secret" | "sensitive")[] | null;
+            providers?: ("cpu" | "llm" | "keyword" | "entity" | "regex" | "pii" | "secret" | "sensitive")[] | null;
             /**
              * Enable Llm
              * @description Use configured LLM first for document_focus mode.
@@ -7858,353 +7668,6 @@ export interface components {
             /** File */
             file: string;
         };
-        /** Body_import_governance_profiles_api_v1_pipeline_governance_profiles_import_post */
-        Body_import_governance_profiles_api_v1_pipeline_governance_profiles_import_post: {
-            /** File */
-            file: string;
-            /**
-             * Overwrite
-             * @default false
-             */
-            overwrite: boolean;
-        };
-        /** Body_ingestion_preview_api_v1_pipeline_ingestion_preview_post */
-        Body_ingestion_preview_api_v1_pipeline_ingestion_preview_post: {
-            /** File */
-            file: string;
-            /**
-             * Dataset Id
-             * Format: uuid
-             */
-            dataset_id: string;
-            /** Parser Backend */
-            parser_backend?: string | null;
-            /** Chunk Strategy */
-            chunk_strategy?: string | null;
-            /**
-             * Diff Max Lines
-             * @default 2000
-             */
-            diff_max_lines: number;
-        };
-        /** Body_parse_preview_api_v1_pipeline_parse_preview_post */
-        Body_parse_preview_api_v1_pipeline_parse_preview_post: {
-            /** File */
-            file: string;
-            /** Parser Backend */
-            parser_backend?: string | null;
-        };
-        /** Body_preview_chunking_api_v1_documents_chunk_preview_post */
-        Body_preview_chunking_api_v1_documents_chunk_preview_post: {
-            /** File */
-            file: string;
-            /**
-             * Parser Backend
-             * @default auto
-             */
-            parser_backend: string;
-            /**
-             * Chunk Strategy
-             * @default langchain_recursive
-             */
-            chunk_strategy: string;
-            /** Child Ratio */
-            child_ratio?: number | null;
-            /** Min Child Size */
-            min_child_size?: number | null;
-            /** Separator Preset */
-            separator_preset?: string | null;
-            /** Separator */
-            separator?: string | null;
-            /** Keep Separator */
-            keep_separator?: boolean | null;
-            /** Separator Max Chunk Size */
-            separator_max_chunk_size?: number | null;
-            /** Dataset Id */
-            dataset_id?: string | null;
-            /** Pipeline */
-            pipeline?: string | null;
-            /** Governance Enabled */
-            governance_enabled?: boolean | null;
-            /** Governance Remove Toc Lines */
-            governance_remove_toc_lines?: boolean | null;
-            /** Governance Remove Noise Lines */
-            governance_remove_noise_lines?: boolean | null;
-            /** Governance Unwrap Lines */
-            governance_unwrap_lines?: boolean | null;
-            /** Governance Remove Common Lines */
-            governance_remove_common_lines?: boolean | null;
-            /** Governance Unwrap Max Line Length */
-            governance_unwrap_max_line_length?: number | null;
-            /** Governance Noise Min Chars */
-            governance_noise_min_chars?: number | null;
-            /** Governance Noise Ratio Threshold */
-            governance_noise_ratio_threshold?: number | null;
-            /** Governance Common Lines Min Docs */
-            governance_common_lines_min_docs?: number | null;
-            /** Governance Common Lines Min Ratio */
-            governance_common_lines_min_ratio?: number | null;
-        };
-        /** Body_preview_chunking_by_sha_api_v1_documents_chunk_preview_by_sha_post */
-        Body_preview_chunking_by_sha_api_v1_documents_chunk_preview_by_sha_post: {
-            /** File Sha256 */
-            file_sha256: string;
-            /** File Type */
-            file_type?: string | null;
-            /** Filename */
-            filename?: string | null;
-            /** File Size */
-            file_size?: number | null;
-            /**
-             * Parser Backend
-             * @default auto
-             */
-            parser_backend: string;
-            /**
-             * Chunk Strategy
-             * @default langchain_recursive
-             */
-            chunk_strategy: string;
-            /** Child Ratio */
-            child_ratio?: number | null;
-            /** Min Child Size */
-            min_child_size?: number | null;
-            /** Separator Preset */
-            separator_preset?: string | null;
-            /** Separator */
-            separator?: string | null;
-            /** Keep Separator */
-            keep_separator?: boolean | null;
-            /** Separator Max Chunk Size */
-            separator_max_chunk_size?: number | null;
-            /** Dataset Id */
-            dataset_id?: string | null;
-            /** Pipeline */
-            pipeline?: string | null;
-            /** Governance Enabled */
-            governance_enabled?: boolean | null;
-            /** Governance Remove Toc Lines */
-            governance_remove_toc_lines?: boolean | null;
-            /** Governance Remove Noise Lines */
-            governance_remove_noise_lines?: boolean | null;
-            /** Governance Unwrap Lines */
-            governance_unwrap_lines?: boolean | null;
-            /** Governance Remove Common Lines */
-            governance_remove_common_lines?: boolean | null;
-            /** Governance Unwrap Max Line Length */
-            governance_unwrap_max_line_length?: number | null;
-            /** Governance Noise Min Chars */
-            governance_noise_min_chars?: number | null;
-            /** Governance Noise Ratio Threshold */
-            governance_noise_ratio_threshold?: number | null;
-            /** Governance Common Lines Min Docs */
-            governance_common_lines_min_docs?: number | null;
-            /** Governance Common Lines Min Ratio */
-            governance_common_lines_min_ratio?: number | null;
-        };
-        /** Body_preview_document_api_v1_documents_preview_post */
-        Body_preview_document_api_v1_documents_preview_post: {
-            /** File */
-            file: string;
-            /**
-             * Parser Backend
-             * @default auto
-             */
-            parser_backend: string;
-            /**
-             * Chunk Strategy
-             * @default langchain_recursive
-             */
-            chunk_strategy: string;
-            /** Dataset Id */
-            dataset_id?: string | null;
-            /** Pipeline */
-            pipeline?: string | null;
-            /** Governance Enabled */
-            governance_enabled?: boolean | null;
-            /** Governance Remove Toc Lines */
-            governance_remove_toc_lines?: boolean | null;
-            /** Governance Remove Noise Lines */
-            governance_remove_noise_lines?: boolean | null;
-            /** Governance Unwrap Lines */
-            governance_unwrap_lines?: boolean | null;
-            /** Governance Remove Common Lines */
-            governance_remove_common_lines?: boolean | null;
-            /** Governance Unwrap Max Line Length */
-            governance_unwrap_max_line_length?: number | null;
-            /** Governance Noise Min Chars */
-            governance_noise_min_chars?: number | null;
-            /** Governance Noise Ratio Threshold */
-            governance_noise_ratio_threshold?: number | null;
-            /** Governance Common Lines Min Docs */
-            governance_common_lines_min_docs?: number | null;
-            /** Governance Common Lines Min Ratio */
-            governance_common_lines_min_ratio?: number | null;
-        };
-        /** Body_register_ltr_model_api_v1_ltr_models_register_post */
-        Body_register_ltr_model_api_v1_ltr_models_register_post: {
-            /**
-             * Model File
-             * @description XGBoost model bytes (JSON)
-             */
-            model_file: string;
-            /**
-             * Manifest File
-             * @description LTR manifest JSON (validated)
-             */
-            manifest_file: string;
-        };
-        /** Body_upload_document_api_v1_documents_upload_post */
-        Body_upload_document_api_v1_documents_upload_post: {
-            /** File */
-            file: string;
-            /**
-             * Parser Backend
-             * @default auto
-             */
-            parser_backend: string;
-            /**
-             * Chunk Strategy
-             * @default langchain_recursive
-             */
-            chunk_strategy: string;
-            /** Pipeline */
-            pipeline?: string | null;
-            /** Dataset Id */
-            dataset_id?: string | null;
-            /** User Metadata */
-            user_metadata?: string | null;
-            /** Governance Enabled */
-            governance_enabled?: boolean | null;
-            /** Governance Remove Toc Lines */
-            governance_remove_toc_lines?: boolean | null;
-            /** Governance Remove Noise Lines */
-            governance_remove_noise_lines?: boolean | null;
-            /** Governance Unwrap Lines */
-            governance_unwrap_lines?: boolean | null;
-            /** Governance Remove Common Lines */
-            governance_remove_common_lines?: boolean | null;
-            /** Governance Unwrap Max Line Length */
-            governance_unwrap_max_line_length?: number | null;
-            /** Governance Noise Min Chars */
-            governance_noise_min_chars?: number | null;
-            /** Governance Noise Ratio Threshold */
-            governance_noise_ratio_threshold?: number | null;
-            /** Governance Common Lines Min Docs */
-            governance_common_lines_min_docs?: number | null;
-            /** Governance Common Lines Min Ratio */
-            governance_common_lines_min_ratio?: number | null;
-            /** Chunk Size */
-            chunk_size?: number | null;
-            /** Chunk Overlap */
-            chunk_overlap?: number | null;
-            /** Chunk Vector Enabled */
-            chunk_vector_enabled?: boolean | null;
-            /** Bm25 Index Enabled */
-            bm25_index_enabled?: boolean | null;
-            /** Kg Enabled */
-            kg_enabled?: boolean | null;
-            /** Event Vector Enabled */
-            event_vector_enabled?: boolean | null;
-            /** Entity Vector Enabled */
-            entity_vector_enabled?: boolean | null;
-        };
-        /** Body_upload_documents_batch_api_v1_documents_upload_batch_post */
-        Body_upload_documents_batch_api_v1_documents_upload_batch_post: {
-            /** Files */
-            files: string[];
-            /**
-             * Parser Backend
-             * @default auto
-             */
-            parser_backend: string;
-            /**
-             * Chunk Strategy
-             * @default langchain_recursive
-             */
-            chunk_strategy: string;
-            /** Pipeline */
-            pipeline?: string | null;
-            /** Dataset Id */
-            dataset_id?: string | null;
-            /**
-             * Precheck First
-             * @default false
-             */
-            precheck_first: boolean;
-            /**
-             * Precheck Only
-             * @default false
-             */
-            precheck_only: boolean;
-            /**
-             * Upload Only
-             * @default false
-             */
-            upload_only: boolean;
-            /** User Metadata Map */
-            user_metadata_map?: string | null;
-            /**
-             * Max Concurrent
-             * @default 5
-             */
-            max_concurrent: number;
-            /** Governance Enabled */
-            governance_enabled?: boolean | null;
-            /** Governance Remove Toc Lines */
-            governance_remove_toc_lines?: boolean | null;
-            /** Governance Remove Noise Lines */
-            governance_remove_noise_lines?: boolean | null;
-            /** Governance Unwrap Lines */
-            governance_unwrap_lines?: boolean | null;
-            /** Governance Remove Common Lines */
-            governance_remove_common_lines?: boolean | null;
-            /** Governance Unwrap Max Line Length */
-            governance_unwrap_max_line_length?: number | null;
-            /** Governance Noise Min Chars */
-            governance_noise_min_chars?: number | null;
-            /** Governance Noise Ratio Threshold */
-            governance_noise_ratio_threshold?: number | null;
-            /** Governance Common Lines Min Docs */
-            governance_common_lines_min_docs?: number | null;
-            /** Governance Common Lines Min Ratio */
-            governance_common_lines_min_ratio?: number | null;
-            /** Chunk Size */
-            chunk_size?: number | null;
-            /** Chunk Overlap */
-            chunk_overlap?: number | null;
-            /** Chunk Vector Enabled */
-            chunk_vector_enabled?: boolean | null;
-            /** Bm25 Index Enabled */
-            bm25_index_enabled?: boolean | null;
-            /** Kg Enabled */
-            kg_enabled?: boolean | null;
-            /** Event Vector Enabled */
-            event_vector_enabled?: boolean | null;
-            /** Entity Vector Enabled */
-            entity_vector_enabled?: boolean | null;
-        };
-        /** Body_upload_parsing_document_api_v1_parsing_documents_post */
-        Body_upload_parsing_document_api_v1_parsing_documents_post: {
-            /** File */
-            file: string;
-            /**
-             * Parser Backend
-             * @default auto
-             */
-            parser_backend: string;
-            /** Dataset Id */
-            dataset_id?: string | null;
-        };
-        /** Body_upload_zip_with_images_api_v1_pipeline_upload_zip_with_images_post */
-        Body_upload_zip_with_images_api_v1_pipeline_upload_zip_with_images_post: {
-            /** File */
-            file: string;
-            /** Dataset Id */
-            dataset_id: string;
-            /** Document Id */
-            document_id?: string | null;
-        };
         /** BuildMeta */
         BuildMeta: {
             /** Sha */
@@ -8300,6 +7763,29 @@ export interface components {
              * @default true
              */
             chat_response_cache_require_empty_history: boolean;
+        };
+        /** CentralityResponse */
+        CentralityResponse: {
+            /**
+             * Schema
+             * @default mimirq.kg_network_analysis.v1
+             * @constant
+             */
+            schema: "mimirq.kg_network_analysis.v1";
+            /**
+             * Metric
+             * @enum {string}
+             */
+            metric: "degree" | "pagerank";
+            /** Scores */
+            scores: components["schemas"]["CentralityScore"][];
+        };
+        /** CentralityScore */
+        CentralityScore: {
+            /** Node Id */
+            node_id: string;
+            /** Score */
+            score: number;
         };
         /**
          * ChatConfig
@@ -8483,10 +7969,6 @@ export interface components {
             retrieval_overfetch_multiplier?: number | null;
             /** Retrieval Overfetch Max K */
             retrieval_overfetch_max_k?: number | null;
-            /** Sparse Retrieval Enabled */
-            sparse_retrieval_enabled?: boolean | null;
-            /** Sparse Retrieval Provider */
-            sparse_retrieval_provider?: ("deterministic" | "splade") | null;
             /**
              * Enable Weight Rerank
              * @default true
@@ -8767,6 +8249,38 @@ export interface components {
             /** Parent Id */
             parent_id?: string | null;
         };
+        /**
+         * ChunkLineageResponse
+         * @description Stable report envelope; the lineage owner supplies versioned detail mappings.
+         */
+        ChunkLineageResponse: {
+            /** Schema */
+            schema: string;
+            /** Chunk */
+            chunk: {
+                [key: string]: unknown;
+            };
+            /** Document */
+            document: {
+                [key: string]: unknown;
+            };
+            /** Connector */
+            connector: {
+                [key: string]: unknown;
+            };
+            /** Acl */
+            acl: {
+                [key: string]: unknown;
+            };
+            /** Pipeline */
+            pipeline: {
+                [key: string]: unknown;
+            };
+            /** Retrieval Usage */
+            retrieval_usage: {
+                [key: string]: unknown;
+            };
+        };
         /** ChunkPresetCreateRequest */
         ChunkPresetCreateRequest: {
             /** Name */
@@ -8806,6 +8320,63 @@ export interface components {
             payload?: {
                 [key: string]: unknown;
             };
+        };
+        /** ChunkPreviewByShaForm */
+        ChunkPreviewByShaForm: {
+            /**
+             * Parser Backend
+             * @default auto
+             */
+            parser_backend: string;
+            /**
+             * Chunk Strategy
+             * @default langchain_recursive
+             */
+            chunk_strategy: string;
+            /** Child Ratio */
+            child_ratio?: number | null;
+            /** Min Child Size */
+            min_child_size?: number | null;
+            /** Separator Preset */
+            separator_preset?: string | null;
+            /** Separator */
+            separator?: string | null;
+            /** Keep Separator */
+            keep_separator?: boolean | null;
+            /** Separator Max Chunk Size */
+            separator_max_chunk_size?: number | null;
+            /** Dataset Id */
+            dataset_id?: string | null;
+            /** Pipeline */
+            pipeline?: string | null;
+            /** Governance Enabled */
+            governance_enabled?: boolean | null;
+            /** Governance Remove Toc Lines */
+            governance_remove_toc_lines?: boolean | null;
+            /** Governance Remove Noise Lines */
+            governance_remove_noise_lines?: boolean | null;
+            /** Governance Unwrap Lines */
+            governance_unwrap_lines?: boolean | null;
+            /** Governance Remove Common Lines */
+            governance_remove_common_lines?: boolean | null;
+            /** Governance Unwrap Max Line Length */
+            governance_unwrap_max_line_length?: number | null;
+            /** Governance Noise Min Chars */
+            governance_noise_min_chars?: number | null;
+            /** Governance Noise Ratio Threshold */
+            governance_noise_ratio_threshold?: number | null;
+            /** Governance Common Lines Min Docs */
+            governance_common_lines_min_docs?: number | null;
+            /** Governance Common Lines Min Ratio */
+            governance_common_lines_min_ratio?: number | null;
+            /** File Sha256 */
+            file_sha256: string;
+            /** File Type */
+            file_type?: string | null;
+            /** Filename */
+            filename?: string | null;
+            /** File Size */
+            file_size?: number | null;
         };
         /**
          * ChunkPreviewHistogramBin
@@ -9172,6 +8743,57 @@ export interface components {
             largest_gap: number;
             /** Histogram */
             histogram?: components["schemas"]["ChunkPreviewHistogramBin"][];
+        };
+        /** ChunkPreviewUploadForm */
+        ChunkPreviewUploadForm: {
+            /**
+             * Parser Backend
+             * @default auto
+             */
+            parser_backend: string;
+            /**
+             * Chunk Strategy
+             * @default langchain_recursive
+             */
+            chunk_strategy: string;
+            /** Child Ratio */
+            child_ratio?: number | null;
+            /** Min Child Size */
+            min_child_size?: number | null;
+            /** Separator Preset */
+            separator_preset?: string | null;
+            /** Separator */
+            separator?: string | null;
+            /** Keep Separator */
+            keep_separator?: boolean | null;
+            /** Separator Max Chunk Size */
+            separator_max_chunk_size?: number | null;
+            /** Dataset Id */
+            dataset_id?: string | null;
+            /** Pipeline */
+            pipeline?: string | null;
+            /** Governance Enabled */
+            governance_enabled?: boolean | null;
+            /** Governance Remove Toc Lines */
+            governance_remove_toc_lines?: boolean | null;
+            /** Governance Remove Noise Lines */
+            governance_remove_noise_lines?: boolean | null;
+            /** Governance Unwrap Lines */
+            governance_unwrap_lines?: boolean | null;
+            /** Governance Remove Common Lines */
+            governance_remove_common_lines?: boolean | null;
+            /** Governance Unwrap Max Line Length */
+            governance_unwrap_max_line_length?: number | null;
+            /** Governance Noise Min Chars */
+            governance_noise_min_chars?: number | null;
+            /** Governance Noise Ratio Threshold */
+            governance_noise_ratio_threshold?: number | null;
+            /** Governance Common Lines Min Docs */
+            governance_common_lines_min_docs?: number | null;
+            /** Governance Common Lines Min Ratio */
+            governance_common_lines_min_ratio?: number | null;
+            /** File */
+            file: string;
         };
         /** ChunkStrategyInfo */
         ChunkStrategyInfo: {
@@ -9710,6 +9332,19 @@ export interface components {
             /** Rules */
             rules: components["schemas"]["CleanRegexRuleModel"][];
         };
+        /** CommunityResponse */
+        CommunityResponse: {
+            /**
+             * Schema
+             * @default mimirq.kg_network_analysis.v1
+             * @constant
+             */
+            schema: "mimirq.kg_network_analysis.v1";
+            /** Node Id */
+            node_id: string | null;
+            /** Community Id */
+            community_id: string | null;
+        };
         /**
          * ComplianceSummary
          * @description Lightweight compliance signals derived from governance/profile stats.
@@ -9733,6 +9368,17 @@ export interface components {
              * @default 0
              */
             failed_documents: number;
+        };
+        /** ConnectedComponentResponse */
+        ConnectedComponentResponse: {
+            /**
+             * Schema
+             * @default mimirq.kg_network_analysis.v1
+             * @constant
+             */
+            schema: "mimirq.kg_network_analysis.v1";
+            /** Component */
+            component: string[];
         };
         /** ConnectorConfigCreateRequest */
         ConnectorConfigCreateRequest: {
@@ -9957,6 +9603,16 @@ export interface components {
              * @enum {string}
              */
             status: "pending" | "running" | "completed" | "failed" | "cancelled";
+            /**
+             * Supports Retry Failed
+             * @default false
+             */
+            supports_retry_failed: boolean;
+            /**
+             * Supports Resume
+             * @default false
+             */
+            supports_resume: boolean;
             /** Config */
             config?: {
                 [key: string]: unknown;
@@ -10053,6 +9709,19 @@ export interface components {
             checks?: {
                 [key: string]: unknown;
             };
+        };
+        /**
+         * Context
+         * @description A named piece of ambient information given to the agent for the run,
+         *     distinct from the conversation.
+         */
+        Context: {
+            /** Description */
+            description: string;
+            /** Value */
+            value: string;
+        } & {
+            [key: string]: unknown;
         };
         /**
          * ConversationCreate
@@ -10160,28 +9829,39 @@ export interface components {
             /** Title */
             title?: string | null;
         };
+        /**
+         * DataSource
+         * @description Bytes carried inline.
+         */
+        DataSource: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "data";
+            /** Value */
+            value: string;
+            /** Mimetype */
+            mimeType: string;
+        } & {
+            [key: string]: unknown;
+        };
         /** DatasetCacheInvalidationResponse */
         DatasetCacheInvalidationResponse: {
             /** Dataset Id */
             dataset_id: string;
             /** Previous Corpus Cache Token */
-            previous_corpus_cache_token?: string | null;
+            previous_corpus_cache_token: string | null;
             /** Current Corpus Cache Token */
-            current_corpus_cache_token?: string | null;
+            current_corpus_cache_token: string | null;
             /**
              * Invalidated At
              * Format: date-time
              */
             invalidated_at: string;
-            /**
-             * Evidence Post Rerank Memory Cleared
-             * @default false
-             */
+            /** Evidence Post Rerank Memory Cleared */
             evidence_post_rerank_memory_cleared: boolean;
-            /**
-             * Note
-             * @default
-             */
+            /** Note */
             note: string;
         };
         /** DatasetCategoryAssignmentRequest */
@@ -10410,10 +10090,7 @@ export interface components {
         };
         /**
          * DatasetConfigBundle
-         * @description Dataset-level configuration bundle (portable).
-         *
-         *     Used for export/import/clone to standardize ingestion + retrieval behavior
-         *     across datasets without introducing visual workflow editors.
+         * @description Portable ingestion and retrieval settings for dataset export, import, and cloning.
          */
         "DatasetConfigBundle-Input": {
             /** Default Parser Backend */
@@ -10439,17 +10116,10 @@ export interface components {
             retention_policy?: components["schemas"]["DatasetRetentionPolicy"] | null;
             ingestion_policy?: components["schemas"]["IngestionPolicy-Input"] | null;
             fls_policy?: components["schemas"]["FlsPolicy"] | null;
-            /** Workflow Layout */
-            workflow_layout?: {
-                [key: string]: unknown;
-            } | null;
         };
         /**
          * DatasetConfigBundle
-         * @description Dataset-level configuration bundle (portable).
-         *
-         *     Used for export/import/clone to standardize ingestion + retrieval behavior
-         *     across datasets without introducing visual workflow editors.
+         * @description Portable ingestion and retrieval settings for dataset export, import, and cloning.
          */
         "DatasetConfigBundle-Output": {
             /** Default Parser Backend */
@@ -10475,10 +10145,6 @@ export interface components {
             retention_policy?: components["schemas"]["DatasetRetentionPolicy"] | null;
             ingestion_policy?: components["schemas"]["IngestionPolicy-Output"] | null;
             fls_policy?: components["schemas"]["FlsPolicy"] | null;
-            /** Workflow Layout */
-            workflow_layout?: {
-                [key: string]: unknown;
-            } | null;
         };
         /** DatasetConfigExport */
         DatasetConfigExport: {
@@ -12953,21 +12619,48 @@ export interface components {
              */
             generated_at: string;
             /** Postgres */
-            postgres?: {
+            postgres: {
                 [key: string]: unknown;
             };
             /** Redis */
-            redis?: {
+            redis: {
                 [key: string]: unknown;
             };
             /** Minio */
-            minio?: {
+            minio: {
                 [key: string]: unknown;
             };
             /** Milvus */
-            milvus?: {
+            milvus: {
                 [key: string]: unknown;
             };
+        };
+        /**
+         * DeveloperMessage
+         * @description Instructions from the application developer.
+         */
+        DeveloperMessage: {
+            /** Subagentrunid */
+            subagentRunId?: string | null;
+            /** Id */
+            id: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            role: "developer";
+            /** Name */
+            name?: string | null;
+            /** Encryptedvalue */
+            encryptedValue?: string | null;
+            /** Metadata */
+            metadata?: {
+                [key: string]: unknown;
+            } | null;
+            /** Content */
+            content: string;
+        } & {
+            [key: string]: unknown;
         };
         /** DifyConversationTurnRequest */
         DifyConversationTurnRequest: {
@@ -14161,6 +13854,25 @@ export interface components {
             max_chars: number;
         };
         /**
+         * DocumentPart
+         * @description A document part.
+         */
+        DocumentPart: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "document";
+            /** Id */
+            id?: string | null;
+            /** Source */
+            source: components["schemas"]["DataSource"] | components["schemas"]["UrlSource"] | components["schemas"]["FileSource"];
+            /** Metadata */
+            metadata?: unknown | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /**
          * DocumentPipelineOptions
          * @description Per-document pipeline options.
          */
@@ -14254,7 +13966,7 @@ export interface components {
             governance_extract_keywords?: boolean | null;
             /**
              * Governance Keywords Provider
-             * @description Keyword provider: auto / jieba / jieba_textrank / hanlp / simple
+             * @description Keyword provider: auto / jieba / jieba_textrank / simple
              */
             governance_keywords_provider?: string | null;
             /**
@@ -14659,6 +14371,48 @@ export interface components {
             parsed_text_quality?: {
                 [key: string]: unknown;
             };
+        };
+        /**
+         * DocumentPreviewForm
+         * @description One flat multipart body for parsing a document without persisting it.
+         */
+        DocumentPreviewForm: {
+            /**
+             * Parser Backend
+             * @default auto
+             */
+            parser_backend: string;
+            /**
+             * Chunk Strategy
+             * @default langchain_recursive
+             */
+            chunk_strategy: string;
+            /** Dataset Id */
+            dataset_id?: string | null;
+            /** Pipeline */
+            pipeline?: string | null;
+            /** Governance Enabled */
+            governance_enabled?: boolean | null;
+            /** Governance Remove Toc Lines */
+            governance_remove_toc_lines?: boolean | null;
+            /** Governance Remove Noise Lines */
+            governance_remove_noise_lines?: boolean | null;
+            /** Governance Unwrap Lines */
+            governance_unwrap_lines?: boolean | null;
+            /** Governance Remove Common Lines */
+            governance_remove_common_lines?: boolean | null;
+            /** Governance Unwrap Max Line Length */
+            governance_unwrap_max_line_length?: number | null;
+            /** Governance Noise Min Chars */
+            governance_noise_min_chars?: number | null;
+            /** Governance Noise Ratio Threshold */
+            governance_noise_ratio_threshold?: number | null;
+            /** Governance Common Lines Min Docs */
+            governance_common_lines_min_docs?: number | null;
+            /** Governance Common Lines Min Ratio */
+            governance_common_lines_min_ratio?: number | null;
+            /** File */
+            file: string;
         };
         /** DocumentQAGenerateRequest */
         DocumentQAGenerateRequest: {
@@ -15685,7 +15439,8 @@ export interface components {
             query: string;
             /**
              * Query Image
-             * @description Optional explicit image query routed to CLIP image retrieval
+             * @deprecated
+             * @description Retired image-vector query; nonempty values are rejected
              */
             query_image?: string | null;
             /** History */
@@ -15803,6 +15558,78 @@ export interface components {
             coverage?: components["schemas"]["EvidenceSuiteCoverage"];
             throughput?: components["schemas"]["EvidenceSuiteThroughput"];
         };
+        /** EvidenceSuiteExportItem */
+        EvidenceSuiteExportItem: {
+            /** Id */
+            id: string;
+            /** Status */
+            status: string;
+            /** Query */
+            query: string;
+            /** Expected Answer */
+            expected_answer: string | null;
+            /** Tags */
+            tags: string[];
+            /** Source Metadata */
+            source_metadata: {
+                [key: string]: unknown;
+            };
+            /** Reference Sources */
+            reference_sources: {
+                [key: string]: unknown;
+            }[];
+            /** Retrieval Snapshot */
+            retrieval_snapshot: {
+                [key: string]: unknown;
+            };
+            /** Rag Config Snapshot */
+            rag_config_snapshot: {
+                [key: string]: unknown;
+            };
+            /** Notes */
+            notes: string | null;
+            /** Regression Case Id */
+            regression_case_id: string | null;
+            /** Created By */
+            created_by: string | null;
+            /** Reviewed By */
+            reviewed_by: string | null;
+            /** Approved By */
+            approved_by: string | null;
+            /** Archived By */
+            archived_by: string | null;
+            /** Reviewed At */
+            reviewed_at: string | null;
+            /** Approved At */
+            approved_at: string | null;
+            /** Archived At */
+            archived_at: string | null;
+            /** Created At */
+            created_at: string | null;
+            /** Updated At */
+            updated_at: string | null;
+        };
+        /** EvidenceSuiteExportSuite */
+        EvidenceSuiteExportSuite: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Description */
+            description: string | null;
+            /** Tags */
+            tags: string[];
+            /** Config */
+            config: {
+                [key: string]: unknown;
+            };
+            /** Created By */
+            created_by: string | null;
+            /** Created At */
+            created_at: string | null;
+            /** Updated At */
+            updated_at: string | null;
+        };
         /** EvidenceSuiteExportV1 */
         EvidenceSuiteExportV1: {
             /**
@@ -15817,14 +15644,9 @@ export interface components {
              * Format: uuid
              */
             dataset_id: string;
-            /** Suite */
-            suite: {
-                [key: string]: unknown;
-            };
+            suite: components["schemas"]["EvidenceSuiteExportSuite"];
             /** Items */
-            items: {
-                [key: string]: unknown;
-            }[];
+            items: components["schemas"]["EvidenceSuiteExportItem"][];
         };
         /** EvidenceSuiteList */
         EvidenceSuiteList: {
@@ -15982,7 +15804,7 @@ export interface components {
         };
         /**
          * ExternalConversationIngestRequest
-         * @description Import conversation turns from any external chat system into MimirQ history.
+         * @description Import conversation turns from an external chat system.
          */
         ExternalConversationIngestRequest: {
             /**
@@ -15994,7 +15816,7 @@ export interface components {
             source_conversation_id: string;
             /**
              * Conversation Id
-             * @description Append to an existing MimirQ conversation
+             * @description Append to an existing conversation
              */
             conversation_id?: string | null;
             /** Title */
@@ -16136,6 +15958,102 @@ export interface components {
              */
             magicpdf_enabled: boolean;
         };
+        /** FeedbackLoopCandidatesResponse */
+        FeedbackLoopCandidatesResponse: {
+            /** Schema */
+            schema: string;
+            summary: components["schemas"]["FeedbackLoopSummary"];
+            /** Hard Negative Records */
+            hard_negative_records: {
+                [key: string]: unknown;
+            }[];
+            /** Training Triples */
+            training_triples: {
+                [key: string]: unknown;
+            }[];
+            /** Eval Case Candidates */
+            eval_case_candidates: {
+                [key: string]: unknown;
+            }[];
+            rules_suggestions: components["schemas"]["FeedbackLoopRulesSuggestions"];
+        };
+        /** FeedbackLoopExportResponse */
+        FeedbackLoopExportResponse: {
+            /** Schema */
+            schema: string;
+            /** Trigger */
+            trigger: string;
+            /** Realtime Listener Enabled */
+            realtime_listener_enabled: boolean;
+            /** Dry Run */
+            dry_run: boolean;
+            candidates: components["schemas"]["FeedbackLoopSummary"];
+            /** Eval Case Candidates */
+            eval_case_candidates: {
+                [key: string]: unknown;
+            }[];
+            hard_negative_export: components["schemas"]["FeedbackLoopHardNegativeExport"];
+            rules_suggestions: components["schemas"]["FeedbackLoopRulesSuggestions"];
+        };
+        /** FeedbackLoopHardNegativeExport */
+        FeedbackLoopHardNegativeExport: {
+            /** Schema */
+            schema: string;
+            /** Output Path */
+            output_path: string;
+            /** Append */
+            append: boolean;
+            /** Dry Run */
+            dry_run: boolean;
+            /** Candidate Records */
+            candidate_records: number;
+            /** Written Records */
+            written_records: number;
+            /** Hard Negatives */
+            hard_negatives: number;
+            /** Source Feedback Ids */
+            source_feedback_ids: string[];
+            /** Dataset Ids */
+            dataset_ids: string[];
+        };
+        /** FeedbackLoopRulesSuggestions */
+        FeedbackLoopRulesSuggestions: {
+            /** Schema */
+            schema: string;
+            /** Ruleset */
+            ruleset: string | null;
+            /** Glossary Suggestions */
+            glossary_suggestions: {
+                [key: string]: unknown;
+            }[];
+            /** Pattern Suggestions */
+            pattern_suggestions: {
+                [key: string]: unknown;
+            }[];
+            /** Intent Suggestions */
+            intent_suggestions: {
+                [key: string]: unknown;
+            }[];
+        };
+        /** FeedbackLoopSummary */
+        FeedbackLoopSummary: {
+            /** Feedback Total */
+            feedback_total: number;
+            /** Negative Feedback Total */
+            negative_feedback_total: number;
+            /** Hard Negative Records */
+            hard_negative_records: number;
+            /** Training Triples */
+            training_triples: number;
+            /** Eval Case Candidates */
+            eval_case_candidates: number;
+            /** Rules Glossary Candidates */
+            rules_glossary_candidates: number;
+            /** Rules Pattern Candidates */
+            rules_pattern_candidates: number;
+            /** Rules Intent Candidates */
+            rules_intent_candidates: number;
+        };
         /** FeedbackToEvidenceItemRequest */
         FeedbackToEvidenceItemRequest: {
             /**
@@ -16143,16 +16061,10 @@ export interface components {
              * Format: uuid
              */
             suite_id: string;
-            /**
-             * Tags
-             * @default []
-             */
-            tags: string[];
-            /**
-             * Extra
-             * @default {}
-             */
-            extra: {
+            /** Tags */
+            tags?: string[];
+            /** Extra */
+            extra?: {
                 [key: string]: unknown;
             };
         };
@@ -16163,18 +16075,35 @@ export interface components {
              * @default true
              */
             include_document_scope: boolean;
-            /**
-             * Tags
-             * @default []
-             */
-            tags: string[];
-            /**
-             * Extra
-             * @default {}
-             */
-            extra: {
+            /** Tags */
+            tags?: string[];
+            /** Extra */
+            extra?: {
                 [key: string]: unknown;
             };
+        };
+        /**
+         * FileSource
+         * @description Bytes already at the provider, named by a handle the provider issued: an
+         *     OpenAI or Anthropic file id, a Gemini file URI, a storage URL only that
+         *     provider can read. No bytes travel and nothing is fetched. Only the
+         *     provider that minted the handle can resolve it; a peer that cannot drops
+         *     the part as it drops any part it cannot use.
+         */
+        FileSource: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "file";
+            /** Value */
+            value: string;
+            /** Provider */
+            provider?: string | null;
+            /** Mimetype */
+            mimeType?: string | null;
+        } & {
+            [key: string]: unknown;
         };
         /** FlsPolicy */
         FlsPolicy: {
@@ -16254,6 +16183,18 @@ export interface components {
             navigation_type?: string | null;
             /** Page */
             page?: string | null;
+        };
+        /**
+         * FunctionCall
+         * @description The name and arguments of a tool call.
+         */
+        FunctionCall: {
+            /** Name */
+            name: string;
+            /** Arguments */
+            arguments: string;
+        } & {
+            [key: string]: unknown;
         };
         /**
          * GeneratedQuestion
@@ -16836,50 +16777,6 @@ export interface components {
             /** Content */
             content: string;
         };
-        /** ImageIndexRequest */
-        ImageIndexRequest: {
-            /**
-             * Dataset Id
-             * Format: uuid
-             */
-            dataset_id: string;
-            /**
-             * Max Chunks
-             * @default 3000
-             */
-            max_chunks: number;
-            /**
-             * Upsert
-             * @description Upsert into the image embedding index (overwrite existing vectors)
-             * @default true
-             */
-            upsert: boolean;
-        };
-        /** ImageIndexResponse */
-        ImageIndexResponse: {
-            /**
-             * Indexed
-             * @default 0
-             */
-            indexed: number;
-            /**
-             * Skipped
-             * @default 0
-             */
-            skipped: number;
-            /**
-             * Failed
-             * @default 0
-             */
-            failed: number;
-            /**
-             * Dim
-             * @default 0
-             */
-            dim: number;
-            /** Errors */
-            errors?: string[];
-        };
         /** ImageInfo */
         ImageInfo: {
             /** Id */
@@ -16889,37 +16786,24 @@ export interface components {
             /** Filename */
             filename: string;
         };
-        /** ImageSearchRequest */
-        ImageSearchRequest: {
+        /**
+         * ImagePart
+         * @description An image part.
+         */
+        ImagePart: {
             /**
-             * Dataset Id
-             * Format: uuid
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
              */
-            dataset_id: string;
-            /** Query */
-            query: string;
-            /**
-             * Top K
-             * @default 8
-             */
-            top_k: number;
-            /**
-             * Auto Index
-             * @description Best-effort: index images for the dataset before searching
-             * @default false
-             */
-            auto_index: boolean;
-        };
-        /** ImageSearchResponse */
-        ImageSearchResponse: {
-            /** Citations */
-            citations?: {
-                [key: string]: unknown;
-            }[];
-            /** Metrics */
-            metrics?: {
-                [key: string]: unknown;
-            };
+            type: "image";
+            /** Id */
+            id?: string | null;
+            /** Source */
+            source: components["schemas"]["DataSource"] | components["schemas"]["UrlSource"] | components["schemas"]["FileSource"];
+            /** Metadata */
+            metadata?: unknown | null;
+        } & {
+            [key: string]: unknown;
         };
         /** IndexAuditReconcileEnqueueRequest */
         IndexAuditReconcileEnqueueRequest: {
@@ -16954,7 +16838,7 @@ export interface components {
             /** Dataset Id */
             dataset_id: string;
             /** Document Id */
-            document_id?: string | null;
+            document_id: string | null;
             /** Scope */
             scope: string;
             /** Dry Run */
@@ -16964,16 +16848,10 @@ export interface components {
             /** Status */
             status: string;
             /** Reason */
-            reason?: string | null;
-            /**
-             * Report In Job Result
-             * @default true
-             */
+            reason: string | null;
+            /** Report In Job Result */
             report_in_job_result: boolean;
-            /**
-             * Legacy Unknown Report Only
-             * @default true
-             */
+            /** Legacy Unknown Report Only */
             legacy_unknown_report_only: boolean;
         };
         /** IndexAuditReconcileRequest */
@@ -16995,17 +16873,17 @@ export interface components {
             /** Dataset Id */
             dataset_id: string;
             /** Document Id */
-            document_id?: string | null;
+            document_id: string | null;
             /** Scope */
             scope: string;
             /** Status */
             status: string;
             /** Reason */
-            reason?: string | null;
+            reason: string | null;
             /** Task Id */
-            task_id?: string | null;
+            task_id: string | null;
             /** Current Index Readiness */
-            current_index_readiness?: {
+            current_index_readiness: {
                 [key: string]: unknown;
             } | null;
         };
@@ -17022,24 +16900,15 @@ export interface components {
             /** Status */
             status: string;
             /** Reason */
-            reason?: string | null;
-            /**
-             * Legacy
-             * @default false
-             */
+            reason: string | null;
+            /** Legacy */
             legacy: boolean;
-            /**
-             * Ready
-             * @default false
-             */
+            /** Ready */
             ready: boolean;
-            /**
-             * Channel Rows Present
-             * @default 0
-             */
+            /** Channel Rows Present */
             channel_rows_present: number;
             /** Current Index Readiness */
-            current_index_readiness?: {
+            current_index_readiness: {
                 [key: string]: unknown;
             };
         };
@@ -17049,68 +16918,47 @@ export interface components {
             tenant_id: string;
             /** Dataset Id */
             dataset_id: string;
-            /**
-             * Vector Backend
-             * @default
-             */
+            /** Vector Backend */
             vector_backend: string;
-            /**
-             * Active Documents
-             * @default 0
-             */
+            /** Active Documents */
             active_documents: number;
-            /**
-             * Active Chunks
-             * @default 0
-             */
+            /** Active Chunks */
             active_chunks: number;
-            /**
-             * Vector Id Missing
-             * @default 0
-             */
+            /** Vector Id Missing */
             vector_id_missing: number;
-            /**
-             * Vector Ids Checked
-             * @default 0
-             */
+            /** Vector Ids Checked */
             vector_ids_checked: number;
-            /**
-             * Vector Ids Missing In Backend
-             * @default 0
-             */
+            /** Vector Ids Missing In Backend */
             vector_ids_missing_in_backend: number;
-            /**
-             * Vector Ids Missing In Backend Sample
-             * @default []
-             */
+            /** Vector Ids Missing In Backend Sample */
             vector_ids_missing_in_backend_sample: string[];
-            /**
-             * Milvus Ids Sampled
-             * @default 0
-             */
+            /** Milvus Ids Sampled */
             milvus_ids_sampled: number;
-            /**
-             * Milvus Orphan Ids Sample
-             * @default []
-             */
+            /** Milvus Orphan Ids Sample */
             milvus_orphan_ids_sample: string[];
             /** Index Channels */
-            index_channels?: {
+            index_channels: {
                 [key: string]: unknown;
             };
         };
         /** IndexDriftItemResponse */
         IndexDriftItemResponse: {
-            /** Id */
+            /**
+             * Id
+             * Format: uuid
+             */
             id: string;
-            /** Tenant Id */
+            /**
+             * Tenant Id
+             * Format: uuid
+             */
             tenant_id: string;
             /** Dataset Id */
-            dataset_id?: string | null;
+            dataset_id: string | null;
             /** Document Id */
-            document_id?: string | null;
+            document_id: string | null;
             /** Chunk Id */
-            chunk_id?: string | null;
+            chunk_id: string | null;
             /** Operation */
             operation: string;
             /** Channel */
@@ -17122,35 +16970,32 @@ export interface components {
             /** Reason */
             reason: string;
             /** Details */
-            details?: {
+            details: {
                 [key: string]: unknown;
             };
             /** Reconcile Task Id */
-            reconcile_task_id?: string | null;
-            /**
-             * Replay Count
-             * @default 0
-             */
+            reconcile_task_id: string | null;
+            /** Replay Count */
             replay_count: number;
             /** Created At */
-            created_at?: string | null;
+            created_at: string | null;
             /** Updated At */
-            updated_at?: string | null;
+            updated_at: string | null;
             /** Last Replayed At */
-            last_replayed_at?: string | null;
+            last_replayed_at: string | null;
             /** Resolved At */
-            resolved_at?: string | null;
+            resolved_at: string | null;
             /** Resolved By */
-            resolved_by?: string | null;
+            resolved_by: string | null;
             /** Resolution Note */
-            resolution_note?: string | null;
+            resolution_note: string | null;
         };
         /** IndexDriftListResponse */
         IndexDriftListResponse: {
             /** Schema */
             schema: string;
             /** Items */
-            items?: components["schemas"]["IndexDriftItemResponse"][];
+            items: components["schemas"]["IndexDriftItemResponse"][];
         };
         /** IndexDriftResolveRequest */
         IndexDriftResolveRequest: {
@@ -17463,42 +17308,24 @@ export interface components {
              */
             window_end: string;
             /** Dataset Id */
-            dataset_id?: string | null;
-            /**
-             * Created Count
-             * @default 0
-             */
+            dataset_id: string | null;
+            /** Created Count */
             created_count: number;
-            /**
-             * By Status
-             * @default {}
-             */
+            /** By Status */
             by_status: {
                 [key: string]: number;
             };
-            /**
-             * By Stage Processing
-             * @default {}
-             */
+            /** By Stage Processing */
             by_stage_processing: {
                 [key: string]: number;
             };
             /** Avg Completed Latency Sec */
-            avg_completed_latency_sec?: number | null;
-            /**
-             * Top Error Reasons
-             * @default {}
-             */
+            avg_completed_latency_sec: number | null;
+            /** Top Error Reasons */
             top_error_reasons: {
                 [key: string]: number;
             };
-            /**
-             * Timeseries
-             * @default {}
-             */
-            timeseries: {
-                [key: string]: unknown[];
-            };
+            timeseries: components["schemas"]["IngestionTimeseries"];
         };
         /** IngestionPolicy */
         "IngestionPolicy-Input": {
@@ -17800,6 +17627,19 @@ export interface components {
             finished_at?: string | null;
             /** Documents */
             documents?: components["schemas"]["IngestionRunDocumentOut"][];
+        };
+        /** IngestionTimeseries */
+        IngestionTimeseries: {
+            /** Ts Ms */
+            ts_ms: number[];
+            /** Completed */
+            completed: number[];
+            /** Failed */
+            failed: number[];
+            /** Quarantined */
+            quarantined: number[];
+            /** Cancelled */
+            cancelled: number[];
         };
         /**
          * KGConfig
@@ -18786,31 +18626,26 @@ export interface components {
              * @default 0
              */
             hardcases_generated: number;
+            /** Baseline Hit Rate */
+            baseline_hit_rate?: number | null;
+            /** Baseline Mrr */
+            baseline_mrr?: number | null;
+            /** Baseline Recall */
+            baseline_recall?: number | null;
+            /** Baseline Ndcg */
+            baseline_ndcg?: number | null;
+            /** Baseline Map */
+            baseline_map?: number | null;
             /**
-             * Baseline Hit Rate
+             * Baseline Valid Searches
              * @default 0
              */
-            baseline_hit_rate: number;
+            baseline_valid_searches: number;
             /**
-             * Baseline Mrr
+             * Baseline Search Errors
              * @default 0
              */
-            baseline_mrr: number;
-            /**
-             * Baseline Recall
-             * @default 0
-             */
-            baseline_recall: number;
-            /**
-             * Baseline Ndcg
-             * @default 0
-             */
-            baseline_ndcg: number;
-            /**
-             * Baseline Map
-             * @default 0
-             */
-            baseline_map: number;
+            baseline_search_errors: number;
             /** Hardcase Hit Rate */
             hardcase_hit_rate?: number | null;
             /** Hardcase Mrr */
@@ -18821,6 +18656,16 @@ export interface components {
             hardcase_ndcg?: number | null;
             /** Hardcase Map */
             hardcase_map?: number | null;
+            /**
+             * Hardcase Valid Searches
+             * @default 0
+             */
+            hardcase_valid_searches: number;
+            /**
+             * Hardcase Search Errors
+             * @default 0
+             */
+            hardcase_search_errors: number;
             /** Failure Breakdown */
             failure_breakdown?: {
                 [key: string]: number;
@@ -18995,6 +18840,17 @@ export interface components {
             /** Updated At */
             updated_at?: string | null;
         };
+        /** KHopNeighborsResponse */
+        KHopNeighborsResponse: {
+            /**
+             * Schema
+             * @default mimirq.kg_network_analysis.v1
+             * @constant
+             */
+            schema: "mimirq.kg_network_analysis.v1";
+            /** Neighbors */
+            neighbors: components["schemas"]["Neighbor"][];
+        };
         /** KeywordExtractRequest */
         KeywordExtractRequest: {
             /** Text */
@@ -19093,68 +18949,6 @@ export interface components {
              */
             max_retries: number;
         };
-        /** LTRModelActivateRequest */
-        LTRModelActivateRequest: {
-            /** Model Id */
-            model_id: string;
-        };
-        /** LTRModelActivateResponse */
-        LTRModelActivateResponse: {
-            /** Active */
-            active: {
-                [key: string]: unknown;
-            };
-        };
-        /** LTRModelInfo */
-        LTRModelInfo: {
-            /** Model Id */
-            model_id: string;
-            /** Model Sha256 */
-            model_sha256: string;
-            /**
-             * Size Bytes
-             * @default 0
-             */
-            size_bytes: number;
-            /**
-             * Created At
-             * @default
-             */
-            created_at: string;
-            /** Created By */
-            created_by?: string | null;
-            /**
-             * Feature Spec Version
-             * @default 1
-             */
-            feature_spec_version: number;
-            /**
-             * Feature Schema
-             * @default
-             */
-            feature_schema: string;
-            /** Feature Names */
-            feature_names?: string[];
-            /**
-             * Has Manifest
-             * @default true
-             */
-            has_manifest: boolean;
-            /**
-             * Active
-             * @default false
-             */
-            active: boolean;
-        };
-        /** LTRModelListResponse */
-        LTRModelListResponse: {
-            /** Items */
-            items?: components["schemas"]["LTRModelInfo"][];
-        };
-        /** LTRModelRegisterResponse */
-        LTRModelRegisterResponse: {
-            model: components["schemas"]["LTRModelInfo"];
-        };
         /**
          * LangGraphConfig
          * @description LangGraph execution mode config.
@@ -19237,7 +19031,7 @@ export interface components {
             models_dir: string;
             /**
              * Device Mode
-             * @default cpu
+             * @default
              */
             device_mode: string;
             /**
@@ -19516,11 +19310,8 @@ export interface components {
             role: string;
             /** Content */
             content: string;
-            /**
-             * Citations
-             * @default []
-             */
-            citations: components["schemas"]["Citation"][];
+            /** Citations */
+            citations?: components["schemas"]["Citation"][];
             /** Message Metadata */
             message_metadata?: {
                 [key: string]: unknown;
@@ -19559,18 +19350,12 @@ export interface components {
             minio_enabled: boolean;
             /** Use Langgraph Pipeline */
             use_langgraph_pipeline: boolean;
-            /**
-             * Gzip Enabled
-             * @default true
-             */
+            /** Gzip Enabled */
             gzip_enabled: boolean;
-            /**
-             * Rate Limit Enabled
-             * @default false
-             */
+            /** Rate Limit Enabled */
             rate_limit_enabled: boolean;
             /** Cors Origins */
-            cors_origins?: string[];
+            cors_origins: string[];
         };
         /** MetaResponse */
         MetaResponse: {
@@ -19702,6 +19487,13 @@ export interface components {
             /** User Visible Modules */
             user_visible_modules?: string[];
         };
+        /** Neighbor */
+        Neighbor: {
+            /** Node Id */
+            node_id: string;
+            /** Hop */
+            hop: number;
+        };
         /**
          * ObservabilityConfig
          * @description Observability/debug config.
@@ -19748,6 +19540,21 @@ export interface components {
              */
             metrics_log_include_text: boolean;
         };
+        /** OnlineQualityAlert */
+        OnlineQualityAlert: {
+            /** Kind */
+            kind: string;
+            /** Metric */
+            metric: string;
+            /** Value */
+            value: number;
+            /** Threshold */
+            threshold: number;
+            /** Bucket Ts Ms */
+            bucket_ts_ms: number;
+            /** Samples */
+            samples: number;
+        };
         /** OnlineQualitySummaryResponse */
         OnlineQualitySummaryResponse: {
             /** Enabled */
@@ -19765,20 +19572,23 @@ export interface components {
             /** Sample Count */
             sample_count: number;
             /** Faithfulness Det Avg */
-            faithfulness_det_avg?: number | null;
+            faithfulness_det_avg: number | null;
             /** Chunk Utilization Avg */
-            chunk_utilization_avg?: number | null;
-            /**
-             * Timeseries
-             * @default {}
-             */
-            timeseries: {
-                [key: string]: unknown[];
-            };
+            chunk_utilization_avg: number | null;
+            timeseries: components["schemas"]["OnlineQualityTimeseries"];
             /** Alerts */
-            alerts?: {
-                [key: string]: unknown;
-            }[];
+            alerts: components["schemas"]["OnlineQualityAlert"][];
+        };
+        /** OnlineQualityTimeseries */
+        OnlineQualityTimeseries: {
+            /** Ts Ms */
+            ts_ms: number[];
+            /** Samples */
+            samples: number[];
+            /** Faithfulness Det Avg */
+            faithfulness_det_avg: (number | null)[];
+            /** Chunk Utilization Avg */
+            chunk_utilization_avg: (number | null)[];
         };
         /** OpsConfigSnapshotResponse */
         OpsConfigSnapshotResponse: {
@@ -19787,18 +19597,21 @@ export interface components {
             /** Fingerprint */
             fingerprint: string;
             /** Config */
-            config?: {
+            config: {
                 [key: string]: unknown;
             };
         };
         /**
          * PDFQualityScore
-         * @description PDF quality score (sampled from first 3 pages).
+         * @description PDF quality score from a configurable page sample.
          *
          *     Scoring dimensions:
-         *     - text_quality_score (50%): Text extraction quality
-         *     - format_consistency_score (30%): Format consistency
+         *     - text_quality_score (40%): Text extraction quality
+         *     - format_consistency_score (25%): Format consistency
          *     - table_quality_score (20%): Table completeness
+         *     - reading_order_score (15%): Reading-order consistency
+         *
+         *     An unavailable reading-order score remains None; the other weights are normalized to sum to one.
          */
         PDFQualityScore: {
             /**
@@ -19823,7 +19636,7 @@ export interface components {
             table_quality_score: number;
             /**
              * Reading Order Score
-             * @description Reading-order consistency (0-1)
+             * @description Reading-order consistency (0-1); None when no measurement is available
              */
             reading_order_score?: number | null;
             /**
@@ -19933,16 +19746,34 @@ export interface components {
             quality_gate?: components["schemas"]["ParsingQualityGate"] | null;
             /** Elements */
             elements?: components["schemas"]["ParsingElementOut"][] | null;
+            /**
+             * Edited
+             * @default false
+             */
+            edited: boolean;
         };
         /** ParsingContentUpdateRequest */
         ParsingContentUpdateRequest: {
-            /**
-             * Markdown Content
-             * @default
-             */
+            /** Markdown Content */
             markdown_content: string;
             /** Original Markdown Content */
             original_markdown_content?: string | null;
+            /** Parser Backend */
+            parser_backend?: string | null;
+            /** Parse Duration Sec */
+            parse_duration_sec?: number | null;
+        };
+        /** ParsingDocumentUploadForm */
+        ParsingDocumentUploadForm: {
+            /** File */
+            file: string;
+            /**
+             * Parser Backend
+             * @default auto
+             */
+            parser_backend: string;
+            /** Dataset Id */
+            dataset_id?: string | null;
         };
         /** ParsingElementBBox */
         ParsingElementBBox: {
@@ -20093,6 +19924,17 @@ export interface components {
                 [key: string]: unknown;
             };
         };
+        /** PathsBetweenResponse */
+        PathsBetweenResponse: {
+            /**
+             * Schema
+             * @default mimirq.kg_network_analysis.v1
+             * @constant
+             */
+            schema: "mimirq.kg_network_analysis.v1";
+            /** Paths */
+            paths: string[][];
+        };
         /** PerfSuiteRunRequest */
         PerfSuiteRunRequest: {
             /**
@@ -20116,17 +19958,14 @@ export interface components {
             baseline_path: string;
             /** Policy Path */
             policy_path: string;
-            /**
-             * Baseline Ts
-             * @default
-             */
+            /** Baseline Ts */
             baseline_ts: string;
             /** Current Report */
-            current_report?: {
+            current_report: {
                 [key: string]: unknown;
             };
             /** Diff */
-            diff?: {
+            diff: {
                 [key: string]: unknown;
             };
         };
@@ -20138,26 +19977,17 @@ export interface components {
             action: string;
             /** Resource Type */
             resource_type: string;
-            /**
-             * Expected Interval Hours
-             * @default 24
-             */
+            /** Expected Interval Hours */
             expected_interval_hours: number;
-            /**
-             * Stale After Hours
-             * @default 36
-             */
+            /** Stale After Hours */
             stale_after_hours: number;
             /** Last Created At */
-            last_created_at?: string | null;
+            last_created_at: string | null;
             /** Last Resource Id */
-            last_resource_id?: string | null;
+            last_resource_id: string | null;
             /** Age Seconds */
-            age_seconds?: number | null;
-            /**
-             * Stale
-             * @default true
-             */
+            age_seconds: number | null;
+            /** Stale */
             stale: boolean;
         };
         /** PeriodicJobFreshnessResponse */
@@ -20172,7 +20002,7 @@ export interface components {
             /** Tenant Id */
             tenant_id: string;
             /** Items */
-            items?: components["schemas"]["PeriodicJobFreshnessItemResponse"][];
+            items: components["schemas"]["PeriodicJobFreshnessItemResponse"][];
         };
         /** PipelineCapabilitiesResponse */
         PipelineCapabilitiesResponse: {
@@ -20314,6 +20144,32 @@ export interface components {
              * @default false
              */
             entity_vector_enabled: boolean;
+        };
+        /** PipelineIngestionPreviewForm */
+        PipelineIngestionPreviewForm: {
+            /** File */
+            file: string;
+            /**
+             * Dataset Id
+             * Format: uuid
+             */
+            dataset_id: string;
+            /** Parser Backend */
+            parser_backend?: string | null;
+            /** Chunk Strategy */
+            chunk_strategy?: string | null;
+            /**
+             * Diff Max Lines
+             * @default 2000
+             */
+            diff_max_lines: number;
+        };
+        /** PipelineParsePreviewForm */
+        PipelineParsePreviewForm: {
+            /** File */
+            file: string;
+            /** Parser Backend */
+            parser_backend?: string | null;
         };
         /** PipelinePluginChunkReportReadiness */
         PipelinePluginChunkReportReadiness: {
@@ -20829,26 +20685,14 @@ export interface components {
         };
         /** PipelinePluginTestReportSummary */
         PipelinePluginTestReportSummary: {
-            /**
-             * Plugin Id
-             * @default
-             */
-            plugin_id: string;
-            /**
-             * Version
-             * @default
-             */
-            version: string;
-            /**
-             * Package Hash
-             * @default
-             */
-            package_hash: string;
-            /**
-             * Tested At
-             * @default
-             */
-            tested_at: string;
+            /** Plugin Id */
+            plugin_id?: string | null;
+            /** Version */
+            version?: string | null;
+            /** Package Hash */
+            package_hash?: string | null;
+            /** Tested At */
+            tested_at?: string | null;
             /**
              * Passed
              * @default false
@@ -20885,6 +20729,16 @@ export interface components {
             /** Metadata Ok */
             metadata_ok?: boolean | null;
         };
+        /** PipelineProfileImportForm */
+        PipelineProfileImportForm: {
+            /** File */
+            file: string;
+            /**
+             * Overwrite
+             * @default false
+             */
+            overwrite: boolean;
+        };
         /** PipelineVersionSummary */
         PipelineVersionSummary: {
             /** Pipeline Hash */
@@ -20894,6 +20748,15 @@ export interface components {
              * @default 0
              */
             documents: number;
+        };
+        /** PipelineZipUploadForm */
+        PipelineZipUploadForm: {
+            /** File */
+            file: string;
+            /** Dataset Id */
+            dataset_id: string;
+            /** Document Id */
+            document_id?: string | null;
         };
         /** PlannerCandidateOut */
         PlannerCandidateOut: {
@@ -20934,7 +20797,7 @@ export interface components {
             /** Aggregation Column */
             aggregation_column?: string | null;
             /** Group By */
-            group_by?: {
+            group_by?: string | {
                 [key: string]: unknown;
             } | null;
             /** Order By */
@@ -21316,7 +21179,7 @@ export interface components {
         /** QuerysetHealthDiffResponse */
         QuerysetHealthDiffResponse: {
             /** Diff */
-            diff?: {
+            diff: {
                 [key: string]: unknown;
             };
         };
@@ -21328,23 +21191,36 @@ export interface components {
             path: string;
             /** Total */
             total: number;
-            /**
-             * Truncated
-             * @default false
-             */
+            /** Truncated */
             truncated: boolean;
             /** Items */
-            items?: {
+            items: {
                 [key: string]: unknown;
             }[];
-            /** Timeseries */
-            timeseries?: {
-                [key: string]: unknown[];
-            };
+            timeseries: components["schemas"]["QuerysetHealthTimeseries"];
+        };
+        /** QuerysetHealthTimeseries */
+        QuerysetHealthTimeseries: {
+            /** Ts Ms */
+            ts_ms: number[];
+            /** Hit At K */
+            hit_at_k: (number | null)[];
+            /** Mrr */
+            mrr: (number | null)[];
+            /** Ndcg At K */
+            ndcg_at_k: (number | null)[];
+            /** P95 Latency Ms */
+            p95_latency_ms: (number | null)[];
+            /** Miss Rate */
+            miss_rate: (number | null)[];
+            /** Weak Hit Rate */
+            weak_hit_rate: (number | null)[];
+            /** Status */
+            status: string[];
         };
         /**
          * RAGConfig
-         * @description RAG parameter config.
+         * @description Read-compatible RAG config; update requests separately reject retired selections.
          */
         RAGConfig: {
             /**
@@ -21432,21 +21308,6 @@ export interface components {
              * @default 1
              */
             max_retries: number;
-        };
-        /** RTBFStatusResponse */
-        RTBFStatusResponse: {
-            /** Ticket Id */
-            ticket_id: string;
-            /**
-             * Status
-             * @default accepted
-             */
-            status: string;
-            /**
-             * Note
-             * @default RTBF status persistence is not enabled in this scaffold
-             */
-            note: string;
         };
         /** RagConfigTemplateCreate */
         RagConfigTemplateCreate: {
@@ -21626,68 +21487,47 @@ export interface components {
             record_count: number;
             /** Rag Trace Count */
             rag_trace_count: number;
-            /**
-             * Llm Prompt Tokens
-             * @default 0
-             */
+            /** Llm Prompt Tokens */
             llm_prompt_tokens: number;
-            /**
-             * Llm Completion Tokens
-             * @default 0
-             */
+            /** Llm Completion Tokens */
             llm_completion_tokens: number;
-            /**
-             * Llm Total Tokens
-             * @default 0
-             */
+            /** Llm Total Tokens */
             llm_total_tokens: number;
             /** Llm Model Counts */
-            llm_model_counts?: {
+            llm_model_counts: {
                 [key: string]: number;
             };
             /** Llm Source Counts */
-            llm_source_counts?: {
+            llm_source_counts: {
                 [key: string]: number;
             };
-            /**
-             * Embed Query Tokens
-             * @default 0
-             */
+            /** Embed Query Tokens */
             embed_query_tokens: number;
-            /**
-             * Embed Query Chars
-             * @default 0
-             */
+            /** Embed Query Chars */
             embed_query_chars: number;
-            /**
-             * Embed Query Count
-             * @default 0
-             */
+            /** Embed Query Count */
             embed_query_count: number;
             /** Embed Provider Counts */
-            embed_provider_counts?: {
+            embed_provider_counts: {
                 [key: string]: number;
             };
             /** Embed Model Counts */
-            embed_model_counts?: {
+            embed_model_counts: {
                 [key: string]: number;
             };
             /** Retrieval Elapsed Avg Sec */
-            retrieval_elapsed_avg_sec?: number | null;
+            retrieval_elapsed_avg_sec: number | null;
             /** Retrieval Elapsed P95 Sec */
-            retrieval_elapsed_p95_sec?: number | null;
+            retrieval_elapsed_p95_sec: number | null;
             /** Rerank Elapsed Avg Sec */
-            rerank_elapsed_avg_sec?: number | null;
+            rerank_elapsed_avg_sec: number | null;
             /** Rerank Elapsed P95 Sec */
-            rerank_elapsed_p95_sec?: number | null;
+            rerank_elapsed_p95_sec: number | null;
             /** Retrieval Vector Backend Counts */
-            retrieval_vector_backend_counts?: {
+            retrieval_vector_backend_counts: {
                 [key: string]: number;
             };
-            /**
-             * Retrieval Query Count
-             * @default 0
-             */
+            /** Retrieval Query Count */
             retrieval_query_count: number;
         };
         /** RagMetricsSummaryResponse */
@@ -21707,84 +21547,59 @@ export interface components {
             /** Reranker Api Count */
             reranker_api_count: number;
             /** Retrieval Avg Elapsed Sec */
-            retrieval_avg_elapsed_sec?: number | null;
+            retrieval_avg_elapsed_sec: number | null;
             /** Retrieval P95 Elapsed Sec */
-            retrieval_p95_elapsed_sec?: number | null;
+            retrieval_p95_elapsed_sec: number | null;
             /** Rerank Avg Elapsed Sec */
-            rerank_avg_elapsed_sec?: number | null;
+            rerank_avg_elapsed_sec: number | null;
             /** Citations Avg Count */
-            citations_avg_count?: number | null;
-            /**
-             * Retriever Overfetch Count
-             * @default 0
-             */
+            citations_avg_count: number | null;
+            /** Retriever Overfetch Count */
             retriever_overfetch_count: number;
             /** Retriever Overfetch Avg Ratio */
-            retriever_overfetch_avg_ratio?: number | null;
-            /**
-             * Retriever Filtered Acl Total
-             * @default 0
-             */
+            retriever_overfetch_avg_ratio: number | null;
+            /** Retriever Filtered Acl Total */
             retriever_filtered_acl_total: number;
-            /**
-             * Retrieval Candidate Cache Hit Count
-             * @default 0
-             */
+            /** Retrieval Candidate Cache Hit Count */
             retrieval_candidate_cache_hit_count: number;
-            /**
-             * Retrieval Candidate Cache Store Ok Count
-             * @default 0
-             */
+            /** Retrieval Candidate Cache Store Ok Count */
             retrieval_candidate_cache_store_ok_count: number;
-            /**
-             * Retrieval Candidate Cache Backend Counts
-             * @default {}
-             */
+            /** Retrieval Candidate Cache Backend Counts */
             retrieval_candidate_cache_backend_counts: {
                 [key: string]: number;
             };
-            /**
-             * Retrieval Candidate Cache Skip Reason Counts
-             * @default {}
-             */
+            /** Retrieval Candidate Cache Skip Reason Counts */
             retrieval_candidate_cache_skip_reason_counts: {
                 [key: string]: number;
             };
-            /**
-             * Retrieval Rerank Skip Reason Counts
-             * @default {}
-             */
+            /** Retrieval Rerank Skip Reason Counts */
             retrieval_rerank_skip_reason_counts: {
                 [key: string]: number;
             };
-            /**
-             * Retrieval Mode Counts
-             * @default {}
-             */
+            /** Retrieval Mode Counts */
             retrieval_mode_counts: {
                 [key: string]: number;
             };
-            /**
-             * Hit Type Counts
-             * @default {}
-             */
+            /** Hit Type Counts */
             hit_type_counts: {
                 [key: string]: number;
             };
-            /**
-             * Error Counts
-             * @default {}
-             */
+            /** Error Counts */
             error_counts: {
                 [key: string]: number;
             };
-            /**
-             * Timeseries
-             * @default {}
-             */
-            timeseries: {
-                [key: string]: unknown[];
-            };
+            timeseries: components["schemas"]["RagMetricsTimeseries"];
+        };
+        /** RagMetricsTimeseries */
+        RagMetricsTimeseries: {
+            /** Ts Ms */
+            ts_ms: number[];
+            /** Rag Trace */
+            rag_trace: number[];
+            /** Reranker Api */
+            reranker_api: number[];
+            /** Retrieval Avg Elapsed Sec */
+            retrieval_avg_elapsed_sec: (number | null)[];
         };
         /** RagQueryAnalyticsResponse */
         RagQueryAnalyticsResponse: {
@@ -21805,39 +21620,45 @@ export interface components {
             /** Zero Hit Count */
             zero_hit_count: number;
             /** Zero Hit Rate */
-            zero_hit_rate?: number | null;
+            zero_hit_rate: number | null;
             /** Slow Threshold Sec */
             slow_threshold_sec: number;
             /** Slow Count */
             slow_count: number;
             /** Slow Rate */
-            slow_rate?: number | null;
+            slow_rate: number | null;
             /** Retrieval P50 Elapsed Sec */
-            retrieval_p50_elapsed_sec?: number | null;
+            retrieval_p50_elapsed_sec: number | null;
             /** Retrieval P95 Elapsed Sec */
-            retrieval_p95_elapsed_sec?: number | null;
+            retrieval_p95_elapsed_sec: number | null;
             /** Retrieval P99 Elapsed Sec */
-            retrieval_p99_elapsed_sec?: number | null;
+            retrieval_p99_elapsed_sec: number | null;
             /** Error Kind Counts */
-            error_kind_counts?: {
+            error_kind_counts: {
                 [key: string]: number;
             };
             /** Top Zero Hit Queries */
-            top_zero_hit_queries?: {
-                [key: string]: unknown;
-            }[];
+            top_zero_hit_queries: components["schemas"]["ZeroHitQuerySummary"][];
             /** Top Slow Queries */
-            top_slow_queries?: {
-                [key: string]: unknown;
-            }[];
-            /** Timeseries */
-            timeseries?: {
-                [key: string]: unknown[];
-            };
+            top_slow_queries: components["schemas"]["SlowQuerySummary"][];
+            timeseries: components["schemas"]["RagQueryAnalyticsTimeseries"];
             /** Anomalies */
-            anomalies?: {
+            anomalies: {
                 [key: string]: unknown;
             }[];
+        };
+        /** RagQueryAnalyticsTimeseries */
+        RagQueryAnalyticsTimeseries: {
+            /** Ts Ms */
+            ts_ms: number[];
+            /** Requests */
+            requests: number[];
+            /** Zero Hit */
+            zero_hit: number[];
+            /** Slow */
+            slow: number[];
+            /** Errors */
+            errors: number[];
         };
         /** RagTrace */
         RagTrace: {
@@ -21872,11 +21693,11 @@ export interface components {
             /** Key */
             key: string;
             /** A */
-            a?: unknown | null;
+            a: unknown | null;
             /** B */
-            b?: unknown | null;
+            b: unknown | null;
             /** Delta */
-            delta?: number | null;
+            delta: number | null;
         };
         /** RagTraceBundleDiffResponse */
         RagTraceBundleDiffResponse: {
@@ -21896,7 +21717,7 @@ export interface components {
             summary_a: components["schemas"]["RagTraceBundleSummaryResponse"];
             summary_b: components["schemas"]["RagTraceBundleSummaryResponse"];
             /** Diff */
-            diff?: components["schemas"]["RagTraceBundleDiffItem"][];
+            diff: components["schemas"]["RagTraceBundleDiffItem"][];
         };
         /** RagTraceBundleResponse */
         RagTraceBundleResponse: {
@@ -21913,7 +21734,7 @@ export interface components {
             /** Request Id */
             request_id: string;
             /** Records */
-            records?: {
+            records: {
                 [key: string]: unknown;
             }[];
         };
@@ -21926,43 +21747,43 @@ export interface components {
             /** Truncated */
             truncated: boolean;
             /** Retrieval Config Hash */
-            retrieval_config_hash?: string | null;
+            retrieval_config_hash: string | null;
             /** Retrieval Mode */
-            retrieval_mode?: string | null;
+            retrieval_mode: string | null;
             /** Retrieval Requested Mode */
-            retrieval_requested_mode?: string | null;
+            retrieval_requested_mode: string | null;
             /** Retrieval Auto Routed */
-            retrieval_auto_routed?: boolean | null;
+            retrieval_auto_routed: boolean | null;
             /** Retrieval Profile */
-            retrieval_profile?: string | null;
+            retrieval_profile: string | null;
             /** Retrieval Top K */
-            retrieval_top_k?: number | null;
+            retrieval_top_k: number | null;
             /** Retrieval Alpha */
-            retrieval_alpha?: number | null;
+            retrieval_alpha: number | null;
             /** Retrieval Enable Reranker */
-            retrieval_enable_reranker?: boolean | null;
+            retrieval_enable_reranker: boolean | null;
             /** Retrieval Reranker Provider */
-            retrieval_reranker_provider?: string | null;
+            retrieval_reranker_provider: string | null;
             /** Retrieval Reranker Top N */
-            retrieval_reranker_top_n?: number | null;
+            retrieval_reranker_top_n: number | null;
             /** Retrieval Query Parallelism */
-            retrieval_query_parallelism?: number | null;
+            retrieval_query_parallelism: number | null;
             /** Retrieval Query Count */
-            retrieval_query_count?: number | null;
+            retrieval_query_count: number | null;
             /** Retrieval Elapsed Sec */
-            retrieval_elapsed_sec?: number | null;
+            retrieval_elapsed_sec: number | null;
             /** Retrieval Error Kinds */
-            retrieval_error_kinds?: {
+            retrieval_error_kinds: {
                 [key: string]: number;
             };
             /** Citations Count */
-            citations_count?: number | null;
+            citations_count: number | null;
             /** Model Route */
-            model_route?: string | null;
+            model_route: string | null;
             /** Model Used */
-            model_used?: string | null;
+            model_used: string | null;
             /** Vector Backend */
-            vector_backend?: string | null;
+            vector_backend: string | null;
         };
         /** RagTraceCitation */
         RagTraceCitation: {
@@ -21994,10 +21815,6 @@ export interface components {
             bm25_score?: number | null;
             /** Lexical Score */
             lexical_score?: number | null;
-            /** Sparse Score */
-            sparse_score?: number | null;
-            /** Colbert Score */
-            colbert_score?: number | null;
             /** Keyword Score */
             keyword_score?: number | null;
             /** Rerank Score */
@@ -22328,16 +22145,6 @@ export interface components {
             /** Query Rewrite Max Chars */
             query_rewrite_max_chars?: number | null;
             /**
-             * Sparse Retrieval Enabled
-             * @description Enable sparse retrieval channel
-             */
-            sparse_retrieval_enabled?: boolean | null;
-            /**
-             * Sparse Retrieval Provider
-             * @description Sparse provider: deterministic | splade
-             */
-            sparse_retrieval_provider?: string | null;
-            /**
              * Top K
              * @default 20
              */
@@ -22399,7 +22206,7 @@ export interface components {
             enable_reranker?: boolean;
             /**
              * Reranker Provider
-             * @description Reranker provider: llm | pc | ltr | colbert | cross_encoder | none
+             * @description Reranker provider: llm | pc | openai | dashscope | none
              */
             reranker_provider?: string;
             /**
@@ -22828,16 +22635,6 @@ export interface components {
             /** Query Rewrite Max Chars */
             query_rewrite_max_chars?: number | null;
             /**
-             * Sparse Retrieval Enabled
-             * @description Enable sparse retrieval channel
-             */
-            sparse_retrieval_enabled?: boolean | null;
-            /**
-             * Sparse Retrieval Provider
-             * @description Sparse provider: deterministic | splade
-             */
-            sparse_retrieval_provider?: string | null;
-            /**
              * Top K
              * @default 20
              */
@@ -22899,7 +22696,7 @@ export interface components {
             enable_reranker?: boolean;
             /**
              * Reranker Provider
-             * @description Reranker provider: llm | pc | ltr | colbert | cross_encoder | none
+             * @description Reranker provider: llm | pc | openai | dashscope | none
              */
             reranker_provider?: string;
             /**
@@ -23131,6 +22928,32 @@ export interface components {
             ok: boolean;
             /** Status */
             status: string;
+        };
+        /**
+         * ReasoningMessage
+         * @description A span of the agent's reasoning, materialised as a message. Stands alone
+         *     rather than composing BaseMessage, because it carries no name.
+         */
+        ReasoningMessage: {
+            /** Subagentrunid */
+            subagentRunId?: string | null;
+            /** Id */
+            id: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            role: "reasoning";
+            /** Content */
+            content: string;
+            /** Encryptedvalue */
+            encryptedValue?: string | null;
+            /** Metadata */
+            metadata?: {
+                [key: string]: unknown;
+            } | null;
+        } & {
+            [key: string]: unknown;
         };
         /**
          * ReferenceSource
@@ -23373,6 +23196,27 @@ export interface components {
             /** Buckets */
             buckets?: components["schemas"]["RegressionRunSliceBucketDiff"][];
         };
+        /**
+         * ResumeEntry
+         * @description An answer to one interrupt, sent on the run that continues from it.
+         */
+        ResumeEntry: {
+            /** Interruptid */
+            interruptId: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "resolved" | "cancelled";
+            /** Payload */
+            payload?: unknown | null;
+            /** Metadata */
+            metadata?: {
+                [key: string]: unknown;
+            } | null;
+        } & {
+            [key: string]: unknown;
+        };
         /** RetrievalConfigHashRequest */
         RetrievalConfigHashRequest: {
             rag_config?: components["schemas"]["ChatRAGConfig"];
@@ -23484,13 +23328,72 @@ export interface components {
                 [key: string]: unknown;
             };
         };
+        /** RetrievalProfileDefaults */
+        RetrievalProfileDefaults: {
+            /** Production Profile */
+            production_profile: string;
+            /** Chat Default Profile */
+            chat_default_profile: string | null;
+            /** Request Defaults */
+            request_defaults: {
+                [key: string]: unknown;
+            };
+            /** Chat Default Effective */
+            chat_default_effective: {
+                [key: string]: unknown;
+            };
+            /** Production Effective */
+            production_effective: {
+                [key: string]: unknown;
+            };
+            /** Runtime Defaults */
+            runtime_defaults: {
+                [key: string]: unknown;
+            };
+        };
+        /** RetrievalProfileDefinition */
+        RetrievalProfileDefinition: {
+            /** Name */
+            name: string;
+            /** Is Recall First */
+            is_recall_first: boolean;
+            /** Retrieval Mode */
+            retrieval_mode: string | null;
+            /** Top K */
+            top_k: number;
+            /** Score Threshold */
+            score_threshold: number;
+            /** Enable Reranker */
+            enable_reranker: boolean;
+            /** Reranker Provider */
+            reranker_provider: string | null;
+            /** Reranker Top N */
+            reranker_top_n: number;
+            /** Enable Weight Rerank */
+            enable_weight_rerank: boolean;
+            /** Retrieval Contract Mode */
+            retrieval_contract_mode: string | null;
+            /** Visible Evidence Only */
+            visible_evidence_only: boolean;
+        };
+        /** RetrievalProfilesResponse */
+        RetrievalProfilesResponse: {
+            /** Schema */
+            schema: string;
+            effective_defaults: components["schemas"]["RetrievalProfileDefaults"];
+            /** Profiles */
+            profiles: components["schemas"]["RetrievalProfileDefinition"][];
+            /** Version Hash */
+            version_hash: string;
+        };
         /** RetrievePreviewRequest */
         RetrievePreviewRequest: {
             /** Query */
             query: string;
             /**
              * Query Image
-             * @description Optional explicit image query routed to CLIP image retrieval
+             * @deprecated
+             * @description Retired image-vector query; nonempty values are rejected
              */
             query_image?: string | null;
             /** History */
@@ -23530,6 +23433,38 @@ export interface components {
             metrics?: {
                 [key: string]: unknown;
             };
+        };
+        /**
+         * RunAgentInput
+         * @description A request to run an agent. Also echoed back as RUN_STARTED.input. Only
+         *     threadId, runId and messages are required: those are the three the SDKs
+         *     already agree on, and for tools and context an absent key and an empty
+         *     array mean the same thing, so requiring them would catch nothing a
+         *     producer could get wrong.
+         */
+        RunAgentInput: {
+            /** Threadid */
+            threadId: string;
+            /** Runid */
+            runId: string;
+            /** Protocolversion */
+            protocolVersion?: string | null;
+            /** Parentrunid */
+            parentRunId?: string | null;
+            /** State */
+            state?: unknown | null;
+            /** Messages */
+            messages: (components["schemas"]["DeveloperMessage"] | components["schemas"]["SystemMessage"] | components["schemas"]["AssistantMessage"] | components["schemas"]["UserMessage"] | components["schemas"]["ToolMessage"] | components["schemas"]["ActivityMessage"] | components["schemas"]["ReasoningMessage"])[];
+            /** Tools */
+            tools?: components["schemas"]["Tool"][] | null;
+            /** Context */
+            context?: components["schemas"]["Context"][] | null;
+            /** Forwardedprops */
+            forwardedProps?: unknown | null;
+            /** Resume */
+            resume?: components["schemas"]["ResumeEntry"][] | null;
+        } & {
+            [key: string]: unknown;
         };
         /** RuntimeMeta */
         RuntimeMeta: {
@@ -23592,12 +23527,64 @@ export interface components {
             /** Bridge Code */
             bridge_code?: string | null;
         };
+        /** SettingsConnectionStatus */
+        SettingsConnectionStatus: {
+            /** Connected */
+            connected: boolean;
+            /** Message */
+            message: string;
+        };
+        /** SettingsModelStatus */
+        SettingsModelStatus: {
+            /** Configured */
+            configured: boolean;
+            /** Model */
+            model: string;
+        };
+        /** SettingsParserStatus */
+        SettingsParserStatus: {
+            /** Enabled */
+            enabled: boolean;
+            /** Available */
+            available: boolean;
+            /** Message */
+            message: string;
+            /** Health */
+            health?: {
+                [key: string]: unknown;
+            } | null;
+        };
+        /** ShortestPathResponse */
+        ShortestPathResponse: {
+            /**
+             * Schema
+             * @default mimirq.kg_network_analysis.v1
+             * @constant
+             */
+            schema: "mimirq.kg_network_analysis.v1";
+            /** Path */
+            path: string[];
+            /** Path Length */
+            path_length: number;
+        };
+        /**
+         * SignupRequest
+         * @description Ordinary signup never accepts caller-selected roles or tenant IDs.
+         */
+        SignupRequest: {
+            /**
+             * Email
+             * Format: email
+             */
+            email: string;
+            /** Username */
+            username: string;
+            /** Password */
+            password: string;
+        };
         /** SimilarityCalculateResponse */
         SimilarityCalculateResponse: {
-            /**
-             * Success
-             * @default true
-             */
+            /** Success */
             success: boolean;
             /** Result */
             result?: {
@@ -23625,23 +23612,17 @@ export interface components {
             /** Count */
             count: number;
             /** Meta */
-            meta?: {
+            meta: {
                 [key: string]: unknown;
             };
         };
         /** SimilarityCollectionsResponse */
         SimilarityCollectionsResponse: {
-            /**
-             * Success
-             * @default true
-             */
+            /** Success */
             success: boolean;
             /** Collections */
-            collections?: components["schemas"]["SimilarityCollectionOut"][];
-            /**
-             * Count
-             * @default 0
-             */
+            collections: components["schemas"]["SimilarityCollectionOut"][];
+            /** Count */
             count: number;
         };
         /** SimilarityRequest */
@@ -23683,7 +23664,7 @@ export interface components {
              */
             generated_at: string;
             /** Windows */
-            windows?: components["schemas"]["SloWindowSnapshotResponse"][];
+            windows: components["schemas"]["SloWindowSnapshotResponse"][];
         };
         /** SloWindowSnapshotResponse */
         SloWindowSnapshotResponse: {
@@ -23692,15 +23673,24 @@ export interface components {
             /** Source */
             source: string;
             /** Rag Trace Count */
-            rag_trace_count?: number | null;
+            rag_trace_count: number | null;
             /** Retrieval P95 Elapsed Sec */
-            retrieval_p95_elapsed_sec?: number | null;
+            retrieval_p95_elapsed_sec: number | null;
             /** Retrieval P99 Elapsed Sec */
-            retrieval_p99_elapsed_sec?: number | null;
+            retrieval_p99_elapsed_sec: number | null;
             /** Zero Hit Rate */
-            zero_hit_rate?: number | null;
+            zero_hit_rate: number | null;
             /** Error Rate */
-            error_rate?: number | null;
+            error_rate: number | null;
+        };
+        /** SlowQuerySummary */
+        SlowQuerySummary: {
+            /** Query Hash */
+            query_hash: string;
+            /** Count */
+            count: number;
+            /** Max Elapsed Sec */
+            max_elapsed_sec: number;
         };
         /**
          * StaleDocumentItem
@@ -23863,6 +23853,33 @@ export interface components {
             }[];
         };
         /**
+         * SystemMessage
+         * @description Instructions from the system.
+         */
+        SystemMessage: {
+            /** Subagentrunid */
+            subagentRunId?: string | null;
+            /** Id */
+            id: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            role: "system";
+            /** Name */
+            name?: string | null;
+            /** Encryptedvalue */
+            encryptedValue?: string | null;
+            /** Metadata */
+            metadata?: {
+                [key: string]: unknown;
+            } | null;
+            /** Content */
+            content: string;
+        } & {
+            [key: string]: unknown;
+        };
+        /**
          * SystemSettings
          * @description Full system config.
          */
@@ -23875,7 +23892,7 @@ export interface components {
             minio: components["schemas"]["MinioConfig"];
             rag: components["schemas"]["RAGConfig"];
             cache: components["schemas"]["CacheConfig"];
-            url_ingest: components["schemas"]["UrlIngestConfig"];
+            url_ingest: components["schemas"]["UrlIngestStatus"];
             governance: components["schemas"]["GovernanceConfig"];
             mineru: components["schemas"]["MinerUConfig"];
             etl4llm: components["schemas"]["Etl4LlmConfig"];
@@ -23890,6 +23907,17 @@ export interface components {
             langgraph: components["schemas"]["LangGraphConfig"];
             navigation: components["schemas"]["NavigationConfig"];
             dify_external_knowledge: components["schemas"]["DifyExternalKnowledgeConfig"];
+        };
+        /** SystemStatusResponse */
+        SystemStatusResponse: {
+            database: components["schemas"]["SettingsConnectionStatus"];
+            milvus: components["schemas"]["SettingsConnectionStatus"];
+            llm: components["schemas"]["SettingsModelStatus"];
+            embedding: components["schemas"]["SettingsModelStatus"];
+            /** Parsers */
+            parsers: {
+                [key: string]: components["schemas"]["SettingsParserStatus"];
+            };
         };
         /** TableAskRequest */
         TableAskRequest: {
@@ -24025,30 +24053,21 @@ export interface components {
             /** Broker Up */
             broker_up: boolean;
             /** Queue Depth */
-            queue_depth?: number | null;
+            queue_depth: number | null;
             /** Workers Active */
-            workers_active?: number | null;
-            /**
-             * Heartbeat Interval Sec
-             * @default 0
-             */
+            workers_active: number | null;
+            /** Heartbeat Interval Sec */
             heartbeat_interval_sec: number;
-            /**
-             * Heartbeat Ttl Sec
-             * @default 0
-             */
+            /** Heartbeat Ttl Sec */
             heartbeat_ttl_sec: number;
-            /**
-             * Poll Interval Sec
-             * @default 0
-             */
+            /** Poll Interval Sec */
             poll_interval_sec: number;
             /** Recent Job Outcomes */
-            recent_job_outcomes?: {
+            recent_job_outcomes: {
                 [key: string]: unknown;
             }[];
             /** Error */
-            error?: string | null;
+            error: string | null;
         };
         /** TenantAccessOut */
         TenantAccessOut: {
@@ -24240,7 +24259,11 @@ export interface components {
              */
             tenant_id: string;
             /** User Id */
-            user_id?: string | null;
+            user_id: string;
+            /** Username */
+            username: string | null;
+            /** Email */
+            email: string | null;
             /**
              * Role
              * @description owner|admin|auditor|editor|dataset_operator|viewer
@@ -24257,10 +24280,16 @@ export interface components {
              * @default false
              */
             is_current: boolean;
-            /** Created At */
-            created_at?: string | null;
-            /** Updated At */
-            updated_at?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
         };
         /** TenantMemberUpdateRequest */
         TenantMemberUpdateRequest: {
@@ -24430,6 +24459,13 @@ export interface components {
              */
             max_retries: number;
         };
+        /** TestLLMResponse */
+        TestLLMResponse: {
+            /** Success */
+            success: boolean;
+            /** Message */
+            message: string;
+        };
         /**
          * TextInConfig
          * @description TextIn xParse external document->Markdown API config.
@@ -24491,6 +24527,25 @@ export interface components {
              */
             page_count: number;
         };
+        /**
+         * TextPart
+         * @description A text part.
+         */
+        TextPart: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "text";
+            /** Id */
+            id?: string | null;
+            /** Text */
+            text: string;
+            /** Metadata */
+            metadata?: unknown | null;
+        } & {
+            [key: string]: unknown;
+        };
         /** TokenResponse */
         TokenResponse: {
             /** Access Token */
@@ -24529,6 +24584,79 @@ export interface components {
              * @enum {string}
              */
             source: "provider" | "mock" | "estimate";
+        };
+        /**
+         * Tool
+         * @description A tool the agent may call.
+         */
+        Tool: {
+            /** Name */
+            name: string;
+            /** Description */
+            description: string;
+            /** Parameters */
+            parameters?: unknown | null;
+            /** Metadata */
+            metadata?: {
+                [key: string]: unknown;
+            } | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * ToolCall
+         * @description A call an assistant message made. Carries no subagent attribution of its
+         *     own and inherits its containing message's, since several calls can share
+         *     one parent.
+         */
+        ToolCall: {
+            /** Id */
+            id: string;
+            /**
+             * Type
+             * @default function
+             * @constant
+             */
+            type: "function";
+            function: components["schemas"]["FunctionCall"];
+            /** Encryptedvalue */
+            encryptedValue?: string | null;
+            /** Metadata */
+            metadata?: {
+                [key: string]: unknown;
+            } | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * ToolMessage
+         * @description What a tool returned, as a message in the conversation. Stands alone
+         *     rather than composing BaseMessage, because it carries no name.
+         */
+        ToolMessage: {
+            /** Subagentrunid */
+            subagentRunId?: string | null;
+            /** Id */
+            id: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            role: "tool";
+            /** Content */
+            content: string | (components["schemas"]["TextPart"] | components["schemas"]["ImagePart"] | components["schemas"]["AudioPart"] | components["schemas"]["VideoPart"] | components["schemas"]["DocumentPart"])[];
+            /** Toolcallid */
+            toolCallId: string;
+            /** Error */
+            error?: string | null;
+            /** Encryptedvalue */
+            encryptedValue?: string | null;
+            /** Metadata */
+            metadata?: {
+                [key: string]: unknown;
+            } | null;
+        } & {
+            [key: string]: unknown;
         };
         /** TreeSearchPreviewRequest */
         TreeSearchPreviewRequest: {
@@ -24591,7 +24719,6 @@ export interface components {
             minio?: components["schemas"]["MinioConfig"] | null;
             rag?: components["schemas"]["RAGConfig"] | null;
             cache?: components["schemas"]["CacheConfig"] | null;
-            url_ingest?: components["schemas"]["UrlIngestConfig"] | null;
             governance?: components["schemas"]["GovernanceConfig"] | null;
             mineru?: components["schemas"]["MinerUConfig"] | null;
             etl4llm?: components["schemas"]["Etl4LlmConfig"] | null;
@@ -24607,36 +24734,178 @@ export interface components {
             navigation?: components["schemas"]["NavigationConfig"] | null;
             dify_external_knowledge?: components["schemas"]["DifyExternalKnowledgeConfig"] | null;
         };
+        /** UpdateSettingsResponse */
+        UpdateSettingsResponse: {
+            /** Success */
+            success: boolean;
+            /** Message */
+            message: string;
+            /** Updated Keys */
+            updated_keys: string[];
+        };
         /**
-         * UrlIngestConfig
-         * @description URL ingestion config (server-side fetch; connectors).
+         * UploadDocumentFormFields
+         * @description One flat multipart body, including the upload and pipeline overrides.
          */
-        UrlIngestConfig: {
+        UploadDocumentFormFields: {
+            /** Governance Enabled */
+            governance_enabled?: boolean | null;
+            /** Governance Remove Toc Lines */
+            governance_remove_toc_lines?: boolean | null;
+            /** Governance Remove Noise Lines */
+            governance_remove_noise_lines?: boolean | null;
+            /** Governance Unwrap Lines */
+            governance_unwrap_lines?: boolean | null;
+            /** Governance Remove Common Lines */
+            governance_remove_common_lines?: boolean | null;
+            /** Governance Unwrap Max Line Length */
+            governance_unwrap_max_line_length?: number | null;
+            /** Governance Noise Min Chars */
+            governance_noise_min_chars?: number | null;
+            /** Governance Noise Ratio Threshold */
+            governance_noise_ratio_threshold?: number | null;
+            /** Governance Common Lines Min Docs */
+            governance_common_lines_min_docs?: number | null;
+            /** Governance Common Lines Min Ratio */
+            governance_common_lines_min_ratio?: number | null;
+            /** Chunk Size */
+            chunk_size?: number | null;
+            /** Chunk Overlap */
+            chunk_overlap?: number | null;
+            /** Chunk Vector Enabled */
+            chunk_vector_enabled?: boolean | null;
+            /** Bm25 Index Enabled */
+            bm25_index_enabled?: boolean | null;
+            /** Kg Enabled */
+            kg_enabled?: boolean | null;
+            /** Event Vector Enabled */
+            event_vector_enabled?: boolean | null;
+            /** Entity Vector Enabled */
+            entity_vector_enabled?: boolean | null;
+            /**
+             * Parser Backend
+             * @default auto
+             */
+            parser_backend: string;
+            /**
+             * Chunk Strategy
+             * @default langchain_recursive
+             */
+            chunk_strategy: string;
+            /** Pipeline */
+            pipeline?: string | null;
+            /** Dataset Id */
+            dataset_id?: string | null;
+            /** User Metadata */
+            user_metadata?: string | null;
+            /** File */
+            file: string;
+        };
+        /**
+         * UploadDocumentsBatchFormFields
+         * @description One flat multipart body for a batch and its pipeline overrides.
+         */
+        UploadDocumentsBatchFormFields: {
+            /** Governance Enabled */
+            governance_enabled?: boolean | null;
+            /** Governance Remove Toc Lines */
+            governance_remove_toc_lines?: boolean | null;
+            /** Governance Remove Noise Lines */
+            governance_remove_noise_lines?: boolean | null;
+            /** Governance Unwrap Lines */
+            governance_unwrap_lines?: boolean | null;
+            /** Governance Remove Common Lines */
+            governance_remove_common_lines?: boolean | null;
+            /** Governance Unwrap Max Line Length */
+            governance_unwrap_max_line_length?: number | null;
+            /** Governance Noise Min Chars */
+            governance_noise_min_chars?: number | null;
+            /** Governance Noise Ratio Threshold */
+            governance_noise_ratio_threshold?: number | null;
+            /** Governance Common Lines Min Docs */
+            governance_common_lines_min_docs?: number | null;
+            /** Governance Common Lines Min Ratio */
+            governance_common_lines_min_ratio?: number | null;
+            /** Chunk Size */
+            chunk_size?: number | null;
+            /** Chunk Overlap */
+            chunk_overlap?: number | null;
+            /** Chunk Vector Enabled */
+            chunk_vector_enabled?: boolean | null;
+            /** Bm25 Index Enabled */
+            bm25_index_enabled?: boolean | null;
+            /** Kg Enabled */
+            kg_enabled?: boolean | null;
+            /** Event Vector Enabled */
+            event_vector_enabled?: boolean | null;
+            /** Entity Vector Enabled */
+            entity_vector_enabled?: boolean | null;
+            /**
+             * Parser Backend
+             * @default auto
+             */
+            parser_backend: string;
+            /**
+             * Chunk Strategy
+             * @default langchain_recursive
+             */
+            chunk_strategy: string;
+            /** Pipeline */
+            pipeline?: string | null;
+            /** Dataset Id */
+            dataset_id?: string | null;
+            /**
+             * Precheck First
+             * @default false
+             */
+            precheck_first: boolean;
+            /**
+             * Precheck Only
+             * @default false
+             */
+            precheck_only: boolean;
+            /**
+             * Upload Only
+             * @default false
+             */
+            upload_only: boolean;
+            /** User Metadata Map */
+            user_metadata_map?: string | null;
+            /**
+             * Max Concurrent
+             * @default 5
+             */
+            max_concurrent: number;
+            /** Files */
+            files: string[];
+        };
+        /**
+         * UrlIngestStatus
+         * @description Read-only URL import availability for the ingestion workbench.
+         */
+        UrlIngestStatus: {
             /**
              * Enabled
              * @default false
              */
             enabled: boolean;
+        };
+        /**
+         * UrlSource
+         * @description Bytes referenced by URL, fetched by whoever needs them.
+         */
+        UrlSource: {
             /**
-             * Max Bytes
-             * @default 50000000
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
              */
-            max_bytes: number;
-            /**
-             * Timeout Sec
-             * @default 30
-             */
-            timeout_sec: number;
-            /**
-             * Allow Private Ips
-             * @default false
-             */
-            allow_private_ips: boolean;
-            /**
-             * Follow Redirects
-             * @default false
-             */
-            follow_redirects: boolean;
+            type: "url";
+            /** Value */
+            value: string;
+            /** Mimetype */
+            mimeType?: string | null;
+        } & {
+            [key: string]: unknown;
         };
         /**
          * UrlUploadRequest
@@ -24669,6 +24938,33 @@ export interface components {
              */
             chunk_strategy: string;
             pipeline?: components["schemas"]["DocumentPipelineOptions"] | null;
+        };
+        /**
+         * UserMessage
+         * @description A message from the person using the application.
+         */
+        UserMessage: {
+            /** Subagentrunid */
+            subagentRunId?: string | null;
+            /** Id */
+            id: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            role: "user";
+            /** Name */
+            name?: string | null;
+            /** Encryptedvalue */
+            encryptedValue?: string | null;
+            /** Metadata */
+            metadata?: {
+                [key: string]: unknown;
+            } | null;
+            /** Content */
+            content: string | (components["schemas"]["TextPart"] | components["schemas"]["ImagePart"] | components["schemas"]["AudioPart"] | components["schemas"]["VideoPart"] | components["schemas"]["DocumentPart"])[];
+        } & {
+            [key: string]: unknown;
         };
         /** UserPublic */
         UserPublic: {
@@ -24708,6 +25004,32 @@ export interface components {
             ctx?: {
                 [key: string]: unknown;
             };
+        };
+        /**
+         * VideoPart
+         * @description A video part.
+         */
+        VideoPart: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "video";
+            /** Id */
+            id?: string | null;
+            /** Source */
+            source: components["schemas"]["DataSource"] | components["schemas"]["UrlSource"] | components["schemas"]["FileSource"];
+            /** Metadata */
+            metadata?: unknown | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** ZeroHitQuerySummary */
+        ZeroHitQuerySummary: {
+            /** Query Hash */
+            query_hash: string;
+            /** Count */
+            count: number;
         };
         /** ZipImageInfo */
         ZipImageInfo: {
@@ -24853,11 +25175,7 @@ export interface operations {
     health_details_api_v1_health_details_get: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -24906,15 +25224,6 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
             };
         };
     };
@@ -24976,11 +25285,7 @@ export interface operations {
     get_meta_details_api_v1_meta_details_get: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -24993,6 +25298,120 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MetaDetailsResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    get_auth_policy_api_v1_auth_policy_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthPolicy"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    signup_user_api_v1_auth_signup_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SignupRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthResponse"];
                 };
             };
             /** @description Bad Request */
@@ -25182,11 +25601,7 @@ export interface operations {
     get_me_api_v1_auth_me_get: {
         parameters: {
             query?: never;
-            header?: {
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-                "x-tenant-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -25235,15 +25650,6 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
             };
         };
     };
@@ -25452,11 +25858,7 @@ export interface operations {
     get_document_access_api_v1_documents__document_id__access_get: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 document_id: string;
             };
@@ -25522,11 +25924,7 @@ export interface operations {
     put_document_access_api_v1_documents__document_id__access_put: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 document_id: string;
             };
@@ -25796,11 +26194,7 @@ export interface operations {
     batch_patch_document_user_metadata_api_v1_documents_batch_metadata_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -25868,11 +26262,7 @@ export interface operations {
     batch_retry_documents_api_v1_documents_batch_retry_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -25940,11 +26330,7 @@ export interface operations {
     batch_reingest_documents_api_v1_documents_batch_reingest_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -26012,11 +26398,7 @@ export interface operations {
     batch_update_document_access_api_v1_documents_batch_access_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -26084,11 +26466,7 @@ export interface operations {
     batch_move_documents_api_v1_documents_batch_move_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -26156,11 +26534,7 @@ export interface operations {
     batch_disable_documents_api_v1_documents_batch_disable_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -26228,11 +26602,7 @@ export interface operations {
     batch_enable_documents_api_v1_documents_batch_enable_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -26300,11 +26670,7 @@ export interface operations {
     batch_archive_documents_api_v1_documents_batch_archive_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -26372,11 +26738,7 @@ export interface operations {
     batch_unarchive_documents_api_v1_documents_batch_unarchive_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -26444,11 +26806,7 @@ export interface operations {
     batch_delete_documents_api_v1_documents_batch_delete_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -26516,11 +26874,7 @@ export interface operations {
     apply_batch_upload_urls_api_v1_documents_batch_upload_apply_urls_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -26595,11 +26949,7 @@ export interface operations {
     get_batch_task_status_api_v1_documents_batch_upload_status__batch_id__get: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 batch_id: string;
             };
@@ -26678,11 +27028,7 @@ export interface operations {
                 max_groups?: number;
                 max_docs_per_group?: number;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -26750,11 +27096,7 @@ export interface operations {
                 lifecycle?: "active" | "archived" | "disabled" | "all";
                 max_depth?: number;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -26824,11 +27166,7 @@ export interface operations {
                 owner_id?: string | null;
                 q?: string | null;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -26900,11 +27238,7 @@ export interface operations {
                 /** @description If true, return chunks across all pipeline versions (debug) */
                 all_versions?: boolean;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 document_id: string;
             };
@@ -26970,11 +27304,7 @@ export interface operations {
     create_document_chunk_api_v1_documents__document_id__chunks_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 document_id: string;
             };
@@ -27053,11 +27383,7 @@ export interface operations {
                 /** @description If true, return matches across all pipeline versions (debug) */
                 all_versions?: boolean;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 document_id: string;
             };
@@ -27123,11 +27449,7 @@ export interface operations {
     get_document_chunk_api_v1_documents__document_id__chunks__chunk_id__get: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 document_id: string;
                 chunk_id: string;
@@ -27194,11 +27516,7 @@ export interface operations {
     delete_document_chunk_api_v1_documents__document_id__chunks__chunk_id__delete: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 document_id: string;
                 chunk_id: string;
@@ -27263,11 +27581,7 @@ export interface operations {
     patch_document_chunk_api_v1_documents__document_id__chunks__chunk_id__patch: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 document_id: string;
                 chunk_id: string;
@@ -27340,11 +27654,7 @@ export interface operations {
             query?: {
                 max_chars?: number;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 document_id: string;
             };
@@ -27410,11 +27720,7 @@ export interface operations {
     download_document_clean_docx_api_v1_documents__document_id__clean_docx_get: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 document_id: string;
             };
@@ -27488,11 +27794,7 @@ export interface operations {
                 skip?: number;
                 limit?: number;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -27556,11 +27858,7 @@ export interface operations {
     replay_ingest_dead_letter_api_v1_documents_dead_letters__dead_letter_id__replay_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 dead_letter_id: string;
             };
@@ -27638,11 +27936,7 @@ export interface operations {
                 order_by?: "created_at" | "filename" | "file_size";
                 order_dir?: "asc" | "desc";
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -27706,11 +28000,7 @@ export interface operations {
     create_document_with_manual_chunks_api_v1_documents_manual_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -27778,17 +28068,13 @@ export interface operations {
     preview_document_api_v1_documents_preview_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
         requestBody: {
             content: {
-                "multipart/form-data": components["schemas"]["Body_preview_document_api_v1_documents_preview_post"];
+                "multipart/form-data": components["schemas"]["DocumentPreviewForm"];
             };
         };
         responses: {
@@ -27856,11 +28142,7 @@ export interface operations {
                 /** @description If true, include chunks across all pipeline versions (debug; when include_chunks=true) */
                 all_versions?: boolean;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 document_id: string;
             };
@@ -27926,11 +28208,7 @@ export interface operations {
     delete_document_api_v1_documents__document_id__delete: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 document_id: string;
             };
@@ -28001,11 +28279,7 @@ export interface operations {
                 /** @description Max chunks to score for semantic quality */
                 max_chunks_scored?: number;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 document_id: string;
             };
@@ -28071,11 +28345,7 @@ export interface operations {
     get_document_lifecycle_metadata_api_v1_documents__document_id__lifecycle_metadata_get: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 document_id: string;
             };
@@ -28141,11 +28411,7 @@ export interface operations {
     patch_document_lifecycle_metadata_api_v1_documents__document_id__lifecycle_metadata_patch: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 document_id: string;
             };
@@ -28215,11 +28481,7 @@ export interface operations {
     generate_document_qa_api_v1_documents__document_id__qa_generate_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 document_id: string;
             };
@@ -28289,11 +28551,7 @@ export interface operations {
     patch_document_pipeline_api_v1_documents__document_id__pipeline_patch: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 document_id: string;
             };
@@ -28363,11 +28621,7 @@ export interface operations {
     patch_document_user_metadata_api_v1_documents__document_id__metadata_patch: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 document_id: string;
             };
@@ -28437,11 +28691,7 @@ export interface operations {
     get_document_status_api_v1_documents__document_id__status_get: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 document_id: string;
             };
@@ -28507,11 +28757,7 @@ export interface operations {
     cancel_document_processing_api_v1_documents__document_id__cancel_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 document_id: string;
             };
@@ -28581,11 +28827,7 @@ export interface operations {
                 skip_if_unchanged?: boolean;
                 parser_backend?: string | null;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 document_id: string;
             };
@@ -28653,11 +28895,7 @@ export interface operations {
             query?: {
                 limit?: number;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 document_id: string;
             };
@@ -28723,11 +28961,7 @@ export interface operations {
     list_document_versions_api_v1_documents__document_id__versions_get: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 document_id: string;
             };
@@ -28800,11 +29034,7 @@ export interface operations {
                 /** @description Max hash samples included in added_hashes/removed_hashes */
                 sample_limit?: number;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 document_id: string;
             };
@@ -28870,11 +29100,7 @@ export interface operations {
     activate_document_version_api_v1_documents__document_id__versions__pipeline_hash__activate_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 document_id: string;
                 pipeline_hash: string;
@@ -28941,11 +29167,7 @@ export interface operations {
     delete_document_version_api_v1_documents__document_id__versions__pipeline_hash__delete: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 document_id: string;
                 pipeline_hash: string;
@@ -29010,17 +29232,13 @@ export interface operations {
     upload_document_api_v1_documents_upload_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
         requestBody: {
             content: {
-                "multipart/form-data": components["schemas"]["Body_upload_document_api_v1_documents_upload_post"];
+                "multipart/form-data": components["schemas"]["UploadDocumentFormFields"];
             };
         };
         responses: {
@@ -29089,11 +29307,7 @@ export interface operations {
     upload_document_from_url_api_v1_documents_upload_url_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -29168,17 +29382,13 @@ export interface operations {
     upload_documents_batch_api_v1_documents_upload_batch_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
         requestBody: {
             content: {
-                "multipart/form-data": components["schemas"]["Body_upload_documents_batch_api_v1_documents_upload_batch_post"];
+                "multipart/form-data": components["schemas"]["UploadDocumentsBatchFormFields"];
             };
         };
         responses: {
@@ -29247,11 +29457,7 @@ export interface operations {
     disable_document_chunk_api_v1_documents__document_id__chunks__chunk_id__disable_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 document_id: string;
                 chunk_id: string;
@@ -29318,11 +29524,7 @@ export interface operations {
     enable_document_chunk_api_v1_documents__document_id__chunks__chunk_id__enable_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 document_id: string;
                 chunk_id: string;
@@ -29389,11 +29591,7 @@ export interface operations {
     reembed_document_chunks_api_v1_documents__document_id__chunks_reembed_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 document_id: string;
             };
@@ -29472,17 +29670,13 @@ export interface operations {
                 max_chunks?: number;
                 use_parse_cache?: boolean;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
         requestBody: {
             content: {
-                "multipart/form-data": components["schemas"]["Body_preview_chunking_api_v1_documents_chunk_preview_post"];
+                "multipart/form-data": components["schemas"]["ChunkPreviewUploadForm"];
             };
         };
         responses: {
@@ -29553,17 +29747,13 @@ export interface operations {
                 max_chunks?: number;
                 use_parse_cache?: boolean;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
         requestBody: {
             content: {
-                "application/x-www-form-urlencoded": components["schemas"]["Body_preview_chunking_by_sha_api_v1_documents_chunk_preview_by_sha_post"];
+                "application/x-www-form-urlencoded": components["schemas"]["ChunkPreviewByShaForm"];
             };
         };
         responses: {
@@ -29625,11 +29815,7 @@ export interface operations {
     extract_parsing_document_api_v1_parsing_documents__document_id__extract_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 document_id: string;
             };
@@ -29704,11 +29890,7 @@ export interface operations {
                 status?: string | null;
                 dataset_id?: string | null;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -29772,17 +29954,13 @@ export interface operations {
     upload_parsing_document_api_v1_parsing_documents_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
         requestBody: {
             content: {
-                "multipart/form-data": components["schemas"]["Body_upload_parsing_document_api_v1_parsing_documents_post"];
+                "multipart/form-data": components["schemas"]["ParsingDocumentUploadForm"];
             };
         };
         responses: {
@@ -29849,11 +30027,7 @@ export interface operations {
                 image_ocr_enabled?: boolean;
                 vlm_correction_enabled?: boolean | null;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 document_id: string;
             };
@@ -29919,11 +30093,7 @@ export interface operations {
     get_parsing_content_api_v1_parsing_documents__document_id__content_get: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 document_id: string;
             };
@@ -29989,11 +30159,7 @@ export interface operations {
     update_parsing_content_api_v1_parsing_documents__document_id__content_patch: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 document_id: string;
             };
@@ -30063,11 +30229,7 @@ export interface operations {
     delete_parsing_document_api_v1_parsing_documents__document_id__delete: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 document_id: string;
             };
@@ -30136,11 +30298,7 @@ export interface operations {
                 dataset_id?: string | null;
                 include_global?: boolean;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -30204,11 +30362,7 @@ export interface operations {
     create_chunk_preset_api_v1_chunk_presets_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -30276,11 +30430,7 @@ export interface operations {
     update_chunk_preset_api_v1_chunk_presets__preset_id__put: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 preset_id: string;
             };
@@ -30350,11 +30500,7 @@ export interface operations {
     delete_chunk_preset_api_v1_chunk_presets__preset_id__delete: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 preset_id: string;
             };
@@ -30418,11 +30564,7 @@ export interface operations {
     get_conversation_summary_endpoint_api_v1_chat_conversations__conversation_id__summary_get: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 conversation_id: string;
             };
@@ -30495,11 +30637,7 @@ export interface operations {
     delete_conversation_summary_endpoint_api_v1_chat_conversations__conversation_id__summary_delete: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 conversation_id: string;
             };
@@ -30570,11 +30708,7 @@ export interface operations {
     update_conversation_summary_endpoint_api_v1_chat_conversations__conversation_id__summary_update_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 conversation_id: string;
             };
@@ -30651,11 +30785,7 @@ export interface operations {
                 window_minutes?: number;
                 max_bytes?: number;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 conversation_id: string;
             };
@@ -30732,11 +30862,7 @@ export interface operations {
                 before?: string | null;
                 include_values?: boolean;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 conversation_id: string;
             };
@@ -30809,11 +30935,7 @@ export interface operations {
     delete_conversation_checkpoints_api_v1_chat_conversations__conversation_id__checkpoints_delete: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 conversation_id: string;
             };
@@ -30886,11 +31008,7 @@ export interface operations {
             query?: {
                 include_values?: boolean;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 conversation_id: string;
                 checkpoint_id: string;
@@ -30968,11 +31086,7 @@ export interface operations {
                 limit?: number;
                 q?: string | null;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -31043,11 +31157,7 @@ export interface operations {
     create_conversation_api_v1_chat_conversations_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -31122,11 +31232,7 @@ export interface operations {
     delete_conversation_api_v1_chat_conversations__conversation_id__delete: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 conversation_id: string;
             };
@@ -31197,11 +31303,7 @@ export interface operations {
     update_conversation_api_v1_chat_conversations__conversation_id__patch: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 conversation_id: string;
             };
@@ -31281,11 +31383,7 @@ export interface operations {
                 fmt?: string;
                 include_citations?: boolean;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 conversation_id: string;
             };
@@ -31361,11 +31459,7 @@ export interface operations {
                 limit?: number | null;
                 before?: string | null;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 conversation_id: string;
             };
@@ -31438,11 +31532,7 @@ export interface operations {
     chat_api_v1_chat_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -31517,17 +31607,13 @@ export interface operations {
     stream_chat_api_v1_chat_stream_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["ChatRequest"];
+                "application/json": components["schemas"]["RunAgentInput"];
             };
         };
         responses: {
@@ -31537,7 +31623,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "text/event-stream": string;
                 };
             };
             /** @description Bad Request */
@@ -31596,11 +31682,7 @@ export interface operations {
     get_dataset_ingestion_stats_api_v1_datasets__dataset_id__ingestion_stats_get: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 dataset_id: string;
             };
@@ -31678,11 +31760,7 @@ export interface operations {
                 order_dir?: "asc" | "desc";
                 operational_status?: "all" | "active" | "anomaly" | "pending" | "testing";
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -31746,11 +31824,7 @@ export interface operations {
     create_dataset_api_v1_datasets__post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -31818,11 +31892,7 @@ export interface operations {
     get_dataset_api_v1_datasets__dataset_id__get: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 dataset_id: string;
             };
@@ -31888,11 +31958,7 @@ export interface operations {
     delete_dataset_api_v1_datasets__dataset_id__delete: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 dataset_id: string;
             };
@@ -31956,11 +32022,7 @@ export interface operations {
     update_dataset_api_v1_datasets__dataset_id__patch: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 dataset_id: string;
             };
@@ -32030,11 +32092,7 @@ export interface operations {
     get_dataset_categories_api_v1_datasets__dataset_id__categories_get: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 dataset_id: string;
             };
@@ -32100,11 +32158,7 @@ export interface operations {
     set_dataset_categories_api_v1_datasets__dataset_id__categories_put: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 dataset_id: string;
             };
@@ -32174,11 +32228,7 @@ export interface operations {
     export_dataset_config_api_v1_datasets__dataset_id__config_export_get: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 dataset_id: string;
             };
@@ -32244,11 +32294,7 @@ export interface operations {
     import_dataset_config_api_v1_datasets__dataset_id__config_import_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 dataset_id: string;
             };
@@ -32318,11 +32364,7 @@ export interface operations {
     put_dataset_retrieval_audit_api_v1_datasets__dataset_id__retrieval_audit_put: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 dataset_id: string;
             };
@@ -32392,11 +32434,7 @@ export interface operations {
     clone_dataset_api_v1_datasets__dataset_id__clone_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 dataset_id: string;
             };
@@ -32471,11 +32509,7 @@ export interface operations {
                 /** @description Plan only; do not delete */
                 dry_run?: boolean;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 dataset_id: string;
             };
@@ -32541,11 +32575,7 @@ export interface operations {
     get_dataset_ingestion_policy_api_v1_datasets__dataset_id__ingestion_policy_get: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 dataset_id: string;
             };
@@ -32611,11 +32641,7 @@ export interface operations {
     put_dataset_ingestion_policy_api_v1_datasets__dataset_id__ingestion_policy_put: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 dataset_id: string;
             };
@@ -32685,11 +32711,7 @@ export interface operations {
     list_dataset_ingestion_policy_versions_api_v1_datasets__dataset_id__ingestion_policy_versions_get: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 dataset_id: string;
             };
@@ -32755,11 +32777,7 @@ export interface operations {
     rollback_dataset_ingestion_policy_api_v1_datasets__dataset_id__ingestion_policy_rollback_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 dataset_id: string;
             };
@@ -32829,11 +32847,7 @@ export interface operations {
     import_dataset_ingestion_policy_api_v1_datasets__dataset_id__ingestion_policy_import_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 dataset_id: string;
             };
@@ -32903,11 +32917,7 @@ export interface operations {
     export_dataset_ingestion_policy_api_v1_datasets__dataset_id__ingestion_policy_export_get: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 dataset_id: string;
             };
@@ -32973,11 +32983,7 @@ export interface operations {
     get_dataset_profile_summary_api_v1_datasets__dataset_id__profile_summary_get: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 dataset_id: string;
             };
@@ -33043,11 +33049,7 @@ export interface operations {
     get_dataset_health_api_v1_datasets__dataset_id__health_get: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 dataset_id: string;
             };
@@ -33116,11 +33118,7 @@ export interface operations {
                 skip?: number;
                 limit?: number;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 dataset_id: string;
                 finding_key: string;
@@ -33194,11 +33192,7 @@ export interface operations {
                 include_preview?: boolean;
                 preview_max_chars?: number;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 dataset_id: string;
             };
@@ -33267,11 +33261,7 @@ export interface operations {
                 skip?: number;
                 limit?: number;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 dataset_id: string;
             };
@@ -33337,11 +33327,7 @@ export interface operations {
     create_dataset_profile_scan_run_api_v1_datasets__dataset_id__profile_scan_runs_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 dataset_id: string;
             };
@@ -33411,11 +33397,7 @@ export interface operations {
     get_dataset_profile_scan_run_api_v1_datasets__dataset_id__profile_scan_runs__scan_run_id__get: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 dataset_id: string;
                 scan_run_id: string;
@@ -33482,11 +33464,7 @@ export interface operations {
     export_dataset_profile_summary_api_v1_datasets__dataset_id__profile_export_get: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 dataset_id: string;
             };
@@ -33555,11 +33533,7 @@ export interface operations {
                 /** @description Whether to redact dataset name/id for sharing */
                 redact?: boolean;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 dataset_id: string;
             };
@@ -33637,11 +33611,7 @@ export interface operations {
                 /** @description Return gzip-compressed NDJSON (Content-Encoding: gzip) */
                 gzip?: boolean;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 dataset_id: string;
             };
@@ -33712,11 +33682,7 @@ export interface operations {
                 /** @description Include sensitive fields in documents metadata */
                 include_sensitive?: boolean;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 dataset_id: string;
             };
@@ -33787,11 +33753,7 @@ export interface operations {
                 feedback_polarity?: string | null;
                 limit?: number;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -33860,11 +33822,7 @@ export interface operations {
                 feedback_polarity?: string | null;
                 category?: string | null;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 dataset_id: string;
             };
@@ -33936,11 +33894,7 @@ export interface operations {
                 category?: string | null;
                 limit?: number;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 dataset_id: string;
             };
@@ -34006,17 +33960,13 @@ export interface operations {
     get_dataset_analysis_rule_suggestions_api_v1_datasets__dataset_id__analysis_rule_suggestions_get: {
         parameters: {
             query: {
-                ruleset: string;
                 from_ts?: string | null;
                 to_ts?: string | null;
                 feedback_polarity?: string | null;
+                ruleset: string;
                 limit?: number;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 dataset_id: string;
             };
@@ -34087,11 +34037,7 @@ export interface operations {
                 feedback_polarity?: string | null;
                 category?: string | null;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 dataset_id: string;
             };
@@ -34162,11 +34108,7 @@ export interface operations {
                 feedback_polarity?: string | null;
                 category?: string | null;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 dataset_id: string;
             };
@@ -34237,11 +34179,7 @@ export interface operations {
                 feedback_polarity?: string | null;
                 category?: string | null;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 dataset_id: string;
             };
@@ -34307,18 +34245,14 @@ export interface operations {
     writeback_dataset_analysis_glossary_endpoint_api_v1_datasets__dataset_id__analysis_glossary_writeback_post: {
         parameters: {
             query: {
-                ruleset: string;
                 from_ts?: string | null;
                 to_ts?: string | null;
                 feedback_polarity?: string | null;
                 category?: string | null;
+                ruleset: string;
                 limit?: number;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 dataset_id: string;
             };
@@ -34389,11 +34323,7 @@ export interface operations {
                 feedback_polarity?: string | null;
                 category?: string | null;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 dataset_id: string;
             };
@@ -34459,11 +34389,7 @@ export interface operations {
     get_dataset_analysis_png_task_endpoint_api_v1_datasets__dataset_id__analysis_export_tasks__task_id__get: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 dataset_id: string;
                 task_id: string;
@@ -34530,11 +34456,7 @@ export interface operations {
     get_dataset_analysis_png_task_result_endpoint_api_v1_datasets__dataset_id__analysis_export_tasks__task_id__result_png_get: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 dataset_id: string;
                 task_id: string;
@@ -34604,11 +34526,7 @@ export interface operations {
                 skip?: number;
                 limit?: number;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 dataset_id: string;
             };
@@ -34674,11 +34592,7 @@ export interface operations {
     create_dataset_precheck_scan_run_api_v1_datasets__dataset_id__precheck_scan_runs_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 dataset_id: string;
             };
@@ -34748,11 +34662,7 @@ export interface operations {
     get_dataset_precheck_scan_run_api_v1_datasets__dataset_id__precheck_scan_runs__scan_run_id__get: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 dataset_id: string;
                 scan_run_id: string;
@@ -34819,11 +34729,7 @@ export interface operations {
     get_dataset_precheck_summary_api_v1_datasets__dataset_id__precheck_scan_runs__scan_run_id__summary_get: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 dataset_id: string;
                 scan_run_id: string;
@@ -34893,11 +34799,7 @@ export interface operations {
                 skip?: number;
                 limit?: number;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 dataset_id: string;
                 scan_run_id: string;
@@ -34970,11 +34872,7 @@ export interface operations {
                 skip?: number;
                 limit?: number;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 dataset_id: string;
                 scan_run_id: string;
@@ -35041,11 +34939,7 @@ export interface operations {
     cancel_dataset_precheck_scan_run_api_v1_datasets__dataset_id__precheck_scan_runs__scan_run_id__cancel_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 dataset_id: string;
                 scan_run_id: string;
@@ -35112,11 +35006,7 @@ export interface operations {
     stream_dataset_precheck_scan_events_api_v1_datasets__dataset_id__precheck_scan_runs__scan_run_id__events_get: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 dataset_id: string;
                 scan_run_id: string;
@@ -35186,11 +35076,7 @@ export interface operations {
                 size?: number;
                 prefer_artifact?: boolean;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 dataset_id: string;
                 scan_run_id: string;
@@ -35257,11 +35143,7 @@ export interface operations {
     patch_dataset_precheck_sample_review_api_v1_datasets__dataset_id__precheck_scan_runs__scan_run_id__samples_review_patch: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 dataset_id: string;
                 scan_run_id: string;
@@ -35332,11 +35214,7 @@ export interface operations {
     get_dataset_precheck_near_dups_api_v1_datasets__dataset_id__precheck_scan_runs__scan_run_id__near_dups_get: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 dataset_id: string;
                 scan_run_id: string;
@@ -35406,11 +35284,7 @@ export interface operations {
                 /** @description Base scan run id to compare against */
                 base_scan_run_id: string;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 dataset_id: string;
                 scan_run_id: string;
@@ -35479,11 +35353,7 @@ export interface operations {
             query?: {
                 max_names_per_bucket?: number;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 dataset_id: string;
                 scan_run_id: string;
@@ -35553,11 +35423,7 @@ export interface operations {
                 /** @description Whether to overwrite existing dataset ingestion_policy */
                 replace?: boolean;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 dataset_id: string;
                 scan_run_id: string;
@@ -35624,11 +35490,7 @@ export interface operations {
     export_dataset_precheck_summary_json_api_v1_datasets__dataset_id__precheck_scan_runs__scan_run_id__export_get: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 dataset_id: string;
                 scan_run_id: string;
@@ -35698,11 +35560,7 @@ export interface operations {
                 /** @description Whether to redact dataset/path for sharing */
                 redact?: boolean;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 dataset_id: string;
                 scan_run_id: string;
@@ -35778,11 +35636,7 @@ export interface operations {
                 /** @description Include sample rows in each item */
                 include_sample_rows?: boolean;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 dataset_id: string;
             };
@@ -35851,11 +35705,7 @@ export interface operations {
                 include_columns?: boolean;
                 include_sample_rows?: boolean;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 dataset_id: string;
                 table_id: string;
@@ -35924,11 +35774,7 @@ export interface operations {
             query?: {
                 limit?: number;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 dataset_id: string;
                 table_id: string;
@@ -35998,11 +35844,7 @@ export interface operations {
                 /** @description Include redacted SQL for owner/admin/auditor */
                 include_sql?: boolean;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 dataset_id: string;
                 table_id: string;
@@ -36076,11 +35918,7 @@ export interface operations {
                 /** @description Include redacted SQL for owner/admin/auditor */
                 include_sql?: boolean;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 dataset_id: string;
                 table_id: string;
@@ -36151,11 +35989,7 @@ export interface operations {
     lotus_sem_filter_dataset_table_api_v1_datasets__dataset_id__tables__table_id__lotus_sem_filter_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 dataset_id: string;
                 table_id: string;
@@ -36233,11 +36067,7 @@ export interface operations {
                 /** @description Fuzzy search across db/schema/table names */
                 q?: string | null;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 dataset_id: string;
             };
@@ -36303,11 +36133,7 @@ export interface operations {
     get_db_catalog_table_api_v1_datasets__dataset_id__db_catalog_tables__table_id__get: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 dataset_id: string;
                 table_id: string;
@@ -36381,11 +36207,7 @@ export interface operations {
                 skip?: number;
                 limit?: number;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 dataset_id: string;
             };
@@ -36451,11 +36273,7 @@ export interface operations {
     list_dataset_categories_api_v1_dataset_categories__get: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -36505,25 +36323,12 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
         };
     };
     create_dataset_category_api_v1_dataset_categories__post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -36591,11 +36396,7 @@ export interface operations {
     delete_dataset_category_api_v1_dataset_categories__category_id__delete: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 category_id: string;
             };
@@ -36659,11 +36460,7 @@ export interface operations {
     update_dataset_category_api_v1_dataset_categories__category_id__patch: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 category_id: string;
             };
@@ -36733,11 +36530,7 @@ export interface operations {
     move_dataset_category_api_v1_dataset_categories__category_id__move_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 category_id: string;
             };
@@ -36822,11 +36615,7 @@ export interface operations {
                 min_shared_events?: number | null;
                 max_entity_links?: number | null;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -36907,11 +36696,7 @@ export interface operations {
                 min_shared_events?: number | null;
                 max_entity_links?: number | null;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -36986,11 +36771,7 @@ export interface operations {
                 /** @description Optional pipeline version filter (defaults to active pipeline per document) */
                 pipeline_hash?: string | null;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -37060,11 +36841,7 @@ export interface operations {
                 /** @description Optional pipeline version filter (defaults to active pipeline per document) */
                 pipeline_hash?: string | null;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -37128,11 +36905,7 @@ export interface operations {
     preview_manual_kg_import_api_v1_kg_imports_preview_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -37202,11 +36975,7 @@ export interface operations {
             query?: {
                 limit?: number;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -37270,11 +37039,7 @@ export interface operations {
     import_manual_kg_api_v1_kg_imports_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -37345,11 +37110,7 @@ export interface operations {
                 /** @description Delete entities created only by this import when they become orphaned */
                 prune_entities?: boolean;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 import_id: string;
             };
@@ -37424,11 +37185,7 @@ export interface operations {
                 /** @description Max nodes/edges per detail group */
                 detail_limit?: number;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -37492,11 +37249,7 @@ export interface operations {
     diff_kg_snapshots_api_api_v1_kg_snapshots_diff_post: {
         parameters: {
             query?: never;
-            header?: {
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-                "x-tenant-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -37570,11 +37323,7 @@ export interface operations {
                 /** @description Optional dataset scope resolved server-side to accessible documents */
                 dataset_id?: string | null;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -37656,11 +37405,7 @@ export interface operations {
                 /** @description Return gzipped GraphML */
                 gzip?: boolean;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -37730,11 +37475,7 @@ export interface operations {
                 /** @description Optional pipeline version filter (defaults to active pipeline per document) */
                 pipeline_hash?: string | null;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 event_id: string;
             };
@@ -37808,11 +37549,7 @@ export interface operations {
                 max_events?: number;
                 max_neighbors?: number;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 entity_id: string;
             };
@@ -37878,11 +37615,7 @@ export interface operations {
     list_kg_entity_aliases_api_v1_kg_entities__entity_id__aliases_get: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 entity_id: string;
             };
@@ -37948,11 +37681,7 @@ export interface operations {
     create_kg_entity_alias_api_v1_kg_entities__entity_id__aliases_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 entity_id: string;
             };
@@ -38022,11 +37751,7 @@ export interface operations {
     delete_kg_entity_alias_api_v1_kg_entities__entity_id__aliases__alias_id__delete: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 entity_id: string;
                 alias_id: string;
@@ -38098,11 +37823,7 @@ export interface operations {
                 k?: number;
                 min_similarity?: number;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 entity_id: string;
             };
@@ -38168,11 +37889,7 @@ export interface operations {
     preview_kg_entity_merge_api_v1_kg_entities_merge_preview_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -38240,11 +37957,7 @@ export interface operations {
     list_kg_predicate_ontology_api_v1_kg_ontology_predicates_get: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -38294,25 +38007,12 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
         };
     };
     create_kg_predicate_ontology_api_v1_kg_ontology_predicates_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -38380,11 +38080,7 @@ export interface operations {
     delete_kg_predicate_ontology_api_v1_kg_ontology_predicates__predicate_id__delete: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 predicate_id: string;
             };
@@ -38450,11 +38146,7 @@ export interface operations {
     update_kg_predicate_ontology_api_v1_kg_ontology_predicates__predicate_id__patch: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 predicate_id: string;
             };
@@ -38524,11 +38216,7 @@ export interface operations {
     merge_kg_entities_api_v1_kg_entities_merge_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -38596,11 +38284,7 @@ export interface operations {
     split_kg_entity_api_v1_kg_entities_split_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -38668,11 +38352,7 @@ export interface operations {
     undo_kg_entity_resolution_action_api_v1_kg_entities_resolution_actions__action_id__undo_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 action_id: string;
             };
@@ -38740,11 +38420,7 @@ export interface operations {
             query?: {
                 prune_orphan_entities?: boolean | null;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 document_id: string;
             };
@@ -38821,17 +38497,13 @@ export interface operations {
                 extract_relations?: boolean | null;
                 /** @description Extract Skill/SOP entities (override settings) */
                 extract_skills?: boolean | null;
-                /** @description Extraction backend override: llm, gliner, hybrid, heuristic */
+                /** @description Extraction backend override: llm, heuristic */
                 extraction_backend?: string | null;
                 prompt_template_id?: string | null;
                 prompt_template_key?: string | null;
                 prompt_ab_experiment_key?: string | null;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 document_id: string;
             };
@@ -38897,11 +38569,7 @@ export interface operations {
     run_kg_search_api_v1_kg_search_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -38969,11 +38637,7 @@ export interface operations {
     k_hop_neighbors_api_v1_kg_network_k_hop_neighbors_post: {
         parameters: {
             query?: never;
-            header?: {
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-                "x-tenant-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -38989,9 +38653,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["KHopNeighborsResponse"];
                 };
             };
             /** @description Bad Request */
@@ -39043,11 +38705,7 @@ export interface operations {
     shortest_path_api_v1_kg_network_shortest_path_post: {
         parameters: {
             query?: never;
-            header?: {
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-                "x-tenant-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -39063,9 +38721,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["ShortestPathResponse"];
                 };
             };
             /** @description Bad Request */
@@ -39117,11 +38773,7 @@ export interface operations {
     paths_between_api_v1_kg_network_paths_between_post: {
         parameters: {
             query?: never;
-            header?: {
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-                "x-tenant-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -39137,9 +38789,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["PathsBetweenResponse"];
                 };
             };
             /** @description Bad Request */
@@ -39191,11 +38841,7 @@ export interface operations {
     centrality_api_v1_kg_network_centrality_post: {
         parameters: {
             query?: never;
-            header?: {
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-                "x-tenant-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -39211,9 +38857,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["CentralityResponse"];
                 };
             };
             /** @description Bad Request */
@@ -39265,11 +38909,7 @@ export interface operations {
     community_of_api_v1_kg_network_community_of_post: {
         parameters: {
             query?: never;
-            header?: {
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-                "x-tenant-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -39285,9 +38925,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["CommunityResponse"];
                 };
             };
             /** @description Bad Request */
@@ -39339,11 +38977,7 @@ export interface operations {
     connected_component_api_v1_kg_network_connected_component_post: {
         parameters: {
             query?: never;
-            header?: {
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-                "x-tenant-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -39359,9 +38993,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["ConnectedComponentResponse"];
                 };
             };
             /** @description Bad Request */
@@ -39416,11 +39048,7 @@ export interface operations {
                 /** @description Enqueue repair via task queue (arq) */
                 async_mode?: boolean;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 suite_id: string;
             };
@@ -39495,11 +39123,7 @@ export interface operations {
                 dataset_id?: string | null;
                 include_archived?: boolean;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -39563,11 +39187,7 @@ export interface operations {
     create_evidence_suite_api_v1_evidence_suites_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -39635,11 +39255,7 @@ export interface operations {
     get_evidence_suite_api_v1_evidence_suites__suite_id__get: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 suite_id: string;
             };
@@ -39705,11 +39321,7 @@ export interface operations {
     patch_evidence_suite_api_v1_evidence_suites__suite_id__patch: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 suite_id: string;
             };
@@ -39783,11 +39395,7 @@ export interface operations {
                 top_n?: number;
                 heatmap_top_n?: number;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 suite_id: string;
             };
@@ -39860,11 +39468,7 @@ export interface operations {
                 max_rating?: number;
                 include_existing?: boolean;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 suite_id: string;
             };
@@ -39935,11 +39539,7 @@ export interface operations {
                 details_limit?: number;
                 slice_top_n?: number;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 suite_id: string;
             };
@@ -40010,11 +39610,7 @@ export interface operations {
                 details_limit?: number;
                 slice_top_n?: number;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 dataset_id: string;
             };
@@ -40084,11 +39680,7 @@ export interface operations {
                 limit?: number;
                 status?: string | null;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 suite_id: string;
             };
@@ -40154,11 +39746,7 @@ export interface operations {
     create_evidence_item_api_v1_evidence_suites__suite_id__items_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 suite_id: string;
             };
@@ -40230,11 +39818,7 @@ export interface operations {
             query?: {
                 max_items?: number;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 suite_id: string;
             };
@@ -40304,11 +39888,7 @@ export interface operations {
     patch_evidence_item_api_v1_evidence_items__item_id__patch: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 item_id: string;
             };
@@ -40378,11 +39958,7 @@ export interface operations {
     review_evidence_item_api_v1_evidence_items__item_id__review_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 item_id: string;
             };
@@ -40448,11 +40024,7 @@ export interface operations {
     approve_evidence_item_api_v1_evidence_items__item_id__approve_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 item_id: string;
             };
@@ -40518,11 +40090,7 @@ export interface operations {
     archive_evidence_item_api_v1_evidence_items__item_id__archive_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 item_id: string;
             };
@@ -40588,11 +40156,7 @@ export interface operations {
     sync_suite_to_regression_cases_api_v1_evidence_suites__suite_id__sync_regression_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 suite_id: string;
             };
@@ -40660,11 +40224,7 @@ export interface operations {
             query?: {
                 include_archived_items?: boolean;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 suite_id: string;
             };
@@ -40739,86 +40299,8 @@ export interface operations {
                 include_archived_evidence?: boolean;
                 max_rows_per_source?: number;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Bad Request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Range Not Satisfiable */
-            416: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    export_evidence_suite_ltr_training_bundle_api_v1_evidence_suites__suite_id__export_ltr_training_get: {
-        parameters: {
-            query?: {
-                include_archived_items?: boolean;
-                /** @description Max items to include in export */
-                max_items?: number;
-            };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
-            path: {
-                suite_id: string;
-            };
             cookie?: never;
         };
         requestBody?: never;
@@ -40881,11 +40363,7 @@ export interface operations {
     persist_evidence_capsule_api_v1_evidence_capsules_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -40953,11 +40431,7 @@ export interface operations {
     get_evidence_capsule_api_v1_evidence_capsules__capsule_id__get: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 capsule_id: string;
             };
@@ -41023,11 +40497,7 @@ export interface operations {
     verify_evidence_capsule_payload_api_v1_evidence_capsules_verify_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -41092,294 +40562,10 @@ export interface operations {
             };
         };
     };
-    list_ltr_models_api_v1_ltr_models_get: {
-        parameters: {
-            query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["LTRModelListResponse"];
-                };
-            };
-            /** @description Bad Request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Range Not Satisfiable */
-            416: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    register_ltr_model_api_v1_ltr_models_register_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "multipart/form-data": components["schemas"]["Body_register_ltr_model_api_v1_ltr_models_register_post"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["LTRModelRegisterResponse"];
-                };
-            };
-            /** @description Bad Request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Range Not Satisfiable */
-            416: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    activate_ltr_model_api_v1_ltr_models_activate_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["LTRModelActivateRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["LTRModelActivateResponse"];
-                };
-            };
-            /** @description Bad Request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Range Not Satisfiable */
-            416: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    rollback_ltr_model_api_v1_ltr_models_rollback_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["LTRModelActivateResponse"];
-                };
-            };
-            /** @description Bad Request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Range Not Satisfiable */
-            416: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     get_settings_api_v1_settings_get: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -41429,25 +40615,12 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
         };
     };
     update_settings_api_v1_settings_put: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -41463,7 +40636,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["UpdateSettingsResponse"];
                 };
             };
             /** @description Bad Request */
@@ -41515,11 +40688,7 @@ export interface operations {
     get_system_status_api_v1_settings_status_get: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -41531,7 +40700,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["SystemStatusResponse"];
                 };
             };
             /** @description Bad Request */
@@ -41569,25 +40738,12 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
         };
     };
     test_llm_connection_api_v1_settings_llm_test_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -41603,7 +40759,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["TestLLMResponse"];
                 };
             };
             /** @description Bad Request */
@@ -41655,11 +40811,7 @@ export interface operations {
     list_rule_packs_api_v1_governance_rule_packs_get: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -41709,15 +40861,6 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
         };
     };
     list_stale_documents_by_dataset_api_v1_governance_datasets__dataset_id__stale_documents_get: {
@@ -41737,11 +40880,7 @@ export interface operations {
                 order_by?: "review_due_at" | "authority_level" | "updated_at" | "created_at" | "filename";
                 order_dir?: "asc" | "desc";
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 dataset_id: string;
             };
@@ -41807,11 +40946,7 @@ export interface operations {
     get_ragas_conversation_readiness_api_v1_evaluations_ragas_conversation_readiness_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -41883,11 +41018,7 @@ export interface operations {
                 limit?: number;
                 conversation_id?: string | null;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -41951,11 +41082,7 @@ export interface operations {
     create_ragas_run_api_v1_evaluations_ragas_runs_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -42026,11 +41153,7 @@ export interface operations {
                 include_items?: boolean;
                 include_contexts?: boolean;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 run_id: string;
             };
@@ -42100,11 +41223,7 @@ export interface operations {
                 limit?: number;
                 dataset_id?: string | null;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -42168,11 +41287,7 @@ export interface operations {
     create_ragas_regression_case_api_v1_evaluations_ragas_regression_cases_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -42240,11 +41355,7 @@ export interface operations {
     delete_ragas_regression_case_api_v1_evaluations_ragas_regression_cases__case_id__delete: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 case_id: string;
             };
@@ -42308,11 +41419,7 @@ export interface operations {
     patch_ragas_regression_case_api_v1_evaluations_ragas_regression_cases__case_id__patch: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 case_id: string;
             };
@@ -42384,11 +41491,7 @@ export interface operations {
             query: {
                 dataset_id: string;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -42452,11 +41555,7 @@ export interface operations {
     import_ragas_regression_cases_api_v1_evaluations_ragas_regression_cases_import_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -42524,11 +41623,7 @@ export interface operations {
     generate_synthetic_hardcases_api_v1_evaluations_ragas_regression_cases_synthetic_hardcases_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -42601,11 +41696,7 @@ export interface operations {
                 /** @description Optional dataset scope */
                 dataset_id?: string | null;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -42669,11 +41760,7 @@ export interface operations {
     create_ragas_regression_run_api_v1_evaluations_ragas_regression_runs_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -42741,11 +41828,7 @@ export interface operations {
     create_ragas_regression_ablation_batch_api_v1_evaluations_ragas_regression_ablation_batch_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -42823,11 +41906,7 @@ export interface operations {
                 /** @description Max runs to consider (recency window) */
                 max_candidates?: number;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -42894,11 +41973,7 @@ export interface operations {
                 include_items?: boolean;
                 include_contexts?: boolean;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 run_id: string;
             };
@@ -42977,11 +42052,7 @@ export interface operations {
                 /** @description Set Content-Disposition to download as a file */
                 download?: boolean;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 run_id: string;
             };
@@ -43056,11 +42127,7 @@ export interface operations {
                 /** @description Optional dataset scope */
                 dataset_id?: string | null;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -43133,11 +42200,7 @@ export interface operations {
                 /** @description Max case diffs to include */
                 max_case_diffs?: number;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 run_id: string;
             };
@@ -43208,11 +42271,7 @@ export interface operations {
                 /** @description Whether to redact run ids for sharing */
                 redact?: boolean;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 run_id: string;
             };
@@ -43278,11 +42337,7 @@ export interface operations {
     generate_test_cases_from_documents_api_v1_evaluations_ragas_test_gen_from_documents_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -43350,11 +42405,7 @@ export interface operations {
     run_kg_search_diagnostics_api_v1_evaluations_kg_search_diagnostics_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -43427,11 +42478,7 @@ export interface operations {
                 /** @description Max runs to return (default: 20) */
                 limit?: number;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -43495,11 +42542,7 @@ export interface operations {
     get_kg_search_diagnostics_run_api_v1_evaluations_kg_search_diagnostics_runs__run_id__get: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 run_id: string;
             };
@@ -43572,11 +42615,7 @@ export interface operations {
                 /** @description Optional pipeline hash filter */
                 pipeline_hash?: string | null;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -43642,11 +42681,7 @@ export interface operations {
     generate_test_cases_from_conversations_api_v1_evaluations_ragas_test_gen_from_conversations_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -43714,11 +42749,7 @@ export interface operations {
     sync_builtin_prompt_templates_api_v1_prompt_templates_builtins_sync_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -43768,15 +42799,6 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
         };
     };
     list_prompt_templates_api_v1_prompt_templates_get: {
@@ -43787,11 +42809,7 @@ export interface operations {
                 category?: string | null;
                 is_active?: boolean | null;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -43855,11 +42873,7 @@ export interface operations {
     create_prompt_template_api_v1_prompt_templates_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -43927,11 +42941,7 @@ export interface operations {
     get_prompt_template_api_v1_prompt_templates__template_id__get: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 template_id: string;
             };
@@ -43997,11 +43007,7 @@ export interface operations {
     update_prompt_template_api_v1_prompt_templates__template_id__put: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 template_id: string;
             };
@@ -44071,11 +43077,7 @@ export interface operations {
     delete_prompt_template_api_v1_prompt_templates__template_id__delete: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 template_id: string;
             };
@@ -44139,11 +43141,7 @@ export interface operations {
     create_prompt_template_version_api_v1_prompt_templates__template_id__versions_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 template_id: string;
             };
@@ -44213,11 +43211,7 @@ export interface operations {
     duplicate_prompt_template_api_v1_prompt_templates__template_id__duplicate_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 template_id: string;
             };
@@ -44289,11 +43283,7 @@ export interface operations {
                 ab_experiment_key?: string | null;
                 is_active?: boolean | null;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -44357,11 +43347,7 @@ export interface operations {
     create_rag_config_template_api_v1_rag_config_templates_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -44429,11 +43415,7 @@ export interface operations {
     get_rag_config_template_api_v1_rag_config_templates__template_id__get: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 template_id: string;
             };
@@ -44499,11 +43481,7 @@ export interface operations {
     update_rag_config_template_api_v1_rag_config_templates__template_id__patch: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 template_id: string;
             };
@@ -44573,11 +43551,7 @@ export interface operations {
     create_rag_config_template_version_api_v1_rag_config_templates__template_id__versions_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 template_id: string;
             };
@@ -44654,11 +43628,7 @@ export interface operations {
                 min_rating?: number | null;
                 max_rating?: number | null;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -44722,11 +43692,7 @@ export interface operations {
     upsert_message_feedback_api_v1_feedback_messages_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -44801,11 +43767,7 @@ export interface operations {
                 min_rating?: number | null;
                 max_rating?: number | null;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -44869,11 +43831,7 @@ export interface operations {
     patch_message_feedback_api_v1_feedback_messages__feedback_id__patch: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 feedback_id: string;
             };
@@ -44947,11 +43905,7 @@ export interface operations {
                 limit?: number;
                 ruleset?: string | null;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -44963,7 +43917,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["FeedbackLoopCandidatesResponse"];
                 };
             };
             /** @description Bad Request */
@@ -45017,15 +43971,11 @@ export interface operations {
             query?: {
                 max_rating?: number;
                 limit?: number;
+                ruleset?: string | null;
                 dry_run?: boolean;
                 append?: boolean;
-                ruleset?: string | null;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -45037,7 +43987,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["FeedbackLoopExportResponse"];
                 };
             };
             /** @description Bad Request */
@@ -45089,11 +44039,7 @@ export interface operations {
     create_regression_case_from_feedback_api_v1_feedback_messages__feedback_id__to_regression_case_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 feedback_id: string;
             };
@@ -45163,11 +44109,7 @@ export interface operations {
     create_evidence_item_from_feedback_api_v1_feedback_messages__feedback_id__to_evidence_item_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 feedback_id: string;
             };
@@ -45237,11 +44179,7 @@ export interface operations {
     get_industry_rulesets_api_v1_industry_rules_rulesets_get: {
         parameters: {
             query?: never;
-            header?: {
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-                "x-tenant-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -45291,25 +44229,12 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
         };
     };
     get_industry_ruleset_api_v1_industry_rules_rulesets__name__get: {
         parameters: {
             query?: never;
-            header?: {
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-                "x-tenant-id"?: string | null;
-            };
+            header?: never;
             path: {
                 name: string;
             };
@@ -45375,11 +44300,7 @@ export interface operations {
     put_industry_ruleset_glossary_api_v1_industry_rules_rulesets__name__glossary_put: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 name: string;
             };
@@ -45449,11 +44370,7 @@ export interface operations {
     put_industry_ruleset_patterns_api_v1_industry_rules_rulesets__name__patterns_put: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 name: string;
             };
@@ -45523,11 +44440,7 @@ export interface operations {
     put_industry_ruleset_intents_api_v1_industry_rules_rulesets__name__intents_put: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 name: string;
             };
@@ -45597,11 +44510,7 @@ export interface operations {
     preview_industry_rules_rewrite_api_v1_industry_rules_preview_rewrite_post: {
         parameters: {
             query?: never;
-            header?: {
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-                "x-tenant-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -45669,11 +44578,7 @@ export interface operations {
     get_chunk_lineage_api_v1_lineage_chunk__chunk_id__get: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 chunk_id: string;
             };
@@ -45687,9 +44592,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["ChunkLineageResponse"];
                 };
             };
             /** @description Bad Request */
@@ -45741,11 +44644,7 @@ export interface operations {
     get_answer_lineage_api_v1_lineage_answer__request_id__get: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 request_id: string;
             };
@@ -45759,9 +44658,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["AnswerLineageResponse"];
                 };
             };
             /** @description Bad Request */
@@ -45813,11 +44710,7 @@ export interface operations {
     list_pipeline_plugins_endpoint_api_v1_pipeline_plugins_get: {
         parameters: {
             query?: never;
-            header?: {
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-                "x-tenant-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -45867,25 +44760,12 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
         };
     };
     build_pipeline_plugin_chunk_report_endpoint_api_v1_pipeline_plugins_chunk_report_post: {
         parameters: {
             query?: never;
-            header?: {
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-                "x-tenant-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -45953,11 +44833,7 @@ export interface operations {
     build_pipeline_plugin_golden_draft_api_v1_pipeline_plugins_golden_draft_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -46025,11 +44901,7 @@ export interface operations {
     import_pipeline_plugin_golden_draft_api_v1_pipeline_plugins_golden_draft_import_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -46097,11 +44969,7 @@ export interface operations {
     get_pipeline_capabilities_api_v1_pipeline_capabilities_get: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -46151,15 +45019,6 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
         };
     };
     list_governance_profiles_api_v1_pipeline_governance_profiles_get: {
@@ -46169,11 +45028,7 @@ export interface operations {
                 include_builtin?: boolean;
                 limit?: number;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -46237,11 +45092,7 @@ export interface operations {
     create_governance_profile_api_v1_pipeline_governance_profiles_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -46309,11 +45160,7 @@ export interface operations {
     list_builtin_processing_scripts_endpoint_api_v1_pipeline_governance_processing_scripts_builtins_get: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -46363,25 +45210,12 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
         };
     };
     get_governance_profile_api_v1_pipeline_governance_profiles__profile_ref__get: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 profile_ref: string;
             };
@@ -46447,11 +45281,7 @@ export interface operations {
     delete_governance_profile_api_v1_pipeline_governance_profiles__profile_ref__delete: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 profile_ref: string;
             };
@@ -46515,11 +45345,7 @@ export interface operations {
     update_governance_profile_api_v1_pipeline_governance_profiles__profile_ref__patch: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 profile_ref: string;
             };
@@ -46589,11 +45415,7 @@ export interface operations {
     get_governance_profile_resolved_api_v1_pipeline_governance_profiles__profile_ref__resolved_get: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 profile_ref: string;
             };
@@ -46659,17 +45481,13 @@ export interface operations {
     import_governance_profiles_api_v1_pipeline_governance_profiles_import_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
         requestBody: {
             content: {
-                "multipart/form-data": components["schemas"]["Body_import_governance_profiles_api_v1_pipeline_governance_profiles_import_post"];
+                "multipart/form-data": components["schemas"]["PipelineProfileImportForm"];
             };
         };
         responses: {
@@ -46731,11 +45549,7 @@ export interface operations {
     export_governance_profile_api_v1_pipeline_governance_profiles__profile_ref__export_get: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 profile_ref: string;
             };
@@ -46801,11 +45615,7 @@ export interface operations {
     export_governance_profile_ingestion_policy_api_v1_pipeline_governance_profiles__profile_ref__export_ingestion_policy_get: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 profile_ref: string;
             };
@@ -46871,17 +45681,13 @@ export interface operations {
     parse_preview_api_v1_pipeline_parse_preview_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
         requestBody: {
             content: {
-                "multipart/form-data": components["schemas"]["Body_parse_preview_api_v1_pipeline_parse_preview_post"];
+                "multipart/form-data": components["schemas"]["PipelineParsePreviewForm"];
             };
         };
         responses: {
@@ -46943,17 +45749,13 @@ export interface operations {
     ingestion_preview_api_v1_pipeline_ingestion_preview_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
         requestBody: {
             content: {
-                "multipart/form-data": components["schemas"]["Body_ingestion_preview_api_v1_pipeline_ingestion_preview_post"];
+                "multipart/form-data": components["schemas"]["PipelineIngestionPreviewForm"];
             };
         };
         responses: {
@@ -47015,11 +45817,7 @@ export interface operations {
     chunk_preview_api_v1_pipeline_chunk_preview_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -47087,11 +45885,7 @@ export interface operations {
     clean_preview_api_v1_pipeline_clean_preview_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -47159,11 +45953,7 @@ export interface operations {
     learn_common_lines_api_v1_pipeline_learn_common_lines_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -47231,11 +46021,7 @@ export interface operations {
     governance_analyze_api_v1_pipeline_governance_analyze_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -47303,11 +46089,7 @@ export interface operations {
     list_clean_rules_api_v1_pipeline_clean_rules_get: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -47357,25 +46139,12 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
         };
     };
     extract_keywords_api_v1_pipeline_extract_keywords_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -47443,11 +46212,7 @@ export interface operations {
     auto_annotations_api_v1_pipeline_auto_annotations_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -47515,11 +46280,7 @@ export interface operations {
     llm_clean_preview_api_v1_pipeline_llm_clean_preview_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -47587,17 +46348,13 @@ export interface operations {
     upload_zip_with_images_api_v1_pipeline_upload_zip_with_images_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
         requestBody: {
             content: {
-                "multipart/form-data": components["schemas"]["Body_upload_zip_with_images_api_v1_pipeline_upload_zip_with_images_post"];
+                "multipart/form-data": components["schemas"]["PipelineZipUploadForm"];
             };
         };
         responses: {
@@ -47659,11 +46416,7 @@ export interface operations {
     list_connectors_api_v1_connectors_get: {
         parameters: {
             query?: never;
-            header?: {
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-                "x-tenant-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -47678,25 +46431,12 @@ export interface operations {
                     "application/json": components["schemas"]["ConnectorInfo"][];
                 };
             };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
         };
     };
     validate_connector_config_api_v1_connectors_validate_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -47768,11 +46508,7 @@ export interface operations {
                 limit?: number;
                 dataset_id?: string | null;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -47836,11 +46572,7 @@ export interface operations {
     create_connector_run_api_v1_connectors_runs_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -47908,11 +46640,7 @@ export interface operations {
     get_connector_run_api_v1_connectors_runs__run_id__get: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 run_id: string;
             };
@@ -47978,11 +46706,7 @@ export interface operations {
     retry_failed_connector_run_api_v1_connectors_runs__run_id__retry_failed_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 run_id: string;
             };
@@ -48048,11 +46772,7 @@ export interface operations {
     resume_connector_run_api_v1_connectors_runs__run_id__resume_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 run_id: string;
             };
@@ -48118,11 +46838,7 @@ export interface operations {
     cancel_connector_run_api_v1_connectors_runs__run_id__cancel_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 run_id: string;
             };
@@ -48194,11 +46910,7 @@ export interface operations {
                 connector_id?: string | null;
                 enabled?: boolean | null;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -48262,11 +46974,7 @@ export interface operations {
     create_connector_config_api_v1_connectors_configs_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -48334,11 +47042,7 @@ export interface operations {
     update_connector_config_api_v1_connectors_configs__config_id__put: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 config_id: string;
             };
@@ -48408,11 +47112,7 @@ export interface operations {
     delete_connector_config_api_v1_connectors_configs__config_id__delete: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 config_id: string;
             };
@@ -48476,11 +47176,7 @@ export interface operations {
     run_connector_config_api_v1_connectors_configs__config_id__run_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 config_id: string;
             };
@@ -48550,11 +47246,7 @@ export interface operations {
                 apply?: boolean;
                 sample_limit?: number;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 config_id: string;
             };
@@ -48568,7 +47260,9 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Bad Request */
@@ -48620,11 +47314,7 @@ export interface operations {
     scheduled_tick_api_v1_connectors_scheduled_tick_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -48636,7 +47326,9 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": {
+                        [key: string]: number;
+                    };
                 };
             };
             /** @description Bad Request */
@@ -48674,15 +47366,6 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
         };
     };
     list_ingestion_runs_api_v1_ingestion_runs_get: {
@@ -48694,11 +47377,7 @@ export interface operations {
                 status?: string | null;
                 kind?: string | null;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -48762,11 +47441,7 @@ export interface operations {
     get_ingestion_run_api_v1_ingestion_runs__run_id__get: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 run_id: string;
             };
@@ -48832,11 +47507,7 @@ export interface operations {
     export_ingestion_run_json_api_v1_ingestion_runs__run_id__export_get: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 run_id: string;
             };
@@ -48902,11 +47573,7 @@ export interface operations {
     export_ingestion_run_html_api_v1_ingestion_runs__run_id__export_html_get: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 run_id: string;
             };
@@ -48972,11 +47639,7 @@ export interface operations {
     compare_ingestion_runs_api_v1_ingestion_runs__run_id__compare__other_run_id__get: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 run_id: string;
                 other_run_id: string;
@@ -49043,11 +47706,7 @@ export interface operations {
     replay_ingestion_run_api_v1_ingestion_runs__run_id__replay_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 run_id: string;
             };
@@ -49113,11 +47772,7 @@ export interface operations {
     ingest_conversation_history_api_v1_integrations_conversations_ingest_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -49325,11 +47980,7 @@ export interface operations {
     document_structure_preview_api_v1_rag_document_structure_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -49406,11 +48057,7 @@ export interface operations {
     retrieve_preview_api_v1_rag_retrieve_preview_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -49485,11 +48132,7 @@ export interface operations {
     tree_search_preview_api_v1_rag_tree_search_preview_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -49561,251 +48204,10 @@ export interface operations {
             };
         };
     };
-    index_image_embeddings_api_v1_rag_image_index_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ImageIndexRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ImageIndexResponse"];
-                };
-            };
-            /** @description Bad Request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Range Not Satisfiable */
-            416: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-            /** @description Service Unavailable */
-            503: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    image_search_preview_api_v1_rag_image_search_preview_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ImageSearchRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ImageSearchResponse"];
-                };
-            };
-            /** @description Bad Request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Range Not Satisfiable */
-            416: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-            /** @description Service Unavailable */
-            503: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    retrieve_evidence_api_v1_rag_retrieve_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["EvidenceRetrieveRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["EvidenceRetrieveResponse"];
-                };
-            };
-            /** @description Bad Request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Range Not Satisfiable */
-            416: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-            /** @description Service Unavailable */
-            503: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
     prompt_preview_api_v1_rag_prompt_preview_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -49877,18 +48279,18 @@ export interface operations {
             };
         };
     };
-    get_retrieval_profiles_api_v1_retrieval_profiles_get: {
+    retrieve_evidence_api_v1_rag_retrieve_post: {
         parameters: {
             query?: never;
-            header?: {
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-                "x-tenant-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EvidenceRetrieveRequest"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
@@ -49896,9 +48298,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["EvidenceRetrieveResponse"];
                 };
             };
             /** @description Bad Request */
@@ -49945,16 +48345,74 @@ export interface operations {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    get_retrieval_profiles_api_v1_retrieval_profiles_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RetrievalProfilesResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
     explain_retrieval_api_v1_retrieval_explain_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -50022,11 +48480,7 @@ export interface operations {
     get_retrieval_config_hash_api_v1_retrieval_config_hash_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -50094,11 +48548,7 @@ export interface operations {
     get_similarity_collections_api_v1_ragviz_similarity_collections_get: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -50160,11 +48610,7 @@ export interface operations {
     similarity_calculate_api_v1_ragviz_similarity_calculate_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -50233,11 +48679,7 @@ export interface operations {
                 skip?: number;
                 limit?: number;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -50301,11 +48743,7 @@ export interface operations {
     create_group_api_v1_groups__post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -50373,11 +48811,7 @@ export interface operations {
     get_group_api_v1_groups__group_id__get: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 group_id: string;
             };
@@ -50443,11 +48877,7 @@ export interface operations {
     delete_group_api_v1_groups__group_id__delete: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 group_id: string;
             };
@@ -50511,11 +48941,7 @@ export interface operations {
     patch_group_api_v1_groups__group_id__patch: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 group_id: string;
             };
@@ -50588,11 +49014,7 @@ export interface operations {
                 skip?: number;
                 limit?: number;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 group_id: string;
             };
@@ -50658,11 +49080,7 @@ export interface operations {
     add_group_members_api_v1_groups__group_id__members_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 group_id: string;
             };
@@ -50732,11 +49150,7 @@ export interface operations {
     remove_group_members_api_v1_groups__group_id__members_remove_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 group_id: string;
             };
@@ -50806,11 +49220,7 @@ export interface operations {
     get_current_tenant_access_api_v1_rbac_me_get: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -50860,15 +49270,6 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
         };
     };
     list_tenant_members_api_v1_rbac_members_get: {
@@ -50877,11 +49278,7 @@ export interface operations {
                 skip?: number;
                 limit?: number;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -50945,11 +49342,7 @@ export interface operations {
     delete_tenant_member_api_v1_rbac_members__user_id__delete: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 user_id: string;
             };
@@ -51015,11 +49408,7 @@ export interface operations {
     patch_tenant_member_role_api_v1_rbac_members__user_id__patch: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 user_id: string;
             };
@@ -52009,11 +50398,7 @@ export interface operations {
                 pipeline_hash?: string | null;
                 connector_runs_limit?: number;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 dataset_id: string;
             };
@@ -52082,11 +50467,7 @@ export interface operations {
                 pipeline_hash?: string | null;
                 connector_runs_limit?: number;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 dataset_id: string;
             };
@@ -52157,11 +50538,7 @@ export interface operations {
                 /** @description Whether to redact dataset name/id for sharing */
                 redact?: boolean;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 dataset_id: string;
             };
@@ -52232,11 +50609,7 @@ export interface operations {
                 /** @description Whether to redact dataset name/id for sharing */
                 redact?: boolean;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 dataset_id: string;
             };
@@ -52307,11 +50680,7 @@ export interface operations {
                 /** @description Whether to redact dataset name/id for sharing */
                 redact?: boolean;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 dataset_id: string;
             };
@@ -52377,11 +50746,7 @@ export interface operations {
     report_frontend_web_vital_api_v1_observability_frontend_vitals_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -52449,11 +50814,7 @@ export interface operations {
     report_frontend_trace_api_v1_observability_frontend_traces_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -52524,11 +50885,7 @@ export interface operations {
                 window_minutes?: number;
                 max_bytes?: number;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -52596,11 +50953,7 @@ export interface operations {
                 bucket_minutes?: number;
                 max_bytes?: number;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -52668,11 +51021,7 @@ export interface operations {
                 /** @description Optional retrieval profile hash to filter history */
                 profile_hash?: string | null;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -52740,11 +51089,7 @@ export interface operations {
                 current_generated_at: string;
                 max_hard_case_ids?: number;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -52813,11 +51158,7 @@ export interface operations {
                 top_n?: number;
                 max_bytes?: number;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -52884,11 +51225,7 @@ export interface operations {
                 window_minutes?: number;
                 max_bytes?: number;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -52955,11 +51292,7 @@ export interface operations {
                 window_minutes?: number;
                 max_bytes?: number;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -53023,11 +51356,7 @@ export interface operations {
     get_deps_diagnostics_snapshot_api_v1_observability_diagnostics_deps_get: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -53077,15 +51406,6 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
         };
     };
     get_rag_trace_bundle_api_v1_observability_rag_metrics_trace_bundle_get: {
@@ -53096,11 +51416,7 @@ export interface operations {
                 window_minutes?: number;
                 max_bytes?: number;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -53171,11 +51487,7 @@ export interface operations {
                 window_minutes?: number;
                 max_bytes?: number;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -53239,11 +51551,7 @@ export interface operations {
     get_ops_config_snapshot_api_v1_observability_config_snapshot_get: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -53293,25 +51601,12 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
         };
     };
     invalidate_dataset_cache_namespace_endpoint_api_v1_observability_cache_datasets__dataset_id__invalidate_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 dataset_id: string;
             };
@@ -53377,11 +51672,7 @@ export interface operations {
     get_periodic_job_freshness_api_v1_observability_periodic_jobs_freshness_get: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -53431,15 +51722,6 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
         };
     };
     get_task_queue_observability_snapshot_api_v1_observability_task_queue_snapshot_get: {
@@ -53448,11 +51730,7 @@ export interface operations {
                 /** @description Force refresh from broker (best-effort) */
                 force_refresh?: boolean;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -53516,11 +51794,7 @@ export interface operations {
     get_slo_snapshot_api_v1_observability_slo_snapshot_get: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -53570,15 +51844,6 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
         };
     };
     get_ingestion_dashboard_summary_api_v1_observability_ingestion_summary_get: {
@@ -53589,11 +51854,7 @@ export interface operations {
                 /** @description Optional dataset_id filter */
                 dataset_id?: string | null;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -53666,11 +51927,7 @@ export interface operations {
                 /** @description Max sample ids to return per category */
                 sample_limit?: number;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -53734,11 +51991,7 @@ export interface operations {
     reconcile_index_audit_api_v1_observability_index_audit_reconcile_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -53811,11 +52064,7 @@ export interface operations {
                 /** @description Document id to inspect reconcile readiness for */
                 document_id: string;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -53879,11 +52128,7 @@ export interface operations {
     enqueue_index_audit_reconcile_job_endpoint_api_v1_observability_index_audit_reconcile_jobs_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -53960,11 +52205,7 @@ export interface operations {
                 /** @description Cosine distance threshold */
                 drift_threshold?: number;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -54028,11 +52269,7 @@ export interface operations {
     run_perf_suite_api_v1_observability_perf_suite_run_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -54106,11 +52343,7 @@ export interface operations {
                 status?: string;
                 limit?: number;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -54174,11 +52407,7 @@ export interface operations {
     resolve_index_drift_api_v1_observability_index_drift__item_id__resolve_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 item_id: string;
             };
@@ -54248,11 +52477,7 @@ export interface operations {
     request_rtbf_cascade_api_v1_rtbf_request_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -54319,76 +52544,6 @@ export interface operations {
             };
         };
     };
-    get_rtbf_status_api_v1_rtbf_status__ticket_id__get: {
-        parameters: {
-            query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
-            path: {
-                ticket_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["RTBFStatusResponse"];
-                };
-            };
-            /** @description Bad Request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Range Not Satisfiable */
-            416: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     list_audit_logs_api_v1_audit_logs_get: {
         parameters: {
             query?: {
@@ -54403,11 +52558,7 @@ export interface operations {
                 until?: string | null;
                 include_sensitive?: boolean;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -54483,16 +52634,12 @@ export interface operations {
                 after_created_at?: string | null;
                 /** @description Cursor: last seen id (tie-breaker) */
                 after_id?: string | null;
-                /** @description Include sensitive detail keys (admin/auditor only) */
+                /** @description Include sensitive detail keys */
                 include_sensitive?: boolean;
-                /** @description Return gzip-compressed NDJSON (Content-Encoding: gzip) */
+                /** @description Return gzip-compressed NDJSON */
                 gzip?: boolean;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -54556,14 +52703,6 @@ export interface operations {
     purge_audit_logs_api_v1_audit_logs_purge_post: {
         parameters: {
             query?: {
-                /** @description Delete logs older than N days */
-                retention_days?: number;
-                /** @description Max rows to delete in this call */
-                max_delete?: number;
-                /** @description Plan only; do not delete rows */
-                dry_run?: boolean;
-                /** @description retention=older than N days; filtered=current explicit filters */
-                purge_scope?: "retention" | "filtered";
                 actor_id?: string | null;
                 action?: string | null;
                 resource_type?: string | null;
@@ -54571,12 +52710,15 @@ export interface operations {
                 request_id?: string | null;
                 since?: string | null;
                 until?: string | null;
+                /** @description Delete logs older than N days */
+                retention_days?: number;
+                /** @description Max rows to delete */
+                max_delete?: number;
+                dry_run?: boolean;
+                /** @description retention=older than N days; filtered=current explicit filters */
+                purge_scope?: "retention" | "filtered";
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -54640,11 +52782,7 @@ export interface operations {
     delete_audit_log_api_v1_audit_logs__log_id__delete: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path: {
                 log_id: string;
             };
@@ -54710,11 +52848,7 @@ export interface operations {
     bulk_delete_audit_logs_api_v1_audit_logs_bulk_delete_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -54796,11 +52930,7 @@ export interface operations {
                 /** @description Return gzip-compressed NDJSON/JSON (Content-Encoding: gzip) */
                 gzip?: boolean;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -54864,11 +52994,7 @@ export interface operations {
     access_graph_summary_api_v1_audit_access_graph_summary_get: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -54918,25 +53044,12 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
         };
     };
     get_chat_token_quota_status_api_v1_usage_chat_tokens_quota_get: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -54986,25 +53099,12 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
         };
     };
     get_tenant_quota_summary_api_v1_usage_tenant_quotas_get: {
         parameters: {
             query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -55054,15 +53154,6 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
         };
     };
     get_chat_token_usage_summary_api_v1_usage_chat_tokens_summary_get: {
@@ -55072,11 +53163,7 @@ export interface operations {
                 since?: string | null;
                 until?: string | null;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -55144,11 +53231,7 @@ export interface operations {
                 since?: string | null;
                 until?: string | null;
             };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };

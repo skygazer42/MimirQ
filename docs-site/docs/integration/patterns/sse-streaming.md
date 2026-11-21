@@ -5,7 +5,7 @@ sidebar_position: 6
 
 # SSE 流式对话
 
-MimirQ 的对话接口支持 Server-Sent Events（SSE）流式输出，实现逐字输出的交互体验。
+Ragvia 的对话接口支持 Server-Sent Events（SSE）流式输出，实现逐字输出的交互体验。
 
 ## 基本概念
 
@@ -14,7 +14,7 @@ SSE（Server-Sent Events）是基于 HTTP 的单向流式协议，服务端通�
 ```mermaid
 sequenceDiagram
     participant Client
-    participant API as MimirQ API
+    participant API as Ragvia API
     participant LLM
     Client->>API: POST /chat/completions (stream=true)
     API->>LLM: 发送 prompt

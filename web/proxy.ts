@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { type NextRequest, NextResponse } from 'next/server'
 
 import { buildCspHeaderValue, createCspNonce } from './lib/security/csp'
 
@@ -7,8 +7,11 @@ const isDevelopment = process.env.NODE_ENV !== 'production'
 function shouldUpgradeInsecureRequests(request: NextRequest): boolean {
   if (isDevelopment) return false
 
-  const forwardedProto = request.headers.get('x-forwarded-proto')?.split(',')[0]?.trim().toLowerCase()
-  const protocol = forwardedProto || request.nextUrl.protocol.replace(/:$/, '').toLowerCase()
+  const forwardedProto = request.headers.get('x-forwarded-proto')?.split(',', 1)[0].trim().toLowerCase()
+  const protocol =
+    forwardedProto === undefined || forwardedProto === ''
+      ? request.nextUrl.protocol.replace(/:$/, '').toLowerCase()
+      : forwardedProto
 
   return protocol === 'https'
 }

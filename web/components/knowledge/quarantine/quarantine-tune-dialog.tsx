@@ -1,6 +1,7 @@
 'use client'
 
-import { RotateCcw, Settings2 } from 'lucide-react'
+import { useId } from 'react'
+import { RotateCcw, Settings2 } from '@/components/icons'
 
 import { Button } from '@/components/ui/button'
 import {
@@ -14,15 +15,12 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
-import { cn } from '@/lib/utils'
 import type { Document, DocumentPipelineOptions } from '@/types'
 
 import type { ActingState } from '@/app/knowledge/quarantine/types'
 
-function finiteNumberOrUndefined(value: string): number | undefined {
-  if (value === '') return undefined
-  const numericValue = Number(value)
-  return Number.isFinite(numericValue) ? numericValue : undefined
+function readNumberOverride(input: HTMLInputElement): number | null {
+  return input.value === '' ? null : input.valueAsNumber
 }
 
 type QuarantineTuneDialogProps = {
@@ -48,11 +46,18 @@ export function QuarantineTuneDialog({
   onResetRecommended,
   onSave,
 }: Readonly<QuarantineTuneDialogProps>) {
-  const tuneBusy = acting?.action === 'tune'
+  const fieldId = useId()
+  const tuneBusy = acting !== null && acting.id === target?.id
+  const tuneDisabled = target === null || tuneBusy
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[720px]">
+    <Dialog
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (nextOpen || !tuneBusy) onOpenChange(nextOpen)
+      }}
+    >
+      <DialogContent className="sm:max-w-[720px]" showCloseButton={!tuneBusy}>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Settings2 className="size-5 text-warning" />
@@ -63,106 +68,140 @@ export function QuarantineTuneDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-5">
-          <div className="rounded-xl border border-border bg-muted/40 p-4">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <div className="text-sm font-medium text-foreground">
-                  推荐预设
-                </div>
-                <div className="mt-1 text-xs text-muted-foreground">
-                  关闭对应质量过滤器，让更多内容进入切块（仍建议人工抽检）。
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  className="rounded-xl"
-                  onClick={onApplyDisableQualityFilters}
-                >
-                  关闭质量过滤
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  className="rounded-xl"
-                  onClick={onResetRecommended}
-                  disabled={!target}
-                >
-                  还原推荐
-                </Button>
-              </div>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            <div className="space-y-3 rounded-xl border border-border bg-card/60 p-4">
-              <div className="flex items-center justify-between">
+        <form
+          id={fieldId}
+          onSubmit={(event) => {
+            event.preventDefault()
+            if (tuneDisabled) return
+            const submitter = (event.nativeEvent as SubmitEvent).submitter
+            onSave({ retryAfterSave: submitter instanceof HTMLButtonElement && submitter.value === 'retry' })
+          }}
+        >
+          <fieldset disabled={tuneDisabled} className="min-w-0 space-y-5">
+            <legend className="sr-only">文档处理配置</legend>
+            <div className="rounded-xl border border-border bg-muted/40 p-4">
+              <div className="flex items-start justify-between gap-4">
                 <div>
-                  <div className="text-sm font-medium">大纲过滤</div>
-                  <div className="text-xs text-muted-foreground">
-                    outline_only
+                  <div className="text-sm font-medium text-foreground">推荐预设</div>
+                  <div className="mt-1 text-xs text-muted-foreground">
+                    关闭对应质量过滤器，让更多内容进入切块（仍建议人工抽检）。
                   </div>
                 </div>
-                <Switch
-                  checked={Boolean(patch.governance_drop_outline_only)}
-                  onCheckedChange={(value) =>
-                    onPatchChange({
-                      ...patch,
-                      governance_drop_outline_only: value,
-                    })
-                  }
-                  className="data-[state=checked]:bg-warning"
-                />
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="rounded-xl"
+                    onClick={onApplyDisableQualityFilters}
+                  >
+                    关闭质量过滤
+                  </Button>
+                  <Button type="button" size="sm" variant="outline" className="rounded-xl" onClick={onResetRecommended}>
+                    还原推荐
+                  </Button>
+                </div>
               </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1.5">
-                  <Label className="text-xs text-muted-foreground">
-                    最小内容字符
-                  </Label>
-                  <Input
-                    type="number"
-                    min={0}
-                    max={200000}
-                    value={
-                      typeof patch.governance_drop_outline_min_content_chars ===
-                      'number'
-                        ? patch.governance_drop_outline_min_content_chars
-                        : ''
-                    }
-                    onChange={(event) => {
-                      const value = finiteNumberOrUndefined(event.target.value)
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div className="space-y-3 rounded-xl border border-border bg-card/60 p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="text-sm font-medium">大纲过滤</div>
+                    <div className="text-xs text-muted-foreground">outline_only</div>
+                  </div>
+                  <Switch
+                    aria-label="大纲过滤"
+                    checked={patch.governance_drop_outline_only === true}
+                    onCheckedChange={(value) =>
                       onPatchChange({
                         ...patch,
-                        governance_drop_outline_min_content_chars: value,
+                        governance_drop_outline_only: value,
                       })
-                    }}
-                    className="h-9 rounded-lg"
+                    }
+                    className="data-[state=checked]:bg-warning"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label htmlFor={`${fieldId}-outline-length`} className="text-xs text-muted-foreground">
+                      最小内容字符
+                    </Label>
+                    <Input
+                      id={`${fieldId}-outline-length`}
+                      type="number"
+                      min={0}
+                      max={200000}
+                      value={patch.governance_drop_outline_min_content_chars ?? ''}
+                      onChange={(event) => {
+                        const value = readNumberOverride(event.currentTarget)
+                        onPatchChange({
+                          ...patch,
+                          governance_drop_outline_min_content_chars: value,
+                        })
+                      }}
+                      className="h-9 rounded-lg"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor={`${fieldId}-heading-ratio`} className="text-xs text-muted-foreground">
+                      标题占比阈值
+                    </Label>
+                    <Input
+                      id={`${fieldId}-heading-ratio`}
+                      type="number"
+                      min={0}
+                      max={1}
+                      step="any"
+                      value={patch.governance_drop_outline_max_heading_ratio ?? ''}
+                      onChange={(event) => {
+                        const value = readNumberOverride(event.currentTarget)
+                        onPatchChange({
+                          ...patch,
+                          governance_drop_outline_max_heading_ratio: value,
+                        })
+                      }}
+                      className="h-9 rounded-lg"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-3 rounded-xl border border-border bg-card/60 p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="text-sm font-medium">低密度过滤</div>
+                    <div className="text-xs text-muted-foreground">low_density</div>
+                  </div>
+                  <Switch
+                    aria-label="低密度过滤"
+                    checked={patch.governance_drop_low_density === true}
+                    onCheckedChange={(value) =>
+                      onPatchChange({
+                        ...patch,
+                        governance_drop_low_density: value,
+                      })
+                    }
+                    className="data-[state=checked]:bg-warning"
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-xs text-muted-foreground">
-                    标题占比阈值
+                  <Label htmlFor={`${fieldId}-density`} className="text-xs text-muted-foreground">
+                    密度阈值
                   </Label>
                   <Input
+                    id={`${fieldId}-density`}
                     type="number"
                     min={0}
                     max={1}
-                    step={0.01}
-                    value={
-                      typeof patch.governance_drop_outline_max_heading_ratio ===
-                      'number'
-                        ? patch.governance_drop_outline_max_heading_ratio
-                        : ''
-                    }
+                    step="any"
+                    value={patch.governance_drop_low_density_threshold ?? ''}
                     onChange={(event) => {
-                      const value = finiteNumberOrUndefined(event.target.value)
+                      const value = readNumberOverride(event.currentTarget)
                       onPatchChange({
                         ...patch,
-                        governance_drop_outline_max_heading_ratio: value,
+                        governance_drop_low_density_threshold: value,
                       })
                     }}
                     className="h-9 rounded-lg"
@@ -174,74 +213,33 @@ export function QuarantineTuneDialog({
             <div className="space-y-3 rounded-xl border border-border bg-card/60 p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <div className="text-sm font-medium">低密度过滤</div>
-                  <div className="text-xs text-muted-foreground">
-                    low_density
-                  </div>
+                  <div className="text-sm font-medium">隔离策略</div>
+                  <div className="text-xs text-muted-foreground">quarantine_on_drop</div>
                 </div>
                 <Switch
-                  checked={Boolean(patch.governance_drop_low_density)}
+                  aria-label="触发质量过滤后隔离"
+                  checked={patch.governance_quarantine_on_drop === true}
                   onCheckedChange={(value) =>
                     onPatchChange({
                       ...patch,
-                      governance_drop_low_density: value,
+                      governance_quarantine_on_drop: value,
                     })
                   }
-                  className="data-[state=checked]:bg-warning"
+                  className="data-[state=checked]:bg-primary"
                 />
               </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs text-muted-foreground">
-                  密度阈值
-                </Label>
-                <Input
-                  type="number"
-                  min={0}
-                  max={1}
-                  step={0.01}
-                  value={
-                    typeof patch.governance_drop_low_density_threshold ===
-                    'number'
-                      ? patch.governance_drop_low_density_threshold
-                      : ''
-                  }
-                  onChange={(event) => {
-                    const value = finiteNumberOrUndefined(event.target.value)
-                    onPatchChange({
-                      ...patch,
-                      governance_drop_low_density_threshold: value,
-                    })
-                  }}
-                  className="h-9 rounded-lg"
-                />
+              <div className="text-xs text-muted-foreground">
+                开启后：触发质量过滤时标记为 quarantined（而非 failed），便于人工复核。
               </div>
             </div>
-          </div>
+          </fieldset>
+        </form>
 
-          <div className="space-y-3 rounded-xl border border-border bg-card/60 p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="text-sm font-medium">隔离策略</div>
-                <div className="text-xs text-muted-foreground">
-                  quarantine_on_drop
-                </div>
-              </div>
-              <Switch
-                checked={Boolean(patch.governance_quarantine_on_drop)}
-                onCheckedChange={(value) =>
-                  onPatchChange({
-                    ...patch,
-                    governance_quarantine_on_drop: value,
-                  })
-                }
-                className="data-[state=checked]:bg-primary"
-              />
-            </div>
-            <div className="text-xs text-muted-foreground">
-              开启后：触发质量过滤时标记为 quarantined（而非 failed），便于人工复核。
-            </div>
-          </div>
-        </div>
+        {tuneBusy && (
+          <p role="status" className="text-sm text-muted-foreground">
+            正在保存配置…
+          </p>
+        )}
 
         <DialogFooter className="gap-2 sm:gap-2">
           <Button
@@ -253,34 +251,19 @@ export function QuarantineTuneDialog({
           >
             取消
           </Button>
-          <Button
-            type="button"
-            variant="outline"
-            className="rounded-xl"
-            onClick={() => onSave({ retryAfterSave: false })}
-            disabled={tuneBusy}
-          >
-            <Settings2
-              className={cn(
-                'size-4 mr-1',
-                tuneBusy ? 'animate-spin motion-reduce:animate-none' : ''
-              )}
-            />
+          <Button type="submit" form={fieldId} variant="outline" className="rounded-xl" disabled={tuneDisabled}>
+            <Settings2 className="size-4 mr-1" />
             保存配置
           </Button>
           <Button
-            type="button"
+            type="submit"
+            form={fieldId}
+            value="retry"
             variant="warning"
             className="rounded-xl"
-            onClick={() => onSave({ retryAfterSave: true })}
-            disabled={tuneBusy}
+            disabled={tuneDisabled}
           >
-            <RotateCcw
-              className={cn(
-                'size-4 mr-1',
-                tuneBusy ? 'animate-spin motion-reduce:animate-none' : ''
-              )}
-            />
+            <RotateCcw className="size-4 mr-1" />
             保存并重试
           </Button>
         </DialogFooter>

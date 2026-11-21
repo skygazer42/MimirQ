@@ -1,6 +1,6 @@
 # Lexical Retrieval for Keyword Mode
 
-MimirQ exposes a persisted lexical retrieval channel backed by Postgres full-text search and `pg_trgm`.
+Ragvia exposes a persisted lexical retrieval channel backed by Postgres full-text search and `pg_trgm`.
 It is intended to catch the kinds of exact-ish queries that vector retrieval often misses:
 
 - version numbers such as `v1.2.3`
@@ -14,18 +14,18 @@ It is intended to catch the kinds of exact-ish queries that vector retrieval oft
 
 - `LEXICAL_DB_ENABLED=true` and `RETRIEVAL_KEYWORD_BM25_SECONDARY_ENABLED=false`
   - run lexical DB only
-  - skip in-memory BM25
+  - skip the Milvus BM25 channel
 - `LEXICAL_DB_ENABLED=true` and `RETRIEVAL_KEYWORD_BM25_SECONDARY_ENABLED=true`
   - run lexical DB first
   - run BM25 as a secondary keyword channel
 - `LEXICAL_DB_ENABLED=false`
   - fall back to BM25 for keyword mode
 
-Hybrid/MMR retrieval modes still treat lexical DB as an additional sparse candidate source.
+Hybrid/MMR retrieval modes still treat lexical DB as an additional keyword candidate source.
 
 ## Settings
 
-Relevant backend settings in `app/core/config.py`:
+Relevant backend settings in `app/infrastructure/config.py`:
 
 - `LEXICAL_DB_ENABLED`
 - `RETRIEVAL_KEYWORD_BM25_SECONDARY_ENABLED`
@@ -37,7 +37,7 @@ Relevant backend settings in `app/core/config.py`:
 
 ## Query debug attribution
 
-`query_debug.channels` includes per-channel attribution for lexical DB, BM25, vector, and sparse
+`query_debug.channels` includes per-channel attribution for PostgreSQL lexical, Milvus BM25, and vector
 retrieval. In keyword mode it also includes a `keyword_strategy` block so it is explicit whether
 the request ran:
 

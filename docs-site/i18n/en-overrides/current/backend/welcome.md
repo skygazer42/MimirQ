@@ -5,7 +5,7 @@ sidebar_position: 1
 
 # Backend Handbook Overview
 
-This handbook is for **backend developers, architects, and integration engineers**, helping you quickly understand MimirQ backend's module boundaries, API contracts, and internal flows. Use [OpenAPI / Redoc](https://skygazer42.github.io/MimirQ/) as the authoritative Schema reference; this handbook focuses on **navigation indexes, state-machine descriptions, and troubleshooting guides**.
+This handbook is for **backend developers, architects, and integration engineers**, helping you quickly understand Ragvia backend's module boundaries, API contracts, and internal flows. Use [OpenAPI / Redoc](https://skygazer42.github.io/MimirQ/) as the authoritative Schema reference; this handbook focuses on **navigation indexes, state-machine descriptions, and troubleshooting guides**.
 
 ## Tech Stack
 
@@ -13,7 +13,7 @@ This handbook is for **backend developers, architects, and integration engineers
 | --- | --- | --- |
 | Web Framework | FastAPI | 0.135 |
 | ORM | SQLAlchemy | 2.0 (async) |
-| Vector Database | Milvus | 2.x (BM25 + SPLADE + ColBERT ANN hybrid retrieval) |
+| Vector Database | Milvus | 2.x (vector and native BM25 hybrid retrieval) |
 | Relational Database | PostgreSQL | Primary storage |
 | Cache / Queue | Redis | Session, rate limiting & Pub/Sub |
 | Task Queue | Arq | Async parsing, indexing, evaluation tasks |
@@ -75,18 +75,20 @@ graph LR
 
 ## Embedding & Model Support
 
-The backend ships with 15 embedding models across 7 providers. The repository's `.env.example` defaults to `BAAI/bge-m3`; if `EMBEDDING_MODEL` is not set, the backend code still falls back to `text-embedding-3-small`. Production and team environments should follow `.env.example` / deployment config rather than the process fallback. The RAG Engine supports hybrid orchestration of four retrieval modes -- Vector, BM25, SPLADE, and ColBERT ANN -- and can be flexibly switched via configuration.
+The backend ships with 15 embedding models across 7 providers. The repository's `.env.example` defaults to `BAAI/bge-m3`; if `EMBEDDING_MODEL` is not set, the backend code still falls back to `text-embedding-3-small`. Production and team environments should follow `.env.example` / deployment config rather than the process fallback. The RAG Engine combines vector and BM25 retrieval with RRF. Experimental ColBERT, SPARSE, and ColPali capabilities have been retired.
 
 ## Key Configuration & File Paths
 
 | File | Purpose |
 | --- | --- |
-| `app/core/config.py` | 1200+ config entries, driven by pydantic-settings |
+| `app/infrastructure/config.py` | 1200+ config entries, driven by pydantic-settings |
 | `alembic.ini` / `alembic/` | Database migrations |
 | `docker-compose.yml` | Local dev environment orchestration |
-| `app/rag/engine.py` | RAGEngine main flow (streaming) |
-| `app/rag/retriever.py` | HybridRetriever hybrid retrieval |
-| `app/rag/pipelines/langgraph.py` | LangGraph Functional API pipeline |
+| `app/rag/runtime/engine.py` | RAGEngine main flow (streaming) |
+| `app/rag/retrieval/recall/retriever.py` | HybridRetriever hybrid recall entry point |
+| `app/rag/retrieval/ranking/` | Candidate fusion, deduplication, and ranking |
+| `app/rag/retrieval/reranking/` | Model and API reranking |
+| `app/rag/runtime/graph/workflow.py` | LangGraph Functional API assembly |
 | `app/rag/kg/` | Knowledge graph extraction / recall / expansion / reranking |
 
 :::info Configuration Priority

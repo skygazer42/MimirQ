@@ -1,0 +1,83 @@
+from uuid import uuid4
+
+import pytest
+
+from app.models.evaluation.results import RagasRegressionCase, RagasRegressionItem, RagasRegressionRun
+from app.services.evaluation import case_bundle as regression_case_bundle
+from app.services.evaluation import queryset_health_diff as queryset_health_diff_service
+from app.services.evaluation import run_bundle as regression_run_bundle
+from app.services.prompts import defaults as prompt_defaults
+from app.services.retrieval import template_apply as rag_config_template_apply
+from app.services.retrieval import template_defaults as rag_config_template_defaults
+from app.services.retrieval import template_resolver as rag_config_template_resolver
+
+
+@pytest.mark.parametrize("provider", [0, False])
+def test_patch_validation_does_not_mask_invalid_provider_types(provider: object) -> None:
+    with pytest.raises(AttributeError):
+        rag_config_template_apply.validate_rag_config_patch({"reranker_provider": provider})
+
+
+@pytest.mark.parametrize("value", [0, False])
+def test_prompt_defaults_does_not_replace_invalid_provided_keys(value: object) -> None:
+    with pytest.raises(AttributeError):
+        prompt_defaults.merge_prompt_defaults_with_dataset(
+            prompt_template_id=None,
+            prompt_template_key=value,
+            prompt_ab_experiment_key=None,
+            request_fields_set=set(),
+            dataset_meta={"default_prompt_template_key": "fallback"},
+        )
+
+
+@pytest.mark.parametrize("value", [0, False])
+def test_rag_template_defaults_does_not_replace_invalid_provided_keys(value: object) -> None:
+    with pytest.raises(AttributeError):
+        rag_config_template_defaults.merge_rag_config_template_defaults_with_dataset(
+            rag_config_template_id=None,
+            rag_config_template_key=value,
+            rag_config_ab_experiment_key=None,
+            request_fields_set=set(),
+            dataset_meta={"default_rag_config_template_key": "fallback"},
+        )
+
+
+def test_queryset_diff_preserves_unavailable_report_facts() -> None:
+    result = queryset_health_diff_service.diff_queryset_health_snapshots({}, {})
+    assert result["baseline_generated_at"] is None
+    assert result["policy"]["baseline_source"] is None
+    assert result["policy"]["baseline_hash"] is None
+
+
+def test_case_export_preserves_supplied_scalar_reasoning_steps() -> None:
+    dataset_id = uuid4()
+    case = RagasRegressionCase(
+        dataset_id=dataset_id, question="question", extra={"reasoning_hops": [0, False, None, "step"]}
+    )
+    result = regression_case_bundle.export_case_bundle([case], dataset_id)
+    assert result["items"][0]["reasoning_hops"] == ["0", "False", "step"]
+
+
+def test_run_export_rejects_missing_required_response() -> None:
+    run = RagasRegressionRun(id=uuid4(), tenant_id=uuid4(), dataset_id=uuid4(), status="running")
+    item = RagasRegressionItem(case_id=uuid4(), question="question", response=None)
+    with pytest.raises(TypeError):
+        regression_run_bundle.export_regression_run_bundle(run, [item], include_text=True)
+
+
+def test_run_export_preserves_a_real_empty_response() -> None:
+    run = RagasRegressionRun(id=uuid4(), tenant_id=uuid4(), dataset_id=uuid4(), status="running")
+    item = RagasRegressionItem(case_id=uuid4(), question="question", response="")
+    result = regression_run_bundle.export_regression_run_bundle(run, [item], include_text=True)
+    assert result["items"][0]["response"] == ""
+    assert result["items"][0]["response_chars"] == 0
+
+
+def test_routing_writeback_does_not_invent_execution_facts() -> None:
+    result = rag_config_template_resolver.build_adaptive_routing_reward_writeback(
+        experiment_key=None, variant=None, strategy=None, decision=None, request_id=None
+    )
+    assert result["experiment_key"] is None
+    assert result["strategy"] is None
+    assert result["decision"] is None
+    assert result["request_id"] is None

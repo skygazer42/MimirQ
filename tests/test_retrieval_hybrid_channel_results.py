@@ -5,10 +5,10 @@ import pytest
 
 
 def _embedding_runtime():
-    from app.services.dataset_embedding_config import DatasetEmbeddingRuntimeConfig
+    from app.services.datasets.embedding_config import DatasetEmbeddingRuntimeConfig
 
     return DatasetEmbeddingRuntimeConfig(
-        provider="local",
+        provider="openai_compatible",
         model="test-model",
         api_base="",
         api_key="",
@@ -19,14 +19,13 @@ def _embedding_runtime():
 
 
 def _configure_retrieval_test(monkeypatch: pytest.MonkeyPatch) -> None:
-    from app.core.config import settings
+    from app.infrastructure.config import settings
 
     for name, value in {
         "BM25_INDEX_ENABLED": True,
-        "COLBERT_RETRIEVAL_ENABLED": False,
-        "COLPALI_RETRIEVAL_ENABLED": False,
         "LEXICAL_DB_ENABLED": False,
         "RETRIEVAL_CANDIDATE_CACHE_ENABLED": False,
+        "RETRIEVAL_CANDIDATE_SINGLEFLIGHT_ENABLED": False,
         "SEMANTIC_CACHE_ENABLED": False,
         "RAG_CONTEXT_STITCHING_ENABLED": False,
         "RETRIEVAL_GOVERNANCE_PREFER_AUTHORITY": False,
@@ -38,17 +37,33 @@ def _configure_retrieval_test(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def _build_retriever(monkeypatch: pytest.MonkeyPatch, **overrides):
-    import app.rag.retriever as retriever_module
-    from app.rag.retriever import HybridRetriever
+    import app.rag.retrieval.recall.retriever as retriever_module
+    from app.rag.retrieval.corpus import CorpusSearchResult
+    from app.rag.retrieval.recall import channel_collection
+    from app.rag.retrieval.recall.retriever import HybridRetriever
+    from app.rag.retrieval.recall.runtime_scope import ResolvedRetrievalScope, RetrievalScope
 
     _configure_retrieval_test(monkeypatch)
     runtime = _embedding_runtime()
-    monkeypatch.setattr(HybridRetriever, "_resolve_embedding_runtime", lambda self, *, tenant_id: runtime)
-    monkeypatch.setattr(
-        HybridRetriever,
-        "_resolve_document_dataset_scope",
-        lambda self, *, tenant_id, document_ids: ((), True),  # noqa: ANN001,ARG005
-    )
+
+    def resolve_scope(self, *, query, options, embedding_runtime):
+        documents = options.document_ids if options.document_ids is not None else self.document_ids
+        return ResolvedRetrievalScope(
+            RetrievalScope(
+                options.tenant_id if options.tenant_id is not None else self.tenant_id,
+                self.account_id,
+                document_ids=tuple(documents),
+            ),
+            (),
+            (),
+            runtime,
+            options.metadata_filter,
+            options.metadata_filter,
+            None,
+            True,
+        )
+
+    monkeypatch.setattr(HybridRetriever, "_resolve_hybrid_runtime_scope", resolve_scope)
     monkeypatch.setattr(
         HybridRetriever, "_enrich_results_with_db_metadata", lambda self, results, **kwargs: list(results)
     )
@@ -56,13 +71,19 @@ def _build_retriever(monkeypatch: pytest.MonkeyPatch, **overrides):
     monkeypatch.setattr(HybridRetriever, "_auto_merge_parent_child", lambda self, results: list(results))
 
     vector_store = SimpleNamespace(search=lambda **kwargs: [])
-    monkeypatch.setattr(retriever_module, "get_vector_store", lambda: vector_store)
+    monkeypatch.setattr(channel_collection, "get_vector_store", lambda: vector_store)
+    corpus = SimpleNamespace(
+        chunk_id_lookup=lambda scope, *, candidates: {},
+        search=lambda *args, **kwargs: CorpusSearchResult([], {}),
+    )
+    monkeypatch.setattr(retriever_module, "get_corpus_index", lambda: corpus)
 
     defaults = {
         "k": 3,
+        "tenant_id": uuid.uuid4(),
+        "account_id": "fixture",
         "document_ids": [uuid.uuid4()],
         "retrieval_mode": "hybrid",
-        "sparse_enabled": False,
         "enable_reranker": False,
         "dedup_enabled": False,
         "max_chunks_per_doc": 0,
@@ -70,13 +91,13 @@ def _build_retriever(monkeypatch: pytest.MonkeyPatch, **overrides):
         "min_distinct_docs": 0,
     }
     defaults.update(overrides)
-    return HybridRetriever(**defaults), vector_store
+    return HybridRetriever(**defaults), vector_store, corpus
 
 
 def test_hybrid_search_normalizes_vector_candidates_and_exact_anchor_metrics(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    retriever, vector_store = _build_retriever(
+    retriever, vector_store, corpus = _build_retriever(
         monkeypatch,
         retrieval_mode="vector",
         metadata_filter_enabled=True,
@@ -84,8 +105,7 @@ def test_hybrid_search_normalizes_vector_candidates_and_exact_anchor_metrics(
     )
     tenant_id = uuid.uuid4()
     document_id = retriever.document_ids[0]
-    tenant_key = retriever._tenant_key(tenant_id)
-    retriever._chunk_id_lookup[tenant_key] = {f"{document_id}:2": "chunk-2"}
+    corpus.chunk_id_lookup = lambda scope, *, candidates: {f"{document_id}:2": "chunk-2"}
 
     vector_store.search = lambda **kwargs: [  # noqa: ARG005
         {
@@ -136,9 +156,9 @@ def test_hybrid_search_normalizes_vector_candidates_and_exact_anchor_metrics(
 
 
 def test_bm25_candidates_preserve_active_pipeline_identity() -> None:
-    from app.rag.retriever import HybridRetriever
+    from app.rag.retrieval.recall.results import candidate_metadata_from_doc
 
-    metadata = HybridRetriever._candidate_metadata_from_doc(
+    metadata = candidate_metadata_from_doc(
         {
             "document_id": "doc-1",
             "pipeline_hash": "pipeline-v2",
@@ -156,23 +176,24 @@ def test_bm25_candidates_preserve_active_pipeline_identity() -> None:
 def test_invoke_preserves_debug_degradation_contract_with_bm25_fallback(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    retriever, vector_store = _build_retriever(monkeypatch, k=1)
+    from app.rag.retrieval.corpus import CorpusSearchResult
+
+    retriever, vector_store, corpus = _build_retriever(monkeypatch, k=1)
 
     def fail_vector(**kwargs):  # noqa: ANN003
         raise ConnectionError("milvus unavailable")
 
     vector_store.search = fail_vector
-    monkeypatch.setattr(
-        type(retriever),
-        "_search_bm25",
-        lambda self, **kwargs: [  # noqa: ANN001,ARG005
+    corpus.search = lambda *args, **kwargs: CorpusSearchResult(
+        [
             {
                 "chunk_id": "chunk-1",
                 "content": "fallback result",
                 "score": 0.8,
-                "metadata": {"document_id": "doc-1"},
+                "metadata": {"document_id": str(retriever.document_ids[0])},
             }
         ],
+        {"provider": "milvus_bm25"},
     )
 
     docs = retriever.invoke("fallback query")

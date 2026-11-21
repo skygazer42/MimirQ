@@ -1,7 +1,7 @@
 import pytest
 
-from app.core.config import settings
-from app.rag.evaluation.redteam_suite import run_redteam_suite
+from app.infrastructure.config import settings
+from app.rag.evaluation.agents.redteam_suite import run_redteam_suite
 
 
 @pytest.mark.asyncio

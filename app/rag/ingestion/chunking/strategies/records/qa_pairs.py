@@ -1,0 +1,228 @@
+"""
+Q/A-pair aware chunking strategy.
+
+Optimized for FAQ / interview scripts / exam solutions that follow Q/A labels:
+- Q: ... / A: ...
+- Question 1: ... / Answer 1: ...
+- 问题：... / 答案：...
+- 问：... / 答：...
+
+The chunker tries to keep each Q/A pair together and uses pair-level overlap
+when possible.
+"""
+
+import re
+from dataclasses import dataclass
+from typing import Any
+
+from langchain_core.documents import Document
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+
+from app.rag.ingestion.chunking.base import BaseChunker
+from app.rag.ingestion.chunking.utils.source_lines import apply_splitter_span
+
+_Q_PREFIX = r"(?:Q(?:uestion)?|问(?:题)?|问题)"
+_A_PREFIX = r"(?:A(?:nswer)?|答(?:案)?|答案)"
+
+_QA_TAG_LINE_RE = re.compile(
+    rf"(?m)^\s*(?P<prefix>{_Q_PREFIX}|{_A_PREFIX})(?:\s*\d{{0,3}})?\s*[:：]\s*(?P<rest>.*)$",
+    flags=re.IGNORECASE,
+)
+
+_Q_STRIP_RE = re.compile(rf"^\s*{_Q_PREFIX}(?:\s*\d{{0,3}})?\s*[:：]\s*", flags=re.IGNORECASE)
+
+
+@dataclass(frozen=True)
+class _TagSeg:
+    start: int
+    kind: str  # "Q" | "A"
+
+
+@dataclass(frozen=True)
+class _QAPair:
+    start: int
+    end: int
+    has_answer: bool
+    question_preview: str | None
+
+
+def _iter_tag_segments(text: str) -> list[_TagSeg]:
+    segs: list[_TagSeg] = []
+    for match in _QA_TAG_LINE_RE.finditer(text):
+        prefix = match.group("prefix")
+        kind = "Q" if prefix.lower().startswith("q") or prefix.startswith("问") else "A"
+        segs.append(_TagSeg(start=match.start(), kind=kind))
+    return segs if len(segs) >= 2 else []
+
+
+def _build_pairs(text: str, segs: list[_TagSeg]) -> list[_QAPair]:
+    if not segs:
+        return []
+
+    q_indices = [i for i, s in enumerate(segs) if s.kind == "Q"]
+    if not q_indices:
+        return []
+
+    pairs: list[_QAPair] = []
+    for pos, q_idx in enumerate(q_indices):
+        pair_start = segs[q_idx].start
+        next_q_start = segs[q_indices[pos + 1]].start if pos + 1 < len(q_indices) else len(text)
+
+        first_a_start: int | None = None
+        for s in segs[q_idx + 1 : (q_indices[pos + 1] if pos + 1 < len(q_indices) else len(segs))]:
+            if s.kind == "A":
+                first_a_start = s.start
+                break
+
+        question_end = first_a_start if first_a_start is not None else next_q_start
+        question_text = (text[pair_start:question_end]).strip()
+        first_line = question_text.splitlines()[0] if question_text else ""
+        preview = _Q_STRIP_RE.sub("", first_line).strip() if first_line else None
+        if preview and len(preview) > 120:
+            preview = preview[:117].rstrip() + "..."
+
+        pairs.append(
+            _QAPair(
+                start=pair_start,
+                end=next_q_start,
+                has_answer=first_a_start is not None,
+                question_preview=preview,
+            )
+        )
+    return pairs
+
+
+def looks_like_qa_pairs(text: str) -> bool:
+    if not text or len(text) < 80:
+        return False
+    segs = _iter_tag_segments(text)
+    pairs = _build_pairs(text, segs)
+    if len(pairs) < 2:
+        return False
+    answered = sum(1 for p in pairs if p.has_answer)
+    return answered >= 1
+
+
+def _fallback_documents(
+    *,
+    splitter: RecursiveCharacterTextSplitter,
+    text: str,
+    base_meta: dict[str, Any],
+) -> list[Document]:
+    out: list[Document] = []
+    split_docs = splitter.create_documents(texts=[text], metadatas=[base_meta])
+    for sd in split_docs:
+        local_start = sd.metadata.pop("start_index", None)
+        meta: dict[str, Any] = dict(base_meta)
+        meta.update(sd.metadata)
+        meta["chunk_strategy"] = "qa_pairs"
+        apply_splitter_span(meta, start_index=local_start, content=sd.page_content)
+        meta["qa_pairs_fallback"] = True
+        out.append(Document(page_content=sd.page_content, metadata=meta))
+    return out
+
+
+def _window_end_index(*, pairs: list[_QAPair], start_idx: int, chunk_size: int) -> int:
+    end_idx = start_idx
+    while end_idx < len(pairs):
+        candidate_end = pairs[end_idx].end
+        candidate_len = candidate_end - pairs[start_idx].start
+        if end_idx == start_idx or candidate_len <= chunk_size:
+            end_idx += 1
+            continue
+        break
+    return end_idx
+
+
+def _next_window_start(*, pairs: list[_QAPair], start_idx: int, end_idx: int, chunk_overlap: int) -> int:
+    next_start = end_idx
+    if chunk_overlap > 0 and (end_idx - start_idx) > 1:
+        desired = end_idx - 1
+        while desired > start_idx:
+            overlap_len = pairs[end_idx - 1].end - pairs[desired - 1].start
+            if overlap_len <= chunk_overlap:
+                desired -= 1
+                continue
+            break
+        next_start = desired if desired > start_idx else (end_idx - 1)
+    return next_start
+
+
+def _qa_chunk_document(
+    *,
+    text: str,
+    base_meta: dict[str, Any],
+    pairs: list[_QAPair],
+    start_idx: int,
+    end_idx: int,
+) -> Document:
+    chunk_start = pairs[start_idx].start
+    chunk_end = pairs[end_idx - 1].end
+    window = pairs[start_idx:end_idx]
+    previews = [p.question_preview for p in window if p.question_preview][:3]
+    answered = sum(1 for p in window if p.has_answer)
+    meta: dict[str, Any] = dict(base_meta)
+    meta["chunk_strategy"] = "qa_pairs"
+    meta["start_char"] = chunk_start
+    meta["end_char"] = chunk_end
+    meta["qa_pair_count"] = end_idx - start_idx
+    meta["qa_answered_count"] = answered
+    if previews:
+        meta["qa_question_previews"] = previews
+    return Document(page_content=text[chunk_start:chunk_end], metadata=meta)
+
+
+class QAPairsChunker(BaseChunker):
+    def __init__(self, chunk_size: int, chunk_overlap: int) -> None:
+        self.chunk_size = int(chunk_size)
+        self.chunk_overlap = int(chunk_overlap)
+
+        self._fallback_splitter = RecursiveCharacterTextSplitter(
+            chunk_size=self.chunk_size,
+            chunk_overlap=self.chunk_overlap,
+            separators=["\n\n", "\n", "。", "，", ". ", "!", "?", " ", ""],
+            length_function=len,
+            add_start_index=True,
+        )
+
+    def split_documents(self, documents: list[Document]) -> list[Document]:
+        out: list[Document] = []
+
+        for doc in documents:
+            text = doc.page_content
+            base_meta = dict(doc.metadata)
+            if not text.strip():
+                continue
+
+            segs = _iter_tag_segments(text)
+            pairs = _build_pairs(text, segs)
+            if not pairs:
+                out.extend(_fallback_documents(splitter=self._fallback_splitter, text=text, base_meta=base_meta))
+                continue
+
+            preamble = text[: pairs[0].start]
+            if preamble.strip():
+                out.extend(_fallback_documents(splitter=self._fallback_splitter, text=preamble, base_meta=base_meta))
+            start_idx = 0
+            while start_idx < len(pairs):
+                end_idx = _window_end_index(pairs=pairs, start_idx=start_idx, chunk_size=self.chunk_size)
+                out.append(
+                    _qa_chunk_document(
+                        text=text, base_meta=base_meta, pairs=pairs, start_idx=start_idx, end_idx=end_idx
+                    )
+                )
+                if end_idx == len(pairs):
+                    break
+                start_idx = _next_window_start(
+                    pairs=pairs,
+                    start_idx=start_idx,
+                    end_idx=end_idx,
+                    chunk_overlap=self.chunk_overlap,
+                )
+
+        for idx, chunk in enumerate(out):
+            meta = dict(chunk.metadata)
+            meta["chunk_index"] = idx
+            chunk.metadata = meta
+
+        return out

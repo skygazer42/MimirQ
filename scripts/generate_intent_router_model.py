@@ -3,7 +3,6 @@
 Generate a compact intent-router model artifact from exported training rows.
 """
 
-
 import argparse
 import json
 import re
@@ -26,7 +25,7 @@ def _tokenize(text: str) -> list[str]:
     out: list[str] = []
     seen: set[str] = set()
     for m in _TOKEN_RE.finditer(str(text or "")):
-        tok = str(m.group(0) or "").strip()
+        tok = m.group(0).strip()
         if not tok:
             continue
         key = tok.casefold() if tok.isascii() else tok
@@ -81,7 +80,7 @@ def generate_model(
         tokens = [
             tok
             for tok, freq in tok_counter.most_common(max(1, int(max_tokens_per_rule or 1)))
-            if int(freq) >= max(1, int(min_token_support or 1))
+            if freq >= max(1, int(min_token_support or 1))
         ]
         if not tokens:
             continue
@@ -91,11 +90,11 @@ def generate_model(
             {
                 "rule_id": f"r{idx:02d}",
                 "tokens": tokens,
-                "min_match": int(min_match),
-                "confidence": round(float(confidence), 6),
+                "min_match": min_match,
+                "confidence": round(confidence, 6),
                 "weight": 1.0,
-                "support": int(support),
-                "overrides": dict(label_overrides.get(signature) or {}),
+                "support": support,
+                "overrides": dict(label_overrides[signature]),
             }
         )
 
@@ -104,9 +103,9 @@ def generate_model(
         "version": 1,
         "rules": rules,
         "summary": {
-            "rows_total": int(total_rows),
-            "label_signatures": int(len(label_count)),
-            "rules_total": int(len(rules)),
+            "rows_total": total_rows,
+            "label_signatures": len(label_count),
+            "rules_total": len(rules),
         },
     }
 
@@ -131,10 +130,9 @@ def main(argv: list[str] | None = None) -> int:
     out_path = Path(args.out)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps(model, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    print(json.dumps({"rules_total": (model.get("summary") or {}).get("rules_total", 0)}, ensure_ascii=False))
+    print(json.dumps({"rules_total": model["summary"].get("rules_total", 0)}, ensure_ascii=False))
     return 0
 
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

@@ -1,64 +1,14 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { AlertTriangle, Grid3X3, PlayCircle } from 'lucide-react'
+import { Grid3X3, PlayCircle } from '@/components/icons'
 
-import { Button } from '@/components/ui/button'
+import { LoadingButton } from '@/components/ui/loading-button'
 import { Textarea } from '@/components/ui/textarea'
-import { cn } from '@/lib/utils'
-import type { RegressionAblationGridValue, RegressionRunCreate } from '@/types'
-
-type GridSpec = Record<string, RegressionAblationGridValue[]>
-type GridVariant = Record<string, RegressionAblationGridValue>
-
-export const MAX_GRID_COMBINATIONS = 50
-
-const GRID_PARAM_KEYS = [
-  'retrieval_profile',
-  'enable_query_alias_expansion',
-  'query_alias_max_queries',
-  'enable_multi_query',
-  'multi_query_count',
-  'multi_query_temperature',
-  'multi_query_max_chars',
-  'enable_hyde',
-  'enable_hierarchy_recall',
-  'hierarchy_family_collapse',
-  'hierarchy_family_aggregation',
-  'hierarchy_tree_dedup',
-  'hierarchy_parent_depth',
-  'hierarchy_sibling_window',
-  'hierarchy_overfetch_factor',
-  'enable_query_rewrite',
-  'query_rewrite_strategy',
-  'query_rewrite_temperature',
-  'query_rewrite_max_chars',
-  'sparse_retrieval_enabled',
-  'sparse_retrieval_provider',
-  'use_llm_judge',
-  'skip_empty_contexts',
-  'max_cases',
-  'top_k',
-  'score_threshold',
-  'retrieval_mode',
-  'alpha',
-  'enable_weight_rerank',
-  'vector_weight',
-  'keyword_weight',
-  'mmr_lambda',
-  'enable_reranker',
-  'reranker_provider',
-  'reranker_top_n',
-  'fusion_strategy',
-  'fusion_budgets',
-  'fusion_min_scores',
-  'fusion_weights',
-  'prompt_template_id',
-  'prompt_template_key',
-  'prompt_ab_experiment_key',
-] satisfies Array<keyof RegressionRunCreate>
-
-const GRID_PARAM_KEY_SET = new Set<string>(GRID_PARAM_KEYS)
+import { formatApiError } from '@/lib/api-errors'
+import { ABLATION_GRID_KEYS, MAX_GRID_COMBINATIONS, parseAblationGrid } from '@/lib/regression-ablation-grid'
+import { detachPromise } from '@/lib/utils'
+import type { RegressionAblationBatchResponse, RegressionAblationGridValue } from '@/types'
 
 const DEFAULT_GRID = `{
   "retrieval_mode": ["hybrid", "vector"],
@@ -66,80 +16,40 @@ const DEFAULT_GRID = `{
   "enable_reranker": [false, true]
 }`
 
-function isGridValue(value: unknown): value is RegressionAblationGridValue {
-  return value === null || ['string', 'number', 'boolean'].includes(typeof value) || (typeof value === 'object' && !Array.isArray(value))
-}
-
-function parseGrid(value: string): { grid: GridSpec; variants: GridVariant[]; error: string | null } {
-  let parsed: unknown
-  try {
-    parsed = JSON.parse(value)
-  } catch {
-    return { grid: {}, variants: [], error: 'Grid JSON 无法解析' }
-  }
-  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-    return { grid: {}, variants: [], error: 'Grid 必须是对象，例如 {"top_k":[10,20]}' }
-  }
-
-  const parsedRecord = parsed as Record<string, unknown>
-  const invalidKeys = Object.keys(parsedRecord).filter((key) => !GRID_PARAM_KEY_SET.has(key))
-  if (invalidKeys.length) {
-    return { grid: {}, variants: [], error: `不支持的参数：${invalidKeys.join(', ')}` }
-  }
-
-  const entries = Object.entries(parsedRecord)
-    .filter(([key]) => key.trim())
-    .map(([key, raw]) => {
-      const values = Array.isArray(raw) ? raw.filter(isGridValue) : []
-      return [key, values] as const
-    })
-    .filter(([, values]) => values.length > 0)
-
-  if (!entries.length) return { grid: {}, variants: [], error: '至少配置一个参数数组' }
-
-  const grid = Object.fromEntries(entries.map(([key, values]) => [key, values])) as GridSpec
-  const variants: Array<Record<string, RegressionAblationGridValue>> = [{}]
-  for (const [key, values] of entries) {
-    const next: Array<Record<string, RegressionAblationGridValue>> = []
-    for (const variant of variants) {
-      for (const item of values) next.push({ ...variant, [key]: item })
-    }
-    variants.splice(0, variants.length, ...next.slice(0, MAX_GRID_COMBINATIONS + 1))
-  }
-
-  return { grid, variants: variants.map((item) => item as GridVariant), error: null }
-}
-
 export function AblationGridPanel({
-  disabled,
+  disabled = false,
   disabledReason,
   onRunGrid,
-  onBatchComplete,
 }: Readonly<{
   disabled?: boolean
   disabledReason?: string
-  onRunGrid: (grid: GridSpec, maxCombinations: number) => Promise<void>
-  onBatchComplete?: () => Promise<void> | void
+  onRunGrid: (
+    grid: Record<string, RegressionAblationGridValue[]>,
+    maxCombinations: number,
+  ) => Promise<RegressionAblationBatchResponse>
 }>) {
   const [gridText, setGridText] = useState(DEFAULT_GRID)
   const [running, setRunning] = useState(false)
-  const [completed, setCompleted] = useState(0)
-  const [batchError, setBatchError] = useState('')
-  const { grid, variants, error } = useMemo(() => parseGrid(gridText), [gridText])
-  const tooMany = variants.length > MAX_GRID_COMBINATIONS
-  const canRun = !disabled && !running && !error && variants.length > 0 && !tooMany
+  const [acceptedBatch, setAcceptedBatch] = useState<RegressionAblationBatchResponse | null>(null)
+  const [batchError, setBatchError] = useState<string | null>(null)
+  const preview = useMemo(() => parseAblationGrid(gridText), [gridText])
+  const canRun = !disabled && !running && preview.status === 'ready'
+  let combinationCount: number | string = '未计算'
+  if (preview.status === 'ready') {
+    combinationCount = preview.variants.length
+  } else if (preview.status === 'overLimit') {
+    combinationCount = `>${MAX_GRID_COMBINATIONS}`
+  }
 
   async function runBatch() {
     if (!canRun) return
     setRunning(true)
-    setCompleted(0)
-    setBatchError('')
+    setBatchError(null)
     try {
-      await onRunGrid(grid, MAX_GRID_COMBINATIONS)
-      setCompleted(variants.length)
-      await onBatchComplete?.()
-    } catch (err) {
-      setBatchError(err instanceof Error ? err.message : '批量创建 runs 失败')
+      const batch = await onRunGrid(preview.grid, MAX_GRID_COMBINATIONS)
+      setAcceptedBatch(batch)
+    } catch (error) {
+      setBatchError(formatApiError(error, '未取得有效批量回执，请先重新读取运行记录确认'))
     } finally {
       setRunning(false)
     }
@@ -149,61 +59,68 @@ export function AblationGridPanel({
     <section className="rounded-2xl border border-border bg-card p-4 shadow-sm">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+          <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground">
             <Grid3X3 className="size-4 text-info" />
             笛卡尔网格批量
-          </div>
+          </h3>
           <p className="mt-1 text-xs leading-5 text-muted-foreground">
-            用 JSON 定义参数数组，前端按组合顺序创建 regression runs；默认上限 {MAX_GRID_COMBINATIONS} 个，避免跑爆配额。
+            按参数数组组合提交一个批次，由后端接受并调度运行；本次最多 {MAX_GRID_COMBINATIONS} 组。
           </p>
-          <p className="mt-1 text-[11px] leading-5 text-muted-foreground/70">
-            支持字段：{GRID_PARAM_KEYS.join(' / ')}
-          </p>
+          <p className="mt-1 text-[11px] leading-5 text-muted-foreground">支持字段：{ABLATION_GRID_KEYS.join(' / ')}</p>
         </div>
         <div className="rounded-xl border border-border bg-muted/50 px-3 py-2 text-right">
-          <div className="text-[10px] uppercase tracking-[0.16em] text-muted-foreground">组合数</div>
-          <div className={cn('font-mono text-lg font-semibold', tooMany ? 'text-destructive' : 'text-foreground')}>
-            {variants.length}
-          </div>
+          <div className="text-[10px] text-muted-foreground">组合数</div>
+          <div className="font-mono text-lg font-semibold text-foreground">{combinationCount}</div>
         </div>
       </div>
-
-      <Textarea
-        value={gridText}
-        onChange={(event) => setGridText(event.target.value)}
-        spellCheck={false}
-        className="mt-3 min-h-36 rounded-xl border-border bg-background font-mono text-xs text-foreground"
-      />
-
+      <label className="mt-3 block text-xs font-medium text-muted-foreground">
+        参数网格 JSON
+        <Textarea
+          value={gridText}
+          onChange={(event) => setGridText(event.target.value)}
+          disabled={running}
+          spellCheck={false}
+          className="mt-1 min-h-36 rounded-xl border-border bg-background font-mono text-xs text-foreground"
+        />
+      </label>
+      {preview.status !== 'ready' ? (
+        <p role="alert" className="mt-2 text-sm text-destructive">
+          {preview.message}
+        </p>
+      ) : null}
+      {batchError !== null ? (
+        <p role="alert" className="mt-2 text-sm text-destructive">
+          {batchError}
+        </p>
+      ) : null}
+      {acceptedBatch !== null ? (
+        <p role="status" className="mt-2 break-words text-xs text-muted-foreground">
+          上次提交已接受 {acceptedBatch.total} 个运行；批次 {acceptedBatch.ablation_id}。运行结果请查看记录。
+        </p>
+      ) : null}
       <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-        <div className="min-h-5 text-xs text-muted-foreground">
-          {batchError ? (
-            <span className="inline-flex items-center gap-1 text-destructive">
-              <AlertTriangle className="size-3.5" />
-              {batchError}
-            </span>
-          ) : error ? (
-            <span className="inline-flex items-center gap-1 text-destructive">
-              <AlertTriangle className="size-3.5" />
-              {error}
-            </span>
-          ) : tooMany ? (
-            <span className="text-destructive">组合数超过上限，请收窄参数范围。</span>
-          ) : disabled && disabledReason ? (
-            <span className="inline-flex items-center gap-1 text-warning">
-              <AlertTriangle className="size-3.5" />
-              {disabledReason}
-            </span>
-          ) : running ? (
-            <span>正在提交批量任务 {completed}/{variants.length} runs…</span>
-          ) : (
-            <span>预览前 {Math.min(variants.length, 3)} 组：{variants.slice(0, 3).map((item) => JSON.stringify(item)).join(' / ')}</span>
-          )}
+        <div className="min-w-0 text-xs text-muted-foreground">
+          {disabled && disabledReason !== undefined ? <p>{disabledReason}</p> : null}
+          {preview.status === 'ready' ? (
+            <p className="break-words">
+              预览前 {Math.min(preview.variants.length, 3)} 组：
+              {preview.variants
+                .slice(0, 3)
+                .map((variant) => JSON.stringify(variant))
+                .join(' / ')}
+            </p>
+          ) : null}
         </div>
-        <Button type="button" disabled={!canRun} onClick={() => void runBatch()} className="gap-2 rounded-xl">
+        <LoadingButton
+          type="button"
+          loading={running}
+          disabled={!canRun}
+          onClick={() => detachPromise(runBatch())}
+          className="gap-2 rounded-xl"
+        >
           <PlayCircle className="size-4" />
-          批量创建 Runs
-        </Button>
+          提交网格
+        </LoadingButton>
       </div>
     </section>
   )

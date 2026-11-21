@@ -15,14 +15,12 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from app.api.dependencies.auth import get_current_account_id
-from app.api.dependencies.tenant import get_tenant_id
-from app.api.v1 import dataset_analysis as dataset_analysis_api
-from app.core.database import get_db
-from app.core.exceptions import register_exception_handlers
-from app.models.chat import Conversation, Message
-from app.models.feedback import MessageFeedback
-from app.services import dataset_analysis_service
+from app.api.dependencies import get_current_account_id, get_tenant_id
+from app.api.v1.datasets import analysis as dataset_analysis_api
+from app.infrastructure.database.connection import get_db
+from app.infrastructure.exceptions import register_exception_handlers
+from app.models.conversations.chat import Conversation, Message, MessageFeedback
+from app.services.datasets import analysis as dataset_analysis_service
 
 
 class _FakeQuery:
@@ -57,18 +55,18 @@ def _build_client(monkeypatch: pytest.MonkeyPatch) -> tuple[TestClient, str]:
     app.dependency_overrides[get_current_account_id] = lambda: "reader-1"
     app.dependency_overrides[get_db] = lambda: object()
 
-    monkeypatch.setattr(dataset_analysis_api.DatasetService, "ensure_member", lambda *_a, **_k: object(), raising=True)
+    monkeypatch.setattr(dataset_analysis_api.dataset_service, "ensure_member", lambda *_a, **_k: object(), raising=True)
     monkeypatch.setattr(
-        dataset_analysis_api.DatasetService,
+        dataset_analysis_api.dataset_service,
         "get_dataset",
         lambda *_a, **_k: SimpleNamespace(id=dataset_id, name="Dataset A"),
         raising=True,
     )
     monkeypatch.setattr(
-        dataset_analysis_api.DatasetService, "assert_dataset_readable", lambda *_a, **_k: None, raising=True
+        dataset_analysis_api.dataset_service, "assert_dataset_readable", lambda *_a, **_k: None, raising=True
     )
     monkeypatch.setattr(
-        dataset_analysis_api.DatasetService, "assert_dataset_writable", lambda *_a, **_k: None, raising=True
+        dataset_analysis_api.dataset_service, "assert_dataset_writable", lambda *_a, **_k: None, raising=True
     )
     return TestClient(app), dataset_id
 
@@ -128,7 +126,7 @@ def test_load_dataset_scope_rows_allows_empty_scope_without_traces(monkeypatch: 
 def test_summary_endpoint_returns_typed_source_incomplete(monkeypatch: pytest.MonkeyPatch) -> None:
     client, dataset_id = _build_client(monkeypatch)
     monkeypatch.setattr(
-        dataset_analysis_api,
+        dataset_analysis_service,
         "build_dataset_analysis_summary",
         lambda **_k: (_ for _ in ()).throw(
             dataset_analysis_service.DatasetAnalysisSourceIncompleteError(dataset_id=dataset_id)

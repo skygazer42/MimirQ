@@ -10,11 +10,17 @@ function asError(message: string, cause: unknown): Error {
   return new Error(message, { cause })
 }
 
-export function reportClientError(message: string, cause: unknown, options: ClientLogOptions = {}): void {
+export function reportClientError(
+  message: string,
+  cause: unknown,
+  { level = 'error', tags }: ClientLogOptions = {},
+): void {
   Sentry.withScope((scope) => {
-    scope.setLevel(options.level || 'error')
-    for (const [key, value] of Object.entries(options.tags || {})) {
-      if (value) scope.setTag(key, value)
+    scope.setLevel(level)
+    if (tags !== undefined) {
+      for (const [key, value] of Object.entries(tags)) {
+        if (value !== '') scope.setTag(key, value)
+      }
     }
     scope.setContext('client_log', { message })
     Sentry.captureException(asError(message, cause))

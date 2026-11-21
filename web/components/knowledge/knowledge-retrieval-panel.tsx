@@ -1,15 +1,12 @@
 'use client'
 
-/**
- * KnowledgeRetrievalPanel - Index Audit Module
- * 优化版：极致高密度诊断台、UI Pro Max 物理质感、极客化数据展示
- */
+/** 当前文档或数据集范围的索引审计、通道状态与修复动作。 */
 import { useMemo, useState } from 'react'
 import {
   Activity,
   AlertCircle,
   Check,
-  Database,
+  Dataset as DatasetIcon,
   FileStack,
   Fingerprint,
   Loader2,
@@ -20,7 +17,7 @@ import {
   Layers3,
   Scan,
   ShieldCheck,
-} from 'lucide-react'
+} from '@/components/icons'
 import { useTranslations } from 'next-intl'
 import { motion } from 'framer-motion'
 
@@ -68,17 +65,19 @@ function getChecklistStateLabel(state: string): string {
   return '等待'
 }
 
+type DetailsButtonLabelOptions = {
+  hasIndexDetails: boolean
+  detailsExpanded: boolean
+  selectedDatasetId?: string
+  indexAuditLoading: boolean
+}
+
 function getDetailsButtonLabel({
   hasIndexDetails,
   detailsExpanded,
   selectedDatasetId,
   indexAuditLoading,
-}: {
-  hasIndexDetails: boolean
-  detailsExpanded: boolean
-  selectedDatasetId?: string
-  indexAuditLoading: boolean
-}): string {
+}: DetailsButtonLabelOptions): string {
   if (hasIndexDetails) {
     return detailsExpanded ? '收起索引详情' : '查看索引详情'
   }
@@ -91,21 +90,19 @@ function getDetailsButtonLabel({
 // Use a stable rough estimate so the card aligns with the design
 // without pretending the number is exact.
 function estimateIndexSizeBytes(vectorCount: number): number {
-  const normalizedCount = Math.max(0, Math.trunc(vectorCount || 0))
+  const normalizedCount = Math.max(0, Math.trunc(vectorCount))
   const embeddingDims = 3072
   const bytesPerDim = 4
   const storageOverheadMultiplier = 2.2
-  return Math.round(
-    normalizedCount * embeddingDims * bytesPerDim * storageOverheadMultiplier
-  )
+  return Math.round(normalizedCount * embeddingDims * bytesPerDim * storageOverheadMultiplier)
 }
 
 export function KnowledgeRetrievalPanel({
   selectedDatasetId,
   selectedDocumentIds = [],
   compact = false,
-  aggregateDocuments = 0,
-  aggregateChunks = 0,
+  aggregateDocuments,
+  aggregateChunks,
 }: Readonly<KnowledgeRetrievalPanelProps>) {
   const t = useTranslations('KnowledgeRetrievalPanel')
   // t("empty.title")
@@ -119,9 +116,12 @@ export function KnowledgeRetrievalPanel({
     reconcileIndexAudit,
     runIndexAudit,
   } = useIndexAudit({ selectedDatasetId, selectedDocumentIds })
-  const [detailsExpanded, setDetailsExpanded] = useState(false)
-  const hasAggregateOverview =
-    !selectedDatasetId && (aggregateDocuments > 0 || aggregateChunks > 0)
+  const [detailsRequested, setDetailsRequested] = useState(false)
+  const hasAggregateOverview = !selectedDatasetId && (aggregateDocuments !== undefined || aggregateChunks !== undefined)
+  const aggregateDocumentLabel = aggregateDocuments?.toLocaleString() ?? '未返回'
+  const aggregateChunkLabel = aggregateChunks?.toLocaleString() ?? '未返回'
+  const aggregateIndexSizeLabel =
+    aggregateChunks === undefined ? '未返回' : formatBytesCompact(estimateIndexSizeBytes(aggregateChunks))
   const overviewDatasetLabel = selectedDatasetId || '全部数据集'
 
   const channelRows = useMemo(() => {
@@ -130,13 +130,7 @@ export function KnowledgeRetrievalPanel({
 
     const countsByChannel = summary.status_counts_by_channel ?? {}
     const legacyByChannel = summary.legacy_by_channel ?? {}
-    const preferredOrder = [
-      'vector',
-      'bm25',
-      'kg',
-      'event_vector',
-      'entity_vector',
-    ]
+    const preferredOrder = ['vector', 'bm25', 'kg', 'event_vector', 'entity_vector']
     const channels = [
       ...preferredOrder.filter((channel) => channel in countsByChannel),
       ...Object.keys(countsByChannel)
@@ -146,22 +140,14 @@ export function KnowledgeRetrievalPanel({
 
     return channels.map((channel) => {
       const counts = countsByChannel[channel] ?? {}
-      const rowCount = Object.values(counts).reduce(
-        (total, value) => total + Math.max(0, Number(value || 0)),
-        0
-      )
-      const errorCount = Math.max(0, Number(counts.error || 0))
+      const rowCount = Object.values(counts).reduce((total, value) => total + Math.max(0, value), 0)
+      const errorCount = Math.max(0, counts.error ?? 0)
       const nonTerminalCount = Object.entries(counts).reduce(
         (total, [status, value]) =>
-          ['ready', 'disabled', 'skipped', 'error'].includes(status)
-            ? total
-            : total + Math.max(0, Number(value || 0)),
-        0
-      )
-      const legacyCount = Math.max(
+          ['ready', 'disabled', 'skipped', 'error'].includes(status) ? total : total + Math.max(0, value),
         0,
-        Number(legacyByChannel[channel] || 0)
       )
+      const legacyCount = Math.max(0, legacyByChannel[channel] ?? 0)
       const unknown = rowCount === 0
       const state = errorCount
         ? 'warning'
@@ -173,17 +159,14 @@ export function KnowledgeRetrievalPanel({
               ? 'unknown'
               : 'ok'
       const statusParts = Object.entries(counts)
-        .filter(([, count]) => Number(count || 0) > 0)
+        .filter(([, count]) => count > 0)
         .sort(([left], [right]) => left.localeCompare(right))
         .map(([status, count]) => `${status} ${count}`)
       if (legacyCount > 0) statusParts.push(`legacy ${legacyCount}`)
 
       return {
         channel,
-        detail:
-          legacyCount > 0
-            ? `${legacyCount} 个文档使用兼容推断状态（无持久化通道行）`
-            : null,
+        detail: legacyCount > 0 ? `${legacyCount} 个文档使用兼容推断状态（无持久化通道行）` : null,
         readinessLabel:
           state === 'warning'
             ? 'Error'
@@ -196,18 +179,9 @@ export function KnowledgeRetrievalPanel({
                   : 'Ready',
         rowCount,
         state,
-        statusLabel:
-          state === 'compat'
-            ? `兼容 / ${statusParts.join(' · ')}`
-            : statusParts.join(' · ') || 'unknown',
+        statusLabel: state === 'compat' ? `兼容 / ${statusParts.join(' · ')}` : statusParts.join(' · ') || 'unknown',
         summaryKind:
-          state === 'compat'
-            ? 'compat'
-            : state === 'unknown'
-              ? 'unknown'
-              : state === 'ok'
-                ? 'ready'
-                : 'other',
+          state === 'compat' ? 'compat' : state === 'unknown' ? 'unknown' : state === 'ok' ? 'ready' : 'other',
       }
     })
   }, [indexAudit?.index_channels])
@@ -223,9 +197,9 @@ export function KnowledgeRetrievalPanel({
           else acc.pending += 1
           return acc
         },
-        { ready: 0, compat: 0, unknown: 0, warning: 0, pending: 0 }
+        { ready: 0, compat: 0, unknown: 0, warning: 0, pending: 0 },
       ),
-    [channelRows]
+    [channelRows],
   )
 
   const metricCards = useMemo(() => {
@@ -261,9 +235,7 @@ export function KnowledgeRetrievalPanel({
         {
           key: 'indexSize',
           label: '索引大小',
-          value: formatBytesCompact(
-            estimateIndexSizeBytes(indexAudit.vector_ids_checked)
-          ),
+          value: formatBytesCompact(estimateIndexSizeBytes(indexAudit.vector_ids_checked)),
           icon: HardDrive,
           tone: 'sky',
           meta: indexAudit.vector_backend || '向量后端',
@@ -275,18 +247,9 @@ export function KnowledgeRetrievalPanel({
     if (hasAggregateOverview) {
       return [
         {
-          key: 'checkedIds',
-          label: '向量总数',
-          value: aggregateChunks.toLocaleString(),
-          icon: Fingerprint,
-          tone: 'emerald',
-          meta: '全量向量',
-          estimated: false,
-        },
-        {
           key: 'activeDocuments',
           label: '文档总数',
-          value: aggregateDocuments.toLocaleString(),
+          value: aggregateDocumentLabel,
           icon: FileStack,
           tone: 'blue',
           meta: '全部数据集',
@@ -295,7 +258,7 @@ export function KnowledgeRetrievalPanel({
         {
           key: 'activeChunks',
           label: '分片总数',
-          value: aggregateChunks.toLocaleString(),
+          value: aggregateChunkLabel,
           icon: Layers3,
           tone: 'violet',
           meta: '全量分片',
@@ -304,7 +267,7 @@ export function KnowledgeRetrievalPanel({
         {
           key: 'indexSize',
           label: '索引大小',
-          value: formatBytesCompact(estimateIndexSizeBytes(aggregateChunks)),
+          value: aggregateIndexSizeLabel,
           icon: HardDrive,
           tone: 'sky',
           meta: '全量估算',
@@ -314,7 +277,7 @@ export function KnowledgeRetrievalPanel({
     }
 
     return []
-  }, [aggregateChunks, aggregateDocuments, hasAggregateOverview, indexAudit])
+  }, [aggregateChunkLabel, aggregateDocumentLabel, aggregateIndexSizeLabel, hasAggregateOverview, indexAudit])
 
   const auditStatus = useMemo(() => {
     if (hasAggregateOverview) {
@@ -349,13 +312,7 @@ export function KnowledgeRetrievalPanel({
       return { label: '正常运行', tone: 'success' as const }
     }
     return { label: '待执行审计', tone: 'neutral' as const }
-  }, [
-    hasAggregateOverview,
-    indexAudit,
-    indexAuditError,
-    indexAuditLoading,
-    selectedDatasetId,
-  ])
+  }, [hasAggregateOverview, indexAudit, indexAuditError, indexAuditLoading, selectedDatasetId])
 
   const healthChecklist = useMemo(() => {
     if (hasAggregateOverview) {
@@ -393,16 +350,14 @@ export function KnowledgeRetrievalPanel({
       },
       {
         label: '存储服务',
-        state:
-          (indexAudit.milvus_orphan_ids_sample || []).length > 0
-            ? 'warning'
-            : 'ok',
+        state: (indexAudit.milvus_orphan_ids_sample || []).length > 0 ? 'warning' : 'ok',
       },
       { label: '权限校验', state: 'unknown' },
     ] as const
   }, [channelRows, hasAggregateOverview, indexAudit])
 
-  const hasIndexDetails = Boolean(indexAudit || hasAggregateOverview)
+  const hasIndexDetails = indexAudit !== null || hasAggregateOverview
+  const detailsExpanded = hasIndexDetails && detailsRequested
   const detailsButtonLabel = getDetailsButtonLabel({
     hasIndexDetails,
     detailsExpanded,
@@ -417,37 +372,23 @@ export function KnowledgeRetrievalPanel({
         ['入库文档', indexAudit.active_documents.toLocaleString()],
         ['检索分片', indexAudit.active_chunks.toLocaleString()],
         ['DB 缺失 vector_id', String(indexAudit.vector_id_missing ?? 0)],
-        [
-          '后端缺失向量',
-          String(indexAudit.vector_ids_missing_in_backend ?? 0),
-        ],
-        [
-          '孤儿向量样本',
-          String(indexAudit.milvus_orphan_ids_sample?.length ?? 0),
-        ],
-        [
-          '估算索引大小',
-          formatBytesCompact(
-            estimateIndexSizeBytes(indexAudit.vector_ids_checked)
-          ),
-        ],
+        ['后端缺失向量', String(indexAudit.vector_ids_missing_in_backend ?? 0)],
+        ['孤儿向量样本', String(indexAudit.milvus_orphan_ids_sample?.length ?? 0)],
+        ['估算索引大小', formatBytesCompact(estimateIndexSizeBytes(indexAudit.vector_ids_checked))],
       ]
     }
 
     if (hasAggregateOverview) {
       return [
         ['审计范围', '全部数据集聚合'],
-        ['文档总数', aggregateDocuments.toLocaleString()],
-        ['分片总数', aggregateChunks.toLocaleString()],
-        [
-          '估算索引大小',
-          formatBytesCompact(estimateIndexSizeBytes(aggregateChunks)),
-        ],
+        ['文档总数', aggregateDocumentLabel],
+        ['分片总数', aggregateChunkLabel],
+        ['估算索引大小', aggregateIndexSizeLabel],
       ]
     }
 
     return []
-  }, [aggregateChunks, aggregateDocuments, hasAggregateOverview, indexAudit])
+  }, [aggregateChunkLabel, aggregateDocumentLabel, aggregateIndexSizeLabel, hasAggregateOverview, indexAudit])
 
   const statusToneClassName = {
     success: 'bg-success/10 text-success border-success/20',
@@ -465,7 +406,7 @@ export function KnowledgeRetrievalPanel({
             'flex size-10 items-center justify-center rounded-xl border transition-all duration-500',
             indexAuditLoading
               ? 'bg-primary/10 border-primary/40 shadow-[0_0_15px_-5px_rgba(var(--primary),0.5)]'
-              : 'bg-muted/30 border-border/40'
+              : 'bg-muted/30 border-border/40',
           )}
         >
           {indexAuditLoading ? (
@@ -482,15 +423,11 @@ export function KnowledgeRetrievalPanel({
             <div
               className={cn(
                 'size-1 rounded-full',
-                selectedDatasetId
-                  ? 'bg-success shadow-[0_0_8px_rgba(16,185,129,0.4)]'
-                  : 'bg-muted-foreground/20'
+                selectedDatasetId ? 'bg-success shadow-[0_0_8px_rgba(16,185,129,0.4)]' : 'bg-muted-foreground/20',
               )}
             />
           </div>
-          <h4 className="text-sm font-medium text-foreground mt-1">
-            {t('header.title')}
-          </h4>
+          <h4 className="text-sm font-medium text-foreground mt-1">{t('header.title')}</h4>
         </div>
       </div>
 
@@ -499,7 +436,7 @@ export function KnowledgeRetrievalPanel({
         variant={indexAuditLoading ? 'secondary' : 'outline'}
         className={cn(
           'h-9 rounded-xl border-border/60 bg-background/50 px-4 text-xs font-medium uppercase transition-all active:scale-[0.98]',
-          indexAuditLoading && 'border-primary/30 text-primary'
+          indexAuditLoading && 'border-primary/30 text-primary',
         )}
         onClick={() => detachPromise(runIndexAudit())}
         disabled={!selectedDatasetId || indexAuditLoading}
@@ -520,9 +457,7 @@ export function KnowledgeRetrievalPanel({
     return (
       <div className="space-y-3 border-t border-border/60 pt-3.5">
         <div className="flex items-center justify-between gap-3">
-          <div className="text-[13px] font-medium text-foreground">
-            通道 readiness
-          </div>
+          <div className="text-[13px] font-medium text-foreground">通道 readiness</div>
           <div className="flex flex-wrap items-center gap-1.5 text-[10px]">
             <span className="rounded-full border border-success/20 bg-success/10 px-2 py-0.5 text-success">
               ready {channelSummary.ready}
@@ -544,41 +479,28 @@ export function KnowledgeRetrievalPanel({
         {channelRows.length > 0 ? (
           <div className="space-y-2">
             {channelRows.map((row) => (
-              <div
-                key={row.channel}
-                className="rounded-[13px] border border-border/60 bg-background px-3 py-2"
-              >
+              <div key={row.channel} className="rounded-[13px] border border-border/60 bg-background px-3 py-2">
                 <div className="flex items-center justify-between gap-3">
                   <div className="min-w-0">
-                    <div className="truncate text-[12px] font-medium text-foreground">
-                      {row.channel}
-                    </div>
+                    <div className="truncate text-[12px] font-medium text-foreground">{row.channel}</div>
                     <div className="mt-1 text-[10px] text-muted-foreground/70">
                       {row.statusLabel}
-                      {typeof row.rowCount === 'number'
-                        ? ` · rows ${row.rowCount}`
-                        : ''}
+                      {typeof row.rowCount === 'number' ? ` · rows ${row.rowCount}` : ''}
                     </div>
                   </div>
                   <span
                     className={cn(
                       'rounded-full px-2.5 py-1 text-[11px] font-medium',
                       row.state === 'ok' && 'bg-success/10 text-success',
-                      (row.state === 'warning' || row.state === 'compat') &&
-                        'bg-warning/10 text-warning',
-                      row.state === 'unknown' &&
-                        'bg-muted/30 text-muted-foreground',
-                      row.state === 'pending' && 'bg-info/10 text-info'
+                      (row.state === 'warning' || row.state === 'compat') && 'bg-warning/10 text-warning',
+                      row.state === 'unknown' && 'bg-muted/30 text-muted-foreground',
+                      row.state === 'pending' && 'bg-info/10 text-info',
                     )}
                   >
                     {row.readinessLabel}
                   </span>
                 </div>
-                {row.detail ? (
-                  <div className="mt-1 text-[10px] text-muted-foreground/66">
-                    {row.detail}
-                  </div>
-                ) : null}
+                {row.detail ? <div className="mt-1 text-[10px] text-muted-foreground/66">{row.detail}</div> : null}
               </div>
             ))}
           </div>
@@ -599,9 +521,7 @@ export function KnowledgeRetrievalPanel({
       <div className="space-y-3 border-t border-border/60 pt-3.5">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <div className="text-[13px] font-medium text-foreground">
-              Document-scoped reconcile
-            </div>
+            <div className="text-[13px] font-medium text-foreground">Document-scoped reconcile</div>
             <div className="mt-1 text-[11px] text-muted-foreground/66">
               仅对当前文档范围提交修复任务；dataset-only 不支持。
             </div>
@@ -613,11 +533,7 @@ export function KnowledgeRetrievalPanel({
             onClick={() => detachPromise(reconcileIndexAudit())}
             disabled={loading || !selectedDatasetId}
           >
-            {loading ? (
-              <Loader2 className="mr-2 size-3.5 animate-spin" />
-            ) : (
-              <AlertCircle className="mr-2 size-3.5" />
-            )}
+            {loading ? <Loader2 className="mr-2 size-3.5 animate-spin" /> : <AlertCircle className="mr-2 size-3.5" />}
             {loading ? '提交中' : 'Reconcile'}
           </Button>
         </div>
@@ -625,19 +541,14 @@ export function KnowledgeRetrievalPanel({
           <div
             className={cn(
               'rounded-[13px] border px-3 py-2 text-[11px]',
-              indexAuditReconcileState.status === 'success' &&
-                'border-success/20 bg-success/10 text-success',
-              indexAuditReconcileState.status === 'error' &&
-                'border-destructive/20 bg-destructive/10 text-destructive',
-              indexAuditReconcileState.status === 'loading' &&
-                'border-info/20 bg-info/10 text-info'
+              indexAuditReconcileState.status === 'success' && 'border-success/20 bg-success/10 text-success',
+              indexAuditReconcileState.status === 'error' && 'border-destructive/20 bg-destructive/10 text-destructive',
+              indexAuditReconcileState.status === 'loading' && 'border-info/20 bg-info/10 text-info',
             )}
           >
             {indexAuditReconcileState.message}
             {indexAuditReconcileState.backendStatus ? (
-              <span className="ml-2 font-mono opacity-75">
-                [{indexAuditReconcileState.backendStatus}]
-              </span>
+              <span className="ml-2 font-mono opacity-75">[{indexAuditReconcileState.backendStatus}]</span>
             ) : null}
           </div>
         ) : null}
@@ -659,9 +570,7 @@ export function KnowledgeRetrievalPanel({
                 <div className="text-[11px] font-medium uppercase tracking-[0.24em] text-muted-foreground/62">
                   索引审计
                 </div>
-                <div className="mt-1 text-[20px] font-semibold text-foreground">
-                  {t('header.title')}
-                </div>
+                <div className="mt-1 text-[20px] font-semibold text-foreground">{t('header.title')}</div>
               </div>
             </div>
             <IconButton
@@ -669,16 +578,12 @@ export function KnowledgeRetrievalPanel({
               variant="outline"
               className={cn(
                 'size-9 rounded-[14px] border-border/70 bg-background/72 transition-[transform,box-shadow] hover:scale-[1.03] hover:shadow-[0_12px_24px_-18px_hsl(var(--info)/0.24)]',
-                indexAuditLoading && 'text-primary border-primary/20'
+                indexAuditLoading && 'text-primary border-primary/20',
               )}
               onClick={() => detachPromise(runIndexAudit())}
               disabled={!selectedDatasetId || indexAuditLoading}
             >
-              {indexAuditLoading ? (
-                <Loader2 className="size-3.5 animate-spin" />
-              ) : (
-                <RefreshCw className="size-3.5" />
-              )}
+              {indexAuditLoading ? <Loader2 className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />}
             </IconButton>
           </div>
         </div>
@@ -693,23 +598,19 @@ export function KnowledgeRetrievalPanel({
 
           <div className="space-y-4">
             <div className="space-y-3">
-              <div className="text-[12px] text-muted-foreground/64">
-                {t('header.currentDataset')}
-              </div>
+              <div className="text-[12px] text-muted-foreground/64">{t('header.currentDataset')}</div>
               <div className="inline-flex items-center rounded-full border border-border/70 bg-background px-3 py-1.5 text-[13px] font-medium text-foreground">
-                <Database className="mr-2 size-3.5 text-info" />
-                {overviewDatasetLabel || t("header.noneSelected")}
+                <DatasetIcon className="mr-2 size-3.5 text-info" />
+                {overviewDatasetLabel || t('header.noneSelected')}
               </div>
             </div>
 
             <div className="space-y-3">
-              <div className="text-[12px] text-muted-foreground/64">
-                索引状态
-              </div>
+              <div className="text-[12px] text-muted-foreground/64">索引状态</div>
               <div
                 className={cn(
                   'inline-flex items-center rounded-full border px-3 py-1.5 text-[13px] font-medium',
-                  statusToneClassName
+                  statusToneClassName,
                 )}
               >
                 <span className="mr-2 size-1.5 rounded-full bg-current opacity-75" />
@@ -728,33 +629,23 @@ export function KnowledgeRetrievalPanel({
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
-                        <div className="text-[11px] font-medium text-muted-foreground/68">
-                          {item.label}
-                        </div>
+                        <div className="text-[11px] font-medium text-muted-foreground/68">{item.label}</div>
                         {item.estimated ? (
                           <span className="rounded-full bg-info/10 px-2 py-0.5 text-[9px] font-medium text-info">
                             估算
                           </span>
                         ) : null}
                       </div>
-                      <div className="mt-1.5 font-mono text-[14px] font-semibold text-foreground">
-                        {item.value}
-                      </div>
-                      <div className="mt-1 text-[10px] text-muted-foreground/58">
-                        {item.meta}
-                      </div>
+                      <div className="mt-1.5 font-mono text-[14px] font-semibold text-foreground">{item.value}</div>
+                      <div className="mt-1 text-[10px] text-muted-foreground/58">{item.meta}</div>
                     </div>
                     <div
                       className={cn(
                         'relative flex size-7.5 shrink-0 items-center justify-center rounded-[11px] border shadow-[inset_0_1px_0_rgba(255,255,255,0.72),0_8px_12px_-12px_rgba(15,23,42,0.18)]',
-                        item.tone === 'emerald' &&
-                          'border-success/20 bg-success/8 text-success',
-                        item.tone === 'blue' &&
-                          'border-info/20 bg-info/8 text-info',
-                        item.tone === 'violet' &&
-                          'border-accent/20 bg-accent/8 text-accent',
-                        item.tone === 'sky' &&
-                          'border-info/20 bg-info/8 text-info'
+                        item.tone === 'emerald' && 'border-success/20 bg-success/8 text-success',
+                        item.tone === 'blue' && 'border-info/20 bg-info/8 text-info',
+                        item.tone === 'violet' && 'border-accent/20 bg-accent/8 text-accent',
+                        item.tone === 'sky' && 'border-info/20 bg-info/8 text-info',
                       )}
                     >
                       <span className="pointer-events-none absolute inset-0 rounded-[inherit] bg-[linear-gradient(135deg,rgba(255,255,255,0.3),transparent_50%)] opacity-80" />
@@ -765,55 +656,30 @@ export function KnowledgeRetrievalPanel({
               ))}
             </div>
 
-            <div className="space-y-2 border-t border-border/60 pt-3.5">
-              <div className="text-[12px] text-muted-foreground/64">
-                最后同步
-              </div>
-              <div className="text-[14px] font-medium text-foreground">
-                {indexAudit || hasAggregateOverview
-                  ? '已完成当前数据集索引审计'
-                  : '尚未运行'}
-              </div>
-              <div className="inline-flex items-center rounded-full bg-success/10 px-3 py-1 text-[12px] font-medium text-success">
-                {indexAudit || hasAggregateOverview ? '同步完成' : '等待执行'}
-              </div>
-            </div>
-
             <div className="space-y-3 border-t border-border/60 pt-3.5">
-              <div className="text-[13px] font-medium text-foreground">
-                健康检查清单
-              </div>
+              <div className="text-[13px] font-medium text-foreground">健康检查清单</div>
               <div className="space-y-3">
                 {healthChecklist.map((item) => (
-                  <div
-                    key={item.label}
-                    className="flex items-center justify-between gap-3"
-                  >
+                  <div key={item.label} className="flex items-center justify-between gap-3">
                     <div className="flex items-center gap-2">
                       <span
                         className={cn(
                           'flex size-5 items-center justify-center rounded-full',
                           item.state === 'ok' && 'bg-success/10 text-success',
-                          item.state === 'warning' &&
-                            'bg-warning/10 text-warning',
-                          item.state === 'pending' &&
-                            'bg-muted/30 text-muted-foreground'
+                          item.state === 'warning' && 'bg-warning/10 text-warning',
+                          item.state === 'pending' && 'bg-muted/30 text-muted-foreground',
                         )}
                       >
                         <Check className="size-3" />
                       </span>
-                      <span className="text-[13px] text-foreground/84">
-                        {item.label}
-                      </span>
+                      <span className="text-[13px] text-foreground/84">{item.label}</span>
                     </div>
                     <span
                       className={cn(
                         'rounded-full px-2.5 py-1 text-[11px] font-medium',
                         item.state === 'ok' && 'bg-success/10 text-success',
-                        item.state === 'warning' &&
-                          'bg-warning/10 text-warning',
-                        item.state === 'pending' &&
-                          'bg-muted/30 text-muted-foreground'
+                        item.state === 'warning' && 'bg-warning/10 text-warning',
+                        item.state === 'pending' && 'bg-muted/30 text-muted-foreground',
                       )}
                     >
                       {getChecklistStateLabel(item.state)}
@@ -830,45 +696,33 @@ export function KnowledgeRetrievalPanel({
               type="button"
               variant="outline"
               aria-expanded={detailsExpanded}
-              aria-controls="knowledge-index-detail-panel"
+              aria-controls={detailsExpanded ? 'knowledge-index-detail-panel' : undefined}
               onClick={() => {
                 if (!hasIndexDetails) {
-                  if (selectedDatasetId && !indexAuditLoading) {
-                    detachPromise(runIndexAudit())
-                  }
+                  setDetailsRequested(true)
+                  detachPromise(runIndexAudit())
                   return
                 }
-                setDetailsExpanded((expanded) => !expanded)
+                setDetailsRequested((requested) => !requested)
               }}
               disabled={!hasIndexDetails && (!selectedDatasetId || indexAuditLoading)}
               className="h-11 w-full rounded-[16px] border-border/70 bg-background text-[13px] font-medium"
             >
-              {!hasIndexDetails && indexAuditLoading ? (
-                <Loader2 className="mr-2 size-4 animate-spin" />
-              ) : null}
+              {!hasIndexDetails && indexAuditLoading ? <Loader2 className="mr-2 size-4 animate-spin" /> : null}
               {detailsButtonLabel}
               {hasIndexDetails ? (
-                <ChevronRight
-                  className={cn(
-                    'ml-2 size-4 transition-transform',
-                    detailsExpanded && 'rotate-90'
-                  )}
-                />
+                <ChevronRight className={cn('ml-2 size-4 transition-transform', detailsExpanded && 'rotate-90')} />
               ) : null}
             </Button>
-            {detailsExpanded && hasIndexDetails ? (
+            {detailsExpanded ? (
               <div
                 id="knowledge-index-detail-panel"
                 className="space-y-3 rounded-[18px] border border-border/70 bg-background/76 p-4 text-[12px] shadow-[inset_0_1px_0_rgba(255,255,255,0.72)]"
               >
                 <div className="flex items-center justify-between gap-3">
                   <div>
-                    <div className="text-[13px] font-medium text-foreground">
-                      索引明细
-                    </div>
-                    <div className="mt-1 text-[11px] text-muted-foreground/66">
-                      审计范围：{overviewDatasetLabel}
-                    </div>
+                    <div className="text-[13px] font-medium text-foreground">索引明细</div>
+                    <div className="mt-1 text-[11px] text-muted-foreground/66">审计范围：{overviewDatasetLabel}</div>
                   </div>
                   <span className={cn('rounded-full border px-2.5 py-1 text-[10px] font-medium', statusToneClassName)}>
                     {auditStatus.label}
@@ -876,16 +730,9 @@ export function KnowledgeRetrievalPanel({
                 </div>
                 <div className="grid grid-cols-2 gap-2">
                   {indexDetailRows.map(([label, value]) => (
-                    <div
-                      key={label}
-                      className="rounded-[13px] border border-border/60 bg-background px-3 py-2"
-                    >
-                      <div className="text-[10px] text-muted-foreground/62">
-                        {label}
-                      </div>
-                      <div className="mt-1 truncate font-mono text-[12px] font-medium text-foreground">
-                        {value}
-                      </div>
+                    <div key={label} className="rounded-[13px] border border-border/60 bg-background px-3 py-2">
+                      <div className="text-[10px] text-muted-foreground/62">{label}</div>
+                      <div className="mt-1 truncate font-mono text-[12px] font-medium text-foreground">{value}</div>
                     </div>
                   ))}
                 </div>
@@ -898,8 +745,6 @@ export function KnowledgeRetrievalPanel({
                     当前为全局聚合估算；选择单个数据集并运行审计后，可查看缺失向量、孤儿向量和后端一致性明细。
                   </div>
                 )}
-                {renderChannelStatusSummary()}
-                {renderReconcileAction()}
               </div>
             ) : null}
           </div>
@@ -935,22 +780,14 @@ export function KnowledgeRetrievalPanel({
             >
               <AlertTriangle className="size-4 text-destructive shrink-0 mt-0.5" />
               <div className="space-y-1">
-                <div className="text-xs font-medium text-destructive">
-                  审计执行中断
-                </div>
-                <p className="text-[11px] text-destructive/80 leading-relaxed font-medium">
-                  {indexAuditError}
-                </p>
+                <div className="text-xs font-medium text-destructive">审计执行中断</div>
+                <p className="text-[11px] text-destructive/80 leading-relaxed font-medium">{indexAuditError}</p>
               </div>
             </motion.div>
           ) : null}
 
           {indexAudit ? (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              className="space-y-8"
-            >
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-8">
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 {metricCards.map((item) => (
                   <div
@@ -966,7 +803,7 @@ export function KnowledgeRetrievalPanel({
                         item.tone === 'emerald' && 'text-success',
                         item.tone === 'blue' && 'text-info',
                         item.tone === 'violet' && 'text-accent',
-                        item.tone === 'sky' && 'text-info'
+                        item.tone === 'sky' && 'text-info',
                       )}
                     >
                       {item.value}
@@ -976,17 +813,14 @@ export function KnowledgeRetrievalPanel({
               </div>
 
               <div className="grid gap-6 md:grid-cols-2 mt-8">
-                {(indexAudit.vector_ids_missing_in_backend_sample || [])
-                  .length > 0 && (
+                {(indexAudit.vector_ids_missing_in_backend_sample || []).length > 0 && (
                   <div className="space-y-3">
                     <div className="flex items-center gap-2 text-[10px] font-medium uppercase text-destructive">
                       <div className="size-1.5 rounded-full bg-destructive animate-pulse" />
                       {t('samples.missingInBackend')}
                     </div>
                     <pre className="max-h-56 overflow-auto rounded-[1.5rem] border border-destructive/10 bg-destructive/[0.02] p-4 text-[11px] font-mono leading-loose text-destructive/70 no-scrollbar">
-                      {(
-                        indexAudit.vector_ids_missing_in_backend_sample || []
-                      ).join('\n')}
+                      {(indexAudit.vector_ids_missing_in_backend_sample || []).join('\n')}
                     </pre>
                   </div>
                 )}
@@ -1013,12 +847,8 @@ export function KnowledgeRetrievalPanel({
                 </div>
               </div>
               <div className="max-w-xs space-y-2">
-                <h5 className="text-sm font-medium text-foreground/80">
-                  {t('empty.title')}
-                </h5>
-                <p className="text-xs text-muted-foreground/50 leading-relaxed font-medium">
-                  {t('empty.description')}
-                </p>
+                <h5 className="text-sm font-medium text-foreground/80">{t('empty.title')}</h5>
+                <p className="text-xs text-muted-foreground/50 leading-relaxed font-medium">{t('empty.description')}</p>
               </div>
               {selectedDatasetId ? (
                 <Button

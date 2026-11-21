@@ -1,8 +1,8 @@
 from langchain_core.documents import Document
 
-from app.rag.chunking.strategies.kv_config import KVConfigChunker, _parse_kv_line
-from app.rag.chunking.strategies.markdown import MarkdownAwareChunker, MarkdownHeaderChunker
-from app.rag.chunking.strategies.markdown_outline import MarkdownOutlineChunker, _iter_headings
+from app.rag.ingestion.chunking.strategies.config.kv_config import KVConfigChunker, _parse_kv_line
+from app.rag.ingestion.chunking.strategies.markup.markdown import MarkdownAwareChunker, MarkdownHeaderChunker
+from app.rag.ingestion.chunking.strategies.markup.markdown_outline import MarkdownOutlineChunker, _iter_headings
 
 
 def test_kv_line_parser_preserves_export_and_key_validation() -> None:

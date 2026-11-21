@@ -1,4 +1,3 @@
-
 import uuid
 
 import pytest
@@ -44,7 +43,10 @@ def _mk_doc(*, table_id: str) -> Document:
 
 def test_must_recall_failed_includes_fail_taxonomy_and_reasons(monkeypatch: pytest.MonkeyPatch) -> None:
     import app.rag.retrieval.orchestrator as orch_mod
-    from app.core.config import settings
+    from app.infrastructure.config import settings
+    from app.rag.retrieval.stages import followup as followup_stage
+    from app.rag.retrieval.stages import preparation as preparation_stage
+    from app.rag.retrieval.stages import requirements as requirements_stage
 
     monkeypatch.setattr(settings, "ENABLE_QUERY_REWRITE", False, raising=False)
     monkeypatch.setattr(settings, "ENABLE_MULTI_QUERY", False, raising=False)
@@ -63,7 +65,9 @@ def test_must_recall_failed_includes_fail_taxonomy_and_reasons(monkeypatch: pyte
         },
         mode="vector",
     )
-    monkeypatch.setattr(orch_mod, "hybrid_retriever", retriever, raising=True)
+    monkeypatch.setattr(preparation_stage, "hybrid_retriever", retriever, raising=True)
+    monkeypatch.setattr(followup_stage, "hybrid_retriever", retriever, raising=True)
+    monkeypatch.setattr(requirements_stage, "hybrid_retriever", retriever, raising=True)
 
     out = orch_mod.run_retrieval(
         {
@@ -101,7 +105,10 @@ def test_must_recall_auto_source_keys_are_inferred_when_missing(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     import app.rag.retrieval.orchestrator as orch_mod
-    from app.core.config import settings
+    from app.infrastructure.config import settings
+    from app.rag.retrieval.stages import followup as followup_stage
+    from app.rag.retrieval.stages import preparation as preparation_stage
+    from app.rag.retrieval.stages import requirements as requirements_stage
 
     monkeypatch.setattr(settings, "ENABLE_QUERY_REWRITE", False, raising=False)
     monkeypatch.setattr(settings, "ENABLE_MULTI_QUERY", False, raising=False)
@@ -117,7 +124,9 @@ def test_must_recall_auto_source_keys_are_inferred_when_missing(
         },
         mode="vector",
     )
-    monkeypatch.setattr(orch_mod, "hybrid_retriever", retriever, raising=True)
+    monkeypatch.setattr(preparation_stage, "hybrid_retriever", retriever, raising=True)
+    monkeypatch.setattr(followup_stage, "hybrid_retriever", retriever, raising=True)
+    monkeypatch.setattr(requirements_stage, "hybrid_retriever", retriever, raising=True)
 
     out = orch_mod.run_retrieval(
         {
@@ -143,7 +152,10 @@ def test_must_recall_auto_source_keys_are_inferred_when_missing(
 
 def test_deterministic_contract_hard_fallback_records_query_tokens(monkeypatch: pytest.MonkeyPatch) -> None:
     import app.rag.retrieval.orchestrator as orch_mod
-    from app.core.config import settings
+    from app.infrastructure.config import settings
+    from app.rag.retrieval.stages import followup as followup_stage
+    from app.rag.retrieval.stages import preparation as preparation_stage
+    from app.rag.retrieval.stages import requirements as requirements_stage
 
     monkeypatch.setattr(settings, "ENABLE_QUERY_REWRITE", False, raising=False)
     monkeypatch.setattr(settings, "ENABLE_MULTI_QUERY", False, raising=False)
@@ -159,7 +171,9 @@ def test_deterministic_contract_hard_fallback_records_query_tokens(monkeypatch: 
         },
         mode="vector",
     )
-    monkeypatch.setattr(orch_mod, "hybrid_retriever", retriever, raising=True)
+    monkeypatch.setattr(preparation_stage, "hybrid_retriever", retriever, raising=True)
+    monkeypatch.setattr(followup_stage, "hybrid_retriever", retriever, raising=True)
+    monkeypatch.setattr(requirements_stage, "hybrid_retriever", retriever, raising=True)
 
     out = orch_mod.run_retrieval(
         {
@@ -179,9 +193,7 @@ def test_deterministic_contract_hard_fallback_records_query_tokens(monkeypatch: 
     metrics = out.get("metrics") or {}
     assert metrics.get("hard_fallback_attempted") is True
     fallback_queries = [
-        item
-        for item in (metrics.get("retrieval_per_query") or [])
-        if item.get("kind") == "hard_fallback"
+        item for item in (metrics.get("retrieval_per_query") or []) if item.get("kind") == "hard_fallback"
     ]
     assert len(fallback_queries) == 1
     assert fallback_queries[0]["query_tokens"] > 0

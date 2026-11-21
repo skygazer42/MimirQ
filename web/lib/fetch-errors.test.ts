@@ -13,7 +13,7 @@ describe('buildFetchError', () => {
 
   it('keeps the fallback message when the response body is empty', async () => {
     await expect(buildFetchError(new Response('', { status: 401 }), 'Failed')).resolves.toEqual(
-      new Error('Failed (HTTP 401)')
+      new Error('Failed (HTTP 401)'),
     )
   })
 })

@@ -1,0 +1,50 @@
+{
+  "nativeViewport": "1600x1000",
+  "candidates": [
+    {
+      "kind": "url",
+      "url": "http://127.0.0.1:3000/brand/explorations/remaining-batch-three-v1/graph-diagnostics/a.html",
+      "name": "A 配置与报告",
+      "concept": "对象与结果直接对照，配置按需打开",
+      "typography": "Manrope / Noto Sans SC",
+      "palette": [
+        "#f6f7f8",
+        "#20262e",
+        "#edf0f3"
+      ],
+      "traits": [
+        "A 配置与报告"
+      ]
+    },
+    {
+      "kind": "url",
+      "url": "http://127.0.0.1:3000/brand/explorations/remaining-batch-three-v1/graph-diagnostics/b.html",
+      "name": "B 结果宽表",
+      "concept": "对象与结果直接对照，配置按需打开",
+      "typography": "Manrope / Noto Sans SC",
+      "palette": [
+        "#f6f7f8",
+        "#20262e",
+        "#edf0f3"
+      ],
+      "traits": [
+        "B 结果宽表"
+      ]
+    },
+    {
+      "kind": "url",
+      "url": "http://127.0.0.1:3000/brand/explorations/remaining-batch-three-v1/graph-diagnostics/c.html",
+      "name": "C 运行目录",
+      "concept": "对象与结果直接对照，配置按需打开",
+      "typography": "Manrope / Noto Sans SC",
+      "palette": [
+        "#f6f7f8",
+        "#20262e",
+        "#edf0f3"
+      ],
+      "traits": [
+        "C 运行目录"
+      ]
+    }
+  ]
+}

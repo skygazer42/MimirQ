@@ -1,11 +1,8 @@
 """KG load module."""
-from app.rag.kg.loading.config import ConversationLoadConfig, DocumentLoadConfig, LoadBaseConfig, LoadResult
-from app.rag.kg.loading.processor import DocumentProcessor
+
+from app.rag.kg.loading.processor import generate_batch, generate_embedding
 
 __all__ = [
-    "DocumentProcessor",
-    "LoadBaseConfig",
-    "LoadResult",
-    "DocumentLoadConfig",
-    "ConversationLoadConfig",
+    "generate_embedding",
+    "generate_batch",
 ]

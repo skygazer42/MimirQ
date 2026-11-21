@@ -8,10 +8,11 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 from sqlalchemy.sql.elements import BinaryExpression, BooleanClauseList
 
-import app.api.v1.connectors as connectors_facade
-from app.api.v1 import connectors_configs as connectors_configs_module
-from app.api.v1 import connectors_runs as connectors_runs_module
-from app.api.v1 import ingestion_runs as ingestion_runs_module
+import app.services.connectors.runs as connector_run_operations
+from app.api.schemas.sources import ConnectorRunListQuery, IngestionRunListQuery
+from app.api.v1.connectors import configs as connectors_configs_module
+from app.api.v1.connectors import runs as connectors_runs_module
+from app.api.v1.documents import ingestion_runs as ingestion_runs_module
 
 
 @dataclass
@@ -177,7 +178,7 @@ def test_list_ingestion_runs_applies_acl_before_count_and_pagination(monkeypatch
     tenant_id, runs, allowed_dataset_ids = _build_runs()
     db = _FakeSession(query=_FakeQuery(runs=runs))
     calls = _install_acl_guards(
-        monkeypatch, dataset_service=ingestion_runs_module.DatasetService, allowed_dataset_ids=allowed_dataset_ids
+        monkeypatch, dataset_service=ingestion_runs_module.dataset_service, allowed_dataset_ids=allowed_dataset_ids
     )
     monkeypatch.setattr(
         ingestion_runs_module,
@@ -187,14 +188,10 @@ def test_list_ingestion_runs_applies_acl_before_count_and_pagination(monkeypatch
     )
 
     response = ingestion_runs_module.list_ingestion_runs(
-        skip=0,
-        limit=2,
-        dataset_id=None,
-        status=None,
-        kind=None,
         tenant_id=tenant_id,
         account_id="member-1",
         db=db,
+        params=IngestionRunListQuery(skip=0, limit=2, dataset_id=None, status=None, kind=None),
     )
 
     assert response.total == 2
@@ -205,33 +202,32 @@ def test_list_ingestion_runs_applies_acl_before_count_and_pagination(monkeypatch
 def test_list_connector_runs_applies_acl_before_count_and_pagination(monkeypatch: pytest.MonkeyPatch) -> None:
     tenant_id, runs, allowed_dataset_ids = _build_runs()
     db = _FakeSession(query=_FakeQuery(runs=runs))
-    assert connectors_runs_module.connectors_module is connectors_facade
     calls = _install_acl_guards(
         monkeypatch,
-        dataset_service=connectors_runs_module.connectors_module.DatasetService,
+        dataset_service=connector_run_operations.dataset_service,
         allowed_dataset_ids=allowed_dataset_ids,
     )
     monkeypatch.setattr(
-        connectors_runs_module,
+        connector_run_operations,
         "_writable_dataset_ids_subquery",
         lambda **_kwargs: list(allowed_dataset_ids),
         raising=True,
     )
     monkeypatch.setattr(
-        connectors_runs_module.connectors_module,
+        connector_run_operations,
         "_fetch_connector_run_acl_summaries",
         lambda *_args, **_kwargs: {},
         raising=True,
     )
     monkeypatch.setattr(
-        connectors_runs_module.connectors_module,
+        connector_run_operations,
         "_run_out",
         lambda run, acl_summary=None: {"id": run.id, "dataset_id": run.dataset_id, "acl_summary": acl_summary},
         raising=True,
     )
 
     response = connectors_runs_module.list_connector_runs(
-        params=connectors_runs_module.ConnectorRunListParams(skip=0, limit=2, dataset_id=None),
+        params=ConnectorRunListQuery(skip=0, limit=2, dataset_id=None),
         tenant_id=tenant_id,
         account_id="member-1",
         db=db,
@@ -243,6 +239,8 @@ def test_list_connector_runs_applies_acl_before_count_and_pagination(monkeypatch
 
 
 def test_list_connector_configs_applies_acl_before_count_and_pagination(monkeypatch: pytest.MonkeyPatch) -> None:
+    import app.services.connectors.configs as config_operations
+
     tenant_id, runs, allowed_dataset_ids = _build_runs()
     configs = [
         _FakeConfig(id=run.id, tenant_id=run.tenant_id, dataset_id=run.dataset_id, created_at=run.created_at)
@@ -250,20 +248,19 @@ def test_list_connector_configs_applies_acl_before_count_and_pagination(monkeypa
         if run.dataset_id is not None
     ]
     db = _FakeSession(query=_FakeQuery(runs=configs))
-    assert connectors_configs_module.connectors_module is connectors_facade
     calls = _install_acl_guards(
         monkeypatch,
-        dataset_service=connectors_configs_module.connectors_module.DatasetService,
+        dataset_service=config_operations.dataset_service,
         allowed_dataset_ids=allowed_dataset_ids,
     )
     monkeypatch.setattr(
-        connectors_configs_module,
+        config_operations,
         "_writable_dataset_ids_subquery",
         lambda **_kwargs: list(allowed_dataset_ids),
         raising=True,
     )
     monkeypatch.setattr(
-        connectors_configs_module.connectors_module,
+        config_operations,
         "_config_out",
         lambda cfg: {"id": cfg.id, "dataset_id": cfg.dataset_id},
         raising=True,
@@ -289,12 +286,12 @@ def test_list_connector_configs_applies_acl_before_count_and_pagination(monkeypa
     "subquery_factory",
     [
         ingestion_runs_module._writable_dataset_ids_subquery,
-        connectors_runs_module._writable_dataset_ids_subquery,
+        connector_run_operations._writable_dataset_ids_subquery,
     ],
     ids=["ingestion", "connector"],
 )
 def test_writable_dataset_subquery_executes_real_acl_policy(subquery_factory) -> None:  # noqa: ANN001
-    from app.models.dataset import DatasetPermissionEnum
+    from app.api.schemas.datasets.dataset import DatasetPermissionEnum
 
     engine = create_engine("sqlite+pysqlite:///:memory:")
     tenant_id = uuid4()

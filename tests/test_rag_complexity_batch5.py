@@ -1,16 +1,15 @@
-
 from langchain_core.documents import Document
 
-from app.rag.chunking.strategies.ansible_playbook import AnsiblePlaybookChunker
-from app.rag.chunking.strategies.csv_rows import CsvRowsChunker
-from app.rag.chunking.strategies.junit_xml import JUnitXMLChunker
-from app.rag.chunking.strategies.sentence_window import SentenceWindowChunker
-from app.rag.chunking.strategies.text_hierarchy import TextHierarchyChunker
-from app.rag.chunking.utils.hierarchical import hierarchical_chunk_markdown
-from app.rag.preprocessing.markdown_canonical import canonicalize_markdown
-from app.rag.preprocessing.pii_anonymizer import PiiMatch, find_pii_matches
-from app.rag.preprocessing.references import ReferencesTrimResult, trim_references_section
-from app.rag.preprocessing.tables import TableNormalizeResult, normalize_markdown_tables
+from app.rag.ingestion.chunking.strategies.config.ansible_playbook import AnsiblePlaybookChunker
+from app.rag.ingestion.chunking.strategies.records.csv_rows import CsvRowsChunker
+from app.rag.ingestion.chunking.strategies.records.junit_xml import JUnitXMLChunker
+from app.rag.ingestion.chunking.strategies.text.sentence_window import SentenceWindowChunker
+from app.rag.ingestion.chunking.strategies.text.text_hierarchy import TextHierarchyChunker
+from app.rag.ingestion.chunking.utils.hierarchical import hierarchical_chunk_markdown
+from app.rag.ingestion.governance.markup.markdown_canonical import canonicalize_markdown
+from app.rag.ingestion.governance.markup.references import ReferencesTrimResult, trim_references_section
+from app.rag.ingestion.governance.markup.tables import TableNormalizeResult, normalize_markdown_tables
+from app.rag.ingestion.governance.redaction.pii_anonymizer import PiiMatch, find_pii_matches
 
 
 def _chunk_summary(chunker, text: str) -> list[tuple[str, dict[str, object]]]:

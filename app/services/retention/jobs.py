@@ -1,0 +1,410 @@
+"""
+Retention job helpers (enterprise lifecycle automation).
+
+This module provides small, testable building blocks that can be triggered by:
+- a CLI runner (cronjob / Kubernetes CronJob)
+- a queue worker job (arq) if desired
+- an admin-only API endpoint (optional)
+
+Principles:
+- Bounded deletes (caller provides max_delete)
+- Auditable (records a small audit log event)
+- Audit logging is a sidecar; invalid required inputs stop the maintenance run
+"""
+
+import logging
+from collections import Counter
+from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime, timedelta
+from typing import Any
+from uuid import UUID
+
+from sqlalchemy.orm import Session
+
+from app.models.documents.records import Document as DBDocument
+from app.services.evaluation.run_retention import plan_regression_run_purge, purge_regression_run_rows
+from app.services.observability.audit_log import audit_log_event
+from app.services.observability.audit_retention import plan_audit_log_purge, purge_audit_log_rows
+
+logger = logging.getLogger("app.services.retention_jobs")
+SYSTEM_RETENTION_ACTOR_ID = "system:retention"
+
+_delete_document_lifecycle: Callable[..., Awaitable[None]] | None = None
+
+
+def _dt_to_json(value: datetime) -> str:
+    return value.isoformat().replace("+00:00", "Z")
+
+
+def _normalize_lifecycle_state(value: str) -> str:
+    state = value.strip().lower()
+    if state not in {"archived", "disabled", "either"}:
+        raise ValueError("lifecycle_state must be archived, disabled, or either")
+    return state
+
+
+def _resolve_delete_document_lifecycle() -> Callable[..., Awaitable[None]]:
+    global _delete_document_lifecycle
+    if _delete_document_lifecycle is not None:
+        return _delete_document_lifecycle
+    from app.services.documents.lifecycle import _delete_document_lifecycle as delete_document_lifecycle
+
+    _delete_document_lifecycle = delete_document_lifecycle
+    return _delete_document_lifecycle
+
+
+def _normalize_retention_inputs(*, retention_days: int, max_delete: int) -> tuple[int, int]:
+    retention_days_i = max(1, int(retention_days))
+    max_delete_i = max(1, int(max_delete))
+    return retention_days_i, max_delete_i
+
+
+def _commit_retention_audit(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    actor_id: str | None,
+    action: str,
+    resource_type: str,
+    resource_id: str | None,
+    details: dict[str, Any],
+) -> None:
+    try:
+        audit_log_event(
+            db,
+            tenant_id=tenant_id,
+            actor_id=actor_id,
+            action=action,
+            resource_type=resource_type,
+            resource_id=resource_id,
+            details=details,
+        )
+        db.commit()
+    except Exception:
+        db.rollback()
+        logger.warning(
+            "Retention operation completed but audit logging failed: action=%s tenant_id=%s",
+            action,
+            tenant_id,
+            exc_info=True,
+        )
+
+
+def _categorize_delete_status(status_code: int | None) -> str:
+    if status_code == 404:
+        return "not_found"
+    if status_code in (401, 403):
+        return "denied"
+    if status_code in (409, 413, 429, 503):
+        return "conflicts"
+    return "errors"
+
+
+async def _execute_knowledge_asset_purge(
+    *,
+    delete_document_lifecycle: Callable[..., Awaitable[None]],
+    planned: list[dict[str, Any]],
+    db: Session,
+    tenant_id: UUID,
+    actor_id: str | None,
+) -> tuple[int, int, int, int, int]:
+    deleted = 0
+    not_found = 0
+    denied = 0
+    conflicts = 0
+    errors = 0
+
+    for row in planned:
+        document_id = row["document_id"]
+        try:
+            await delete_document_lifecycle(
+                document_id=document_id,
+                tenant_id=tenant_id,
+                account_id=str(actor_id or SYSTEM_RETENTION_ACTOR_ID),
+                db=db,
+                enforce_permissions=False,
+                enforce_membership=False,
+            )
+            deleted += 1
+        except Exception as exc:  # noqa: BLE001
+            bucket = _categorize_delete_status(getattr(exc, "status_code", None))
+            if bucket == "not_found":
+                not_found += 1
+            elif bucket == "denied":
+                denied += 1
+            elif bucket == "conflicts":
+                conflicts += 1
+            else:
+                errors += 1
+
+    return deleted, not_found, denied, conflicts, errors
+
+
+def plan_knowledge_asset_purge(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    cutoff: datetime,
+    max_delete: int,
+    dataset_id: UUID | None = None,
+    lifecycle_state: str = "either",
+) -> list[dict[str, Any]]:
+    state = _normalize_lifecycle_state(lifecycle_state)
+    limit = max(1, int(max_delete))
+
+    query = (
+        db.query(
+            DBDocument.id,
+            DBDocument.dataset_id,
+            DBDocument.archived_at,
+            DBDocument.disabled_at,
+        )
+        .filter(DBDocument.tenant_id == tenant_id)
+        .order_by(DBDocument.updated_at.asc(), DBDocument.id.asc())
+    )
+    if dataset_id is not None:
+        query = query.filter(DBDocument.dataset_id == dataset_id)
+
+    if state == "archived":
+        query = query.filter(DBDocument.archived_at.isnot(None), DBDocument.archived_at <= cutoff)
+    elif state == "disabled":
+        query = query.filter(DBDocument.disabled_at.isnot(None), DBDocument.disabled_at <= cutoff)
+    else:
+        query = query.filter(
+            ((DBDocument.archived_at.isnot(None)) & (DBDocument.archived_at <= cutoff))
+            | ((DBDocument.disabled_at.isnot(None)) & (DBDocument.disabled_at <= cutoff))
+        )
+
+    rows = query.limit(limit).all()
+    out: list[dict[str, Any]] = []
+    comparison_cutoff = cutoff.replace(tzinfo=cutoff.tzinfo or UTC)
+    for document_id, row_dataset_id, archived_at, disabled_at in rows:
+        use_archived = state == "archived" or (
+            state == "either"
+            and archived_at is not None
+            and archived_at.replace(tzinfo=archived_at.tzinfo or UTC) <= comparison_cutoff
+        )
+        out.append(
+            {
+                "document_id": document_id,
+                "dataset_id": row_dataset_id,
+                "lifecycle_state": "archived" if use_archived else "disabled",
+                "lifecycle_ts": archived_at if use_archived else disabled_at,
+            }
+        )
+    return out
+
+
+def run_audit_log_retention(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    retention_days: int,
+    max_delete: int,
+    dry_run: bool,
+    actor_id: str | None = SYSTEM_RETENTION_ACTOR_ID,
+    now: datetime | None = None,
+) -> dict[str, Any]:
+    """
+    Run a bounded audit-log retention operation for one tenant.
+
+    Returns a small PII-safe summary dict (counts and timestamps).
+    """
+    now0 = now or datetime.now(UTC)
+    retention_days_i, max_delete_i = _normalize_retention_inputs(retention_days=retention_days, max_delete=max_delete)
+
+    cutoff = now0 - timedelta(days=retention_days_i)
+
+    eligible = plan_audit_log_purge(db, tenant_id=tenant_id, cutoff=cutoff, max_delete=max_delete_i)
+    deleted = 0
+    if not dry_run:
+        deleted = purge_audit_log_rows(db, tenant_id=tenant_id, cutoff=cutoff, max_delete=max_delete_i, commit=True)
+
+    # Best-effort: record the retention run itself (small, PII-safe).
+    _commit_retention_audit(
+        db,
+        tenant_id=tenant_id,
+        actor_id=actor_id,
+        action="audit.logs.retention",
+        resource_type="audit_logs",
+        resource_id=None,
+        details={
+            "dry_run": bool(dry_run),
+            "retention_days": retention_days_i,
+            "cutoff": _dt_to_json(cutoff),
+            "max_delete": max_delete_i,
+            "eligible": eligible,
+            "deleted": deleted,
+            "ran_at": _dt_to_json(now0),
+        },
+    )
+
+    return {
+        "tenant_id": str(tenant_id),
+        "dry_run": bool(dry_run),
+        "retention_days": retention_days_i,
+        "cutoff": _dt_to_json(cutoff),
+        "max_delete": max_delete_i,
+        "eligible": eligible,
+        "deleted": deleted,
+        "ran_at": _dt_to_json(now0),
+    }
+
+
+def run_regression_run_retention(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    retention_days: int,
+    max_delete: int,
+    dry_run: bool,
+    dataset_id: UUID | None = None,
+    actor_id: str | None = SYSTEM_RETENTION_ACTOR_ID,
+    now: datetime | None = None,
+) -> dict[str, Any]:
+    """
+    Run a bounded regression-run retention operation for one tenant.
+
+    Returns a small PII-safe summary dict (counts and timestamps).
+    """
+    now0 = now or datetime.now(UTC)
+    retention_days_i, max_delete_i = _normalize_retention_inputs(retention_days=retention_days, max_delete=max_delete)
+    max_delete_i = min(max_delete_i, 5000)
+
+    cutoff = now0 - timedelta(days=retention_days_i)
+
+    eligible = plan_regression_run_purge(
+        db,
+        tenant_id=tenant_id,
+        cutoff=cutoff,
+        max_delete=max_delete_i,
+        dataset_id=dataset_id,
+    )
+    deleted_runs = 0
+    deleted_items = 0
+    if not dry_run:
+        deleted_runs, deleted_items = purge_regression_run_rows(
+            db,
+            tenant_id=tenant_id,
+            cutoff=cutoff,
+            max_delete=max_delete_i,
+            dataset_id=dataset_id,
+            commit=True,
+        )
+
+    # Best-effort: record the retention run itself (small, PII-safe).
+    _commit_retention_audit(
+        db,
+        tenant_id=tenant_id,
+        actor_id=actor_id,
+        action="evaluations.regression_runs.retention",
+        resource_type="ragas_regression_runs",
+        resource_id=str(dataset_id) if dataset_id is not None else None,
+        details={
+            "dry_run": bool(dry_run),
+            "retention_days": retention_days_i,
+            "cutoff": _dt_to_json(cutoff),
+            "max_delete": max_delete_i,
+            "eligible_runs": eligible,
+            "deleted_runs": deleted_runs,
+            "deleted_items": deleted_items,
+            "ran_at": _dt_to_json(now0),
+        },
+    )
+
+    return {
+        "tenant_id": str(tenant_id),
+        "dataset_id": str(dataset_id) if dataset_id is not None else None,
+        "dry_run": bool(dry_run),
+        "retention_days": retention_days_i,
+        "cutoff": _dt_to_json(cutoff),
+        "max_delete": max_delete_i,
+        "eligible_runs": eligible,
+        "deleted_runs": deleted_runs,
+        "deleted_items": deleted_items,
+        "ran_at": _dt_to_json(now0),
+    }
+
+
+async def run_knowledge_asset_retention(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    retention_days: int,
+    max_delete: int,
+    dry_run: bool,
+    dataset_id: UUID | None = None,
+    lifecycle_state: str = "either",
+    actor_id: str | None = SYSTEM_RETENTION_ACTOR_ID,
+    now: datetime | None = None,
+) -> dict[str, Any]:
+    """
+    Run a bounded retention operation for archived/disabled knowledge assets.
+
+    Deletion is delegated to the existing document delete lifecycle so document
+    rows, chunks, KG artifacts, vectors, and object assets stay aligned.
+    """
+    now0 = now or datetime.now(UTC)
+    retention_days_i, max_delete_i = _normalize_retention_inputs(retention_days=retention_days, max_delete=max_delete)
+
+    state = _normalize_lifecycle_state(lifecycle_state)
+    cutoff = now0 - timedelta(days=retention_days_i)
+    planned = plan_knowledge_asset_purge(
+        db,
+        tenant_id=tenant_id,
+        cutoff=cutoff,
+        max_delete=max_delete_i,
+        dataset_id=dataset_id,
+        lifecycle_state=state,
+    )
+
+    deleted = not_found = denied = conflicts = errors = 0
+
+    if not dry_run:
+        deleted, not_found, denied, conflicts, errors = await _execute_knowledge_asset_purge(
+            delete_document_lifecycle=_resolve_delete_document_lifecycle(),
+            planned=planned,
+            db=db,
+            tenant_id=tenant_id,
+            actor_id=actor_id,
+        )
+
+    state_counts = Counter(row["lifecycle_state"] for row in planned)
+    summary = {
+        "tenant_id": str(tenant_id),
+        "dataset_id": str(dataset_id) if dataset_id is not None else None,
+        "dry_run": bool(dry_run),
+        "retention_days": retention_days_i,
+        "cutoff": _dt_to_json(cutoff),
+        "max_delete": max_delete_i,
+        "lifecycle_state": state,
+        "eligible": len(planned),
+        "deleted": deleted,
+        "not_found": not_found,
+        "denied": denied,
+        "conflicts": conflicts,
+        "errors": errors,
+        "artifact_scopes": ["documents", "chunks", "kg", "vectors", "object_assets"],
+        "eligible_by_state": dict(sorted(state_counts.items())),
+        "ran_at": _dt_to_json(now0),
+    }
+
+    _commit_retention_audit(
+        db,
+        tenant_id=tenant_id,
+        actor_id=actor_id,
+        action="knowledge.assets.retention",
+        resource_type="documents",
+        resource_id=str(dataset_id) if dataset_id is not None else None,
+        details=summary,
+    )
+
+    return summary
+
+
+__all__ = [
+    "plan_knowledge_asset_purge",
+    "run_audit_log_retention",
+    "run_regression_run_retention",
+    "run_knowledge_asset_retention",
+]

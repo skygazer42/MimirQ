@@ -23,6 +23,7 @@ from scripts.changzhou_gov_dify_trace_report import (  # noqa: E402
     DEFAULT_CONSOLE_BASE_URL,
     DEFAULT_STORAGE_STATE,
     _request_json,
+    _text,
     load_console_token,
 )
 
@@ -70,10 +71,6 @@ _ANSWER_COVERAGE_PROMPT_APPENDIX = (
     "- 用户问“咨询电话/联系电话/联系方式”时，必须输出“咨询方式：”字段行。\n"
     "- 用户问“线上办理/在线入口/渠道”时，必须输出“在线办理地址：”或“办理渠道：”字段行。\n"
 )
-
-
-def _text(value: Any) -> str:
-    return str(value or "").strip()
 
 
 def _has_default(variable: dict[str, Any]) -> bool:
@@ -492,7 +489,7 @@ def _retrieval_payload_code(
         "from typing import Any\n\n"
         f"_APP_ID = {app_id_literal}\n"
         f"_KNOWLEDGE_ID = {knowledge_id_literal}\n"
-        f"_RETRIEVAL_SETTING = {retrieval_setting_json}\n"
+        f"_RETRIEVAL_SETTING = json.loads({retrieval_setting_json!r})\n"
         f"_METADATA_DEFAULTS = {metadata_defaults_json}\n\n"
         "def _text(value: Any) -> str:\n"
         "    if value is None:\n"

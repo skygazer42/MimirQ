@@ -13,11 +13,11 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from app.services.incident_bundle_service import write_incident_bundle_zip  # noqa: E402
+from app.services.observability.incident_bundle import write_incident_bundle_zip  # noqa: E402
 
 
 def _env(key: str, default: str = "") -> str:
-    return str(os.getenv(key, default) or default)
+    return os.getenv(key, default) or default
 
 
 def _json_or_text(resp: httpx.Response) -> Any:
@@ -47,9 +47,7 @@ def _fetch_json(
     }
 
 
-def _pick_body(result: dict[str, Any]) -> dict[str, Any] | None:
-    if not isinstance(result, dict) or not result:
-        return None
+def _pick_body(result: dict[str, Any]) -> dict[str, Any]:
     body = result.get("body")
     return body if isinstance(body, dict) else {"_raw": body}
 

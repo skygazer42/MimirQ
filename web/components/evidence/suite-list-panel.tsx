@@ -1,14 +1,15 @@
 'use client'
 
-import { Plus, RefreshCw, ShieldCheck } from 'lucide-react'
+import { Plus, RefreshCw, ShieldCheck } from '@/components/icons'
 
 import type { EvidenceSuite } from '@/types'
-import { cn } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { LoadingButton } from '@/components/ui/loading-button'
+import { Skeleton } from '@/components/ui/skeleton'
 import { Checkbox } from '@/components/ui/checkbox'
+import { workspaceStyles as ws } from '@/components/ui/operational-workspace'
 import { Panel } from '@/components/ui/panel'
-import { ScrollArea } from '@/components/ui/scroll-area'
 import { SearchInput } from '@/components/ui/search-input'
 
 type SuiteListPanelProps = {
@@ -41,31 +42,32 @@ export function SuiteListPanel({
   onSelectSuite,
 }: Readonly<SuiteListPanelProps>) {
   let suitesContent: React.ReactNode
-  if (suitesLoading) {
-    suitesContent = <div className="text-xs text-muted-foreground">加载中…</div>
+  if (suitesLoading && filteredSuites.length === 0) {
+    suitesContent = (
+      <div className="space-y-2" aria-label="正在读取证据集">
+        <Skeleton className="h-16 w-full" />
+        <Skeleton className="h-16 w-full" />
+      </div>
+    )
   } else if (filteredSuites.length) {
     suitesContent = (
       <>
         {filteredSuites.map((suite) => {
           const active = suite.id === selectedSuiteId
-          const counts = suite.item_counts || {}
-          const total = Number(counts.total || 0)
-          const approved = Number(counts.approved || 0)
-          const tags = Array.isArray(suite.tags) ? suite.tags : []
-          const overflowCount = tags.length - 3
+          const total = suite.item_counts?.total
+          const approved = suite.item_counts?.approved
+          const tags = suite.tags
           let tagContent: React.ReactNode = null
-          if (tags.length) {
+          if (tags !== undefined && tags.length > 0) {
             tagContent = (
               <div className="mt-2 flex flex-wrap gap-1">
                 {tags.slice(0, 3).map((tag) => (
-                  <Badge key={tag} variant="secondary" className="text-[11px] font-mono">
+                  <Badge key={tag} variant="secondary" className="text-xs font-mono">
                     {tag}
                   </Badge>
                 ))}
-                {overflowCount > 0 ? (
-                  <span className="text-[11px] font-mono text-muted-foreground">
-                    +{overflowCount}
-                  </span>
+                {tags.length > 3 ? (
+                  <span className="text-xs font-mono text-muted-foreground">+{tags.length - 3}</span>
                 ) : null}
               </div>
             )
@@ -75,11 +77,10 @@ export function SuiteListPanel({
             <button
               key={suite.id}
               type="button"
-              className={cn(
-                'w-full rounded-lg border px-3 py-2 text-left transition-colors',
-                active ? 'border-primary/40 bg-primary/5' : 'border-border hover:bg-muted/30'
-              )}
-              onClick={() => onSelectSuite(String(suite.id))}
+              className={ws.directoryRow}
+              data-selected={active}
+              aria-pressed={active}
+              onClick={() => onSelectSuite(suite.id)}
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
@@ -92,11 +93,11 @@ export function SuiteListPanel({
                 </div>
                 <div className="flex flex-shrink-0 flex-col items-end gap-1">
                   <Badge variant="outline" className="font-mono tabular-nums">
-                    {total}
+                    {total ?? '统计未提供'}
                   </Badge>
-                  {approved ? (
+                  {approved !== undefined ? (
                     <Badge variant="soft" className="font-mono tabular-nums">
-                      approved {approved}
+                      已审核 {approved}
                     </Badge>
                   ) : null}
                 </div>
@@ -107,25 +108,25 @@ export function SuiteListPanel({
         })}
       </>
     )
+  } else if (suitesError !== null) {
+    suitesContent = null
   } else {
     suitesContent = (
       <div className="text-xs text-muted-foreground text-pretty">
-        暂无 Suite。点击「新建」创建一个 Evidence Suite。
+        {suiteQuery.length > 0 ? '没有匹配的证据集' : '暂无证据集'}
       </div>
     )
   }
 
   return (
-    <Panel className="p-4 xl:col-span-3">
+    <Panel variant="seamless" className="border-0 bg-transparent p-4">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
             <ShieldCheck className="size-4 text-muted-foreground" aria-hidden="true" />
-            Evidence Suites
+            证据集
           </div>
-          <div className="mt-1 text-xs text-muted-foreground text-pretty">
-            数据集：{datasetLabel}
-          </div>
+          <div className="mt-1 text-xs text-muted-foreground text-pretty">数据集：{datasetLabel}</div>
         </div>
         <Button size="sm" className="gap-2" onClick={onCreateSuite}>
           <Plus className="size-4" aria-hidden="true" />
@@ -134,41 +135,36 @@ export function SuiteListPanel({
       </div>
 
       <div className="mt-3 flex items-center gap-2">
-        <SearchInput value={suiteQuery} onValueChange={onSuiteQueryChange} placeholder="搜索 Suite…" />
-        <Button
+        <SearchInput value={suiteQuery} onValueChange={onSuiteQueryChange} placeholder="搜索证据集…" />
+        <LoadingButton
+          loading={suitesLoading}
           variant="outline"
           size="icon"
-          aria-label="刷新 Suites"
+          aria-label="重新读取证据集"
           className="size-9"
           onClick={onRefresh}
           disabled={suitesLoading}
         >
-          <RefreshCw className={cn('size-4', suitesLoading ? 'animate-spin motion-reduce:animate-none' : '')} aria-hidden="true" />
-        </Button>
+          <RefreshCw className="size-4" aria-hidden="true" />
+        </LoadingButton>
       </div>
 
       <div className="mt-3 flex items-center justify-between gap-3 text-xs text-muted-foreground">
         <div className="inline-flex select-none items-center gap-2">
           <Checkbox
             checked={includeArchivedSuites}
-            onCheckedChange={(value) => onIncludeArchivedSuitesChange(Boolean(value))}
-            aria-label="包含已归档 suites"
+            onCheckedChange={(value) => onIncludeArchivedSuitesChange(value === true)}
+            aria-label="包含已归档证据集"
           />
           包含已归档
         </div>
         <span className="font-mono tabular-nums">{filteredSuites.length}</span>
       </div>
 
-      {suitesError ? (
-        <div className="mt-3 text-xs text-destructive text-pretty">{suitesError}</div>
-      ) : null}
+      {suitesError ? <div className="mt-3 text-xs text-destructive text-pretty">{suitesError}</div> : null}
 
-      <div className="mt-3">
-        <ScrollArea className="h-[420px] pr-2">
-          <div className="space-y-2">
-            {suitesContent}
-          </div>
-        </ScrollArea>
+      <div className="mt-3" aria-busy={suitesLoading}>
+        {suitesContent}
       </div>
     </Panel>
   )

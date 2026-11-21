@@ -1,0 +1,44 @@
+[
+  {
+    "file": "app/rag/evaluation/synthetic/critic.py",
+    "old": "critique_synthetic_sample",
+    "new": "normalize_synthetic_sample_critique",
+    "before_line": 4,
+    "after_line": 4
+  },
+  {
+    "file": "app/rag/retrieval/corpus_index.py",
+    "old": "bm25_available",
+    "new": "is_milvus_bm25_enabled",
+    "before_line": 47,
+    "after_line": 47
+  },
+  {
+    "file": "app/rag/retrieval/corpus_index.py",
+    "old": "CorpusIndex.scope_documents",
+    "new": "CorpusIndex.load_corpus_snapshot",
+    "before_line": 181,
+    "after_line": 182
+  },
+  {
+    "file": "app/rag/retrieval/corpus_index.py",
+    "old": "CorpusIndex._load_retrieval_docs_for_rebuild",
+    "new": "CorpusIndex._load_bounded_corpus_documents",
+    "before_line": 372,
+    "after_line": 373
+  },
+  {
+    "file": "app/services/lotus_bridge.py",
+    "old": "lotus_available",
+    "new": "get_lotus_availability",
+    "before_line": 39,
+    "after_line": 39
+  },
+  {
+    "file": "tests/test_complexity_batch19.py",
+    "old": "test_tokenize_for_bm25_expands_ascii_paths_versions_and_numeric_tokens",
+    "new": "test_tokenize_lexical_text_expands_ascii_paths_versions_and_numeric_tokens",
+    "before_line": 165,
+    "after_line": 165
+  }
+]

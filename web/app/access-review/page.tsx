@@ -1,19 +1,7 @@
-'use client'
+import { getLocale } from 'next-intl/server'
 
-import { useEffect } from 'react'
+import { redirect } from '@/i18n/navigation'
 
-import { useRouter } from '@/i18n/navigation'
-
-export default function AccessReviewPage() {
-  const router = useRouter()
-
-  useEffect(() => {
-    router.replace('/audit')
-  }, [router])
-
-  return (
-    <main className="flex min-h-screen items-center justify-center bg-background text-sm font-medium text-muted-foreground">
-      正在打开审计日志...
-    </main>
-  )
+export default async function AccessReviewPage() {
+  redirect({ href: '/audit', locale: await getLocale() })
 }

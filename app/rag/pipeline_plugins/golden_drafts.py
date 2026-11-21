@@ -1,9 +1,9 @@
-
 from typing import Any
 from uuid import UUID
 
-from app.rag.pipeline_plugins.contracts import DISPLAY_METADATA_KEY, EVALUABLE_METADATA_KEY, INDEXED_METADATA_KEY
-from app.services.regression_case_bundle import REGRESSION_CASE_BUNDLE_SCHEMA_V1
+from app.rag.pipeline_plugins.contracts import _value_from_metadata as _metadata_value
+from app.services.evaluation.case_bundle import REGRESSION_CASE_BUNDLE_SCHEMA_V1
+from app.types.indexing import DISPLAY_METADATA_KEY, EVALUABLE_METADATA_KEY, INDEXED_METADATA_KEY
 
 
 def _meta(chunk: Any) -> dict[str, Any]:
@@ -12,20 +12,7 @@ def _meta(chunk: Any) -> dict[str, Any]:
 
 
 def _text(value: Any) -> str:
-    return str(value or "").strip()
-
-
-def _metadata_value(meta: dict[str, Any], key: str) -> Any:
-    if key in meta:
-        return meta.get(key)
-    if "." not in key:
-        return meta.get(key)
-    cur: Any = meta
-    for part in key.split("."):
-        if not isinstance(cur, dict):
-            return None
-        cur = cur.get(part)
-    return cur
+    return "" if value is None else str(value).strip()
 
 
 def _metadata_values_from_public_layers(meta: dict[str, Any], key: str) -> list[Any]:
@@ -41,6 +28,7 @@ def _metadata_values_from_public_layers(meta: dict[str, Any], key: str) -> list[
 
 def _format_question(template: str, meta: dict[str, Any]) -> str | None:
     values: dict[str, str] = {}
+    parts: list[str] = []
     cursor = 0
     while True:
         start = template.find("{", cursor)
@@ -49,8 +37,9 @@ def _format_question(template: str, meta: dict[str, Any]) -> str | None:
         end = template.find("}", start + 1)
         if end < 0:
             return None
-        key = template[start + 1 : end].strip()
-        if not key:
+        raw_key = template[start + 1 : end]
+        key = raw_key.strip()
+        if not key or key != raw_key or any(char in key for char in "!:[]{}") or key.partition(".")[0].isdecimal():
             return None
         raw = _metadata_value(meta, key)
         if isinstance(raw, (list, tuple, set)):
@@ -59,11 +48,15 @@ def _format_question(template: str, meta: dict[str, Any]) -> str | None:
             value = _text(raw)
         if not value:
             return None
-        values[key] = value
+        slot = f"field_{len(values)}"
+        values[slot] = value
+        parts.append(template[cursor:start])
+        parts.append("{" + slot + "}")
         cursor = end + 1
+    parts.append(template[cursor:])
     try:
-        question = template.format(**values).strip()
-    except Exception:
+        question = "".join(parts).format(**values).strip()
+    except ValueError:
         return None
     return question or None
 
@@ -131,11 +124,11 @@ def _answer_key_points(meta: dict[str, Any], golden_rules: dict[str, Any]) -> li
             else:
                 values.append(raw)
         for value in values:
-            text = _text(value)
+            text = _text(value)[:500]
             if not text or text in seen:
                 continue
             seen.add(text)
-            out.append(text[:500])
+            out.append(text)
             if len(out) >= 80:
                 return out
     return out
@@ -176,8 +169,12 @@ def _reference_source(chunk: Any, meta: dict[str, Any]) -> dict[str, Any]:
     chunk_index = getattr(chunk, "chunk_index", None)
     if chunk_index is not None:
         payload["chunk_index"] = int(chunk_index)
-    page_number = getattr(chunk, "page_number", None) or meta.get("page_number") or meta.get("page")
-    if page_number:
+    page_number = getattr(chunk, "page_number", None)
+    if page_number is None:
+        page_number = meta.get("page_number")
+    if page_number is None:
+        page_number = meta.get("page")
+    if page_number is not None:
         payload["page_number"] = int(page_number)
     start_char = getattr(chunk, "start_char", None)
     end_char = getattr(chunk, "end_char", None)
@@ -251,7 +248,7 @@ def _golden_draft_item(
         extra["answer_key_points"] = answer_key_points
     return {
         "question": question,
-        "expected_answer": _text(getattr(chunk, "content", None)) or None,
+        "expected_answer": chunk.content,
         "reference_sources": [_reference_source(chunk, meta)],
         "tags": _tags(plugin_id, meta, golden_rules),
         "extra": extra,

@@ -1,35 +1,40 @@
 export function createSseDataParser() {
-  let buffer = ''
+  let line = ''
+  let dataLines: string[] = []
+  let skipLineFeed = false
+
+  function readLine(events: string[]) {
+    if (line.length === 0) {
+      if (dataLines.length > 0) events.push(dataLines.join('\n'))
+      dataLines = []
+      return
+    }
+    const separator = line.indexOf(':')
+    const field = separator === -1 ? line : line.slice(0, separator)
+    if (field !== 'data') return
+
+    let value = separator === -1 ? '' : line.slice(separator + 1)
+    if (value.startsWith(' ')) value = value.slice(1)
+    dataLines.push(value)
+  }
 
   function feed(chunk: string): string[] {
-    if (!chunk) return []
-
-    buffer += chunk.replaceAll('\r\n', '\n')
-    const out: string[] = []
-
-    while (true) {
-      const sepIdx = buffer.indexOf('\n\n')
-      if (sepIdx < 0) break
-
-      const block = buffer.slice(0, sepIdx)
-      buffer = buffer.slice(sepIdx + 2)
-
-      const lines = block.split('\n')
-      const dataLines = lines
-        .filter((line) => line.startsWith('data:'))
-        .map((line) => line.slice(5).trimStart())
-
-      if (dataLines.length) {
-        out.push(dataLines.join('\n'))
+    const events: string[] = []
+    for (const character of chunk) {
+      if (skipLineFeed) {
+        skipLineFeed = false
+        if (character === '\n') continue
+      }
+      if (character === '\r' || character === '\n') {
+        readLine(events)
+        line = ''
+        skipLineFeed = character === '\r'
+      } else {
+        line += character
       }
     }
-
-    return out
+    return events
   }
 
-  function reset() {
-    buffer = ''
-  }
-
-  return { feed, reset }
+  return { feed }
 }

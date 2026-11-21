@@ -1,12 +1,11 @@
-
 from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
 from fastapi import HTTPException
 
-from app.api.schemas.regression import RagasRegressionCasePatchRequest
-from app.api.v1 import evaluations
+from app.api.schemas.evaluation.regression import RagasRegressionCasePatchRequest
+from app.api.v1.evaluation import routes as evaluations
 
 
 class _DumpableEvidence:
@@ -162,7 +161,7 @@ def test_normalize_evidence_chain_keeps_valid_fields_and_caps_items() -> None:
     raw.append({"document_id": "doc-2", "chunk_id": "chunk-2", "chunk_index": "bad"})
     raw.extend({"document_id": f"doc-{index}", "chunk_id": f"chunk-{index}"} for index in range(3, 30))
 
-    normalized = evaluations._normalize_evidence_chain(raw)
+    normalized = evaluations.normalize_evidence_chain(raw)
 
     assert len(normalized) == 20
     assert normalized[0] == {
@@ -175,7 +174,7 @@ def test_normalize_evidence_chain_keeps_valid_fields_and_caps_items() -> None:
 
 
 def test_merge_regression_case_extra_preserves_unknown_keys_and_removes_empty_reasoning() -> None:
-    merged = evaluations._merge_regression_case_extra(
+    merged = evaluations.merge_regression_case_extra(
         base_extra={"keep": True, "reasoning_hops": ["stale"], "evidence_chain": [{"stale": True}]},
         reasoning_hops=["  first hop  ", "", None],
         evidence_chain=[],
@@ -194,11 +193,11 @@ def test_finalize_reference_sources_enforces_acl_and_enriches_payload(monkeypatc
     db = _ReferenceDB(rows)
 
     monkeypatch.setattr(
-        "app.services.document_access.filter_allowed_document_ids",
+        "app.services.documents.read_scope.filter_allowed_document_ids",
         lambda _db, _tenant_id, _account_id, document_ids: list(document_ids),
     )
 
-    result = evaluations._finalize_reference_sources(
+    result = evaluations.finalize_reference_sources(
         db,  # type: ignore[arg-type]
         tenant_id=tenant_id,
         account_id="account-1",
@@ -232,12 +231,12 @@ def test_finalize_reference_sources_rejects_inaccessible_document(monkeypatch: p
     db = _ReferenceDB([])
 
     monkeypatch.setattr(
-        "app.services.document_access.filter_allowed_document_ids",
+        "app.services.documents.read_scope.filter_allowed_document_ids",
         lambda *_args, **_kwargs: [],
     )
 
     with pytest.raises(HTTPException) as exc_info:
-        evaluations._finalize_reference_sources(
+        evaluations.finalize_reference_sources(
             db,  # type: ignore[arg-type]
             tenant_id=tenant_id,
             account_id="account-1",
@@ -273,9 +272,9 @@ def test_patch_regression_case_applies_explicit_scalars_and_preserves_write_orde
         expected_answer=None,
         tags=[],
     )
-    monkeypatch.setattr(evaluations.DatasetService, "ensure_member", lambda *_args: None)
-    monkeypatch.setattr(evaluations.DatasetService, "get_dataset", lambda *_args: object())
-    monkeypatch.setattr(evaluations.DatasetService, "assert_dataset_writable", lambda *_args: None)
+    monkeypatch.setattr(evaluations.dataset_service, "ensure_member", lambda *_args: None)
+    monkeypatch.setattr(evaluations.dataset_service, "get_dataset", lambda *_args: object())
+    monkeypatch.setattr(evaluations.dataset_service, "assert_dataset_writable", lambda *_args: None)
 
     result = evaluations.patch_ragas_regression_case(
         row.id,
@@ -325,11 +324,13 @@ def test_import_regression_cases_creates_updates_and_commits_once(monkeypatch: p
         max_items=10,
         items=[create_item, update_item],
     )
-    monkeypatch.setattr(evaluations.DatasetService, "ensure_member", lambda *_args: None)
-    monkeypatch.setattr(evaluations.DatasetService, "get_dataset", lambda *_args: object())
-    monkeypatch.setattr(evaluations.DatasetService, "assert_dataset_writable", lambda *_args: None)
+    monkeypatch.setattr(evaluations.dataset_service, "ensure_member", lambda *_args: None)
+    monkeypatch.setattr(evaluations.dataset_service, "get_dataset", lambda *_args: object())
+    monkeypatch.setattr(evaluations.dataset_service, "assert_dataset_writable", lambda *_args: None)
+    from app.services.evaluation import case_import as evaluation_case_import
+
     monkeypatch.setattr(
-        evaluations,
+        evaluation_case_import,
         "plan_case_import",
         lambda **_kwargs: {
             "skipped": 0,
@@ -340,8 +341,8 @@ def test_import_regression_cases_creates_updates_and_commits_once(monkeypatch: p
         },
     )
     monkeypatch.setattr(
-        evaluations,
-        "_finalize_reference_sources",
+        evaluation_case_import,
+        "finalize_reference_sources",
         lambda _db, **kwargs: list(kwargs["reference_sources"]),
     )
 
@@ -352,9 +353,9 @@ def test_import_regression_cases_creates_updates_and_commits_once(monkeypatch: p
         db=db,  # type: ignore[arg-type]
     )
 
-    assert result["created"] == 1
-    assert result["updated"] == 1
-    assert result["skipped"] == 0
+    assert result.created == 1
+    assert result.updated == 1
+    assert result.skipped == 0
     assert existing.expected_answer == "after"
     assert existing.tags == ["updated"]
     assert existing.extra == {"keep": True, "incoming": True}
@@ -385,19 +386,19 @@ def test_generate_synthetic_hardcases_dry_run_deduplicates_without_writes(
         tag="synthetic_hardcase",
     )
     monkeypatch.setattr(evaluations.settings, "KG_ENABLED", True)
-    monkeypatch.setattr(evaluations.DatasetService, "ensure_member", lambda *_args: None)
-    monkeypatch.setattr(evaluations.DatasetService, "get_dataset", lambda *_args: object())
-    monkeypatch.setattr(evaluations.DatasetService, "assert_dataset_readable", lambda *_args: None)
+    monkeypatch.setattr(evaluations.dataset_service, "ensure_member", lambda *_args: None)
+    monkeypatch.setattr(evaluations.dataset_service, "get_dataset", lambda *_args: object())
+    monkeypatch.setattr(evaluations.dataset_service, "assert_dataset_readable", lambda *_args: None)
     monkeypatch.setattr(
-        "app.rag.evaluation.kg_search_diagnostics._resolve_ground_truth_event_ids",
+        "app.rag.evaluation.benchmarks.kg_search_diagnostics._resolve_ground_truth_event_ids",
         lambda *_args, **_kwargs: ["event-1"],
     )
     monkeypatch.setattr(
-        "app.rag.evaluation.kg_search_diagnostics._deterministic_hardcase_candidates",
+        "app.rag.evaluation.benchmarks.kg_search_diagnostics._deterministic_hardcase_candidates",
         lambda *_args, **_kwargs: ([], [], []),
     )
     monkeypatch.setattr(
-        "app.rag.evaluation.kg_hardcase_deterministic.generate_hardcases_deterministic",
+        "app.rag.evaluation.generation.kg_hardcase_deterministic.generate_hardcases_deterministic",
         lambda **_kwargs: [
             SimpleNamespace(question=" Existing   Question ", kind="alias", rationale=None),
             SimpleNamespace(question="Novel question", kind="skill", rationale="because"),
@@ -444,13 +445,13 @@ def test_generate_test_cases_from_documents_auto_saves_grounded_case(
         prompt_ab_experiment_key=None,
         auto_save_as_cases=True,
     )
-    monkeypatch.setattr(evaluations.DatasetService, "ensure_member", lambda *_args: None)
-    monkeypatch.setattr(evaluations.DatasetService, "get_dataset", lambda *_args: object())
-    monkeypatch.setattr(evaluations.DatasetService, "assert_dataset_writable", lambda *_args: None)
+    monkeypatch.setattr(evaluations.dataset_service, "ensure_member", lambda *_args: None)
+    monkeypatch.setattr(evaluations.dataset_service, "get_dataset", lambda *_args: object())
+    monkeypatch.setattr(evaluations.dataset_service, "assert_dataset_writable", lambda *_args: None)
     monkeypatch.setattr(evaluations, "generate_questions_from_documents", lambda **_kwargs: [question])
     monkeypatch.setattr(
         evaluations,
-        "_finalize_reference_sources",
+        "finalize_reference_sources",
         lambda _db, **kwargs: list(kwargs["reference_sources"]),
     )
 

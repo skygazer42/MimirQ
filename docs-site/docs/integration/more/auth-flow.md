@@ -5,7 +5,7 @@ sidebar_position: 2
 
 # 认证与租户流程详解
 
-MimirQ 认证与租户上下文从登录到请求的完整生命周期。
+Ragvia 认证与租户上下文从登录到请求的完整生命周期。
 
 ## 认证时序图
 
@@ -14,7 +14,7 @@ sequenceDiagram
     participant User as 用户/客户端
     participant FE as 前端
     participant GW as 网关/代理
-    participant API as MimirQ API
+    participant API as Ragvia API
     participant Auth as 认证服务
     participant DB as 用户数据库
 
@@ -44,7 +44,7 @@ sequenceDiagram
 ```mermaid
 sequenceDiagram
     participant FE as 前端
-    participant API as MimirQ API
+    participant API as Ragvia API
 
     FE->>API: 请求（access_token 过期）
     API-->>FE: 401 Unauthorized

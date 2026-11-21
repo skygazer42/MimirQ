@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { type NextRequest, NextResponse } from 'next/server'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -22,10 +22,6 @@ type RouteContext = {
   params: Promise<{ documentId: string }>
 }
 
-function trimTrailingSlashes(value: string): string {
-  return String(value || '').trim().replace(/\/+$/, '')
-}
-
 function isHttpUrl(value: string): boolean {
   try {
     const url = new URL(value)
@@ -35,18 +31,19 @@ function isHttpUrl(value: string): boolean {
   }
 }
 
-function resolveParsingBackendBase(env: NodeJS.ProcessEnv = process.env): string {
-  const candidates = [env.API_INTERNAL_URL, env.NEXT_PUBLIC_API_URL, DEFAULT_BACKEND_BASE_URL]
+function resolveParsingBackendBase(): string {
+  const candidates = [process.env.API_INTERNAL_URL, process.env.NEXT_PUBLIC_API_URL]
   for (const candidate of candidates) {
-    const normalized = trimTrailingSlashes(candidate || '')
+    if (candidate === undefined) continue
+    const normalized = candidate.trim().replace(/\/+$/, '')
     if (isHttpUrl(normalized)) return normalized
   }
   return DEFAULT_BACKEND_BASE_URL
 }
 
-function resolveParsingProxyTimeoutMs(env: NodeJS.ProcessEnv = process.env): number {
-  const parsed = Number(String(env.NEXT_PUBLIC_API_LONG_TIMEOUT_MS || '').trim())
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_LONG_TIMEOUT_MS
+function resolveParsingProxyTimeoutMs(): number {
+  const timeoutMs = Number(process.env.NEXT_PUBLIC_API_LONG_TIMEOUT_MS)
+  return Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : DEFAULT_LONG_TIMEOUT_MS
 }
 
 function requestHeaders(req: NextRequest): Headers {
@@ -64,13 +61,10 @@ function responseHeaders(upstream: Response): Headers {
 }
 
 function proxyError(error: unknown): NextResponse {
-  const name = error instanceof Error ? error.name : ''
-  const timedOut = name === 'TimeoutError' || name === 'AbortError'
+  const timedOut = error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError')
   return NextResponse.json(
     {
-      detail: timedOut
-        ? 'Parsing request timed out before the backend responded'
-        : 'Parsing backend is unavailable',
+      detail: timedOut ? 'Parsing request timed out before the backend responded' : 'Parsing backend is unavailable',
     },
     {
       status: timedOut ? 504 : 502,
@@ -81,32 +75,29 @@ function proxyError(error: unknown): NextResponse {
 
 export async function POST(req: NextRequest, { params }: RouteContext) {
   const { documentId } = await params
-  const incomingUrl = new URL(req.url)
   const target = new URL(
     `/api/v1/parsing/documents/${encodeURIComponent(documentId)}/parse`,
     `${resolveParsingBackendBase()}/`,
   )
-  target.search = incomingUrl.search
+  target.search = req.nextUrl.search
 
   const requestBody = await req.arrayBuffer()
-  let upstream: Response
   try {
-    upstream = await fetch(target, {
+    const upstream = await fetch(target, {
       method: 'POST',
       headers: requestHeaders(req),
-      body: requestBody.byteLength ? requestBody : undefined,
+      body: requestBody.byteLength > 0 ? requestBody : undefined,
       cache: 'no-store',
       redirect: 'manual',
-      signal: AbortSignal.timeout(resolveParsingProxyTimeoutMs()),
+      signal: AbortSignal.any([req.signal, AbortSignal.timeout(resolveParsingProxyTimeoutMs())]),
+    })
+
+    return new NextResponse(await upstream.arrayBuffer(), {
+      status: upstream.status,
+      statusText: upstream.statusText,
+      headers: responseHeaders(upstream),
     })
   } catch (error) {
     return proxyError(error)
   }
-
-  const responseBody = await upstream.arrayBuffer()
-  return new NextResponse(responseBody, {
-    status: upstream.status,
-    statusText: upstream.statusText,
-    headers: responseHeaders(upstream),
-  })
 }

@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { apiClient, authApi } from './api-client'
+import { authApi } from './api/auth'
+import { apiClient } from './api/core'
 
 describe('authApi', () => {
   afterEach(() => {
@@ -56,37 +57,31 @@ describe('authApi', () => {
       password: 'another-valid-password',
     })
 
-    expect(request).toHaveBeenNthCalledWith(
-      1,
-      {
-        url: '/auth/register',
-        method: 'post',
-        params: undefined,
-        data: {
-          email: 'owner@example.com',
-          username: 'owner',
-          password: 'correct-horse-battery-staple',
-        },
-        headers: { 'X-Bootstrap-Token': 'bootstrap-secret' },
-        signal: undefined,
-        timeout: undefined,
-      }
-    )
-    expect(request).toHaveBeenNthCalledWith(
-      2,
-      {
-        url: '/auth/register',
-        method: 'post',
-        params: undefined,
-        data: {
-          email: 'later@example.com',
-          username: 'later',
-          password: 'another-valid-password',
-        },
-        headers: undefined,
-        signal: undefined,
-        timeout: undefined,
-      }
-    )
+    expect(request).toHaveBeenNthCalledWith(1, {
+      url: '/auth/register',
+      method: 'post',
+      params: undefined,
+      data: {
+        email: 'owner@example.com',
+        username: 'owner',
+        password: 'correct-horse-battery-staple',
+      },
+      headers: { 'X-Bootstrap-Token': 'bootstrap-secret' },
+      signal: undefined,
+      timeout: undefined,
+    })
+    expect(request).toHaveBeenNthCalledWith(2, {
+      url: '/auth/register',
+      method: 'post',
+      params: undefined,
+      data: {
+        email: 'later@example.com',
+        username: 'later',
+        password: 'another-valid-password',
+      },
+      headers: undefined,
+      signal: undefined,
+      timeout: undefined,
+    })
   })
 })

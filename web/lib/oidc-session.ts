@@ -1,56 +1,57 @@
 'use client'
 
-import type { AuthToken } from '@/types'
-import { toTrimmedPrimitiveString } from '@/lib/primitive-text'
+import { authTokenSchema } from '@/lib/auth-response-schema'
+import { getAccessToken, getAuthSessionKey } from '@/lib/auth-storage'
+import { recordSchema } from '@/lib/response-schema'
+import type { AuthToken } from '@/types/backend'
 
-type RefreshResponse = {
-  access_token?: string
-  token_type?: string
-  expires_in?: number
-  id_token?: string
-  error?: string
-}
+const OIDC_REFRESH_TERMINAL_ERRORS = new Set([
+  'oidc_server_exchange_disabled',
+  'oidc_not_configured',
+  'oidc_provider_required',
+])
 
-function normalizeTokenType(raw: unknown): string {
-  const t = toTrimmedPrimitiveString(raw)
-  return t ? t.toLowerCase() : 'bearer'
-}
-
-let inFlight: Promise<AuthToken | null> | null = null
+let inFlight: {
+  sessionKey: string
+  token: string | null
+  promise: Promise<AuthToken | null>
+} | null = null
 
 export function __resetOidcRefreshForTests() {
   inFlight = null
 }
 
-export async function tryRefreshOidcAccessToken(): Promise<AuthToken | null> {
-  if (inFlight) return inFlight
+export function tryRefreshOidcAccessToken(): Promise<AuthToken | null> {
+  const sessionKey = getAuthSessionKey()
+  const token = getAccessToken()
+  if (inFlight?.sessionKey === sessionKey && inFlight.token === token) {
+    return inFlight.promise
+  }
 
-  inFlight = (async () => {
-    try {
-      const res = await fetch('/api/oidc/refresh', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        cache: 'no-store',
-      })
-      const data = (await res.json().catch(() => null)) as RefreshResponse | null
-      if (!res.ok) return null
+  const promise = (async () => {
+    const response = await fetch('/api/oidc/refresh', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      cache: 'no-store',
+    })
+    if (response.status === 401) return null
+    if (response.ok) return authTokenSchema.parse(await response.json())
 
-      const accessToken = String(data?.access_token || '').trim()
-      if (!accessToken) return null
-
-      const expiresIn = Number(data?.expires_in)
-      return {
-        access_token: accessToken,
-        token_type: normalizeTokenType(data?.token_type),
-        expires_in: Number.isFinite(expiresIn) ? expiresIn : 3600,
+    if (response.status === 400) {
+      const result = recordSchema.safeParse(await response.json().catch(() => null))
+      if (result.success) {
+        const { code, error } = result.data
+        if (code === 'invalid_grant' || (typeof error === 'string' && OIDC_REFRESH_TERMINAL_ERRORS.has(error))) {
+          return null
+        }
       }
-    } catch {
-      return null
-    } finally {
-      inFlight = null
     }
-  })()
+    throw Object.assign(new Error(`刷新登录状态失败（HTTP ${response.status}）`), { status: response.status })
+  })().finally(() => {
+    if (inFlight?.promise === promise) inFlight = null
+  })
 
-  return inFlight
+  inFlight = { sessionKey, token, promise }
+  return promise
 }

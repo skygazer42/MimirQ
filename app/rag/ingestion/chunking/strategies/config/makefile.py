@@ -1,0 +1,223 @@
+"""
+Makefile-aware chunking strategy.
+
+Targets Makefiles / build scripts with targets like:
+build: deps
+\t@echo building
+
+The chunker splits by target blocks (target line + recipe) and groups multiple
+targets per chunk to respect chunk_size/overlap while preserving offsets.
+"""
+
+from dataclasses import dataclass
+from typing import Any
+
+from langchain_core.documents import Document
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+
+from app.rag.ingestion.chunking.base import BaseChunker
+from app.rag.ingestion.chunking.utils.source_lines import apply_splitter_span
+from app.rag.ingestion.chunking.utils.source_lines import iter_source_lines as _iter_lines
+
+
+@dataclass(frozen=True)
+class _Target:
+    start: int
+    end: int
+    name: str
+
+
+_TARGET_NAME_ALLOWED = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_./%:@+-")
+
+
+def _parse_target_line(line: str) -> str | None:
+    """
+    Parse a Make target line:
+      target: deps
+
+    Returns the target name or None.
+
+    We intentionally avoid regex to prevent catastrophic-backtracking hotspots.
+    """
+    s = line
+    if not s:
+        return None
+    colon = s.find(":")
+    if colon <= 0:
+        return None
+    if s.startswith((":=", "::=", ":::="), colon):
+        return None
+    name = s[:colon].strip()
+    if not name or len(name) > 80:
+        return None
+    if any(ch not in _TARGET_NAME_ALLOWED for ch in name):
+        return None
+    return name
+
+
+def _iter_targets(text: str) -> list[_Target]:
+    lines = _iter_lines(text)
+    idxs: list[int] = []
+    names: list[str] = []
+    for i, ln in enumerate(lines):
+        p = ln.plain
+        if not p.strip() or p.lstrip().startswith("#"):
+            continue
+        if p.startswith("\t"):
+            continue
+        name = _parse_target_line(p)
+        if not name:
+            continue
+        idxs.append(i)
+        names.append(name)
+
+    targets: list[_Target] = []
+    for k, i in enumerate(idxs):
+        start = lines[i].start
+        end = lines[idxs[k + 1]].start if k + 1 < len(idxs) else len(text)
+        targets.append(_Target(start=start, end=end, name=names[k]))
+    return targets
+
+
+def looks_like_makefile(text: str) -> bool:
+    if not text or len(text) < 80:
+        return False
+    lowered = (text).lower()
+    if ".phony" in lowered:
+        return True
+    targets = _iter_targets(text)
+    if len(targets) < 2:
+        return False
+    # Require at least one recipe line.
+    for ln in (text).splitlines()[:400]:
+        if ln.startswith("\t"):
+            return True
+    return False
+
+
+class MakefileChunker(BaseChunker):
+    def __init__(self, chunk_size: int, chunk_overlap: int) -> None:
+        self.chunk_size = int(chunk_size)
+        self.chunk_overlap = int(chunk_overlap)
+
+        self._fallback_splitter = RecursiveCharacterTextSplitter(
+            chunk_size=self.chunk_size,
+            chunk_overlap=self.chunk_overlap,
+            separators=["\n\n", "\n", " ", ""],
+            length_function=len,
+            add_start_index=True,
+        )
+
+    def _append_fallback_chunks(
+        self, *, out: list[Document], text: str, base_meta: dict[str, Any], preamble: bool = False
+    ) -> None:
+        split_docs = self._fallback_splitter.create_documents(texts=[text], metadatas=[base_meta])
+        for sd in split_docs:
+            local_start = sd.metadata.pop("start_index", None)
+            meta: dict[str, Any] = dict(base_meta)
+            meta.update(sd.metadata)
+            meta["chunk_strategy"] = "makefile"
+            apply_splitter_span(meta, start_index=local_start, content=sd.page_content)
+            meta.setdefault("doc_type_kwd", "makefile")
+            meta["make_fallback"] = True
+            if preamble:
+                meta["make_preamble"] = True
+            meta["chunk_index"] = len(out)
+            out.append(Document(page_content=sd.page_content, metadata=meta))
+
+    @staticmethod
+    def _target_names(targets: list[_Target], *, start_idx: int, end_idx: int) -> list[str]:
+        uniq: list[str] = []
+        for target in targets[start_idx:end_idx]:
+            if target.name not in uniq:
+                uniq.append(target.name)
+        return uniq[:25]
+
+    @staticmethod
+    def _append_target_chunk(
+        *,
+        out: list[Document],
+        text: str,
+        base_meta: dict[str, Any],
+        targets: list[_Target],
+        start_idx: int,
+        end_idx: int,
+    ) -> None:
+        chunk_start = targets[start_idx].start
+        chunk_end = targets[end_idx - 1].end
+        meta: dict[str, Any] = dict(base_meta)
+        meta["chunk_strategy"] = "makefile"
+        meta["start_char"] = chunk_start
+        meta["end_char"] = chunk_end
+        meta.setdefault("doc_type_kwd", "makefile")
+        meta["make_target_count"] = end_idx - start_idx
+        uniq = MakefileChunker._target_names(targets, start_idx=start_idx, end_idx=end_idx)
+        if uniq:
+            meta["make_targets"] = uniq
+            meta["make_target"] = uniq[0]
+        meta["chunk_index"] = len(out)
+        out.append(Document(page_content=text[chunk_start:chunk_end], metadata=meta))
+
+    def _next_target_start(self, *, targets: list[_Target], start_idx: int, end_idx: int) -> int:
+        if self.chunk_overlap <= 0 or (end_idx - start_idx) <= 1:
+            return end_idx
+        desired = end_idx - 1
+        while desired > start_idx:
+            overlap_len = targets[end_idx - 1].end - targets[desired - 1].start
+            if overlap_len <= self.chunk_overlap:
+                desired -= 1
+                continue
+            break
+        next_start = desired if desired > start_idx else (end_idx - 1)
+        return next_start
+
+    def _append_target_chunks(
+        self,
+        *,
+        out: list[Document],
+        text: str,
+        base_meta: dict[str, Any],
+        targets: list[_Target],
+    ) -> None:
+        start_idx = 0
+        while start_idx < len(targets):
+            end_idx = start_idx
+            while end_idx < len(targets):
+                cand_start = targets[start_idx].start
+                cand_end = targets[end_idx].end
+                cand_len = cand_end - cand_start
+                if end_idx == start_idx or cand_len <= self.chunk_size:
+                    end_idx += 1
+                    continue
+                break
+            self._append_target_chunk(
+                out=out,
+                text=text,
+                base_meta=base_meta,
+                targets=targets,
+                start_idx=start_idx,
+                end_idx=end_idx,
+            )
+            if end_idx == len(targets):
+                break
+            start_idx = self._next_target_start(targets=targets, start_idx=start_idx, end_idx=end_idx)
+
+    def split_documents(self, documents: list[Document]) -> list[Document]:
+        out: list[Document] = []
+        for doc in documents:
+            text = doc.page_content
+            base_meta = dict(doc.metadata)
+            if not text.strip():
+                continue
+
+            targets = _iter_targets(text)
+            if not targets:
+                self._append_fallback_chunks(out=out, text=text, base_meta=base_meta)
+                continue
+
+            preamble = text[: targets[0].start]
+            if preamble.strip():
+                self._append_fallback_chunks(out=out, text=preamble, base_meta=base_meta, preamble=True)
+            self._append_target_chunks(out=out, text=text, base_meta=base_meta, targets=targets)
+
+        return out

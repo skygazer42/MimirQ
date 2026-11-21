@@ -1,0 +1,67 @@
+{
+  "schemaVersion": 1,
+  "lang": "zh",
+  "project": "Ragvia · 治理配置布局对比",
+  "brief": "固定雾灰／墨色、Manrope 与 Noto Sans SC，保留 Ragvia 全局侧栏和格式／脱敏／启用的语义色。五版共用现有 26 个内置模板，当前均查看 PDF 文本版，分别比较表格管理、主从目录、规则编辑、分类挑选和策略对照。候选为静态首屏，清洗文本为共享设计数据，尚未接入搜索、复制、导入、导出、保存或清洗接口。",
+  "round": "治理配置 01",
+  "nativeViewport": "1600x1000",
+  "candidates": [
+    {
+      "id": "a-table",
+      "name": "A · 管理宽表",
+      "concept": "先按行对照模板与规则，再在表格下方查看所选配置。",
+      "typography": "Manrope / Noto Sans SC；20px 页标题，13px 表格，15px 当前配置标题",
+      "palette": ["#F6F7F8", "#20262E", "#EDF0F2", "#A74740", "#476F8B", "#31754D", "#3D7771"],
+      "traits": ["一屏对照 10 项模板的格式、场景与主要规则", "下方就地查看当前模板的规则和参数", "适合日常管理、搜索和快速复制"],
+      "source": "a-table.html"
+    },
+    {
+      "id": "b-directory",
+      "name": "B · 目录分栏",
+      "concept": "保留模板目录，在宽幅详情中完整了解和复用当前配置。",
+      "typography": "Manrope / Noto Sans SC；13px 目录，14px 规则与参数，18px 详情标题",
+      "palette": ["#F6F7F8", "#20262E", "#EDF0F2", "#A74740", "#476F8B", "#31754D", "#3D7771"],
+      "traits": ["280px 分组模板目录常驻", "当前模板的规则与参数平铺展示", "底部清洗前后摘录，适合逐个查看配置"],
+      "source": "b-directory.html"
+    },
+    {
+      "id": "c-workbench",
+      "name": "C · 规则工作台",
+      "concept": "将规则与清洗预览并排，让配置内容和影响容易对应。",
+      "typography": "Manrope / Noto Sans SC；14px 规则与表单，13px 预览正文，12px 元信息",
+      "palette": ["#F6F7F8", "#20262E", "#EDF0F2", "#A74740", "#476F8B", "#31754D", "#3D7771"],
+      "traits": ["顶部选择当前模板，侧边按配置分组定位", "规则编辑面与清洗前后预览并排", "内置只读、复制后编辑，适合深入调整规则"],
+      "source": "c-workbench.html"
+    },
+    {
+      "id": "d-catalog",
+      "name": "D · 模板目录",
+      "concept": "先按适用场景找到模板，再查看或复制。",
+      "typography": "Manrope / Noto Sans SC；15px 模板名称，13px 说明，12px 规则与操作，13px 分类",
+      "palette": ["#F6F7F8", "#20262E", "#EDF0F2", "#A74740", "#476F8B", "#31754D", "#3D7771"],
+      "traits": ["场景分类与三列模板画廊", "每项直接展示用途、输入格式和主要规则", "一屏浏览 9 项，适合挑选与复用已有模板"],
+      "source": "d-catalog.html"
+    },
+    {
+      "id": "e-matrix",
+      "name": "E · 规则矩阵",
+      "concept": "以规则为行、模板为列，直接核对不同清洗策略的差别。",
+      "typography": "Manrope / Noto Sans SC；14px 模板列名，13px 规则行，等宽仅用于技术标识",
+      "palette": ["#F6F7F8", "#20262E", "#EDF0F2", "#A74740", "#476F8B", "#31754D", "#3D7771"],
+      "traits": ["六个真实模板并列比较", "区分启用、关闭与未覆盖默认值", "当前 PDF 列轻底色，适合核对策略差异"],
+      "source": "e-matrix.html"
+    },
+    {
+      "id": "current",
+      "name": "当前页面 · 参照",
+      "concept": "当前真实治理配置页，作为页面密度和信息组织的对照。",
+      "typography": "正式页面现有字体、卡片与控件",
+      "palette": ["#F6F7F8", "#20262E", "#EDF0F2", "#4457D8"],
+      "traits": ["当前实际 26 个内置模板", "统计区、搜索筛选与两列模板卡片", "1280 × 720 实际截图"],
+      "baseline": true,
+      "kind": "image",
+      "nativeViewport": "1280x720",
+      "source": "current.png"
+    }
+  ]
+}

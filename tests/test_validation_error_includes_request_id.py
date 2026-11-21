@@ -1,10 +1,9 @@
-
 import httpx
 import pytest
 from fastapi import FastAPI, HTTPException, Query
 
-from app.api.middleware.request_id import RequestIDMiddleware
-from app.core.exceptions import register_exception_handlers
+from app.api.middleware.request_context import RequestContextMiddleware as RequestIDMiddleware
+from app.infrastructure.exceptions import register_exception_handlers
 from tests.helpers.async_utils import yield_control
 
 

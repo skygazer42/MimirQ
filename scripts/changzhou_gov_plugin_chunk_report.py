@@ -20,6 +20,7 @@ warnings.filterwarnings(
 )
 
 from app.rag.pipeline_plugins.reports import build_pipeline_plugin_chunk_report  # noqa: E402
+from scripts.changzhou_gov_plugin_chunk_evidence import _text, _write_text  # noqa: E402
 
 SCHEMA = "mimirq.changzhou_gov_service_knowledge.chunk_report.v1"
 DEFAULT_PLUGIN_DIR = "plugins/pipelines/changzhou-gov-service-knowledge"
@@ -49,10 +50,6 @@ _TITLE_METADATA_KEYS = (
     "category_leaf",
     "source_sheet",
 )
-
-
-def _text(value: Any) -> str:
-    return str(value or "").strip()
 
 
 def _clean_one_line(value: Any, *, limit: int = 160) -> str:
@@ -198,12 +195,6 @@ def format_markdown_report(report: dict[str, Any]) -> str:
         ]
     )
     return "\n".join(lines) + "\n"
-
-
-def _write_text(path: str | Path, text: str) -> None:
-    target = Path(path)
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(text, encoding="utf-8")
 
 
 def build_arg_parser() -> argparse.ArgumentParser:

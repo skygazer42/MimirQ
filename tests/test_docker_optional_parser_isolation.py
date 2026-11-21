@@ -15,12 +15,12 @@ def test_backend_build_context_excludes_local_model_cache() -> None:
     dockerignore = (REPO_ROOT / ".dockerignore").read_text(encoding="utf-8").splitlines()
     entries = {line.strip() for line in dockerignore}
 
-    assert "app/deepdoc/resources/models/" in entries
+    assert "app/rag/ingestion/parsing/resources/models/" in entries
     for entry in ("docs-site/", "work/", ".tmp/", ".playwright-cli/", ".playwright-mcp/"):
         assert entry in entries
     for required_runtime_dir in (
-        "app/deepdoc/resources/data_parser/",
-        "app/deepdoc/resources/nltk_data/",
-        "app/deepdoc/resources/tiktoken/",
+        "app/rag/ingestion/parsing/resources/data_parser/",
+        "app/rag/ingestion/parsing/resources/nltk_data/",
+        "app/rag/ingestion/parsing/resources/tiktoken/",
     ):
         assert required_runtime_dir not in entries

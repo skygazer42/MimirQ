@@ -1,11 +1,16 @@
 'use client'
 
 import type { AuthResponse, AuthToken, UserProfile } from '@/types'
-import { setAuthSession } from '@/lib/auth-storage'
+import { readOidcExpiresIn } from '@/lib/auth-response-schema'
 import { readClientStorage, removeClientStorage, writeClientStorage } from '@/lib/client-storage'
-import { toTrimmedPrimitiveString } from '@/lib/primitive-text'
-import { generateOauthState, generatePkceCodeVerifier, pkceChallengeFromVerifier, tryDecodeJwtPayload } from '@/lib/oidc-pkce'
-import { getOidcPublicProvidersFromEnv, resolveOidcPublicProvider } from '@/lib/oidc-providers'
+import { readNonEmptyString, toTrimmedPrimitiveString } from '@/lib/primitive-text'
+import {
+  generateOauthState,
+  generatePkceCodeVerifier,
+  pkceChallengeFromVerifier,
+  tryDecodeJwtPayload,
+} from '@/lib/oidc-pkce'
+import { parseOidcAuthParams, type OidcProviderPublic } from '@/lib/oidc-providers'
 
 type OidcDiscovery = {
   authorization_endpoint: string
@@ -16,7 +21,7 @@ type OidcDiscovery = {
 type OidcTokenResponse = {
   access_token?: string
   token_type?: string
-  expires_in?: number
+  expires_in?: unknown
   refresh_token?: string
   id_token?: string
   scope?: string
@@ -38,64 +43,20 @@ type OidcClaims = Record<string, unknown>
 
 const TX_KEY_PREFIX = 'mimirq_oidc_tx:'
 
-function readEnv(name: string): string {
-  // Next.js replaces process.env.* at build time for NEXT_PUBLIC_* variables.
-  return String((process.env as Record<string, string | undefined>)[name] || '').trim()
-}
-
-function isFalsey(value: string): boolean {
-  const v = String(value || '').trim().toLowerCase()
-  return v === '0' || v === 'false' || v === 'no' || v === 'off' || v === 'disabled'
-}
-
-function parseAuthParams(raw: string): Record<string, string> {
-  const out: Record<string, string> = {}
-  const trimmed = String(raw || '').trim()
-  if (!trimmed) return out
-
-  const params = new URLSearchParams(trimmed.startsWith('?') ? trimmed.slice(1) : trimmed)
-  for (const [key, value] of params.entries()) {
-    const k = String(key || '').trim()
-    if (!k) continue
-    out[k] = String(value || '')
-  }
-  return out
-}
-
 function claimString(claims: OidcClaims, key: string): string {
   return toTrimmedPrimitiveString(claims[key])
 }
 
-function resolveRedirectUri(): string {
-  const override = readEnv('NEXT_PUBLIC_OIDC_REDIRECT_URI')
-  if (override) return override
-
-  if (globalThis.window === undefined) {
-    // Only used client-side; keep a stable placeholder for type safety.
-    return '/auth/oidc/callback'
-  }
-  return `${globalThis.window.location.origin}/auth/oidc/callback`
+function resolveRedirectUri(origin: string): string {
+  return process.env.NEXT_PUBLIC_OIDC_REDIRECT_URI?.trim() || `${origin}/auth/oidc/callback`
 }
 
 function resolveScopes(): string {
-  const scopes = readEnv('NEXT_PUBLIC_OIDC_SCOPES')
-  return scopes || 'openid profile email'
+  return process.env.NEXT_PUBLIC_OIDC_SCOPES?.trim() || 'openid profile email'
 }
 
 function txStorageKey(state: string): string {
   return `${TX_KEY_PREFIX}${state}`
-}
-
-function sessionSet(key: string, value: string) {
-  writeClientStorage(key, value, 'session')
-}
-
-function sessionGet(key: string): string | null {
-  return readClientStorage(key, 'session')
-}
-
-function sessionDel(key: string) {
-  removeClientStorage(key, 'session')
 }
 
 let cachedDiscovery: { issuer: string; value: OidcDiscovery } | null = null
@@ -109,13 +70,13 @@ async function discover(issuer: string): Promise<OidcDiscovery> {
   if (!res.ok) {
     throw new Error(`oidc_discovery_failed_${res.status}`)
   }
-  const data = (await res.json().catch(() => null))
+  const data = await res.json().catch(() => null)
   if (!data || typeof data !== 'object') {
     throw new Error('oidc_discovery_invalid')
   }
 
-  const authorizationEndpoint = String(data.authorization_endpoint || '').trim()
-  const tokenEndpoint = String(data.token_endpoint || '').trim()
+  const authorizationEndpoint = readNonEmptyString(data.authorization_endpoint)
+  const tokenEndpoint = readNonEmptyString(data.token_endpoint)
   if (!authorizationEndpoint || !tokenEndpoint) {
     throw new Error('oidc_discovery_missing_endpoints')
   }
@@ -123,7 +84,7 @@ async function discover(issuer: string): Promise<OidcDiscovery> {
   const out: OidcDiscovery = {
     authorization_endpoint: authorizationEndpoint,
     token_endpoint: tokenEndpoint,
-    issuer: String(data.issuer || '').trim() || undefined,
+    issuer: readNonEmptyString(data.issuer),
   }
   cachedDiscovery = { issuer, value: out }
   return out
@@ -154,39 +115,17 @@ function normalizeTokenType(raw: unknown): string {
   return t ? t.toLowerCase() : 'bearer'
 }
 
-export function isOidcEnabled(): boolean {
-  const enabled = readEnv('NEXT_PUBLIC_OIDC_ENABLED')
-  if (enabled && isFalsey(enabled)) return false
-  return getOidcPublicProvidersFromEnv().length > 0
-}
-
-export async function startOidcLogin(params: { providerId?: string; returnTo?: string } = {}): Promise<void> {
-  if (globalThis.window === undefined) {
+export async function prepareOidcLogin(provider: OidcProviderPublic): Promise<() => void> {
+  const browserWindow = globalThis.window
+  if (browserWindow === undefined) {
     throw new Error('oidc_browser_only')
   }
 
-  const providers = getOidcPublicProvidersFromEnv()
-  if (providers.length === 0) {
-    throw new Error('oidc_not_configured')
-  }
-
-  const providerId = String(params.providerId || '').trim() || null
-  const provider = resolveOidcPublicProvider(providerId)
-  if (!provider) {
-    if (providerId) {
-      throw new Error('oidc_unknown_provider')
-    }
-    throw new Error(providers.length > 1 ? 'oidc_provider_required' : 'oidc_not_configured')
-  }
-
-  const issuer = String(provider.issuer || '').trim()
-  const clientId = String(provider.client_id || '').trim()
-  if (!issuer || !clientId) {
-    throw new Error('oidc_not_configured')
-  }
+  const issuer = provider.issuer
+  const clientId = provider.client_id
 
   const discovery = await discover(issuer)
-  const redirectUri = resolveRedirectUri()
+  const redirectUri = resolveRedirectUri(browserWindow.location.origin)
 
   const state = generateOauthState()
   const codeVerifier = generatePkceCodeVerifier()
@@ -200,46 +139,47 @@ export async function startOidcLogin(params: { providerId?: string; returnTo?: s
     client_id: clientId,
     redirect_uri: redirectUri,
     code_verifier: codeVerifier,
-    return_to: String(params.returnTo || '/').trim() || '/',
+    return_to: '/',
   }
-  sessionSet(txStorageKey(state), JSON.stringify(tx))
 
   const url = new URL(discovery.authorization_endpoint)
+  const extra = parseOidcAuthParams(process.env.NEXT_PUBLIC_OIDC_AUTH_PARAMS)
+  const mergedExtra = { ...extra, ...provider.auth_params }
+  for (const [key, value] of Object.entries(mergedExtra)) url.searchParams.set(key, value)
+
   url.searchParams.set('response_type', 'code')
   url.searchParams.set('client_id', clientId)
   url.searchParams.set('redirect_uri', redirectUri)
-  url.searchParams.set('scope', String(provider.scopes || '').trim() || resolveScopes())
+  url.searchParams.set('scope', provider.scopes ?? resolveScopes())
   url.searchParams.set('state', state)
   url.searchParams.set('code_challenge', codeChallenge)
   url.searchParams.set('code_challenge_method', 'S256')
 
-  const extraRaw = readEnv('NEXT_PUBLIC_OIDC_AUTH_PARAMS')
-  const extra = parseAuthParams(extraRaw)
-  const mergedExtra = {
-    ...extra,
-    ...provider.auth_params,
+  return () => {
+    if (!writeClientStorage(txStorageKey(state), JSON.stringify(tx), 'session')) {
+      throw new Error('无法保存登录状态，请检查浏览器的会话存储。')
+    }
+    browserWindow.location.assign(url.toString())
   }
-  for (const [key, value] of Object.entries(mergedExtra)) {
-    if (key) url.searchParams.set(key, String(value ?? ''))
-  }
-
-  globalThis.window.location.assign(url.toString())
 }
 
-export async function completeOidcLogin(params: { code: string; state: string }): Promise<{ session: AuthResponse; returnTo: string }> {
+export async function completeOidcLogin(params: {
+  code: string
+  state: string
+}): Promise<{ session: AuthResponse; returnTo: string }> {
   if (globalThis.window === undefined) {
     throw new Error('oidc_browser_only')
   }
 
-  const code = String(params.code || '').trim()
-  const state = String(params.state || '').trim()
+  const code = params.code.trim()
+  const state = params.state.trim()
   if (!code || !state) {
     throw new Error('missing_code_or_state')
   }
 
   const key = txStorageKey(state)
-  const raw = sessionGet(key)
-  sessionDel(key)
+  const raw = readClientStorage(key, 'session')
+  removeClientStorage(key, 'session')
   if (!raw) {
     throw new Error('missing_oidc_transaction')
   }
@@ -273,12 +213,12 @@ export async function completeOidcLogin(params: { code: string; state: string })
 
     data = (await res.json().catch(() => null)) as OidcTokenResponse | null
     if (!res.ok) {
-      const msg = String(data?.error_description || data?.error || '').trim()
-      throw new Error(msg || `oidc_token_exchange_failed_${res.status}`)
+      const message = readNonEmptyString(data?.error_description) ?? readNonEmptyString(data?.error)
+      throw new Error(message ?? `oidc_token_exchange_failed_${res.status}`)
     }
   } catch (err: unknown) {
     // Fallback: exchange server-side to avoid browser CORS/client_secret constraints.
-    const providerId = String(tx.provider_id || '').trim() || undefined
+    const providerId = readNonEmptyString(tx.provider_id)
     const serverRes = await fetch('/api/oidc/exchange', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -292,8 +232,7 @@ export async function completeOidcLogin(params: { code: string; state: string })
     const serverData = (await serverRes.json().catch(() => null)) as OidcTokenResponse | null
     if (!serverRes.ok) {
       const msg = toTrimmedPrimitiveString(serverData?.error)
-      const originalMsg =
-        err instanceof Error ? err.message.trim() : toTrimmedPrimitiveString(err)
+      const originalMsg = err instanceof Error ? err.message.trim() : toTrimmedPrimitiveString(err)
       const originalLower = originalMsg.toLowerCase()
       const preferServer =
         Boolean(msg) &&
@@ -306,26 +245,28 @@ export async function completeOidcLogin(params: { code: string; state: string })
     data = serverData
   }
 
-  const accessToken = String(data?.access_token || '').trim()
+  const accessToken = readNonEmptyString(data?.access_token)
   if (!accessToken) {
     throw new Error('oidc_missing_access_token')
   }
 
   // Important: Do NOT persist the refresh token in browser storage.
+  const expiresIn = readOidcExpiresIn(data?.expires_in)
+  if (expiresIn === null) throw new Error('oidc_invalid_expiry')
   const token: AuthToken = {
     access_token: accessToken,
     token_type: normalizeTokenType(data?.token_type),
-    expires_in: Number.isFinite(Number(data?.expires_in)) ? Number(data?.expires_in) : 3600,
+    expires_in: expiresIn,
   }
 
+  const idToken = readNonEmptyString(data?.id_token)
   const claims =
-    (data?.id_token ? tryDecodeJwtPayload<OidcClaims>(String(data.id_token)) : null) ||
+    (idToken === undefined ? null : tryDecodeJwtPayload<OidcClaims>(idToken)) ||
     tryDecodeJwtPayload<OidcClaims>(accessToken) ||
     {}
 
   const user: UserProfile = buildUserFromClaims(claims)
   const session: AuthResponse = { user, token }
 
-  setAuthSession(session)
-  return { session, returnTo: String(tx.return_to || '/').trim() || '/' }
+  return { session, returnTo: readNonEmptyString(tx.return_to) ?? '/' }
 }

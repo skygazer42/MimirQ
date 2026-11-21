@@ -1,7 +1,6 @@
 import type { CleanPreviewResponse } from '@/types'
 import { detachPromise } from '@/lib/utils'
 
-
 const _sample: CleanPreviewResponse = {
   markdown: '',
   applied_rules: 0,
@@ -11,4 +10,3 @@ const _sample: CleanPreviewResponse = {
 }
 
 detachPromise(_sample)
-

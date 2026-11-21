@@ -1,8 +1,9 @@
 import { extractBlocksFromMarkdownWithRanges, type ParsingPosition } from '@/lib/parsing-positions'
+import { createCodePointToUtf16Converter } from '@/lib/text-offsets'
 
 export const DOCUMENT_PREVIEW_BBOX_ID = 'citation-bbox'
 
-export type DocumentPreviewBbox = {
+type DocumentPreviewBbox = {
   x0: number
   y0: number
   x1: number
@@ -48,38 +49,39 @@ type PositionCandidate = {
   end: number
 }
 
-export type DocumentPreviewBboxOverlayItem = {
+type DocumentPreviewBboxOverlayItem = {
   id: typeof DOCUMENT_PREVIEW_BBOX_ID
   position: ParsingPosition
 }
 
-export type DocumentPreviewBboxOverlay = {
+type DocumentPreviewBboxOverlay = {
   activeBlockIds: string[]
   blockIdToPageIndex: Map<string, number>
   boxesByPage: Map<number, DocumentPreviewBboxOverlayItem[]>
 }
 
 function sanitizePageNumber(value: unknown): number | undefined {
-  if (typeof value !== 'number' || !Number.isFinite(value)) return undefined
-  const normalized = Math.trunc(value)
-  return normalized > 0 ? normalized : undefined
+  return typeof value === 'number' && Number.isInteger(value) && value > 0 ? value : undefined
 }
 
 function sanitizeSearchText(value: unknown): string | undefined {
   if (typeof value !== 'string') return undefined
   const normalized = value.replace(/\s+/g, ' ').trim()
   if (!normalized) return undefined
-  return normalized.slice(0, 120)
+  return Array.from(normalized).slice(0, 120).join('')
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
 function sanitizeBbox(value: unknown): DocumentPreviewBbox | undefined {
-  if (!value || typeof value !== 'object') return undefined
-  const raw = value as Record<string, unknown>
-  const x0 = typeof raw.x0 === 'number' && Number.isFinite(raw.x0) ? raw.x0 : undefined
-  const y0 = typeof raw.y0 === 'number' && Number.isFinite(raw.y0) ? raw.y0 : undefined
-  const x1 = typeof raw.x1 === 'number' && Number.isFinite(raw.x1) ? raw.x1 : undefined
-  const y1 = typeof raw.y1 === 'number' && Number.isFinite(raw.y1) ? raw.y1 : undefined
-  if (x0 == null || y0 == null || x1 == null || y1 == null) return undefined
+  if (!isRecord(value)) return undefined
+  const x0 = sanitizeFiniteNumber(value.x0)
+  const y0 = sanitizeFiniteNumber(value.y0)
+  const x1 = sanitizeFiniteNumber(value.x1)
+  const y1 = sanitizeFiniteNumber(value.y1)
+  if (x0 === undefined || y0 === undefined || x1 === undefined || y1 === undefined) return undefined
 
   const left = Math.min(x0, x1)
   const right = Math.max(x0, x1)
@@ -94,87 +96,75 @@ function sanitizeFiniteNumber(value: unknown): number | undefined {
   return value
 }
 
-function normalizeSearchableText(value: string): { text: string; rawIndexByNormalizedIndex: number[] } {
-  const rawIndexByNormalizedIndex: number[] = []
+function normalizeSearchableText(value: string) {
+  const rawStartByNormalizedIndex: number[] = []
+  const rawEndByNormalizedIndex: number[] = []
   let text = ''
   let previousWasWhitespace = true
-
-  for (let i = 0; i < value.length; i += 1) {
-    const char = value[i]
-    if (/\s/.test(char)) {
+  let rawOffset = 0
+  for (const character of value) {
+    const start = rawOffset
+    rawOffset += character.length
+    if (/\s/.test(character)) {
       if (!previousWasWhitespace) {
         text += ' '
-        rawIndexByNormalizedIndex.push(i)
+        rawStartByNormalizedIndex.push(start)
+        rawEndByNormalizedIndex.push(rawOffset)
         previousWasWhitespace = true
       }
       continue
     }
 
-    text += char.toLowerCase()
-    rawIndexByNormalizedIndex.push(i)
+    const lowercase = character.toLowerCase()
+    text += lowercase
+    for (let index = 0; index < lowercase.length; index += 1) {
+      rawStartByNormalizedIndex.push(start)
+      rawEndByNormalizedIndex.push(rawOffset)
+    }
     previousWasWhitespace = false
   }
 
   if (text.endsWith(' ')) {
     text = text.slice(0, -1)
-    rawIndexByNormalizedIndex.pop()
+    rawStartByNormalizedIndex.pop()
+    rawEndByNormalizedIndex.pop()
   }
 
-  return { text, rawIndexByNormalizedIndex }
+  return { text, rawStartByNormalizedIndex, rawEndByNormalizedIndex }
 }
 
-function findSearchTextRange(rawText: string, searchText: string | undefined): TextRange | null {
+function findSearchTextRanges(rawText: string, searchText: string): TextRange[] {
   const normalizedSearch = sanitizeSearchText(searchText)
-  if (!normalizedSearch) return null
+  if (!normalizedSearch) return []
 
   const haystack = normalizeSearchableText(rawText)
   const needle = normalizeSearchableText(normalizedSearch).text
-  if (!needle) return null
-
-  const index = haystack.text.indexOf(needle)
-  if (index < 0) return null
-
-  const start = haystack.rawIndexByNormalizedIndex[index]
-  const last = haystack.rawIndexByNormalizedIndex[index + needle.length - 1]
-  if (start == null || last == null) return null
-  return { start, end: last + 1 }
+  const ranges: TextRange[] = []
+  let index = haystack.text.indexOf(needle)
+  while (index >= 0) {
+    const start = haystack.rawStartByNormalizedIndex[index]
+    const end = haystack.rawEndByNormalizedIndex[index + needle.length - 1]
+    ranges.push({ start, end })
+    index = haystack.text.indexOf(needle, index + 1)
+  }
+  return ranges
 }
 
 function findHighlightRangeInChunk(
   chunk: PositionTaggedChunkLike | null | undefined,
-  range: HighlightRangeLike | null | undefined
+  range: HighlightRangeLike | null | undefined,
+  text: string,
 ): TextRange | null {
   const start = sanitizeFiniteNumber(range?.start)
   const end = sanitizeFiniteNumber(range?.end)
   const chunkStart = sanitizeFiniteNumber(chunk?.start_char)
   if (start == null || end == null || chunkStart == null || end <= start) return null
 
-  return {
-    start: Math.max(0, Math.trunc(start - chunkStart)),
-    end: Math.max(0, Math.trunc(end - chunkStart)),
-  }
-}
-
-function rangeDistance(a: TextRange, b: TextRange): number {
-  if (a.end >= b.start && b.end >= a.start) return 0
-  if (a.end < b.start) return b.start - a.end
-  return a.start - b.end
-}
-
-function positionToBbox(position: ParsingPosition | undefined): { bbox: DocumentPreviewBbox; pageNumber: number } | null {
-  if (!position) return null
-  const pageIndex = position.pages.find((page) => Number.isFinite(page) && page >= 0)
-  if (pageIndex == null) return null
-
-  const bbox = sanitizeBbox({
-    x0: position.left,
-    y0: position.top,
-    x1: position.right,
-    y1: position.bottom,
-  })
-  if (!bbox) return null
-
-  return { bbox, pageNumber: pageIndex + 1 }
+  if (start < 0 || chunkStart < 0) return null
+  const converter = createCodePointToUtf16Converter(text)
+  const localStart = converter.toUtf16(Math.max(0, start - chunkStart))
+  const localEnd = converter.toUtf16(Math.min(converter.codePointLength, Math.max(0, end - chunkStart)))
+  return localStart === undefined || localEnd === undefined ? null : { start: localStart, end: localEnd }
 }
 
 function extractPositionCandidates(rawText: string): PositionCandidate[] {
@@ -182,34 +172,37 @@ function extractPositionCandidates(rawText: string): PositionCandidate[] {
   const candidates: PositionCandidate[] = []
 
   for (const block of parsed.blocks) {
-    const position = positionToBbox(block.positions[0])
-    if (!position) continue
-    candidates.push({
-      bbox: position.bbox,
-      pageNumber: position.pageNumber,
-      start: block.rawStart,
-      end: block.rawEnd,
-    })
+    for (const position of block.positions) {
+      const bbox = sanitizeBbox({ x0: position.left, y0: position.top, x1: position.right, y1: position.bottom })
+      if (bbox === undefined) continue
+      for (const pageIndex of position.pages) {
+        candidates.push({ bbox, pageNumber: pageIndex + 1, start: block.rawStart, end: block.rawEnd })
+      }
+    }
   }
 
   return candidates
 }
 
-function choosePositionCandidate(candidates: PositionCandidate[], target: TextRange | null): PositionCandidate | null {
-  if (candidates.length === 0) return null
-  if (!target) return candidates[0]
-
-  return candidates.reduce((best, candidate) => {
-    const bestDistance = rangeDistance(best, target)
-    const candidateDistance = rangeDistance(candidate, target)
-    if (candidateDistance < bestDistance) return candidate
-    return best
-  }, candidates[0])
+function choosePositionCandidate(
+  candidates: PositionCandidate[],
+  targets: TextRange[] | null,
+  pageNumber?: number,
+): PositionCandidate | null {
+  const locations = new Map<string, PositionCandidate>()
+  for (const candidate of candidates) {
+    if (pageNumber !== undefined && candidate.pageNumber !== pageNumber) continue
+    if (targets !== null && !targets.some((target) => candidate.end > target.start && candidate.start < target.end))
+      continue
+    const { bbox } = candidate
+    const key = `${candidate.pageNumber}:${bbox.x0}:${bbox.x1}:${bbox.y0}:${bbox.y1}`
+    locations.set(key, candidate)
+  }
+  return locations.size === 1 ? locations.values().next().value! : null
 }
 
 function getRecordValue(record: unknown, key: string): unknown {
-  if (!record || typeof record !== 'object') return undefined
-  return (record as Record<string, unknown>)[key]
+  return isRecord(record) ? record[key] : undefined
 }
 
 function appendTaggedText(out: string[], value: unknown): void {
@@ -228,7 +221,8 @@ function collectPositionTaggedTexts(chunk: PositionTaggedChunkLike | null | unde
   if (!chunk) return []
 
   const metadata = getRecordValue(chunk, 'metadata')
-  const attributes = getRecordValue(metadata, 'attributes') || getRecordValue(metadata, 'element_attributes')
+  const attributes = getRecordValue(metadata, 'attributes')
+  const elementAttributes = getRecordValue(metadata, 'element_attributes')
   const values: unknown[] = [
     chunk.content,
     getRecordValue(metadata, 'element_text'),
@@ -240,6 +234,8 @@ function collectPositionTaggedTexts(chunk: PositionTaggedChunkLike | null | unde
     getRecordValue(metadata, 'position_tag'),
     getRecordValue(attributes, 'position_tags'),
     getRecordValue(attributes, 'position_tag'),
+    getRecordValue(elementAttributes, 'position_tags'),
+    getRecordValue(elementAttributes, 'position_tag'),
   ]
 
   const out: string[] = []
@@ -248,15 +244,13 @@ function collectPositionTaggedTexts(chunk: PositionTaggedChunkLike | null | unde
   return Array.from(new Set(out))
 }
 
-export function sanitizeDocumentPreviewAnchor(
-  anchor: Partial<DocumentPreviewAnchor> | null | undefined
-): DocumentPreviewAnchor | null {
-  if (!anchor) return null
+export function sanitizeDocumentPreviewAnchor(anchor: unknown): DocumentPreviewAnchor | null {
+  if (!isRecord(anchor)) return null
 
   const pageNumber = sanitizePageNumber(anchor.pageNumber)
   const searchText = sanitizeSearchText(anchor.searchText)
   const bbox = sanitizeBbox(anchor.bbox)
-  const bboxPageNumber = bbox ? sanitizePageNumber(anchor.bboxPageNumber) || pageNumber : undefined
+  const bboxPageNumber = bbox ? (sanitizePageNumber(anchor.bboxPageNumber) ?? pageNumber) : undefined
   if (!pageNumber && !searchText && !bbox) return null
 
   return {
@@ -267,19 +261,25 @@ export function sanitizeDocumentPreviewAnchor(
   }
 }
 
-export function getDocumentPreviewAnchorFromCitation<T extends CitationLikePreviewAnchor>(
-  citation: T | null | undefined
+export function getDocumentPreviewAnchorFromCitation(
+  citation: CitationLikePreviewAnchor | null | undefined,
 ): DocumentPreviewAnchor | null {
   if (!citation) return null
 
-  const matchedTerms = Array.isArray(citation.matched_terms) ? citation.matched_terms : []
-  const searchText =
-    sanitizeSearchText(citation.chunk_content) || matchedTerms.map((term) => sanitizeSearchText(term)).find(Boolean)
+  let searchText = sanitizeSearchText(citation.chunk_content)
+  if (searchText === undefined && Array.isArray(citation.matched_terms)) {
+    for (const term of citation.matched_terms) {
+      const text = sanitizeSearchText(term)
+      if (text === undefined) continue
+      searchText = text
+      break
+    }
+  }
 
   return sanitizeDocumentPreviewAnchor({
-    bbox: sanitizeBbox(citation.bbox),
-    bboxPageNumber: citation.bbox_page_number ?? citation.page_number ?? undefined,
-    pageNumber: citation.page_number ?? undefined,
+    bbox: citation.bbox,
+    bboxPageNumber: citation.bbox_page_number,
+    pageNumber: citation.page_number,
     searchText,
   })
 }
@@ -287,16 +287,25 @@ export function getDocumentPreviewAnchorFromCitation<T extends CitationLikePrevi
 export function recoverDocumentPreviewAnchorFromChunkPositions(
   anchor: Partial<DocumentPreviewAnchor> | null | undefined,
   chunk: PositionTaggedChunkLike | null | undefined,
-  range?: HighlightRangeLike | null
+  range?: HighlightRangeLike | null,
 ): DocumentPreviewAnchor | null {
   const sanitizedAnchor = sanitizeDocumentPreviewAnchor(anchor)
-  if (sanitizedAnchor?.bbox) return sanitizedAnchor
+  if (
+    sanitizedAnchor?.bbox &&
+    (sanitizedAnchor.bboxPageNumber !== undefined || sanitizedAnchor.pageNumber !== undefined)
+  )
+    return sanitizedAnchor
 
   const rawTexts = collectPositionTaggedTexts(chunk)
   for (const rawText of rawTexts) {
     const candidates = extractPositionCandidates(rawText)
-    const target = findSearchTextRange(rawText, sanitizedAnchor?.searchText) || findHighlightRangeInChunk(chunk, range)
-    const candidate = choosePositionCandidate(candidates, target)
+    const highlightRange = rawText === chunk?.content ? findHighlightRangeInChunk(chunk, range, rawText) : null
+    let targets: TextRange[] | null = null
+    if (highlightRange !== null) targets = [highlightRange]
+    else if (sanitizedAnchor?.searchText !== undefined)
+      targets = findSearchTextRanges(rawText, sanitizedAnchor.searchText)
+    else if (range != null) continue
+    const candidate = choosePositionCandidate(candidates, targets, sanitizedAnchor?.pageNumber)
     if (!candidate) continue
 
     return sanitizeDocumentPreviewAnchor({
@@ -311,11 +320,11 @@ export function recoverDocumentPreviewAnchorFromChunkPositions(
 }
 
 export function buildDocumentPreviewBboxOverlay(
-  anchor: Partial<DocumentPreviewAnchor> | null | undefined
+  anchor: Partial<DocumentPreviewAnchor> | null | undefined,
 ): DocumentPreviewBboxOverlay | null {
   const sanitizedAnchor = sanitizeDocumentPreviewAnchor(anchor)
   const bbox = sanitizedAnchor?.bbox
-  const pageNumber = sanitizedAnchor?.bboxPageNumber || sanitizedAnchor?.pageNumber
+  const pageNumber = sanitizedAnchor?.bboxPageNumber ?? sanitizedAnchor?.pageNumber
   if (!bbox || !pageNumber) return null
 
   const pageIndex = pageNumber - 1
@@ -335,23 +344,4 @@ export function buildDocumentPreviewBboxOverlay(
     blockIdToPageIndex: new Map([[DOCUMENT_PREVIEW_BBOX_ID, pageIndex]]),
     boxesByPage: new Map([[pageIndex, [item]]]),
   }
-}
-
-export function buildPdfPreviewSrc(fileUrl: string, anchor?: Partial<DocumentPreviewAnchor> | null): string {
-  const normalizedUrl = String(fileUrl || '').trim()
-  if (!normalizedUrl) return ''
-
-  const sanitizedAnchor = sanitizeDocumentPreviewAnchor(anchor)
-  const hash = new URLSearchParams()
-  hash.set('toolbar', '0')
-
-  if (sanitizedAnchor?.pageNumber) {
-    hash.set('page', String(sanitizedAnchor.pageNumber))
-  }
-  if (sanitizedAnchor?.searchText) {
-    hash.set('search', sanitizedAnchor.searchText)
-  }
-
-  const [baseUrl] = normalizedUrl.split('#', 1)
-  return `${baseUrl}#${hash.toString()}`
 }

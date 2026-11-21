@@ -2,11 +2,16 @@
 
 import argparse
 import json
+import sys
 from pathlib import Path
 from uuid import UUID
 
-from app.core.database import SessionLocal
-from app.services.index_audit_service import replay_index_drift_items
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+from app.infrastructure.database.connection import SessionLocal  # noqa: E402
+from app.services.indexing.audit import replay_index_drift_items  # noqa: E402
 
 
 def _parse_uuid(value: str) -> UUID:
@@ -29,6 +34,8 @@ def main(argv: list[str] | None = None) -> int:
 
     p.add_argument("--out", default="", help="Optional output JSON file path")
     args = p.parse_args(argv)
+
+    import app.models.registry  # noqa: F401
 
     db = SessionLocal()
     try:

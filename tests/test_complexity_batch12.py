@@ -7,10 +7,8 @@ from types import SimpleNamespace
 from fastapi import BackgroundTasks, HTTPException
 from pydantic import ConfigDict as _PydanticConfigDict
 
-from app.api.schemas.document import (
-    DocumentBatchReingestRequest,
-    DocumentLifecycleMetadataUpdateRequest,
-)
+from app.api.schemas.documents import DocumentVersionDiffQuery
+from app.api.schemas.documents.document import DocumentBatchReingestRequest, DocumentLifecycleMetadataUpdateRequest
 
 if not hasattr(_datetime, "UTC"):
     _datetime.UTC = _datetime.timezone.utc
@@ -71,6 +69,9 @@ class _QueuedDB:
             raise AssertionError("unexpected query call")
         return self._queries.pop(0)
 
+    def get_bind(self):
+        return SimpleNamespace(dialect=SimpleNamespace(name="sqlite"))
+
     def commit(self) -> None:
         self.commit_calls += 1
 
@@ -94,13 +95,16 @@ def _document(*, tenant_id: uuid.UUID, document_id: uuid.UUID, **overrides) -> S
 
 
 def test_batch_reingest_classifies_patch_failures_without_retry(monkeypatch) -> None:
-    from app.api.v1 import document_batches
+    from app.api.v1.documents import batches as document_batches
+    from app.services.documents import batch_operations as document_batch_operations
+    from app.services.documents import metadata_operations as document_metadata_operations
+    from app.services.documents import processing as document_processing_operations
 
     tenant_id = uuid.uuid4()
     document_ids = [uuid.uuid4() for _ in range(4)]
     retry_ids: list[uuid.UUID] = []
 
-    async def _patch_document_pipeline(**kwargs):
+    def _patch_document_pipeline(**kwargs):
         document_id = kwargs["document_id"]
         if document_id == document_ids[0]:
             raise HTTPException(status_code=404, detail="missing")
@@ -112,14 +116,11 @@ def test_batch_reingest_classifies_patch_failures_without_retry(monkeypatch) -> 
 
     async def _retry_document_processing(**kwargs):
         retry_ids.append(kwargs["document_id"])
-        return {"status": "pending"}
+        return SimpleNamespace(status="pending")
 
-    fake_documents_module = SimpleNamespace(
-        DatasetService=SimpleNamespace(ensure_member=lambda *_a, **_k: None),
-        patch_document_pipeline=_patch_document_pipeline,
-        retry_document_processing=_retry_document_processing,
-    )
-    monkeypatch.setattr(document_batches, "_documents_module", lambda: fake_documents_module, raising=True)
+    monkeypatch.setattr(document_metadata_operations, "patch_pipeline", _patch_document_pipeline, raising=True)
+    monkeypatch.setattr(document_processing_operations, "retry_document", _retry_document_processing, raising=True)
+    monkeypatch.setattr(document_batch_operations.dataset_service, "ensure_member", lambda *_a, **_k: None)
 
     result = asyncio.run(
         document_batches.batch_reingest_documents(
@@ -136,7 +137,7 @@ def test_batch_reingest_classifies_patch_failures_without_retry(monkeypatch) -> 
         )
     )
 
-    assert result == {
+    assert result.model_dump() == {
         "queued": 1,
         "skipped": 0,
         "not_found": [document_ids[0]],
@@ -146,8 +147,8 @@ def test_batch_reingest_classifies_patch_failures_without_retry(monkeypatch) -> 
     assert retry_ids == [document_ids[3]]
 
 
-def test_diff_document_versions_falls_back_to_legacy_rows_and_chunk_ids(monkeypatch) -> None:
-    from app.api.v1 import document_versions
+def test_diff_document_versions_scans_sqlite_legacy_rows_and_chunk_ids(monkeypatch) -> None:
+    from app.api.v1.documents import versions as document_versions
 
     tenant_id = uuid.uuid4()
     document_id = uuid.uuid4()
@@ -158,7 +159,6 @@ def test_diff_document_versions_falls_back_to_legacy_rows_and_chunk_ids(monkeypa
     db = _QueuedDB(
         [
             _Query(first_result=document),
-            _Query(all_exc=RuntimeError("json path unavailable")),
             _Query(
                 all_result=[
                     (shared_from_chunk_id, {"doc_pipeline_key": f"{document_id}:v1", "content_hash": "shared"}),
@@ -166,7 +166,6 @@ def test_diff_document_versions_falls_back_to_legacy_rows_and_chunk_ids(monkeypa
                     (uuid.uuid4(), {"doc_pipeline_key": f"{document_id}:other", "content_hash": "ignored"}),
                 ]
             ),
-            _Query(all_exc=RuntimeError("json path unavailable")),
             _Query(
                 all_result=[
                     (uuid.uuid4(), {"doc_pipeline_key": f"{document_id}:v2", "content_hash": "shared"}),
@@ -176,7 +175,7 @@ def test_diff_document_versions_falls_back_to_legacy_rows_and_chunk_ids(monkeypa
         ]
     )
 
-    monkeypatch.setattr(document_versions.DatasetService, "ensure_member", lambda *_a, **_k: None, raising=True)
+    monkeypatch.setattr(document_versions.dataset_service, "ensure_member", lambda *_a, **_k: None, raising=True)
     monkeypatch.setattr(
         document_versions,
         "assert_document_readable_for_lifecycle",
@@ -186,11 +185,10 @@ def test_diff_document_versions_falls_back_to_legacy_rows_and_chunk_ids(monkeypa
 
     result = document_versions.diff_document_versions(
         document_id=document_id,
-        from_pipeline_hash="v1",
-        to_pipeline_hash="v2",
         tenant_id=tenant_id,
         account_id="acct-1",
         db=db,
+        params=DocumentVersionDiffQuery.model_validate({"from": "v1", "to": "v2"}),
     )
 
     assert result["from_chunk_count"] == 2
@@ -202,9 +200,9 @@ def test_diff_document_versions_falls_back_to_legacy_rows_and_chunk_ids(monkeypa
     assert result["removed_hashes"] == [f"id:{removed_from_chunk_id}"]
 
 
-def test_delete_document_version_falls_back_to_metadata_scan_and_restores_current_hash(monkeypatch) -> None:
-    from app.api.v1 import document_versions
-    from app.rag import retriever as retriever_module
+def test_delete_document_version_scans_sqlite_metadata_and_restores_current_hash(monkeypatch) -> None:
+    from app.api.v1.documents import versions as document_versions
+    from app.rag.retrieval.recall import retriever as retriever_module
 
     tenant_id = uuid.uuid4()
     document_id = uuid.uuid4()
@@ -218,7 +216,6 @@ def test_delete_document_version_falls_back_to_metadata_scan_and_restores_curren
     db = _QueuedDB(
         [
             _Query(first_result=document),
-            _Query(all_exc=RuntimeError("json path unavailable")),
             _Query(
                 all_result=[
                     (chunk_ids[0], {"doc_pipeline_key": f"{document_id}:v1"}),
@@ -242,7 +239,7 @@ def test_delete_document_version_falls_back_to_metadata_scan_and_restores_curren
         def delete_event_indexes_for_chunks(self, **kwargs) -> None:
             helper_calls.append({"op": "delete_events", **kwargs})
 
-    monkeypatch.setattr(document_versions.DatasetService, "ensure_member", lambda *_a, **_k: None, raising=True)
+    monkeypatch.setattr(document_versions.dataset_service, "ensure_member", lambda *_a, **_k: None, raising=True)
     monkeypatch.setattr(
         document_versions,
         "assert_document_writable_for_lifecycle",
@@ -285,7 +282,7 @@ def test_delete_document_version_falls_back_to_metadata_scan_and_restores_curren
 
 
 def test_lifecycle_patch_noop_returns_current_metadata_without_writes(monkeypatch) -> None:
-    from app.api.v1 import document_lifecycle
+    from app.services.documents import lifecycle as document_lifecycle_service
 
     document_id = uuid.uuid4()
     tenant_id = uuid.uuid4()
@@ -301,22 +298,26 @@ def test_lifecycle_patch_noop_returns_current_metadata_without_writes(monkeypatc
     db = _QueuedDB([])
     audit_calls: list[dict[str, object]] = []
 
-    monkeypatch.setattr(document_lifecycle.DatasetService, "ensure_member", lambda *_a, **_k: None, raising=True)
-    monkeypatch.setattr(document_lifecycle, "get_document_for_lifecycle", lambda *_a, **_k: document, raising=True)
     monkeypatch.setattr(
-        document_lifecycle,
+        document_lifecycle_service.dataset_service, "ensure_member", lambda *_a, **_k: None, raising=True
+    )
+    monkeypatch.setattr(
+        document_lifecycle_service, "get_document_for_lifecycle", lambda *_a, **_k: document, raising=True
+    )
+    monkeypatch.setattr(
+        document_lifecycle_service,
         "assert_document_writable_for_lifecycle",
         lambda *_a, **_k: None,
         raising=True,
     )
     monkeypatch.setattr(
-        document_lifecycle,
+        document_lifecycle_service,
         "audit_log_event",
         lambda *_a, **kwargs: audit_calls.append(kwargs),
         raising=True,
     )
 
-    result = document_lifecycle.patch_document_lifecycle_metadata(
+    result = document_lifecycle_service.patch_document_lifecycle_metadata(
         document_id=document_id,
         payload=DocumentLifecycleMetadataUpdateRequest(),
         tenant_id=tenant_id,

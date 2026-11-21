@@ -1,58 +1,66 @@
-import type { Message } from '@/types'
-
-type GetMessagesResult = {
-  conversation_id: string
-  messages: Message[]
-  returned?: number
-  has_more?: boolean
-}
+import type { Message } from '@/types/chat'
+import type { chatApi } from '@/lib/api/chat'
+import { matchesResourceId } from '@/lib/resource-id'
 
 type RecoverStreamedAssistantMessageOptions = Readonly<{
-  conversationId: string
-  requestId: string
-  getMessages: (conversationId: string, params?: { limit?: number }) => Promise<GetMessagesResult>
+  conversationId?: string
+  requestId?: string
+  getMessages: typeof chatApi.getMessages
+  signal?: AbortSignal
   attempts?: number
   delayMs?: number
   limit?: number
-  wait?: (delayMs: number) => Promise<void>
+  wait?: (delayMs: number, signal?: AbortSignal) => Promise<void>
 }>
 
-function sleep(delayMs: number) {
+function sleep(delayMs: number, signal?: AbortSignal): Promise<void> {
   return new Promise<void>((resolve) => {
-    globalThis.setTimeout(resolve, delayMs)
+    const finish = () => {
+      globalThis.clearTimeout(timer)
+      signal?.removeEventListener('abort', finish)
+      resolve()
+    }
+    const timer = globalThis.setTimeout(finish, delayMs)
+    if (signal?.aborted) finish()
+    else signal?.addEventListener('abort', finish, { once: true })
   })
-}
-
-function getMessageRequestId(message: Message): string {
-  const value = message.message_metadata?.request_id
-  return typeof value === 'string' ? value.trim() : ''
 }
 
 export async function recoverStreamedAssistantMessage({
   conversationId,
   requestId,
   getMessages,
+  signal,
   attempts = 4,
   delayMs = 500,
   limit = 40,
   wait = sleep,
 }: RecoverStreamedAssistantMessageOptions): Promise<Message | null> {
-  const trimmedConversationId = String(conversationId || '').trim()
-  const trimmedRequestId = String(requestId || '').trim()
+  if (conversationId === undefined || requestId === undefined) return null
+  const trimmedConversationId = conversationId.trim()
+  const trimmedRequestId = requestId.trim()
 
-  if (!trimmedConversationId || !trimmedRequestId) return null
+  if (trimmedConversationId.length === 0 || trimmedRequestId.length === 0) return null
 
-  for (let attempt = 0; attempt < attempts; attempt += 1) {
-    const response = await getMessages(trimmedConversationId, { limit })
-    const recovered = (response.messages || []).find((message) => {
-      return message.role === 'assistant' && getMessageRequestId(message) === trimmedRequestId
-    })
+  try {
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
+      if (signal?.aborted) return null
+      const response = await getMessages(trimmedConversationId, { limit }, { signal })
+      if (signal?.aborted) return null
+      if (!matchesResourceId(response.conversation_id, trimmedConversationId)) {
+        throw new Error('Chat recovery history belongs to another conversation')
+      }
 
-    if (recovered) return recovered
+      const recovered = response.messages.find(
+        (message) => message.role === 'assistant' && message.message_metadata?.request_id?.trim() === trimmedRequestId,
+      )
+      if (recovered !== undefined) return recovered
 
-    if (attempt < attempts - 1) {
-      await wait(delayMs)
+      if (attempt < attempts - 1) await wait(delayMs, signal)
     }
+  } catch (error) {
+    if (signal?.aborted) return null
+    throw error
   }
 
   return null

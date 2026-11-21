@@ -4,9 +4,8 @@ import uuid
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from app.api.dependencies.auth import get_current_account_id
-from app.api.dependencies.tenant import get_tenant_id
-from app.core.database import get_db
+from app.api.dependencies import get_current_account_id, get_tenant_id
+from app.infrastructure.database.connection import get_db
 
 
 class _DummyDB:
@@ -30,13 +29,13 @@ def _override_get_current_account_id() -> str:
 
 
 def test_dataset_ingestion_policy_put_get_and_import_export(monkeypatch):  # noqa: ANN001
-    from app.api.v1.datasets import (
+    from app.api.v1.datasets.routes import (
         export_dataset_ingestion_policy,
         get_dataset_ingestion_policy,
         import_dataset_ingestion_policy,
         put_dataset_ingestion_policy,
     )
-    from app.services.dataset_service import DatasetService
+    from app.services.datasets import management as dataset_service
 
     # Keep a single in-memory dataset object to observe metadata mutations.
     dataset_id = uuid.uuid4()
@@ -50,12 +49,12 @@ def test_dataset_ingestion_policy_put_get_and_import_export(monkeypatch):  # noq
 
     ds = _Dataset()
 
-    monkeypatch.setattr(DatasetService, "get_dataset", lambda _db, _tenant_id, _did: ds, raising=True)
+    monkeypatch.setattr(dataset_service, "get_dataset", lambda _db, _tenant_id, _did: ds, raising=True)
     monkeypatch.setattr(
-        DatasetService, "assert_dataset_readable", lambda _db, _dataset, _account_id: None, raising=True
+        dataset_service, "assert_dataset_readable", lambda _db, _dataset, _account_id: None, raising=True
     )
     monkeypatch.setattr(
-        DatasetService, "assert_dataset_writable", lambda _db, _dataset, _account_id: None, raising=True
+        dataset_service, "assert_dataset_writable", lambda _db, _dataset, _account_id: None, raising=True
     )
 
     app = FastAPI()
@@ -119,8 +118,8 @@ def test_dataset_ingestion_policy_put_get_and_import_export(monkeypatch):  # noq
 
 
 def test_dataset_ingestion_policy_import_replace_false_conflict(monkeypatch):  # noqa: ANN001
-    from app.api.v1.datasets import import_dataset_ingestion_policy
-    from app.services.dataset_service import DatasetService
+    from app.api.v1.datasets.routes import import_dataset_ingestion_policy
+    from app.services.datasets import management as dataset_service
 
     dataset_id = uuid.uuid4()
 
@@ -133,9 +132,9 @@ def test_dataset_ingestion_policy_import_replace_false_conflict(monkeypatch):  #
 
     ds = _Dataset()
 
-    monkeypatch.setattr(DatasetService, "get_dataset", lambda _db, _tenant_id, _did: ds, raising=True)
+    monkeypatch.setattr(dataset_service, "get_dataset", lambda _db, _tenant_id, _did: ds, raising=True)
     monkeypatch.setattr(
-        DatasetService, "assert_dataset_writable", lambda _db, _dataset, _account_id: None, raising=True
+        dataset_service, "assert_dataset_writable", lambda _db, _dataset, _account_id: None, raising=True
     )
 
     app = FastAPI()
@@ -154,8 +153,8 @@ def test_dataset_ingestion_policy_import_replace_false_conflict(monkeypatch):  #
 
 
 def test_dataset_ingestion_policy_get_exposes_table_routing_policy_audit(monkeypatch):  # noqa: ANN001
-    from app.api.v1.datasets import get_dataset_ingestion_policy
-    from app.services.dataset_service import DatasetService
+    from app.api.v1.datasets.routes import get_dataset_ingestion_policy
+    from app.services.datasets import management as dataset_service
 
     dataset_id = uuid.uuid4()
 
@@ -191,9 +190,9 @@ def test_dataset_ingestion_policy_get_exposes_table_routing_policy_audit(monkeyp
 
     ds = _Dataset()
 
-    monkeypatch.setattr(DatasetService, "get_dataset", lambda _db, _tenant_id, _did: ds, raising=True)
+    monkeypatch.setattr(dataset_service, "get_dataset", lambda _db, _tenant_id, _did: ds, raising=True)
     monkeypatch.setattr(
-        DatasetService, "assert_dataset_readable", lambda _db, _dataset, _account_id: None, raising=True
+        dataset_service, "assert_dataset_readable", lambda _db, _dataset, _account_id: None, raising=True
     )
 
     app = FastAPI()

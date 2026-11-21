@@ -1,4 +1,3 @@
-
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
@@ -8,19 +7,19 @@ import pytest
 
 
 def test_resolve_document_access_from_source_acl_sorts_and_caps_group_matches() -> None:
-    from app.api.schemas.connector_acl import (
+    from app.api.schemas.sources.acl import (
         ConnectorSourceAclConfig,
         SourceAcl,
         SourceAclGroupMappingRule,
         SourcePrincipal,
     )
-    from app.services.connector_source_acl_mapping import resolve_document_access_from_source_acl
+    from app.services.connectors.source_acl_mapping import resolve_document_access_from_source_acl
 
     group_a = uuid.UUID("00000000-0000-0000-0000-00000000000a")
     group_b = uuid.UUID("00000000-0000-0000-0000-00000000000b")
     group_c = uuid.UUID("00000000-0000-0000-0000-00000000000c")
-    principal_a = SourcePrincipal(system="github", kind="team", id="platform")
-    principal_b = SourcePrincipal(system="github", kind="group", id="eng")
+    principal_a = SourcePrincipal(system="confluence", kind="group", id="platform")
+    principal_b = SourcePrincipal(system="confluence", kind="group", id="eng")
     config = ConnectorSourceAclConfig(
         mode="inherit",
         group_mappings=[
@@ -43,11 +42,11 @@ def test_resolve_document_access_from_source_acl_sorts_and_caps_group_matches() 
 
 
 def test_resolve_document_access_from_source_acl_uses_fallback_when_unmapped() -> None:
-    from app.api.schemas.connector_acl import ConnectorSourceAclConfig, SourceAcl, SourcePrincipal
-    from app.services.connector_source_acl_mapping import resolve_document_access_from_source_acl
+    from app.api.schemas.sources.acl import ConnectorSourceAclConfig, SourceAcl, SourcePrincipal
+    from app.services.connectors.source_acl_mapping import resolve_document_access_from_source_acl
 
     result = resolve_document_access_from_source_acl(
-        source_acl=SourceAcl(principals=[SourcePrincipal(system="github", kind="team", id="platform")]),
+        source_acl=SourceAcl(principals=[SourcePrincipal(system="confluence", kind="group", id="platform")]),
         config=ConnectorSourceAclConfig(mode="inherit", fallback_mode="only_me"),
     )
 
@@ -57,7 +56,7 @@ def test_resolve_document_access_from_source_acl_uses_fallback_when_unmapped() -
 
 
 def test_build_persisted_state_normalizes_stats_and_emits_state_sync(monkeypatch: pytest.MonkeyPatch) -> None:
-    from app.services import connector_sync_state as connector_sync
+    from app.services.connectors import sync_state as connector_sync
 
     policy = connector_sync.ConnectorSyncPolicy(
         connector_id="demo",
@@ -101,7 +100,7 @@ def test_build_persisted_state_normalizes_stats_and_emits_state_sync(monkeypatch
 def test_compute_suite_coverage_counts_unique_items_references_and_heatmap(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from app.services import evidence_dashboard
+    from app.services.evidence import dashboard as evidence_dashboard
 
     doc_id = uuid.uuid4()
     monkeypatch.setattr(
@@ -153,14 +152,12 @@ def test_compute_suite_coverage_counts_unique_items_references_and_heatmap(
         {"key": "unknown", "items": 2, "references": 2},
         {"key": "vector", "items": 1, "references": 1},
     ]
-    assert result["heatmaps"] == {
-        "language_x_file_type": {"x": ["pdf"], "y": ["en"], "z": [[2]], "metric": "items"}
-    }
+    assert result["heatmaps"] == {"language_x_file_type": {"x": ["pdf"], "y": ["en"], "z": [[2]], "metric": "items"}}
 
 
 def test_resolve_profile_inheritance_merges_parent_chain_and_caps_processing_scripts() -> None:
-    from app.api.schemas.governance_profile import GovernanceProfileOut, RegexRuleModel
-    from app.services.governance_profiles_resolver import resolve_profile_inheritance
+    from app.api.schemas.pipelines.governance import GovernanceProfileOut, RegexRuleModel
+    from app.services.pipelines.profile_resolution import resolve_profile_inheritance
 
     def _script(index: int) -> dict[str, object]:
         return {
@@ -202,8 +199,8 @@ def test_resolve_profile_inheritance_merges_parent_chain_and_caps_processing_scr
 
 
 def test_resolve_profile_inheritance_rejects_cycles() -> None:
-    from app.api.schemas.governance_profile import GovernanceProfileOut
-    from app.services.governance_profiles_resolver import resolve_profile_inheritance
+    from app.api.schemas.pipelines.governance import GovernanceProfileOut
+    from app.services.pipelines.profile_resolution import resolve_profile_inheritance
 
     root = GovernanceProfileOut(key="root", name="Root", payload={"extends": "child"})
     child = GovernanceProfileOut(key="child", name="Child", payload={"extends": "root"})
@@ -213,7 +210,7 @@ def test_resolve_profile_inheritance_rejects_cycles() -> None:
 
 
 def test_run_daily_index_audit_report_summarizes_dataset_issues_and_errors(monkeypatch: pytest.MonkeyPatch) -> None:
-    from app.services import periodic_audit_jobs
+    from app.services.observability import periodic_audits as periodic_audit_jobs
 
     tenant_id = uuid.uuid4()
     dataset_ok = uuid.uuid4()
@@ -281,7 +278,7 @@ def test_run_daily_index_audit_report_summarizes_dataset_issues_and_errors(monke
 
 
 def test_run_daily_index_audit_report_skips_duplicate_daily_write(monkeypatch: pytest.MonkeyPatch) -> None:
-    from app.services import periodic_audit_jobs
+    from app.services.observability import periodic_audits as periodic_audit_jobs
 
     monkeypatch.setattr(periodic_audit_jobs, "_audit_already_written", lambda *_args, **_kwargs: True, raising=True)
 
@@ -299,7 +296,7 @@ def test_run_daily_index_audit_report_skips_duplicate_daily_write(monkeypatch: p
 
 
 def test_validate_and_normalize_queryset_health_policy_resolves_partial_overrides() -> None:
-    from app.services import queryset_health_service
+    from app.services.evaluation import queryset_health as queryset_health_service
 
     result = queryset_health_service.validate_and_normalize_queryset_health_policy(
         {
@@ -317,7 +314,7 @@ def test_validate_and_normalize_queryset_health_policy_resolves_partial_override
 
 
 def test_expand_ablation_grid_preserves_cartesian_order_and_limits_variants() -> None:
-    from app.services.regression_run_ablation_batch import expand_ablation_grid
+    from app.services.evaluation.ablation import expand_ablation_grid
 
     result = expand_ablation_grid(
         {"mode": ["fast", "safe"], "top_k": [5, 10]},
@@ -341,7 +338,7 @@ def test_expand_ablation_grid_preserves_cartesian_order_and_limits_variants() ->
 
 
 def test_decide_table_route_uses_csv_row_threshold(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    from app.services import table_routing
+    from app.services.tables import routing as table_routing
 
     file_path = tmp_path / "sample.csv"
     file_path.write_text("tiny\n", encoding="utf-8")
@@ -367,7 +364,7 @@ def test_decide_table_route_returns_shape_unknown_for_degraded_xlsx(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from app.services import table_routing
+    from app.services.tables import routing as table_routing
 
     file_path = tmp_path / "sample.xlsx"
     file_path.write_bytes(b"x")
@@ -395,7 +392,7 @@ def test_decide_table_route_returns_shape_unknown_for_degraded_xlsx(
 
 @pytest.mark.asyncio
 async def test_refresh_from_redis_reads_depth_workers_and_recent_jobs(monkeypatch: pytest.MonkeyPatch) -> None:
-    from app.services import task_queue_observability_service as observability
+    from app.services.observability import task_queue as observability
 
     class _Redis:
         def __init__(self) -> None:

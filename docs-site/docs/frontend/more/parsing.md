@@ -19,21 +19,21 @@ sidebar_position: 2
 
 ```mermaid
 graph TD
-  A[ParsingPage] --> B[ParsingLeftPanel 文档列表]
-  A --> C[ParsingMainPanel 主编辑区]
-  A --> D[ParsingRightPanel 预览/对比]
-  B --> E[ParsingLibraryBrowser 文档浏览器]
-  B --> F[ParsingSidebarPane 队列面板]
-  C --> G[PDF Viewer]
-  C --> H[Markdown 编辑器]
-  D --> I[ParseCompareDialog 解析对比]
+  A[ParsingPage] --> B[ParsingWorkbenchShell]
+  B --> F[DocumentFolderTree 文档目录]
+  B --> C[ParsingActiveFilePane 原文与解析结果]
+  B --> D[ParsingLibraryPreviewPane 文档库预览]
+  C --> G[PdfViewer]
+  C --> H[Markdown 预览与编辑]
+  C --> I[ParseCompareDialog 解析对比]
 ```
 
 ## 核心 Hooks
 
 | Hook | 文件 | 职责 |
 |------|------|------|
-| `useParsingPageState` | `use-parsing-page-state.ts` | 页面全局状态 |
+| `useParsingPageState` | `use-parsing-page-state.ts` | 页面本地交互状态与解析任务引用 |
+| `useParsingLibraryActions` | `use-parsing-library-actions.ts` | 上传、原文件关联与恢复 |
 | `useParsingViewState` | `use-parsing-view-state.ts` | 视图状态（选中文档等） |
 | `useParsingEditorActions` | `use-parsing-editor-actions.ts` | 编辑操作 |
 | `useParsingRunActions` | `use-parsing-run-actions.ts` | 运行解析操作 |

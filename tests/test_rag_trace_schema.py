@@ -12,8 +12,8 @@ def test_list_rag_traces_filters_and_normalizes(monkeypatch, tmp_path):  # noqa:
     We read from the metrics JSONL log (bounded tail), filter by tenant+conversation,
     and return a normalized structure with steps/timings and safe citations.
     """
-    from app.core.config import settings
-    from app.services.rag_trace_service import list_rag_traces
+    from app.infrastructure.config import settings
+    from app.services.observability.rag_traces import list_rag_traces
 
     tenant_id = uuid.uuid4()
     other_tenant = uuid.uuid4()
@@ -50,7 +50,13 @@ def test_list_rag_traces_filters_and_normalizes(monkeypatch, tmp_path):  # noqa:
                             "search_k": 10,
                             "overfetch_enabled": True,
                             "channels": {
-                                "timing": {"vector_ms": 12.3, "colbert_ms": 8.7, "bm25_ms": 4.5, "fusion_ms": 1.2},
+                                "timing": {
+                                    "vector_ms": 12.3,
+                                    "colbert_ms": 8.7,
+                                    "sparse_ms": 2.1,
+                                    "bm25_ms": 4.5,
+                                    "fusion_ms": 1.2,
+                                },
                                 "counts": {
                                     "vector_candidates": 10,
                                     "colbert_candidates": 4,
@@ -60,7 +66,13 @@ def test_list_rag_traces_filters_and_normalizes(monkeypatch, tmp_path):  # noqa:
                                 "retrieval_mode": "hybrid",
                                 "fusion_strategy": "rrf",
                                 "rrf_k": 60,
-                                "fusion_weights": {"vector": 0.6, "keyword": 0.4},
+                                "fusion_weights": {
+                                    "vector": 0.6,
+                                    "keyword": 0.4,
+                                    "sparse": 0.2,
+                                    "colbert": 0.1,
+                                    "colbert_ann": 0.1,
+                                },
                                 "vector_backend": "milvus",
                                 "vector": {"enabled": True, "candidates": 10, "filter_applied": False},
                                 "colbert_ann": {
@@ -102,7 +114,14 @@ def test_list_rag_traces_filters_and_normalizes(monkeypatch, tmp_path):  # noqa:
                                     "error": None,
                                     "skip_reason": "provider_disabled",
                                 },
-                                "attribution": {"vector": 3, "bm25": 2, "lexical_db": 1, "multi": 2},
+                                "attribution": {
+                                    "vector": 3,
+                                    "bm25": 2,
+                                    "lexical_db": 1,
+                                    "multi": 2,
+                                    "sparse": 1,
+                                    "colbert_ann": 1,
+                                },
                                 "diversity": {"before": 18, "after": 5, "dropped": 13},
                                 "dedup": {
                                     "near_dedup_enabled": True,
@@ -136,6 +155,7 @@ def test_list_rag_traces_filters_and_normalizes(monkeypatch, tmp_path):  # noqa:
                     "lexical_score": 0.789,
                     "sparse_score": 0.314,
                     "colbert_score": 0.271,
+                    "hit_type": "colbert_ann",
                     "retrieval_elapsed_sec": 0.12,
                     "rerank_elapsed_sec": 0.45,
                     "retrieval_role": "main",
@@ -213,13 +233,15 @@ def test_list_rag_traces_filters_and_normalizes(monkeypatch, tmp_path):  # noqa:
     channels = item.retrieval.per_query[0].retriever_debug.get("channels")
     assert isinstance(channels, dict)
     assert (channels.get("timing") or {}).get("vector_ms") == pytest.approx(12.3)
-    assert (channels.get("timing") or {}).get("colbert_ms") == pytest.approx(8.7)
-    assert (channels.get("counts") or {}).get("colbert_candidates") == 4
+    assert "colbert_ms" not in channels["timing"]
+    assert "sparse_ms" not in channels["timing"]
+    assert "colbert_candidates" not in channels["counts"]
+    assert "sparse_candidates" not in channels["counts"]
     assert (channels.get("counts") or {}).get("bm25_candidates") == 8
-    colbert = channels.get("colbert_ann") or {}
-    assert colbert.get("provider") == "deterministic"
-    assert colbert.get("skipped_reason") == "too_many_docs"
-    assert colbert.get("max_docs") == 1000
+    assert "colbert_ann" not in channels
+    assert "sparse" not in channels
+    assert channels["fusion_weights"] == {"vector": 0.6, "keyword": 0.4}
+    assert channels["attribution"] == {"vector": 3, "bm25": 2, "lexical_db": 1, "multi": 2}
     assert (channels.get("rerank") or {}).get("skip_reason") == "provider_disabled"
     scope = item.retrieval.per_query[0].retriever_debug.get("scope") or {}
     assert scope.get("account_id_present") is True
@@ -232,8 +254,9 @@ def test_list_rag_traces_filters_and_normalizes(monkeypatch, tmp_path):  # noqa:
     assert item.citations and item.citations[0].vector_score == pytest.approx(0.123)
     assert item.citations and item.citations[0].bm25_score == pytest.approx(0.456)
     assert item.citations and item.citations[0].lexical_score == pytest.approx(0.789)
-    assert item.citations and item.citations[0].sparse_score == pytest.approx(0.314)
-    assert item.citations and item.citations[0].colbert_score == pytest.approx(0.271)
+    assert "sparse_score" not in item.citations[0].model_dump()
+    assert "colbert_score" not in item.citations[0].model_dump()
+    assert item.citations[0].hit_type is None
     prov = (item.citations[0] or {}).kg_path_provenance
     assert isinstance(prov, dict)
     assert prov.get("schema") == "mimirq.kg_path_provenance.v1"
@@ -252,11 +275,13 @@ def test_list_rag_traces_filters_and_normalizes(monkeypatch, tmp_path):  # noqa:
     dumped = json.dumps(item.model_dump(mode="json"), ensure_ascii=False)
     assert "should-not-leak" not in dumped
     assert "chunk_content" not in dumped
+    assert "sparse" not in dumped
+    assert "colbert" not in dumped
 
 
 def test_list_rag_traces_disabled_returns_empty(monkeypatch):  # noqa: ANN001
-    from app.core.config import settings
-    from app.services.rag_trace_service import list_rag_traces
+    from app.infrastructure.config import settings
+    from app.services.observability.rag_traces import list_rag_traces
 
     monkeypatch.setattr(settings, "ENABLE_METRICS_LOG", False, raising=False)
 

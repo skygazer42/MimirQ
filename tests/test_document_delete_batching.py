@@ -8,14 +8,14 @@ from sqlalchemy import create_engine, event
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
-from app.core.database import Base
-from app.rag.kg.models import KgEntity, KgEventEntity, KgRelation, KgSourceEvent
+from app.infrastructure.database.connection import Base
+from app.models.knowledge_graph.entities import KgEntity, KgEventEntity, KgRelation, KgSourceEvent
 
 
 def test_delete_document_minio_images_streams_chunk_img_ids_and_batches_cleanup(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from app.services import document_lifecycle_service as dls
+    from app.services.documents import lifecycle as dls
 
     tenant_id = uuid4()
     document_id = uuid4()
@@ -143,8 +143,8 @@ def test_minio_delete_images_uses_batch_remove_objects_and_surfaces_aggregated_f
 def test_dataset_scoped_vector_collections_stream_chunk_metadata_fields(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from app.services import indexer
-    from app.services.dataset_embedding_config import DatasetEmbeddingRuntimeConfig
+    from app.rag.ingestion.indexing import indexer
+    from app.services.datasets.embedding_config import DatasetEmbeddingRuntimeConfig
 
     tenant_id = uuid4()
     document_id = uuid4()
@@ -215,7 +215,7 @@ def test_dataset_scoped_vector_collections_stream_chunk_metadata_fields(
 
 
 def test_run_bounded_cleanup_batch_aggregates_parallel_failures_without_leaking_values() -> None:
-    from app.services import document_lifecycle_service as dls
+    from app.services.documents import lifecycle as dls
 
     values = ["/sensitive/a.pdf", "/sensitive/b.pdf", "/sensitive/c.pdf"]
     seen: list[str] = []
@@ -312,7 +312,7 @@ def test_delete_event_indexes_batches_without_committing_caller_transaction(
     kg_db: Session,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from app.services import indexer as indexer_module
+    from app.rag.ingestion.indexing import indexer as indexer_module
 
     tenant_id = _kg_uuid(1000)
     document_id = _kg_uuid(2000)
@@ -361,7 +361,7 @@ def test_delete_event_indexes_strict_entity_vector_failure_rolls_back_current_ba
     kg_db: Session,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from app.services import indexer as indexer_module
+    from app.rag.ingestion.indexing import indexer as indexer_module
 
     tenant_id = _kg_uuid(3000)
     document_id = _kg_uuid(4000)
@@ -402,7 +402,7 @@ def test_delete_event_indexes_non_strict_vector_failures_still_commit_all_batche
     kg_db: Session,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from app.services import indexer as indexer_module
+    from app.rag.ingestion.indexing import indexer as indexer_module
 
     tenant_id = _kg_uuid(4100)
     document_id = _kg_uuid(4200)
@@ -449,7 +449,7 @@ def test_delete_event_indexes_strict_later_batch_failure_preserves_resumable_pro
     kg_db: Session,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from app.services import indexer as indexer_module
+    from app.rag.ingestion.indexing import indexer as indexer_module
 
     tenant_id = _kg_uuid(4300)
     document_id = _kg_uuid(4400)
@@ -506,7 +506,7 @@ def test_delete_event_indexes_batches_respect_excluded_event_ids(
     kg_db: Session,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from app.services import indexer as indexer_module
+    from app.rag.ingestion.indexing import indexer as indexer_module
 
     tenant_id = _kg_uuid(4500)
     document_id = _kg_uuid(4600)
@@ -536,7 +536,7 @@ def test_prune_orphan_entities_batches_candidates_and_keeps_referenced_rows(
     kg_db: Session,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from app.services import indexer as indexer_module
+    from app.rag.ingestion.indexing import indexer as indexer_module
 
     tenant_id = _kg_uuid(5000)
     referenced_entity_id = _kg_uuid(6000)

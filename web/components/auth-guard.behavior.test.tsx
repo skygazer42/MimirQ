@@ -26,9 +26,7 @@ vi.mock('@/lib/auth-storage', () => ({
 vi.mock('@/hooks/use-backend-meta', () => ({
   useBackendMeta: () => ({
     data:
-      typeof backendMetaMock.authMode === 'string'
-        ? { features: { auth_mode: backendMetaMock.authMode } }
-        : undefined,
+      typeof backendMetaMock.authMode === 'string' ? { features: { auth_mode: backendMetaMock.authMode } } : undefined,
     isPending: backendMetaMock.isPending,
     isError: backendMetaMock.isError,
   }),
@@ -55,6 +53,38 @@ afterEach(() => {
 })
 
 describe('AuthGuard session changes', () => {
+  it('preserves the in-flight login form when the authenticated session changes', () => {
+    navigationMock.pathname = '/auth'
+    authMock.token = null
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    const root = createRoot(container)
+
+    function LoginForm() {
+      const [submitting, setSubmitting] = React.useState(false)
+      return <button onClick={() => setSubmitting(true)}>{submitting ? '正在登录' : '登录'}</button>
+    }
+
+    act(() => {
+      root.render(
+        <AuthGuard>
+          <LoginForm />
+        </AuthGuard>,
+      )
+    })
+    act(() => container.querySelector('button')?.click())
+    expect(container.textContent).toBe('正在登录')
+
+    authMock.token = 'signed-in-token'
+    act(() => {
+      window.dispatchEvent(new Event('mimirq:auth-scope-changed'))
+    })
+
+    expect(container.textContent).toBe('正在登录')
+    expect(routerMock.replace).not.toHaveBeenCalled()
+    act(() => root.unmount())
+  })
+
   it('redirects when the active session is cleared asynchronously', () => {
     const container = document.createElement('div')
     document.body.appendChild(container)
@@ -64,7 +94,7 @@ describe('AuthGuard session changes', () => {
       root.render(
         <AuthGuard>
           <div>private</div>
-        </AuthGuard>
+        </AuthGuard>,
       )
     })
     expect(routerMock.replace).not.toHaveBeenCalled()
@@ -93,7 +123,7 @@ describe('AuthGuard session changes', () => {
       root.render(
         <AuthGuard>
           <PrivateState />
-        </AuthGuard>
+        </AuthGuard>,
       )
     })
     act(() => container.querySelector('button')?.click())
@@ -118,7 +148,7 @@ describe('AuthGuard session changes', () => {
       root.render(
         <AuthGuard>
           <div>private</div>
-        </AuthGuard>
+        </AuthGuard>,
       )
     })
 
@@ -139,7 +169,7 @@ describe('AuthGuard session changes', () => {
       root.render(
         <AuthGuard>
           <div>sign-in</div>
-        </AuthGuard>
+        </AuthGuard>,
       )
     })
 
@@ -160,7 +190,7 @@ describe('AuthGuard session changes', () => {
       root.render(
         <AuthGuard>
           <div>private</div>
-        </AuthGuard>
+        </AuthGuard>,
       )
     })
 

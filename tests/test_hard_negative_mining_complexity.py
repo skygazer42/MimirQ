@@ -1,6 +1,6 @@
 import json
 
-from app.rag.evaluation.hard_negative_mining import (
+from app.rag.evaluation.generation.hard_negative_mining import (
     HARD_NEGATIVES_SCHEMA_V1,
     load_hard_negatives_jsonl,
     merge_hard_negative_records,

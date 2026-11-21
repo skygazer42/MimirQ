@@ -3,9 +3,8 @@ import uuid
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from app.api.dependencies.auth import get_current_account_id
-from app.api.dependencies.tenant import get_tenant_id
-from app.core.database import get_db
+from app.api.dependencies import get_current_account_id, get_tenant_id
+from app.infrastructure.database.connection import get_db
 from tests.helpers.async_utils import yield_control
 
 
@@ -47,6 +46,9 @@ class _DummyDB:
     def refresh(self, _obj) -> None:  # noqa: ANN001
         return None
 
+    def close(self) -> None:
+        return None
+
 
 async def _fake_run_subprocess_worker(*, tenant_id, payload, disconnect_check, timeout_sec):  # noqa: ANN001, ANN202, ARG001
     await yield_control()
@@ -83,8 +85,11 @@ def _override_get_db():  # noqa: ANN202
 
 
 def test_parsing_workspace_returns_quality_gate_and_fallback(monkeypatch, tmp_path):  # noqa: ANN001
-    import app.api.v1.parsing as parsing_module
-    from app.services.dataset_service import DatasetService
+    import app.api.v1.pipelines.parsing as parsing_module
+    from app.services.datasets import management as dataset_service
+    from app.services.runtime import retrieval_limiter as rag_runtime_limiter
+
+    monkeypatch.setattr(rag_runtime_limiter, "SessionLocal", _DummyDB)
 
     tenant_id = uuid.uuid4()
     doc_id = uuid.uuid4()
@@ -94,8 +99,8 @@ def test_parsing_workspace_returns_quality_gate_and_fallback(monkeypatch, tmp_pa
     dummy_doc = _DummyDoc(doc_id=doc_id, tenant_id=tenant_id, pdf_path=pdf_path)
 
     monkeypatch.setattr(parsing_module, "_get_workspace_document", lambda *_a, **_k: dummy_doc, raising=True)
-    monkeypatch.setattr(DatasetService, "get_dataset", lambda *_a, **_k: object(), raising=True)
-    monkeypatch.setattr(DatasetService, "assert_dataset_writable", lambda *_a, **_k: None, raising=True)
+    monkeypatch.setattr(dataset_service, "get_dataset", lambda *_a, **_k: object(), raising=True)
+    monkeypatch.setattr(dataset_service, "assert_dataset_writable", lambda *_a, **_k: None, raising=True)
     monkeypatch.setattr(parsing_module, "_assert_path_under_tenant_root", lambda *_a, **_k: None, raising=True)
     monkeypatch.setattr(parsing_module, "is_object_storage_uri", lambda *_a, **_k: False, raising=True)
 

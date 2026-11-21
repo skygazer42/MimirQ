@@ -180,10 +180,10 @@ def pg_session():
         pytest.skip("Integration tests disabled (set MIMIRQ_INTEGRATION_TESTS=1)")
 
     # Import models lazily so pure unit tests don't pull DB config eagerly.
-    import app.models._all  # noqa: F401
-    from app.core.database import SessionLocal, engine  # noqa: WPS433
+    import app.models.registry  # noqa: F401
+    from app.infrastructure.database.connection import SessionLocal, engine  # noqa: WPS433
 
-    _ = app.models._all.REGISTERED_MODEL_MODULES
+    _ = app.models.registry.REGISTERED_MODEL_MODULES
     db = SessionLocal()
     try:
         yield db

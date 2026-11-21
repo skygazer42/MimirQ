@@ -1,0 +1,144 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=1600,initial-scale=1"><title>B · 章节报告 · Ragvia</title><link rel="stylesheet" href="common.css"><style>
+.b-workspace{display:grid;grid-template-columns:210px minmax(0,1fr);flex:1;min-height:0}
+.b-chapters{display:flex;flex-direction:column;min-height:0;background:var(--fog);border-right:1px solid var(--line);padding:23px 13px 18px}
+.b-chapter-caption{font-size:12px;color:var(--muted);padding:0 14px 14px;letter-spacing:.03em}
+.b-chapter-list{display:grid;gap:4px}
+.b-chapter{display:grid;grid-template-columns:21px 1fr;align-items:center;gap:10px;min-height:46px;padding:0 13px;font-size:14px;color:var(--muted);border-radius:5px}
+.b-chapter>small{font-size:12px;font-variant-numeric:tabular-nums;color:var(--muted)}
+.b-chapter.current{background:var(--selected);color:var(--ink);font-weight:600}
+.b-chapter.current>small{color:var(--ink)}
+.b-chapter-hint{padding:0 13px 0 44px;margin-top:-2px;margin-bottom:9px;font-size:12px;line-height:20px;color:var(--muted)}
+.b-chapter-tail{margin-top:auto;padding:17px 13px 0;border-top:1px solid var(--line)}
+.b-tail-title{font-size:12px;color:var(--muted);line-height:21px;margin-bottom:9px}
+.b-chapter-tail .btn{padding:0;width:100%;justify-content:space-between;height:30px;color:var(--ink)}
+.b-redact{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:15px;font-size:13px}
+.b-tail-note{font-size:12px;color:var(--muted);line-height:21px;margin-top:9px}
+.b-report{min-width:0;padding:23px 34px 17px;overflow:hidden}
+.b-report-heading{display:flex;align-items:flex-start;gap:24px;margin-bottom:16px}
+.b-report-heading h2{font-size:20px;font-weight:650;line-height:29px}
+.b-report-heading p{font-size:13px;color:var(--muted);line-height:22px;margin-top:5px}
+.b-report-heading .r-level{margin-left:auto;margin-top:5px}
+.b-overview{display:grid;grid-template-columns:1.2fr 1fr 1fr 1fr;padding:15px 0 18px;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+.b-overview>div+div{border-left:1px solid var(--line);padding-left:25px}
+.b-overview dt{font-size:13px;color:var(--muted);line-height:23px}
+.b-overview dd{font-size:29px;line-height:38px;font-weight:650;font-variant-numeric:tabular-nums;margin-top:3px}
+.b-overview dd small{font-size:12px;font-weight:450;color:var(--muted);margin-left:9px}
+.b-state-summary{padding-top:17px}
+.b-state-summary .r-status-band{height:7px}
+.b-state-summary .r-status-legend{margin-top:9px;gap:28px}
+.b-section{margin-top:21px}
+.b-section-title{display:flex;align-items:center;gap:10px;min-height:35px;margin-bottom:9px}
+.b-section-title h3{font-size:14px;font-weight:600;line-height:24px}
+.b-section-title>.b-section-number{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums;margin-right:2px}
+.b-section-title>small{font-size:12px;color:var(--muted);font-weight:450}
+.b-section-title>.exception-filter{margin-left:auto}
+.exception-filter{display:inline-flex;align-items:center;gap:7px;font-size:13px;color:var(--muted);white-space:nowrap}
+.b-quality{border-top:1px solid var(--line)}
+.b-quality thead th{height:34px;padding-left:10px;padding-right:10px}
+.b-quality tbody td,.b-quality tbody th{padding:10px 10px;font-size:14px;line-height:24px}
+.b-quality tbody td:nth-child(4){font-size:13px;color:var(--muted)}
+.b-quality tbody td:last-child{padding-right:0;text-align:right}
+.b-quality .btn{color:var(--muted)}
+.b-quality-note{font-size:12px;line-height:21px;color:var(--muted);margin-top:9px}
+.b-audit{margin-top:18px}
+.b-audit .b-section-title{margin-bottom:11px}
+.b-audit .b-section-title .audit-count{margin-left:auto;font-size:12px;color:var(--muted)}
+.b-gate-strip{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));border-top:1px solid var(--line);border-bottom:1px solid var(--line);padding:13px 0}
+.b-gate{padding-right:17px}
+.b-gate+.b-gate{border-left:1px solid var(--line);padding-left:20px}
+.b-gate-head{display:flex;align-items:center;gap:9px;justify-content:space-between;font-size:13px;line-height:22px}
+.b-gate-value{display:flex;align-items:baseline;gap:10px;margin-top:6px;font-size:22px;font-weight:600;font-variant-numeric:tabular-nums;line-height:31px}
+.b-gate-value>small{font-size:12px;font-weight:450;color:var(--muted);white-space:nowrap}
+.b-audit-link{display:flex;align-items:center;margin-top:7px;color:var(--muted);font-size:12px;line-height:21px}
+.b-audit-link .btn{margin-left:auto;height:29px;padding-right:0}
+</style></head><body><div class="app"><aside class="sidebar"><div class="brand"><img src="../../ragvia/logo.svg" alt="Ragvia"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="panel-left-close"><rect x="3" y="4" width="18" height="16" rx="1" /><path d="M9 4v16m8-12-4 4 4 4" /></svg>
+</div><div class="sidebar-new"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="plus"><path d="M12 4v16M4 12h16" /></svg>
+新对话</div><div class="sidebar-search"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="search"><circle cx="10.5" cy="10.5" r="6.5" /><path d="m15.25 15.25 5 5" /></svg>
+搜索与命令<small>⌘K</small></div><nav class="nav-scroll"><div class="nav-group">工作区<svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="chevron-down"><path d="m6 9 6 6 6-6" /></svg>
+</div><div class="nav-item "><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="conversation"><path d="M4 4.5h16v12H9l-5 4Z" /><path d="M8 9h8m-8 3.5h5" /></svg>
+对话</div><div class="nav-item "><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="history"><path d="M3 9h6M3 3v6a9 9 0 1 1 .5 7" /><path d="M12 6v6l4 2" /></svg>
+问答历史</div><div class="nav-group">知识库管理<svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="chevron-down"><path d="m6 9 6 6 6-6" /></svg>
+</div><div class="nav-item "><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="dataset"><rect x="5" y="3.5" width="14" height="5" rx="1" /><path d="M3.5 11v4h17v-4M3.5 18v3h17v-3" /></svg>
+数据集</div><div class="nav-item "><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="knowledge-base"><path d="M12 5.5C9 3.5 6 3.5 3 4v15c3-.5 6-.5 9 1.5 3-2 6-2 9-1.5V4c-3-.5-6-.5-9 1.5Zm0 0v15" /><path d="M6.5 8h2M6.5 11h2m7-3h2m-2 3h2" /></svg>
+知识库</div><div class="nav-item "><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="quarantine"><rect x="3" y="3.5" width="18" height="4" rx="0.5" /><path d="M5 7.5v13h14v-13M12 11v4" /><circle cx="12" cy="18" r="1" fill="currentColor" stroke="none" /></svg>
+隔离队列</div><div class="nav-item "><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="feedback"><path d="M4 4.5h16v12H9l-5 4Z" /><path d="m8 10 2.5 2.5L16 7" /></svg>
+反馈质检</div><div class="nav-group">入库流程<svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="chevron-down"><path d="m6 9 6 6 6-6" /></svg>
+</div><div class="nav-item "><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="ingestion"><path d="M4 14v6h16v-6M8 16h8M12 3v10m-4-4 4 4 4-4" /><path d="M4 5H2.5v6H4m16-6h1.5v6H20" /></svg>
+入库管理</div><div class="nav-item "><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="parsing"><path d="M12.5 3.5H4v17h8.5M8 8h3M8 12h3M8 16h3M15 7h5m-5 5h5m-5 5h5" /><path d="m17 5 3 2-3 2" /></svg>
+文档解析</div><div class="nav-item"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="data-governance"><path d="M12 3 20 6v6c0 4-3.5 7-8 9-4.5-2-8-5-8-9V6Z" /><path d="M8 9h8M8 12h5M8 15h5" /></svg>
+数据治理</div><div class="nav-item"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="rule-set"><path d="M8 3.5H5v7l-2 1.5 2 1.5v7h3m8-17h3v7l2 1.5-2 1.5v7h-3M10 8h4m-4 4h4m-4 4h4" /></svg>
+治理配置</div><div class="nav-item "><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="chunking"><rect x="3.5" y="4" width="17" height="6" rx="1" /><rect x="3.5" y="14" width="17" height="6" rx="1" /><path d="M8 7h8M8 17h8" /><path d="M2 12h20" stroke-dasharray="1 3" data-chunk-boundary="true" /></svg>
+切块预览</div><div class="nav-group">分析工具<svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="chevron-down"><path d="m6 9 6 6 6-6" /></svg>
+</div><div class="nav-item"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="knowledge-graph"><path d="m7.3 6.3 8 4.4m-8 7 8-4.4M5 7.5v9" /><circle cx="5" cy="5" r="2.5" /><circle cx="18" cy="12" r="3" /><circle cx="5" cy="19" r="2.5" /></svg>
+知识图谱</div><div class="nav-item "><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="evaluation"><path d="M4 3.5h10l6 6v11H4Zm10 0v6h6M8 16l2 2 4-5" /><path d="M8 8h2" /></svg>
+RAG 评测</div><div class="nav-item active"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="reports"><path d="M5 3.5h9l5 5v12H5Z M14 3.5v5h5" /><path d="M8 16v-3m4 3V10m4 6v-4M8 7h2" /></svg>
+数据报告</div><div class="nav-item "><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="prompts"><rect x="3.5" y="4" width="17" height="16" rx="1" /><path d="m7 9 3 3-3 3m6 0h4" /></svg>
+提示词</div><div class="nav-group">系统<svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="chevron-down"><path d="m6 9 6 6 6-6" /></svg>
+</div><div class="nav-item "><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="diagnostics"><rect x="3.5" y="4" width="17" height="16" rx="1" /><path d="M3.5 12H8l2-4 4 8 2-4h4.5" /></svg>
+诊断</div><div class="nav-item "><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="usage"><path d="M4 20V4h16v16ZM8 16v-3m4 3V9m4 7V6" /></svg>
+用量 / 配额</div><div class="nav-item "><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="audit-log"><path d="M6 3.5h13v17H6M3 7h5M3 12h5M3 17h5m4-10h3m-3 5h3m-3 5h3" /></svg>
+审计日志</div><div class="nav-item "><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="members"><circle cx="9" cy="7" r="3" /><path d="M3 20v-3c0-5 12-5 12 0v3M17 7l2 2 3-4M18 14v6m-2-3h4" /></svg>
+成员权限</div><div class="nav-item "><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="groups"><circle cx="8" cy="7" r="2.5" /><circle cx="17" cy="9" r="2.5" /><path d="M2.5 20v-2.5c0-5 11-5 11 0V20m3-5c3 0 5 1 5 3.5V20" /></svg>
+组管理</div><div class="nav-item "><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="settings"><path d="m9 3-.5 3-2 1L4 6l-2 4 2.5 2v2L2 16l2 4 2.5-1 2 1 .5 2h6l.5-2 2-1 2.5 1 2-4-2.5-2v-2L22 10l-2-4-2.5 1-2-1L15 3Z" /><circle cx="12" cy="12.5" r="3" /></svg>
+设置</div></nav><div class="sidebar-bottom"><div class="profile"><span class="avatar"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="user"><circle cx="12" cy="7.5" r="3" /><path d="M5 20v-2.5a7 5.5 0 0 1 14 0V20" /></svg>
+</span><div><strong>开发模式</strong><small>本地开发环境</small></div><span class="profile-icons"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="log-out"><path d="M12 3H3v18h9m-2-9h12m-4-4 4 4-4 4" /></svg>
+<svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="sun"><circle cx="12" cy="12" r="4.5" /><path d="M12 1v3m0 16v3M1 12h3m16 0h3M4 4l2 2m12 12 2 2M4 20l2-2M18 6l2-2" /></svg>
+</span></div><div class="appearance"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="palette"><path d="M12 3a9 9 0 0 0 0 18h2c3 0 3-4 0-4h-1c-3 0-3-4 0-4h5c6 0 4-10-6-10Z" /><circle cx="7" cy="9" r="1" fill="currentColor" stroke="none" /><circle cx="12" cy="6" r="1" fill="currentColor" stroke="none" /><circle cx="17" cy="8" r="1" fill="currentColor" stroke="none" /><circle cx="6" cy="14" r="1" fill="currentColor" stroke="none" /></svg>
+界面外观<span>5 种风格</span></div><div class="service"><i></i>服务已就绪</div></div></aside><main class="main"><header class="page-header"><div class="r-page-heading"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="reports"><path d="M5 3.5h9l5 5v12H5Z M14 3.5v5h5" /><path d="M8 16v-3m4 3V10m4 6v-4M8 7h2" /></svg>
+<h1>数据报告</h1></div><div class="header-end"><button type="button" class="btn quiet"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="refresh-cw"><path d="M20 9a8 8 0 0 0-14-3L3 9m0-6v6h6m-5 6a8 8 0 0 0 14 3l3-3m-6 0h6v6" /></svg>
+<span>刷新报告</span></button><button type="button" class="btn solid"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="download"><path d="M4 16v4h16v-4M12 3v13m-5-5 5 5 5-5" /></svg>
+<span>导出报告</span></button></div></header>
+<div class="r-context"><div class="r-select "><span>数据集</span><strong>工程文档库</strong><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="chevron-down"><path d="m6 9 6 6 6-6" /></svg>
+</div><i></i><div class="r-select "><span>处理版本</span><strong>全部处理版本</strong><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="chevron-down"><path d="m6 9 6 6 6-6" /></svg>
+</div><i></i><div class="r-select "><span>附带运行</span><strong>20 条记录</strong><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="chevron-down"><path d="m6 9 6 6 6-6" /></svg>
+</div><span class="spacer"></span><span><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="clock"><circle cx="12" cy="12" r="9" /><path d="M12 6v6l4 3" /></svg>
+生成于 2026-10-25 10:42</span></div>
+<div class="b-workspace">
+  <aside class="b-chapters" aria-label="报告章节">
+    <div class="b-chapter-caption">报告章节</div>
+    <nav class="b-chapter-list"><div class="b-chapter current"><small>01</small><span>报告总览</span></div><div class="b-chapter "><small>02</small><span>数据质量</span></div><div class="b-chapter "><small>03</small><span>召回审计</span></div><div class="b-chapter "><small>04</small><span>结构与覆盖</span></div><div class="b-chapter "><small>05</small><span>敏感与治理</span></div><div class="b-chapter "><small>06</small><span>处理版本</span></div></nav>
+    <div class="b-chapter-tail">
+      <div class="b-tail-title">交付设置</div>
+      <button type="button" class="btn quiet " title="HTML 阅读版、标准 JSON、完整 JSON 快照、RAG 统计数据、RAG 审计 HTML、Bundle ZIP"><span>6 种导出格式</span><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="chevron-right"><path d="m9 6 6 6-6 6" /></svg>
+</button>
+      <div class="b-redact"><span>HTML／ZIP 脱敏</span><i class="r-switch" aria-label="已开启"></i></div>
+      <p class="b-tail-note">报告附带 20 条运行记录。</p>
+    </div>
+  </aside>
+  <article class="b-report" aria-label="报告总览">
+    <div class="b-report-heading"><div><h2>报告总览</h2><p>工程文档库 · 全部处理版本 · 256.4 MB</p></div><span class="r-level warning"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="alert-circle"><circle cx="12" cy="12" r="9" /><path d="M12 7v6" /><circle cx="12" cy="17" r="1" fill="currentColor" stroke="none" /></svg>
+召回审计需复核</span></div>
+    <dl class="b-overview">
+      <div><dt>文档总数</dt><dd>128<small>个文档</small></dd></div>
+      <div><dt>已完成</dt><dd>118<small>92.2%</small></dd></div>
+      <div><dt>处理中</dt><dd>6<small>个文档</small></dd></div>
+      <div><dt>失败 / 隔离</dt><dd>3 / 1<small>个文档</small></dd></div>
+    </dl>
+    <section class="b-state-summary" aria-label="处理状态分布"><div class="r-status-band"><i class="done" style="width:92.1875%"></i><i class="processing" style="width:4.6875%"></i><i class="failed" style="width:2.34375%"></i><i class="held" style="width:0.78125%"></i></div><div class="r-status-legend"><span><i class="done"></i>已完成<b>118</b></span><span><i class="processing"></i>处理中<b>6</b></span><span><i class="failed"></i>失败<b>3</b></span><span><i class="held"></i>隔离<b>1</b></span></div></section>
+    <section class="b-section">
+      <div class="b-section-title"><span class="b-section-number">01</span><h3>数据质量</h3><small>18 次规则命中</small><span class="exception-filter"><i class="check-box"></i>仅异常</span></div>
+      <table class="r-table b-quality"><colgroup><col style="width:80px"><col style="width:150px"><col style="width:65px"><col><col style="width:62px"></colgroup><thead><tr><th>级别</th><th>规则</th><th>命中</th><th>核对说明</th><th></th></tr></thead><tbody><tr class=""><td><span class="r-level warning"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="alert-triangle"><path d="m12 3 10 18H2Zm0 5v6" /><circle cx="12" cy="18" r="1" fill="currentColor" stroke="none" /></svg>
+警告</span></td><th scope="row">目录字段缺失</th><td class="r-number">6</td><td>6 个文档未记录目录字段，目录统计尚未覆盖全部文档。</td><td><button type="button" class="btn quiet"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="chevron-right"><path d="m9 6 6 6-6 6" /></svg>
+<span>查看</span></button></td></tr><tr class=""><td><span class="r-level warning"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="alert-triangle"><path d="m12 3 10 18H2Zm0 5v6" /><circle cx="12" cy="18" r="1" fill="currentColor" stroke="none" /></svg>
+警告</span></td><th scope="row">重复文档</th><td class="r-number">4</td><td>内容哈希重复的文档命中 4 次；保留结果需回到数据集核对。</td><td><button type="button" class="btn quiet"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="chevron-right"><path d="m9 6 6 6-6 6" /></svg>
+<span>查看</span></button></td></tr><tr class=""><td><span class="r-level warning"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="alert-triangle"><path d="m12 3 10 18H2Zm0 5v6" /><circle cx="12" cy="18" r="1" fill="currentColor" stroke="none" /></svg>
+警告</span></td><th scope="row">低置信度内容</th><td class="r-number">5</td><td>质量扫描返回 5 条低置信度命中，可进入数据画像继续核对。</td><td><button type="button" class="btn quiet"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="chevron-right"><path d="m9 6 6 6-6 6" /></svg>
+<span>查看</span></button></td></tr><tr class=""><td><span class="r-level error"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="alert-circle"><circle cx="12" cy="12" r="9" /><path d="M12 7v6" /><circle cx="12" cy="17" r="1" fill="currentColor" stroke="none" /></svg>
+错误</span></td><th scope="row">解析失败</th><td class="r-number">3</td><td>3 个文档解析失败，详见原处理任务的错误记录。</td><td><button type="button" class="btn quiet"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="chevron-right"><path d="m9 6 6 6-6 6" /></svg>
+<span>查看</span></button></td></tr></tbody></table>
+      <p class="b-quality-note">按规则统计命中次数；同一文档可能命中多条规则。</p>
+    </section>
+    <section class="b-audit">
+      <div class="b-section-title"><span class="b-section-number">02</span><h3>召回门禁</h3><span class="audit-count">4 项门禁 · 3 项通过 · 1 项未达标</span></div>
+      <div class="b-gate-strip"><div class="b-gate"><div class="b-gate-head"><span>召回命中 Hit@K</span><span class="r-gate-status review"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="alert-circle"><circle cx="12" cy="12" r="9" /><path d="M12 7v6" /><circle cx="12" cy="17" r="1" fill="currentColor" stroke="none" /></svg>
+未达标</span></div><div class="b-gate-value">88.0%<small>目标 ≥ 90%</small></div></div><div class="b-gate"><div class="b-gate-head"><span>元数据命中</span><span class="r-gate-status pass"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="check-circle"><circle cx="12" cy="12" r="9" /><path d="m7.5 12 3 3 6-6" /></svg>
+通过</span></div><div class="b-gate-value">96.0%<small>目标 ≥ 95%</small></div></div><div class="b-gate"><div class="b-gate-head"><span>有效上下文</span><span class="r-gate-status pass"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="check-circle"><circle cx="12" cy="12" r="9" /><path d="m7.5 12 3 3 6-6" /></svg>
+通过</span></div><div class="b-gate-value">94.0%<small>目标 ≥ 90%</small></div></div><div class="b-gate"><div class="b-gate-head"><span>噪声占比</span><span class="r-gate-status pass"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="check-circle"><circle cx="12" cy="12" r="9" /><path d="m7.5 12 3 3 6-6" /></svg>
+通过</span></div><div class="b-gate-value">8.0%<small>目标 ≤ 10%</small></div></div></div>
+      <div class="b-audit-link"><span>召回命中 Hit@K 低于设定目标，需要继续核对。</span><button type="button" class="btn quiet"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="arrow-right"><path d="M4 12h15m-6-6 6 6-6 6" /></svg>
+<span>查看召回审计</span></button></div>
+    </section>
+  </article>
+</div>
+<footer class="r-footer"><span>工程文档库 · 128 个文档</span><span>全部处理版本</span><span class="spacer"></span>HTML／ZIP 导出脱敏已开启</footer>
+</main></div></body></html>

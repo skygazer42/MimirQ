@@ -1,45 +1,26 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { type NextRequest, NextResponse } from 'next/server'
+import { z } from 'zod'
 
 import { API_V1_BASE_URL } from '@/lib/env'
+import { readNonEmptyString } from '@/lib/primitive-text'
+import { recordSchema } from '@/lib/response-schema'
 import {
   SAML_CALLBACK_ERROR_FALLBACK,
   SAML_BRIDGE_COOKIE_NAME,
   SAML_BRIDGE_COOKIE_PATH,
+  type SAML_CALLBACK_ERROR_MESSAGES,
 } from '@/lib/saml-session'
+import { clearSamlBridgeCookie, isSamlEnabled, jsonNoStore } from '@/lib/server-auth-route'
 
 export const runtime = 'nodejs'
 
-type SamlExchangeResult = {
-  bridge_code?: string
-  return_to?: string
-  user?: { id?: string }
-  token?: { access_token?: string }
-  detail?: string
-  error?: string
-}
-type SamlCallbackErrorCode =
-  | 'saml_access_denied'
-  | 'saml_backend_unreachable'
-  | 'saml_invalid_request'
-  | 'saml_invalid_response'
-  | 'saml_invalid_session'
-  | 'saml_missing_response'
-  | typeof SAML_CALLBACK_ERROR_FALLBACK
+type SamlCallbackErrorCode = keyof typeof SAML_CALLBACK_ERROR_MESSAGES
 
-function readEnv(name: string): string {
-  return String(process.env[name] || '').trim()
-}
-
-function isFalsey(value: string): boolean {
-  const v = String(value || '').trim().toLowerCase()
-  return v === '0' || v === 'false' || v === 'no' || v === 'off' || v === 'disabled'
-}
-
-function isSamlEnabled(): boolean {
-  const enabled = readEnv('SAML_ENABLED')
-  if (!enabled) return false
-  return !isFalsey(enabled)
-}
+const samlBridgeExchangeSchema = z.object({
+  bridge_code: z.string().trim().min(1),
+  user: recordSchema,
+  token: z.object({ access_token: z.string().trim().min(1) }),
+})
 
 function applyNoStore(resp: NextResponse) {
   resp.headers.set('Cache-Control', 'no-store')
@@ -47,31 +28,13 @@ function applyNoStore(resp: NextResponse) {
   return resp
 }
 
-function jsonNoStore(data: unknown, init?: { status?: number }) {
-  return applyNoStore(NextResponse.json(data, init))
-}
-
-function clearBridgeCookie(resp: NextResponse) {
-  resp.cookies.set({
-    name: SAML_BRIDGE_COOKIE_NAME,
-    value: '',
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
-    path: SAML_BRIDGE_COOKIE_PATH,
-    maxAge: 0,
-  })
-  return resp
-}
-
 function redirectToCallback(req: Request, error?: SamlCallbackErrorCode) {
   const url = new URL('/auth/saml/callback', req.url)
-  const errorCode = String(error || '').trim()
-  if (errorCode) {
-    url.searchParams.set('error', errorCode)
+  if (error !== undefined) {
+    url.searchParams.set('error', error)
   }
   const resp = applyNoStore(NextResponse.redirect(url, 303))
-  return errorCode ? clearBridgeCookie(resp) : resp
+  return error === undefined ? resp : clearSamlBridgeCookie(resp)
 }
 
 function mapExchangeError(status: number): SamlCallbackErrorCode {
@@ -79,11 +42,6 @@ function mapExchangeError(status: number): SamlCallbackErrorCode {
   if (status === 401) return 'saml_invalid_response'
   if (status === 403) return 'saml_access_denied'
   return SAML_CALLBACK_ERROR_FALLBACK
-}
-
-function getFormString(form: FormData, key: string): string {
-  const value = form.get(key)
-  return typeof value === 'string' ? value.trim() : ''
 }
 
 export async function POST(req: NextRequest) {
@@ -96,14 +54,14 @@ export async function POST(req: NextRequest) {
     return redirectToCallback(req, 'saml_invalid_request')
   }
 
-  const samlResponse = getFormString(form, 'SAMLResponse')
-  if (!samlResponse) {
+  const samlResponse = readNonEmptyString(form.get('SAMLResponse'))
+  if (samlResponse === undefined) {
     return redirectToCallback(req, 'saml_missing_response')
   }
 
-  const relayState = getFormString(form, 'RelayState') || undefined
-  const requestUrl = new URL(req.url)
-  const providerId = getFormString(form, 'provider_id') || requestUrl.searchParams.get('provider_id')?.trim() || undefined
+  const relayState = readNonEmptyString(form.get('RelayState'))
+  const providerId =
+    readNonEmptyString(form.get('provider_id')) ?? readNonEmptyString(req.nextUrl.searchParams.get('provider_id'))
 
   const backendRes = await fetch(`${API_V1_BASE_URL}/auth/saml/exchange`, {
     method: 'POST',
@@ -121,20 +79,19 @@ export async function POST(req: NextRequest) {
     return redirectToCallback(req, 'saml_backend_unreachable')
   }
 
-  const payload = (await backendRes.json().catch(() => null)) as SamlExchangeResult | null
   if (!backendRes.ok) {
     return redirectToCallback(req, mapExchangeError(backendRes.status))
   }
 
-  const bridgeCode = String(payload?.bridge_code || '').trim()
-  if (!payload?.user || !payload?.token?.access_token || !bridgeCode) {
+  const exchange = samlBridgeExchangeSchema.safeParse(await backendRes.json().catch(() => null))
+  if (!exchange.success) {
     return redirectToCallback(req, 'saml_invalid_session')
   }
 
   const resp = redirectToCallback(req)
   resp.cookies.set({
     name: SAML_BRIDGE_COOKIE_NAME,
-    value: bridgeCode,
+    value: exchange.data.bridge_code,
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'lax',

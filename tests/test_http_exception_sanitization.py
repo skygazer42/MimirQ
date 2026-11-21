@@ -3,8 +3,8 @@ import json
 from fastapi import HTTPException
 from starlette.requests import Request
 
-from app.core.exceptions import http_exception_handler
-from app.services.rag_runtime_limiter import RetrievalAdmissionTimeoutError
+from app.infrastructure.exceptions import http_exception_handler
+from app.services.runtime.retrieval_limiter import RetrievalAdmissionTimeoutError
 
 
 def _request() -> Request:

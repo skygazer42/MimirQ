@@ -1,6 +1,6 @@
 # olmOCR（外部 OCR 服务）解析器集成
 
-MimirQ 支持将 **olmOCR** 作为可选 PDF OCR 解析后端，通过 **独立服务** 输出 Markdown。这种方式避免把 `vllm/torch` 等重依赖塞进 MimirQ 主后端镜像。
+Ragvia 支持将 **olmOCR** 作为可选 PDF OCR 解析后端，通过 **独立服务** 输出 Markdown。这种方式避免把 `vllm/torch` 等重依赖塞进 Ragvia 主后端镜像。
 
 > olmOCR 通常需要 NVIDIA GPU；模型体积较大，首次启动会有明显下载/预热时间。
 

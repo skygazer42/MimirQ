@@ -1,0 +1,290 @@
+{
+  "status": "verified_with_documented_limits",
+  "at_utc": "2026-11-16T14:59:00.029472+00:00",
+  "root": "E:\\MimirQ",
+  "scope": "Fix duplicated post-rerank JSON parsing and silent invalid-configuration fallback in eight production sources.",
+  "baseline": {
+    "path": "C:\\Users\\jiahuanl\\AppData\\Local\\Temp\\codex-rerank-pipeline-opening-20261116.json",
+    "sha256": "3f8c6f45b95ed4125f118bcc3267f2fe8bc95e08a8d7db229ec30af36f784143",
+    "basis": "Opening working-tree bytes"
+  },
+  "changed_sources": [
+    {
+      "path": "app/infrastructure/config.py",
+      "reason": "Pydantic Settings 入口唯一 JSON 解析、类型校验与四个有效阶段选择；无效配置明确失败。",
+      "opening_sha256": "29ecfdd6880cb1d4adc69183cc776e7e120871675a21e44d2c7b1d2125e7bdf2",
+      "current_sha256": "134734898d96e125ce5ee299cf0d838ffa17302fc494ca9d8bd4d591fb82d984",
+      "before_lines": 2329,
+      "after_lines": 2342
+    },
+    {
+      "path": "app/infrastructure/config_validation.py",
+      "reason": "启用时直接检查全部类型化阶段的 provider，早于四阶段截取。",
+      "opening_sha256": "69af431d7d867ee9dcf0337e4407d665878bd26dba2f320c301bd2def6662481",
+      "current_sha256": "1b144b14e8f2f89ef840360344b06a9b1ef4e0089a9887238735eb7f37fb584e",
+      "before_lines": 1556,
+      "after_lines": 1557
+    },
+    {
+      "path": "app/infrastructure/model_policy.py",
+      "reason": "两字段 PostRerankStageConfig 契约；删除重复 JSON 退休扫描，保留实际 provider 规则。",
+      "opening_sha256": "792d89c1fe7bf5f7707015d4f91bb40c23b9fad8bb0caa03374e0d5121e691cc",
+      "current_sha256": "929949a4b704722472ea456473bb14769bc528dc6bc378bc86f5681b05951f08",
+      "before_lines": 113,
+      "after_lines": 110
+    },
+    {
+      "path": "app/rag/retrieval/configuration/channel_budget.py",
+      "reason": "删除管线摘要/单项容错解析，只保留真实通道预算职责。",
+      "opening_sha256": "4cb05f8dc9c8e9cbfad4af9e0396708ae233527ab93b44c715f95d19399d3b15",
+      "current_sha256": "3066276c0af4e4f2e0b02793e796f9a0d39fecc6d914756bd3bb0522f48b90ec",
+      "before_lines": 154,
+      "after_lines": 106
+    },
+    {
+      "path": "app/rag/retrieval/stages/post_rerank.py",
+      "reason": "执行直接用阶段模型字段，去掉重复解析、provider 判空和 top_n 转换兜底。",
+      "opening_sha256": "d53d54d85cd8c5e06e5365acc653abcbc3b7427db4078082b5c0e9ca46a79399",
+      "current_sha256": "b537530c3967cae755ae568953f273ae5e9b05b59bff230649e10636fb4f51b3",
+      "before_lines": 803,
+      "after_lines": 792
+    },
+    {
+      "path": "app/rag/retrieval/stages/result.py",
+      "reason": "配置快照序列化已验证的管线模型，公开字段保持。",
+      "opening_sha256": "d7b21d8ce3de2e6473ccd9e5f3f15ac05f6810ad35694c477e2e3fde087b6fd8",
+      "current_sha256": "925f25ca0baa8522211375a219471b3375c50a21d5662bac5d0436ba153aabe9",
+      "before_lines": 193,
+      "after_lines": 192
+    },
+    {
+      "path": "app/rag/runtime/streaming/evidence.py",
+      "reason": "删除独立摘要解析，stream trace 使用同一配置模型序列化。",
+      "opening_sha256": "99dd78c2d50fa3c8818f0581f2f7a0bfcc49533cfd70cc6f556ed19ddd6e20b5",
+      "current_sha256": "a270f25bd4344297381c9d7775f6294dc5e518eceedc7461c4c8a289fa0efbf5",
+      "before_lines": 987,
+      "after_lines": 962
+    },
+    {
+      "path": "app/services/evaluation/leaderboard.py",
+      "reason": "删除复制摘要解析，评估 hash 使用同一配置模型序列化。",
+      "opening_sha256": "cd78338a8bd30502443aab6335f2a74131a7f4b60388d569f82a20489b84fa78",
+      "current_sha256": "e7f99176d15e184dcfd5745741214c0defbf5aef27e76942f5d39f625ea86bd2",
+      "before_lines": 175,
+      "after_lines": 139
+    }
+  ],
+  "contract": {
+    "environment_input": "Original JSON array string; empty/whitespace string and [] mean unconfigured.",
+    "internal_value": "list[PostRerankStageConfig]",
+    "fields": [
+      "provider",
+      "top_n"
+    ],
+    "normalization": "Strip/lower provider; ignore extra keys; filter none/off/false/0; retain first four active stages.",
+    "top_n": "Nonnegative integer; omitted/zero inherits the existing budget. Numeric strings remain supported.",
+    "errors": "Malformed JSON, wrong root type, invalid items/provider/top_n fail Settings validation, including when pipeline execution is disabled.",
+    "retired_selection": "When enabled, all configured providers checked before truncation; prior disabled-selection policy preserved.",
+    "intentional_changes": [
+      "Invalid items/negative/null/malformed numeric top_n no longer skipped or coerced to zero.",
+      "Streaming summary now filters disabled aliases consistently with execution and evaluation."
+    ]
+  },
+  "focused_probes": {
+    "valid_configs_equal": 11,
+    "invalid_configs_old_accepted_new_rejected": 17,
+    "stage_budget_cases_equal": 96,
+    "rerank_pipeline_outputs_equal": 3,
+    "retired_provider_checks_equal": 2,
+    "consumer_check": {
+      "json_parses": 1,
+      "actual_consumer_expressions": 3,
+      "identical_fields": [
+        "provider",
+        "top_n"
+      ],
+      "settings_dump_is_json_serializable": true,
+      "mutable_defaults_independent": true
+    },
+    "live_connections": 0,
+    "pytest_run": false
+  },
+  "ruff": {
+    "check_exit_code": 0,
+    "format_check_exit_code": 0,
+    "scope_files": 8,
+    "evidence": "Observed scoped ruff check and format --check results after final Python changes."
+  },
+  "python311_ast_and_compile": {
+    "passed": true,
+    "scope_files": 8
+  },
+  "cold_openapi": {
+    "entire_documents_equal": true,
+    "serialized_bytes_equal": true,
+    "sha256": "1d4a7976de7a85fa836217f04f90965974ebf2dfeda276e6b42a63e4dd596deb",
+    "paths": 357,
+    "routes": 421,
+    "schemas": 670,
+    "live_connections_or_lifespan": false
+  },
+  "preserved_state": {
+    "test_files_unchanged": 746,
+    "python_tests_not_run_or_written": true,
+    "branch": "feat/ragvia-ui",
+    "head": "619ba7d1166c96beb85729069f5f79794a904a7a",
+    "index_semantic_sha256": "1e755777a7540e97fb225544f2decb7ccd7031326a05b270cd89b2c7137e0df2",
+    "no_git_mutations": true,
+    "no_env_file_edits": true
+  },
+  "ledgers": [
+    {
+      "path": "docs/maintenance/style-unification/app-review.csv",
+      "rows_touched": 8,
+      "rows": 1350,
+      "sha256": "b79cc4fc5a0781ebb4f56d97dfb5f65284a2f6dc2ce9eba5aa2fe43edb262ec1"
+    },
+    {
+      "path": "docs/maintenance/style-unification/layout-review.csv",
+      "rows_touched": 8,
+      "rows": 1674,
+      "sha256": "44a007c33157cd107ac01fdb339f51ec3cb7da29dcd07cebf1a3f6a52b2e2ec2"
+    },
+    {
+      "path": "docs/maintenance/style-unification/coverage.csv",
+      "rows_touched": 14,
+      "rows": 7033,
+      "sha256": "9ebf6233ff3cff4c112b1ce263a843866f5b2cd559474429811104728ac85f1f"
+    }
+  ],
+  "notes_checks": {
+    "results": [
+      {
+        "command": [
+          "C:/Program Files/nodejs/npx.cmd",
+          "--offline",
+          "--yes",
+          "tsx",
+          "C:\\Users\\jiahuanl\\.codex\\skills\\write-notes-like-deepseek\\scripts\\verify-agent-note-format.ts"
+        ],
+        "exit_code": 0,
+        "stdout": "ok: 257 note(s) verified\n",
+        "stderr": ""
+      },
+      {
+        "command": [
+          "C:/Program Files/nodejs/npx.cmd",
+          "--offline",
+          "--yes",
+          "tsx",
+          "C:\\Users\\jiahuanl\\.codex\\skills\\write-notes-like-deepseek\\scripts\\verify-agent-note-tree.ts"
+        ],
+        "exit_code": 1,
+        "stdout": "",
+        "stderr": "link: implemented/architecture/2026-11-05-milvus-native-bm25.md -> \"../simplification/2026-11-06-retire-faiss.md\" target file does not exist\nlink: implemented/architecture/2026-11-05-retire-in-process-models.md -> \"../simplification/2026-11-06-retire-faiss.md\" target file does not exist\nlink: implemented/architecture/2026-11-05-retire-in-process-models.md -> \"../simplification/2026-11-06-retire-faiss.md\" target file does not exist\nlink: implemented/architecture/2026-11-05-retire-in-process-models.md -> \"../simplification/2026-11-06-retire-chroma.md\" target file does not exist\nlink: implemented/process/2026-11-05-optional-model-vector-dependencies.md -> \"../simplification/2026-11-06-retire-faiss.md\" target file does not exist\nlink: implemented/process/2026-11-05-optional-model-vector-dependencies.md -> \"../simplification/2026-11-06-retire-chroma.md\" target file does not exist\nlink: implemented/process/2026-11-05-optional-model-vector-dependencies.md -> \"../simplification/2026-11-06-retire-faiss.md\" target file does not exist\nlink: implemented/simplification/2026-11-05-offline-retrieval-ltr-owned-rules.md -> \"2026-11-06-retire-parser-ml.md\" target file does not exist\nlink: implemented/simplification/2026-11-05-parser-adapter-helper-ownership.md -> \"2026-11-06-retire-parser-ml.md\" target file does not exist\nlink: implemented/simplification/2026-11-08-retrieval-settings-default-owner.md -> \"2026-11-07-direct-value-contracts.md\" target file does not exist\n"
+      },
+      {
+        "command": [
+          "C:/Program Files/nodejs/npx.cmd",
+          "--offline",
+          "--yes",
+          "tsx",
+          "C:\\Users\\jiahuanl\\.codex\\skills\\write-notes-like-deepseek\\scripts\\verify-archived-agent-notes.ts"
+        ],
+        "exit_code": 0,
+        "stdout": "ok: 0 archived note(s) verified, 0 seal(s) in manifest\n",
+        "stderr": ""
+      }
+    ],
+    "existing_missing_links": 10,
+    "no_new_link_failures": true
+  },
+  "limitations": [
+    "No real database/Redis/model/HTTP server or application lifespan execution.",
+    "Bounded reranking probes use real unchanged candidate/result helpers and replace cache/model execution with deterministic callbacks.",
+    "Cold processes explicitly override pre-existing retired LTR provider selections; .env is not changed.",
+    "Unrelated guards, stale historical ledger hashes, missing resources and existing broken note links remain outside this fix."
+  ],
+  "raw_evidence": [
+    "C:\\Users\\jiahuanl\\AppData\\Local\\Temp\\codex-rerank-pipeline-probe-before-20261116.json",
+    "C:\\Users\\jiahuanl\\AppData\\Local\\Temp\\codex-rerank-pipeline-probe-after-20261116.json",
+    "C:\\Users\\jiahuanl\\AppData\\Local\\Temp\\codex-rerank-pipeline-comparison-20261116.json",
+    "C:\\Users\\jiahuanl\\AppData\\Local\\Temp\\codex-rerank-pipeline-openapi-before-20261116.json",
+    "C:\\Users\\jiahuanl\\AppData\\Local\\Temp\\codex-rerank-pipeline-openapi-after-20261116.json"
+  ],
+  "source_declaration_check": {
+    "unchanged_functions_and_methods": 100,
+    "deltas": {
+      "app/infrastructure/config.py": {
+        "changed": [
+          "Settings.validate_settings"
+        ],
+        "removed": [],
+        "added": [
+          "Settings.parse_post_rerank_pipeline"
+        ]
+      },
+      "app/infrastructure/config_validation.py": {
+        "changed": [
+          "validate_embedding_and_migration"
+        ],
+        "removed": [],
+        "added": []
+      },
+      "app/infrastructure/model_policy.py": {
+        "changed": [],
+        "removed": [
+          "reject_retired_rerank_providers"
+        ],
+        "added": []
+      },
+      "app/rag/retrieval/configuration/channel_budget.py": {
+        "changed": [],
+        "removed": [
+          "_safe_post_rerank_pipeline_item",
+          "_safe_post_rerank_pipeline_summary"
+        ],
+        "added": []
+      },
+      "app/rag/retrieval/stages/post_rerank.py": {
+        "changed": [
+          "_post_rerank_settings",
+          "_run_post_rerank_pipeline_mode",
+          "_run_post_rerank_stage",
+          "_stage_top_n"
+        ],
+        "removed": [],
+        "added": []
+      },
+      "app/rag/retrieval/stages/result.py": {
+        "changed": [
+          "_run_retrieval_config_and_result_phase"
+        ],
+        "removed": [],
+        "added": []
+      },
+      "app/rag/runtime/streaming/evidence.py": {
+        "changed": [
+          "build_retrieval_config_trace"
+        ],
+        "removed": [
+          "_post_rerank_pipeline_summary"
+        ],
+        "added": []
+      },
+      "app/services/evaluation/leaderboard.py": {
+        "changed": [
+          "_build_run_retrieval_config_hash"
+        ],
+        "removed": [
+          "_safe_post_rerank_pipeline_summary"
+        ],
+        "added": []
+      }
+    },
+    "other_settings_members_and_existing_guard_order_unchanged": true
+  },
+  "diff_whitespace_check": {
+    "exit_code": 0
+  }
+}

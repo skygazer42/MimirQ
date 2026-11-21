@@ -1863,7 +1863,12 @@ _BUILTIN_PROMPT_TEMPLATES: tuple[BuiltinPromptTemplate, ...] = (
 
 def list_builtin_prompt_templates() -> list[BuiltinPromptTemplate]:
     return [
-        template if template.version >= _FORMAL_VERSION else replace(template, version=_FORMAL_VERSION)
+        replace(
+            template,
+            version=max(template.version, _FORMAL_VERSION),
+            variables=list(template.variables),
+            tags=list(template.tags),
+        )
         for template in _BUILTIN_PROMPT_TEMPLATES
     ]
 

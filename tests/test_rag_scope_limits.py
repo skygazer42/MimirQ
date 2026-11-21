@@ -5,19 +5,20 @@ import pytest
 from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 
-import app.api.v1.rag as rag_api
-import app.services.document_access as document_access
-import app.services.tenant_quota_service as tenant_quota_service
-from app.api.dependencies.auth import get_current_account_id
-from app.api.dependencies.tenant import get_tenant_id
-from app.api.middleware.request_id import RequestIDMiddleware
-from app.core.database import get_db
-from app.core.exceptions import register_exception_handlers
+import app.api.v1.retrieval.routes as rag_api
+import app.services.documents.read_scope as document_access
+import app.services.identity.tenant_quotas as tenant_quota_service
+import app.services.retrieval.scope as retrieval_scope
+from app.api.dependencies import get_current_account_id, get_tenant_id
+from app.api.middleware.request_context import RequestContextMiddleware
+from app.api.schemas.conversations.retrieval import RETRIEVAL_SCOPE_MAX_DATASET_IDS, RETRIEVAL_SCOPE_MAX_DOCUMENT_IDS
+from app.infrastructure.database.connection import get_db
+from app.infrastructure.exceptions import register_exception_handlers
 
 
 def _build_app() -> FastAPI:
     app = FastAPI()
-    app.add_middleware(RequestIDMiddleware)
+    app.add_middleware(RequestContextMiddleware)
     register_exception_handlers(app)
     app.include_router(rag_api.router, prefix="/api/v1/rag")
     app.dependency_overrides[get_current_account_id] = lambda: "acct-1"
@@ -34,8 +35,8 @@ def _build_app() -> FastAPI:
 @pytest.mark.parametrize(
     ("field_name", "count"),
     [
-        ("dataset_ids", rag_api.RETRIEVAL_SCOPE_MAX_DATASET_IDS + 1),
-        ("document_ids", rag_api.RETRIEVAL_SCOPE_MAX_DOCUMENT_IDS + 1),
+        ("dataset_ids", RETRIEVAL_SCOPE_MAX_DATASET_IDS + 1),
+        ("document_ids", RETRIEVAL_SCOPE_MAX_DOCUMENT_IDS + 1),
     ],
 )
 def test_retrieval_endpoints_reject_oversized_scope_lists(path: str, field_name: str, count: int) -> None:
@@ -61,7 +62,7 @@ def test_retrieve_preview_preserves_dataset_acl_error_semantics(
     status_code: int,
     detail: str,
 ) -> None:
-    monkeypatch.setattr(rag_api.DatasetService, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
+    monkeypatch.setattr(rag_api.dataset_service, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
 
     async def _fake_quota(**_kwargs):
         return {}
@@ -70,7 +71,7 @@ def test_retrieve_preview_preserves_dataset_acl_error_semantics(
         raise HTTPException(status_code=status_code, detail=detail)
 
     monkeypatch.setattr(tenant_quota_service, "enforce_tenant_qps_quota_async", _fake_quota, raising=True)
-    monkeypatch.setattr(rag_api, "get_readable_datasets_map", _deny_or_missing, raising=True)
+    monkeypatch.setattr(retrieval_scope, "get_readable_datasets_map", _deny_or_missing, raising=True)
 
     client = TestClient(_build_app())
     response = client.post(
@@ -90,7 +91,7 @@ def test_get_readable_datasets_map_distinguishes_missing_from_blocked(monkeypatc
     blocked_dataset = uuid4()
     missing_dataset = uuid4()
 
-    monkeypatch.setattr(document_access.DatasetService, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
+    monkeypatch.setattr(document_access.dataset_service, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
     monkeypatch.setattr(
         document_access,
         "_resolve_allowed_dataset_ids",
@@ -137,21 +138,21 @@ def test_assert_dataset_ids_readable_uses_batch_acl_helper(monkeypatch: pytest.M
         seen["check_member"] = check_member
         return {dataset_id: object() for dataset_id in dataset_ids}
 
-    monkeypatch.setattr(rag_api, "get_readable_datasets_map", _fake_get_readable_datasets_map, raising=True)
+    monkeypatch.setattr(retrieval_scope, "get_readable_datasets_map", _fake_get_readable_datasets_map, raising=True)
     monkeypatch.setattr(
-        rag_api.DatasetService,
+        rag_api.dataset_service,
         "get_dataset",
         lambda *_args, **_kwargs: pytest.fail("per-dataset get_dataset lookup should not run"),
         raising=True,
     )
     monkeypatch.setattr(
-        rag_api.DatasetService,
+        rag_api.dataset_service,
         "assert_dataset_readable",
         lambda *_args, **_kwargs: pytest.fail("per-dataset assert_dataset_readable should not run"),
         raising=True,
     )
 
-    rag_api._assert_dataset_ids_readable(
+    retrieval_scope._assert_dataset_ids_readable(
         object(),
         tenant_id=tenant_id,
         account_id="acct-1",

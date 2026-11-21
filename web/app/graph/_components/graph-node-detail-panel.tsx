@@ -1,12 +1,34 @@
 'use client'
 
-import { useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type RefObject } from 'react'
+import {
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type PointerEvent as ReactPointerEvent,
+  type RefObject,
+} from 'react'
 
-import { Box, BoxSelect, ChevronDown, Database, FileText, Info, Layers, Link as LinkIcon, MessageSquare, Network, RefreshCw, Trash2, X } from 'lucide-react'
+import {
+  Box,
+  BoxSelect,
+  ChevronDown,
+  Database,
+  FileText,
+  Info,
+  Layers,
+  Link as LinkIcon,
+  MessageSquare,
+  Network,
+  RefreshCw,
+  Trash2,
+  X,
+} from '@/components/icons'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { coerceTrimmedString, getGraphNodeKind, getGraphNodeType } from '@/app/graph/graph-page-utils'
+import { WorkspaceNotice } from '@/components/ui/operational-workspace'
+import { getGraphNodeKind, getGraphNodeType } from '@/app/graph/graph-page-utils'
 import type {
   KGEntityAliasItem,
   KGEntityAliasSuggestionItem,
@@ -59,24 +81,14 @@ function clampPanelPosition(args: {
   panelWidth: number
   panelHeight: number
 }) {
-  const {
-    x,
-    y,
-    containerWidth,
-    containerHeight,
-    panelWidth,
-    panelHeight,
-  } = args
+  const { x, y, containerWidth, containerHeight, panelWidth, panelHeight } = args
 
   return {
     x: Math.min(
       Math.max(PANEL_SIDE_MARGIN, x),
-      Math.max(PANEL_SIDE_MARGIN, containerWidth - panelWidth - PANEL_SIDE_MARGIN)
+      Math.max(PANEL_SIDE_MARGIN, containerWidth - panelWidth - PANEL_SIDE_MARGIN),
     ),
-    y: Math.min(
-      Math.max(PANEL_MIN_TOP, y),
-      Math.max(PANEL_MIN_TOP, containerHeight - panelHeight - PANEL_SIDE_MARGIN)
-    ),
+    y: Math.min(Math.max(PANEL_MIN_TOP, y), Math.max(PANEL_MIN_TOP, containerHeight - panelHeight - PANEL_SIDE_MARGIN)),
   }
 }
 
@@ -116,11 +128,15 @@ type GraphNodeDetailPanelProps = Readonly<{
   dataSource: 'live' | 'file'
   kgNodeDetailLoading: boolean
   kgNodeDetail: KGEntityDetailResponse | KGEventDetailResponse | null
+  kgNodeDetailError: string | null
+  onRetryNodeDetail: () => void
   entityAliasesLoading: boolean
+  entityAliasesError: string | null
   entityAliases: KGEntityAliasItem[]
   aliasDraft: string
   aliasSaving: boolean
   aliasSuggestionsLoading: boolean
+  aliasSuggestionsError: string | null
   aliasSuggestions: KGEntityAliasSuggestionItem[]
   lastResolutionActionId: string | null
   undoSubmitting: boolean
@@ -132,7 +148,7 @@ type GraphNodeDetailPanelProps = Readonly<{
   onStartConnectMode: () => void
   onDeleteNode: () => void
   onOpenMerge: () => void
-  onOpenSplit: () => void
+  onOpenSplit?: () => void
   onUndoLastResolution: () => void
   onAliasDraftChange: (value: string) => void
   onSaveAlias: () => void
@@ -140,39 +156,41 @@ type GraphNodeDetailPanelProps = Readonly<{
   onMergeAliasSuggestion: (row: KGEntityAliasSuggestionItem) => void
 }>
 
+type GraphNodeKgDetailProps = Pick<
+  GraphNodeDetailPanelProps,
+  | 'kgNodeDetailLoading'
+  | 'kgNodeDetail'
+  | 'entityAliasesLoading'
+  | 'entityAliasesError'
+  | 'entityAliases'
+  | 'aliasDraft'
+  | 'aliasSaving'
+  | 'aliasSuggestionsLoading'
+  | 'aliasSuggestionsError'
+  | 'aliasSuggestions'
+  | 'onAliasDraftChange'
+  | 'onSaveAlias'
+  | 'onRequestDeleteAlias'
+  | 'onMergeAliasSuggestion'
+>
+
 function GraphNodeKgDetail({
-  selectedNode,
   kgNodeDetailLoading,
   kgNodeDetail,
   entityAliasesLoading,
+  entityAliasesError,
   entityAliases,
   aliasDraft,
   aliasSaving,
   aliasSuggestionsLoading,
+  aliasSuggestionsError,
   aliasSuggestions,
   onAliasDraftChange,
   onSaveAlias,
   onRequestDeleteAlias,
   onMergeAliasSuggestion,
-}: Omit<
-  GraphNodeDetailPanelProps,
-  | 'open'
-  | 'detailScrollRef'
-  | 'dataSource'
-  | 'lastResolutionActionId'
-  | 'undoSubmitting'
-  | 'isLoading'
-  | 'onClose'
-  | 'onChat'
-  | 'onViewSource'
-  | 'onExpandNode'
-  | 'onStartConnectMode'
-  | 'onDeleteNode'
-  | 'onOpenMerge'
-  | 'onOpenSplit'
-  | 'onUndoLastResolution'
->) {
-  if (kgNodeDetailLoading) {
+}: GraphNodeKgDetailProps) {
+  if (kgNodeDetailLoading && kgNodeDetail === null) {
     return (
       <div className="rounded-lg border border-info/30 bg-info/10 p-2.5 text-[11px] text-muted-foreground">
         Loading...
@@ -180,21 +198,15 @@ function GraphNodeKgDetail({
     )
   }
 
-  if (!kgNodeDetail) {
-    return (
-      <div className="rounded-lg border border-border/60 bg-primary/10 p-2.5 text-[11px] text-muted-foreground">
-        No KG detail available
-      </div>
-    )
-  }
+  if (kgNodeDetail === null) return null
 
-  if (selectedNode?.meta?.kind !== 'entity') {
-    const eventDetail = kgNodeDetail as KGEventDetailResponse
+  if ('event' in kgNodeDetail) {
+    const eventDetail = kgNodeDetail
     return (
       <div className="rounded-lg border border-success/30 bg-success/10 p-2.5">
         <div className="mb-1.5 text-[11px] font-medium uppercase tracking-[0.08em] text-success/70">Entities</div>
         <div className="space-y-1.5">
-          {eventDetail.entities?.slice(0, 12)?.map((row) => (
+          {eventDetail.entities.slice(0, 12).map((row) => (
             <div key={row.entity.id} className="flex items-center justify-between gap-2 text-[11px]">
               <span className="truncate text-foreground" title={row.entity.name}>
                 {row.entity.name || row.entity.id}
@@ -209,10 +221,16 @@ function GraphNodeKgDetail({
     )
   }
 
-  const entityDetail = kgNodeDetail as KGEntityDetailResponse
+  const entityDetail = kgNodeDetail
   let aliasContent: React.ReactNode
   if (entityAliasesLoading) {
     aliasContent = <div className="text-[11px] text-muted-foreground">Loading...</div>
+  } else if (entityAliasesError !== null) {
+    aliasContent = (
+      <div role="alert" className="text-[11px] text-destructive">
+        {entityAliasesError}
+      </div>
+    )
   } else if (entityAliases.length === 0) {
     aliasContent = <div className="text-[11px] text-muted-foreground">No aliases</div>
   } else {
@@ -243,16 +261,19 @@ function GraphNodeKgDetail({
   let aliasSuggestionsContent: React.ReactNode
   if (aliasSuggestionsLoading) {
     aliasSuggestionsContent = <div className="text-[11px] text-muted-foreground">Loading...</div>
+  } else if (aliasSuggestionsError !== null) {
+    aliasSuggestionsContent = (
+      <div role="alert" className="text-[11px] text-destructive">
+        {aliasSuggestionsError}
+      </div>
+    )
   } else if (aliasSuggestions.length === 0) {
     aliasSuggestionsContent = <div className="text-[11px] text-muted-foreground">No suggestions</div>
   } else {
     aliasSuggestionsContent = (
       <div className="space-y-1.5">
         {aliasSuggestions.slice(0, 6).map((suggestion) => (
-          <div
-            key={suggestion.entity_id}
-            className="flex items-center justify-between gap-2 text-[11px]"
-          >
+          <div key={suggestion.entity_id} className="flex items-center justify-between gap-2 text-[11px]">
             <span className="truncate text-foreground" title={suggestion.name}>
               {suggestion.name || suggestion.entity_id}
             </span>
@@ -276,7 +297,7 @@ function GraphNodeKgDetail({
       <div className="rounded-lg border border-info/30 bg-info/10 p-2.5">
         <div className="mb-1.5 text-[11px] font-medium uppercase tracking-[0.08em] text-info/70">Recent Events</div>
         <div className="space-y-1.5">
-          {entityDetail.events?.slice(0, 6)?.map((ev) => (
+          {entityDetail.events.slice(0, 6).map((ev) => (
             <div key={ev.id} className="truncate text-[11px] text-foreground" title={ev.title}>
               {ev.title}
             </div>
@@ -287,7 +308,7 @@ function GraphNodeKgDetail({
       <div className="rounded-lg border border-success/30 bg-success/10 p-2.5">
         <div className="mb-1.5 text-[11px] font-medium uppercase tracking-[0.08em] text-success/70">Top Neighbors</div>
         <div className="space-y-1.5">
-          {entityDetail.neighbors?.slice(0, 8)?.map((neighbor) => (
+          {entityDetail.neighbors.slice(0, 8).map((neighbor) => (
             <div key={neighbor.entity_id} className="flex items-center justify-between gap-2 text-[11px]">
               <span className="truncate text-foreground" title={neighbor.name}>
                 {neighbor.name || neighbor.entity_id}
@@ -338,11 +359,15 @@ export function GraphNodeDetailPanel({
   dataSource,
   kgNodeDetailLoading,
   kgNodeDetail,
+  kgNodeDetailError,
+  onRetryNodeDetail,
   entityAliasesLoading,
+  entityAliasesError,
   entityAliases,
   aliasDraft,
   aliasSaving,
   aliasSuggestionsLoading,
+  aliasSuggestionsError,
   aliasSuggestions,
   lastResolutionActionId,
   undoSubmitting,
@@ -364,12 +389,18 @@ export function GraphNodeDetailPanel({
   const nodeKind = getGraphNodeKind(selectedNode)
   const nodeType = getGraphNodeType(selectedNode)
   const summaryBadges = [
-    { label: 'ID', value: selectedNode?.id == null ? '' : String(selectedNode.id), className: 'border-info/30 bg-info/15 text-info' },
+    selectedNode === null
+      ? null
+      : { label: 'ID', value: selectedNode.id, className: 'border-info/30 bg-info/15 text-info' },
     nodeKind ? { label: '类别', value: getKindLabel(nodeKind), className: getKindBadgeClasses(nodeKind) } : null,
     nodeType ? { label: '类型', value: nodeType, className: 'border-primary/30 bg-primary/15 text-primary' } : null,
-    selectedNode?.group == null ? null : { label: '组', value: String(selectedNode.group), className: 'border-success/30 bg-success/15 text-success' },
-    selectedNode?.val == null ? null : { label: '权重', value: String(selectedNode.val), className: 'border-warning/30 bg-warning/15 text-warning' },
-  ].filter(Boolean) as Array<{ label: string; value: string; className: string }>
+    selectedNode?.group == null
+      ? null
+      : { label: '组', value: String(selectedNode.group), className: 'border-success/30 bg-success/15 text-success' },
+    selectedNode?.val == null
+      ? null
+      : { label: '权重', value: String(selectedNode.val), className: 'border-warning/30 bg-warning/15 text-warning' },
+  ].filter((badge) => badge !== null)
 
   const detailEntries = selectedNode
     ? Object.entries(selectedNode).filter(([key, value]) => {
@@ -392,12 +423,11 @@ export function GraphNodeDetailPanel({
   } | null>(null)
   const [panelPosition, setPanelPosition] = useState<{ x: number; y: number } | null>(null)
   const [isDragging, setIsDragging] = useState(false)
-  const [isKgDetailExpanded, setIsKgDetailExpanded] = useState(false)
   const [isHovered, setIsHovered] = useState(false)
 
   useEffect(() => {
-    setIsKgDetailExpanded(false)
-  }, [selectedNode?.id])
+    if (open && selectedNode?.id) panelRef.current?.focus()
+  }, [open, selectedNode?.id])
 
   useEffect(() => {
     if (!open || !selectedNode) return
@@ -497,7 +527,7 @@ export function GraphNodeDetailPanel({
         containerHeight: container.clientHeight,
         panelWidth: panel.offsetWidth,
         panelHeight: panel.offsetHeight,
-      })
+      }),
     )
   }
 
@@ -526,239 +556,213 @@ export function GraphNodeDetailPanel({
 
   if (selectedNode) {
     let kgDetailSection: React.ReactNode = null
-    if (
-      dataSource === 'live' &&
-      (selectedNode?.meta?.kind === 'entity' || selectedNode?.meta?.kind === 'event')
-    ) {
-      const kgDetailSummaryLabel = isKgDetailExpanded ? '收起' : '展开'
-      const kgDetailPanel = isKgDetailExpanded ? (
-        <GraphNodeKgDetail
-          selectedNode={selectedNode}
-          kgNodeDetailLoading={kgNodeDetailLoading}
-          kgNodeDetail={kgNodeDetail}
-          entityAliasesLoading={entityAliasesLoading}
-          entityAliases={entityAliases}
-          aliasDraft={aliasDraft}
-          aliasSaving={aliasSaving}
-          aliasSuggestionsLoading={aliasSuggestionsLoading}
-          aliasSuggestions={aliasSuggestions}
-          onAliasDraftChange={onAliasDraftChange}
-          onSaveAlias={onSaveAlias}
-          onRequestDeleteAlias={onRequestDeleteAlias}
-          onMergeAliasSuggestion={onMergeAliasSuggestion}
-        />
-      ) : (
-        <div className="rounded-lg border border-primary/30 bg-primary/10 px-3 py-2 text-[11px] text-muted-foreground">
-          展开查看最近事件、邻居、别名和合并建议。
-        </div>
-      )
-
+    if (dataSource === 'live' && (nodeKind === 'entity' || nodeKind === 'event')) {
       kgDetailSection = (
-        <div className="space-y-2">
-          <button
-            type="button"
-            onClick={() => setIsKgDetailExpanded((value) => !value)}
-            className="flex w-full items-center justify-between rounded-xl border border-border/60 bg-card px-3 py-2 text-left transition-colors hover:bg-muted/30 focus-ring"
-          >
+        <details key={selectedNode.id} className="group/kg-detail space-y-2">
+          <summary className="focus-ring flex w-full cursor-pointer list-none items-center justify-between rounded-xl border border-border/60 bg-card px-3 py-2 text-left transition-colors hover:bg-muted/30 [&::-webkit-details-marker]:hidden">
             <span className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
               <Layers className="w-3 h-3 text-warning/80" />
-              KG Detail
+              节点详情
             </span>
-            <span className="inline-flex items-center gap-1 text-[11px] font-medium text-muted-foreground">
-              {kgDetailSummaryLabel}
-              <ChevronDown
-                className={cn(
-                  'h-3.5 w-3.5 transition-transform duration-200',
-                  isKgDetailExpanded ? 'rotate-180' : null
-                )}
-              />
-            </span>
-          </button>
-          {kgDetailPanel}
-        </div>
+            <ChevronDown className="h-3.5 w-3.5 text-muted-foreground transition-transform group-open/kg-detail:rotate-180 motion-reduce:transition-none" />
+          </summary>
+          {kgNodeDetailError !== null ? (
+            <WorkspaceNotice retry={onRetryNodeDetail} pending={kgNodeDetailLoading}>
+              {kgNodeDetailError}
+            </WorkspaceNotice>
+          ) : null}
+          <GraphNodeKgDetail
+            kgNodeDetailLoading={kgNodeDetailLoading}
+            kgNodeDetail={kgNodeDetail}
+            entityAliasesLoading={entityAliasesLoading}
+            entityAliasesError={entityAliasesError}
+            entityAliases={entityAliases}
+            aliasDraft={aliasDraft}
+            aliasSaving={aliasSaving}
+            aliasSuggestionsLoading={aliasSuggestionsLoading}
+            aliasSuggestionsError={aliasSuggestionsError}
+            aliasSuggestions={aliasSuggestions}
+            onAliasDraftChange={onAliasDraftChange}
+            onSaveAlias={onSaveAlias}
+            onRequestDeleteAlias={onRequestDeleteAlias}
+            onMergeAliasSuggestion={onMergeAliasSuggestion}
+          />
+        </details>
       )
     }
 
     detailContent = (
       <div className="relative transition-transform duration-300 ease-out" style={innerCardStyle}>
         <div className="overflow-hidden rounded-2xl border border-border/70 bg-card shadow-none transition-transform duration-300 ease-out">
-        <div
-          className={cn(
-            'border-b border-border/55 bg-muted/20 px-3.5 py-3 select-none',
-            isDragging ? 'cursor-grabbing' : 'cursor-grab'
-          )}
-          onPointerDown={handleDragStart}
-          onPointerMove={handleDragMove}
-          onPointerUp={handleDragEnd}
-          onPointerCancel={handleDragEnd}
-        >
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              <div className="mb-1.5 flex flex-wrap gap-1.5">
-                {summaryBadges.map((badge) => (
-                  <span
-                    key={`${badge.label}:${badge.value}`}
+          <div
+            className={cn(
+              'border-b border-border/55 bg-muted/20 px-3.5 py-3 select-none',
+              isDragging ? 'cursor-grabbing' : 'cursor-grab',
+            )}
+            onPointerDown={handleDragStart}
+            onPointerMove={handleDragMove}
+            onPointerUp={handleDragEnd}
+            onPointerCancel={handleDragEnd}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="mb-1.5 flex flex-wrap gap-1.5">
+                  {summaryBadges.map((badge) => (
+                    <span
+                      key={`${badge.label}:${badge.value}`}
+                      className={cn(
+                        'inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium tracking-[0.02em]',
+                        badge.className,
+                      )}
+                    >
+                      {badge.label === 'ID' ? <Database className="size-3" /> : null}
+                      <span className="opacity-70">{badge.label}</span>
+                      <span className="max-w-[7rem] truncate" title={badge.value}>
+                        {badge.value}
+                      </span>
+                    </span>
+                  ))}
+                </div>
+                <h2 className="line-clamp-2 text-[14px] font-semibold leading-5 text-foreground">
+                  {selectedNode.label}
+                </h2>
+              </div>
+              <button
+                type="button"
+                onClick={onClose}
+                aria-label="关闭详情面板"
+                className="rounded-xl border border-border/60 bg-card p-1 text-muted-foreground transition-all hover:bg-muted/40 hover:text-foreground"
+                onPointerDown={(event) => event.stopPropagation()}
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+
+          <div ref={detailScrollRef} className="flex-1 space-y-3 overflow-y-auto overscroll-contain p-3.5 no-scrollbar">
+            <div className="grid grid-cols-4 gap-1.5">
+              <Button
+                variant="outline"
+                onClick={onChat}
+                className={cn(quickActionBaseClass, 'border-info/30 bg-info/10 hover:bg-info/15')}
+              >
+                <MessageSquare className="w-3.5 h-3.5 mr-1" />
+                对话
+              </Button>
+              <Button
+                variant="outline"
+                onClick={onViewSource}
+                className={cn(quickActionBaseClass, 'border-primary/30 bg-primary/15 hover:bg-primary/15')}
+              >
+                <FileText className="w-3.5 h-3.5 mr-1" />
+                来源
+              </Button>
+              <Button
+                variant="outline"
+                onClick={onStartConnectMode}
+                className={cn(quickActionBaseClass, 'border-success/30 bg-success/10 hover:bg-success/15')}
+              >
+                <LinkIcon className="w-3.5 h-3.5 mr-1" />
+                连接
+              </Button>
+              <Button
+                variant="outline"
+                onClick={onDeleteNode}
+                className="h-8 w-full rounded-lg border-destructive/20 bg-destructive/5 px-2 text-[11px] text-destructive shadow-none hover:border-destructive/35 hover:bg-destructive/10 hover:text-destructive"
+              >
+                <Trash2 className="w-3.5 h-3.5 mr-1" />
+                删除
+              </Button>
+            </div>
+
+            <Button
+              variant="outline"
+              onClick={onExpandNode}
+              disabled={isLoading}
+              className="h-8 w-full justify-start rounded-lg border-info/30 bg-info/10 px-3 text-[11px] text-foreground/85 shadow-none hover:bg-info/15 hover:text-foreground"
+            >
+              <Network className="w-3 h-3 mr-1.5" />
+              {isLoading ? '展开中...' : '展开邻居节点'}
+            </Button>
+
+            {dataSource === 'live' && nodeKind === 'entity' ? (
+              <div className="grid grid-cols-2 gap-1.5">
+                <Button
+                  variant="outline"
+                  onClick={onOpenMerge}
+                  className="h-7.5 w-full justify-start rounded-lg border-warning/30 bg-warning/10 px-2.5 text-[11px] text-foreground/85 shadow-none hover:bg-warning/15 hover:text-foreground"
+                >
+                  <BoxSelect className="w-3 h-3 mr-1.5" />
+                  合并
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={onOpenSplit}
+                  disabled={onOpenSplit === undefined}
+                  className="h-7.5 w-full justify-start rounded-lg border-primary/30 bg-primary/15 px-2.5 text-[11px] text-foreground/85 shadow-none hover:bg-primary/15 hover:text-foreground"
+                >
+                  <Box className="w-3 h-3 mr-1.5" />
+                  拆分
+                </Button>
+              </div>
+            ) : null}
+
+            {lastResolutionActionId ? (
+              <Button
+                variant="outline"
+                onClick={onUndoLastResolution}
+                disabled={undoSubmitting}
+                className="h-7.5 w-full justify-start rounded-lg border-primary/20 bg-primary/5 px-2.5 text-[11px] text-primary shadow-none hover:bg-primary/10 hover:text-primary"
+              >
+                <RefreshCw className="w-3 h-3 mr-1.5" />
+                {undoActionLabel}
+              </Button>
+            ) : null}
+
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                <Info className="w-3 h-3 text-primary/75" />
+                属性详情
+              </div>
+              <div className="grid grid-cols-2 gap-1.5">
+                {detailEntries.map(([key, value], index) => (
+                  <div
+                    key={key}
                     className={cn(
-                      'inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium tracking-[0.02em]',
-                      badge.className
+                      'rounded-lg border px-2.5 py-2',
+                      DETAIL_TONE_CLASSES[index % DETAIL_TONE_CLASSES.length],
                     )}
                   >
-                    {badge.label === 'ID' ? <Database className="size-3" /> : null}
-                    <span className="opacity-70">{badge.label}</span>
-                    <span className="max-w-[7rem] truncate" title={badge.value}>
-                      {badge.value}
-                    </span>
-                  </span>
+                    <div className="mb-1 text-[11px] font-medium uppercase tracking-[0.06em] text-foreground/85 capitalize">
+                      {key}
+                    </div>
+                    <div className="min-w-0 break-words text-[11px] leading-4.5 text-foreground/88">
+                      {typeof value === 'object' ? JSON.stringify(value) : String(value)}
+                    </div>
+                  </div>
                 ))}
+                {selectedNodeSourceLabel !== '' ? (
+                  <button
+                    type="button"
+                    onClick={onViewSource}
+                    className={cn(
+                      'col-span-2 rounded-lg border px-2.5 py-2 text-left transition-colors hover:brightness-[0.98] focus-ring',
+                      DETAIL_TONE_CLASSES[0],
+                    )}
+                  >
+                    <div className="mb-1 text-[11px] font-medium uppercase tracking-[0.08em] text-info/70">
+                      文档来源
+                    </div>
+                    <div className="text-[11px] leading-4.5 text-info underline underline-offset-4">
+                      {selectedNodeSourceLabel}
+                    </div>
+                  </button>
+                ) : null}
               </div>
-              <h2 className="line-clamp-2 text-[14px] font-semibold leading-5 text-foreground">
-                {selectedNode.label}
-              </h2>
             </div>
-            <button
-              type="button"
-              onClick={onClose}
-              aria-label="关闭详情面板"
-              className="rounded-xl border border-border/60 bg-card p-1 text-muted-foreground transition-all hover:bg-muted/40 hover:text-foreground"
-              onPointerDown={(event) => event.stopPropagation()}
-            >
-              <X className="w-4 h-4" />
-            </button>
+
+            {kgDetailSection}
           </div>
-        </div>
-
-        <div ref={detailScrollRef} className="flex-1 space-y-3 overflow-y-auto overscroll-contain p-3.5 no-scrollbar">
-          <div className="grid grid-cols-4 gap-1.5">
-            <Button
-              variant="outline"
-              onClick={onChat}
-              className={cn(
-                quickActionBaseClass,
-                'border-info/30 bg-info/10 hover:bg-info/15'
-              )}
-            >
-              <MessageSquare className="w-3.5 h-3.5 mr-1" />
-              对话
-            </Button>
-            <Button
-              variant="outline"
-              onClick={onViewSource}
-              className={cn(
-                quickActionBaseClass,
-                'border-primary/30 bg-primary/15 hover:bg-primary/15'
-              )}
-            >
-              <FileText className="w-3.5 h-3.5 mr-1" />
-              来源
-            </Button>
-            <Button
-              variant="outline"
-              onClick={onStartConnectMode}
-              className={cn(
-                quickActionBaseClass,
-                'border-success/30 bg-success/10 hover:bg-success/15'
-              )}
-            >
-              <LinkIcon className="w-3.5 h-3.5 mr-1" />
-              连接
-            </Button>
-            <Button
-              variant="outline"
-              onClick={onDeleteNode}
-              className="h-8 w-full rounded-lg border-destructive/20 bg-destructive/5 px-2 text-[11px] text-destructive shadow-none hover:border-destructive/35 hover:bg-destructive/10 hover:text-destructive"
-            >
-              <Trash2 className="w-3.5 h-3.5 mr-1" />
-              删除
-            </Button>
-          </div>
-
-          <Button
-            variant="outline"
-            onClick={onExpandNode}
-            disabled={isLoading}
-            className="h-8 w-full justify-start rounded-lg border-info/30 bg-info/10 px-3 text-[11px] text-foreground/85 shadow-none hover:bg-info/15 hover:text-foreground"
-          >
-            <Network className="w-3 h-3 mr-1.5" />
-            {isLoading ? '展开中...' : '展开邻居节点'}
-          </Button>
-
-          {dataSource === 'live' && selectedNode?.meta?.kind === 'entity' ? (
-            <div className="grid grid-cols-2 gap-1.5">
-              <Button
-                variant="outline"
-                onClick={onOpenMerge}
-                className="h-7.5 w-full justify-start rounded-lg border-warning/30 bg-warning/10 px-2.5 text-[11px] text-foreground/85 shadow-none hover:bg-warning/15 hover:text-foreground"
-              >
-                <BoxSelect className="w-3 h-3 mr-1.5" />
-                合并
-              </Button>
-              <Button
-                variant="outline"
-                onClick={onOpenSplit}
-                className="h-7.5 w-full justify-start rounded-lg border-primary/30 bg-primary/15 px-2.5 text-[11px] text-foreground/85 shadow-none hover:bg-primary/15 hover:text-foreground"
-              >
-                <Box className="w-3 h-3 mr-1.5" />
-                拆分
-              </Button>
-            </div>
-          ) : null}
-
-          {lastResolutionActionId ? (
-            <Button
-              variant="outline"
-              onClick={onUndoLastResolution}
-              disabled={undoSubmitting}
-              className="h-7.5 w-full justify-start rounded-lg border-primary/20 bg-primary/5 px-2.5 text-[11px] text-primary shadow-none hover:bg-primary/10 hover:text-primary"
-            >
-              <RefreshCw className="w-3 h-3 mr-1.5" />
-              {undoActionLabel}
-            </Button>
-          ) : null}
-
-          <div className="space-y-2">
-            <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-              <Info className="w-3 h-3 text-primary/75" />
-              属性详情
-            </div>
-            <div className="grid grid-cols-2 gap-1.5">
-              {detailEntries.map(([key, value], index) => (
-                <div
-                  key={key}
-                  className={cn(
-                    'rounded-lg border px-2.5 py-2',
-                    DETAIL_TONE_CLASSES[index % DETAIL_TONE_CLASSES.length]
-                  )}
-                >
-                  <div className="mb-1 text-[11px] font-medium uppercase tracking-[0.06em] text-foreground/85 capitalize">
-                    {key}
-                  </div>
-                  <div className="min-w-0 break-words text-[11px] leading-4.5 text-foreground/88">
-                    {typeof value === 'object' ? coerceTrimmedString(JSON.stringify(value)) || String(value) : String(value)}
-                  </div>
-                </div>
-              ))}
-              {selectedNode.source ? (
-                <button
-                  type="button"
-                  onClick={onViewSource}
-                  className={cn(
-                    'col-span-2 rounded-lg border px-2.5 py-2 text-left transition-colors hover:brightness-[0.98] focus-ring',
-                    DETAIL_TONE_CLASSES[0]
-                  )}
-                >
-                  <div className="mb-1 text-[11px] font-medium uppercase tracking-[0.08em] text-info/70">
-                    文档来源
-                  </div>
-                  <div className="text-[11px] leading-4.5 text-info underline underline-offset-4">
-                    {selectedNodeSourceLabel}
-                  </div>
-                </button>
-              ) : null}
-            </div>
-          </div>
-
-          {kgDetailSection}
-        </div>
         </div>
       </div>
     )
@@ -768,14 +772,15 @@ export function GraphNodeDetailPanel({
     <section
       ref={panelRef}
       aria-label="图谱节点详情"
+      tabIndex={-1}
       className={cn(
         'group absolute z-20 flex w-[18.25rem] max-h-[min(31rem,calc(100vh-5.5rem))] transform flex-col overflow-visible rounded-2xl transition-transform duration-200 ease-out',
-        open && selectedNode ? 'translate-x-0' : 'translate-x-[120%]'
+        open && selectedNode ? 'translate-x-0' : 'translate-x-[120%]',
       )}
-       style={{
-         left: panelPosition?.x ?? undefined,
-         top: panelPosition?.y ?? PANEL_TOP_OFFSET,
-       }}
+      style={{
+        left: panelPosition?.x ?? undefined,
+        top: panelPosition?.y ?? PANEL_TOP_OFFSET,
+      }}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >

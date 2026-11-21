@@ -5,7 +5,7 @@ sidebar_position: 3
 
 # 多租户 Header 与可见性
 
-MimirQ 支持多租户隔离，通过 JWT claims 或 Header 传递租户上下文，资源可见性受租户边界与 ACL 双重约束。
+Ragvia 支持多租户隔离，通过 JWT claims 或 Header 传递租户上下文，资源可见性受租户边界与 ACL 双重约束。
 
 ## 租户上下文传递
 

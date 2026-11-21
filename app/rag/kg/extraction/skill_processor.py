@@ -8,19 +8,22 @@ This complements event/entity extraction by capturing process knowledge:
 - tags
 """
 
-
-import math
+import logging
 from typing import Any
 
-from app.rag.kg.utils import get_logger
+from app.rag.kg.extraction.evidence import clamp_confidence
 from app.rag.llm.base import BaseLLMClient
 from app.rag.llm.models import LLMMessage, LLMRole
 
-logger = get_logger("kg.extract.skills")
+logger = logging.getLogger("kg.extract.skills")
 
 
 def _strip_text(value: object) -> str:
-    return str(value or "").strip()
+    if value is None:
+        return ""
+    if not isinstance(value, (str, int, float, bool)):
+        raise ValueError("Skill text items must be strings, numbers, or booleans")
+    return str(value).strip()
 
 
 def _coerce_text_items(values: list[object], *, limit: int) -> list[str]:
@@ -63,16 +66,6 @@ def _coerce_str_list(value: object, *, max_items: int = 50) -> list[str]:
     return [text][:lim]
 
 
-def _clamp01(value: object, *, default: float) -> float:
-    try:
-        f = float(value)  # type: ignore[arg-type]
-    except Exception:
-        return float(default)
-    if math.isnan(f):
-        return float(default)
-    return max(0.0, min(1.0, float(f)))
-
-
 class SkillProcessor:
     def __init__(self, llm_client: BaseLLMClient):
         self.llm_client = llm_client
@@ -83,7 +76,7 @@ class SkillProcessor:
         text: str,
         max_skills: int = 3,
     ) -> list[dict[str, Any]]:
-        clean_text = (text or "").strip()
+        clean_text = (text).strip()
         if not clean_text:
             return []
 
@@ -93,6 +86,7 @@ class SkillProcessor:
 
         schema: dict[str, Any] = {
             "type": "object",
+            "required": ["skills"],
             "properties": {
                 "skills": {
                     "type": "array",
@@ -135,21 +129,29 @@ class SkillProcessor:
         messages = [LLMMessage(role=LLMRole.USER, content=prompt)]
         result = await self.llm_client.chat_with_schema(messages, response_schema=schema, temperature=0.2)
 
-        raw_skills = result.get("skills") if isinstance(result, dict) else None
-        if not isinstance(raw_skills, list) or not raw_skills:
-            return []
+        raw_skills = result.get("skills")
+        if not isinstance(raw_skills, list):
+            raise ValueError("Skill extraction response requires a skills array")
 
         out: list[dict[str, Any]] = []
         for raw in raw_skills:
             if not isinstance(raw, dict):
+                raise ValueError("Skill extraction response contains a non-object skill")
+            name = raw.get("name")
+            if not isinstance(name, str):
+                raise ValueError("Extracted skill name must be a string")
+            if not name.strip():
                 continue
-            name = str(raw.get("name") or "").strip()
-            if not name:
-                continue
+            name = name.strip()
 
-            category = str(raw.get("category") or "").strip() or None
-            summary = str(raw.get("summary") or "").strip() or None
-            evidence_quote = str(raw.get("evidence_quote") or "").strip() or None
+            category = raw.get("category")
+            summary = raw.get("summary")
+            evidence_quote = raw.get("evidence_quote")
+            if any(value is not None and not isinstance(value, str) for value in (category, summary, evidence_quote)):
+                raise ValueError("Extracted skill text fields must be strings or null")
+            category = category.strip() or None if category is not None else None
+            summary = summary.strip() or None if summary is not None else None
+            evidence_quote = evidence_quote.strip() or None if evidence_quote is not None else None
             if evidence_quote and len(evidence_quote) > 240:
                 evidence_quote = evidence_quote[:240]
             steps = _coerce_str_list(raw.get("steps"), max_items=30)
@@ -169,7 +171,7 @@ class SkillProcessor:
                     "outputs": outputs,
                     "tools": tools,
                     "tags": tags,
-                    "confidence": _clamp01(raw.get("confidence"), default=0.6),
+                    "confidence": clamp_confidence(raw.get("confidence"), default=0.6),
                 }
             )
 

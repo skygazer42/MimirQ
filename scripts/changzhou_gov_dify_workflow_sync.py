@@ -10,7 +10,6 @@ import json
 import os
 import sys
 from collections.abc import Callable
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError, URLError
@@ -23,6 +22,8 @@ if str(REPO_ROOT) not in sys.path:
 from scripts.changzhou_gov_dify_trace_report import (  # noqa: E402
     DEFAULT_CONSOLE_BASE_URL,
     DEFAULT_STORAGE_STATE,
+    _text,
+    _utc_now_text,
     load_console_token,
 )
 from scripts.changzhou_gov_dify_workflow_lint import lint_workflow  # noqa: E402
@@ -31,14 +32,6 @@ RequestJsonFn = Callable[..., dict[str, Any]]
 
 _REQUEST_ATTEMPTS = 3
 _SCHEMA = "mimirq.changzhou_gov_service_knowledge.dify_workflow_sync.v1"
-
-
-def _text(value: Any) -> str:
-    return str(value or "").strip()
-
-
-def _utc_now_text() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
 
 
 def _write_json(path: str | os.PathLike[str], payload: dict[str, Any]) -> None:

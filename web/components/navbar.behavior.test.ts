@@ -5,12 +5,21 @@ import { createRoot, hydrateRoot } from 'react-dom/client'
 import { renderToString } from 'react-dom/server'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import chatMessages from '@/i18n/messages/zh-CN/chat'
+import type { ReadyResponse } from '@/types/backend'
+
+const backendReadyState = vi.hoisted((): { data: ReadyResponse | null; isError: boolean } => ({
+  data: null,
+  isError: false,
+}))
+const backendHealthMock = vi.hoisted(() => vi.fn(() => ({ data: undefined })))
 
 const routerMocks = vi.hoisted(() => ({
   pathname: '/knowledge/similarity',
   prefetch: vi.fn(),
   push: vi.fn(),
 }))
+
+const linkStatusMock = vi.hoisted(() => ({ pending: false }))
 
 const commandMenuStore = vi.hoisted(() => ({
   open: false,
@@ -41,10 +50,7 @@ const tenantAccessMock = vi.hoisted(() => ({
   },
 }))
 
-const messages: Record<
-  string,
-  string | ((values?: Record<string, unknown>) => string)
-> = {
+const messages: Record<string, string | ((values?: Record<string, unknown>) => string)> = {
   'actions.newConversation': 'actions.newConversation',
   'auth.goToLogin': 'auth.goToLogin',
   'auth.login': 'auth.login',
@@ -68,6 +74,7 @@ const messages: Record<
   'toolbar.navLabel': 'toolbar.navLabel',
   'toolbar.appearance': '界面外观',
   'toolbar.appearanceHint': (values) => `${String(values?.count ?? '')} 种风格`,
+  'toolbar.opening': (values) => `正在打开${String(values?.label ?? '')}…`,
   'toolbar.sidebarClose': 'toolbar.sidebarClose',
   'user.offlineEnvironment': 'user.offlineEnvironment',
   'user.openSettings': 'user.openSettings',
@@ -99,6 +106,10 @@ vi.mock('@/i18n/navigation', () => ({
   }),
 }))
 
+vi.mock('next/link', () => ({
+  useLinkStatus: () => linkStatusMock,
+}))
+
 vi.mock('@/hooks/use-auth', () => ({
   useAuth: () => ({
     isAuthenticated: false,
@@ -116,11 +127,15 @@ vi.mock('@/hooks/use-backend-meta', () => ({
 
 vi.mock('@/hooks/use-backend-ready', () => ({
   useBackendReady: () => ({
-    data: null,
+    data: backendReadyState.data,
     dataUpdatedAt: 0,
     errorUpdatedAt: 0,
-    isError: false,
+    isError: backendReadyState.isError,
   }),
+}))
+
+vi.mock('@/hooks/use-backend-health', () => ({
+  useBackendHealth: backendHealthMock,
 }))
 
 vi.mock('@/hooks/use-tenant-access', () => ({
@@ -128,14 +143,7 @@ vi.mock('@/hooks/use-tenant-access', () => ({
 }))
 
 vi.mock('@/store/command-menu', () => ({
-  useCommandMenuState: (
-    selector: (state: typeof commandMenuStore) => unknown
-  ) => selector(commandMenuStore),
-}))
-
-vi.mock('@/components/mode-toggle', () => ({
-  ModeToggle: () =>
-    React.createElement('div', { 'data-testid': 'mode-toggle' }),
+  useCommandMenuState: (selector: (state: typeof commandMenuStore) => unknown) => selector(commandMenuStore),
 }))
 
 vi.mock('@/components/theme-customizer', () => ({
@@ -144,25 +152,21 @@ vi.mock('@/components/theme-customizer', () => ({
 }))
 
 vi.mock('@/components/ui/status-badge', () => ({
-  StatusBadge: ({ label }: { label: string }) =>
-    React.createElement('div', null, label),
+  StatusBadge: ({ label }: { label: string }) => React.createElement('div', null, label),
 }))
 
 vi.mock('@/components/ui/popover', () => ({
-  Popover: ({ children }: { children: React.ReactNode }) =>
-    React.createElement(React.Fragment, null, children),
-  PopoverContent: ({ children }: { children: React.ReactNode }) =>
-    React.createElement('div', null, children),
-  PopoverTrigger: ({ children }: { children: React.ReactNode }) =>
-    React.createElement(React.Fragment, null, children),
+  Popover: ({ children }: { children: React.ReactNode }) => React.createElement(React.Fragment, null, children),
+  PopoverContent: ({ children }: { children: React.ReactNode }) => React.createElement('div', null, children),
+  PopoverTrigger: ({ children }: { children: React.ReactNode }) => React.createElement(React.Fragment, null, children),
 }))
 
 import { Navbar } from './navbar'
 
+type NavbarProps = NonNullable<React.ComponentProps<typeof Navbar>>
+
 function renderComponent(element: React.ReactElement) {
-  ;(
-    globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }
-  ).IS_REACT_ACT_ENVIRONMENT = true
+  ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
   const container = document.createElement('div')
   document.body.appendChild(container)
@@ -174,6 +178,9 @@ function renderComponent(element: React.ReactElement) {
 
   return {
     container,
+    rerender(nextElement: React.ReactElement) {
+      act(() => root.render(nextElement))
+    },
     unmount() {
       act(() => {
         root.unmount()
@@ -186,6 +193,9 @@ function renderComponent(element: React.ReactElement) {
 describe('Navbar behavior', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    backendReadyState.data = null
+    backendReadyState.isError = false
+    linkStatusMock.pending = false
     routerMocks.pathname = '/knowledge/similarity'
     commandMenuStore.open = false
     commandMenuStore.setOpen = vi.fn()
@@ -211,26 +221,43 @@ describe('Navbar behavior', () => {
     vi.restoreAllMocks()
   })
 
+  it('keeps public readiness visible without diagnostic permissions', () => {
+    tenantAccessMock.current = { data: { ...adminTenantAccess, role: 'viewer', permissions: [] } }
+    backendReadyState.data = { ok: true, status: 'ready' }
+    const view = renderComponent(React.createElement(Navbar))
+    expect(backendHealthMock).toHaveBeenLastCalledWith({ enabled: false })
+    expect(view.container.querySelector('button[aria-label="deps.openStatus"]')?.textContent).toContain(
+      'deps.statusReady',
+    )
+    view.unmount()
+  })
+
+  it('does not report readiness from old data after the latest check fails', () => {
+    backendReadyState.data = { ok: true, status: 'ready' }
+    backendReadyState.isError = true
+    const view = renderComponent(React.createElement(Navbar))
+    expect(view.container.querySelector('button[aria-label="deps.openStatus"]')?.textContent).toContain(
+      'deps.statusNotReady',
+    )
+    view.unmount()
+  })
+
   it('keeps the advanced similarity route out of the primary sidebar', () => {
     const view = renderComponent(React.createElement(Navbar))
 
-    const knowledgeSection = view.container.querySelector(
-      'button[aria-controls="sidebar-section-knowledge"]'
-    )
-    const analysisSection = view.container.querySelector(
-      'button[aria-controls="sidebar-section-analysis"]'
-    )
+    const knowledgeSection = view.container.querySelector('button[aria-controls="sidebar-section-knowledge"]')
+    const analysisSection = view.container.querySelector('button[aria-controls="sidebar-section-analysis"]')
     const knowledgeBaseLink = view.container.querySelector('a[href="/knowledge"]')
-    const evaluationsLink = Array.from(view.container.querySelectorAll('a')).find(
-      (node) => node.textContent?.includes('items.ragas')
+    const evaluationsLink = Array.from(view.container.querySelectorAll('a')).find((node) =>
+      node.textContent?.includes('items.ragas'),
     )
-    const ragVisualizationLink = Array.from(view.container.querySelectorAll('a')).find(
-      (node) => node.textContent?.includes('items.ragVisualization')
+    const ragVisualizationLink = Array.from(view.container.querySelectorAll('a')).find((node) =>
+      node.textContent?.includes('items.ragVisualization'),
     )
 
     // After V3: "current" badge removed; verify active section is identified by expanded state
     const analysisToggle = view.container.querySelector(
-      'button[aria-controls="sidebar-section-analysis"]'
+      'button[aria-controls="sidebar-section-analysis"]',
     ) as HTMLButtonElement
     expect(analysisToggle?.getAttribute('aria-expanded')).toBe('true')
     expect(knowledgeBaseLink?.getAttribute('aria-current')).toBeNull()
@@ -243,15 +270,33 @@ describe('Navbar behavior', () => {
   it('maps dataset and knowledge labels to the intended routes', () => {
     const view = renderComponent(React.createElement(Navbar))
 
-    const datasetsLink = Array.from(view.container.querySelectorAll('a')).find(
-      (node) => node.textContent?.includes(chatMessages.Navbar.items.datasets)
+    const datasetsLink = Array.from(view.container.querySelectorAll('a')).find((node) =>
+      node.textContent?.includes(chatMessages.Navbar.items.datasets),
     )
-    const knowledgeLink = Array.from(view.container.querySelectorAll('a')).find(
-      (node) => node.textContent?.includes(chatMessages.Navbar.items.knowledgeBase)
+    const knowledgeLink = Array.from(view.container.querySelectorAll('a')).find((node) =>
+      node.textContent?.includes(chatMessages.Navbar.items.knowledgeBase),
     )
 
     expect(datasetsLink?.getAttribute('href')).toBe('/datasets')
     expect(knowledgeLink?.getAttribute('href')).toBe('/knowledge')
+
+    view.unmount()
+  })
+
+  it('keeps the settings rail compact even when a previous sidebar was open', () => {
+    routerMocks.pathname = '/settings'
+    const view = renderComponent(
+      React.createElement<NonNullable<React.ComponentProps<typeof Navbar>>>(Navbar, {
+        variant: 'rail',
+        isSidebarOpen: true,
+        setSidebarOpen: vi.fn(),
+      }),
+    )
+
+    expect(view.container.querySelector('#mimirq-sidebar')).toBeNull()
+    expect(view.container.querySelector('button[aria-label="toolbar.expand"]')).toBeNull()
+    expect(view.container.querySelector('a[href="/settings"]')?.getAttribute('aria-current')).toBe('page')
+    expect(view.container.querySelector('a[href="/datasets"]')).not.toBeNull()
 
     view.unmount()
   })
@@ -266,7 +311,31 @@ describe('Navbar behavior', () => {
     expect(appearance?.textContent).toContain('5 种风格')
     expect(appearanceButton?.getAttribute('aria-label')).toBe('界面外观')
     expect(appearanceButton?.getAttribute('title')).toBe('界面外观')
-    expect(view.container.querySelector('[data-testid="mode-toggle"]')).not.toBeNull()
+
+    view.unmount()
+  })
+
+  it('offers the shared appearance controls from the settings rail', () => {
+    const view = renderComponent(React.createElement<NavbarProps>(Navbar, { variant: 'rail' }))
+
+    const appearance = view.container.querySelector('[data-testid="appearance-customizer"]')
+    expect(appearance?.querySelector('button')?.getAttribute('aria-label')).toBe('界面外观')
+
+    view.unmount()
+  })
+
+  it('announces a pending rail navigation while retaining its destination', () => {
+    linkStatusMock.pending = true
+    const element = React.createElement<NavbarProps>(Navbar, { variant: 'rail' })
+    const view = renderComponent(element)
+    const datasetLink = () => view.container.querySelector('a[href="/datasets"]')
+
+    expect(datasetLink()?.querySelector('[role="status"]')?.textContent).toContain(chatMessages.Navbar.items.datasets)
+    expect(datasetLink()?.getAttribute('href')).toBe('/datasets')
+
+    linkStatusMock.pending = false
+    view.rerender(React.createElement<NavbarProps>(Navbar, { variant: 'rail' }))
+    expect(datasetLink()?.querySelector('[role="status"]')).toBeNull()
 
     view.unmount()
   })
@@ -276,10 +345,10 @@ describe('Navbar behavior', () => {
 
     const firstView = renderComponent(React.createElement(Navbar))
     const coreToggle = firstView.container.querySelector(
-      'button[aria-controls="sidebar-section-core"]'
+      'button[aria-controls="sidebar-section-core"]',
     ) as HTMLButtonElement
     const knowledgeToggle = firstView.container.querySelector(
-      'button[aria-controls="sidebar-section-knowledge"]'
+      'button[aria-controls="sidebar-section-knowledge"]',
     ) as HTMLButtonElement
 
     act(() => {
@@ -293,16 +362,16 @@ describe('Navbar behavior', () => {
 
     const secondView = renderComponent(React.createElement(Navbar))
     const coreToggleAfterRemount = secondView.container.querySelector(
-      'button[aria-controls="sidebar-section-core"]'
+      'button[aria-controls="sidebar-section-core"]',
     ) as HTMLButtonElement
     const knowledgeToggleAfterRemount = secondView.container.querySelector(
-      'button[aria-controls="sidebar-section-knowledge"]'
+      'button[aria-controls="sidebar-section-knowledge"]',
     ) as HTMLButtonElement
     const analysisToggle = secondView.container.querySelector(
-      'button[aria-controls="sidebar-section-analysis"]'
+      'button[aria-controls="sidebar-section-analysis"]',
     ) as HTMLButtonElement
-    const graphLink = Array.from(secondView.container.querySelectorAll('a')).find(
-      (node) => node.textContent?.includes('items.knowledgeGraph')
+    const graphLink = Array.from(secondView.container.querySelectorAll('a')).find((node) =>
+      node.textContent?.includes('items.knowledgeGraph'),
     )
 
     expect(coreToggleAfterRemount.getAttribute('aria-expanded')).toBe('false')

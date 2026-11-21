@@ -1,8 +1,8 @@
 import pytest
 
-from app.core.config import Settings
-from app.core.health_checks import check_redis
-from app.services.deps_diagnostics_service import _probe_redis
+from app.infrastructure.config import Settings
+from app.infrastructure.observability.health import check_redis
+from app.services.observability.dependencies import _probe_redis
 
 
 def _set_valid_production_env(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -27,6 +27,7 @@ def test_check_redis_reports_chat_retrieval_and_semantic_usage() -> None:
             "EMBEDDING_CACHE_ENABLED": False,
             "CHAT_RESPONSE_CACHE_ENABLED": True,
             "SECRET_KEY": "x" * 32,
+            "RETRIEVAL_CANDIDATE_SINGLEFLIGHT_ENABLED": True,
             "RETRIEVAL_CANDIDATE_CACHE_ENABLED": True,
             "SEMANTIC_CACHE_ENABLED": True,
         },
@@ -51,21 +52,23 @@ def test_check_redis_reports_chat_retrieval_and_semantic_usage() -> None:
 
 
 def test_probe_redis_reports_usage_flags(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("app.services.deps_diagnostics_service.settings.SECRET_KEY", "x" * 32, raising=False)
+    monkeypatch.setattr("app.services.observability.dependencies.settings.SECRET_KEY", "x" * 32, raising=False)
     monkeypatch.setattr(
-        "app.services.deps_diagnostics_service.settings.CHAT_RESPONSE_CACHE_ENABLED", True, raising=False
+        "app.services.observability.dependencies.settings.CHAT_RESPONSE_CACHE_ENABLED", True, raising=False
     )
     monkeypatch.setattr(
-        "app.services.deps_diagnostics_service.settings.RETRIEVAL_CANDIDATE_SINGLEFLIGHT_ENABLED",
+        "app.services.observability.dependencies.settings.RETRIEVAL_CANDIDATE_SINGLEFLIGHT_ENABLED",
         True,
         raising=False,
     )
     monkeypatch.setattr(
-        "app.services.deps_diagnostics_service.settings.RETRIEVAL_CANDIDATE_CACHE_ENABLED", False, raising=False
+        "app.services.observability.dependencies.settings.RETRIEVAL_CANDIDATE_CACHE_ENABLED", False, raising=False
     )
-    monkeypatch.setattr("app.services.deps_diagnostics_service.settings.SEMANTIC_CACHE_ENABLED", True, raising=False)
-    monkeypatch.setattr("app.services.deps_diagnostics_service.settings.EMBEDDING_CACHE_ENABLED", False, raising=False)
-    monkeypatch.setattr("app.services.deps_diagnostics_service.settings.TASK_QUEUE_ENABLED", False, raising=False)
+    monkeypatch.setattr("app.services.observability.dependencies.settings.SEMANTIC_CACHE_ENABLED", True, raising=False)
+    monkeypatch.setattr(
+        "app.services.observability.dependencies.settings.EMBEDDING_CACHE_ENABLED", False, raising=False
+    )
+    monkeypatch.setattr("app.services.observability.dependencies.settings.TASK_QUEUE_ENABLED", False, raising=False)
 
     class _Redis:
         @staticmethod
@@ -134,7 +137,9 @@ def test_check_redis_respects_singleflight_config_off() -> None:
         },
     )()
 
-    redis_status, ok, should_reset = check_redis(settings)
+    redis_status, ok, should_reset = check_redis(
+        settings, get_client=lambda: pytest.fail("disabled Redis health must not allocate a client")
+    )
 
     assert ok is True
     assert should_reset is False
@@ -157,7 +162,9 @@ def test_check_redis_does_not_report_distributed_singleflight_without_encryption
         },
     )()
 
-    redis_status, ok, should_reset = check_redis(settings)
+    redis_status, ok, should_reset = check_redis(
+        settings, get_client=lambda: pytest.fail("unencrypted singleflight must not allocate a Redis client")
+    )
 
     assert ok is True
     assert should_reset is False

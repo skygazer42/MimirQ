@@ -6,7 +6,7 @@ import textwrap
 
 import pytest
 
-from app.rag.chunking.factory import chunker_factory
+from app.rag.ingestion.chunking.factory import chunker_factory
 
 EXPECTED_SUPPORTED_STRATEGIES = [
     "agentic_chunker",
@@ -330,7 +330,7 @@ def test_chunker_factory_resolve_strategy_preserves_current_alias_behavior(alias
 
 def test_chunker_factory_uses_default_strategy_when_strategy_is_none(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
-        "app.rag.chunking.factory.settings.DEFAULT_CHUNK_STRATEGY", "langchain_recursive", raising=False
+        "app.rag.ingestion.chunking.factory.settings.DEFAULT_CHUNK_STRATEGY", "langchain_recursive", raising=False
     )
     assert chunker_factory.resolve_strategy(None) == "langchain_recursive"
 
@@ -346,7 +346,7 @@ def test_chunker_factory_rejects_unknown_strategy_with_supported_list() -> None:
 
 
 def test_chunker_factory_rejects_disabled_llama_index_strategies(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("app.rag.chunking.factory.settings.LLAMA_INDEX_ENABLED", False, raising=False)
+    monkeypatch.setattr("app.rag.ingestion.chunking.factory.settings.LLAMA_INDEX_ENABLED", False, raising=False)
 
     with pytest.raises(ValueError) as exc_info:
         chunker_factory.resolve_strategy("llama_index")
@@ -409,8 +409,8 @@ def test_strategy_exports_remain_lazy_and_backward_compatible() -> None:
     )
 
     assert payload == {
-        "after_import": ["app.rag.chunking.strategies"],
-        "after_attr": ["app.rag.chunking.strategies.separator"],
+        "after_import": ["app.rag.ingestion.chunking.strategies"],
+        "after_attr": ["app.rag.ingestion.chunking.strategies.separator"],
         "class_name": "SeparatorChunker",
     }
 
@@ -439,8 +439,8 @@ def test_supported_strategy_lookup_loads_only_requested_strategy_module() -> Non
 
     assert payload == {
         "added": [
-            "app.rag.chunking.strategies",
-            "app.rag.chunking.strategies.separator",
+            "app.rag.ingestion.chunking.strategies",
+            "app.rag.ingestion.chunking.strategies.separator",
         ],
         "class_name": "SeparatorChunker",
     }

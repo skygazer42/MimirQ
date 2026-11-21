@@ -10,11 +10,12 @@ from fastapi.responses import Response
 from langchain_core.documents import Document
 from starlette.requests import Request
 
-from app.api.v1 import documents as documents_module
-from app.api.v1 import parsing as parsing_module
+from app.api.schemas.documents import ChunkPreviewFormFields
+from app.api.v1.documents import routes as documents_module
+from app.api.v1.pipelines import parsing as parsing_module
 from app.main import _expand_dev_cors_origins, app, lifespan
-from app.parsing.processors.support import recovery as recovery_module
-from app.services.preview_cache import ParseCacheEntry
+from app.rag.ingestion.indexing.support import recovery as recovery_module
+from app.services.documents.preview_cache import ParseCacheEntry
 
 preview_module = documents_module.document_chunk_preview
 
@@ -31,40 +32,8 @@ def _request() -> Request:
     )
 
 
-def _preview_params(**overrides: object) -> preview_module.ChunkPreviewRequestFields:
-    params = preview_module.ChunkPreviewRequestFields(
-        chunk_size=1000,
-        chunk_overlap=200,
-        include_original_text=True,
-        include_review_signals=False,
-        include_chunks=True,
-        original_text_max_chars=100000,
-        max_chunks=0,
-        use_parse_cache=True,
-        parser_backend="basic",
-        chunk_strategy="langchain_recursive",
-        child_ratio=None,
-        min_child_size=None,
-        separator_preset=None,
-        separator=None,
-        keep_separator=None,
-        separator_max_chunk_size=None,
-        dataset_id=None,
-        pipeline=None,
-        governance_enabled=None,
-        governance_remove_toc_lines=None,
-        governance_remove_noise_lines=None,
-        governance_unwrap_lines=None,
-        governance_remove_common_lines=None,
-        governance_unwrap_max_line_length=None,
-        governance_noise_min_chars=None,
-        governance_noise_ratio_threshold=None,
-        governance_common_lines_min_docs=None,
-        governance_common_lines_min_ratio=None,
-    )
-    for key, value in overrides.items():
-        setattr(params, key, value)
-    return params
+def _preview_params(**overrides: object) -> ChunkPreviewFormFields:
+    return ChunkPreviewFormFields(parser_backend="basic", chunk_strategy="langchain_recursive", **overrides)
 
 
 def test_expand_dev_cors_origins_adds_local_aliases_without_touching_remote_origins() -> None:
@@ -135,7 +104,7 @@ async def test_lifespan_preserves_startup_and_shutdown_order(monkeypatch: pytest
     monkeypatch.setattr(main_module, "close_queue", _close_queue, raising=True)
     monkeypatch.setattr(main_module.engine, "dispose", lambda: events.append("dispose"), raising=True)
     monkeypatch.setattr(main_module, "shutdown_otel", lambda: events.append("shutdown_otel"), raising=True)
-    monkeypatch.setitem(sys.modules, "app.api.v1.integrations_dify", fake_dify)
+    monkeypatch.setitem(sys.modules, "app.api.v1.integrations.dify", fake_dify)
 
     async with lifespan(app):
         events.append("yield")
@@ -226,15 +195,15 @@ def test_preview_chunking_by_sha_preserves_offsets_metadata_and_dataset_authoriz
     monkeypatch.setattr(preview_module.settings, "PREVIEW_PARSE_CACHE_MAX_ENTRIES", 10, raising=False)
     monkeypatch.setattr(preview_module.settings, "PREVIEW_PARSE_CACHE_VERSION", "v1", raising=False)
     monkeypatch.setattr(preview_module.settings, "CHUNK_MIN_CHARS", 0, raising=False)
-    monkeypatch.setattr(preview_module.DatasetService, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
+    monkeypatch.setattr(preview_module.dataset_service, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
     monkeypatch.setattr(
-        preview_module.DatasetService,
+        preview_module.dataset_service,
         "get_dataset",
         lambda *_args, **_kwargs: SimpleNamespace(id=dataset_id, dataset_metadata={}),
         raising=True,
     )
     monkeypatch.setattr(
-        preview_module.DatasetService,
+        preview_module.dataset_service,
         "assert_dataset_readable",
         lambda _db, _ds, acct: readable_calls.append(("readable", acct)),
         raising=True,
@@ -270,7 +239,7 @@ def test_preview_chunking_by_sha_preserves_offsets_metadata_and_dataset_authoriz
     )
     monkeypatch.setitem(
         sys.modules,
-        "app.rag.chunking.quality_scorer",
+        "app.rag.ingestion.chunking.quality_scorer",
         types.SimpleNamespace(
             score_chunk_semantic_quality=lambda content, *, tokens_est, prev_token_set: ({}, prev_token_set or set()),
         ),
@@ -318,6 +287,23 @@ async def test_parse_workspace_document_requested_backend_fallback_preserves_502
         def __init__(self) -> None:
             self.commits = 0
 
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            self.close()
+
+        def close(self):
+            return None
+
+        def update(self, values, **_kwargs):
+            for column, value in values.items():
+                if column.key == "processing_attempts":
+                    doc.processing_attempts += 1
+                else:
+                    setattr(doc, column.key, value)
+            return 1
+
         def commit(self) -> None:
             self.commits += 1
 
@@ -344,21 +330,27 @@ async def test_parse_workspace_document_requested_backend_fallback_preserves_502
         file_path=str(source_path),
         file_type="pdf",
         status="pending",
+        processing_attempts=0,
         processing_progress=0,
         current_stage="queued",
         error_message=None,
         doc_metadata={"workspace": "parsing", "parser_backend_requested": "mineru"},
     )
     db = _DB()
+    from app.services.runtime import retrieval_limiter as rag_runtime_limiter
+
+    monkeypatch.setattr(db, "close", lambda: None, raising=False)
+    monkeypatch.setattr(rag_runtime_limiter, "SessionLocal", lambda: db)
+    monkeypatch.setattr(parsing_module, "SessionLocal", lambda: db)
 
     monkeypatch.setattr(
-        parsing_module.DatasetService,
+        parsing_module.dataset_service,
         "get_dataset",
         lambda *_args, **_kwargs: SimpleNamespace(id=dataset_id),
         raising=True,
     )
     monkeypatch.setattr(
-        parsing_module.DatasetService, "assert_dataset_writable", lambda *_args, **_kwargs: None, raising=True
+        parsing_module.dataset_service, "assert_dataset_writable", lambda *_args, **_kwargs: None, raising=True
     )
     monkeypatch.setattr(parsing_module, "_get_workspace_document", lambda *_args, **_kwargs: doc, raising=True)
     monkeypatch.setattr(parsing_module, "is_object_storage_uri", lambda _path: False, raising=True)
@@ -383,13 +375,14 @@ async def test_parse_workspace_document_requested_backend_fallback_preserves_502
         await parsing_module.parse_workspace_document(
             document_id=document_id,
             request=_Request(),
-            parser_backend="mineru",
-            image_caption_enabled=False,
-            image_ocr_enabled=False,
-            vlm_correction_enabled=None,
+            params=parsing_module.ParsingDocumentParseQuery(
+                parser_backend="mineru",
+                image_caption_enabled=False,
+                image_ocr_enabled=False,
+                vlm_correction_enabled=None,
+            ),
             tenant_id=tenant_id,
             account_id="acct-1",
-            db=db,
         )
 
     assert exc_info.value.status_code == 502
@@ -432,7 +425,6 @@ def test_apply_pending_retry_cleanup_rejects_stale_pipeline_requests_without_mut
         db_document=db_document,
         tenant_id=tenant_id,
         document_id=document_id,
-        indexer_factory=lambda _db: None,
     )
 
     assert status == "invalid"

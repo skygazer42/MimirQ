@@ -27,10 +27,7 @@ def select_free_subnet(
     start = seed % len(candidates)
     for offset in range(len(candidates)):
         candidate = candidates[(start + offset) % len(candidates)]
-        if all(
-            candidate.version != existing.version or not candidate.overlaps(existing)
-            for existing in occupied
-        ):
+        if all(candidate.version != existing.version or not candidate.overlaps(existing) for existing in occupied):
             return candidate
 
     raise RuntimeError(f"No free Docker subnet remains in {pool}")

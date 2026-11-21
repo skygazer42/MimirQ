@@ -17,8 +17,7 @@ def write(rel: str, body: str) -> None:
 def category(path: str, label: str, pos: int) -> None:
     write(
         path,
-        json.dumps({"label": label, "position": pos, "collapsed": False}, ensure_ascii=False, indent=2)
-        + "\n",
+        json.dumps({"label": label, "position": pos, "collapsed": False}, ensure_ascii=False, indent=2) + "\n",
     )
 
 
@@ -50,8 +49,26 @@ def tmpl_block(
 ## 相关链接
 
 - [OpenAPI / Redoc](https://skygazer42.github.io/MimirQ/)
-- 仓库内：[API 契约说明](https://github.com/skygazer42/MimirQ/blob/main/docs/integration/API_CONTRACT.md) · [前后端排障](https://github.com/skygazer42/MimirQ/blob/main/docs/integration/FE_BE_DEBUG.md)
+- 仓库内：[API 契约说明](https://github.com/skygazer42/MimirQ/blob/feat/ragvia-ui/docs/integration/API_CONTRACT.md) · [前后端排障](https://github.com/skygazer42/MimirQ/blob/feat/ragvia-ui/docs/integration/FE_BE_DEBUG.md)
 """.strip()
+
+
+def _write_topics(
+    directory: str,
+    title_prefix: str,
+    *,
+    scope: str,
+    perspective: str,
+    topics: list[tuple[str, str, str]],
+) -> None:
+    for position, (slug, title, detail) in enumerate(topics, start=1):
+        md(
+            f"{directory}/{slug}.md",
+            f"{title_prefix}{title}",
+            tmpl_block(scope=scope, perspective=perspective, extra=detail),
+            title,
+            position,
+        )
 
 
 def pilot_backend_datasets() -> None:
@@ -128,21 +145,18 @@ def pilot_backend_datasets() -> None:
             "表级资源与 TAG 维度的查询、绑定关系。",
         ),
     ]
-    for i, (slug, title, detail) in enumerate(blocks, start=1):
-        md(
-            f"backend/datasets/{slug}.md",
-            f"数据集 — {title}",
-            tmpl_block(scope="数据集", perspective="后端", extra=detail),
-            title,
-            i,
-        )
+    _write_topics("backend/datasets", "数据集 — ", scope="数据集", perspective="后端", topics=blocks)
 
 
 def pilot_backend_documents() -> None:
     category("backend/documents/_category_.json", "文档与入库", 3)
     blocks = [
         ("overview", "概述与边界", "上传、列表、状态、分块、解析文本、删除；连接器与入库 Run 见 ingestion 小节。"),
-        ("api-index", "API 参考索引", "OpenAPI 标签 **documents**；含 `POST /documents/upload`、`GET /documents/{{id}}/status`、分块与解析内容等路径。"),
+        (
+            "api-index",
+            "API 参考索引",
+            "OpenAPI 标签 **documents**；含 `POST /documents/upload`、`GET /documents/{{id}}/status`、分块与解析内容等路径。",
+        ),
         ("schemas", "请求与响应要点", "multipart 上传、文档状态机 pending/processing/completed/failed；分页与错误码。"),
         ("state-jobs", "状态与任务", "解析与索引流水线异步阶段；轮询间隔与超时建议。"),
         ("permissions", "权限与安全", "文档级 ACL、租户隔离；敏感文件类型策略。"),
@@ -152,14 +166,7 @@ def pilot_backend_documents() -> None:
         ("ingestion-runs", "入库 Run", "一次入库运行的生命周期与可观测字段。"),
         ("pipeline", "流水线阶段", "解析 → 分块 → 向量/索引各阶段在 API/元数据中的体现。"),
     ]
-    for i, (slug, title, detail) in enumerate(blocks, start=1):
-        md(
-            f"backend/documents/{slug}.md",
-            f"文档 — {title}",
-            tmpl_block(scope="文档与入库", perspective="后端", extra=detail),
-            title,
-            i,
-        )
+    _write_topics("backend/documents", "文档 — ", scope="文档与入库", perspective="后端", topics=blocks)
 
 
 def pilot_frontend_datasets() -> None:
@@ -168,13 +175,23 @@ def pilot_frontend_datasets() -> None:
     md(
         "frontend/welcome.md",
         "前端视角总览",
-        tmpl_block(scope="全站", perspective="前端", extra="Next.js 路由、`web/lib/api/*` 调用与 UI 状态从此侧栏进入。"),
+        tmpl_block(
+            scope="全站", perspective="前端", extra="Next.js 路由、`web/lib/api/*` 调用与 UI 状态从此侧栏进入。"
+        ),
         "总览",
         1,
     )
     blocks = [
-        ("overview", "用户路径与入口", "`web/app/datasets/**` 下列表、详情、预检、画像、健康、DB Catalog、表、工作流等页面；权限可见性随 RBAC 变化。"),
-        ("api-client", "web/lib/api 模块", "`web/lib/api/datasets.ts` 等模块中的封装函数与类型；与 OpenAPI 字段对齐方式。"),
+        (
+            "overview",
+            "用户路径与入口",
+            "`web/app/datasets/**` 下列表、详情、预检、画像、健康、DB Catalog、表、工作流等页面；权限可见性随 RBAC 变化。",
+        ),
+        (
+            "api-client",
+            "web/lib/api 模块",
+            "`web/lib/api/datasets.ts` 等模块中的封装函数与类型；与 OpenAPI 字段对齐方式。",
+        ),
         ("state-ui", "状态与加载", "SWR/React Query（若使用）、乐观更新、分页与空态。"),
         ("errors", "错误处理", "统一 `ApiError` / toast；未知错误码参见仓库内 extract-errors 技能说明。"),
         ("feature-flags", "功能开关", "与 `@gate` / feature flag 相关的页面显隐。"),
@@ -186,14 +203,7 @@ def pilot_frontend_datasets() -> None:
         ("catalog-ui", "DB Catalog 界面", "连接与对象浏览。"),
         ("tables-ui", "表 / TAG 界面", "表级操作与 TAG 过滤。"),
     ]
-    for i, (slug, title, detail) in enumerate(blocks, start=1):
-        md(
-            f"frontend/datasets/{slug}.md",
-            f"数据集（前端）— {title}",
-            tmpl_block(scope="数据集", perspective="前端", extra=detail),
-            title,
-            i,
-        )
+    _write_topics("frontend/datasets", "数据集（前端）— ", scope="数据集", perspective="前端", topics=blocks)
 
 
 def pilot_frontend_documents() -> None:
@@ -208,14 +218,7 @@ def pilot_frontend_documents() -> None:
         ("testing", "测试", "组件与契约测试建议。"),
         ("connectors-ui", "连接器配置", "表单字段与校验。"),
     ]
-    for i, (slug, title, detail) in enumerate(blocks, start=1):
-        md(
-            f"frontend/documents/{slug}.md",
-            f"文档（前端）— {title}",
-            tmpl_block(scope="文档与入库", perspective="前端", extra=detail),
-            title,
-            i,
-        )
+    _write_topics("frontend/documents", "文档（前端）— ", scope="文档与入库", perspective="前端", topics=blocks)
 
 
 def pilot_integration() -> None:
@@ -255,8 +258,8 @@ sequenceDiagram
 
 ## 排障入口
 
-- [FE_BE_DEBUG.md](https://github.com/skygazer42/MimirQ/blob/main/docs/integration/FE_BE_DEBUG.md)
-- [API_CONTRACT.md](https://github.com/skygazer42/MimirQ/blob/main/docs/integration/API_CONTRACT.md)
+- [FE_BE_DEBUG.md](https://github.com/skygazer42/MimirQ/blob/feat/ragvia-ui/docs/integration/FE_BE_DEBUG.md)
+- [API_CONTRACT.md](https://github.com/skygazer42/MimirQ/blob/feat/ragvia-ui/docs/integration/API_CONTRACT.md)
 """.strip(),
         "数据集 E2E",
         2,
@@ -321,7 +324,7 @@ def ops_pages() -> None:
     md(
         "ops/deployment.md",
         "部署与 Runbook",
-        "参见 [runbook.md](https://github.com/skygazer42/MimirQ/blob/main/docs/deployment/runbook.md) 与 Docker/Helm 说明。",
+        "参见 [runbook.md](https://github.com/skygazer42/MimirQ/blob/feat/ragvia-ui/docs/deployment/runbook.md) 与 Docker/Helm 说明。",
         "部署",
         4,
     )
@@ -339,7 +342,7 @@ def phase2_backend_stubs() -> None:
     stubs = [
         ("platform", "平台与账号", "Auth、Groups、RBAC、SCIM、Usage、Audit。"),
         ("parsing", "解析与切块", "Parsing Workspace、解析器运维；链到 `docs/guides`。"),
-        ("retrieval", "检索与 RAG", "检索配置、RAGViz、LTR；链到 retrieval 相关 guides。"),
+        ("retrieval", "检索与 RAG", "检索配置、RAGViz；链到 retrieval 相关 guides。"),
         ("chat", "对话与模板", "Chat、Prompt / RAG 配置模板。"),
         ("evidence", "证据与可解释性", "Evidence Workbench、Capsules、Reports。"),
         ("kg", "知识图谱", "KG API 与 Web 图谱页。"),
@@ -412,14 +415,7 @@ def phase2_integration_stubs() -> None:
         ("s14-multi-tenant", "多租户隔离", "Header 与 JWT 下的租户边界测试清单。"),
         ("s15-sse-reconnect", "SSE 重连", "流式对话断线重连与幂等。"),
     ]
-    for i, (slug, title, detail) in enumerate(scenarios, start=1):
-        md(
-            f"integration/scenarios/{slug}.md",
-            f"场景 — {title}",
-            tmpl_block(scope="集成", perspective="E2E", extra=detail),
-            title,
-            i,
-        )
+    _write_topics("integration/scenarios", "场景 — ", scope="集成", perspective="E2E", topics=scenarios)
 
 
 def integration_patterns_real() -> None:
@@ -439,7 +435,7 @@ def integration_patterns_real() -> None:
 ## 阅读顺序
 
 1. 看 **HTTP 状态码** 与响应 JSON 中的业务 `code` / `detail`（以 OpenAPI `ErrorResponse` 或实际返回为准）。
-2. 对照 [FE_BE_DEBUG](https://github.com/skygazer42/MimirQ/blob/main/docs/integration/FE_BE_DEBUG.md) 中的 Network / 后端日志路径。
+2. 对照 [FE_BE_DEBUG](https://github.com/skygazer42/MimirQ/blob/feat/ragvia-ui/docs/integration/FE_BE_DEBUG.md) 中的 Network / 后端日志路径。
 
 ## 常见映射（经验）
 
@@ -470,7 +466,7 @@ def integration_patterns_real() -> None:
 
 ## Header 调试模式（仅开发）
 
-- 部分部署允许 `X-User-ID` / `X-Tenant-ID` 等（见后端中间件与 [API_CONTRACT](https://github.com/skygazer42/MimirQ/blob/main/docs/integration/API_CONTRACT.md)）。
+- 部分部署允许 `X-User-ID` / `X-Tenant-ID` 等（见后端中间件与 [API_CONTRACT](https://github.com/skygazer42/MimirQ/blob/feat/ragvia-ui/docs/integration/API_CONTRACT.md)）。
 - **禁止**在生产客户端伪造租户头；生产务必走正式认证。
 
 ## 联调检查清单
@@ -497,7 +493,7 @@ def integration_patterns_real() -> None:
 
 ## 文档
 
-- [API_CONTRACT.md](https://github.com/skygazer42/MimirQ/blob/main/docs/integration/API_CONTRACT.md)
+- [API_CONTRACT.md](https://github.com/skygazer42/MimirQ/blob/feat/ragvia-ui/docs/integration/API_CONTRACT.md)
 """.strip(),
     )
     page(
@@ -537,7 +533,7 @@ def integration_patterns_real() -> None:
 
 ## 排障
 
-- 415 / 400：MIME 与字段名；参见 [FE_BE_DEBUG](https://github.com/skygazer42/MimirQ/blob/main/docs/integration/FE_BE_DEBUG.md)。
+- 415 / 400：MIME 与字段名；参见 [FE_BE_DEBUG](https://github.com/skygazer42/MimirQ/blob/feat/ragvia-ui/docs/integration/FE_BE_DEBUG.md)。
 """.strip(),
     )
     page(
@@ -589,11 +585,11 @@ def integration_patterns_real() -> None:
         """
 ## 后端
 
-- 根目录 [`.env.example`](https://github.com/skygazer42/MimirQ/blob/main/.env.example) 是完整环境变量模板；本地启动可复制为 `.env`，部署说明见 [docker_compose](https://github.com/skygazer42/MimirQ/blob/main/docs/deployment/docker_compose.md)。
+- 根目录 [`.env.example`](https://github.com/skygazer42/MimirQ/blob/feat/ragvia-ui/.env.example) 是完整环境变量模板；本地启动可复制为 `.env`，部署说明见 [docker_compose](https://github.com/skygazer42/MimirQ/blob/feat/ragvia-ui/docs/deployment/docker_compose.md)。
 
 ## 前端
 
-- `NEXT_PUBLIC_*` 在 [web/lib/env](https://github.com/skygazer42/MimirQ/tree/main/web/lib) 及相关构建说明中消费；修改后需重新构建。
+- `NEXT_PUBLIC_*` 在 [web/lib/env](https://github.com/skygazer42/MimirQ/tree/feat/ragvia-ui/web/lib) 及相关构建说明中消费；修改后需重新构建。
 
 ## 联调
 
@@ -613,7 +609,7 @@ def integration_patterns_real() -> None:
 ## 日常检查
 
 - 改后端路由后执行 `make openapi-export` 与前端 `gen:api-types`（以 Makefile / package.json 脚本为准）。
-- 自动化对照见 [API_CONTRACT.md](https://github.com/skygazer42/MimirQ/blob/main/docs/integration/API_CONTRACT.md)。
+- 自动化对照见 [API_CONTRACT.md](https://github.com/skygazer42/MimirQ/blob/feat/ragvia-ui/docs/integration/API_CONTRACT.md)。
 
 ## 手册内矩阵
 

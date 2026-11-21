@@ -1,16 +1,12 @@
 import type { Document } from '@/types'
 
-function createDemoGovernance(
-  dropReasons: Record<string, number>
-): NonNullable<Document['governance']> {
+function createDemoGovernance(dropReasons: Record<string, number>): NonNullable<Document['governance']> {
   return {
     enabled: true,
     documents: 1,
     changed_documents: 0,
     rules_applied: Object.keys(dropReasons).length,
-    dropped_documents: Object.values(dropReasons).some((count) => count > 0)
-      ? 1
-      : 0,
+    dropped_documents: Object.values(dropReasons).some((count) => count > 0) ? 1 : 0,
     drop_reasons: dropReasons,
   }
 }
@@ -27,26 +23,24 @@ function getDemoDocumentStatus(index: number): Document['status'] {
 
 export function makeDemoQuarantineDocument(
   id: number,
-  overrides: Partial<Document> & { filename: string; file_type: string }
+  overrides: Partial<Document> & { filename: string; file_type: string },
 ): Document {
-  const createdAt = new Date(
-    Date.UTC(2026, 2, 31, 3, 0, 0) - id * 36 * 60_000
-  ).toISOString()
-  const updatedAt = new Date(
-    Date.UTC(2026, 2, 31, 11, 45, 0) - id * 22 * 60_000
-  ).toISOString()
+  const createdAt = new Date(Date.UTC(2026, 2, 31, 3, 0, 0) - id * 36 * 60_000).toISOString()
+  const updatedAt = new Date(Date.UTC(2026, 2, 31, 11, 45, 0) - id * 22 * 60_000).toISOString()
   const { filename, file_type: fileType, ...restOverrides } = overrides
 
   return {
     id: `demo-q-${id.toString().padStart(4, '0')}`,
-    tenant_id: 'demo-tenant',
     dataset_id: 'dataset-demo',
     filename,
     status: 'quarantined',
     file_type: fileType,
     file_size: 1_240_000,
     chunk_count: 0,
+    total_characters: 0,
     processing_progress: 0,
+    processing_attempts: 0,
+    publication_status: 'published',
     created_at: createdAt,
     updated_at: updatedAt,
     processed_at: updatedAt,
@@ -55,7 +49,7 @@ export function makeDemoQuarantineDocument(
     metadata: {},
     governance: createDemoGovernance({}),
     ...restOverrides,
-  } as Document
+  }
 }
 
 export function buildDemoQuarantineDocuments(): Document[] {
@@ -154,7 +148,7 @@ export function buildDemoQuarantineDocuments(): Document[] {
     const bucket = reasons[index % reasons.length]
     const status = getDemoDocumentStatus(index)
     const reviewed = status === 'completed'
-    const suffix = `${String(index + 7).padStart(3, '0')}`
+    const suffix = String(index + 7).padStart(3, '0')
     return makeDemoQuarantineDocument(index + 7, {
       filename: `${bucket.filename}_${suffix}.${bucket.fileType}`,
       file_type: bucket.fileType,

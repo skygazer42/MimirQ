@@ -1,6 +1,6 @@
 # 表格 / TAG（Table Augmented Generation）
 
-MimirQ 支持将结构化表格（CSV/XLS/XLSX）走 **TAG**（Table Augmented Generation）链路：把表格导入每文档 SQLite（Table Store），通过 **SQL 查询**（以及可选的 NL→SQL/语义过滤）来回答问题，而不是强行把大表切块嵌入进向量库。
+Ragvia 支持将结构化表格（CSV/XLS/XLSX）走 **TAG**（Table Augmented Generation）链路：把表格导入每文档 SQLite（Table Store），通过 **SQL 查询**（以及可选的 NL→SQL/语义过滤）来回答问题，而不是强行把大表切块嵌入进向量库。
 
 从 Wave C 开始，DB Catalog connector 也可以按上限抽取行快照，写入 `dbrows` sidecar 文档进入同一套 Table Store/TAG 链路。
 
@@ -28,7 +28,7 @@ MimirQ 支持将结构化表格（CSV/XLS/XLSX）走 **TAG**（Table Augmented G
 
 当 `table_store_enabled=true` 时，部分解析器（例如 PDF 的 Docling/DeepDoc 系列）会把表格作为独立的 “table segments” 输出（通常带 `metadata.content_type=table` / `doc_type_kwd=table`）。
 
-MimirQ 会对这些表格做 best-effort：
+Ragvia 会对这些表格做 best-effort：
 
 - 把解析输出中的 **Markdown pipe table** 导入同一个 per-document SQLite Table Store
 - 在文档 `doc_metadata.table_store` 中记录 `table_id/sheet_name/row_count/col_count/columns` 等元数据
@@ -170,7 +170,7 @@ SQL 执行器是 **SELECT-only**：
 
 - `POST /api/v1/datasets/{dataset_id}/tables/{table_id}/lotus/sem-filter`
 
-> 说明：该接口路径保留了历史命名（`/lotus/sem-filter`），但实现为 MimirQ 内置的“LOTUS-like”语义过滤能力，不依赖外部 LOTUS 包。
+> 说明：该接口路径保留了历史命名（`/lotus/sem-filter`），但实现为 Ragvia 内置的“LOTUS-like”语义过滤能力，不依赖外部 LOTUS 包。
 
 ## Chat 自动 TAG（可选）
 

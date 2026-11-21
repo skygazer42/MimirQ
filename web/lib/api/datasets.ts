@@ -1,7 +1,7 @@
+import { z } from 'zod'
 import type {
   Dataset,
   DatasetCategoryAssignmentRequest,
-  DatasetCategoryAssignmentResponse,
   DatasetCategoryCreate,
   DatasetCategoryMoveRequest,
   DatasetCategoryOut,
@@ -11,7 +11,6 @@ import type {
   DatasetConfigExport,
   DatasetConfigImportRequest,
   DatasetCreate,
-  DatasetHealthResponse,
   DatasetIngestionStats,
   DatasetListResponse,
   DatasetPrecheckDiffResponse,
@@ -25,38 +24,59 @@ import type {
   DatasetPrecheckScanRunListResponse,
   DatasetPrecheckScanRunOut,
   DatasetPrecheckSummary,
-  DatasetProfileDocumentListResponse,
-  DatasetProfileFindingListResponse,
   DatasetProfileScanRunCreateRequest,
-  DatasetProfileScanRunListResponse,
-  DatasetProfileScanRunOut,
-  DatasetProfileSummary,
   DatasetTableAsset,
   DatasetTablesListResponse,
   DatasetUpdate,
   DbCatalogTableDetail,
   DbCatalogTablesListResponse,
   DbProfileSnapshotListResponse,
-  IngestionPolicy,
-  IngestionPolicyImportResponse,
-  IngestionPolicyRollbackRequest,
-  IngestionPolicyVersionListResponse,
   LotusSemFilterRequest,
   TableAskRequest,
   TableAskResponse,
   TableQueryRequest,
   TableQueryResponse,
-} from '@/types'
+} from '@/types/datasets'
+import type {
+  IngestionPolicy,
+  IngestionPolicyImportResponse,
+  IngestionPolicyRollbackRequest,
+  IngestionPolicyVersionListResponse,
+} from '@/types/processing'
+
+import {
+  datasetHealthSchema,
+  datasetProfileSchema,
+  profileDocumentsSchema,
+  profileScanRunSchema,
+  profileScanRunsSchema,
+  type DatasetHealthResponse,
+  type DatasetProfileSummary,
+  type DatasetProfileFindingListResponse,
+  type DatasetProfileDocumentListResponse,
+  type DatasetProfileScanRunOut,
+  type DatasetProfileScanRunListResponse,
+} from '@/lib/dataset-profile-schema'
+import { parseApiResponse } from '@/lib/openapi-request'
+import {
+  datasetTablesPageSchema,
+  tableAskResponseSchema,
+  tableAssetSchema,
+  tableQueryResponseSchema,
+} from '@/lib/dataset-table-schema'
 
 import { API_LONG_TIMEOUT_MS } from '@/lib/env'
-import { apiClient, openapiRequest } from '@/lib/api/core'
+import { apiClient, openapiRequest, type ApiRequestOptions } from '@/lib/api/core'
+import { integerSchema } from '@/lib/response-schema'
+import { matchesResourceId } from '@/lib/resource-id'
+import type { OpenApiQueryParams } from '@/types/openapi-helpers'
+import type { OpenApiSchema } from '@/types/backend'
 
-export type DatasetAnalysisFilters = {
-  from_ts?: string
-  to_ts?: string
-  feedback_polarity?: string
-  category?: string
-}
+export type DatasetAnalysisFilters = NonNullable<
+  OpenApiQueryParams<'/api/v1/datasets/{dataset_id}/analysis/summary', 'get'>
+>
+
+export type DatasetProfileBucketDimension = 'file_type' | 'language' | 'directory' | 'quality_bucket'
 
 export type DatasetAnalysisDashboardParams = Omit<DatasetAnalysisFilters, 'category'> & {
   limit?: number
@@ -66,10 +86,9 @@ export type DatasetAnalysisExamplesParams = DatasetAnalysisFilters & {
   limit?: number
 }
 
-export type DatasetAnalysisRuleSuggestionParams = Omit<DatasetAnalysisFilters, 'category'> & {
-  ruleset: string
-  limit?: number
-}
+export type DatasetAnalysisRuleSuggestionParams = NonNullable<
+  OpenApiQueryParams<'/api/v1/datasets/{dataset_id}/analysis/rule-suggestions', 'get'>
+>
 
 export type DatasetAnalysisGlossaryWritebackParams = DatasetAnalysisFilters & {
   ruleset: string
@@ -77,84 +96,73 @@ export type DatasetAnalysisGlossaryWritebackParams = DatasetAnalysisFilters & {
 }
 
 export type DatasetAnalysisResponse = Record<string, unknown>
-export type DatasetPurgeResponse = Record<string, unknown>
-export type DatasetListParams = {
-  skip?: number
-  limit?: number
-  q?: string
-  category_id?: string
-  include_descendants?: boolean
-  order_by?: 'created_at' | 'name'
-  order_dir?: 'asc' | 'desc'
-  operational_status?: 'all' | 'active' | 'anomaly' | 'pending' | 'testing'
-}
+const purgeCountSchema = integerSchema.nonnegative()
+const datasetPurgeSchema = z.looseObject({
+  dataset_id: z.string(),
+  dry_run: z.boolean(),
+  max_delete: integerSchema.positive(),
+  eligible: purgeCountSchema,
+  deleted: purgeCountSchema,
+  not_found: purgeCountSchema,
+  denied: purgeCountSchema,
+  conflicts: purgeCountSchema,
+  errors: purgeCountSchema,
+}) satisfies z.ZodType<OpenApiSchema<'DatasetPurgeResponse'>>
+
+export type DatasetPurgeResponse = z.infer<typeof datasetPurgeSchema>
+export type DatasetListParams = NonNullable<OpenApiQueryParams<'/api/v1/datasets/', 'get'>>
 export type ExhaustiveDatasetListParams = Omit<DatasetListParams, 'skip' | 'limit'> & {
   pageSize?: number
 }
-export type DatasetRetrievalAuditPayload = {
-  status: string
-  plugin_refs?: string[]
-  plugin_package_hashes?: string[]
-  gates?: Array<{
-    name: string
-    status: string
-    metrics?: Record<string, unknown>
-    failed_conditions?: string[]
-    generated_at?: string | null
-    source?: string | null
-  }>
-  failure_categories?: Record<string, number>
-  kg_recommendation?: string | null
-  recommended_next_action?: string | null
-}
+export type DatasetRetrievalAuditPayload = OpenApiSchema<'DatasetRetrievalAuditOut'>
 
 const DEFAULT_DATASET_PAGE_SIZE = 200
+const datasetRuleSuggestionsSchema = z.looseObject({
+  glossary_suggestions: z.array(z.looseObject({ token: z.string().min(1), count: integerSchema, source: z.string() })),
+})
 
-async function listDatasets(params?: DatasetListParams): Promise<DatasetListResponse> {
-  return openapiRequest({ path: '/api/v1/datasets/', method: 'get', query: params })
+const datasetCategoryAssignmentSchema = z.looseObject({
+  dataset_id: z.string().min(1),
+  category_ids: z.array(z.string().min(1)),
+})
+
+function categoryAssignmentFor(datasetId: string) {
+  return datasetCategoryAssignmentSchema.refine((assignment) => matchesResourceId(assignment.dataset_id, datasetId), {
+    message: '分类结果的数据集与请求不一致',
+  })
 }
 
-function datasetIdentityKey(dataset: Dataset): string | null {
-  const id = typeof dataset?.id === 'string' ? dataset.id.trim() : ''
-  return id || null
+async function listDatasets(params?: DatasetListParams, options: ApiRequestOptions = {}): Promise<DatasetListResponse> {
+  return openapiRequest({ path: '/api/v1/datasets/', method: 'get', query: params, signal: options.signal })
 }
 
 export async function listAllDatasets(
-  params?: ExhaustiveDatasetListParams
+  { pageSize = DEFAULT_DATASET_PAGE_SIZE, ...params }: ExhaustiveDatasetListParams = {},
+  options: ApiRequestOptions = {},
 ): Promise<Dataset[]> {
-  const requestedPageSize = Number(params?.pageSize ?? DEFAULT_DATASET_PAGE_SIZE)
-  const pageSize = Math.max(1, Math.min(DEFAULT_DATASET_PAGE_SIZE, Math.trunc(requestedPageSize)))
-  const { pageSize: _pageSize, ...rest } = params || {}
-
-  const items: Dataset[] = []
-  const seenIds = new Set<string>()
-  let skip = 0
-  let total = Number.POSITIVE_INFINITY
-
-  while (items.length < total) {
-    const page = await listDatasets({ ...rest, skip, limit: pageSize })
-    const pageItems = Array.isArray(page.items) ? page.items : []
-    const reportedTotal = Number(page.total)
-    total = Number.isFinite(reportedTotal) && reportedTotal >= 0
-      ? reportedTotal
-      : Number.POSITIVE_INFINITY
-    if (pageItems.length === 0) break
-
-    let added = 0
-    for (const pageItem of pageItems) {
-      const identity = datasetIdentityKey(pageItem)
-      if (identity && seenIds.has(identity)) continue
-      if (identity) seenIds.add(identity)
-      items.push(pageItem)
-      added += 1
-    }
-
-    if (added === 0) break
-    skip += pageItems.length
-    if (pageItems.length < pageSize) break
+  if (!Number.isInteger(pageSize) || pageSize < 1 || pageSize > DEFAULT_DATASET_PAGE_SIZE) {
+    throw new RangeError('数据集目录每页条数必须是 1 到 200 的整数')
   }
-
-  return items
+  const items = new Map<string, Dataset>()
+  let skip = 0
+  let page = await listDatasets({ ...params, skip, limit: pageSize }, options)
+  const total = page.total
+  if (!Number.isInteger(total) || total < 0) {
+    throw new Error('数据集目录总数无效，请重新读取')
+  }
+  while (true) {
+    if (page.total !== total) throw new Error('数据集目录在读取期间发生变化，请重新读取')
+    for (const item of page.items) {
+      if (!items.has(item.id)) items.set(item.id, item)
+    }
+    skip += page.items.length
+    if (skip >= total) {
+      if (items.size !== total) throw new Error('数据集目录在读取期间发生变化，请重新读取')
+      return [...items.values()]
+    }
+    if (page.items.length === 0) throw new Error('数据集目录尚未完整返回，请重新读取')
+    page = await listDatasets({ ...params, skip, limit: pageSize }, options)
+  }
 }
 
 export const datasetApi = {
@@ -166,11 +174,12 @@ export const datasetApi = {
 
   listAll: listAllDatasets,
 
-  async get(datasetId: string): Promise<Dataset> {
+  async get(datasetId: string, options: ApiRequestOptions = {}): Promise<Dataset> {
     return openapiRequest({
       path: '/api/v1/datasets/{dataset_id}',
       method: 'get',
       pathParams: { dataset_id: datasetId },
+      signal: options.signal,
     })
   },
 
@@ -182,17 +191,16 @@ export const datasetApi = {
     })
   },
 
-  async getHealth(datasetId: string): Promise<DatasetHealthResponse> {
-    return openapiRequest({
-      path: '/api/v1/datasets/{dataset_id}/health',
-      method: 'get',
-      pathParams: { dataset_id: datasetId },
+  async getHealth(datasetId: string, options: ApiRequestOptions = {}): Promise<DatasetHealthResponse> {
+    const response = await apiClient.get<unknown>(`/datasets/${encodeURIComponent(datasetId)}/health`, {
+      signal: options.signal,
     })
+    return parseApiResponse(response, datasetHealthSchema, 'DatasetHealth')
   },
 
   async putRetrievalAudit(
     datasetId: string,
-    payload: DatasetRetrievalAuditPayload
+    payload: DatasetRetrievalAuditPayload,
   ): Promise<DatasetRetrievalAuditPayload> {
     return openapiRequest({
       path: '/api/v1/datasets/{dataset_id}/retrieval-audit',
@@ -207,17 +215,14 @@ export const datasetApi = {
     return data
   },
 
-  async getAnalysisSummary(
-    datasetId: string,
-    params?: DatasetAnalysisFilters
-  ): Promise<DatasetAnalysisResponse> {
+  async getAnalysisSummary(datasetId: string, params?: DatasetAnalysisFilters): Promise<DatasetAnalysisResponse> {
     const { data } = await apiClient.get(`/datasets/${datasetId}/analysis/summary`, { params })
     return data
   },
 
   async getAnalysisExamples(
     datasetId: string,
-    params?: DatasetAnalysisExamplesParams
+    params?: DatasetAnalysisExamplesParams,
   ): Promise<DatasetAnalysisResponse> {
     const { data } = await apiClient.get(`/datasets/${datasetId}/analysis/examples`, { params })
     return data
@@ -225,16 +230,17 @@ export const datasetApi = {
 
   async getAnalysisRuleSuggestions(
     datasetId: string,
-    params: DatasetAnalysisRuleSuggestionParams
-  ): Promise<DatasetAnalysisResponse> {
-    const { data } = await apiClient.get(`/datasets/${datasetId}/analysis/rule-suggestions`, { params })
-    return data
+    params: DatasetAnalysisRuleSuggestionParams,
+    options?: ApiRequestOptions,
+  ) {
+    const response = await apiClient.get<unknown>(`/datasets/${datasetId}/analysis/rule-suggestions`, {
+      params,
+      signal: options?.signal,
+    })
+    return parseApiResponse(response, datasetRuleSuggestionsSchema, 'DatasetAnalysisRuleSuggestions')
   },
 
-  async exportAnalysisJson(
-    datasetId: string,
-    params?: DatasetAnalysisFilters
-  ): Promise<DatasetAnalysisResponse> {
+  async exportAnalysisJson(datasetId: string, params?: DatasetAnalysisFilters): Promise<DatasetAnalysisResponse> {
     const { data } = await apiClient.get(`/datasets/${datasetId}/analysis/export.json`, { params })
     return data
   },
@@ -257,7 +263,7 @@ export const datasetApi = {
 
   async writebackAnalysisGlossary(
     datasetId: string,
-    params: DatasetAnalysisGlossaryWritebackParams
+    params: DatasetAnalysisGlossaryWritebackParams,
   ): Promise<DatasetAnalysisResponse> {
     const { data } = await apiClient.post(`/datasets/${datasetId}/analysis/glossary-writeback`, undefined, { params })
     return data
@@ -265,7 +271,7 @@ export const datasetApi = {
 
   async createAnalysisPngExportTask(
     datasetId: string,
-    params?: DatasetAnalysisFilters
+    params?: DatasetAnalysisFilters,
   ): Promise<DatasetAnalysisResponse> {
     const { data } = await apiClient.post(`/datasets/${datasetId}/analysis/export.png`, undefined, { params })
     return data
@@ -292,20 +298,23 @@ export const datasetApi = {
     })
   },
 
-  async getCategories(datasetId: string): Promise<DatasetCategoryAssignmentResponse> {
+  async getCategories(datasetId: string, options?: ApiRequestOptions) {
     return openapiRequest({
       path: '/api/v1/datasets/{dataset_id}/categories',
       method: 'get',
       pathParams: { dataset_id: datasetId },
+      signal: options?.signal,
+      responseSchema: categoryAssignmentFor(datasetId),
     })
   },
 
-  async setCategories(datasetId: string, payload: DatasetCategoryAssignmentRequest): Promise<DatasetCategoryAssignmentResponse> {
+  async setCategories(datasetId: string, payload: DatasetCategoryAssignmentRequest) {
     return openapiRequest({
       path: '/api/v1/datasets/{dataset_id}/categories',
       method: 'put',
       pathParams: { dataset_id: datasetId },
       body: payload,
+      responseSchema: categoryAssignmentFor(datasetId),
     })
   },
 
@@ -317,12 +326,17 @@ export const datasetApi = {
     })
   },
 
-  async purge(
-    datasetId: string,
-    params?: { max_delete?: number; dry_run?: boolean }
-  ): Promise<DatasetPurgeResponse> {
-    const { data } = await apiClient.post(`/datasets/${datasetId}/purge`, undefined, { params })
-    return data
+  async purge(datasetId: string, params: { max_delete: number; dry_run: boolean }): Promise<DatasetPurgeResponse> {
+    const response = await apiClient.post<unknown>(`/datasets/${datasetId}/purge`, undefined, { params })
+    const receipt = parseApiResponse(response, datasetPurgeSchema, 'DatasetPurgeResponse')
+    if (
+      !matchesResourceId(receipt.dataset_id, datasetId) ||
+      receipt.dry_run !== params.dry_run ||
+      receipt.max_delete !== params.max_delete
+    ) {
+      throw new Error('数据集清理回执与本次请求不匹配，请先重新读取文档列表')
+    }
+    return receipt
   },
 
   async getIngestionPolicy(datasetId: string): Promise<IngestionPolicy> {
@@ -410,7 +424,7 @@ export const datasetApi = {
       after_id?: string
       include_sensitive?: boolean
       gzip?: boolean
-    }
+    },
   ): Promise<Blob> {
     const { data } = await apiClient.get(`/datasets/${datasetId}/documents/export`, {
       params,
@@ -419,10 +433,7 @@ export const datasetApi = {
     return data as Blob
   },
 
-  async exportBundleZip(
-    datasetId: string,
-    params?: { limit?: number; include_sensitive?: boolean }
-  ): Promise<Blob> {
+  async exportBundleZip(datasetId: string, params?: { limit?: number; include_sensitive?: boolean }): Promise<Blob> {
     const { data } = await apiClient.get(`/datasets/${datasetId}/export`, {
       params,
       responseType: 'blob',
@@ -430,95 +441,163 @@ export const datasetApi = {
     return data as Blob
   },
 
-  async getProfileSummary(datasetId: string): Promise<DatasetProfileSummary> {
-    const { data } = await apiClient.get(`/datasets/${datasetId}/profile/summary`)
-    return data
+  async getProfileSummary(datasetId: string, options: ApiRequestOptions = {}): Promise<DatasetProfileSummary> {
+    const response = await apiClient.get<unknown>(`/datasets/${encodeURIComponent(datasetId)}/profile/summary`, {
+      signal: options.signal,
+    })
+    return parseApiResponse(response, datasetProfileSchema, 'DatasetProfileSummary')
   },
 
   async listProfileFinding(
     datasetId: string,
     findingKey: string,
-    params?: { skip?: number; limit?: number }
+    params?: { skip?: number; limit?: number },
+    options: ApiRequestOptions = {},
   ): Promise<DatasetProfileFindingListResponse> {
-    const { data } = await apiClient.get(`/datasets/${datasetId}/profile/findings/${findingKey}`, { params })
-    return data
+    const response = await apiClient.get<unknown>(
+      `/datasets/${encodeURIComponent(datasetId)}/profile/findings/${encodeURIComponent(findingKey)}`,
+      { params, signal: options.signal },
+    )
+    return parseApiResponse(response, profileDocumentsSchema, 'DatasetProfileFindingDocuments')
   },
 
   async listProfileBucketDocuments(
     datasetId: string,
     params: {
-      dimension: 'file_type' | 'language' | 'directory' | 'quality_bucket'
+      dimension: DatasetProfileBucketDimension
       bucket: string
       skip?: number
       limit?: number
       include_preview?: boolean
       preview_max_chars?: number
-    }
+    },
+    options: ApiRequestOptions = {},
   ): Promise<DatasetProfileDocumentListResponse> {
-    const { data } = await apiClient.get(`/datasets/${datasetId}/profile/buckets/documents`, { params })
-    return data
+    const response = await apiClient.get<unknown>(
+      `/datasets/${encodeURIComponent(datasetId)}/profile/buckets/documents`,
+      { params, signal: options.signal },
+    )
+    return parseApiResponse(response, profileDocumentsSchema, 'DatasetProfileBucketDocuments')
   },
 
-  async startProfileScan(datasetId: string, body: DatasetProfileScanRunCreateRequest): Promise<DatasetProfileScanRunOut> {
-    const { data } = await apiClient.post(`/datasets/${datasetId}/profile/scan-runs`, body || {})
-    return data
+  async startProfileScan(
+    datasetId: string,
+    body: DatasetProfileScanRunCreateRequest,
+  ): Promise<DatasetProfileScanRunOut> {
+    const response = await apiClient.post<unknown>(`/datasets/${encodeURIComponent(datasetId)}/profile/scan-runs`, body)
+    return parseApiResponse(response, profileScanRunSchema, 'DatasetProfileScanCreated')
   },
 
   async listProfileScanRuns(
     datasetId: string,
-    params?: { skip?: number; limit?: number }
+    params?: { skip?: number; limit?: number },
+    options: ApiRequestOptions = {},
   ): Promise<DatasetProfileScanRunListResponse> {
-    const { data } = await apiClient.get(`/datasets/${datasetId}/profile/scan-runs`, { params })
+    const response = await apiClient.get<unknown>(`/datasets/${encodeURIComponent(datasetId)}/profile/scan-runs`, {
+      params,
+      signal: options.signal,
+    })
+    return parseApiResponse(response, profileScanRunsSchema, 'DatasetProfileScanRuns')
+  },
+
+  async listAllProfileScanRuns(
+    datasetId: string,
+    options: ApiRequestOptions = {},
+  ): Promise<DatasetProfileScanRunOut[]> {
+    const runs = new Map<string, DatasetProfileScanRunOut>()
+    let skip = 0
+    let page = await datasetApi.listProfileScanRuns(datasetId, { skip, limit: 200 }, options)
+    const total = page.total
+    while (true) {
+      if (page.total !== total) throw new Error('扫描历史在读取期间发生变化，请重新读取')
+      for (const run of page.items) runs.set(run.id, run)
+      skip += page.items.length
+      if (skip >= total) {
+        if (runs.size !== total) throw new Error('扫描历史在读取期间发生变化，请重新读取')
+        return [...runs.values()]
+      }
+      if (page.items.length === 0) throw new Error('扫描历史尚未完整返回，请重新读取')
+      page = await datasetApi.listProfileScanRuns(datasetId, { skip, limit: 200 }, options)
+    }
+  },
+
+  async getProfileScanRun(
+    datasetId: string,
+    scanRunId: string,
+    options: ApiRequestOptions = {},
+  ): Promise<DatasetProfileScanRunOut> {
+    const response = await apiClient.get<unknown>(
+      `/datasets/${encodeURIComponent(datasetId)}/profile/scan-runs/${encodeURIComponent(scanRunId)}`,
+      { signal: options.signal },
+    )
+    return parseApiResponse(response, profileScanRunSchema, 'DatasetProfileScanRun')
+  },
+
+  async exportProfileSummary(datasetId: string, options: ApiRequestOptions = {}): Promise<Blob> {
+    const { data } = await apiClient.get<Blob>(`/datasets/${encodeURIComponent(datasetId)}/profile/export`, {
+      responseType: 'blob',
+      signal: options.signal,
+    })
     return data
   },
 
-  async getProfileScanRun(datasetId: string, scanRunId: string): Promise<DatasetProfileScanRunOut> {
-    const { data } = await apiClient.get(`/datasets/${datasetId}/profile/scan-runs/${scanRunId}`)
-    return data
-  },
-
-  async exportProfileSummary(datasetId: string): Promise<Blob> {
-    const { data } = await apiClient.get(`/datasets/${datasetId}/profile/export`, { responseType: 'blob' })
-    return data as Blob
-  },
-
-  async exportProfileHtml(datasetId: string, params?: { redact?: boolean }): Promise<Blob> {
-    const { data } = await apiClient.get(`/datasets/${datasetId}/profile/export-html`, {
+  async exportProfileHtml(
+    datasetId: string,
+    params?: { redact?: boolean },
+    options: ApiRequestOptions = {},
+  ): Promise<Blob> {
+    const { data } = await apiClient.get<Blob>(`/datasets/${encodeURIComponent(datasetId)}/profile/export-html`, {
       params,
       responseType: 'blob',
+      signal: options.signal,
     })
-    return data as Blob
+    return data
   },
 
-  async startPrecheckScan(datasetId: string, body: DatasetPrecheckScanRunCreateRequest): Promise<DatasetPrecheckScanRunOut> {
-    const { data } = await apiClient.post(`/datasets/${datasetId}/precheck/scan-runs`, body || {})
+  async startPrecheckScan(
+    datasetId: string,
+    body: DatasetPrecheckScanRunCreateRequest,
+  ): Promise<DatasetPrecheckScanRunOut> {
+    const { data } = await apiClient.post<DatasetPrecheckScanRunOut>(
+      `/datasets/${encodeURIComponent(datasetId)}/precheck/scan-runs`,
+      body,
+    )
     return data
   },
 
   async listPrecheckScanRuns(
     datasetId: string,
-    params?: { skip?: number; limit?: number }
+    params?: { skip?: number; limit?: number },
+    options?: ApiRequestOptions,
   ): Promise<DatasetPrecheckScanRunListResponse> {
-    const { data } = await apiClient.get(`/datasets/${datasetId}/precheck/scan-runs`, { params })
+    const { data } = await apiClient.get<DatasetPrecheckScanRunListResponse>(
+      `/datasets/${encodeURIComponent(datasetId)}/precheck/scan-runs`,
+      { params, signal: options?.signal },
+    )
     return data
   },
 
-  async getPrecheckScanRun(datasetId: string, scanRunId: string): Promise<DatasetPrecheckScanRunOut> {
-    const { data } = await apiClient.get(`/datasets/${datasetId}/precheck/scan-runs/${scanRunId}`)
-    return data
-  },
-
-  async getPrecheckSummary(datasetId: string, scanRunId: string): Promise<DatasetPrecheckSummary> {
-    const { data } = await apiClient.get(`/datasets/${datasetId}/precheck/scan-runs/${scanRunId}/summary`)
-    return data
-  },
-
-  async listPrecheckFiles(
+  async getPrecheckScanRun(
     datasetId: string,
     scanRunId: string,
-    params?: { dir_prefix?: string; skip?: number; limit?: number }
-  ): Promise<DatasetPrecheckFindingListResponse> {
-    const { data } = await apiClient.get(`/datasets/${datasetId}/precheck/scan-runs/${scanRunId}/files`, { params })
+    options?: ApiRequestOptions,
+  ): Promise<DatasetPrecheckScanRunOut> {
+    const { data } = await apiClient.get<DatasetPrecheckScanRunOut>(
+      `/datasets/${encodeURIComponent(datasetId)}/precheck/scan-runs/${encodeURIComponent(scanRunId)}`,
+      { signal: options?.signal },
+    )
+    return data
+  },
+
+  async getPrecheckSummary(
+    datasetId: string,
+    scanRunId: string,
+    options?: ApiRequestOptions,
+  ): Promise<DatasetPrecheckSummary> {
+    const { data } = await apiClient.get<DatasetPrecheckSummary>(
+      `/datasets/${encodeURIComponent(datasetId)}/precheck/scan-runs/${encodeURIComponent(scanRunId)}/summary`,
+      { signal: options?.signal },
+    )
     return data
   },
 
@@ -526,27 +605,35 @@ export const datasetApi = {
     datasetId: string,
     scanRunId: string,
     findingKey: string,
-    params?: { skip?: number; limit?: number }
+    params?: { skip?: number; limit?: number },
+    options?: ApiRequestOptions,
   ): Promise<DatasetPrecheckFindingListResponse> {
-    const { data } = await apiClient.get(`/datasets/${datasetId}/precheck/scan-runs/${scanRunId}/findings/${findingKey}`, {
-      params,
-    })
+    const { data } = await apiClient.get<DatasetPrecheckFindingListResponse>(
+      `/datasets/${encodeURIComponent(datasetId)}/precheck/scan-runs/${encodeURIComponent(scanRunId)}/findings/${encodeURIComponent(findingKey)}`,
+      { params, signal: options?.signal },
+    )
     return data
   },
 
-  async exportPrecheckSummary(datasetId: string, scanRunId: string): Promise<Blob> {
-    const { data } = await apiClient.get(`/datasets/${datasetId}/precheck/scan-runs/${scanRunId}/export`, {
-      responseType: 'blob',
-    })
-    return data as Blob
+  async exportPrecheckSummary(datasetId: string, scanRunId: string, options?: ApiRequestOptions): Promise<Blob> {
+    const { data } = await apiClient.get<Blob>(
+      `/datasets/${encodeURIComponent(datasetId)}/precheck/scan-runs/${encodeURIComponent(scanRunId)}/export`,
+      { responseType: 'blob', signal: options?.signal },
+    )
+    return data
   },
 
-  async exportPrecheckHtml(datasetId: string, scanRunId: string, params?: { redact?: boolean }): Promise<Blob> {
-    const { data } = await apiClient.get(`/datasets/${datasetId}/precheck/scan-runs/${scanRunId}/export-html`, {
-      params,
-      responseType: 'blob',
-    })
-    return data as Blob
+  async exportPrecheckHtml(
+    datasetId: string,
+    scanRunId: string,
+    params?: { redact?: boolean },
+    options?: ApiRequestOptions,
+  ): Promise<Blob> {
+    const { data } = await apiClient.get<Blob>(
+      `/datasets/${encodeURIComponent(datasetId)}/precheck/scan-runs/${encodeURIComponent(scanRunId)}/export-html`,
+      { params, responseType: 'blob', signal: options?.signal },
+    )
+    return data
   },
 
   async cancelPrecheckScan(datasetId: string, scanRunId: string): Promise<DatasetPrecheckScanRunOut> {
@@ -557,46 +644,62 @@ export const datasetApi = {
   async getPrecheckSamples(
     datasetId: string,
     scanRunId: string,
-    params?: { size?: number; prefer_artifact?: boolean }
+    params?: { size?: number; prefer_artifact?: boolean },
+    options?: ApiRequestOptions,
   ): Promise<DatasetPrecheckSamplesResponse> {
-    const { data } = await apiClient.get(`/datasets/${datasetId}/precheck/scan-runs/${scanRunId}/samples`, { params })
+    const { data } = await apiClient.get<DatasetPrecheckSamplesResponse>(
+      `/datasets/${encodeURIComponent(datasetId)}/precheck/scan-runs/${encodeURIComponent(scanRunId)}/samples`,
+      { params, signal: options?.signal },
+    )
     return data
   },
 
   async patchPrecheckSampleReview(
     datasetId: string,
     scanRunId: string,
-    payload: DatasetPrecheckSampleReviewPatchRequest
+    payload: DatasetPrecheckSampleReviewPatchRequest,
   ): Promise<DatasetPrecheckSampleReviewOut> {
     const { data } = await apiClient.patch(
       `/datasets/${datasetId}/precheck/scan-runs/${scanRunId}/samples/review`,
-      payload
+      payload,
     )
     return data
   },
 
-  async getPrecheckNearDups(datasetId: string, scanRunId: string): Promise<DatasetPrecheckNearDupResponse> {
-    const { data } = await apiClient.get(`/datasets/${datasetId}/precheck/scan-runs/${scanRunId}/near-dups`)
+  async getPrecheckNearDups(
+    datasetId: string,
+    scanRunId: string,
+    options?: ApiRequestOptions,
+  ): Promise<DatasetPrecheckNearDupResponse> {
+    const { data } = await apiClient.get<DatasetPrecheckNearDupResponse>(
+      `/datasets/${encodeURIComponent(datasetId)}/precheck/scan-runs/${encodeURIComponent(scanRunId)}/near-dups`,
+      { signal: options?.signal },
+    )
     return data
   },
 
   async diffPrecheckScanRuns(
     datasetId: string,
     scanRunId: string,
-    params: { base_scan_run_id: string }
+    params: { base_scan_run_id: string },
+    options?: ApiRequestOptions,
   ): Promise<DatasetPrecheckDiffResponse> {
-    const { data } = await apiClient.get(`/datasets/${datasetId}/precheck/scan-runs/${scanRunId}/diff`, { params })
+    const { data } = await apiClient.get<DatasetPrecheckDiffResponse>(
+      `/datasets/${encodeURIComponent(datasetId)}/precheck/scan-runs/${encodeURIComponent(scanRunId)}/diff`,
+      { params, signal: options?.signal },
+    )
     return data
   },
 
   async suggestPrecheckIngestionPolicy(
     datasetId: string,
     scanRunId: string,
-    params?: { max_names_per_bucket?: number }
+    params?: { max_names_per_bucket?: number },
+    options?: ApiRequestOptions,
   ): Promise<DatasetPrecheckIngestionSuggestionResponse> {
-    const { data } = await apiClient.get(
-      `/datasets/${datasetId}/precheck/scan-runs/${scanRunId}/suggest-ingestion-policy`,
-      { params }
+    const { data } = await apiClient.get<DatasetPrecheckIngestionSuggestionResponse>(
+      `/datasets/${encodeURIComponent(datasetId)}/precheck/scan-runs/${encodeURIComponent(scanRunId)}/suggest-ingestion-policy`,
+      { params, signal: options?.signal },
     )
     return data
   },
@@ -604,82 +707,113 @@ export const datasetApi = {
   async applyPrecheckIngestionPolicy(
     datasetId: string,
     scanRunId: string,
-    params?: { replace?: boolean }
+    params?: { replace?: boolean },
   ): Promise<IngestionPolicyImportResponse> {
     const { data } = await apiClient.post(
       `/datasets/${datasetId}/precheck/scan-runs/${scanRunId}/apply-ingestion-policy`,
       undefined,
-      { params }
+      { params },
     )
     return data
   },
 
   async listTables(
     datasetId: string,
-    params?: { skip?: number; limit?: number; include_columns?: boolean; include_sample_rows?: boolean }
+    params?: { skip?: number; limit?: number; include_columns?: boolean; include_sample_rows?: boolean },
+    options?: ApiRequestOptions,
   ): Promise<DatasetTablesListResponse> {
-    const { data } = await apiClient.get(`/datasets/${datasetId}/tables`, { params })
-    return data
+    const response = await apiClient.get<unknown>(`/datasets/${encodeURIComponent(datasetId)}/tables`, {
+      params,
+      signal: options?.signal,
+    })
+    const page = parseApiResponse(response, datasetTablesPageSchema, 'DatasetTablesListResponse')
+    if (page.next_skip !== null && page.next_skip <= (params?.skip ?? 0)) {
+      throw new Error('表格文档游标没有前进，请重新读取')
+    }
+    return page
   },
 
   async getTable(
     datasetId: string,
     tableId: string,
-    params?: { include_columns?: boolean; include_sample_rows?: boolean }
+    params?: { include_columns?: boolean; include_sample_rows?: boolean },
+    options?: ApiRequestOptions,
   ): Promise<DatasetTableAsset> {
-    const { data } = await apiClient.get(`/datasets/${datasetId}/tables/${encodeURIComponent(tableId)}`, { params })
-    return data
-  },
-
-  async previewTable(datasetId: string, tableId: string, params?: { limit?: number }): Promise<TableQueryResponse> {
-    const { data } = await apiClient.get(`/datasets/${datasetId}/tables/${encodeURIComponent(tableId)}/preview`, { params })
-    return data
+    const response = await apiClient.get<unknown>(
+      `/datasets/${encodeURIComponent(datasetId)}/tables/${encodeURIComponent(tableId)}`,
+      { params, signal: options?.signal },
+    )
+    return parseApiResponse(response, tableAssetSchema, 'TableAssetOut')
   },
 
   async queryTable(datasetId: string, tableId: string, body: TableQueryRequest): Promise<TableQueryResponse> {
-    const { data } = await apiClient.post(`/datasets/${datasetId}/tables/${encodeURIComponent(tableId)}/query`, body)
-    return data
+    const response = await apiClient.post<unknown>(
+      `/datasets/${encodeURIComponent(datasetId)}/tables/${encodeURIComponent(tableId)}/query`,
+      body,
+    )
+    return parseApiResponse(response, tableQueryResponseSchema, 'TableQueryResponse')
   },
 
   async askTable(datasetId: string, tableId: string, body: TableAskRequest): Promise<TableAskResponse> {
-    const { data } = await apiClient.post(`/datasets/${datasetId}/tables/${encodeURIComponent(tableId)}/ask`, body, {
-      timeout: API_LONG_TIMEOUT_MS,
-    })
-    return data
+    const response = await apiClient.post<unknown>(
+      `/datasets/${encodeURIComponent(datasetId)}/tables/${encodeURIComponent(tableId)}/ask`,
+      body,
+      { timeout: API_LONG_TIMEOUT_MS },
+    )
+    return parseApiResponse(response, tableAskResponseSchema, 'TableAskResponse')
   },
 
   async lotusSemFilter(datasetId: string, tableId: string, body: LotusSemFilterRequest): Promise<TableQueryResponse> {
-    const { data } = await apiClient.post(`/datasets/${datasetId}/tables/${encodeURIComponent(tableId)}/lotus/sem-filter`, body, {
-      timeout: API_LONG_TIMEOUT_MS,
-    })
-    return data
+    const response = await apiClient.post<unknown>(
+      `/datasets/${encodeURIComponent(datasetId)}/tables/${encodeURIComponent(tableId)}/lotus/sem-filter`,
+      body,
+      { timeout: API_LONG_TIMEOUT_MS },
+    )
+    return parseApiResponse(response, tableQueryResponseSchema, 'TableQueryResponse')
   },
 
   async listDbCatalogTables(
     datasetId: string,
-    params?: { skip?: number; limit?: number; engine?: string; q?: string }
+    params?: { skip?: number; limit?: number; engine?: string; q?: string },
+    options?: ApiRequestOptions,
   ): Promise<DbCatalogTablesListResponse> {
-    const { data } = await apiClient.get(`/datasets/${datasetId}/db-catalog/tables`, { params })
-    return data
+    return openapiRequest({
+      path: '/api/v1/datasets/{dataset_id}/db-catalog/tables',
+      method: 'get',
+      pathParams: { dataset_id: datasetId },
+      query: params,
+      signal: options?.signal,
+    })
   },
 
-  async getDbCatalogTable(datasetId: string, tableId: string): Promise<DbCatalogTableDetail> {
-    const { data } = await apiClient.get(`/datasets/${datasetId}/db-catalog/tables/${encodeURIComponent(tableId)}`)
+  async getDbCatalogTable(
+    datasetId: string,
+    tableId: string,
+    options?: ApiRequestOptions,
+  ): Promise<DbCatalogTableDetail> {
+    const { data } = await apiClient.get<DbCatalogTableDetail>(
+      `/datasets/${encodeURIComponent(datasetId)}/db-catalog/tables/${encodeURIComponent(tableId)}`,
+      { signal: options?.signal },
+    )
     return data
   },
 
   async listDbCatalogProfiles(
     datasetId: string,
-    params: { table_id: string; entitlement_hash?: string; skip?: number; limit?: number }
+    params: { table_id: string; entitlement_hash?: string; skip?: number; limit?: number },
+    options?: ApiRequestOptions,
   ): Promise<DbProfileSnapshotListResponse> {
-    const { data } = await apiClient.get(`/datasets/${datasetId}/db-catalog/profiles`, { params })
+    const { data } = await apiClient.get<DbProfileSnapshotListResponse>(
+      `/datasets/${encodeURIComponent(datasetId)}/db-catalog/profiles`,
+      { params, signal: options?.signal },
+    )
     return data
   },
 }
 
 export const datasetCategoryApi = {
-  async listTree(): Promise<DatasetCategoryTreeResponse> {
-    return openapiRequest({ path: '/api/v1/dataset-categories/', method: 'get' })
+  async listTree(options: ApiRequestOptions = {}): Promise<DatasetCategoryTreeResponse> {
+    return openapiRequest({ path: '/api/v1/dataset-categories/', method: 'get', signal: options.signal })
   },
 
   async create(payload: DatasetCategoryCreate): Promise<DatasetCategoryOut> {

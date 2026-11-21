@@ -1,146 +1,111 @@
+from dataclasses import replace
+from uuid import uuid4
 
-from app.rag.retrieval.hybrid.channel_diagnostics import update_hybrid_channel_diagnostics
+import pytest
+
+from app.infrastructure.config import settings
+from app.rag.retrieval.configuration.options import HybridSearchOptions
+from app.rag.retrieval.corpus import CorpusSearchResult
+from app.rag.retrieval.ranking.candidates import FusionPolicy
+from app.rag.retrieval.recall.channel_collection import (
+    ChannelCollection,
+    ChannelPlan,
+    ChannelPolicy,
+    ChannelRequest,
+    KeywordRecall,
+    VectorRecall,
+)
+from app.rag.retrieval.recall.channel_diagnostics import serialize_collected_channels
+from app.rag.retrieval.recall.channel_health import RetrievalChannelHealth
+from app.rag.retrieval.recall.lexical_search import LexicalOutcome
+from app.rag.retrieval.recall.runtime_scope import ResolvedRetrievalScope, RetrievalScope
+from app.services.datasets.embedding_config import DatasetEmbeddingRuntimeConfig
 
 
-def test_update_hybrid_channel_diagnostics_populates_counts_and_payloads() -> None:
-    channel_metrics = {
-        "timing": {},
-        "counts": {},
-        "colbert_ann": {"readiness": {"effective_provider": "ann"}},
-    }
+def _request(*, mode="hybrid", vector_filter=None):
+    runtime = DatasetEmbeddingRuntimeConfig("openai_compatible", "fixture", "", "", "space", "documents", False)
+    scope = ResolvedRetrievalScope(RetrievalScope(uuid4(), "actor"), (), (), runtime, None, None, vector_filter, False)
+    return ChannelRequest("query", HybridSearchOptions(retrieval_mode=mode), scope)
+
+
+def test_serialize_collected_channels_populates_counts_and_payloads(monkeypatch) -> None:
+    monkeypatch.setattr(settings, "VECTOR_BACKEND", "milvus")
+    monkeypatch.setattr(settings, "LEXICAL_DB_FTS_CONFIG", "simple")
+    monkeypatch.setattr(settings, "LEXICAL_DB_TRGM_ENABLED", True)
     keyword_strategy = {"primary": "lexical_db"}
+    collection = ChannelCollection(
+        ChannelPlan(True, True, True, keyword_strategy),
+        VectorRecall(records=[{"score": 0.9}], elapsed_ms=12.345),
+        KeywordRecall(
+            bm25=CorpusSearchResult([{"score": 0.8}], {"ready": True}),
+            lexical=LexicalOutcome(
+                [
+                    {"score": 0.7, "metadata": {"lexical_method": "fts"}},
+                    {"score": 0.6, "metadata": {"lexical_method": "trgm"}},
+                    {"score": 0.5, "metadata": {}},
+                ],
+                True,
+            ),
+            lexical_run_reason="hybrid_parallel",
+            bm25_elapsed_ms=3.3,
+            lexical_elapsed_ms=4.4,
+        ),
+        RetrievalChannelHealth(),
+    )
+    channels = replace(
+        collection.channels, metadata_exact_pre_fusion_stats={"enabled": True, "annotated": 2, "promoted": 1}
+    )
 
-    update_hybrid_channel_diagnostics(
-        channel_metrics=channel_metrics,
-        vector_results=[{"score": 0.9}],
-        bm25_results=[{"score": 0.8}],
-        lexical_results=[
-            {"score": 0.7, "metadata": {"lexical_method": "fts"}},
-            {"score": 0.6, "metadata": {"lexical_method": "trgm"}},
-            {"score": 0.5, "metadata": {}},
-        ],
-        sparse_results=[{"score": 0.4}],
-        colpali_results=[],
-        vector_elapsed_ms=12.345,
-        colbert_elapsed_ms=2.2,
-        bm25_elapsed_ms=3.3,
-        lexical_elapsed_ms=4.4,
-        colbert_candidates=5,
-        colbert_used=True,
-        colbert_retrieval_enabled=True,
-        colbert_provider="fallback",
-        retrieval_mode="hybrid",
-        fusion_strategy="budgeted_rrf",
-        rrf_k=60,
-        fusion_weights={"vector": 0.6, "bm25": 0.4},
-        vector_backend="milvus",
-        want_vector=True,
-        want_bm25=True,
-        want_lexical=True,
-        want_sparse=True,
-        want_colpali=False,
-        vector_filter_applied=True,
-        bm25_filter_applied=False,
-        bm25_index_enabled=True,
-        last_bm25_status={"ready": True},
-        lexical_run_reason="hybrid_parallel",
-        lexical_hybrid_fallback_only=False,
-        lexical_db_enabled=True,
-        lexical_db_fts_config="simple",
-        lexical_db_trgm_enabled=True,
-        lexical_pg_trgm_available=True,
-        metadata_exact_pre_fusion_stats={"enabled": True, "annotated": 2, "promoted": 1},
-        colpali_reason="disabled",
-        sparse_provider_status={
-            "requested_provider": "splade",
-            "requested_provider_normalized": "splade",
-            "effective_provider": "deterministic",
-            "provider_supported": False,
-            "model_required": True,
-            "model_configured": False,
-            "status": "fallback",
-            "reason": "model_missing",
-            "outcome": "degraded",
-        },
-        sparse_provider="splade",
-        keyword_strategy=keyword_strategy,
+    channel_metrics = serialize_collected_channels(
+        _request(vector_filter={"tenant_id": "fixture"}),
+        collection,
+        policy=ChannelPolicy(True, True, False, False, False, False, True),
+        fusion=FusionPolicy("budgeted_rrf", 60, weights={"vector": 0.6, "bm25": 0.4}),
+        channels=channels,
     )
 
     assert channel_metrics["timing"] == {
         "vector_ms": 12.35,
-        "colbert_ms": 2.2,
         "bm25_ms": 3.3,
         "lexical_ms": 4.4,
+        "fusion_ms": 0.0,
     }
     assert channel_metrics["counts"] == {
         "vector_candidates": 1,
-        "colbert_candidates": 5,
-        "colpali_candidates": 0,
         "bm25_candidates": 1,
         "lexical_candidates": 3,
-        "sparse_candidates": 1,
     }
-    assert channel_metrics["colbert_ann"]["provider"] == "ann"
+    assert channel_metrics["vector"]["filter_applied"] is True
+    assert channel_metrics["bm25"]["filter_applied"] is False
+    assert channel_metrics["bm25"]["status"] == {"ready": True}
     assert channel_metrics["lexical_db"]["methods"] == {"fts": 1, "trgm": 1, "unknown": 1}
-    assert channel_metrics["sparse"]["provider"] == "deterministic"
     assert channel_metrics["metadata_exact_pre_fusion"] == {"enabled": True, "annotated": 2, "promoted": 1}
+    assert channel_metrics["fusion_weights"] == {"vector": 0.6, "bm25": 0.4}
     assert channel_metrics["keyword_strategy"] == {
         "primary": "lexical_db",
         "bm25_used": True,
         "lexical_db_used": True,
-        "sparse_used": True,
     }
 
 
-def test_update_hybrid_channel_diagnostics_omits_empty_fusion_weights() -> None:
-    channel_metrics = {"timing": {}, "counts": {}}
-
-    update_hybrid_channel_diagnostics(
-        channel_metrics=channel_metrics,
-        vector_results=[],
-        bm25_results=[],
-        lexical_results=[],
-        sparse_results=[],
-        colpali_results=[{"score": 0.5}],
-        vector_elapsed_ms=0.0,
-        colbert_elapsed_ms=0.0,
-        bm25_elapsed_ms=0.0,
-        lexical_elapsed_ms=0.0,
-        colbert_candidates=0,
-        colbert_used=False,
-        colbert_retrieval_enabled=False,
-        colbert_provider="",
-        retrieval_mode="keyword",
-        fusion_strategy="weighted",
-        rrf_k=0,
-        fusion_weights=None,
-        vector_backend="",
-        want_vector=False,
-        want_bm25=False,
-        want_lexical=False,
-        want_sparse=False,
-        want_colpali=True,
-        vector_filter_applied=False,
-        bm25_filter_applied=False,
-        bm25_index_enabled=False,
-        last_bm25_status={},
-        lexical_run_reason="not_run",
-        lexical_hybrid_fallback_only=True,
-        lexical_db_enabled=False,
-        lexical_db_fts_config="simple",
-        lexical_db_trgm_enabled=False,
-        lexical_pg_trgm_available=None,
-        metadata_exact_pre_fusion_stats={},
-        colpali_reason="image_query",
-        sparse_provider_status={},
-        sparse_provider="deterministic",
-        keyword_strategy=None,
+@pytest.mark.parametrize("weights", [None, {}])
+def test_serialize_collected_channels_omits_empty_fusion_weights(monkeypatch, weights) -> None:
+    monkeypatch.setattr(settings, "VECTOR_BACKEND", "milvus")
+    collection = ChannelCollection(
+        ChannelPlan(False, False, False, None), VectorRecall(), KeywordRecall(), RetrievalChannelHealth()
+    )
+    channel_metrics = serialize_collected_channels(
+        _request(mode="keyword"),
+        collection,
+        policy=ChannelPolicy(False, False, False, True, False, False),
+        fusion=FusionPolicy("weighted", 0, weights=weights),
+        channels=collection.channels,
     )
 
     assert channel_metrics["fusion_weights"] is None
-    assert channel_metrics["colpali"] == {
-        "enabled": True,
-        "used": True,
-        "candidates": 1,
-        "reason": "image_query",
-    }
+    assert channel_metrics["rrf_k"] == 0
+    assert channel_metrics["vector"]["enabled"] is False
+    assert channel_metrics["bm25"]["enabled"] is False
+    assert channel_metrics["lexical_db"]["enabled"] is False
+    assert channel_metrics["lexical_db"]["pg_trgm_available"] is None
+    assert channel_metrics["all_retrieval_channels_failed"] is False

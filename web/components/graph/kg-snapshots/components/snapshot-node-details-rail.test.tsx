@@ -11,8 +11,7 @@ describe('SnapshotNodeDetailsRail', () => {
   let root: ReturnType<typeof createRoot>
 
   beforeEach(() => {
-    ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean })
-      .IS_REACT_ACT_ENVIRONMENT = true
+    ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
     container = document.createElement('div')
     document.body.appendChild(container)
     root = createRoot(container)
@@ -42,22 +41,17 @@ describe('SnapshotNodeDetailsRail', () => {
             icon: <span>A</span>,
             occurrences: 1,
             status: '一致',
-            relations: [
-              { label: '关联', target: '重复名称', targetId: 'node-b' },
-            ],
+            relations: [{ label: '关联', target: '重复名称', targetId: 'node-b' }],
           }}
-          diffOverview={[]}
           onClose={onClose}
           onSelectRelationTarget={onSelectRelationTarget}
-        />
+        />,
       )
     })
 
-    const closeButton = container.querySelector(
-      '[aria-label="收起节点详情"]'
-    ) as HTMLButtonElement
-    const relationButton = Array.from(container.querySelectorAll('button')).find(
-      (button) => button.textContent?.includes('关联')
+    const closeButton = container.querySelector('[aria-label="收起节点详情"]') as HTMLButtonElement
+    const relationButton = Array.from(container.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('关联'),
     ) as HTMLButtonElement
 
     act(() => closeButton.click())

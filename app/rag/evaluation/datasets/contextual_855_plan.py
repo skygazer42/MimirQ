@@ -1,4 +1,3 @@
-
 from typing import Any
 
 CONTEXTUAL_855_EVALSET_PLAN_SCHEMA = "mimirq.contextual_855_evalset_plan.v1"

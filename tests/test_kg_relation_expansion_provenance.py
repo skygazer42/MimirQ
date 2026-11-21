@@ -11,7 +11,7 @@ _SEED_EVENT_ID = UUID(int=100)
 _NEIGHBOR_EVENT_ID = UUID(int=101)
 
 
-async def _fake_generate_embedding(_self: object, _text: str) -> list[float]:
+async def _fake_generate_embedding(_text: str) -> list[float]:
     await yield_control()
     return [0.0]
 
@@ -232,11 +232,11 @@ async def test_kg_recall_relation_expansion_clues_include_provenance_and_confide
 ) -> None:
     import app.rag.kg.search.recall as recall_mod
     from app.rag.kg.search.config import SearchConfig
-    from app.rag.kg.search.recall import RecallSearcher
+    from app.rag.kg.search.recall import recall
 
     _patch_recall_relation_settings(monkeypatch, recall_mod.settings)
     monkeypatch.setattr(recall_mod, "get_session", lambda: _FakeKGSession(), raising=True)
-    monkeypatch.setattr(recall_mod.DocumentProcessor, "generate_embedding", _fake_generate_embedding, raising=True)
+    monkeypatch.setattr(recall_mod, "generate_embedding", _fake_generate_embedding, raising=True)
     monkeypatch.setattr(recall_mod, "EntityRepository", lambda _session: _RecallEntityRepository(), raising=True)
     monkeypatch.setattr(recall_mod, "EventRepository", lambda _session: _RecallEventRepository(), raising=True)
 
@@ -259,7 +259,7 @@ async def test_kg_recall_relation_expansion_clues_include_provenance_and_confide
     )
 
     config = SearchConfig(query="q", tenant_id=UUID(int=1), document_ids=[UUID(int=2)])
-    result = await RecallSearcher().search(config)
+    result = await recall(config)
 
     _assert_relation_clue_metadata(
         result,
@@ -283,7 +283,7 @@ async def test_kg_expand_relation_expansion_clues_include_provenance_and_confide
 ) -> None:
     import app.rag.kg.search.expand as expand_mod
     from app.rag.kg.search.config import SearchConfig
-    from app.rag.kg.search.expand import ExpandSearcher
+    from app.rag.kg.search.expand import expand
     from app.rag.kg.search.recall import RecallResult
 
     _patch_expand_relation_settings(monkeypatch, expand_mod.settings)
@@ -329,7 +329,7 @@ async def test_kg_expand_relation_expansion_clues_include_provenance_and_confide
     cfg.expand.entities_per_hop = 1
     cfg.expand.min_events_per_hop = 1
 
-    out = await ExpandSearcher().expand(cfg, recall_result)
+    out = await expand(cfg, recall_result)
 
     _assert_relation_clue_metadata(
         out,

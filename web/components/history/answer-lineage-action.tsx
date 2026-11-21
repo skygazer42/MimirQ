@@ -1,80 +1,108 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useState, useSyncExternalStore } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { GitBranch, Loader2 } from 'lucide-react'
-import { toast } from 'sonner'
+import { GitBranch, Loader2 } from '@/components/icons'
 
 import { Button } from '@/components/ui/button'
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog'
 import { lineageApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
 import { queryKeys } from '@/lib/query-keys'
-import { cn } from '@/lib/utils'
+import { getAuthSessionKey, subscribeAuthSession } from '@/lib/auth-storage'
 
 type AnswerLineageActionProps = Readonly<{
   requestId: string
 }>
 
-function prettyJson(value: unknown): string {
-  try {
-    return JSON.stringify(value, null, 2)
-  } catch {
-    return String(value)
-  }
-}
-
 export function AnswerLineageAction({ requestId }: AnswerLineageActionProps) {
   const [open, setOpen] = useState(false)
-  const lineageQuery = useQuery({
-    queryKey: queryKeys.lineage.answer(requestId),
-    enabled: open && Boolean(requestId),
-    queryFn: () => lineageApi.getAnswerLineageIfAvailable(requestId),
-  })
-  const isUnavailable = lineageQuery.data === null
-  const error = lineageQuery.error
-    ? formatApiError(lineageQuery.error, '加载答案血缘失败')
-    : null
-
-  useEffect(() => {
-    if (!error) return
-    toast.error(error)
-  }, [error])
 
   return (
-    <>
-      <Button
-        type="button"
-        variant="ghost"
-        size="sm"
-        className={cn(
-          'h-7 gap-1.5 rounded-lg px-2 text-[11px] text-muted-foreground hover:text-foreground',
-          isUnavailable && 'cursor-not-allowed opacity-60 hover:text-muted-foreground'
-        )}
-        disabled={lineageQuery.isFetching}
-        onClick={() => setOpen(true)}
-        title={isUnavailable ? '后端未返回该回答的血缘数据' : undefined}
-      >
-        {lineageQuery.isFetching ? <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" /> : <GitBranch className="h-3.5 w-3.5" />}
-        {lineageQuery.isFetching ? '加载血缘' : isUnavailable ? '暂无血缘' : '答案血缘'}
-      </Button>
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="h-7 gap-1.5 rounded-lg px-2 text-[11px] text-muted-foreground hover:text-foreground"
+        >
+          <GitBranch className="h-3.5 w-3.5" aria-hidden="true" />
+          答案血缘
+        </Button>
+      </DialogTrigger>
 
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-3xl border-border bg-background/95 shadow-strong sm:rounded-2xl">
-          <DialogHeader>
+      {open && (
+        <DialogContent className="flex max-h-[90dvh] max-w-3xl flex-col overflow-hidden border-border bg-background/95 shadow-strong sm:rounded-2xl">
+          <DialogHeader className="min-w-0 shrink-0 pr-8">
             <DialogTitle className="flex items-center gap-2">
-              <GitBranch className="h-4 w-4 text-info" />
-              Answer Lineage
+              <GitBranch className="size-4 text-info" aria-hidden="true" />
+              答案血缘
             </DialogTitle>
-            <DialogDescription className="font-mono text-xs">request_id={requestId}</DialogDescription>
+            <DialogDescription className="font-mono text-xs [overflow-wrap:anywhere]">
+              request_id={requestId}
+            </DialogDescription>
           </DialogHeader>
 
-          {error ? <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">{error}</div> : null}
-          <pre className={cn('max-h-[520px] overflow-auto rounded-lg border border-border/60 bg-muted/20 p-3 text-xs', 'whitespace-pre-wrap break-words')}>
-            {lineageQuery.isFetching ? 'Loading...' : prettyJson(lineageQuery.data ?? { message: '暂无血缘数据' })}
-          </pre>
+          <AnswerLineageDetails key={requestId} requestId={requestId} />
         </DialogContent>
-      </Dialog>
-    </>
+      )}
+    </Dialog>
+  )
+}
+
+function AnswerLineageDetails({ requestId }: AnswerLineageActionProps) {
+  const sessionKey = useSyncExternalStore(subscribeAuthSession, getAuthSessionKey, getAuthSessionKey)
+  const lineageQuery = useQuery({
+    queryKey: [...queryKeys.lineage.answer(requestId), sessionKey],
+    queryFn: ({ signal }) => lineageApi.getAnswerLineageIfAvailable(requestId, { signal }),
+    staleTime: 0,
+  })
+  const reading = lineageQuery.fetchStatus !== 'idle'
+  const lineage = lineageQuery.data
+
+  return (
+    <div className="flex min-h-0 min-w-0 flex-col gap-3">
+      {reading && (
+        <p role="status" className="flex shrink-0 items-center gap-2 text-sm text-muted-foreground">
+          {lineageQuery.isFetching && (
+            <Loader2 className="size-4 animate-spin motion-reduce:animate-none" aria-hidden="true" />
+          )}
+          {lineageQuery.isPaused ? '血缘读取已暂停' : lineageQuery.isLoading ? '正在读取血缘…' : '正在刷新血缘…'}
+        </p>
+      )}
+      {lineageQuery.isError && !reading && (
+        <p role="alert" className="text-sm text-destructive">
+          {formatApiError(lineageQuery.error, '加载答案血缘失败')}
+        </p>
+      )}
+      {lineageQuery.isSuccess && !reading && lineage === null && (
+        <p className="text-sm text-muted-foreground">该回答暂无血缘数据。</p>
+      )}
+      {lineage !== undefined && lineage !== null && (
+        <pre
+          aria-busy={lineageQuery.isFetching}
+          className="min-h-0 max-h-[520px] overflow-auto whitespace-pre-wrap rounded-lg border border-border/60 bg-muted/20 p-3 text-xs [overflow-wrap:anywhere]"
+        >
+          {JSON.stringify(lineage, null, 2)}
+        </pre>
+      )}
+      <Button
+        type="button"
+        variant="outline"
+        className="shrink-0 self-start"
+        disabled={reading}
+        onClick={() => void lineageQuery.refetch({ cancelRefetch: false })}
+      >
+        重新读取
+      </Button>
+    </div>
   )
 }

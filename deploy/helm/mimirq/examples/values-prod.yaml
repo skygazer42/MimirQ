@@ -153,6 +153,9 @@ networkPolicy:
 persistence:
   uploads:
     enabled: true
+    # Set storageClassName to your cluster's ReadWriteMany-capable class.
+    accessModes:
+      - ReadWriteMany
     size: 50Gi
 
 migrations:

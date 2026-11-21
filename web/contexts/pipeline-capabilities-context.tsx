@@ -1,10 +1,11 @@
 'use client'
 
 import { useQuery } from '@tanstack/react-query'
-import { createContext, useCallback, useContext, useMemo } from 'react'
-import type { PipelineCapabilitiesResponse } from '@/types'
+import { createContext, useCallback, useContext, useMemo, type ReactNode } from 'react'
+import type { PipelineCapabilitiesResponse } from '@/types/processing'
 import { pipelineApi } from '@/lib/api/pipeline'
 import { formatApiError } from '@/lib/api-errors'
+import { isRetiredChunkStrategy } from '@/lib/chunk-strategies'
 import { normalizeParserBackendName } from '@/lib/parser-compat'
 import { queryKeys } from '@/lib/query-keys'
 
@@ -13,81 +14,75 @@ type PipelineCapabilitiesContextValue = {
   loading: boolean
   error: string | null
   refresh: () => Promise<void>
-  parserBackendAvailable: (name?: string) => boolean | undefined
+  parserBackendAvailable: (name: string) => boolean | undefined
   chunkStrategyAvailable: (name?: string) => boolean | undefined
 }
 
 const PipelineCapabilitiesContext = createContext<PipelineCapabilitiesContextValue | null>(null)
 
-function normalizeChunkStrategyName(value?: string) {
-  return (value || '').toLowerCase().trim()
+function normalizeChunkStrategyName(value: string) {
+  return value.toLowerCase().trim()
 }
 
-export function PipelineCapabilitiesProvider({ children }: Readonly<{ children: React.ReactNode }>) {
+export function PipelineCapabilitiesProvider({ children }: Readonly<{ children: ReactNode }>) {
   const {
-    data,
+    data: capabilities = null,
     error: queryError,
-    isFetching,
-    isLoading,
+    isFetching: loading,
     refetch,
-  } = useQuery<PipelineCapabilitiesResponse>({
+  } = useQuery({
     queryKey: queryKeys.pipeline.capabilities,
-    queryFn: () => pipelineApi.getCapabilities(),
+    queryFn: ({ signal }) => pipelineApi.getCapabilities({ signal }),
     staleTime: 5 * 60_000,
   })
 
-  const capabilities = data ?? null
-  const loading = isLoading || isFetching
   const error = queryError ? formatApiError(queryError, 'Failed to load pipeline capabilities') : null
 
   const refresh = useCallback(async () => {
     await refetch()
   }, [refetch])
 
-  const parserBackendMap = useMemo(() => {
-    const map = new Map<string, boolean>()
-    for (const item of capabilities?.pdf_backends || []) {
-      map.set(normalizeParserBackendName(item.name), !!item.available)
-    }
-    return map
-  }, [capabilities])
-
-  const chunkStrategyMap = useMemo(() => {
-    const map = new Map<string, boolean>()
-    for (const item of capabilities?.chunk_strategies || []) {
-      map.set(normalizeChunkStrategyName(item.name), !!item.available)
-    }
-    return map
-  }, [capabilities])
-
-  const value = useMemo<PipelineCapabilitiesContextValue>(() => ({
-    capabilities,
-    loading,
-    error,
-    refresh,
-    parserBackendAvailable: (name) => {
-      const key = normalizeParserBackendName(name)
-      if (!key) return undefined
-      return parserBackendMap.get(key)
-    },
-    chunkStrategyAvailable: (name) => {
-      const key = normalizeChunkStrategyName(name)
-      if (!key) return undefined
-      return chunkStrategyMap.get(key)
-    },
-  }), [capabilities, loading, error, refresh, parserBackendMap, chunkStrategyMap])
-
-  return (
-    <PipelineCapabilitiesContext.Provider value={value}>
-      {children}
-    </PipelineCapabilitiesContext.Provider>
+  const parserBackendMap = useMemo(
+    () =>
+      new Map<string, boolean>(
+        capabilities?.pdf_backends.map(({ name, available }) => [normalizeParserBackendName(name), available]),
+      ),
+    [capabilities],
   )
+
+  const chunkStrategyMap = useMemo(
+    () =>
+      new Map<string, boolean>(
+        capabilities?.chunk_strategies.map(({ name, available }) => [normalizeChunkStrategyName(name), available]),
+      ),
+    [capabilities],
+  )
+
+  const value = useMemo<PipelineCapabilitiesContextValue>(
+    () => ({
+      capabilities,
+      loading,
+      error,
+      refresh,
+      parserBackendAvailable: (name) => parserBackendMap.get(normalizeParserBackendName(name)),
+      chunkStrategyAvailable: (name) => {
+        if (name === undefined) return undefined
+        if (isRetiredChunkStrategy(name)) return false
+        const key = normalizeChunkStrategyName(name)
+        if (key.length === 0) return undefined
+        return chunkStrategyMap.get(key)
+      },
+    }),
+    [capabilities, loading, error, refresh, parserBackendMap, chunkStrategyMap],
+  )
+
+  return <PipelineCapabilitiesContext.Provider value={value}>{children}</PipelineCapabilitiesContext.Provider>
 }
 
 export function usePipelineCapabilities() {
-  const ctx = useContext(PipelineCapabilitiesContext)
-  if (!ctx) {
+  const context = useContext(PipelineCapabilitiesContext)
+  if (context === null) {
     throw new Error('usePipelineCapabilities must be used within PipelineCapabilitiesProvider')
   }
-  return ctx
+  return context
 }

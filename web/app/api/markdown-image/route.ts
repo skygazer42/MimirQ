@@ -3,11 +3,11 @@ import type { LookupAddress } from 'node:dns'
 import http, { type IncomingHttpHeaders } from 'node:http'
 import https from 'node:https'
 
-import { NextRequest, NextResponse } from 'next/server'
+import { type NextRequest, NextResponse } from 'next/server'
 
 import { API_V1_BASE_URL } from '@/lib/env'
 import { jsonNoStore, requireSameOrigin } from '@/lib/server-auth-route'
-import { buildMarkdownImageResponseHeaders } from './response-headers'
+import { buildMarkdownImageResponseHeaders, readMarkdownImageHeader } from './response-headers'
 import {
   isAllowedMarkdownImageContentType,
   isBlockedMarkdownImageTarget,
@@ -34,19 +34,11 @@ class ImageFetchError extends Error {
   }
 }
 
-function headerValue(headers: IncomingHttpHeaders, name: string): string {
-  const value = headers[name]
-  return String(Array.isArray(value) ? value[0] || '' : value || '').trim()
-}
-
 async function fetchPinnedImage(target: URL): Promise<PinnedImageResponse> {
   const started = Date.now()
   let dnsTimeout: ReturnType<typeof setTimeout> | undefined
   const timeout = new Promise<never>((_, reject) => {
-    dnsTimeout = setTimeout(
-      () => reject(new ImageFetchError('image_fetch_failed')),
-      IMAGE_FETCH_TIMEOUT_MS,
-    )
+    dnsTimeout = setTimeout(() => reject(new ImageFetchError('image_fetch_failed')), IMAGE_FETCH_TIMEOUT_MS)
   })
   let addresses: LookupAddress[]
   try {
@@ -63,15 +55,16 @@ async function fetchPinnedImage(target: URL): Promise<PinnedImageResponse> {
     const request = transport.get(
       target,
       {
-        headers: { Accept: 'image/*' },
+        headers: { Accept: 'image/*', 'Accept-Encoding': 'identity' },
         family: pinned.family,
         lookup: (_hostname, _options, callback) => callback(null, pinned.address, pinned.family),
         signal: AbortSignal.timeout(remainingMs),
       },
       async (response) => {
         const status = response.statusCode || 502
-        const contentLength = Number(headerValue(response.headers, 'content-length'))
-        if (Number.isFinite(contentLength) && contentLength > MAX_IMAGE_BYTES) {
+        const lengthHeader = readMarkdownImageHeader(response.headers, 'content-length')
+        const contentLength = lengthHeader === undefined ? undefined : Number(lengthHeader)
+        if (contentLength !== undefined && Number.isFinite(contentLength) && contentLength > MAX_IMAGE_BYTES) {
           response.destroy()
           reject(new ImageFetchError('image_too_large'))
           return
@@ -90,17 +83,18 @@ async function fetchPinnedImage(target: URL): Promise<PinnedImageResponse> {
   })
 }
 
-async function isAuthenticatedSameOriginRequest(req: NextRequest): Promise<boolean> {
-  if (!requireSameOrigin(req)) return false
+async function getImageProxyAuthStatus(req: NextRequest): Promise<'authorized' | 'unauthorized' | 'unavailable'> {
+  if (!requireSameOrigin(req)) return 'unauthorized'
 
-  const authorization = String(req.headers.get('authorization') || '').trim()
-  const userId = String(req.headers.get('x-user-id') || '').trim()
-  const tenantId = String(req.headers.get('x-tenant-id') || '').trim()
+  const authorization = req.headers.get('authorization')?.trim()
+  const userId = req.headers.get('x-user-id')?.trim()
+  const tenantId = req.headers.get('x-tenant-id')?.trim()
+  const hasBearer = authorization !== undefined && /^Bearer\s+\S+$/i.test(authorization)
 
-  if (!/^Bearer\s+\S+$/i.test(authorization) && !userId) return false
+  if (!hasBearer && !userId) return 'unauthorized'
 
   const headers: Record<string, string> = {}
-  if (/^Bearer\s+\S+$/i.test(authorization)) {
+  if (hasBearer) {
     headers.Authorization = authorization
   }
   if (userId) {
@@ -111,11 +105,12 @@ async function isAuthenticatedSameOriginRequest(req: NextRequest): Promise<boole
     headers,
     cache: 'no-store',
   }).catch(() => null)
-  return response?.ok === true
+  if (response?.ok === true) return 'authorized'
+  return response?.status === 401 || response?.status === 403 ? 'unauthorized' : 'unavailable'
 }
 
 function resolveImageTarget(req: NextRequest): { target: URL | null; error: string | null } {
-  const rawToken = String(req.nextUrl.searchParams.get('token') || '').trim()
+  const rawToken = req.nextUrl.searchParams.get('token')?.trim()
   if (rawToken) {
     const resolvedSrc = resolveMarkdownImageProxyToken(rawToken)
     const target = parseMarkdownImageUrl(resolvedSrc)
@@ -129,8 +124,7 @@ function resolveImageTarget(req: NextRequest): { target: URL | null; error: stri
     return { target: null, error: 'image_token_required' }
   }
 
-  const rawSrc = String(req.nextUrl.searchParams.get('src') || '').trim()
-  const target = parseMarkdownImageUrl(rawSrc)
+  const target = parseMarkdownImageUrl(req.nextUrl.searchParams.get('src'))
   if (!target || isBlockedMarkdownImageTarget(target.toString())) {
     return { target: null, error: 'invalid_image_src' }
   }
@@ -159,9 +153,13 @@ export async function GET(req: NextRequest) {
     return jsonNoStore({ error: 'image_fetch_failed' }, { status: 502 })
   }
 
-  const contentType = headerValue(upstream.headers, 'content-type').toLowerCase()
-  if (!isAllowedMarkdownImageContentType(contentType)) {
+  const contentType = readMarkdownImageHeader(upstream.headers, 'content-type')?.toLowerCase()
+  if (contentType === undefined || !isAllowedMarkdownImageContentType(contentType)) {
     return jsonNoStore({ error: 'image_content_type_invalid' }, { status: 415 })
+  }
+  const contentEncoding = readMarkdownImageHeader(upstream.headers, 'content-encoding')?.trim().toLowerCase()
+  if (contentEncoding !== undefined && contentEncoding !== 'identity') {
+    return jsonNoStore({ error: 'image_encoding_unsupported' }, { status: 502 })
   }
 
   const headers = buildMarkdownImageResponseHeaders(contentType, upstream.headers)
@@ -173,8 +171,10 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  if (process.env.NODE_ENV === 'production' && !(await isAuthenticatedSameOriginRequest(req))) {
-    return jsonNoStore({ error: 'image_proxy_unauthorized' }, { status: 401 })
+  if (process.env.NODE_ENV === 'production') {
+    const authStatus = await getImageProxyAuthStatus(req)
+    if (authStatus === 'unavailable') return jsonNoStore({ error: 'image_proxy_auth_unavailable' }, { status: 503 })
+    if (authStatus === 'unauthorized') return jsonNoStore({ error: 'image_proxy_unauthorized' }, { status: 401 })
   }
 
   let body: unknown
@@ -185,9 +185,7 @@ export async function POST(req: NextRequest) {
   }
 
   const rawSrc =
-    body && typeof body === 'object' && 'src' in body && typeof body.src === 'string'
-      ? body.src.trim()
-      : ''
+    body && typeof body === 'object' && 'src' in body && typeof body.src === 'string' ? body.src.trim() : ''
   const target = parseMarkdownImageUrl(rawSrc)
   if (!target || isBlockedMarkdownImageTarget(target.toString())) {
     return jsonNoStore({ error: 'invalid_image_src' }, { status: 400 })

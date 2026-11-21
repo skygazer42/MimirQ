@@ -18,21 +18,21 @@ export function KnowledgePipelineConfigDialog({ open, onOpenChange }: Readonly<K
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="max-h-[calc(100dvh-2rem)] max-w-2xl overflow-y-auto overscroll-contain">
         <DialogHeader>
           <DialogTitle>入库管线配置</DialogTitle>
           <DialogDescription>仅影响新上传/新导入文档，可随时调整</DialogDescription>
         </DialogHeader>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="space-y-2">
-            <div className="text-sm font-medium text-foreground/80">解析方式</div>
+        <div className="grid gap-4 md:grid-cols-2">
+          <fieldset className="min-w-0">
+            <legend className="mb-2 text-sm font-medium text-foreground/80">解析方式</legend>
             <ParserDropdown value={parserBackend} onChange={setParserBackend} />
-          </div>
-          <div className="space-y-2">
-            <div className="text-sm font-medium text-foreground/80">切块策略</div>
+          </fieldset>
+          <fieldset className="min-w-0">
+            <legend className="mb-2 text-sm font-medium text-foreground/80">切块策略</legend>
             <ChunkStrategyDropdown value={chunkStrategy} onChange={setChunkStrategy} />
-          </div>
+          </fieldset>
         </div>
 
         <PipelineOptionsPanel />

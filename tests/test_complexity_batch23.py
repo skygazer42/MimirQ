@@ -1,13 +1,12 @@
-
 from datetime import datetime, timezone
 from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
 
-from app.api.schemas.dataset import DatasetRetentionPolicy
-from app.services import retention_policy as rp
-from app.services import web_crawler
+from app.api.schemas.datasets.dataset import DatasetRetentionPolicy
+from app.services.connectors import crawler as web_crawler
+from app.services.retention import policy as rp
 
 
 class _SingleResultQuery:
@@ -252,7 +251,7 @@ async def test_process_document_job_reports_download_failed_but_persists_raw_err
         lambda *_a, **_k: (_Store(), SimpleNamespace(object_name="documents/file.pdf")),
         raising=True,
     )
-    monkeypatch.setattr(jobs.document_processor, "_update_status", _update_status, raising=True)
+    monkeypatch.setattr(jobs, "update_document_status", _update_status, raising=True)
 
     result = await jobs.process_document_job(
         {"job_try": 1, "redis": object()},

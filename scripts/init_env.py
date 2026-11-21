@@ -26,7 +26,7 @@ def _ensure_secret(path: Path, *, key: str, value: str) -> bool:
         separator = "" if not raw or raw.endswith("\n") else "\n"
         updated = f"{raw}{separator}{key}={value}\n"
     else:
-        current = (m.group("val") or "").strip()
+        current = m.group("val").strip()
         if current:
             return False
         updated = pattern.sub(lambda match: f"{match.group('key')}={value}", raw, count=1)
@@ -133,9 +133,9 @@ def main() -> int:
     parser = _build_parser()
     args = parser.parse_args()
     repo_root = _repo_root()
-    actions = _planned_actions(repo_root=repo_root, force=bool(args.force))
+    actions = _planned_actions(repo_root=repo_root, force=args.force)
 
-    if bool(args.dry_run):
+    if args.dry_run:
         return _run_dry_run(actions)
 
     wrote_any = _apply_actions(actions)

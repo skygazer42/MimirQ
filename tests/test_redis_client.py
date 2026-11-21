@@ -5,7 +5,7 @@ from typing import Any
 
 import pytest
 
-from app.core.redis_client import LazyRedisClient
+from app.infrastructure.redis.client import LazyRedisClient
 
 
 def test_lazy_redis_client_builds_once_and_rebuilds_after_invalidation(
@@ -105,15 +105,15 @@ def test_lazy_redis_client_can_propagate_init_error(monkeypatch: pytest.MonkeyPa
     ("module_name", "expected_kwargs"),
     [
         (
-            "app.api.v1.health",
+            "app.api.v1.system.health",
             {"socket_timeout": 1, "socket_connect_timeout": 1, "decode_responses": True},
         ),
         (
-            "app.rag.retrieval_candidate_cache",
+            "app.rag.retrieval.cache.candidates",
             {"socket_timeout": 1, "socket_connect_timeout": 1, "decode_responses": False},
         ),
         (
-            "app.rag.rerank_result_cache",
+            "app.rag.retrieval.cache.reranking",
             {"socket_timeout": 1, "socket_connect_timeout": 1, "decode_responses": False},
         ),
         (
@@ -121,16 +121,16 @@ def test_lazy_redis_client_can_propagate_init_error(monkeypatch: pytest.MonkeyPa
             {"socket_timeout": 1, "socket_connect_timeout": 1, "decode_responses": False},
         ),
         (
-            "app.services.chat_response_cache",
+            "app.services.chat.response_cache",
             {"socket_timeout": 1, "socket_connect_timeout": 1, "decode_responses": False},
         ),
         (
-            "app.services.semantic_cache",
+            "app.services.retrieval.semantic_cache",
             {"socket_timeout": 1, "socket_connect_timeout": 1, "decode_responses": False},
         ),
-        ("app.services.saml_replay_service", {"decode_responses": False}),
+        ("app.services.identity.saml_replay", {"decode_responses": False}),
         (
-            "app.services.embedding_migration",
+            "app.services.embeddings.migration",
             {"socket_timeout": 1, "socket_connect_timeout": 1, "decode_responses": False},
         ),
     ],
@@ -146,7 +146,7 @@ def test_redis_consumers_preserve_connection_options(
     slot = module._redis_client_slot
     slot.invalidate()
     monkeypatch.setattr(module.settings, "REDIS_URL", "redis://cache/7", raising=False)
-    if module_name == "app.services.saml_replay_service":
+    if module_name == "app.services.identity.saml_replay":
         monkeypatch.setattr(module.settings, "SAML_REPLAY_REDIS_ENABLED", True, raising=False)
 
     calls: list[tuple[str, dict[str, Any]]] = []

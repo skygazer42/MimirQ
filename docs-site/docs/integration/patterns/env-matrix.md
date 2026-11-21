@@ -5,7 +5,7 @@ sidebar_position: 8
 
 # 环境矩阵
 
-MimirQ 的配置主要分成三类：本地开发、Docker 一键启动、生产部署。权威变量定义见 [设置 / Meta](../../ops/settings-meta.md)。
+Ragvia 的配置主要分成三类：本地开发、Docker 一键启动、生产部署。权威变量定义见 [设置 / Meta](../../ops/settings-meta.md)。
 
 ## 环境对比
 

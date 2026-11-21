@@ -4,8 +4,8 @@ from typing import Any
 import pytest
 import requests
 
-from app.core.config import settings
-from app.services.docling_service import (
+from app.infrastructure.config import settings
+from app.services.parsing.docling import (
     DoclingServiceParser,
     docling_convert_url,
     docling_health_url,

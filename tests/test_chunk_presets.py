@@ -3,9 +3,8 @@ import uuid
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from app.api.dependencies.auth import get_current_account_id
-from app.api.dependencies.tenant import get_tenant_id
-from app.core.database import get_db
+from app.api.dependencies import get_current_account_id, get_tenant_id
+from app.infrastructure.database.connection import get_db
 
 
 class _DummyDB:
@@ -160,20 +159,20 @@ def _build_chunk_presets_client(  # noqa: ANN202
             raise chunk_presets_module.HTTPException(status_code=403, detail="No dataset write permission")
 
     monkeypatch.setattr(
-        chunk_presets_module.DatasetService,
+        chunk_presets_module.dataset_service,
         "ensure_member",
         lambda *_a, **_k: _DummyMember(str(current_role.get("role") or "")),
         raising=True,
     )
-    monkeypatch.setattr(chunk_presets_module.DatasetService, "get_dataset", _get_dataset, raising=True)
+    monkeypatch.setattr(chunk_presets_module.dataset_service, "get_dataset", _get_dataset, raising=True)
     monkeypatch.setattr(
-        chunk_presets_module.DatasetService,
+        chunk_presets_module.dataset_service,
         "assert_dataset_readable",
         _assert_dataset_readable,
         raising=True,
     )
     monkeypatch.setattr(
-        chunk_presets_module.DatasetService,
+        chunk_presets_module.dataset_service,
         "assert_dataset_writable",
         _assert_dataset_writable,
         raising=True,
@@ -195,7 +194,7 @@ def _build_chunk_presets_client(  # noqa: ANN202
 
 
 def test_chunk_presets_crud(monkeypatch):  # noqa: ANN001
-    import app.api.v1.chunk_presets as chunk_presets_module
+    import app.api.v1.pipelines.chunk_presets as chunk_presets_module
 
     tenant_id = uuid.uuid4()
     dataset_id = uuid.uuid4()

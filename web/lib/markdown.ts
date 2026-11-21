@@ -5,17 +5,10 @@ export type MarkdownHeading = {
   line: number
 }
 
-const CODE_FENCE_RE = /^(```+|~~~+)\s*/
+const CODE_FENCE_RE = /^ {0,3}(`{3,}|~{3,})(.*)$/
 
 function isAsciiWhitespace(char: string | undefined): boolean {
-  return (
-    char === ' ' ||
-    char === '\t' ||
-    char === '\n' ||
-    char === '\r' ||
-    char === '\f' ||
-    char === '\v'
-  )
+  return char === ' ' || char === '\t' || char === '\n' || char === '\r' || char === '\f' || char === '\v'
 }
 
 function trimAsciiWhitespace(text: string): string {
@@ -52,7 +45,7 @@ function readBalancedSegment(
   text: string,
   startIndex: number,
   openChar: string,
-  closeChar: string
+  closeChar: string,
 ): { content: string; nextIndex: number } | null {
   if (text[startIndex] !== openChar) return null
 
@@ -88,7 +81,7 @@ function readBalancedSegment(
 function readMarkdownLink(
   text: string,
   startIndex: number,
-  options: { image?: boolean } = {}
+  options: { image?: boolean } = {},
 ): { label: string; nextIndex: number } | null {
   const labelStart = options.image ? startIndex + 1 : startIndex
   const label = readBalancedSegment(text, labelStart, '[', ']')
@@ -104,10 +97,7 @@ function readMarkdownLink(
   }
 }
 
-function readInlineCodeSpan(
-  text: string,
-  startIndex: number
-): { content: string; nextIndex: number } | null {
+function readInlineCodeSpan(text: string, startIndex: number): { content: string; nextIndex: number } | null {
   if (text[startIndex] !== '`') return null
 
   let fenceLength = 1
@@ -126,21 +116,7 @@ function readInlineCodeSpan(
 }
 
 function stripTrailingHeadingFence(text: string): string {
-  let end = text.length
-
-  while (end > 0 && isAsciiWhitespace(text[end - 1])) {
-    end -= 1
-  }
-
-  while (end > 0 && text[end - 1] === '#') {
-    end -= 1
-  }
-
-  while (end > 0 && isAsciiWhitespace(text[end - 1])) {
-    end -= 1
-  }
-
-  return text.slice(0, end)
+  return trimAsciiWhitespace(text).replace(/[ \t]+#+$/, '')
 }
 
 type InlineMarkdownToken = {
@@ -148,63 +124,25 @@ type InlineMarkdownToken = {
   nextIndex: number
 }
 
-function readImageToken(text: string, startIndex: number): InlineMarkdownToken | null {
-  if (!text.startsWith('![', startIndex)) return null
-
-  const image = readMarkdownLink(text, startIndex, { image: true })
-  if (!image) return null
-
-  return {
-    content: stripInlineMarkdown(image.label),
-    nextIndex: image.nextIndex,
+function readInlineMarkdownToken(text: string, startIndex: number): InlineMarkdownToken | null {
+  const link = readMarkdownLink(text, startIndex, { image: text.startsWith('![', startIndex) })
+  if (link) {
+    return {
+      content: stripInlineMarkdown(link.label),
+      nextIndex: link.nextIndex,
+    }
   }
-}
 
-function readLinkToken(text: string, startIndex: number): InlineMarkdownToken | null {
-  if (text[startIndex] !== '[') return null
-
-  const link = readMarkdownLink(text, startIndex)
-  if (!link) return null
-
-  return {
-    content: stripInlineMarkdown(link.label),
-    nextIndex: link.nextIndex,
-  }
-}
-
-function readCodeToken(text: string, startIndex: number): InlineMarkdownToken | null {
   const codeSpan = readInlineCodeSpan(text, startIndex)
-  if (!codeSpan) return null
+  if (codeSpan) return codeSpan
 
-  return {
-    content: codeSpan.content,
-    nextIndex: codeSpan.nextIndex,
-  }
-}
-
-function readHtmlTagToken(text: string, startIndex: number): InlineMarkdownToken | null {
   if (text[startIndex] !== '<') return null
-
   const closeIndex = text.indexOf('>', startIndex + 1)
   if (closeIndex === -1) return null
-
   return {
     content: '',
     nextIndex: closeIndex + 1,
   }
-}
-
-function readInlineMarkdownToken(text: string, startIndex: number): InlineMarkdownToken | null {
-  return (
-    readImageToken(text, startIndex) ||
-    readLinkToken(text, startIndex) ||
-    readCodeToken(text, startIndex) ||
-    readHtmlTagToken(text, startIndex)
-  )
-}
-
-function isInlineFormattingMarker(char: string): boolean {
-  return char === '*' || char === '_'
 }
 
 function stripInlineMarkdown(text = ''): string {
@@ -212,7 +150,7 @@ function stripInlineMarkdown(text = ''): string {
 
   const parts: string[] = []
 
-  for (let index = 0; index < text.length; ) {
+  for (let index = 0; index < text.length;) {
     const token = readInlineMarkdownToken(text, index)
     if (token) {
       parts.push(token.content)
@@ -221,7 +159,7 @@ function stripInlineMarkdown(text = ''): string {
     }
 
     const char = text[index]
-    if (isInlineFormattingMarker(char)) {
+    if (char === '*' || char === '_') {
       index += 1
       continue
     }
@@ -233,36 +171,7 @@ function stripInlineMarkdown(text = ''): string {
   return trimAsciiWhitespace(parts.join(''))
 }
 
-function getFenceState(
-  trimmed: string,
-  inCodeFence: boolean,
-  fenceToken: string | null
-): { inCodeFence: boolean; fenceToken: string | null; matchedFence: boolean } {
-  const fenceMatch = CODE_FENCE_RE.exec(trimmed)
-  if (!fenceMatch) {
-    return { inCodeFence, fenceToken, matchedFence: false }
-  }
-
-  const token = fenceMatch[1]
-  if (!inCodeFence) {
-    return {
-      inCodeFence: true,
-      fenceToken: token.startsWith('```') ? '```' : '~~~',
-      matchedFence: true,
-    }
-  }
-
-  if (fenceToken && token.startsWith(fenceToken)) {
-    return { inCodeFence: false, fenceToken: null, matchedFence: true }
-  }
-
-  return { inCodeFence, fenceToken, matchedFence: false }
-}
-
-function parseMarkdownHeadingLine(
-  line: string,
-  maxDepth: number
-): { level: number; rawText: string } | null {
+function parseMarkdownHeadingLine(line: string, maxDepth: number): { level: number; rawText: string } | null {
   let index = 0
   let indent = 0
 
@@ -292,50 +201,43 @@ function parseMarkdownHeadingLine(
   }
 }
 
-export function slugifyHeading(text: string): string {
+function slugifyHeading(text: string): string {
   const raw = stripInlineMarkdown(text)
   if (!raw) return ''
 
-  try {
-    const slug = raw
-      .toLowerCase()
-      .normalize('NFKD')
-      .replaceAll(/[^\p{L}\p{N}]+/gu, '-')
-      .replaceAll(/-{2,}/g, '-')
-    return trimEdgeChar(slug, '-')
-  } catch {
-    // Fallback for environments without unicode property escapes (very unlikely in modern browsers)
-    const slug = raw
-      .toLowerCase()
-      .replaceAll(/[^a-z0-9]+/g, '-')
-      .replaceAll(/-{2,}/g, '-')
-    return trimEdgeChar(slug, '-')
-  }
+  const slug = raw
+    .toLowerCase()
+    .normalize('NFKD')
+    .replaceAll(/[^\p{L}\p{N}]+/gu, '-')
+    .replaceAll(/-{2,}/g, '-')
+  return trimEdgeChar(slug, '-')
 }
 
-export function extractMarkdownHeadings(
-  markdown: string,
-  options: { maxDepth?: number } = {}
-): MarkdownHeading[] {
+export function extractMarkdownHeadings(markdown: string, options: { maxDepth?: number } = {}): MarkdownHeading[] {
   const maxDepth = options.maxDepth ?? 6
-  const text = markdown || ''
-  if (!text.trim()) return []
+  if (markdown.trim() === '') return []
 
-  const lines = text.split(/\r?\n/)
+  const lines = markdown.split(/\r?\n/)
   const headings: MarkdownHeading[] = []
-  const seen = new Map<string, number>()
+  const nextSuffixById = new Map<string, number>()
 
-  let inCodeFence = false
   let fenceToken: string | null = null
 
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index]
-    const trimmed = line.trim()
-
-    const nextFenceState = getFenceState(trimmed, inCodeFence, fenceToken)
-    inCodeFence = nextFenceState.inCodeFence
-    fenceToken = nextFenceState.fenceToken
-    if (nextFenceState.matchedFence || inCodeFence) {
+    const fenceMatch = CODE_FENCE_RE.exec(line)
+    if (fenceToken !== null) {
+      if (
+        fenceMatch !== null &&
+        fenceMatch[1][0] === fenceToken[0] &&
+        fenceMatch[1].length >= fenceToken.length &&
+        trimAsciiWhitespace(fenceMatch[2]) === ''
+      )
+        fenceToken = null
+      continue
+    }
+    if (fenceMatch !== null && (fenceMatch[1][0] !== '`' || !fenceMatch[2].includes('`'))) {
+      fenceToken = fenceMatch[1]
       continue
     }
 
@@ -343,12 +245,16 @@ export function extractMarkdownHeadings(
     if (!heading) continue
 
     const headingText = stripInlineMarkdown(heading.rawText)
-    const base = slugifyHeading(headingText) || `section-${headings.length + 1}`
-
-    const prev = seen.get(base) || 0
-    const nextCount = prev + 1
-    seen.set(base, nextCount)
-    const id = nextCount === 1 ? base : `${base}-${nextCount}`
+    const slug = slugifyHeading(headingText)
+    const baseId = slug === '' ? `section-${headings.length + 1}` : slug
+    let id = baseId
+    let nextSuffix = nextSuffixById.get(baseId) ?? 2
+    while (nextSuffixById.has(id)) {
+      id = `${baseId}-${nextSuffix}`
+      nextSuffix += 1
+    }
+    nextSuffixById.set(baseId, nextSuffix)
+    if (id !== baseId) nextSuffixById.set(id, 2)
 
     headings.push({
       level: heading.level,
@@ -361,27 +267,27 @@ export function extractMarkdownHeadings(
   return headings
 }
 
+function findElementByFragmentId(id: string): HTMLElement | null {
+  if (globalThis.window === undefined) return null
+  const elementId = id.replace(/^#/, '').trim()
+  return elementId === '' ? null : globalThis.window.document.getElementById(elementId)
+}
+
 export function scrollToElementId(
   id: string,
   options: {
     behavior?: ScrollBehavior
     block?: ScrollLogicalPosition
     scrollContainerSelector?: string
-  } = {}
+  } = {},
 ): boolean {
-  if (globalThis.window === undefined) return false
-  const key = (id || '').replace(/^#/, '').trim()
-  if (!key) return false
-
-  const el = globalThis.window.document.getElementById(key)
-  if (!el) return false
+  const el = findElementByFragmentId(id)
+  if (el === null) return false
 
   const behavior = options.behavior ?? 'smooth'
   const block = options.block ?? 'start'
-  const containerSelector = (options.scrollContainerSelector || '').trim()
-  const container = containerSelector
-    ? globalThis.window.document.querySelector<HTMLElement>(containerSelector)
-    : null
+  const containerSelector = options.scrollContainerSelector?.trim()
+  const container = containerSelector ? el.ownerDocument.querySelector<HTMLElement>(containerSelector) : null
 
   if (container?.contains(el)) {
     const containerRect = container.getBoundingClientRect()
@@ -417,15 +323,30 @@ export function scrollToElementId(
   return true
 }
 
-export function flashElementId(id: string, className: string, durationMs = 900): void {
-  if (globalThis.window === undefined) return
-  const key = (id || '').replace(/^#/, '').trim()
-  if (!key) return
-  const el = globalThis.window.document.getElementById(key)
-  if (!el) return
+const flashTimers = new WeakMap<HTMLElement, Map<string, number>>()
 
-  el.classList.add(...className.split(/\s+/g).filter(Boolean))
-  globalThis.window.setTimeout(() => {
-    el.classList.remove(...className.split(/\s+/g).filter(Boolean))
-  }, Math.max(0, Number(durationMs) || 0))
+export function flashElementId(id: string, className: string, durationMs = 900): void {
+  const element = findElementByFragmentId(id)
+  if (element === null) return
+  const classTokens = className.split(/\s+/).filter(Boolean)
+  if (classTokens.length === 0) return
+
+  const timers = flashTimers.get(element) ?? new Map<string, number>()
+  flashTimers.set(element, timers)
+
+  for (const token of classTokens) {
+    const previousTimer = timers.get(token)
+    if (previousTimer !== undefined) window.clearTimeout(previousTimer)
+
+    element.classList.add(token)
+    const timer = window.setTimeout(
+      () => {
+        element.classList.remove(token)
+        timers.delete(token)
+        if (timers.size === 0) flashTimers.delete(element)
+      },
+      Math.max(0, durationMs),
+    )
+    timers.set(token, timer)
+  }
 }

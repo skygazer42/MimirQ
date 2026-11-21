@@ -4,9 +4,9 @@ from uuid import uuid4
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-import app.api.v1.auth as auth_module
-from app.api.schemas.auth import SamlExchangeResponse, TokenResponse, UserPublic
-from app.services.saml_bridge_service import saml_bridge_session_from_exchange
+import app.api.v1.identity.auth as auth_module
+from app.api.schemas.identity.auth import SamlExchangeResponse, TokenResponse, UserPublic
+from app.services.identity.saml_bridge import saml_bridge_session_from_exchange
 
 
 def _build_app() -> FastAPI:

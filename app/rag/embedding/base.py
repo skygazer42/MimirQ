@@ -5,8 +5,26 @@ Base embedding model abstract class.
 import asyncio
 import os
 from abc import ABC, abstractmethod
+from typing import TypedDict
+from uuid import uuid4
 
-from app.rag.embedding.utils import get_docker_safe_url, hashstr, logger
+from app.rag.embedding.utils import get_docker_safe_url, logger, validate_embedding_vectors
+
+
+class EmbeddingModelOptions(TypedDict, total=False):
+    model: str | None
+    name: str | None
+    dimension: int | None
+    url: str | None
+    base_url: str | None
+    api_key: str | None
+    model_id: str | None
+
+
+class EmbeddingBatchProgress(TypedDict):
+    status: str
+    total: int
+    progress: int
 
 
 class BaseEmbeddingModel(ABC):
@@ -32,7 +50,7 @@ class BaseEmbeddingModel(ABC):
         base_url: str | None = None,
         api_key: str | None = None,
         model_id: str | None = None,
-    ):
+    ) -> None:
         """Initialize embedding model.
 
         Args:
@@ -47,9 +65,11 @@ class BaseEmbeddingModel(ABC):
         base_url = base_url or url
         self.model = model or name
         self.dimension = dimension
+        if dimension is not None and dimension < 1:
+            raise ValueError("Embedding dimension must be positive")
         self.base_url = get_docker_safe_url(base_url)
         self.api_key = os.getenv(api_key, api_key) if api_key else None
-        self.embed_state: dict = {}
+        self.embed_state: dict[str, EmbeddingBatchProgress] = {}
 
     @abstractmethod
     def encode(self, message: str | list[str]) -> list[list[float]]:
@@ -111,11 +131,13 @@ class BaseEmbeddingModel(ABC):
         Returns:
             List of embedding vectors
         """
+        if batch_size < 1:
+            raise ValueError("batch_size must be positive")
         data = []
         task_id = None
 
         if len(messages) > batch_size:
-            task_id = hashstr(str(messages))
+            task_id = uuid4().hex
             self.embed_state[task_id] = {
                 "status": "in-progress",
                 "total": len(messages),
@@ -125,15 +147,11 @@ class BaseEmbeddingModel(ABC):
         try:
             for i in range(0, len(messages), batch_size):
                 group_msg = messages[i : i + batch_size]
-                logger.info(f"Encoding [{i}/{len(messages)}] messages (bsz={batch_size})")
+                logger.info("Encoding [%s/%s] messages (bsz=%s)", i, len(messages), batch_size)
                 response = self.encode(group_msg)
                 data.extend(response)
                 if task_id:
                     self.embed_state[task_id]["progress"] = i + len(group_msg)
-        except Exception:
-            if task_id:
-                self.embed_state[task_id]["status"] = "failed"
-            raise
         finally:
             # embed_state is progress bookkeeping only; drop the entry so a
             # long-lived embedder does not accumulate an unbounded dict.
@@ -155,48 +173,48 @@ class BaseEmbeddingModel(ABC):
         Returns:
             List of embedding vectors
         """
+        if batch_size < 1 or max_concurrent < 1:
+            raise ValueError("batch_size and max_concurrent must be positive")
         if not messages:
             return []
 
-        data = []
         task_id = None
 
         if len(messages) > batch_size:
-            task_id = hashstr(str(messages))
+            task_id = uuid4().hex
             self.embed_state[task_id] = {
                 "status": "in-progress",
                 "total": len(messages),
                 "progress": 0,
             }
 
-        # Split into batches
-        batches = []
-        for i in range(0, len(messages), batch_size):
-            group_msg = messages[i : i + batch_size]
-            batches.append((i, group_msg))
-
-        # Process with concurrent control using semaphore
         semaphore = asyncio.Semaphore(max_concurrent)
 
-        async def encode_batch_with_limit(batch_info):
-            idx, group_msg = batch_info
+        async def encode_batch_with_limit(start: int, batch: list[str]) -> list[list[float]]:
             async with semaphore:
                 logger.info(
-                    f"Encoding batch [{idx}/{len(messages)}] (bsz={len(group_msg)}, concurrent={max_concurrent})"
+                    "Encoding batch [%s/%s] (bsz=%s, concurrent=%s)", start, len(messages), len(batch), max_concurrent
                 )
-                result = await self.aencode(group_msg)
+                result = await self.aencode(batch)
                 if task_id:
-                    self.embed_state[task_id]["progress"] = min(idx + len(group_msg), len(messages))
+                    self.embed_state[task_id]["progress"] += len(batch)
                 return result
 
-        tasks = [encode_batch_with_limit(batch) for batch in batches]
+        tasks: list[asyncio.Task[list[list[float]]]] = []
         try:
+            for start in range(0, len(messages), batch_size):
+                batch_coro = encode_batch_with_limit(start, messages[start : start + batch_size])
+                try:
+                    tasks.append(asyncio.create_task(batch_coro))
+                except BaseException:
+                    batch_coro.close()
+                    raise
             results = await asyncio.gather(*tasks)
-        except Exception:
-            # A failed batch fails the whole call (results must stay aligned);
-            # mark the task failed instead of leaving it stuck at "in-progress".
-            if task_id:
-                self.embed_state[task_id]["status"] = "failed"
+        except BaseException:
+            for task in tasks:
+                if not task.cancelling():
+                    task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
             raise
         finally:
             # embed_state is progress bookkeeping only; drop the entry so a
@@ -204,10 +222,7 @@ class BaseEmbeddingModel(ABC):
             if task_id:
                 self.embed_state.pop(task_id, None)
 
-        for res in results:
-            data.extend(res)
-
-        return data
+        return [vector for batch_result in results for vector in batch_result]
 
     async def test_connection(self) -> tuple[bool, str]:
         """Test the embedding model connection.
@@ -217,7 +232,8 @@ class BaseEmbeddingModel(ABC):
         """
         try:
             test_text = ["Hello world"]
-            await self.aencode(test_text)
+            vectors = await self.aencode(test_text)
+            validate_embedding_vectors(vectors, count=1, dimension=self.dimension)
             return True, "Connection successful"
         except Exception as e:
             error_msg = str(e)

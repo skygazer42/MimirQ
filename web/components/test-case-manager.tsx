@@ -4,28 +4,16 @@
  * 功能：
  * - 列表展示数据集级 Golden 评测样本
  * - 搜索和筛选
- * - 编辑、删除操作
+ * - 标记、删除操作
  * - 批量选择和操作
  */
 
 'use client'
 
-import {
-  useMemo,
-  useRef,
-  useState,
-  useEffect,
-  type MouseEvent,
-  type ReactNode,
-} from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import { skipToken, useQuery, useQueryClient } from '@tanstack/react-query'
 import { evaluationApi, ragApi } from '@/lib/api'
-import type {
-  Citation,
-  RegressionCase,
-  RegressionCaseCreate,
-  RegressionReferenceSource,
-} from '@/types'
+import type { RegressionCase, RegressionCaseCreate } from '@/types'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Input } from '@/components/ui/input'
@@ -42,42 +30,32 @@ import {
   FileText,
   Upload,
   Star,
-} from 'lucide-react'
+} from '@/components/icons'
 import { toast } from 'sonner'
-import { toTrimmedPrimitiveString } from '@/lib/primitive-text'
 import { cn, detachPromise } from '@/lib/utils'
 import { formatApiError } from '@/lib/api-errors'
+import { getAuthSessionKey } from '@/lib/auth-storage'
 import { queryKeys } from '@/lib/query-keys'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
+  buildRegressionReferenceSources,
+  parseRegressionEvidencePack,
+  type RegressionEvidencePack,
+} from '@/lib/regression-evidence'
 
-interface TestCaseManagerProps {
-  datasetId?: string | null
-  onRunTests?: (caseIds: string[]) => void
-  onCaseSelected?: (caseId: string | null) => void
+type TestCaseManagerProps = {
+  datasetId: string | null
+  onRunTests: (caseIds: string[]) => void
+  isRunning?: boolean
   dense?: boolean
 }
 
-const REGRESSION_CASE_PAGE_LIMIT = 200
-const REGRESSION_CASE_FETCH_MAX = 1000
-
-type EvidencePackDraft = {
-  dataset_id?: string
-  query?: string
-  query_for_retrieval?: string
-  metrics?: Record<string, unknown> | null
-  citations?: Citation[]
-  exported_at?: string
-  source?: 'retrieve_preview' | 'evidence_pack'
-  has_evidence?: boolean | null
-  abstain_triggered?: boolean | null
-  abstain_reason?: string | null
-  selected_chunk_ids?: unknown[]
-  [key: string]: unknown
+type RegressionEvidenceDraft = {
+  pack: RegressionEvidencePack
+  source: 'retrieve_preview' | 'evidence_pack'
+  question: string
+  expectedAnswer: string
+  selectedChunkIds: ReadonlySet<string>
 }
 
 type TestCaseRowProps = {
@@ -85,8 +63,9 @@ type TestCaseRowProps = {
   isSelected: boolean
   isChecked: boolean
   isGolden: boolean
+  isPending: boolean
   dense?: boolean
-  onSelectCase: (caseItem: RegressionCase) => void
+  onSelectCase: (caseId: string) => void
   onToggleSelect: (caseId: string) => void
   onToggleGolden: (caseItem: RegressionCase) => Promise<void>
   onDelete: (caseId: string) => Promise<void>
@@ -96,8 +75,7 @@ const GOLDEN_TAG = 'golden'
 const GOLDEN_DRAFT_TAG = 'golden_draft'
 
 function isGoldenCase(caseItem: RegressionCase): boolean {
-  const tags = Array.isArray(caseItem.tags) ? caseItem.tags : []
-  return tags.includes(GOLDEN_TAG) || tags.includes(GOLDEN_DRAFT_TAG)
+  return caseItem.tags.includes(GOLDEN_TAG) || caseItem.tags.includes(GOLDEN_DRAFT_TAG)
 }
 
 function TestCaseRow({
@@ -105,6 +83,7 @@ function TestCaseRow({
   isSelected,
   isChecked,
   isGolden,
+  isPending,
   dense = false,
   onSelectCase,
   onToggleSelect,
@@ -112,37 +91,30 @@ function TestCaseRow({
   onDelete,
 }: Readonly<TestCaseRowProps>) {
   const handleSelect = () => {
-    onSelectCase(caseItem)
+    onSelectCase(caseItem.id)
   }
 
-  const handleToggleSelect = (event: MouseEvent<HTMLButtonElement>) => {
-    event.stopPropagation()
+  const handleToggleSelect = () => {
     onToggleSelect(caseItem.id)
   }
 
-  const handleToggleGolden = (event: MouseEvent<HTMLButtonElement>) => {
-    event.stopPropagation()
+  const handleToggleGolden = () => {
     detachPromise(onToggleGolden(caseItem))
   }
 
-  const hasManualGolden =
-    Array.isArray(caseItem.tags) && caseItem.tags.includes(GOLDEN_TAG)
+  const hasManualGolden = caseItem.tags.includes(GOLDEN_TAG)
   const goldenActionLabel = hasManualGolden
     ? '移出人工 Golden 标记'
     : isGolden
       ? '已由插件草稿纳入 Golden，点击固定为人工 Golden'
       : '纳入 Golden 评测集'
 
-  const handleDeleteConfirm = () => {
-    detachPromise(onDelete(caseItem.id))
-  }
-
   return (
     <div
       className={cn(
         'transition-colors motion-reduce:transition-none',
         dense ? 'px-3 py-3 hover:bg-muted/40' : 'p-4 hover:bg-muted/50',
-        isSelected && (dense ? 'bg-info/5' : 'bg-primary/10')
+        isSelected && (dense ? 'bg-info/5' : 'bg-primary/10'),
       )}
     >
       <div className={cn('flex items-start', dense ? 'gap-2.5' : 'gap-3')}>
@@ -150,6 +122,7 @@ function TestCaseRow({
           type="button"
           onClick={handleToggleSelect}
           className="mt-0.5"
+          aria-pressed={isChecked}
           aria-label={isChecked ? '取消选择测试用例' : '选择测试用例'}
         >
           {isChecked ? (
@@ -159,46 +132,32 @@ function TestCaseRow({
           )}
         </button>
 
-        <button
-          type="button"
-          className="flex-1 min-w-0 text-left"
-          onClick={handleSelect}
-        >
+        <button type="button" className="flex-1 min-w-0 text-left" onClick={handleSelect} aria-pressed={isSelected}>
           <div
             className={cn(
               'font-medium text-foreground line-clamp-2',
-              dense ? 'mb-1 text-[13px] leading-5' : 'mb-1 text-sm'
+              dense ? 'mb-1 text-[13px] leading-5' : 'mb-1 text-sm',
             )}
           >
             {caseItem.question}
           </div>
 
           {caseItem.expected_answer ? (
-            <div
-              className={cn(
-                'text-muted-foreground line-clamp-2',
-                dense ? 'mb-1.5 text-[11px]' : 'mb-2 text-xs'
-              )}
-            >
+            <div className={cn('text-muted-foreground line-clamp-2', dense ? 'mb-1.5 text-[13px]' : 'mb-2 text-xs')}>
               标准答案: {caseItem.expected_answer}
             </div>
           ) : null}
 
-          {caseItem.tags && caseItem.tags.length > 0 ? (
-            <div
-              className={cn(
-                'flex items-center gap-1 flex-wrap',
-                dense ? 'mb-1.5' : 'mb-2'
-              )}
-            >
-              {caseItem.tags.map((tag) => (
+          {caseItem.tags.length > 0 ? (
+            <div className={cn('flex items-center gap-1 flex-wrap', dense ? 'mb-1.5' : 'mb-2')}>
+              {[...new Set(caseItem.tags)].map((tag) => (
                 <span
                   key={tag}
                   className={cn(
                     'inline-flex items-center gap-1 rounded-full border text-muted-foreground',
                     dense
-                      ? 'border-info/15 bg-background/70 px-1.5 py-0.5 text-[9px]'
-                      : 'border-border/60 bg-muted px-2 py-0.5 text-[11px]'
+                      ? 'border-info/15 bg-background/70 px-1.5 py-0.5 text-[12px]'
+                      : 'border-border/60 bg-muted px-2 py-0.5 text-[13px]',
                   )}
                 >
                   <Tag className="w-2.5 h-2.5" />
@@ -208,18 +167,18 @@ function TestCaseRow({
             </div>
           ) : null}
 
-          <div className="flex items-center gap-3 text-[11px] text-muted-foreground/80">
+          <div className="flex items-center gap-3 text-[13px] text-muted-foreground/80">
             <span className="flex items-center gap-1">
               <Calendar className="w-3 h-3" />
               {new Date(caseItem.created_at).toLocaleDateString()}
             </span>
-            {caseItem.document_ids?.length ? (
+            {caseItem.document_ids.length > 0 ? (
               <span className="flex items-center gap-1">
                 <FileText className="w-3 h-3" />
                 {caseItem.document_ids.length} 文档
               </span>
             ) : null}
-            {caseItem.reference_sources?.length ? (
+            {caseItem.reference_sources.length > 0 ? (
               <span className="flex items-center gap-1">
                 <Star className="w-3 h-3" />
                 标准证据 {caseItem.reference_sources.length}
@@ -232,17 +191,15 @@ function TestCaseRow({
           <button
             type="button"
             onClick={handleToggleGolden}
+            disabled={isPending}
             className={cn(
               'text-muted-foreground hover:text-foreground transition-colors motion-reduce:transition-none',
-              isGolden && 'text-warning hover:text-warning'
+              isGolden && 'text-warning hover:text-warning',
             )}
             aria-label={goldenActionLabel}
             title={goldenActionLabel}
           >
-            <Star
-              className="w-4 h-4"
-              fill={isGolden ? 'currentColor' : 'none'}
-            />
+            <Star className="w-4 h-4" fill={isGolden ? 'currentColor' : 'none'} />
           </button>
 
           <ConfirmDialog
@@ -251,10 +208,12 @@ function TestCaseRow({
             confirmLabel="删除"
             cancelLabel="返回"
             confirmVariant="destructive"
-            onConfirm={handleDeleteConfirm}
+            confirmDisabled={isPending}
+            onConfirm={() => onDelete(caseItem.id)}
           >
             <button
               type="button"
+              disabled={isPending}
               className="text-muted-foreground hover:text-destructive transition-colors motion-reduce:transition-none"
               aria-label="删除测试用例"
               title="删除"
@@ -271,486 +230,363 @@ function TestCaseRow({
 export function TestCaseManager({
   datasetId,
   onRunTests,
-  onCaseSelected,
   dense = false,
+  isRunning = false,
 }: Readonly<TestCaseManagerProps>) {
   const queryClient = useQueryClient()
-  const onCaseSelectedRef = useRef(onCaseSelected)
-
+  const sessionKey = getAuthSessionKey()
+  const mountedRef = useRef(false)
+  const previewRequestRef = useRef<AbortController | null>(null)
+  const importRequestRef = useRef<Promise<string> | null>(null)
+  const evidenceSubmissionRef = useRef<Promise<RegressionCase> | null>(null)
+  const pendingCaseIdsRef = useRef(new Set<string>())
+  const [pendingCaseIds, setPendingCaseIds] = useState<ReadonlySet<string>>(new Set())
   const [searchQuery, setSearchQuery] = useState('')
   const [goldenOnly, setGoldenOnly] = useState(false)
   const [selectedCaseIds, setSelectedCaseIds] = useState<Set<string>>(new Set())
-  const [selectedCase, setSelectedCase] = useState<RegressionCase | null>(null)
-
-  // 创建用例的状态
+  const [selectedCaseId, setSelectedCaseId] = useState<string | null>(null)
   const [isCreating, setIsCreating] = useState(false)
   const [newQuestion, setNewQuestion] = useState('')
   const [newExpectedAnswer, setNewExpectedAnswer] = useState('')
-
-  // Evidence Pack import → regression case authoring.
   const evidenceFileInputRef = useRef<HTMLInputElement>(null)
   const [evidenceDialogOpen, setEvidenceDialogOpen] = useState(false)
-  const [evidencePack, setEvidencePack] = useState<EvidencePackDraft | null>(
-    null
-  )
+  const [evidenceDraft, setEvidenceDraft] = useState<RegressionEvidenceDraft | null>(null)
   const [evidenceLoading, setEvidenceLoading] = useState(false)
-  const [evidenceQuestion, setEvidenceQuestion] = useState('')
-  const [evidenceExpectedAnswer, setEvidenceExpectedAnswer] = useState('')
-  const [evidenceSelectedChunkIds, setEvidenceSelectedChunkIds] = useState<
-    Set<string>
-  >(new Set())
+  const [evidenceImporting, setEvidenceImporting] = useState(false)
   const [evidenceCreating, setEvidenceCreating] = useState(false)
+  const [evidenceSaveError, setEvidenceSaveError] = useState<string | null>(null)
 
-  useEffect(() => {
-    onCaseSelectedRef.current = onCaseSelected
-  }, [onCaseSelected])
+  useLayoutEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+      previewRequestRef.current?.abort()
+    }
+  }, [])
 
-  const evidenceCitations = useMemo(() => {
-    const items = evidencePack?.citations
-    return Array.isArray(items) ? items : []
-  }, [evidencePack])
+  function isCurrent() {
+    return mountedRef.current && sessionKey === getAuthSessionKey()
+  }
 
-  const evidenceDatasetId = useMemo(() => {
-    const fromPack =
-      typeof evidencePack?.dataset_id === 'string'
-        ? evidencePack.dataset_id.trim()
-        : ''
-    return fromPack || datasetId || ''
-  }, [datasetId, evidencePack])
-
-  const regressionCaseParams = useMemo(
-    () => ({
-      limit: REGRESSION_CASE_PAGE_LIMIT,
-      fetch_max: REGRESSION_CASE_FETCH_MAX,
-      dataset_id: datasetId || undefined,
-    }),
-    [datasetId]
-  )
-
+  const hasDataset = datasetId !== null
+  const regressionCasesKey = queryKeys.evaluations.regressionCaseWindow(datasetId)
   const regressionCasesQuery = useQuery({
-    queryKey: queryKeys.evaluations.regressionCases(regressionCaseParams),
-    enabled: Boolean(datasetId),
-    queryFn: async () => {
-      if (!datasetId) return { total: 0, items: [], fullyLoaded: true }
-      const firstPage = await evaluationApi.listRegressionCases({
-        skip: 0,
-        limit: REGRESSION_CASE_PAGE_LIMIT,
-        dataset_id: datasetId,
-      })
-      const total = Number(firstPage.total ?? 0)
-      const targetTotal = Math.min(total, REGRESSION_CASE_FETCH_MAX)
-      const items = [...(firstPage.items || [])]
-
-      for (
-        let skip = items.length;
-        skip < targetTotal;
-        skip += REGRESSION_CASE_PAGE_LIMIT
-      ) {
-        const nextPage = await evaluationApi.listRegressionCases({
-          skip,
-          limit: REGRESSION_CASE_PAGE_LIMIT,
-          dataset_id: datasetId,
-        })
-        const nextItems = nextPage.items || []
-        if (!nextItems.length) break
-        items.push(...nextItems)
-      }
-
-      return {
-        total,
-        items,
-        fullyLoaded: items.length >= total,
-      }
-    },
+    queryKey: regressionCasesKey,
+    queryFn: hasDataset ? ({ signal }) => evaluationApi.listRegressionCaseWindow(datasetId, { signal }) : skipToken,
   })
+  const cases = regressionCasesQuery.data?.items
+  const caseTotal = regressionCasesQuery.data?.total
+  const casesFullyLoaded = regressionCasesQuery.data?.fullyLoaded
+  const goldenCases = cases?.filter(isGoldenCase)
+  const standardAnswerCount = cases?.filter(
+    (caseItem) => caseItem.expected_answer !== null && caseItem.expected_answer.trim().length > 0,
+  ).length
+  const referenceSourceCount = cases?.reduce((total, caseItem) => total + caseItem.reference_sources.length, 0)
+  const normalizedSearch = searchQuery.toLowerCase()
+  const filteredCases = cases?.filter((caseItem) => {
+    const searchable = [caseItem.question, caseItem.expected_answer, ...caseItem.tags].join(' ').toLowerCase()
+    return searchable.includes(normalizedSearch) && (!goldenOnly || isGoldenCase(caseItem))
+  })
+  const allVisibleSelected =
+    filteredCases !== undefined &&
+    filteredCases.length > 0 &&
+    filteredCases.every((caseItem) => selectedCaseIds.has(caseItem.id))
+  const hiddenSelectionCount =
+    selectedCaseIds.size -
+    (filteredCases === undefined ? 0 : filteredCases.filter((caseItem) => selectedCaseIds.has(caseItem.id)).length)
+  const selectedCasesPending = [...selectedCaseIds].some((caseId) => pendingCaseIds.has(caseId))
 
-  const cases = useMemo(
-    () => (datasetId ? (regressionCasesQuery.data?.items ?? []) : []),
-    [datasetId, regressionCasesQuery.data]
-  )
-  const caseTotal = datasetId
-    ? Number(regressionCasesQuery.data?.total ?? cases.length)
-    : 0
-  const casesFullyLoaded = regressionCasesQuery.data?.fullyLoaded ?? true
-  const isLoading = Boolean(datasetId) && regressionCasesQuery.isLoading
-
-  const invalidateRegressionCases = () =>
-    queryClient.invalidateQueries({
-      queryKey: queryKeys.evaluations.regressionCases(regressionCaseParams),
+  useLayoutEffect(() => {
+    const snapshot = regressionCasesQuery.data
+    if (snapshot === undefined || !snapshot.fullyLoaded || regressionCasesQuery.isError) return
+    const existingIds = new Set(snapshot.items.map((caseItem) => caseItem.id))
+    setSelectedCaseIds((current) => {
+      const remaining = new Set([...current].filter((caseId) => existingIds.has(caseId)))
+      return remaining.size === current.size ? current : remaining
     })
+    setSelectedCaseId((current) => (current !== null && !existingIds.has(current) ? null : current))
+  }, [regressionCasesQuery.data, regressionCasesQuery.isError])
 
-  const createCaseMutation = useMutation({
-    mutationFn: (payload: RegressionCaseCreate) =>
-      evaluationApi.createRegressionCase(payload),
-    onSuccess: invalidateRegressionCases,
-  })
-
-  const deleteCasesMutation = useMutation({
-    mutationFn: (caseIds: string[]) =>
-      Promise.all(
-        caseIds.map((caseId) => evaluationApi.deleteRegressionCase(caseId))
-      ),
-    onSuccess: invalidateRegressionCases,
-  })
-
-  const patchCaseTagsMutation = useMutation({
-    mutationFn: ({
-      caseId,
-      tags,
-    }: {
-      caseId: string
-      tags: string[]
-    }) => evaluationApi.patchRegressionCase(caseId, { tags }),
-    onSuccess: invalidateRegressionCases,
-  })
-
-  useEffect(() => {
-    setSelectedCaseIds(new Set())
-    setSelectedCase(null)
-    onCaseSelectedRef.current?.(null)
-  }, [datasetId])
-
-  useEffect(() => {
-    if (!regressionCasesQuery.error) return
-    console.error('加载测试用例失败:', regressionCasesQuery.error)
-    toast.error(formatApiError(regressionCasesQuery.error, '加载测试用例失败'))
-  }, [regressionCasesQuery.error])
-
-  const goldenCount = useMemo(() => {
-    return (cases || []).filter(isGoldenCase).length
-  }, [cases])
-  const standardAnswerCount = useMemo(() => {
-    return (cases || []).filter(
-      (c) =>
-        typeof c.expected_answer === 'string' &&
-        c.expected_answer.trim().length > 0
-    ).length
-  }, [cases])
-  const referenceSourceCount = useMemo(() => {
-    return (cases || []).reduce(
-      (total, c) =>
-        total +
-        (Array.isArray(c.reference_sources) ? c.reference_sources.length : 0),
-      0
-    )
-  }, [cases])
-  const goldenCaseIds = useMemo(() => {
-    return (cases || []).filter(isGoldenCase).map((c) => c.id)
-  }, [cases])
-
-  // 过滤用例
-  const filteredCases = cases.filter((c) => {
-    const query = searchQuery.toLowerCase()
-    const searchable = [
-      c.question,
-      c.expected_answer,
-      ...(Array.isArray(c.tags) ? c.tags : []),
-    ]
-      .join(' ')
-      .toLowerCase()
-    if (!searchable.includes(query)) return false
-    if (!goldenOnly) return true
-    return isGoldenCase(c)
-  })
-
-  // 切换选择
-  const toggleSelect = (caseId: string) => {
-    const newSet = new Set(selectedCaseIds)
-    if (newSet.has(caseId)) {
-      newSet.delete(caseId)
-    } else {
-      newSet.add(caseId)
-    }
-    setSelectedCaseIds(newSet)
-  }
-
-  // 全选/取消全选
-  const toggleSelectAll = () => {
-    if (selectedCaseIds.size === filteredCases.length) {
-      setSelectedCaseIds(new Set())
-    } else {
-      setSelectedCaseIds(new Set(filteredCases.map((c) => c.id)))
+  function invalidateRegressionCases() {
+    if (sessionKey === getAuthSessionKey()) {
+      detachPromise(queryClient.invalidateQueries({ queryKey: queryKeys.evaluations.regressionCaseLists() }))
     }
   }
 
-  // 删除用例
-  const handleDelete = async (caseId: string) => {
-    try {
-      await deleteCasesMutation.mutateAsync([caseId])
-      toast.success('删除成功')
-      if (selectedCase?.id === caseId) {
-        setSelectedCase(null)
-        onCaseSelected?.(null)
+  function setCasesPending(caseIds: readonly string[], pending: boolean) {
+    for (const caseId of caseIds) {
+      if (pending) pendingCaseIdsRef.current.add(caseId)
+      else pendingCaseIdsRef.current.delete(caseId)
+    }
+    if (isCurrent()) setPendingCaseIds(new Set(pendingCaseIdsRef.current))
+  }
+
+  function toggleSelect(caseId: string) {
+    setSelectedCaseIds((current) => {
+      const next = new Set(current)
+      if (next.has(caseId)) next.delete(caseId)
+      else next.add(caseId)
+      return next
+    })
+  }
+
+  function toggleSelectAll(visibleCases: readonly RegressionCase[]) {
+    setSelectedCaseIds((current) => {
+      const next = new Set(current)
+      const removeVisible = visibleCases.every((caseItem) => current.has(caseItem.id))
+      for (const caseItem of visibleCases) {
+        if (removeVisible) next.delete(caseItem.id)
+        else next.add(caseItem.id)
       }
-    } catch (error) {
-      console.error('删除失败:', error)
-      toast.error(formatApiError(error, '删除失败'))
-    }
+      return next
+    })
   }
 
-  // 批量删除
-  const handleBatchDelete = async () => {
-    if (selectedCaseIds.size === 0) return
-
+  async function deleteCaseIds(caseIds: string[]) {
+    if (caseIds.some((caseId) => pendingCaseIdsRef.current.has(caseId))) {
+      throw new Error('所选样本仍有操作进行中，请稍后再试')
+    }
+    setCasesPending(caseIds, true)
     try {
-      await deleteCasesMutation.mutateAsync(Array.from(selectedCaseIds))
-      toast.success('批量删除成功')
-      setSelectedCaseIds(new Set())
-    } catch (error) {
-      console.error('批量删除失败:', error)
-      toast.error(formatApiError(error, '批量删除失败'))
+      const results = await Promise.allSettled(
+        caseIds.map(async (caseId) => {
+          await evaluationApi.deleteRegressionCase(caseId)
+          return caseId
+        }),
+      )
+      if (!isCurrent()) return
+      const deletedIds = new Set(
+        results.filter((result) => result.status === 'fulfilled').map((result) => result.value),
+      )
+      await queryClient.cancelQueries({ queryKey: regressionCasesKey, exact: true })
+      if (!isCurrent()) return
+      queryClient.setQueryData<NonNullable<typeof regressionCasesQuery.data>>(regressionCasesKey, (current) => {
+        if (current === undefined) return current
+        const items = current.items.filter((item) => !deletedIds.has(item.id))
+        return {
+          ...current,
+          items,
+          total: current.total === null ? null : current.total - (current.items.length - items.length),
+        }
+      })
+      setSelectedCaseIds((current) => new Set([...current].filter((caseId) => !deletedIds.has(caseId))))
+      setSelectedCaseId((current) => (current !== null && deletedIds.has(current) ? null : current))
+      const failures = results.filter((result) => result.status === 'rejected')
+      if (failures.length > 0) {
+        throw new AggregateError(
+          failures.map((result) => result.reason),
+          `${deletedIds.size} 个已确认删除，${failures.length} 个未确认删除；请先刷新列表确认，再重试`,
+        )
+      }
+      toast.success(caseIds.length === 1 ? '删除成功' : `已删除 ${deletedIds.size} 个测试用例`)
+    } finally {
+      invalidateRegressionCases()
+      setCasesPending(caseIds, false)
     }
   }
 
-  // 创建用例
-  const handleCreate = async () => {
-    const q = (newQuestion || '').trim()
-    if (!q) {
+  async function handleToggleGolden(caseItem: RegressionCase) {
+    if (pendingCaseIdsRef.current.has(caseItem.id)) return
+    const hasManualGolden = caseItem.tags.includes(GOLDEN_TAG)
+    const tags = hasManualGolden ? caseItem.tags.filter((tag) => tag !== GOLDEN_TAG) : [...caseItem.tags, GOLDEN_TAG]
+    setCasesPending([caseItem.id], true)
+    try {
+      const updated = await evaluationApi.patchRegressionCase(caseItem.id, { tags })
+      if (updated.dataset_id !== datasetId) throw new Error('更新回执的数据集不匹配，请刷新样本列表确认')
+      if (!isCurrent()) return
+      queryClient.setQueryData<NonNullable<typeof regressionCasesQuery.data>>(regressionCasesKey, (current) => {
+        if (current === undefined) return current
+        return { ...current, items: current.items.map((item) => (item.id === updated.id ? updated : item)) }
+      })
+      toast.success(
+        hasManualGolden
+          ? caseItem.tags.includes(GOLDEN_DRAFT_TAG)
+            ? '已移除人工 Golden 标记；该样本仍由插件草稿纳入'
+            : '已移除人工 Golden 标记'
+          : '已纳入 Golden 评测集',
+      )
+    } catch (error) {
+      if (isCurrent()) toast.error(formatApiError(error, 'Golden 标记更新未确认，请先刷新列表'))
+    } finally {
+      invalidateRegressionCases()
+      setCasesPending([caseItem.id], false)
+    }
+  }
+
+  function openEvidenceDraft(
+    pack: RegressionEvidencePack,
+    source: RegressionEvidenceDraft['source'],
+    expectedAnswer: string,
+  ) {
+    setEvidenceDraft({
+      pack,
+      source,
+      question: pack.query === undefined ? '' : pack.query,
+      expectedAnswer,
+      selectedChunkIds:
+        pack.selected_chunk_ids === undefined
+          ? new Set(pack.citations.slice(0, 1).map((citation) => citation.chunk_id))
+          : new Set(pack.selected_chunk_ids),
+    })
+    setEvidenceSaveError(null)
+    setEvidenceDialogOpen(true)
+  }
+
+  function handleCreatingOpenChange(open: boolean) {
+    if (!open) {
+      previewRequestRef.current?.abort()
+      previewRequestRef.current = null
+      setEvidenceLoading(false)
+    }
+    setIsCreating(open)
+  }
+
+  async function handleCreate() {
+    const question = newQuestion.trim()
+    if (question === '') {
       toast.error('请输入问题')
       return
     }
-    if (!datasetId) {
+    if (!hasDataset) {
       toast.error('请先选择数据集')
       return
     }
-
+    if (previewRequestRef.current !== null) return
+    const request = new AbortController()
+    previewRequestRef.current = request
     setEvidenceLoading(true)
     try {
-      const res = await ragApi.retrieveEvidence({
-        query: q,
-        dataset_id: datasetId,
-      })
-      const citations = Array.isArray(res?.citations)
-        ? (res.citations as unknown as Citation[])
-        : []
-      if (!citations.length) {
-        toast.error('未检索到可用 citations（请检查数据集是否已入库）')
-        return
-      }
-
-      const exportedAt = new Date().toISOString()
-      setEvidencePack({
-        dataset_id: datasetId,
-        query: q,
-        query_for_retrieval: res?.query_for_retrieval || q,
-        metrics: res?.metrics || null,
-        citations,
-        exported_at: exportedAt,
-        source: 'retrieve_preview',
-        has_evidence: (res as any)?.has_evidence ?? null,
-        abstain_triggered: (res as any)?.abstain_triggered ?? null,
-        abstain_reason: (res as any)?.abstain_reason ?? null,
-      })
-      setEvidenceQuestion(q)
-      setEvidenceExpectedAnswer(newExpectedAnswer || '')
-
-      // Default: select the top-1 citation as a starting point (operators can adjust).
-      const firstChunkId = toTrimmedPrimitiveString(citations?.[0]?.chunk_id)
-      setEvidenceSelectedChunkIds(
-        firstChunkId ? new Set([firstChunkId]) : new Set()
+      const result = await ragApi.retrieveEvidence(
+        { query: question, dataset_id: datasetId },
+        { signal: request.signal },
       )
-
+      const pack = parseRegressionEvidencePack({
+        ...result,
+        dataset_id: datasetId,
+        query: question,
+      })
+      if (!isCurrent() || previewRequestRef.current !== request) return
+      openEvidenceDraft(pack, 'retrieve_preview', newExpectedAnswer)
       setIsCreating(false)
-      setEvidenceDialogOpen(true)
     } catch (error) {
-      console.error('检索预览失败:', error)
-      toast.error(formatApiError(error, '检索预览失败'))
+      if (isCurrent() && previewRequestRef.current === request && !request.signal.aborted) {
+        toast.error(formatApiError(error, '未取得可用标准证据，请检查数据集与检索结果'))
+      }
     } finally {
-      setEvidenceLoading(false)
+      if (previewRequestRef.current === request) {
+        previewRequestRef.current = null
+        if (isCurrent()) setEvidenceLoading(false)
+      }
     }
   }
 
-  const handleChooseEvidencePack = () => {
-    if (!datasetId) {
-      toast.error('请先选择数据集')
-      return
-    }
+  function handleChooseEvidencePack() {
     evidenceFileInputRef.current?.click()
   }
 
-  const handleEvidencePackFile = async (file: File | null) => {
-    if (!file) return
+  async function handleEvidencePackFile(file: File) {
+    if (!hasDataset) {
+      toast.error('请先选择导入目标数据集')
+      return
+    }
+    const request = file.text()
+    importRequestRef.current = request
+    setEvidenceImporting(true)
     try {
-      const raw = await file.text()
-      const parsed = JSON.parse(raw)
-      const citations = Array.isArray(parsed?.citations)
-        ? (parsed.citations as Citation[])
-        : []
-      if (!citations.length) {
-        toast.error('Evidence Pack 缺少 citations')
-        return
+      const raw = await request
+      const value: unknown = JSON.parse(raw)
+      const pack = parseRegressionEvidencePack(value)
+      if (pack.dataset_id !== undefined && pack.dataset_id !== null && pack.dataset_id !== datasetId) {
+        throw new Error(`证据包属于数据集 ${pack.dataset_id}，请先切换到该数据集`)
       }
-
-      const ds =
-        typeof parsed?.dataset_id === 'string'
-          ? String(parsed.dataset_id).trim()
-          : ''
-      const effectiveDatasetId = ds || datasetId || ''
-      if (!effectiveDatasetId) {
-        toast.error('Evidence Pack 缺少 dataset_id，且当前未选择数据集')
-        return
+      if (!isCurrent() || importRequestRef.current !== request) return
+      openEvidenceDraft(pack, 'evidence_pack', '')
+    } catch (error) {
+      if (isCurrent() && importRequestRef.current === request) {
+        toast.error(formatApiError(error, '证据包读取失败，请检查 JSON 及引用字段'))
       }
-
-      const q = typeof parsed?.query === 'string' ? parsed.query : ''
-      setEvidencePack({
-        ...parsed,
-        dataset_id: effectiveDatasetId,
-        source: 'evidence_pack',
-      })
-      setEvidenceQuestion(String(q || '').trim())
-      setEvidenceExpectedAnswer('')
-
-      const selectedChunkIds = Array.isArray(parsed?.selected_chunk_ids)
-        ? parsed.selected_chunk_ids
-        : []
-      const normalizedSelected = selectedChunkIds
-        .map((x: any) => toTrimmedPrimitiveString(x))
-        .filter(Boolean)
-
-      // Default: keep the exported selection (if present), else select top-1 as a starting point.
-      const firstChunkId = toTrimmedPrimitiveString(citations?.[0]?.chunk_id)
-      setEvidenceSelectedChunkIds(
-        (() => {
-          if (normalizedSelected.length) {
-            return new Set(normalizedSelected)
-          } else if (firstChunkId) {
-            return new Set([firstChunkId])
-          } else {
-            return new Set()
-          }
-        })()
-      )
-      setEvidenceDialogOpen(true)
-    } catch (err: any) {
-      console.error('Failed to parse Evidence Pack', err)
-      toast.error('Evidence Pack 解析失败（请确认是 JSON 文件）')
     } finally {
-      // Allow re-selecting the same file.
-      if (evidenceFileInputRef.current) evidenceFileInputRef.current.value = ''
+      if (importRequestRef.current === request) {
+        importRequestRef.current = null
+        if (isCurrent()) setEvidenceImporting(false)
+      }
     }
   }
 
-  const handleCreateCaseFromEvidencePack = async () => {
-    const ds = (evidenceDatasetId || '').trim()
-    if (!ds) {
-      toast.error('缺少 dataset_id')
+  function handleEvidenceDialogOpenChange(open: boolean) {
+    if (evidenceSubmissionRef.current === null) setEvidenceDialogOpen(open)
+  }
+
+  async function handleCreateCaseFromEvidencePack(draft: RegressionEvidenceDraft) {
+    if (evidenceSubmissionRef.current !== null) return
+    if (!hasDataset) {
+      toast.error('请先选择数据集')
       return
     }
-    const q = (evidenceQuestion || '').trim()
-    if (!q) {
+    const question = draft.question.trim()
+    if (question === '') {
       toast.error('请输入问题')
       return
     }
-    if (!evidenceSelectedChunkIds.size) {
-      toast.error('请至少选择 1 条证据引用（reference_sources）')
+    if (draft.selectedChunkIds.size === 0) {
+      toast.error('请至少选择一条标准证据')
       return
     }
-
-    const sourceTag =
-      evidencePack?.source === 'retrieve_preview'
-        ? 'from_retrieval_preview'
-        : 'evidence_pack'
-    const selected = new Set(Array.from(evidenceSelectedChunkIds || []))
-    const refs: RegressionReferenceSource[] = (evidenceCitations || [])
-      .filter((c: any) => selected.has(String(c?.chunk_id || '')))
-      .map((c: any) => ({
-        document_id: String(c?.document_id || ''),
-        chunk_id: String(c?.chunk_id || ''),
-        page_number:
-          typeof c?.page_number === 'number' ? c.page_number : undefined,
-        start_char:
-          typeof c?.start_char === 'number' ? c.start_char : undefined,
-        end_char: typeof c?.end_char === 'number' ? c.end_char : undefined,
-        doc_pipeline_key:
-          typeof c?.doc_pipeline_key === 'string'
-            ? c.doc_pipeline_key
-            : undefined,
-        pipeline_hash:
-          typeof c?.pipeline_hash === 'string' ? c.pipeline_hash : undefined,
-        quote:
-          typeof c?.chunk_content === 'string' ? c.chunk_content : undefined,
-        label:
-          sourceTag === 'from_retrieval_preview'
-            ? 'ground_truth'
-            : 'evidence_pack',
-      }))
-      .filter((r) => !!r.document_id && !!r.chunk_id)
-
-    if (!refs.length) {
-      toast.error('选中的证据引用无效（缺少 chunk_id/document_id）')
-      return
-    }
-
     setEvidenceCreating(true)
+    setEvidenceSaveError(null)
     try {
+      const answer = draft.expectedAnswer.trim()
       const payload: RegressionCaseCreate = {
-        question: q,
-        dataset_id: ds,
-        expected_answer: evidenceExpectedAnswer?.trim()
-          ? evidenceExpectedAnswer.trim()
-          : undefined,
-        reference_sources: refs,
-        tags: [GOLDEN_TAG, sourceTag],
+        question,
+        dataset_id: datasetId,
+        expected_answer: answer === '' ? undefined : answer,
+        reference_sources: buildRegressionReferenceSources(draft.pack, draft.selectedChunkIds, draft.source),
+        tags: [GOLDEN_TAG, draft.source === 'retrieve_preview' ? 'from_retrieval_preview' : 'evidence_pack'],
         extra: {
-          evidence_pack_exported_at: evidencePack?.exported_at || null,
-          query_for_retrieval: evidencePack?.query_for_retrieval || null,
-          retrieval_metrics: evidencePack?.metrics || null,
-          has_evidence: evidencePack?.has_evidence ?? null,
-          abstain_triggered: evidencePack?.abstain_triggered ?? null,
-          abstain_reason: evidencePack?.abstain_reason ?? null,
+          evidence_pack_exported_at: draft.pack.exported_at,
+          query_for_retrieval: draft.pack.query_for_retrieval,
+          retrieval_metrics: draft.pack.metrics,
+          has_evidence: draft.pack.has_evidence,
+          abstain_triggered: draft.pack.abstain_triggered,
+          abstain_reason: draft.pack.abstain_reason,
           created_from:
-            sourceTag === 'from_retrieval_preview'
-              ? 'regression.test_case_manager'
-              : 'regression.evidence_pack_import',
+            draft.source === 'retrieve_preview' ? 'regression.test_case_manager' : 'regression.evidence_pack_import',
         },
       }
-      await createCaseMutation.mutateAsync(payload)
+      evidenceSubmissionRef.current = evaluationApi.createRegressionCase(payload)
+      const created = await evidenceSubmissionRef.current
+      if (!isCurrent()) return
+      await queryClient.cancelQueries({ queryKey: regressionCasesKey, exact: true })
+      if (!isCurrent()) return
+      queryClient.setQueryData<NonNullable<typeof regressionCasesQuery.data>>(regressionCasesKey, (current) => {
+        if (current === undefined) return { items: [created], total: null, fullyLoaded: false }
+        const exists = current.items.some((caseItem) => caseItem.id === created.id)
+        const items = [created, ...current.items.filter((caseItem) => caseItem.id !== created.id)]
+        const total = current.total === null ? null : current.total + (exists ? 0 : 1)
+        return { items, total, fullyLoaded: current.fullyLoaded && items.length === total }
+      })
       toast.success('已创建 Golden 评测样本')
       setEvidenceDialogOpen(false)
-      setEvidencePack(null)
-      setEvidenceSelectedChunkIds(new Set())
-      setIsCreating(false)
-      setNewQuestion('')
-      setNewExpectedAnswer('')
-    } catch (err: any) {
-      console.error('Failed to create case from evidence pack', err)
-      toast.error(formatApiError(err, '创建回归用例失败'))
-    } finally {
-      setEvidenceCreating(false)
-    }
-  }
-
-  // 选择用例
-  const handleSelectCase = (caseItem: RegressionCase) => {
-    setSelectedCase(caseItem)
-    onCaseSelected?.(caseItem.id)
-  }
-
-  const handleToggleGolden = async (caseItem: RegressionCase) => {
-    const prevTags = Array.isArray(caseItem.tags) ? caseItem.tags : []
-    const hasGolden = prevTags.includes(GOLDEN_TAG)
-    const nextTags = hasGolden
-      ? prevTags.filter((t) => t !== GOLDEN_TAG)
-      : [...prevTags, GOLDEN_TAG]
-
-    try {
-      const updated = await patchCaseTagsMutation.mutateAsync({
-        caseId: caseItem.id,
-        tags: nextTags,
-      })
-      if (selectedCase?.id === caseItem.id) {
-        setSelectedCase(updated)
-        onCaseSelected?.(updated.id)
+      if (draft.source === 'retrieve_preview') {
+        setIsCreating(false)
+        setNewQuestion('')
+        setNewExpectedAnswer('')
       }
-      toast.success(hasGolden ? '已移出 Golden 评测集' : '已纳入 Golden 评测集')
     } catch (error) {
-      console.error('Failed to toggle golden tag:', error)
-      toast.error(formatApiError(error, '更新 Golden 标记失败'))
+      if (isCurrent()) {
+        setEvidenceSaveError(
+          `创建未确认，请先刷新样本列表确认是否已保存。 ${formatApiError(error, '请检查问题和所选证据')}`,
+        )
+      }
+    } finally {
+      if (evidenceSubmissionRef.current !== null) invalidateRegressionCases()
+      evidenceSubmissionRef.current = null
+      if (isCurrent()) setEvidenceCreating(false)
     }
   }
 
-  const handleRunCaseIds = (caseIds: string[], emptyMessage: string) => {
-    if (!datasetId) {
+  function handleRunCaseIds(caseIds: string[], emptyMessage: string) {
+    if (!hasDataset) {
       toast.error('请先选择数据集')
       return
     }
@@ -758,71 +594,57 @@ export function TestCaseManager({
       toast.error(emptyMessage)
       return
     }
-    onRunTests?.(caseIds)
-  }
-
-  // 运行选中的测试
-  const handleRunSelected = () => {
-    handleRunCaseIds(Array.from(selectedCaseIds), '请先选择评测样本')
-  }
-
-  const handleRunGolden = () => {
-    handleRunCaseIds(goldenCaseIds, '当前数据集暂无 Golden 样本')
-  }
-
-  const handleRunAll = () => {
-    handleRunCaseIds(
-      cases.map((caseItem) => caseItem.id),
-      '当前数据集暂无评测样本'
-    )
+    if (caseIds.some((caseId) => pendingCaseIdsRef.current.has(caseId))) {
+      toast.error('所选样本仍有操作进行中，请稍后再运行')
+      return
+    }
+    onRunTests(caseIds)
   }
 
   let caseListContent: ReactNode
-  if (isLoading) {
+  if (!hasDataset) {
+    caseListContent = <p className="p-6 text-sm text-muted-foreground">先选择数据集，再管理 Golden 评测样本。</p>
+  } else if (filteredCases === undefined) {
     caseListContent = (
-      <div className="flex items-center justify-center py-8">
-        <Loader2 className="h-6 w-6 animate-spin motion-reduce:animate-none text-muted-foreground" />
+      <div role="status" className="flex items-center justify-center gap-2 py-8 text-sm text-muted-foreground">
+        {regressionCasesQuery.isError ? (
+          '尚未取得样本列表，请重新读取。'
+        ) : (
+          <>
+            <Loader2 className="h-6 w-6 animate-spin motion-reduce:animate-none" />
+            正在读取评测样本…
+          </>
+        )}
       </div>
     )
   } else if (filteredCases.length === 0) {
-    const emptyTitle = datasetId
-      ? searchQuery || goldenOnly
-        ? '没有匹配的评测样本'
-        : '暂无 Golden 评测样本'
-      : '先选择数据集'
-    const emptyDescription = datasetId
-      ? searchQuery || goldenOnly
+    const hasFilters = searchQuery !== '' || goldenOnly
+    let emptyTitle = hasFilters ? '已加载样本中没有匹配项' : '当前没有已加载样本'
+    let emptyDescription = '列表尚未完整读取，请重新读取后再判断整个数据集的样本。'
+    if (casesFullyLoaded) {
+      emptyTitle = hasFilters ? '没有匹配的评测样本' : '暂无评测样本'
+      emptyDescription = hasFilters
         ? '当前筛选条件没有命中样本，可以清空筛选或新增一条可复用标准问答。'
-        : '为当前数据集添加标准问题、标准答案和标准证据，用它作为评估 RAG pipeline 的固定标尺。'
-      : 'Golden 评测集绑定到数据集，选择知识库后才能创建标准问答和标准证据。'
+        : '添加标准问题、答案和引用证据，建立评测基准。'
+    }
 
     caseListContent = (
       <div
         className={cn(
-          'flex h-full min-h-[420px] items-center justify-center px-6 text-center',
-          dense ? 'py-12' : 'py-10'
+          'flex h-full min-h-[260px] items-center justify-center px-6 text-center',
+          dense ? 'py-8' : 'py-10',
         )}
       >
         <div className="max-w-md">
-          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-3xl border border-border/60 bg-[radial-gradient(circle_at_30%_20%,hsl(var(--primary)/0.16),transparent_45%),linear-gradient(180deg,hsl(var(--card))_0%,hsl(var(--background))_100%)] shadow-sm">
-            <FileText className="h-7 w-7 text-primary" />
-          </div>
-          <div className="mt-4 text-base font-semibold text-foreground">
-            {emptyTitle}
-          </div>
-          <div className="mt-2 text-[13px] leading-6 text-muted-foreground">
-            {emptyDescription}
-          </div>
+          <FileText className="mx-auto size-6 text-muted-foreground" aria-hidden="true" />
+          <div className="mt-4 text-base font-semibold text-foreground">{emptyTitle}</div>
+          <div className="mt-2 text-[13px] leading-6 text-muted-foreground">{emptyDescription}</div>
 
-          <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
-            {(searchQuery || goldenOnly) && datasetId ? (
+          {hasFilters ? (
+            <div className="mt-5">
               <Button
                 size="sm"
                 variant="outline"
-                className={cn(
-                  dense &&
-                    'h-8 rounded-lg border-border/60 bg-card/90 px-2.5 text-[11px]'
-                )}
                 onClick={() => {
                   setSearchQuery('')
                   setGoldenOnly(false)
@@ -830,57 +652,6 @@ export function TestCaseManager({
               >
                 清空筛选
               </Button>
-            ) : null}
-            <Button
-              size="sm"
-              className={cn(
-                'gap-2',
-                dense && 'h-8 rounded-lg px-2.5 text-[11px]'
-              )}
-              onClick={() => setIsCreating(true)}
-              disabled={!datasetId}
-            >
-              <Plus className="h-3.5 w-3.5" />
-              新增标准问答
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              className={cn(
-                'gap-2',
-                dense &&
-                  'h-8 rounded-lg border-border/60 bg-card/90 px-2.5 text-[11px]'
-              )}
-              onClick={handleChooseEvidencePack}
-              disabled={!datasetId}
-            >
-              <Upload className="h-3.5 w-3.5" />
-              导入 Evidence Pack
-            </Button>
-          </div>
-
-          {datasetId ? (
-            <div className="mt-6 grid grid-cols-3 gap-2 text-left">
-              {[
-                ['1', '标准问题', '固定 RAG 输入'],
-                ['2', '标准证据', '标定 ground truth'],
-                ['3', '差距评分', '追踪回归结果'],
-              ].map(([step, title, desc]) => (
-                <div
-                  key={step}
-                  className="rounded-2xl border border-border/60 bg-card/90 p-2.5"
-                >
-                  <div className="text-[10px] font-semibold text-primary">
-                    STEP {step}
-                  </div>
-                  <div className="mt-1 text-[11px] font-semibold text-foreground">
-                    {title}
-                  </div>
-                  <div className="mt-0.5 text-[10px] leading-4 text-muted-foreground">
-                    {desc}
-                  </div>
-                </div>
-              ))}
             </div>
           ) : null}
         </div>
@@ -892,23 +663,20 @@ export function TestCaseManager({
         <div
           className={cn(
             'border-b flex items-center gap-2',
-            dense ? 'border-border/60 px-3 py-2' : 'border-border px-4 py-2'
+            dense ? 'border-border/60 px-3 py-2' : 'border-border px-4 py-2',
           )}
         >
           <button
             type="button"
-            onClick={toggleSelectAll}
+            onClick={() => toggleSelectAll(filteredCases)}
+            aria-pressed={allVisibleSelected}
             className={cn(
               'flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors motion-reduce:transition-none',
-              dense ? 'text-[11px]' : 'text-xs'
+              dense ? 'text-[13px]' : 'text-xs',
             )}
           >
-            {selectedCaseIds.size === filteredCases.length ? (
-              <CheckSquare className="w-4 h-4" />
-            ) : (
-              <Square className="w-4 h-4" />
-            )}
-            全选
+            {allVisibleSelected ? <CheckSquare className="w-4 h-4" /> : <Square className="w-4 h-4" />}
+            {allVisibleSelected ? '取消选择当前筛选结果' : '全选当前筛选结果'}
           </button>
         </div>
 
@@ -919,14 +687,15 @@ export function TestCaseManager({
               <TestCaseRow
                 key={caseItem.id}
                 caseItem={caseItem}
-                isSelected={selectedCase?.id === caseItem.id}
+                isSelected={selectedCaseId === caseItem.id}
                 isChecked={selectedCaseIds.has(caseItem.id)}
                 isGolden={isGolden}
+                isPending={pendingCaseIds.has(caseItem.id)}
                 dense={dense}
-                onSelectCase={handleSelectCase}
+                onSelectCase={setSelectedCaseId}
                 onToggleSelect={toggleSelect}
                 onToggleGolden={handleToggleGolden}
-                onDelete={handleDelete}
+                onDelete={(caseId) => deleteCaseIds([caseId])}
               />
             )
           })}
@@ -936,65 +705,34 @@ export function TestCaseManager({
   }
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex min-h-0 min-w-0 flex-col h-full">
       {/* 头部操作栏 */}
-      <div
-        className={cn(
-          'border-b',
-          dense
-            ? 'border-info/15 bg-info/[0.025] px-3 py-3'
-            : 'border-border p-4'
-        )}
-      >
-        <div
-          className={cn(
-            'flex items-center justify-between',
-            dense ? 'mb-2.5' : 'mb-3'
-          )}
-        >
+      <div className={cn('border-b', dense ? 'border-border bg-background px-5 py-4' : 'border-border p-4')}>
+        <div className={cn('flex flex-wrap items-center justify-between gap-3', dense ? 'mb-2.5' : 'mb-3')}>
           <div>
-            <h3
-              className={cn(
-                'font-semibold text-foreground',
-                dense ? 'text-[13px]' : 'text-sm'
-              )}
-            >
-              Golden 评测集
-            </h3>
-            <p
-              className={cn(
-                'mt-1 text-muted-foreground',
-                dense ? 'text-[11px] leading-4' : 'text-xs'
-              )}
-            >
-              数据集级固定标尺：问题、标准答案、标准证据。
-            </p>
-            {dense ? (
-              <div
-                aria-label="Golden 评测集统计"
-                className="mt-2 flex flex-wrap items-center gap-1.5"
-              >
-                <span className="rounded-full border border-border bg-card px-1.5 py-0.5 text-[10px] text-muted-foreground">
-                  样本 {caseTotal}
+            <h3 className={cn('font-semibold text-foreground', dense ? 'text-[13px]' : 'text-sm')}>评测样本</h3>
+
+            {dense && cases !== undefined ? (
+              <div aria-label="Golden 评测集统计" className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1">
+                <span className="text-[12px] text-muted-foreground">
+                  {caseTotal === null ? '样本总数未取得' : `样本 ${caseTotal}`}
                   {!casesFullyLoaded ? ` · 已载 ${cases.length}` : ''}
                 </span>
-                <span className="rounded-full border border-warning/30 bg-warning/10 px-1.5 py-0.5 text-[10px] text-warning">
-                  Golden {goldenCount}
+                <span className="text-[12px] text-muted-foreground">
+                  {casesFullyLoaded ? 'Golden' : '已载 Golden'} {goldenCases?.length}
                 </span>
-                <span className="rounded-full border border-success/30 bg-success/10 px-1.5 py-0.5 text-[10px] text-success">
-                  标准答案 {standardAnswerCount}
+                <span className="text-[12px] text-success">
+                  {casesFullyLoaded ? '标准答案' : '已载标准答案'} {standardAnswerCount}
                 </span>
-                <span className="rounded-full border border-info/30 bg-info/10 px-1.5 py-0.5 text-[10px] text-info">
-                  标准证据 {referenceSourceCount}
+                <span className="text-[12px] text-muted-foreground">
+                  {casesFullyLoaded ? '标准证据' : '已载标准证据'} {referenceSourceCount}
                 </span>
-                <span className="rounded-full border border-primary/30 bg-primary/10 px-1.5 py-0.5 text-[10px] text-primary">
-                  已选 {selectedCaseIds.size}
-                </span>
+                <span className="text-[12px] text-primary">已选 {selectedCaseIds.size}</span>
               </div>
             ) : null}
           </div>
           <div className={cn('flex items-center', dense ? 'gap-1.5' : 'gap-2')}>
-            {cases.length > 0 && (
+            {cases !== undefined && cases.length > 0 && (
               <>
                 <Button
                   size="sm"
@@ -1002,10 +740,15 @@ export function TestCaseManager({
                   className={cn(
                     'gap-2',
                     dense &&
-                      'h-8 rounded-lg border-warning/30 bg-warning/5 px-2.5 text-[11px] text-warning hover:bg-warning/10'
+                      'h-8 rounded-lg border-warning/30 bg-warning/5 px-2.5 text-[13px] text-warning hover:bg-warning/10',
                   )}
-                  onClick={handleRunGolden}
-                  disabled={!datasetId || goldenCaseIds.length === 0}
+                  onClick={() =>
+                    handleRunCaseIds(
+                      cases.filter(isGoldenCase).map((caseItem) => caseItem.id),
+                      '当前数据集暂无 Golden 样本',
+                    )
+                  }
+                  disabled={isRunning || !hasDataset || goldenCases?.length === 0}
                 >
                   <Star className="w-3.5 h-3.5" />
                   {casesFullyLoaded ? '运行 Golden' : '运行已载 Golden'}
@@ -1013,13 +756,14 @@ export function TestCaseManager({
                 <Button
                   size="sm"
                   variant="outline"
-                  className={cn(
-                    'gap-2',
-                    dense &&
-                      'h-8 rounded-lg border-border/60 bg-card/90 px-2.5 text-[11px]'
-                  )}
-                  onClick={handleRunAll}
-                  disabled={!datasetId || cases.length === 0}
+                  className={cn('gap-2', dense && 'h-8 rounded-lg border-border/60 bg-card/90 px-2.5 text-[13px]')}
+                  onClick={() =>
+                    handleRunCaseIds(
+                      cases.map((caseItem) => caseItem.id),
+                      '当前数据集暂无评测样本',
+                    )
+                  }
+                  disabled={isRunning || !hasDataset}
                 >
                   {casesFullyLoaded ? '运行全部' : '运行已载'}
                 </Button>
@@ -1030,30 +774,28 @@ export function TestCaseManager({
                 <Button
                   size="sm"
                   variant="outline"
-                  className={cn(
-                    'gap-2',
-                    dense &&
-                      'h-8 rounded-lg border-border/60 bg-card/90 px-2.5 text-[11px]'
-                  )}
-                  onClick={handleRunSelected}
+                  className={cn('gap-2', dense && 'h-8 rounded-lg border-border/60 bg-card/90 px-2.5 text-[13px]')}
+                  onClick={() => handleRunCaseIds([...selectedCaseIds], '请先选择评测样本')}
+                  disabled={isRunning || !hasDataset || selectedCasesPending}
                 >
                   运行选中 ({selectedCaseIds.size})
                 </Button>
                 <ConfirmDialog
                   title="批量删除测试用例？"
-                  description={`将删除 ${selectedCaseIds.size} 个测试用例。此操作不可恢复。`}
+                  description={`将删除已选的 ${selectedCaseIds.size} 个测试用例，其中 ${hiddenSelectionCount} 个不在当前筛选结果中。此操作不可恢复。`}
                   confirmLabel="删除"
                   cancelLabel="返回"
                   confirmVariant="destructive"
-                  onConfirm={() => detachPromise(handleBatchDelete())}
+                  confirmDisabled={selectedCasesPending}
+                  onConfirm={() => deleteCaseIds([...selectedCaseIds])}
                 >
                   <Button
                     size="sm"
                     variant="outline"
+                    disabled={selectedCasesPending}
                     className={cn(
                       'gap-2 text-destructive hover:text-destructive',
-                      dense &&
-                        'h-8 rounded-lg border-border/60 bg-card/90 px-2.5 text-[11px]'
+                      dense && 'h-8 rounded-lg border-border/60 bg-card/90 px-2.5 text-[13px]',
                     )}
                   >
                     <Trash2 className="w-3.5 h-3.5" />
@@ -1067,34 +809,31 @@ export function TestCaseManager({
               type="file"
               accept="application/json,.json"
               className="hidden"
-              onChange={(e) =>
-                detachPromise(
-                  handleEvidencePackFile(e.target.files?.[0] || null)
-                )
-              }
+              onChange={(event) => {
+                const file = event.currentTarget.files?.item(0)
+                event.currentTarget.value = ''
+                if (file != null) detachPromise(handleEvidencePackFile(file))
+              }}
             />
             <Button
               size="sm"
               variant="outline"
-              className={cn(
-                'gap-2',
-                dense &&
-                  'h-8 rounded-lg border-border/60 bg-card/90 px-2.5 text-[11px]'
-              )}
+              className={cn('gap-2', dense && 'h-8 rounded-lg border-border/60 bg-card/90 px-2.5 text-[13px]')}
               onClick={handleChooseEvidencePack}
-              disabled={!datasetId}
-              title={datasetId ? '导入 Evidence Pack JSON' : '请先选择数据集'}
+              disabled={!hasDataset || evidenceImporting || evidenceLoading || evidenceCreating}
+              title={hasDataset ? '导入 Evidence Pack JSON' : '请先选择数据集'}
             >
               <Upload className="w-3.5 h-3.5" />
-              导入 Evidence Pack
+              {evidenceImporting ? '读取证据包中…' : '导入 Evidence Pack'}
             </Button>
             <Button
               size="sm"
               className={cn(
                 'gap-2',
-                dense && 'h-8 rounded-lg px-2.5 text-[11px]'
+                dense && 'h-9 rounded-md bg-foreground px-3 text-[13px] text-background hover:bg-foreground/85',
               )}
               onClick={() => setIsCreating(true)}
+              disabled={!hasDataset || evidenceImporting || evidenceCreating}
             >
               <Plus className="w-3.5 h-3.5" />
               新增标准问答
@@ -1107,116 +846,134 @@ export function TestCaseManager({
           <Search
             className={cn(
               'absolute top-1/2 -translate-y-1/2 text-muted-foreground',
-              dense ? 'left-2.5 h-3.5 w-3.5' : 'left-3 h-4 w-4'
+              dense ? 'left-2.5 h-3.5 w-3.5' : 'left-3 h-4 w-4',
             )}
           />
           <Input
+            aria-label="搜索 Golden 评测样本"
             type="text"
             placeholder="搜索问题、关键词或标签..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className={cn(
-              dense
-                ? 'h-9 rounded-xl border-border/60 bg-card/95 pl-8 text-[13px]'
-                : 'pl-10'
-            )}
+            className={cn(dense ? 'h-9 rounded-md border-border bg-background pl-8 text-[13px]' : 'pl-10')}
           />
         </div>
 
-        <div
-          className={cn(
-            'flex items-center justify-start gap-3',
-            dense ? 'mt-2.5' : 'mt-3'
-          )}
-        >
+        <div className={cn('flex items-center justify-start gap-3', dense ? 'mt-2.5' : 'mt-3')}>
           <Button
             size="sm"
             variant={goldenOnly ? 'default' : 'outline'}
             className={cn(
               'gap-2',
-              goldenOnly &&
-                'bg-warning/15 text-warning hover:bg-warning/20',
-              dense &&
-                'h-8 rounded-lg border-border/60 bg-card/90 px-2.5 text-[11px]'
+              goldenOnly && 'bg-warning/15 text-warning hover:bg-warning/20',
+              dense && 'h-8 rounded-lg border-border/60 bg-card/90 px-2.5 text-[13px]',
             )}
             onClick={() => {
               setGoldenOnly((v) => !v)
-              setSelectedCaseIds(new Set())
             }}
-            disabled={!datasetId}
-            title={
-              datasetId ? '只显示纳入 Golden 评测集的样本' : '请先选择数据集'
-            }
+            disabled={!hasDataset}
+            title={hasDataset ? '只显示纳入 Golden 评测集的样本' : '请先选择数据集'}
           >
-            <Star
-              className="w-3.5 h-3.5"
-              fill={goldenOnly ? 'currentColor' : 'none'}
-            />
+            <Star className="w-3.5 h-3.5" fill={goldenOnly ? 'currentColor' : 'none'} />
             只看 Golden
           </Button>
         </div>
+        {hiddenSelectionCount > 0 ? (
+          <p role="status" className="mt-2 text-xs text-muted-foreground">
+            已选 {selectedCaseIds.size} 个样本，其中 {hiddenSelectionCount}{' '}
+            个不在当前筛选结果中；运行选中和批量删除包含这些样本。
+          </p>
+        ) : null}
+        {regressionCasesQuery.data !== undefined && !casesFullyLoaded ? (
+          <p className="mt-2 text-xs text-muted-foreground">
+            {caseTotal === null
+              ? `当前已知 ${cases?.length} 个样本，尚未取得完整列表。`
+              : `当前加载 ${cases?.length} / ${caseTotal} 个样本。`}
+            搜索、统计和批量运行只覆盖已加载部分。
+          </p>
+        ) : null}
+        {regressionCasesQuery.isFetching && regressionCasesQuery.data !== undefined ? (
+          <p role="status" className="mt-2 text-xs text-muted-foreground">
+            正在更新样本列表，当前显示上次读取结果…
+          </p>
+        ) : null}
+        {regressionCasesQuery.error !== null ? (
+          <div role="alert" className="mt-2 flex flex-wrap items-center gap-2 text-sm text-destructive">
+            <p>
+              {formatApiError(regressionCasesQuery.error, '样本列表读取失败')}
+              {regressionCasesQuery.data !== undefined ? '；保留上次读取结果。' : ''}
+            </p>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={regressionCasesQuery.isFetching}
+              onClick={() => detachPromise(regressionCasesQuery.refetch())}
+            >
+              重新读取
+            </Button>
+          </div>
+        ) : null}
       </div>
 
-      <Dialog open={isCreating} onOpenChange={setIsCreating}>
-        <DialogContent
-          className={cn(
-            'max-w-2xl',
-            dense && 'max-h-[min(82vh,720px)] overflow-y-auto'
-          )}
-        >
+      <Dialog open={isCreating} onOpenChange={handleCreatingOpenChange}>
+        <DialogContent className={cn('max-w-2xl', dense && 'max-h-[min(82vh,720px)] overflow-y-auto')}>
           <DialogHeader>
             <DialogTitle>新增标准问答</DialogTitle>
           </DialogHeader>
 
-          <div className={cn(dense ? 'space-y-2.5' : 'space-y-3')}>
+          <form
+            className={cn(dense ? 'space-y-2.5' : 'space-y-3')}
+            onSubmit={(event) => {
+              event.preventDefault()
+              detachPromise(handleCreate())
+            }}
+          >
             <div>
               <div
-                className={cn(
-                  'block font-medium text-muted-foreground',
-                  dense ? 'mb-1 text-[11px]' : 'mb-1 text-xs'
-                )}
+                className={cn('block font-medium text-muted-foreground', dense ? 'mb-1 text-[13px]' : 'mb-1 text-xs')}
               >
                 标准问题 *
               </div>
               <Textarea
+                aria-label="标准问题"
+                required
+                disabled={evidenceLoading}
                 value={newQuestion}
                 onChange={(e) => setNewQuestion(e.target.value)}
                 placeholder="输入用于评估 RAG 的标准问题..."
                 className={cn(
                   'resize-none',
-                  dense
-                    ? 'min-h-[72px] rounded-xl border-border/60 bg-card/95 text-[13px]'
-                    : 'min-h-[72px]'
+                  dense ? 'min-h-[72px] rounded-xl border-border/60 bg-card/95 text-[13px]' : 'min-h-[72px]',
                 )}
               />
             </div>
             <div>
               <div
-                className={cn(
-                  'block font-medium text-muted-foreground',
-                  dense ? 'mb-1 text-[11px]' : 'mb-1 text-xs'
-                )}
+                className={cn('block font-medium text-muted-foreground', dense ? 'mb-1 text-[13px]' : 'mb-1 text-xs')}
               >
                 标准答案（推荐）
               </div>
               <Textarea
+                aria-label="标准答案"
+                disabled={evidenceLoading}
                 value={newExpectedAnswer}
                 onChange={(e) => setNewExpectedAnswer(e.target.value)}
                 placeholder="输入可比对的标准答案..."
                 className={cn(
                   'resize-none',
-                  dense
-                    ? 'min-h-[72px] rounded-xl border-border/60 bg-card/95 text-[13px]'
-                    : 'min-h-[72px]'
+                  dense ? 'min-h-[72px] rounded-xl border-border/60 bg-card/95 text-[13px]' : 'min-h-[72px]',
                 )}
               />
             </div>
             <div className="flex items-center gap-2">
               <Button
                 size="sm"
-                className={cn(dense && 'h-8 rounded-lg px-2.5 text-[11px]')}
-                onClick={() => detachPromise(handleCreate())}
-                disabled={evidenceLoading || !datasetId || !newQuestion.trim()}
+                className={cn(
+                  dense && 'h-9 rounded-md bg-foreground px-3 text-[13px] text-background hover:bg-foreground/85',
+                )}
+                type="submit"
+                disabled={evidenceLoading || !hasDataset || newQuestion.trim() === ''}
               >
                 {evidenceLoading ? (
                   <>
@@ -1230,12 +987,10 @@ export function TestCaseManager({
               <Button
                 size="sm"
                 variant="outline"
-                className={cn(
-                  dense &&
-                    'h-8 rounded-lg border-border/60 bg-card/90 px-2.5 text-[11px]'
-                )}
+                type="button"
+                className={cn(dense && 'h-8 rounded-lg border-border/60 bg-card/90 px-2.5 text-[13px]')}
                 onClick={() => {
-                  setIsCreating(false)
+                  handleCreatingOpenChange(false)
                   setNewQuestion('')
                   setNewExpectedAnswer('')
                 }}
@@ -1246,193 +1001,164 @@ export function TestCaseManager({
             <div
               className={cn(
                 'rounded-xl border border-warning/30 bg-warning/5 px-3 py-2 text-muted-foreground',
-                dense ? 'text-[11px] leading-5' : 'text-[11px]'
+                dense ? 'text-[13px] leading-5' : 'text-[13px]',
               )}
             >
-              提示：后端要求每个用例必须提供至少 1 条{' '}
-              <span className="font-mono">reference_sources</span>。
-              点击“检索并选择标准证据”或“导入 Evidence Pack”选择 Ground Truth
-              证据引用后再创建。
+              每个样本至少需要一条标准证据。检索后选择引用，或导入证据包，再确认创建。
             </div>
-          </div>
+          </form>
         </DialogContent>
       </Dialog>
 
-      <Dialog open={evidenceDialogOpen} onOpenChange={setEvidenceDialogOpen}>
-        <DialogContent className="max-w-3xl">
-          <DialogHeader>
-            <DialogTitle>标准证据选择 → Golden 评测样本</DialogTitle>
-          </DialogHeader>
-
-          <div className="space-y-4">
-            <div className="rounded-lg border border-border bg-muted/30 p-3 text-xs text-muted-foreground">
-              <div className="flex items-center justify-between gap-3">
-                <div className="min-w-0 truncate">
-                  dataset_id:{' '}
-                  <span className="font-mono text-foreground/80">
-                    {evidenceDatasetId || '-'}
-                  </span>
-                </div>
-                <div className="text-[11px]">
-                  citations:{' '}
-                  <span className="font-mono text-foreground/80">
-                    {evidenceCitations.length}
-                  </span>
-                </div>
+      {evidenceDraft !== null ? (
+        <Dialog open={evidenceDialogOpen} onOpenChange={handleEvidenceDialogOpenChange}>
+          <DialogContent className="max-w-3xl max-h-[calc(100dvh-2rem)] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>选择标准证据并创建 Golden 样本</DialogTitle>
+            </DialogHeader>
+            <form
+              className="space-y-4"
+              onSubmit={(event) => {
+                event.preventDefault()
+                detachPromise(handleCreateCaseFromEvidencePack(evidenceDraft))
+              }}
+            >
+              <div className="rounded-lg border border-border bg-muted/30 p-3 text-xs text-muted-foreground">
+                <p className="break-all">
+                  目标数据集：<span className="font-mono text-foreground/80">{datasetId}</span>
+                </p>
+                <p className="mt-1">引用 {evidenceDraft.pack.citations.length} 条</p>
+                {evidenceDraft.pack.exported_at !== undefined ? (
+                  <p className="mt-1 break-all">导出时间：{evidenceDraft.pack.exported_at}</p>
+                ) : null}
               </div>
-              {evidencePack?.exported_at && (
-                <div className="mt-2 text-[11px]">
-                  exported_at:{' '}
-                  <span className="font-mono text-foreground/80">
-                    {String(evidencePack.exported_at)}
-                  </span>
+              <fieldset disabled={evidenceCreating} className="space-y-4">
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                  <label className="block text-xs font-medium text-muted-foreground">
+                    标准问题
+                    <Textarea
+                      required
+                      value={evidenceDraft.question}
+                      onChange={(event) => setEvidenceDraft({ ...evidenceDraft, question: event.target.value })}
+                      placeholder="输入评测问题"
+                      className="mt-1 min-h-[84px] resize-none"
+                    />
+                  </label>
+                  <label className="block text-xs font-medium text-muted-foreground">
+                    标准答案（推荐）
+                    <Textarea
+                      value={evidenceDraft.expectedAnswer}
+                      onChange={(event) => setEvidenceDraft({ ...evidenceDraft, expectedAnswer: event.target.value })}
+                      placeholder="可选：标准答案"
+                      className="mt-1 min-h-[84px] resize-none"
+                    />
+                  </label>
                 </div>
-              )}
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <div>
-                <div className="text-xs font-medium text-muted-foreground mb-1">
-                  标准问题
-                </div>
-                <Textarea
-                  value={evidenceQuestion}
-                  onChange={(e) => setEvidenceQuestion(e.target.value)}
-                  placeholder="问题（将写入 Golden 评测样本）"
-                  className="min-h-[84px] resize-none"
-                />
-              </div>
-              <div>
-                <div className="text-xs font-medium text-muted-foreground mb-1">
-                  标准答案（推荐）
-                </div>
-                <Textarea
-                  value={evidenceExpectedAnswer}
-                  onChange={(e) => setEvidenceExpectedAnswer(e.target.value)}
-                  placeholder="可选：标准答案"
-                  className="min-h-[84px] resize-none"
-                />
-              </div>
-            </div>
-
-            <div className="rounded-lg border border-border overflow-hidden">
-              <div className="px-3 py-2 border-b border-border bg-card flex items-center justify-between">
-                <div className="text-xs font-semibold text-foreground">
-                  选择标准证据（reference_sources）
-                </div>
-                <div className="text-[11px] text-muted-foreground">
-                  已选 {evidenceSelectedChunkIds.size} /{' '}
-                  {evidenceCitations.length}
-                </div>
-              </div>
-              <div className="max-h-64 overflow-y-auto">
-                {(evidenceCitations || []).map((c: any, idx: number) => {
-                  const chunkId = String(c?.chunk_id || '')
-                  const checked =
-                    !!chunkId && evidenceSelectedChunkIds.has(chunkId)
-                  const label = String(
-                    c?.document_name || c?.document_id || 'Unknown'
-                  )
-                  const snippet = String(c?.chunk_content || '').slice(0, 180)
-                  return (
-                    <div
-                      key={`${chunkId || idx}`}
-                      className={cn(
-                        'flex items-start gap-3 px-3 py-2 border-b border-border/60 cursor-pointer hover:bg-muted/30',
-                        !chunkId && 'opacity-50 cursor-not-allowed'
-                      )}
-                    >
-                      <input
-                        type="checkbox"
-                        className="mt-1 h-4 w-4 rounded border-border"
-                        disabled={!chunkId}
-                        checked={checked}
-                        onChange={(e) => {
-                          const next = new Set(evidenceSelectedChunkIds)
-                          if (e.target.checked) next.add(chunkId)
-                          else next.delete(chunkId)
-                          setEvidenceSelectedChunkIds(next)
-                        }}
-                      />
-                      <div className="min-w-0">
-                        <div
-                          className="text-xs font-medium text-foreground truncate"
-                          title={label}
+                <div className="overflow-hidden rounded-lg border border-border">
+                  <div className="flex items-center justify-between border-b border-border bg-card px-3 py-2">
+                    <span className="text-xs font-semibold text-foreground">选择标准证据</span>
+                    <span className="text-[13px] text-muted-foreground">
+                      已选 {evidenceDraft.selectedChunkIds.size} / {evidenceDraft.pack.citations.length}
+                    </span>
+                  </div>
+                  <div className="max-h-64 overflow-y-auto">
+                    {evidenceDraft.pack.citations.map((citation, index) => {
+                      const label =
+                        typeof citation.document_name === 'string'
+                          ? `${citation.document_name}（${citation.document_id}）`
+                          : citation.document_id
+                      return (
+                        <label
+                          key={citation.chunk_id}
+                          className="flex cursor-pointer items-start gap-3 border-b border-border/60 px-3 py-2 hover:bg-muted/30"
                         >
-                          #{idx + 1} {label}
-                        </div>
-                        <div className="text-[11px] text-muted-foreground mt-1 line-clamp-2">
-                          “{snippet}
-                          {snippet.length >= 180 ? '…' : ''}”
-                        </div>
-                        <div className="mt-1 text-[11px] text-muted-foreground flex flex-wrap gap-2">
-                          {c?.page_number ? (
-                            <span>p.{String(c.page_number)}</span>
-                          ) : null}
-                          {chunkId ? (
-                            <span className="font-mono">
-                              chunk:{chunkId.slice(0, 8)}
+                          <input
+                            type="checkbox"
+                            aria-label={`选择引用 ${index + 1}：${label}`}
+                            className="mt-1 h-4 w-4 rounded border-border"
+                            checked={evidenceDraft.selectedChunkIds.has(citation.chunk_id)}
+                            onChange={(event) => {
+                              const selectedChunkIds = new Set(evidenceDraft.selectedChunkIds)
+                              if (event.target.checked) selectedChunkIds.add(citation.chunk_id)
+                              else selectedChunkIds.delete(citation.chunk_id)
+                              setEvidenceDraft({ ...evidenceDraft, selectedChunkIds })
+                            }}
+                          />
+                          <span className="min-w-0">
+                            <span className="block truncate text-xs font-medium text-foreground" title={label}>
+                              #{index + 1} {label}
                             </span>
-                          ) : null}
-                        </div>
-                      </div>
-                    </div>
-                  )
-                })}
+                            <span className="mt-1 block line-clamp-2 text-[13px] text-muted-foreground">
+                              {citation.chunk_content === undefined || citation.chunk_content === null
+                                ? '未提供引用正文'
+                                : citation.chunk_content}
+                            </span>
+                            <span className="mt-1 flex flex-wrap gap-2 break-all text-[13px] text-muted-foreground">
+                              {citation.page_number !== undefined && citation.page_number !== null ? (
+                                <span>p.{citation.page_number}</span>
+                              ) : null}
+                              <span className="font-mono">chunk:{citation.chunk_id}</span>
+                            </span>
+                          </span>
+                        </label>
+                      )
+                    })}
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground">每条引用摘录最多保存 2,000 个字符。</p>
+              </fieldset>
+              {evidenceSaveError !== null ? (
+                <p role="alert" className="text-sm text-destructive">
+                  {evidenceSaveError}
+                </p>
+              ) : null}
+              <div className="flex items-center justify-end gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => handleEvidenceDialogOpenChange(false)}
+                  disabled={evidenceCreating}
+                >
+                  取消
+                </Button>
+                <Button
+                  type="submit"
+                  disabled={
+                    evidenceCreating ||
+                    evidenceDraft.question.trim() === '' ||
+                    evidenceDraft.selectedChunkIds.size === 0
+                  }
+                >
+                  {evidenceCreating ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin motion-reduce:animate-none" />
+                      创建中…
+                    </>
+                  ) : (
+                    '创建 Golden 样本'
+                  )}
+                </Button>
               </div>
-            </div>
-
-            <div className="flex items-center justify-end gap-2">
-              <Button
-                variant="outline"
-                onClick={() => setEvidenceDialogOpen(false)}
-                disabled={evidenceCreating}
-              >
-                取消
-              </Button>
-              <Button
-                onClick={() =>
-                  detachPromise(handleCreateCaseFromEvidencePack())
-                }
-                disabled={evidenceCreating}
-              >
-                {evidenceCreating ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin motion-reduce:animate-none" />
-                    创建中…
-                  </>
-                ) : (
-                  '创建 Golden 样本'
-                )}
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
+            </form>
+          </DialogContent>
+        </Dialog>
+      ) : null}
 
       {/* 用例列表 */}
-      <div className="flex-1 overflow-y-auto overscroll-contain custom-scrollbar">
-        {caseListContent}
-      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain custom-scrollbar">{caseListContent}</div>
 
       {/* 底部统计 */}
-      {filteredCases.length > 0 || selectedCaseIds.size > 0 ? (
+      {(filteredCases !== undefined && filteredCases.length > 0) || selectedCaseIds.size > 0 ? (
         <div
           className={cn(
             'border-t',
-            dense
-              ? 'border-info/15 bg-info/[0.025] px-3 py-2.5'
-              : 'border-border bg-muted/30 p-3'
+            dense ? 'border-info/15 bg-info/[0.025] px-3 py-2.5' : 'border-border bg-muted/30 p-3',
           )}
         >
-          <div
-            className={cn(
-              'text-center text-muted-foreground',
-              dense ? 'text-[11px]' : 'text-xs'
-            )}
-          >
-            已显示 {filteredCases.length} 个测试用例
-            {selectedCaseIds.size > 0 && ` · 已选择 ${selectedCaseIds.size} 个`}
+          <div className={cn('text-center text-muted-foreground', dense ? 'text-[13px]' : 'text-xs')}>
+            {filteredCases === undefined ? '样本列表尚未读取' : `已显示 ${filteredCases.length} 个测试用例`}
+            {selectedCaseIds.size > 0 &&
+              ` · 已选择 ${selectedCaseIds.size} 个（当前筛选外 ${hiddenSelectionCount} 个）`}
           </div>
         </div>
       ) : null}

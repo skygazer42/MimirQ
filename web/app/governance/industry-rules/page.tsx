@@ -1,5 +1,3 @@
-'use client'
-
 import { AppFrame } from '@/components/app-frame'
 import { IndustryRulesWorkbench } from '@/components/industry-rules/industry-rules-workbench'
 

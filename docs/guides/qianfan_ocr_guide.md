@@ -1,7 +1,7 @@
 # Qianfan-OCR（外部 OCR 服务）解析器集成
 
-MimirQ 支持将 **Qianfan-OCR** 作为可选 PDF OCR 解析后端，通过 **独立服务** 输出 Markdown。
-该模式将模型推理与主后端解耦，避免把 `vllm/torch/transformers` 等重依赖塞进 MimirQ 主镜像。
+Ragvia 支持将 **Qianfan-OCR** 作为可选 PDF OCR 解析后端，通过 **独立服务** 输出 Markdown。
+该模式将模型推理与主后端解耦，避免把 `vllm/torch/transformers` 等重依赖塞进 Ragvia 主镜像。
 
 > `docker/qianfanocr` 是一个轻量包装服务：负责 PDF 分页渲染、调用百度千帆在线 OCR 或上游 OpenAI-compatible 视觉接口并汇总 Markdown。实际模型推理在你配置的上游服务中完成。
 
@@ -32,7 +32,7 @@ QIANFAN_OCR_MODEL=deepseek-ocr
 
 如果你已经自建 OpenAI-compatible 视觉推理服务，也可以把 `QIANFAN_OCR_SERVER_URL` 改为本地 `/v1` 地址，并把模型名改为上游实际模型。
 
-3. 配置 MimirQ 后端解析器（`.env`）：
+3. 配置 Ragvia 后端解析器（`.env`）：
 
 ```bash
 QIANFAN_OCR_ENABLED=true

@@ -1,6 +1,6 @@
 # SCIM v2（Enterprise，可选）
 
-本指南说明如何在 MimirQ 中启用 **SCIM v2** 端点，用于企业 IdP 的目录对接与（可选）组成员变更。
+本指南说明如何在 Ragvia 中启用 **SCIM v2** 端点，用于企业 IdP 的目录对接与（可选）组成员变更。
 
 > 设计原则：**默认关闭、fail-closed、tenant-safe**。只在显式开启 `SCIM_ENABLED=true` 时暴露端点。
 

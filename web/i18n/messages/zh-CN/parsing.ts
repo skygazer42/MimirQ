@@ -1,8 +1,8 @@
 const parsingMessages = {
-ParsingWorkbench: {
+  ParsingWorkbench: {
     rootFolder: '根目录',
     title: '文档解析',
-    description: '上传并转换为 Markdown，衔接后续治理流程',
+    description: '上传文档并转成 Markdown',
     queue: '队列',
     tools: '工具',
     leftPanel: {
@@ -40,9 +40,10 @@ ParsingWorkbench: {
       folderMoved: '文件夹已移动',
       folderMoveInvalid: '移动失败：目标目录不合法（可能是自身/子目录/不存在）',
       saveSuccess: '已保存到服务器',
+      localSaveSuccess: '已保存到本地',
       saveFailed: '保存失败',
       parseFailed: '文档解析失败',
-      knowledgeBaseReadOnly: '知识库入库文档在解析工作台只读预览；需要重跑请回到入库流程处理。',
+      knowledgeBaseReadOnly: '已入库的文档在此处只能预览。要重新解析，请前往入库管理。',
     },
     emptyTitle: '选择文件开始',
     emptyDescription: '先保存默认解析方式，再上传文件；文件进入队列后点击“解析”或“用当前解析器开始解析”运行。',
@@ -61,7 +62,8 @@ ParsingWorkbench: {
       defaultParser: '默认解析方式',
       newUploadDefault: '新上传默认',
       defaultParserDescription: '选中文件后，也可以在文件顶部对单个文件单独修改解析器。',
-      parserApplyHint: '这里只设置新上传文件的默认解析器；点击“保存默认”不会启动解析。文件进入队列后，点击文件上的“解析”或右侧“用当前解析器开始解析”。',
+      parserApplyHint:
+        '这里只设置新上传文件的默认解析器；点击“保存默认”不会启动解析。文件进入队列后，点击文件上的“解析”或右侧“用当前解析器开始解析”。',
       cancelParserSelection: '取消',
       confirmParserSelection: '保存默认',
       imageCaptionTitle: '图片 caption（可选）',
@@ -84,13 +86,13 @@ ParsingWorkbench: {
       continueParsingTitle: '恢复并开始解析',
       startParsing: '开始解析',
       startParsingTitle: '使用当前解析器开始解析该文档',
-      uploadAndParse: '上传并解析',
-      uploadAndParseTitle: '重新上传并开始解析',
+      associateAndParse: '关联原文件并解析',
+      associateAndParseTitle: '关联本地原文件并开始解析；已有服务器文档使用其已保存的源文件',
       parserLabel: '解析方式',
       restoreSource: '恢复源文件',
-      restoreSourceTitle: '从服务器下载源文件到队列（用于 PDF 预览或继续解析）',
-      reupload: '重新上传',
-      reuploadTitle: '重新上传源文件以替换服务器上的源文件',
+      restoreSourceTitle: '打开已关联或已保存的原文件，用于预览或继续解析',
+      associateSource: '关联本地原文件',
+      associateSourceTitle: '关联本地原文件用于预览；服务器文档重新解析使用已保存的源文件',
       moreActions: '更多操作',
       more: '更多',
       copiedFilename: '已复制文件名',
@@ -99,7 +101,7 @@ ParsingWorkbench: {
       emptyTitle: '暂无可展示的解析内容',
       emptyDescription: '若该文件还未解析，或内容未缓存，请重新选择文件并解析。',
     },
-  }
+  },
 } as const
 
 export default parsingMessages

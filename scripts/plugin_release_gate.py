@@ -101,18 +101,14 @@ def _summarize_stage_report(raw: Any) -> dict[str, Any]:
 
 def _summarize_local_test(report: dict[str, Any]) -> dict[str, Any]:
     raw_stages = report.get("stages") if isinstance(report.get("stages"), dict) else {}
-    stages = {
-        stage: _summarize_stage_report(raw_stages.get(stage))
-        for stage in _STAGE_ORDER
-        if isinstance(raw_stages, dict) and stage in raw_stages
-    }
+    stages = {stage: _summarize_stage_report(raw_stages.get(stage)) for stage in _STAGE_ORDER if stage in raw_stages}
     golden = report.get("golden_draft") if isinstance(report.get("golden_draft"), dict) else {}
     return {
         "passed": report.get("passed") is True,
         "stages": stages,
         "golden_draft": {
-            "passed": golden.get("passed") is True if golden else False,
-            "items_total": int(golden.get("items_total") or 0) if isinstance(golden, dict) else 0,
+            "passed": golden.get("passed") is True,
+            "items_total": int(golden.get("items_total") or 0),
         },
     }
 
@@ -160,9 +156,8 @@ def _safe_failure_reason(prefix: str, exc: BaseException) -> str:
 
 
 def _declared_stages(descriptor: PipelinePluginDescriptor, stages: Sequence[str] | None) -> list[str]:
-    if stages:
-        return [stage for stage in _STAGE_ORDER if stage in set(stages)]
-    return [stage for stage in _STAGE_ORDER if stage in descriptor.entries]
+    selected = set(stages) if stages else descriptor.entries
+    return [stage for stage in _STAGE_ORDER if stage in selected]
 
 
 def build_plugin_release_gate_report(
@@ -277,27 +272,28 @@ def build_plugin_release_gate_report(
         )
 
     golden_declared = (descriptor.golden_rules or {}).get("schema") == "mimirq.golden_rules.v1"
-    golden_summary = (_summarize_local_test(local_report).get("golden_draft") if local_report else {}) or {}
-    golden_passed = golden_summary.get("passed") is True and int(golden_summary.get("items_total") or 0) > 0
+    local_summary = _summarize_local_test(local_report)
+    golden_summary = local_summary["golden_draft"]
+    golden_passed = golden_summary["passed"] and golden_summary["items_total"] > 0
     checks.append(
         _check(
             "golden_draft_available",
             passed=golden_passed if golden_declared else True,
             required=golden_declared,
             status="passed" if golden_passed else ("not_declared" if not golden_declared else "failed"),
-            details={"items_total": int(golden_summary.get("items_total") or 0)} if golden_declared else None,
+            details={"items_total": golden_summary["items_total"]} if golden_declared else None,
         )
     )
 
-    required_checks = [check for check in checks if bool(check.get("required"))]
+    required_checks = [check for check in checks if check["required"]]
     return {
         "schema": PLUGIN_RELEASE_GATE_SCHEMA,
         "generated_at": generated_at,
-        "passed": all(bool(check.get("passed")) for check in required_checks),
+        "passed": all(check["passed"] for check in required_checks),
         "summary": _gate_summary(checks),
         "plugin": _descriptor_payload(descriptor_after),
         "checks": checks,
-        "local_test": _summarize_local_test(local_report),
+        "local_test": local_summary,
         "chunk_report": chunk_summary,
     }
 
@@ -335,7 +331,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         require_retrieval_policy=args.require_retrieval_policy,
     )
     text = json.dumps(report, ensure_ascii=False, indent=2)
-    if str(args.out or "-") == "-":
+    if (args.out or "-") == "-":
         print(text)
     else:
         out_path = Path(args.out)

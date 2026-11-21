@@ -299,7 +299,7 @@ def evaluate_persisted_case(
 ) -> list[str]:
     failures: list[str] = []
     name = str(case.get("name") or "case")
-    chunk_count = int(list_count({"items": chunk_items}) or 0)
+    chunk_count = len(chunk_items)
     min_chunks = int(case.get("min_chunks") or 0)
     min_parsed_chars = int(case.get("min_parsed_chars") or 0)
     metadata = _detail_metadata(detail)
@@ -314,9 +314,9 @@ def evaluate_persisted_case(
         failures.append(f"{name}: min_chunks={min_chunks} actual={chunk_count}")
     if min_parsed_chars and parsed_chars < min_parsed_chars:
         failures.append(f"{name}: min_parsed_chars={min_parsed_chars} actual={parsed_chars}")
-    if not isinstance(stats, dict) or int(stats.get("count") or 0) <= 0:
+    if int(stats.get("count") or 0) <= 0:
         failures.append(f"{name}: missing chunking_stats")
-    if not isinstance(coverage, dict) or float(coverage.get("coverage_ratio") or 0.0) <= 0.0:
+    if float(coverage.get("coverage_ratio") or 0.0) <= 0.0:
         failures.append(f"{name}: missing chunk_coverage")
     if str(first_meta.get("chunk_strategy") or "").strip() != str(case.get("persist_chunk_strategy") or "").strip():
         expected = case.get("persist_chunk_strategy")

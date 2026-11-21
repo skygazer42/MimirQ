@@ -6,14 +6,14 @@ from typing import Any
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from app.api.dependencies.auth import get_current_account_id
-from app.api.dependencies.tenant import get_tenant_id
-from app.api.schemas.document import DocumentVersionDiff
-from app.core.database import get_db
-from app.models.dataset import Dataset, DatasetPermissionEnum
-from app.models.document import Document as DBDocument
-from app.models.document import DocumentChunk
-from app.models.tenant import Tenant, TenantMember
+from app.api.dependencies import get_current_account_id, get_tenant_id
+from app.api.schemas.datasets.dataset import DatasetPermissionEnum
+from app.api.schemas.documents.document import DocumentVersionDiff
+from app.infrastructure.database.connection import get_db
+from app.models.datasets.records import Dataset
+from app.models.documents.records import Document as DBDocument
+from app.models.documents.records import DocumentChunk
+from app.models.identity.workspaces import Tenant, TenantMember
 
 
 def _add_tenant_owner(db: Any, *, tenant_id: uuid.UUID, account_id: str) -> None:
@@ -30,7 +30,7 @@ def _add_tenant_owner(db: Any, *, tenant_id: uuid.UUID, account_id: str) -> None
 
 
 def _make_app(db, *, tenant_id: uuid.UUID, account_id: str) -> FastAPI:  # noqa: ANN001
-    from app.api.v1.documents import diff_document_versions
+    from app.api.v1.documents.versions import diff_document_versions
 
     def _override_get_db():  # noqa: ANN202
         yield db
@@ -181,7 +181,7 @@ def test_unassigned_document_version_diff_allows_readable_viewers(pg_session, mo
     pg_session.commit()
 
     monkeypatch.setattr(
-        "app.api.v1.document_versions.DatasetService.ensure_member",
+        "app.services.datasets.management.ensure_member",
         lambda *_args, **_kwargs: SimpleNamespace(role="viewer"),
     )
 

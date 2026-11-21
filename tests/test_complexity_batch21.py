@@ -1,4 +1,3 @@
-
 import datetime as dt
 
 import starlette.status as starlette_status
@@ -19,7 +18,7 @@ def test_build_context_applies_denoise_compress_and_reorder_in_sequence(monkeypa
         getattr(starlette_status, "HTTP_422_UNPROCESSABLE_ENTITY", 422),
         raising=False,
     )
-    import app.rag.pipelines.langgraph as graph
+    import app.rag.runtime.graph.context as graph
 
     order: list[str] = []
     base_doc = Document(page_content="alpha", metadata={"source": "doc.txt"})
@@ -61,7 +60,7 @@ def test_build_context_applies_denoise_compress_and_reorder_in_sequence(monkeypa
 
 
 def test_safe_kg_path_provenance_drops_empty_and_bounds_fields() -> None:
-    from app.rag.retrieval.orchestrator import _safe_kg_path_provenance
+    from app.rag.retrieval.stages.knowledge_graph import _safe_kg_path_provenance
 
     cleaned = _safe_kg_path_provenance(
         {
@@ -89,7 +88,7 @@ def test_safe_kg_path_provenance_drops_empty_and_bounds_fields() -> None:
 
 
 def test_calibrate_post_rerank_prefix_docs_reorders_when_rerank_scores_available() -> None:
-    from app.rag.retrieval.orchestrator import _calibrate_post_rerank_prefix_docs
+    from app.rag.retrieval.stages.post_rerank import _calibrate_post_rerank_prefix
 
     docs = [
         Document(page_content="a", metadata={"score": 0.9, "retrieval_score": 0.9, "rerank_score": 0.1}, id="a"),
@@ -97,7 +96,7 @@ def test_calibrate_post_rerank_prefix_docs_reorders_when_rerank_scores_available
     ]
     stats = {"enabled": True, "alpha": 0.7, "used": False}
 
-    calibrated, used = _calibrate_post_rerank_prefix_docs(docs, enabled=True, alpha=0.7, stats=stats)
+    calibrated, used = _calibrate_post_rerank_prefix(docs, enabled=True, alpha=0.7, stats=stats)
 
     assert used is True
     assert [doc.id for doc in calibrated] == ["b", "a"]

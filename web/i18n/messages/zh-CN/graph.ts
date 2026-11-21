@@ -1,5 +1,5 @@
 const graphMessages = {
-KGDiagnosticsPage: {
+  KGDiagnosticsPage: {
     page: {
       title: '图谱检索评测',
       description: '运行一轮图谱检索评测，查看核心指标、抽取质量，并对比不同历史运行的变化。',
@@ -116,7 +116,7 @@ KGDiagnosticsPage: {
       diagnosticsRunFailed: '运行知识图谱检索评测失败',
       runExported: '已导出本次评测结果',
     },
-  }
+  },
 } as const
 
 export default graphMessages

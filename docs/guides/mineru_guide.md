@@ -1,9 +1,9 @@
 # MinerU（本地/在线）解析器集成
 
-MimirQ 支持将 **MinerU** 作为 PDF 高级解析后端，支持两种模式：
+Ragvia 支持将 **MinerU** 作为 PDF 高级解析后端，支持两种模式：
 
 - **在线 MinerU**：配置 `MINERU_API_TOKEN` 调用 `mineru.net`（返回 ZIP：Markdown + images）。
-- **本地 MinerU**：启动 MinerU FastAPI（`/file_parse`，返回 ZIP：Markdown + images），MimirQ 通过 `MINERU_LOCAL_SERVER_URL` 调用。
+- **本地 MinerU**：启动 MinerU FastAPI（`/file_parse`，返回 ZIP：Markdown + images），Ragvia 通过 `MINERU_LOCAL_SERVER_URL` 调用。
 
 ---
 
@@ -103,7 +103,7 @@ MINERU_MODEL_SOURCE=local
 - 解析预览：在解析工作台选择解析器为 `mineru`
 - 入库解析：上传文档时指定 `parser_backend=mineru`（或把默认解析器切到 `mineru`）
 
-说明：MimirQ 调用本地 MinerU 时默认使用 `backend=pipeline`，无需额外 VLM Server。`MINERU_MODEL_VERSION=vlm` 只影响在线 API 的模型版本，不会让本地 `pipeline` 自动变成 VLM HTTP 后端。要让解析请求真正走 VLM，需要同时启动 `mimirq-mineru-vlm` 并设置 `MINERU_BACKEND=vlm-http-client`。MinerU 3.x 对公网绑定下的 HTTP 后端有 SSRF 防护，Docker 内网调用 VLM Server 时需要 `MINERU_API_ALLOW_PUBLIC_HTTP_CLIENT=1`，不要把 MinerU API 直接暴露到公网。
+说明：Ragvia 调用本地 MinerU 时默认使用 `backend=pipeline`，无需额外 VLM Server。`MINERU_MODEL_VERSION=vlm` 只影响在线 API 的模型版本，不会让本地 `pipeline` 自动变成 VLM HTTP 后端。要让解析请求真正走 VLM，需要同时启动 `mimirq-mineru-vlm` 并设置 `MINERU_BACKEND=vlm-http-client`。MinerU 3.x 对公网绑定下的 HTTP 后端有 SSRF 防护，Docker 内网调用 VLM Server 时需要 `MINERU_API_ALLOW_PUBLIC_HTTP_CLIENT=1`，不要把 MinerU API 直接暴露到公网。
 
 ## 显存 / 资源说明
 

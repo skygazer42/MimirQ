@@ -1,9 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import {
-  COST_ATTRIBUTION_PAGE_SIZE,
-  paginateUsageRows,
-} from './usage-pagination'
+import { COST_ATTRIBUTION_PAGE_SIZE, paginateUsageRows } from './usage-pagination'
 
 describe('usage cost attribution pagination', () => {
   it('uses ten rows per page and keeps an empty result on page one', () => {

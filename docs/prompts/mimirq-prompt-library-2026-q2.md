@@ -8,7 +8,7 @@
 > - 调研基准日期：2026-05-18。运行行为和模板版本始终以当前代码为准。
 >
 > **关联文档**：
-> - `app/models/prompt_template.py`（数据库 schema：version / parent_id / ab_experiment_key / ab_weight）
+> - `app/models/templates/versions.py`（数据库 schema：version / parent_id / ab_experiment_key / ab_weight）
 > - `app/rag/llm/prompts/formal_templates.py`（生产 Prompt-as-Code 公共约束）
 
 ---
@@ -210,7 +210,7 @@ Return JSON: {"score": float, "reason": "..."}
 | RAG 引擎 | `engine.py:303-312` | HyDE（假设性段落） | 英文 |
 | RAG 引擎 | `engine.py:317-326` | Step-Back（抽象到上位查询） | 英文 |
 | RAG 引擎 | `engine.py:332-342` | Decompose（分解为子问题） | 英文 |
-| 查询改写策略 | `app/rag/core/query_rewrite_strategy.py:27,41` | V1/V2 改写模板 | 英文 |
+| 查询改写策略 | `app/rag/llm/prompts/query_rewrite.py:27,41` | V1/V2 改写模板 | 英文 |
 | **KG 抽取** | `app/rag/kg/extraction/processor.py:100-109` | 事件 + 实体抽取 fallback（evidence_quote 要求） | 英文 |
 | KG 抽取 | `app/rag/kg/extraction/entity_verifier.py:129-150` | 实体核验（去噪、规范化、别名） | 英文 |
 | KG 抽取 | `app/rag/kg/extraction/relation_verifier.py:111` | 关系核验 | 英文 |
@@ -224,12 +224,12 @@ Return JSON: {"score": float, "reason": "..."}
 | 评测 | `app/rag/evaluation/test_generator.py:40,70` | 问答样本生成 | 英文 |
 | **Agent** | `app/rag/agents/prebuilt.py:66,103` | RAG agent system_prompt（默认值） | 英文 |
 | **记忆** | `app/rag/memory/short_term.py:244` | Rolling summary（会话滚动摘要） | 英文 |
-| **NLI 验证** | `app/rag/core/claim_nli_verifier.py:146` | Strict NLI 分类（entail / neutral / contradict） | 英文 |
-| **视觉读取** | `app/rag/core/vision_reader.py:210` | 文档视觉读取（VLM） | 英文 |
+| **NLI 验证** | `app/rag/safety/claim_nli.py:146` | Strict NLI 分类（entail / neutral / contradict） | 英文 |
+| **视觉读取** | `app/rag/llm/vision_reader.py:210` | 文档视觉读取（VLM） | 英文 |
 | **API 治理** | `app/api/v1/pipeline.py:2925` | Markdown 治理清洗 | 英文 |
-| **服务层** | `app/services/document_qa_service.py:204` | 文档 QA curator | 英文 |
-| 服务层 | `app/services/table_tag_service.py:1222,1431` | 表格标签 / NL2SQL | 英文 |
-| 服务层 | `app/services/lotus_bridge.py:183` | Lotus 桥接（表格 QA） | 英文 |
+| **服务层** | `app/services/documents/qa.py:204` | 文档 QA curator | 英文 |
+| 服务层 | `app/services/tables/generation.py:1222,1431` | 表格标签 / NL2SQL | 英文 |
+| 服务层 | `app/services/tables/semantic_operators.py:183` | Lotus 桥接（表格 QA） | 英文 |
 | **解析** | `app/parsing/processors/vlm_correction.py:47` | VLM 校正（OCR 修复） | 英文 |
 | 解析 | `app/deepdoc/parser/figure_parser.py:25,50` | Figure caption + OCR 文本理解 | 英文 |
 
@@ -237,9 +237,9 @@ Return JSON: {"score": float, "reason": "..."}
 
 | 表 / 文件 | 字段 |
 |---|---|
-| `app/models/prompt_template.py:15` | id / name / category / template_text / version / parent_id / ab_experiment_key / ab_weight / usage_count / tenant_id / created_at |
+| `app/models/templates/versions.py:15` | id / name / category / template_text / version / parent_id / ab_experiment_key / ab_weight / usage_count / tenant_id / created_at |
 | `app/api/v1/prompt_templates.py` | CRUD + version 管理 |
-| `app/services/prompt_resolver.py` | SHA256 hashing 做 A/B 路由 |
+| `app/services/prompts/resolver.py` | SHA256 hashing 做 A/B 路由 |
 
 ### A.3.4 整体评估
 
@@ -257,7 +257,7 @@ Return JSON: {"score": float, "reason": "..."}
 
 ### A.4.1 变量占位符统一
 
-本手册所有 prompt 一律使用 `{{variable}}` Mustache 风格占位符（与 `prompt_template.py` 数据库存储一致）。常用变量名规范：
+本手册所有 prompt 一律使用 `{{variable}}` Mustache 风格占位符（与 `app/models/templates/versions.py` 数据库存储一致）。常用变量名规范：
 
 | 变量名 | 含义 | 示例值 |
 |---|---|---|
@@ -465,7 +465,7 @@ Return JSON: {"score": float, "reason": "..."}
 - `engine.py:303-312` HyDE
 - `engine.py:317-326` Step-Back
 - `engine.py:332-342` Decompose
-- `app/rag/core/query_rewrite_strategy.py:27,41` V1/V2
+- `app/rag/llm/prompts/query_rewrite.py:27,41` V1/V2
 
 **输入变量**：`{{question}}` / `{{history}}` / `{{query}}` / `{{n}}`
 
@@ -904,7 +904,7 @@ Output (严格 JSON):
 
 **MimirQ 使用位置**：
 - Auto-tagger：`app/rag/llm/prompts/tagger_prompts.py`（**已中文**）
-- Contextual Summary：`app/services/indexer.py:402-424`
+- Contextual Summary：`app/services/indexing/indexer.py:402-424`
 
 **输入变量**：`{{text}}` / `{{document_meta}}`
 
@@ -1601,8 +1601,8 @@ Feedback: [具体改进建议]
 **场景定义**：用户用自然语言提问,系统转 SQL 或直接基于表格回答。
 
 **MimirQ 使用位置**：
-- `app/services/table_tag_service.py:1222,1431`
-- `app/services/lotus_bridge.py:183`
+- `app/services/tables/generation.py:1222,1431`
+- `app/services/tables/semantic_operators.py:183`
 
 **输入变量**：`{{question}}` / `{{schema}}` / `{{table_markdown}}`
 
@@ -1868,6 +1868,8 @@ app/rag/llm/prompts/
 ```
 
 ## 附录 C：A/B 实验对接示意
+
+以下保留未来实验接口的设计示意，`resolve_prompt` 和候选模板目录尚未实现，不是当前可执行的导入接口。现有业务模板选择由 `app.services.prompts.resolver.resolve_prompt_template` 持有；未来实现需沿当前领域目录组织，不能照搬下面的旧模块路径。
 
 ```python
 # 后续 implementation 时,通过 prompt_resolver.py 路由:

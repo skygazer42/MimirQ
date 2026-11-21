@@ -1,11 +1,8 @@
 from types import SimpleNamespace
 from uuid import uuid4
 
-from app.rag.evaluation import llm_judge as judge_mod
-from app.rag.evaluation.llm_judge import (
-    attach_llm_judge_to_eval_items,
-    coerce_llm_judge_payload,
-)
+from app.rag.evaluation.judging import llm_judge as judge_mod
+from app.rag.evaluation.judging.llm_judge import attach_llm_judge_to_eval_items, coerce_llm_judge_payload
 
 
 def test_coerce_llm_judge_payload_clamps_score_quotes_and_detail_fields() -> None:

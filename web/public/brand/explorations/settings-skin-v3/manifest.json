@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "project": "Ragvia · 字体与 UI 三方向",
+  "brief": "本轮只保留已满意的融合布局。比较三套实际中文字体、配色、控件边界与选择反馈；内容和解析状态相同。",
+  "round": "03",
+  "nativeViewport": "1395x1004",
+  "candidates": [
+    {
+      "id": "ink",
+      "name": "A · 墨线",
+      "concept": "用清楚的黑体和一条实心选中行，明确当前配置。",
+      "typography": "Noto Sans SC + Manrope：24px 标题、15px 字段、14px 正文、13px 说明",
+      "palette": ["#F1F3F2", "#26312C", "#58625B", "#E1E6E2"],
+      "traits": ["8px 轻填充控件", "开放列表与深色选中行", "保留工具轨、目录、配置检查器布局"],
+      "source": "ink.html"
+    },
+    {
+      "id": "moss",
+      "name": "B · 苔石",
+      "concept": "用熟悉的桌面字形和参数线，快速检查与选择默认值。",
+      "typography": "Microsoft YaHei 微软雅黑 + Segoe UI：24px 标题、15px 字段、14px 正文、13px 说明",
+      "palette": ["#F0F0E8", "#30392B", "#53643B", "#DEE5D2"],
+      "traits": ["下划线值域与 2px 控件角", "圆形单选、目录当前项圆点", "保留工具轨、目录、配置检查器布局"],
+      "source": "moss.html"
+    },
+    {
+      "id": "plum",
+      "name": "C · 紫砚",
+      "concept": "少量宋体标题配清楚的等线控件，保留知识工具的阅读气质。",
+      "typography": "Noto Serif SC 标题 + DengXian 等线正文 + Bahnschrift 拉丁字：26px 标题、16px 字段、14px 正文、13px 说明",
+      "palette": ["#F2EFF3", "#423347", "#765C7C", "#E7DFEA"],
+      "traits": ["6px 细描边分组控件", "选中轮廓与右侧单选", "保留工具轨、目录、配置检查器布局"],
+      "source": "plum.html"
+    },
+    {
+      "id": "fusion-reference",
+      "name": "上一轮融合版 · 布局对照",
+      "baseline": true,
+      "kind": "image",
+      "source": "E:/MimirQ/artifacts/rebrand/settings-paper-slate-v1/shots/page.png",
+      "concept": "用户只确认这版的布局，字体与控件本轮重新设计。",
+      "typography": "原全界面 Noto Serif SC + Manrope",
+      "palette": ["#F3F0E8", "#282C2A", "#963E2B"],
+      "traits": ["64px 工具轨与 236px 设置目录", "当前配置与解析选项并列"]
+    }
+  ]
+}

@@ -1,7 +1,16 @@
-
 import uuid
 
+import pytest
 from langchain_core.documents import Document
+
+from app.rag.retrieval.planning.contracts import QueryListOutcome
+
+
+@pytest.fixture(autouse=True)
+def _offline_stream_models(monkeypatch):
+    from app.infrastructure import tokens
+
+    monkeypatch.setattr(tokens, "_get_encoder", lambda: False)
 
 
 class _EmptyRetriever:
@@ -17,7 +26,7 @@ class _EmptyRetriever:
 
 def test_orchestrator_strict_span_mode_filters_spanless_citations(monkeypatch) -> None:  # noqa: ANN001
     import app.rag.retrieval.orchestrator as orch_mod
-    from app.core.config import settings
+    from app.infrastructure.config import settings
 
     monkeypatch.setattr(settings, "ENABLE_QUERY_REWRITE", False, raising=False)
     monkeypatch.setattr(settings, "ENABLE_MULTI_QUERY", False, raising=False)
@@ -42,11 +51,13 @@ def test_orchestrator_strict_span_mode_filters_spanless_citations(monkeypatch) -
         raising=True,
     )
 
-    monkeypatch.setattr(orch_mod, "hybrid_retriever", _EmptyRetriever(), raising=True)
-    monkeypatch.setattr(
-        orch_mod,
-        "build_citations_from_docs",
-        lambda *_a, **_k: [
+    _phase_retriever = _EmptyRetriever()
+    monkeypatch.setattr("app.rag.retrieval.stages.preparation.hybrid_retriever", _phase_retriever, raising=True)
+    monkeypatch.setattr("app.rag.retrieval.stages.followup.hybrid_retriever", _phase_retriever, raising=True)
+    monkeypatch.setattr("app.rag.retrieval.stages.requirements.hybrid_retriever", _phase_retriever, raising=True)
+
+    def _citations_builder(*_a, **_k):
+        return [
             {
                 "chunk_id": "c-no-span",
                 "document_id": "d",
@@ -55,8 +66,12 @@ def test_orchestrator_strict_span_mode_filters_spanless_citations(monkeypatch) -
                 "evidence_end_char": None,
                 "relevance_score": 0.9,
             }
-        ],
-        raising=True,
+        ]
+
+    monkeypatch.setattr("app.rag.retrieval.stages.search.build_citations_from_docs", _citations_builder, raising=True)
+    monkeypatch.setattr("app.rag.retrieval.stages.followup.build_citations_from_docs", _citations_builder, raising=True)
+    monkeypatch.setattr(
+        "app.rag.retrieval.stages.requirements.build_citations_from_docs", _citations_builder, raising=True
     )
 
     out = orch_mod.run_retrieval(
@@ -83,7 +98,7 @@ def test_orchestrator_strict_span_mode_filters_spanless_citations(monkeypatch) -
 
 def test_orchestrator_contract_mode_evidence_strict_forces_span_gate(monkeypatch) -> None:  # noqa: ANN001
     import app.rag.retrieval.orchestrator as orch_mod
-    from app.core.config import settings
+    from app.infrastructure.config import settings
 
     monkeypatch.setattr(settings, "ENABLE_QUERY_REWRITE", False, raising=False)
     monkeypatch.setattr(settings, "ENABLE_MULTI_QUERY", False, raising=False)
@@ -109,11 +124,13 @@ def test_orchestrator_contract_mode_evidence_strict_forces_span_gate(monkeypatch
         raising=True,
     )
 
-    monkeypatch.setattr(orch_mod, "hybrid_retriever", _EmptyRetriever(), raising=True)
-    monkeypatch.setattr(
-        orch_mod,
-        "build_citations_from_docs",
-        lambda *_a, **_k: [
+    _phase_retriever = _EmptyRetriever()
+    monkeypatch.setattr("app.rag.retrieval.stages.preparation.hybrid_retriever", _phase_retriever, raising=True)
+    monkeypatch.setattr("app.rag.retrieval.stages.followup.hybrid_retriever", _phase_retriever, raising=True)
+    monkeypatch.setattr("app.rag.retrieval.stages.requirements.hybrid_retriever", _phase_retriever, raising=True)
+
+    def _citations_builder(*_a, **_k):
+        return [
             {
                 "chunk_id": "c-no-span",
                 "document_id": "d",
@@ -122,8 +139,12 @@ def test_orchestrator_contract_mode_evidence_strict_forces_span_gate(monkeypatch
                 "evidence_end_char": None,
                 "relevance_score": 0.9,
             }
-        ],
-        raising=True,
+        ]
+
+    monkeypatch.setattr("app.rag.retrieval.stages.search.build_citations_from_docs", _citations_builder, raising=True)
+    monkeypatch.setattr("app.rag.retrieval.stages.followup.build_citations_from_docs", _citations_builder, raising=True)
+    monkeypatch.setattr(
+        "app.rag.retrieval.stages.requirements.build_citations_from_docs", _citations_builder, raising=True
     )
 
     out = orch_mod.run_retrieval(
@@ -175,7 +196,7 @@ class _FallbackRetriever:
 
 def test_orchestrator_strict_span_empty_runs_single_deterministic_fallback(monkeypatch) -> None:  # noqa: ANN001
     import app.rag.retrieval.orchestrator as orch_mod
-    from app.core.config import settings
+    from app.infrastructure.config import settings
 
     monkeypatch.setattr(settings, "ENABLE_QUERY_REWRITE", False, raising=False)
     monkeypatch.setattr(settings, "ENABLE_MULTI_QUERY", False, raising=False)
@@ -200,13 +221,13 @@ def test_orchestrator_strict_span_empty_runs_single_deterministic_fallback(monke
         raising=True,
     )
 
-    monkeypatch.setattr(orch_mod, "hybrid_retriever", _FallbackRetriever(), raising=True)
+    _phase_retriever = _FallbackRetriever()
+    monkeypatch.setattr("app.rag.retrieval.stages.preparation.hybrid_retriever", _phase_retriever, raising=True)
+    monkeypatch.setattr("app.rag.retrieval.stages.followup.hybrid_retriever", _phase_retriever, raising=True)
+    monkeypatch.setattr("app.rag.retrieval.stages.requirements.hybrid_retriever", _phase_retriever, raising=True)
 
     def _build_citations(docs, **_kwargs):  # noqa: ANN001, ANN202
-        roles = {
-            str((getattr(doc, "metadata", None) or {}).get("retrieval_role") or "")
-            for doc in (docs or [])
-        }
+        roles = {str((getattr(doc, "metadata", None) or {}).get("retrieval_role") or "") for doc in (docs or [])}
         if "hard_fallback" in roles:
             return [
                 {
@@ -229,7 +250,11 @@ def test_orchestrator_strict_span_empty_runs_single_deterministic_fallback(monke
             }
         ]
 
-    monkeypatch.setattr(orch_mod, "build_citations_from_docs", _build_citations, raising=True)
+    monkeypatch.setattr("app.rag.retrieval.stages.search.build_citations_from_docs", _build_citations, raising=True)
+    monkeypatch.setattr("app.rag.retrieval.stages.followup.build_citations_from_docs", _build_citations, raising=True)
+    monkeypatch.setattr(
+        "app.rag.retrieval.stages.requirements.build_citations_from_docs", _build_citations, raising=True
+    )
 
     out = orch_mod.run_retrieval(
         {
@@ -259,7 +284,7 @@ def test_orchestrator_strict_span_empty_runs_single_deterministic_fallback(monke
 
 def test_orchestrator_query_expansion_budget_reports_degradation(monkeypatch) -> None:  # noqa: ANN001
     import app.rag.retrieval.orchestrator as orch_mod
-    from app.core.config import settings
+    from app.infrastructure.config import settings
 
     monkeypatch.setattr(settings, "ENABLE_QUERY_REWRITE", False, raising=False)
     monkeypatch.setattr(settings, "ENABLE_MULTI_QUERY", False, raising=False)
@@ -274,17 +299,24 @@ def test_orchestrator_query_expansion_budget_reports_degradation(monkeypatch) ->
     monkeypatch.setattr(settings, "RAG_ABSTAIN_MIN_CITATIONS", 0, raising=False)
 
     monkeypatch.setattr(
-        orch_mod,
-        "_decompose_query",
-        lambda *_args, **_kwargs: (["sub question"], 0.5, None, {"ok": True, "method": "stub", "error": None}),
+        "app.rag.retrieval.planning.model_expansion.decompose_query",
+        lambda *_args, **_kwargs: QueryListOutcome(
+            True, ["sub question"], 0.5, None, {"ok": True, "method": "stub", "error": None}
+        ),
         raising=True,
     )
-    monkeypatch.setattr(orch_mod, "hybrid_retriever", _FallbackRetriever(), raising=True)
+    _phase_retriever = _FallbackRetriever()
+    monkeypatch.setattr("app.rag.retrieval.stages.preparation.hybrid_retriever", _phase_retriever, raising=True)
+    monkeypatch.setattr("app.rag.retrieval.stages.followup.hybrid_retriever", _phase_retriever, raising=True)
+    monkeypatch.setattr("app.rag.retrieval.stages.requirements.hybrid_retriever", _phase_retriever, raising=True)
+
+    def _citations_builder(*_args, **_kwargs):
+        return []
+
+    monkeypatch.setattr("app.rag.retrieval.stages.search.build_citations_from_docs", _citations_builder, raising=True)
+    monkeypatch.setattr("app.rag.retrieval.stages.followup.build_citations_from_docs", _citations_builder, raising=True)
     monkeypatch.setattr(
-        orch_mod,
-        "build_citations_from_docs",
-        lambda *_args, **_kwargs: [],
-        raising=True,
+        "app.rag.retrieval.stages.requirements.build_citations_from_docs", _citations_builder, raising=True
     )
 
     out = orch_mod.run_retrieval(

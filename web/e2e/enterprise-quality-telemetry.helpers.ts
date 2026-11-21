@@ -1,4 +1,7 @@
-import type { Page, Route } from '@playwright/test'
+import { randomUUID } from 'node:crypto'
+import { PROTOCOL_VERSION } from '@ag-ui/core'
+import { EventSchema, RunAgentInputSchema } from '@ag-ui/core/schemas'
+import { expect, type Page, type Route } from '@playwright/test'
 
 type MockParsingDocument = {
   id: string
@@ -47,6 +50,51 @@ export async function installDeterministicRandom(page: Page) {
   })
 }
 
+export async function fulfillChatStream(
+  route: Route,
+  {
+    contentParts,
+    citations,
+    requestId = 'req-chat-e2e-1',
+    assistantMessageId = randomUUID(),
+  }: {
+    contentParts: readonly string[]
+    citations?: readonly unknown[]
+    requestId?: string
+    assistantMessageId?: string
+  },
+) {
+  const payload: unknown = route.request().postDataJSON()
+  const input = RunAgentInputSchema.parse(payload)
+  const userMessage = input.messages.at(-1)
+  if (userMessage?.role !== 'user' || typeof userMessage.content !== 'string') {
+    throw new TypeError('Chat fixture requires the final user message text')
+  }
+  expect(payload).not.toHaveProperty('message')
+  expect(payload).not.toHaveProperty('conversation_id')
+  const metadata = { requestId, threadId: input.threadId, runId: input.runId, assistantMessageId }
+  const events = [
+    { type: 'RUN_STARTED', threadId: input.threadId, runId: input.runId, protocolVersion: PROTOCOL_VERSION },
+    { type: 'TEXT_MESSAGE_START', messageId: assistantMessageId, role: 'assistant' },
+    ...(citations === undefined ? [] : [{ type: 'CUSTOM', name: 'ragvia.citations', value: citations }]),
+    ...contentParts.map((delta) => ({ type: 'TEXT_MESSAGE_CONTENT', messageId: assistantMessageId, delta })),
+    { type: 'TEXT_MESSAGE_END', messageId: assistantMessageId },
+    { type: 'RUN_FINISHED', threadId: input.threadId, runId: input.runId, result: { request_id: requestId } },
+  ]
+  await route.fulfill({
+    status: 200,
+    contentType: 'text/event-stream',
+    headers: {
+      'Cache-Control': 'no-cache',
+      'X-Request-ID': requestId,
+      'X-Conversation-ID': input.threadId,
+      'X-Assistant-Message-ID': assistantMessageId,
+    },
+    body: events.map((event) => `data: ${JSON.stringify(EventSchema.parse({ ...event, metadata }))}\n\n`).join(''),
+  })
+  return { input, message: userMessage.content }
+}
+
 export async function installCommonApiMocks(page: Page, state: EnterpriseTelemetryMockState) {
   const getParsingDocuments = () => state.parsingDocuments ?? []
 
@@ -58,7 +106,7 @@ export async function installCommonApiMocks(page: Page, state: EnterpriseTelemet
 
     if (pathname === '/api/v1/meta' && method === 'GET') {
       return fulfillJson(route, {
-        name: 'MimirQ API',
+        name: 'Ragvia API',
         api_version: 'e2e',
         build: { sha: 'e2e1234' },
         features: {
@@ -148,6 +196,7 @@ export async function installCommonApiMocks(page: Page, state: EnterpriseTelemet
         parser_backend: parsedDocument.parser_backend || 'auto',
         markdown_content: parsedDocument.markdown_content,
         original_markdown_content: parsedDocument.original_markdown_content,
+        edited: false,
         parse_duration_sec: parsedDocument.parse_duration_sec,
         stats: {
           page_count: 1,
@@ -180,6 +229,7 @@ export async function installCommonApiMocks(page: Page, state: EnterpriseTelemet
         parser_backend: document?.parser_backend || 'auto',
         markdown_content: document?.markdown_content || '',
         original_markdown_content: document?.original_markdown_content || '',
+        edited: false,
         parse_duration_sec: document?.parse_duration_sec || null,
         stats: {
           page_count: 1,
@@ -240,34 +290,9 @@ export async function installCommonApiMocks(page: Page, state: EnterpriseTelemet
     }
 
     if (pathname === '/api/v1/chat/stream' && method === 'POST') {
-      try {
-        const body = request.postDataJSON() as { conversation_id?: unknown; message?: unknown }
-        state.chatRequests = [
-          ...(state.chatRequests || []),
-          {
-            conversationId: typeof body?.conversation_id === 'string' ? body.conversation_id : null,
-            message: typeof body?.message === 'string' ? body.message : '',
-          },
-        ]
-      } catch {
-        state.chatRequests = state.chatRequests || []
-      }
-
-      return route.fulfill({
-        status: 200,
-        contentType: 'text/event-stream',
-        headers: {
-          'Cache-Control': 'no-cache',
-          Connection: 'keep-alive',
-          'X-Request-ID': 'req-chat-e2e-1',
-          'X-Conversation-ID': 'conv-e2e-1',
-        },
-        body: [
-          'data: {"type":"token","data":{"content":"已完成"}}\n\n',
-          'data: {"type":"token","data":{"content":"智能对话验证。"}}\n\n',
-          'data: {"type":"done","request_id":"req-chat-e2e-1","data":{"conversation_id":"conv-e2e-1","assistant_message_id":"assistant-e2e-1","request_id":"req-chat-e2e-1"}}\n\n',
-        ].join(''),
-      })
+      const { input, message } = await fulfillChatStream(route, { contentParts: ['已完成', '智能对话验证。'] })
+      state.chatRequests = [...(state.chatRequests || []), { conversationId: input.threadId, message }]
+      return
     }
 
     if (pathname === '/api/v1/observability/frontend-vitals' && method === 'POST') {

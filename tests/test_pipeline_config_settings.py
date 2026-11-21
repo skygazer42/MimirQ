@@ -1,6 +1,6 @@
-from app.core.config import settings
-from app.services.pipeline_config import resolve_pipeline_options
-from app.types.pipeline import PipelineOptions
+from app.infrastructure.config import settings
+from app.services.pipelines.config import resolve_pipeline_options
+from app.types.pipeline_options import PipelineOptions
 
 
 def test_zero_limit_settings_keep_their_documented_sentinel(monkeypatch) -> None:

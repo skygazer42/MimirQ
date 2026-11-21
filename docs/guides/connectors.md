@@ -1,13 +1,11 @@
 # Connectors（连接器）与 Connector Runs
 
-本指南介绍 MimirQ 的连接器（Connectors）能力：把“从外部数据源批量导入文档/目录信息”的过程，抽象成一次可追踪、可取消、可重试的 **Connector Run**。
+本指南介绍 Ragvia 的连接器（Connectors）能力：把“从外部数据源批量导入文档/目录信息”的过程，抽象成一次可追踪、可取消、可重试的 **Connector Run**。
 
 适用场景：
 
 - 批量导入多个 URL / 站点抓取（web crawl）
-- 导入 GitHub Repo 内的文档文件（README/markdown/pdf 等）
 - 导入 Jira Cloud 项目中的 issues / comments（企业知识库常见高价值源）
-- 导入 Google Drive 分享链接指向的文件
 - 从 MinIO/S3 Bucket 批量导入对象文件
 - 从 MySQL / SQLServer 同步 schema/table/column 目录（Catalog）与安全画像（仅聚合统计，不外发原始行）
 
@@ -15,7 +13,7 @@
 
 ## 1) 核心概念
 
-- **Connector**：一个导入器（例如 `web_crawl`、`github_repo`）。
+- **Connector**：一个导入器（例如 `web_crawl`、`url_batch`）。
 - **Connector Config**：可选的“持久化配置 + 定时任务”（cron），用于周期性同步。
 - **Connector Run**：一次实际执行（会记录状态、统计、错误、产出 document_ids）。
 
@@ -41,11 +39,9 @@
 当前内置 connector 的同步语义：
 
 - `url_batch`：支持 `supports_incremental + supports_resume`；主要提供 URL 级别的轻量增量保护（去重/断点续跑）。
-- `github_repo`：支持 `supports_incremental + supports_resume`；后续 run 会用 Git blob SHA manifest 跳过未变化文件，并在检测到 tracked path 已从仓库消失时剪掉 stale manifest entry。
 - `confluence_space`：支持 `supports_incremental`；后续 run 会基于 `last_modified` cursor 拉取更新页面。
 - `jira_project`：支持 `supports_incremental`；后续 run 会基于 issue `updated` cursor 只拉取新变更 issue，并默认使用 `jira_ticket` chunker。
 - `web_crawl`：支持 `supports_incremental + supports_resume`；当前增量 token 以 URL 清单 hash 为主，支持 removed URL reconcile（soft-disable）。
-- `drive_files`：支持 `supports_incremental + supports_resume`；使用 source manifest token（优先 version/modifiedTime/file_id）做 changed/new 判定，并支持 removed path reconcile（soft-disable）。
 - `minio_bucket`：支持 `supports_incremental + supports_resume`；使用对象 token（etag/last_modified/size）做 changed/new 判定，并支持 removed path reconcile（soft-disable）。
 
 ### 2.1.2 Saved State Contract
@@ -62,7 +58,7 @@
 - `cursor`
 - `last_modified`
 - `source_manifest`
-- `total_files` / `total_urls` / `total_objects`
+- `total_urls` / `total_objects`
 
 这让执行器不需要解析深层 envelope，同时运维侧仍然可以审计 state 演进。
 
@@ -93,7 +89,7 @@
 
 ### 3.1 URL/抓取类连接器的 SSRF 防护
 
-URL 类连接器（`url_batch` / `web_crawl` / `github_repo` / `drive_files` / `minio_bucket`）会复用 URL ingest 的 SSRF 防护策略（只允许 http/https、默认禁止私网/回环/.local、默认不跟随重定向、限制下载大小与超时等）。
+URL 类连接器（`url_batch` / `web_crawl` / `minio_bucket`）会复用 URL ingest 的 SSRF 防护策略（只允许 http/https、默认禁止私网/回环/.local、默认不跟随重定向、限制下载大小与超时等）。
 
 具体开关与建议见：[url_ingest.md](./url_ingest.md)。
 
@@ -208,83 +204,7 @@ curl -X POST "http://localhost:8000/api/v1/connectors/runs" \
 }
 ```
 
-### 5.3 `github_repo`：GitHub Repo 导入
-
-用途：通过 GitHub API 列出仓库文件，再用 `raw.githubusercontent.com` 拉取内容入库。
-
-增量同步行为补充：
-
-- `source_manifest` 会保存已成功处理的 `path -> blob_sha` 映射，后续 run 用它跳过未变化文件。
-- 如果某个 tracked path 已不再出现在当前仓库树中，run stats 和保存的 state 会把该 path 从 manifest 中剪掉。
-- 对于这类 removed path，系统会按 `doc_metadata.source_url` 对应的 connector-managed 文档做 **soft-disable**，而不是 hard delete。
-- 删除对账只作用于由同一个 `github_repo` connector 创建过的文档，不会误伤手工上传或其他 connector 写入的文档。
-
-示例（私有仓库/提高限额可用 Bearer token）：
-
-```json
-{
-  "connector_id": "github_repo",
-  "dataset_id": "00000000-0000-0000-0000-000000000000",
-  "config": {
-    "repo": "owner/repo",
-    "branch": "main",
-    "max_files": 50,
-    "include_extensions": [".md", ".txt", ".pdf"],
-    "auth": { "type": "bearer", "token": "ghp_xxx" },
-    "parser_backend": "auto",
-    "chunk_strategy": "langchain_recursive"
-  }
-}
-```
-
-### 5.4 `drive_files`：Google Drive 文件导入（分享链接）
-
-用途：从 Google Drive 文件分享链接中解析 file_id，构造直链下载入库（仅文件，不支持文件夹）。
-
-示例：
-
-```json
-{
-  "connector_id": "drive_files",
-  "dataset_id": "00000000-0000-0000-0000-000000000000",
-  "config": {
-    "urls": ["https://drive.google.com/file/d/<file_id>/view?usp=sharing"],
-    "parser_backend": "auto",
-    "chunk_strategy": "langchain_recursive"
-  }
-}
-```
-
-增量 freshness 语义（Wave B）：
-
-- `drive_files` 现在支持 manifest-based incremental（`supports_incremental=true`）。
-- 每个 source 记录稳定 sync token，优先使用 `version + modifiedTime + file_id`；缺失时退化到 URL/file_id hash。
-- 后续 run 会对比历史 `source_manifest`，仅处理 changed/new 项，并统计：
-  - `mode`（`full` / `incremental`）
-  - `delta_urls`
-  - `skipped_unchanged`
-  - `source_manifest`
-- 对于历史存在但本次缺失的 Drive path，会进入 removed reconcile：
-  - `removed_paths`
-  - `removed_paths_reconciled`
-  - `removed_documents_disabled`
-  - 执行 soft-disable（不做 hard delete）
-
-运维建议：
-
-- 首次 run 预期是 `mode=full`；第二次起应主要看到 `mode=incremental`。
-- 若 `delta_urls` 长期异常偏高，优先检查上游是否频繁改写 `modifiedTime/version`。
-
-增量示例（`source_manifest`）：
-
-```json
-{
-  "https://drive.google.com/file/d/FILE_A/view": "drive_files|version:12|modified:2026-03-11T08:10:00Z|id:FILE_A",
-  "https://drive.google.com/file/d/FILE_B/view": "drive_files|version:3|modified:2026-03-09T02:00:00Z|id:FILE_B"
-}
-```
-
-### 5.5 `minio_bucket`：MinIO/S3 Bucket 导入
+### 5.3 `minio_bucket`：MinIO/S3 Bucket 导入
 
 用途：列出 bucket 对象，生成 presigned URL 拉取并入库。
 
@@ -327,7 +247,7 @@ curl -X POST "http://localhost:8000/api/v1/connectors/runs" \
 }
 ```
 
-### 5.6 `jira_project`：Jira Cloud Project 导入
+### 5.4 `jira_project`：Jira Cloud Project 导入
 
 用途：从 Jira Cloud 项目按 issue 粒度同步工单，并把 issue 描述、关键字段、评论渲染成结构化 HTML 文档入库。
 
@@ -379,7 +299,7 @@ curl -X POST "http://localhost:8000/api/v1/connectors/runs" \
 - `customfield_XXXXX` 的 ID 通常可通过 Jira 管理后台字段配置或 `GET /rest/api/3/field` 查到（仅需把需要的字段加入 allowlist）
 - 若启用 `source_acl`，建议先准备好与 Jira security level / role / group 对应的 `tenant_groups.external_id`
 
-### 5.7 `mysql_catalog` / `sqlserver_catalog`：数据库目录（Catalog）同步
+### 5.5 `mysql_catalog` / `sqlserver_catalog`：数据库目录（Catalog）同步
 
 用途：同步 schema/table/column 的目录信息，并可选做 **安全画像**（聚合统计）用于治理与检索侧“理解数据形态”。
 在 Wave C 中，额外支持可控的 **DB 行级 sidecar**（用于 TAG 召回），默认关闭。

@@ -1,6 +1,6 @@
 # MagicPDF（magic-pdf）解析器集成
 
-MimirQ 支持将 **MagicPDF（PyPI: `magic-pdf`）** 作为可选 PDF 高级解析后端，输出 Markdown，适用于扫描件、复杂排版等场景。
+Ragvia 支持将 **MagicPDF（PyPI: `magic-pdf`）** 作为可选 PDF 高级解析后端，输出 Markdown，适用于扫描件、复杂排版等场景。
 
 > 生产部署使用独立 `mimirq-magicpdf` 服务。默认 API/worker 镜像不安装依赖版本与主运行时冲突的本地 CLI；本地 CLI 仅保留为宿主机或自定义镜像的开发调试路径。
 
