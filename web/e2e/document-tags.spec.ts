@@ -1,9 +1,10 @@
 import { expect, test } from '@playwright/test'
 
+import { makeProfileScan } from '../test/dataset-profile-fixtures'
 import { installCommonApiMocks, UPLOADED_DOCUMENT_ID } from './enterprise-quality-telemetry.helpers'
 import { policyDatasetId } from './dataset-policy.helpers'
 import { profileSummary } from './remaining-pages.helpers'
-import type { Document } from '../types'
+import type { DatasetProfileDocumentOut, Document } from '../types'
 
 test.use({ serviceWorkers: 'block' })
 
@@ -15,17 +16,21 @@ for (const viewport of [
     const pageErrors: string[] = []
     page.on('pageerror', (error) => pageErrors.push(error.message))
     const tags = Array.from({ length: 50 }, (_, index) => `#标签 ${index}`)
-    let stored: Document = {
+    let stored: Document & DatasetProfileDocumentOut = {
       id: UPLOADED_DOCUMENT_ID,
+      dataset_id: policyDatasetId,
       filename: 'tag-contract.md',
       file_type: 'md',
       file_size: 100,
       status: 'completed',
       processing_progress: 100,
       processing_attempts: 0,
+      error_message: null,
       chunk_count: 0,
       total_characters: 100,
       publication_status: 'draft',
+      preview: null,
+      preview_truncated: false,
       created_at: '2026-11-16T00:00:00Z',
       updated_at: '2026-11-16T00:00:00Z',
       metadata: { user: { tags } },
@@ -36,6 +41,7 @@ for (const viewport of [
       release = resolve
     })
     await installCommonApiMocks(page, { uploaded: true, parsingDocuments: [] })
+    const profile = profileSummary()
     await page.route(
       (url) => url.pathname.startsWith(`/api/v1/datasets/${policyDatasetId}`),
       async (route) => {
@@ -43,8 +49,9 @@ for (const viewport of [
         const datasetPath = `/api/v1/datasets/${policyDatasetId}`
         if (path === datasetPath)
           await route.fulfill({ json: { id: policyDatasetId, name: 'Tag documents', document_count: 1 } })
-        else if (path === `${datasetPath}/profile/summary`) await route.fulfill({ json: profileSummary() })
-        else if (path === `${datasetPath}/profile/scan-runs`) await route.fulfill({ json: { total: 0, items: [] } })
+        else if (path === `${datasetPath}/profile/summary`) await route.fulfill({ json: profile })
+        else if (path === `${datasetPath}/profile/scan-runs`)
+          await route.fulfill({ json: { total: 1, items: [makeProfileScan(profile)] } })
         else if (path.startsWith(`${datasetPath}/profile/findings/`))
           await route.fulfill({ json: { total: 1, items: [stored] } })
         else await route.fallback()
@@ -95,7 +102,7 @@ for (const viewport of [
     await dialog.getByRole('button', { name: '编辑', exact: true }).first().click()
     const input = dialog.getByRole('textbox', { name: '标签', exact: true })
     const form = dialog.locator('form').filter({ has: page.getByRole('textbox', { name: '标签', exact: true }) })
-    const save = form.getByRole('button', { name: '保存', exact: true })
+    const save = dialog.getByRole('button', { name: '保存', exact: true })
     await expect(form.getByText('50 / 50', { exact: true })).toBeVisible()
     await form.getByRole('button', { name: '移除标签 #标签 49', exact: true }).click()
 

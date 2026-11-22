@@ -216,7 +216,7 @@ export function useUsage(sessionKey: string) {
     cost,
     rows,
     attributionWindowDays,
-    hasAttributionSnapshot: attributionSnapshot !== undefined,
+    hasCompleteAttribution: attributionSummary !== undefined && attributionCost !== undefined,
     quotas,
     quotaPending,
     rawQuota,

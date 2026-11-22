@@ -137,7 +137,7 @@ describe('ConversationSummaryDialog operation scope', () => {
       })
       await waitForAssertion(() => expect(api.getConversationSummary).toHaveBeenCalledTimes(2))
       const expected =
-        action === 'update' ? { available: true, summary: 'updated-after-write' } : { available: false, summary: '' }
+        action === 'update' ? { available: true, summary: 'updated-after-write' } : { available: false, summary: null }
 
       await act(async () => {
         mutation.resolve(action === 'update' ? { summary: 'updated-after-write' } : undefined)
@@ -176,7 +176,7 @@ describe('ConversationSummaryDialog operation scope', () => {
     await waitForAssertion(() => expect(document.querySelector('[role="alertdialog"]')).toBeNull())
     expect(view.client.getQueryData(queryKeys.chat.summary('conversation-a'))).toEqual({
       available: false,
-      summary: '',
+      summary: null,
     })
   })
 
@@ -335,11 +335,11 @@ describe('ConversationSummaryDialog operation scope', () => {
     act(() => button('清空').click())
     const confirm = document.querySelector<HTMLElement>('[role="alertdialog"]')!
     act(() => button('清空', confirm).click())
-    await waitForAssertion(() => expect(view.client.getQueryData(key)).toEqual({ available: false, summary: '' }))
+    await waitForAssertion(() => expect(view.client.getQueryData(key)).toEqual({ available: false, summary: null }))
     await act(async () => b.resolve({ summary: 'late-b-after-a-clear' }))
     await waitForAssertion(() => expect(view.client.isMutating()).toBe(0))
 
-    expect(view.client.getQueryData(key)).toEqual({ available: false, summary: '' })
+    expect(view.client.getQueryData(key)).toEqual({ available: false, summary: null })
     expect(api.updateConversationSummary.mock.calls).toEqual([['conversation-a'], ['conversation-b']])
     expect(api.deleteConversationSummary.mock.calls).toEqual([['conversation-a']])
   })

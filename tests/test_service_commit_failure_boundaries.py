@@ -5,6 +5,8 @@ from unittest.mock import MagicMock
 from uuid import uuid4
 
 import pytest
+from sqlalchemy import create_engine, text
+from sqlalchemy.orm import Session
 
 
 def test_confluence_metadata_commit_failure_propagates(monkeypatch):
@@ -45,28 +47,30 @@ def test_regression_progress_commit_failure_is_observable(caplog):
 
 
 @pytest.mark.parametrize("operation", ["prompt_usage", "metrics"])
-def test_extraction_sidecar_commit_failure_is_observable(operation, monkeypatch, caplog):
+def test_extraction_sidecar_commit_failure_releases_transaction(operation, monkeypatch):
     from app.rag.kg.extraction import extractor
+    from app.rag.kg.extraction.config import ExtractConfig
 
-    db = MagicMock()
     failure = RuntimeError("extraction sidecar commit failed")
-    db.commit.side_effect = failure
-    with caplog.at_level(logging.WARNING):
+    tenant_id = uuid4()
+    template = SimpleNamespace(id=uuid4(), content="prompt", usage_count=0)
+    config = ExtractConfig(tenant_id=tenant_id, prompt_template_id=template.id)
+    engine = create_engine("sqlite://")
+    monkeypatch.setattr(extractor, "resolve_prompt_template", lambda **_kwargs: template)
+
+    async def _initialize(_self, *, session, **_kwargs):
+        session.execute(text("INSERT INTO extraction_probe VALUES (1)"))
         if operation == "prompt_usage":
-            chosen = SimpleNamespace(id=uuid4(), content="prompt", usage_count=0)
-            monkeypatch.setattr(extractor, "resolve_prompt_template", lambda **k: chosen)
-            config = SimpleNamespace(
-                prompt_template_id=chosen.id, prompt_template_key=None, prompt_ab_experiment_key=None, ab_user_key=None
-            )
-            assert extractor._resolve_prompt_template_content(db, uuid4(), config) == ("prompt", str(chosen.id))
+            extractor._resolve_prompt_template_content(session, tenant_id, config)
         else:
             document_id = uuid4()
             doc = SimpleNamespace(id=document_id, doc_metadata={})
-            db.query.return_value.filter.return_value.all.return_value = [doc]
+            session.query = MagicMock()
+            session.query.return_value.filter.return_value.all.return_value = [doc]
             chunk = SimpleNamespace(id=uuid4(), document_id=document_id)
             extractor._writeback_document_metadata(
-                session=db,
-                tenant_id=uuid4(),
+                session=session,
+                tenant_id=tenant_id,
                 chunks=[chunk],
                 kept_events=[],
                 skipped_chunk_ids=set(),
@@ -75,8 +79,26 @@ def test_extraction_sidecar_commit_failure_is_observable(operation, monkeypatch,
                 failed_chunk_ids=set(),
                 retry_chunk_ids=set(),
             )
-    db.rollback.assert_called_once()
-    assert any(r.exc_info and r.exc_info[1] is failure for r in caplog.records)
+
+    monkeypatch.setattr(extractor.EventExtractor, "_initialize_extract_context", _initialize)
+    try:
+        with engine.begin() as connection:
+            connection.execute(text("CREATE TABLE extraction_probe (marker INTEGER NOT NULL)"))
+        with engine.connect() as connection:
+            db = MagicMock(wraps=Session(bind=connection))
+            db.commit.side_effect = failure
+            monkeypatch.setattr(extractor, "SessionLocal", lambda: db)
+
+            with pytest.raises(RuntimeError) as raised:
+                asyncio.run(extractor.EventExtractor().extract(config))
+
+            assert raised.value is failure
+            db.commit.assert_called_once()
+            db.close.assert_called_once()
+            assert not connection.in_transaction()
+            assert connection.scalar(text("SELECT COUNT(*) FROM extraction_probe")) == 0
+    finally:
+        engine.dispose()
 
 
 def test_retry_cleanup_commit_failure_is_deferred_with_traceback(caplog, monkeypatch):

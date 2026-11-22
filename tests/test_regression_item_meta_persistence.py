@@ -82,6 +82,7 @@ def test_build_regression_item_meta_includes_ids_and_abstain_fields():
         "expected_refusal": None,
         "refusal_correct": None,
         "llm_judge": None,
+        "ragas_metric_errors": None,
     }
 
 

@@ -39,6 +39,9 @@ class _Query:
     def limit(self, _value):  # noqa: ANN001, ANN201
         return self
 
+    def with_entities(self, *_columns):  # noqa: ANN002, ANN201
+        return self
+
     def group_by(self, *_columns):  # noqa: ANN002, ANN201
         return self
 
@@ -345,9 +348,9 @@ def test_unassigned_document_versions_are_readable_but_not_writable_for_viewers(
         account_id="viewer-account",
         db=db,
     )
-    assert listing["document_id"] == document.id
-    assert listing["active_pipeline_hash"] == "v1"
-    assert listing["items"] == []
+    assert listing.document_id == document.id
+    assert listing.active_pipeline_hash == "v1"
+    assert listing.items == []
 
     with pytest.raises(HTTPException) as activate_exc:
         document_versions.activate_document_version(

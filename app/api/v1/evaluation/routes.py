@@ -5,8 +5,6 @@ Provides evaluation endpoints for the RAG system, including task creation,
 querying, and results.
 """
 
-from __future__ import annotations
-
 import logging
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Annotated, Any
@@ -890,7 +888,7 @@ def _generate_hardcases_for_base_case(
 def _persist_generated_hardcases(
     *,
     db: Session,
-    hardcases: list[Hardcase],
+    hardcases: "list[Hardcase]",
     base_case: RagasRegressionCase,
     reference_sources: list[Any],
     tenant_id: UUID,
@@ -940,7 +938,7 @@ def _persist_generated_hardcases(
 def _build_synthetic_regression_case(
     *,
     base_case: RagasRegressionCase,
-    hardcase: Hardcase,
+    hardcase: "Hardcase",
     reference_sources: list[Any],
     tenant_id: UUID,
     dataset_id: UUID,

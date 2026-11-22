@@ -11,10 +11,15 @@ from app.rag.ingestion.chunking.strategies.text import text_hierarchy
     [
         ({"paragraphs": [{"id": "paragraph-1"}], "sentences": []}, "text"),
         ({"paragraphs": [], "sentences": [{"text": "Sentence."}]}, "parent_id"),
-        ({"paragraphs": [{"text": "Paragraph."}], "sentences": []}, "id"),
+        (None, "id"),
     ],
 )
 def test_hierarchy_chunking_exposes_missing_internal_record_fields(monkeypatch, module, payload, key):
+    if payload is None:
+        result = module.hierarchical_chunk_markdown("Paragraph.")
+        paragraph = dict(result["paragraphs"][0])
+        del paragraph[key]
+        payload = {"paragraphs": [paragraph], "sentences": []}
     monkeypatch.setattr(module, "hierarchical_chunk_markdown", lambda text: payload)
     chunker_type = (
         markdown_hierarchy.MarkdownHierarchyChunker

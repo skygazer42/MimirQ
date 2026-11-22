@@ -192,6 +192,17 @@ export async function open(page: Page, empty = false) {
   if (!empty) await expect(page.locator('[data-chunk-card]')).toHaveCount(3)
   await page.evaluate(() => document.fonts.ready)
 }
+
+export async function changePreviewAppearance(page: Page, mode: '浅色' | '深色', surface?: string) {
+  await page.getByRole('button', { name: '工作空间与外观设置', exact: true }).click()
+  await page.getByRole('button', { name: '界面外观', exact: true }).click()
+  const panel = page.getByRole('dialog', { name: '界面外观', exact: true })
+  await panel.getByText(mode, { exact: true }).click()
+  if (surface !== undefined) await panel.getByText(surface, { exact: true }).click()
+  await page.keyboard.press('Escape')
+  await expect(panel).toBeHidden()
+}
+
 export async function noOverflow(page: Page) {
   expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(1)
 }

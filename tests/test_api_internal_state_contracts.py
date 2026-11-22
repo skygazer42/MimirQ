@@ -1,4 +1,5 @@
 from argparse import Namespace
+from contextlib import nullcontext
 from types import SimpleNamespace
 from uuid import uuid4
 
@@ -88,18 +89,20 @@ def test_version_lookup_does_not_retry_failed_authoritative_query_as_an_unfilter
 @pytest.mark.parametrize(
     "module, helper",
     [
-        (document_preview, document_preview._preview_dataset_metadata),
-        (document_chunk_preview, document_chunk_preview._resolve_preview_dataset_meta),
+        (document_preview, document_preview._load_preview_metadata),
+        (document_chunk_preview, document_chunk_preview._load_preview_dataset_meta),
     ],
 )
 def test_selected_dataset_preview_does_not_drop_policy_when_database_lookup_fails(monkeypatch, module, helper):  # noqa: ANN001
     def fail(*_args):
         raise RuntimeError("dataset database unavailable")
 
+    monkeypatch.setattr(module, "SessionLocal", lambda: nullcontext(object()))
+    monkeypatch.setattr(module.dataset_service, "ensure_member", lambda *_args: None)
     monkeypatch.setattr(module.dataset_service, "get_dataset", fail)
     with pytest.raises(RuntimeError, match="dataset database unavailable"):
-        helper(db=object(), tenant_id=uuid4(), account_id="member", dataset_id=str(uuid4()))
-    assert helper(db=object(), tenant_id=uuid4(), account_id="member", dataset_id=None) == {}
+        helper(tenant_id=uuid4(), account_id="member", dataset_id=str(uuid4()))
+    assert helper(tenant_id=uuid4(), account_id="member", dataset_id=None) == {}
 
 
 def test_citation_parses_only_raw_ids_and_passes_through_the_native_scope_fallback():

@@ -381,13 +381,6 @@ describe('automatic settings writes and retained drafts', () => {
 })
 
 describe('model configuration', () => {
-  it('points reranker configuration to the actual retrieval settings', async () => {
-    const hook = await mount()
-    act(() => hook.result.current.handleConfigure(hook.result.current.groupedProviders.reranker[0]))
-    expect(hook.result.current.dialogOpen).toBe(false)
-    expect(hook.result.current.saveError).toContain('检索与生成')
-    expect(boundary.update).not.toHaveBeenCalled()
-  })
   it('keeps the normal model dialog closed while another write owns saving', async () => {
     const hook = await mount(),
       pending = deferred<typeof success>()

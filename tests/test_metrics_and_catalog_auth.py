@@ -46,7 +46,7 @@ def test_metrics_falls_back_to_application_auth_when_token_unset(monkeypatch) ->
     app.include_router(metrics_module.router)
     monkeypatch.setattr(settings, "METRICS_BEARER_TOKEN", "", raising=False)
 
-    async def _fake_current_account_id(**_kwargs) -> str:
+    async def _fake_current_account_id(_request) -> str:
         return "acct-1"
 
     monkeypatch.setattr(metrics_module, "get_current_account_id", _fake_current_account_id, raising=True)

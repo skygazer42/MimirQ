@@ -7,6 +7,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 import app.api.v1.integrations.conversations as conversations_integration
+from app.api.middleware.request_context import RequestContextMiddleware
 from app.api.schemas.integrations.conversations import (
     ExternalConversationIngestRequest,
     ExternalConversationIngestResponse,
@@ -143,6 +144,7 @@ class _FakeExternalDB:
 
 def _client(monkeypatch):
     app = FastAPI()
+    app.add_middleware(RequestContextMiddleware)
     app.include_router(conversations_integration.router, prefix="/api/v1/integrations/conversations")
     app.dependency_overrides[conversations_integration.get_tenant_id] = lambda: TENANT_ID
     app.dependency_overrides[conversations_integration.get_current_account_id] = lambda: "demo"

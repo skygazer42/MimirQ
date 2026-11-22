@@ -29,6 +29,7 @@ async function json(route: Route, body: unknown, status = 200) {
 }
 async function fixture(page: Page, options: { empty?: boolean } = {}) {
   await installCommonApiMocks(page, { uploaded: false })
+  await page.route('**/api/v1/meta/details', (route) => json(route, { features: { kg_enabled: true } }))
   await installDeterministicRandom(page)
   await page.setViewportSize({ width: 1600, height: 1000 })
   await page.addInitScript(() => {
@@ -267,8 +268,10 @@ test('node details, analysis, 3D and export controls remain reachable and follow
   await page.getByRole('button', { name: '导出图谱图片', exact: true }).click()
   await expect(page.getByRole('button', { name: '下载 PNG', exact: true })).toBeVisible()
   await page.keyboard.press('Escape')
-  await page.getByRole('button', { name: '切换主题', exact: true }).click()
-  await page.getByRole('menuitem', { name: /深色|暗色/ }).click()
+  await page.getByRole('button', { name: '工作空间与外观设置', exact: true }).click()
+  await page.getByRole('button', { name: '界面外观', exact: true }).click()
+  await page.getByRole('dialog', { name: '界面外观' }).getByText('深色', { exact: true }).click()
+  await page.keyboard.press('Escape')
   await expect
     .poll(() =>
       page.locator('[data-graph-directory-page]').evaluate((element) => {

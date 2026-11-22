@@ -5,8 +5,6 @@ This is a scaffold for future LangGraph-based long-term memory. When disabled,
 the graph runs without a store (default).
 """
 
-from __future__ import annotations
-
 import logging
 from typing import TYPE_CHECKING
 
@@ -18,10 +16,10 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger("rag.store.factory")
 
-_store: BaseStore | None = None
+_store: "BaseStore | None" = None
 
 
-def get_langgraph_store() -> BaseStore | None:
+def get_langgraph_store() -> "BaseStore | None":
     """Return a LangGraph BaseStore instance (or None when disabled)."""
     global _store
 

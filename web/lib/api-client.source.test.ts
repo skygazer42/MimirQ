@@ -5,11 +5,11 @@ import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 describe('api-client source dedupe', () => {
-  it('reuses extractRateLimitDetail from api-errors', () => {
+  it('reuses extractRateLimitInfo from api-errors', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'api/core.ts'), 'utf8')
 
-    expect(src).toContain('extractRateLimitDetail')
-    expect(src).not.toContain('function extractRateLimitDetail(')
+    expect(src).toContain('extractRateLimitInfo(data, error.response?.headers)')
+    expect(src).not.toContain('function extractRateLimitInfo(')
   })
 
   it('applies preferred language headers to axios and streaming fetch requests', () => {
@@ -27,8 +27,9 @@ describe('api-client source dedupe', () => {
     const metaSrc = fs.readFileSync(path.resolve(__dirname, 'api/meta.ts'), 'utf8')
 
     expect(healthSrc).toContain("path: '/api/v1/health/details'")
-    expect(healthSrc).toContain('status: z.string()')
-    expect(healthSrc).not.toContain('time: z.string()')
+    const publicSchema = healthSrc.match(/const healthResponseSchema = z\.object\(\{([\s\S]*?)\}\)/)?.[1]
+    expect(publicSchema).toContain('status: z.string()')
+    expect(publicSchema).not.toContain('time:')
     expect(metaSrc).toContain("path: '/api/v1/meta/details'")
   })
 })

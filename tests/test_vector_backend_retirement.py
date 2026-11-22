@@ -1,3 +1,4 @@
+import json
 from types import SimpleNamespace
 
 import pytest
@@ -18,7 +19,7 @@ def test_retired_vector_backend_cannot_resolve_or_reuse_a_cached_store(backend, 
     from app.storage.vector import factory
 
     monkeypatch.setattr(factory.settings, "VECTOR_BACKEND", backend if selection == "default" else "memory")
-    monkeypatch.setattr(factory.settings, "VECTOR_REGION_BACKENDS", {"test-region": backend})
+    monkeypatch.setattr(factory.settings, "VECTOR_REGION_BACKENDS", json.dumps({"test-region": backend}))
     monkeypatch.setattr(factory, "_VECTOR_STORE_SINGLETONS", {})
     if selection == "cached":
         monkeypatch.setattr(factory, "_vector_store_cache_key", lambda **_kwargs: "old-store")

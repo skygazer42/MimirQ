@@ -12,6 +12,7 @@ Design goals:
 
 import json
 import logging
+import os
 import time
 from collections.abc import Callable, Iterable, Iterator
 from contextlib import contextmanager
@@ -64,11 +65,11 @@ def _file_lock(lock_path: Path) -> Iterator[None]:
 
     Unsupported platforms and OS lock failures continue without locking.
     """
-    try:
-        import fcntl  # type: ignore
-    except ImportError:
+    if os.name != "posix":
         yield
         return
+
+    import fcntl
 
     try:
         lock_path.parent.mkdir(parents=True, exist_ok=True)

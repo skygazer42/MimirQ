@@ -8,7 +8,7 @@ test('a script draft is persisted only to the dedicated real governance profile'
   await page.setViewportSize({ width: 1600, height: 1000 })
   await openRemaining(page, '/data-governance/common-lines', '重复内容规则')
   await page.getByRole('button', { name: new RegExp(state.governance_profile_key) }).click()
-  const api = `http://127.0.0.1:8000/api/v1/pipeline/governance-profiles/${state.governance_profile_ref}`
+  const api = `/api/v1/pipeline/governance-profiles/${state.governance_profile_ref}`
   const saved = page.waitForResponse(
     (response) =>
       new URL(response.url()).pathname.endsWith(`/governance-profiles/${state.governance_profile_ref}`) &&

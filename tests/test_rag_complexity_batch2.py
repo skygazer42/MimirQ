@@ -2,7 +2,9 @@ from types import SimpleNamespace
 
 import pytest
 from langchain_core.documents import Document as LangChainDocument
+from pydantic import ValidationError
 
+from app.api.schemas.documents import DocumentPipelineOptions
 from app.rag.ingestion.chunking.strategies.text.parent_child import ParentChildChunker
 from app.rag.ingestion.governance.cleaning import RegexRule
 from app.rag.ingestion.governance.rule_packs import GOVERNANCE_RULE_PACKS
@@ -44,15 +46,18 @@ def test_parent_child_chunker_reuses_cached_splits_without_sharing_mutations() -
     assert "mutated" not in third[0].metadata
 
 
-def test_build_governance_rules_expands_unique_packs_and_sanitizes_extra_rules() -> None:
+def test_build_governance_rules_expands_unique_packs_and_appends_validated_rules() -> None:
+    with pytest.raises(ValidationError):
+        DocumentPipelineOptions.model_validate(
+            {"governance_rule_packs": [3], "governance_regex_rules": [{"pattern": "alpha", "repl": None}]}
+        )
+
     rules = build_governance_rules(
         extra_rules=[
-            {"pattern": "alpha", "repl": None, "flags": "2"},
-            {"pattern": "beta", "repl": 123, "flags": "invalid"},
-            {"pattern": "   "},
-            "skip",
+            {"pattern": "alpha", "repl": "", "flags": 2},
+            {"pattern": "beta", "repl": "123", "flags": 0},
         ],
-        rule_packs=["WEB_COOKIE_BANNERS", " web_cookie_banners ", "unknown", 3],
+        rule_packs=["WEB_COOKIE_BANNERS", " web_cookie_banners ", "unknown"],
     )
 
     assert rules[: len(DEFAULT_MARKDOWN_RULES)] == DEFAULT_MARKDOWN_RULES

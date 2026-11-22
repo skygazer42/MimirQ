@@ -213,15 +213,16 @@ test('independent draft and live-query risk probes', async ({ browser }) => {
     await query.fill('旧问题')
     await oldRequest
     await snapshot(page, `risk-${device}-query-pending`)
+    const abortedPreview = page.waitForEvent(
+      'requestfailed',
+      (request) => request.url().includes('/preview-rewrite') && request.postDataJSON().query === '旧问题',
+    )
     await query.fill('新的SSO问题')
     await expect(page.getByText('已补全：新的SSO问题', { exact: true })).toBeVisible()
-    const oldResponse = page.waitForResponse(
-      (response) => response.url().includes('/preview-rewrite') && response.request().postDataJSON().query === '旧问题',
-    )
     releaseOld()
-    await oldResponse
+    expect((await abortedPreview).failure()).not.toBeNull()
     await expect(page.getByText('已补全：新的SSO问题', { exact: true })).toBeVisible()
-    await snapshot(page, `risk-${device}-late-old-response`)
+    await snapshot(page, `risk-${device}-aborted-preview`)
     await query.fill('')
     await expect(page.getByText('输入问题后查看改写结果', { exact: true })).toBeVisible()
     await expect(page.getByText('已补全：新的SSO问题', { exact: true })).toHaveCount(0)
@@ -342,7 +343,7 @@ test('independent real API read-only surfaces', async ({ browser }) => {
     await expect(page.getByRole('heading', { name: '重复内容规则', exact: true })).toBeVisible({ timeout: 90_000 })
     await page.getByRole('combobox', { name: '数据集', exact: true }).click()
     await page.getByRole('option', { name: state.name, exact: true }).click()
-    await expect(page.getByRole('button', { name: new RegExp(state.name) }).first()).toBeVisible()
+    await expect(page.getByRole('combobox', { name: '数据集', exact: true })).toContainText(state.name)
     await snapshot(page, `real-${device}-common-lines`)
     await page.goto('/governance/industry-rules', { waitUntil: 'domcontentloaded', timeout: 90_000 })
     await expect(page.getByRole('heading', { name: '行业规则', exact: true })).toBeVisible({ timeout: 90_000 })

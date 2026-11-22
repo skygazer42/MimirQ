@@ -34,7 +34,6 @@ vi.mock('@/components/feedback-toast', () => ({
   FeedbackToast: ({ message }: { message: string | null }) => (message ? <p role="alert">{message}</p> : null),
 }))
 vi.mock('./_sections/system-status-section', () => ({ SystemStatusSection: () => null }))
-vi.mock('./_sections/model-providers-section', () => ({ ModelProvidersSection: () => null }))
 vi.mock('./_sections/feature-flags-section', () => ({ FeatureFlagsSection: () => null }))
 vi.mock('./_sections/frontend-preferences-section', () => ({
   FrontendPreferencesSection: function Preferences() {
@@ -85,7 +84,8 @@ beforeEach(() => {
     saveError: null,
     hasChanges: false,
     status: null,
-    groupedProviders: {},
+    groupedProviders: { model: [], embedding: [] },
+    retiredEmbeddingModel: null,
     ragMerged: { bm25_index_enabled: false },
     getFeatureValue: () => false,
     retrySave: boundary.retry,
@@ -144,6 +144,19 @@ it('resets the selected workspace scroll and restores an explicit section hash',
     window.dispatchEvent(new HashChangeEvent('hashchange'))
   })
   expect(view.container.querySelector('#sec-frontend')?.hasAttribute('hidden')).toBe(false)
+})
+
+it('opens retrieval settings from model settings without creating a save error', () => {
+  const view = mount()
+  select(view.container, '模型接入')
+  const configure = [...view.container.querySelectorAll<HTMLButtonElement>('#sec-models button')].find(
+    (button) => button.textContent === '配置重排服务',
+  )
+  expect(configure).toBeDefined()
+  act(() => configure!.click())
+  expect(window.location.hash).toBe('#sec-rag')
+  expect(view.container.querySelector('#sec-rag')?.hasAttribute('hidden')).toBe(false)
+  expect(view.container.querySelector('[role="alert"]')).toBeNull()
 })
 it('keeps save feedback local, retains the mounted editor and retries the failed draft', () => {
   const view = mount()

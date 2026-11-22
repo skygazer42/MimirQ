@@ -8,8 +8,6 @@ Supported providers:
 - `simple`: lightweight regex-based fallback
 """
 
-from __future__ import annotations
-
 import re
 from collections import Counter
 
@@ -29,7 +27,7 @@ UnsupportedKeywordProvider = UnsupportedKeywordProviderError
 KeywordProviderUnavailable = KeywordProviderUnavailableError
 
 
-_extractor_cache: dict[str, JiebaKeywordTableHandler | JiebaTextRankKeywordExtractor | SimpleKeywordExtractor] = {}
+_extractor_cache: "dict[str, JiebaKeywordTableHandler | JiebaTextRankKeywordExtractor | SimpleKeywordExtractor]" = {}
 _STOPWORDS_CASEFOLD = {word.casefold() for word in STOPWORDS}
 
 
@@ -48,7 +46,7 @@ def _expand_tokens_with_subtokens(tokens: set[str]) -> set[str]:
 
 def get_keyword_extractor(
     provider: str | None = None,
-) -> JiebaKeywordTableHandler | JiebaTextRankKeywordExtractor | SimpleKeywordExtractor:
+) -> "JiebaKeywordTableHandler | JiebaTextRankKeywordExtractor | SimpleKeywordExtractor":
     key = ("jieba" if provider is None else provider).lower().strip()
     reject_retired_provider(key, capability="keyword")
     if key in {"auto", "jieba_tfidf"}:

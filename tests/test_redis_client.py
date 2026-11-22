@@ -158,9 +158,10 @@ def test_redis_consumers_preserve_connection_options(
 
     monkeypatch.setattr(redis.Redis, "from_url", staticmethod(from_url))
 
+    get_client = slot.get if module_name == "app.api.v1.system.health" else module._get_redis_client
     try:
-        assert module._get_redis_client() is client
-        assert module._get_redis_client() is client
+        assert get_client() is client
+        assert get_client() is client
         assert calls == [("redis://cache/7", expected_kwargs)]
     finally:
         slot.invalidate()

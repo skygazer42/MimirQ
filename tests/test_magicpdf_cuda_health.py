@@ -2,6 +2,8 @@ import importlib.util
 import subprocess
 from pathlib import Path
 
+import pytest
+
 
 def _load_magicpdf_server():
     server_path = Path(__file__).resolve().parents[1] / "docker" / "magicpdf" / "server.py"
@@ -13,6 +15,7 @@ def _load_magicpdf_server():
 
 
 def test_cuda_health_rejects_stale_torch_result_when_nvidia_smi_fails(monkeypatch):
+    pytest.importorskip("torch", reason="MagicPDF CUDA health requires the optional container PyTorch runtime")
     server = _load_magicpdf_server()
     monkeypatch.setattr(server.torch.cuda, "is_available", lambda: True)
     monkeypatch.setattr(

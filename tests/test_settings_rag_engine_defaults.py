@@ -25,7 +25,8 @@ def test_kg_zero_concurrency_uses_existing_minimum(monkeypatch):
 
     async def shard(**kwargs):
         observed.append(kwargs["semaphore"]._value)
-        return kwargs["scoped_dataset_id"], {}, None
+        result = {"events": [], "entities": [], "clues": [], "community_reports": [], "global_summary": ""}
+        return kwargs["scoped_dataset_id"], result, None
 
     monkeypatch.setattr(pipeline, "_search_dataset_shard", shard)
     asyncio.run(

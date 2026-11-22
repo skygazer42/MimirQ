@@ -247,8 +247,8 @@ def test_list_ragas_runs_is_scoped_to_creator_account(
         tenant_id=tenant_id, account_id="acct-1", db=db, params=RagasRunListQuery()
     )
 
-    assert response["total"] == 1
-    assert [item.id for item in response["items"]] == [my_run.id]
+    assert response.total == 1
+    assert [item.id for item in response.items] == [my_run.id]
 
 
 @pytest.mark.asyncio

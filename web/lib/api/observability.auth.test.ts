@@ -14,6 +14,7 @@ vi.mock('@/lib/auth-storage', () => ({
   clearAuthSession: auth.clear,
   getAccessToken: () => auth.token,
   getAuthSessionRevision: () => 0,
+  getAuthSessionKey: () => '0:default:user-a',
   getAuthCacheScope: () => 'default:user-a',
   setAccessToken: (token: { access_token: string }) => {
     auth.token = token.access_token

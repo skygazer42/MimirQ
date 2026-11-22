@@ -14,6 +14,7 @@ from langchain_core.documents import Document
 from PIL import Image as PILImage
 
 from app.infrastructure.config import settings
+from app.infrastructure.runtime.dependencies import optional_import
 
 _DEFAULT_ENGINE = "trocr_seal_onnx"
 _DEFAULT_THRESHOLD = 0.88
@@ -369,10 +370,8 @@ def extract_seal_documents_from_pdf(
         logger.warning("Seal recognition unavailable: required model files are missing")
         return []
 
-    try:
-        import fitz  # PyMuPDF
-    except ImportError as exc:
-        logger.warning("Seal PDF enrichment unavailable: %s", exc)
+    fitz = optional_import("fitz", feature="seal_pdf_enrichment", pip_name="PyMuPDF")
+    if fitz is None:
         return []
 
     dpi = max(72, settings.SEAL_RECOGNITION_PDF_DPI or 144)

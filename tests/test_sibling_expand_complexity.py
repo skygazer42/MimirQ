@@ -1,5 +1,7 @@
 from types import SimpleNamespace
 
+import pytest
+
 from app.rag.retrieval.expansion.siblings import expand_document_siblings, select_document_expansion_mode
 
 
@@ -123,5 +125,7 @@ def test_expand_document_siblings_builds_original_map_and_honors_global_budget()
 def test_select_document_expansion_mode_handles_thresholds_and_invalid_values() -> None:
     assert select_document_expansion_mode(total_chunks=2, short_doc_max_chunks=3) == "sibling"
     assert select_document_expansion_mode(total_chunks=4, short_doc_max_chunks=3) == "neighbor"
-    assert select_document_expansion_mode(total_chunks="bad", short_doc_max_chunks=3) == "neighbor"
-    assert select_document_expansion_mode(total_chunks=2, short_doc_max_chunks="bad") == "neighbor"
+    with pytest.raises(TypeError):
+        select_document_expansion_mode(total_chunks="bad", short_doc_max_chunks=3)
+    with pytest.raises(TypeError):
+        select_document_expansion_mode(total_chunks=2, short_doc_max_chunks="bad")

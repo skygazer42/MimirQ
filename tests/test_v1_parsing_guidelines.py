@@ -1,17 +1,18 @@
 import asyncio
 import io
 import threading
-from dataclasses import fields
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
 from fastapi import HTTPException, UploadFile
-from pydantic.fields import FieldInfo
 
+from app.api.schemas.documents.document import ChunkPreviewFormFields, ChunkPreviewQuery
+from app.api.schemas.documents.ingestion import DocumentPreviewForm
 from app.api.schemas.pipelines import PipelineIngestionPreviewForm, PipelineParsePreviewForm
 from app.api.v1.pipelines.parsing import ParsingDocumentUploadForm
+from app.models import registry as _model_registry  # noqa: F401
 
 
 def _document(tenant_id, dataset_id):
@@ -26,14 +27,6 @@ def _document(tenant_id, dataset_id):
         status="pending",
         processing_progress=0,
     )
-
-
-def _form(model, **overrides):
-    values = {
-        field.name: field.default.default if isinstance(field.default, FieldInfo) else field.default
-        for field in fields(model)
-    }
-    return model(**(values | overrides))
 
 
 def _worker_sessions(monkeypatch, document=None):
@@ -293,6 +286,7 @@ async def test_workspace_upload_owns_worker_session_and_offloads_object_transfer
 async def test_upload_previews_resolve_membership_and_metadata_in_worker(monkeypatch, tmp_path, surface):
     from app.api.v1.documents import chunk_preview as document_chunk_preview
     from app.api.v1.documents import preview as document_preview
+    from app.api.v1.pipelines import parsing
 
     tenant_id, dataset_id = uuid4(), uuid4()
     sessions = _worker_sessions(monkeypatch)
@@ -304,6 +298,7 @@ async def test_upload_previews_resolve_membership_and_metadata_in_worker(monkeyp
         return False
 
     module = document_preview if surface == "document" else document_chunk_preview
+    monkeypatch.setattr(module, "SessionLocal", parsing.SessionLocal)
     monkeypatch.setattr(module.settings, "UPLOAD_DIR", str(tmp_path))
     monkeypatch.setattr(module.dataset_service, "ensure_member", ensure)
     monkeypatch.setattr(module.dataset_service, "get_dataset", lambda *a: SimpleNamespace(dataset_metadata={}))
@@ -311,17 +306,17 @@ async def test_upload_previews_resolve_membership_and_metadata_in_worker(monkeyp
     if surface == "document":
 
         async def parse(**kwargs):
-            return {"documents": [], "resolved_backend": "basic"}
+            return {"documents": [], "resolved_backend": "basic", "pdf_quality": None}
 
         monkeypatch.setattr(module, "_parse_preview_payload", parse)
         result = await module.preview_document(
             SimpleNamespace(is_disconnected=disconnected),
-            UploadFile(filename="source.txt", file=io.BytesIO(b"source")),
-            _form(module.PreviewDocumentFormFields, dataset_id=str(dataset_id)),
-            _form(module.PreviewDocumentGovernanceOverridesFormFields),
+            DocumentPreviewForm(
+                file=UploadFile(filename="source.txt", file=io.BytesIO(b"source")),
+                dataset_id=str(dataset_id),
+            ),
             tenant_id=tenant_id,
             account_id="owner",
-            db=object(),
         )
         assert result.filename == "source.txt"
     else:
@@ -336,8 +331,8 @@ async def test_upload_previews_resolve_membership_and_metadata_in_worker(monkeyp
             request=SimpleNamespace(is_disconnected=disconnected),
             response=SimpleNamespace(),
             file=UploadFile(filename="source.txt", file=io.BytesIO(b"source")),
-            params=_form(module.ChunkPreviewRequestFields, dataset_id=str(dataset_id)),
-            db=object(),
+            params=ChunkPreviewFormFields(dataset_id=str(dataset_id)),
+            query=ChunkPreviewQuery(),
             tenant_id=tenant_id,
             account_id="owner",
         )
@@ -401,13 +396,14 @@ async def test_workspace_postprocessing_runs_off_loop_and_persists_in_worker(mon
 
 @pytest.mark.asyncio
 async def test_pipeline_parse_preview_uses_worker_database_and_original_request_loop(monkeypatch, tmp_path):
+    from app.api.v1.pipelines import parsing
     from app.api.v1.pipelines import routes as pipeline
 
     tenant_id = uuid4()
     sessions = _worker_sessions(monkeypatch)
     loop = asyncio.get_running_loop()
 
-    def ensure(db, *args):
+    def ensure(db, *, tenant_id, account_id):
         assert db in sessions and threading.get_ident() == db.thread
 
     async def disconnected():
@@ -416,9 +412,10 @@ async def test_pipeline_parse_preview_uses_worker_database_and_original_request_
 
     async def parse(*, disconnect_check, **kwargs):
         assert not await disconnect_check()
-        return {"markdown": "preview"}
+        return {"markdown": "preview", "backend": "basic"}
 
     monkeypatch.setattr(pipeline.settings, "UPLOAD_DIR", str(tmp_path))
+    monkeypatch.setattr(pipeline, "SessionLocal", parsing.SessionLocal)
     monkeypatch.setattr(pipeline.dataset_service, "ensure_member", ensure)
     monkeypatch.setattr(pipeline, "run_subprocess_worker", parse)
     result = await pipeline.parse_preview(
@@ -427,7 +424,8 @@ async def test_pipeline_parse_preview_uses_worker_database_and_original_request_
         tenant_id=tenant_id,
         account_id="owner",
     )
-    assert result == {"markdown": "preview"}
+    assert result.markdown == "preview"
+    assert result.backend == "basic"
     assert sessions and all(session.closed for session in sessions)
     assert not list(tmp_path.rglob("*.txt"))
 
@@ -435,13 +433,14 @@ async def test_pipeline_parse_preview_uses_worker_database_and_original_request_
 @pytest.mark.asyncio
 async def test_pipeline_ingestion_preview_uses_cleaning_owner_and_offloads_preprocess(monkeypatch, tmp_path):
     from app.api.schemas.sources.policy import IngestionPolicy, IngestionRule
+    from app.api.v1.pipelines import parsing
     from app.api.v1.pipelines import routes as pipeline
 
     tenant_id, dataset_id = uuid4(), uuid4()
     loop_thread = threading.get_ident()
     sessions = _worker_sessions(monkeypatch)
 
-    def ensure(db, *args):
+    def ensure(db, *args, **kwargs):
         assert db in sessions and threading.get_ident() == db.thread
 
     def preprocess(path, steps):
@@ -459,6 +458,7 @@ async def test_pipeline_ingestion_preview_uses_cleaning_owner_and_offloads_prepr
 
     rule = IngestionRule(id="rule", name="Rule")
     monkeypatch.setattr(pipeline.settings, "UPLOAD_DIR", str(tmp_path))
+    monkeypatch.setattr(pipeline, "SessionLocal", parsing.SessionLocal)
     monkeypatch.setattr(pipeline.dataset_service, "ensure_member", ensure)
     monkeypatch.setattr(pipeline.dataset_service, "get_dataset", lambda *a: SimpleNamespace(dataset_metadata={}))
     monkeypatch.setattr(pipeline.dataset_service, "assert_dataset_readable", ensure)
@@ -475,7 +475,7 @@ async def test_pipeline_ingestion_preview_uses_cleaning_owner_and_offloads_prepr
         tenant_id=tenant_id,
         account_id="owner",
     )
-    assert result["clean"].markdown == "preview"
+    assert result.clean.markdown == "preview"
     assert sessions and all(session.closed for session in sessions)
 
 

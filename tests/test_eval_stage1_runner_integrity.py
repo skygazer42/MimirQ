@@ -64,7 +64,8 @@ def test_hybrid_runner_does_not_turn_gold_labels_into_answer_or_citations() -> N
     assert "gold-chunk" in result["retrieved_chunk_ids"]
 
 
-def test_stage1_batch_scores_retrieved_and_cited_ids_separately(tmp_path: Path) -> None:
+@pytest.mark.asyncio
+async def test_stage1_batch_scores_retrieved_and_cited_ids_separately(tmp_path: Path) -> None:
     sample_path = tmp_path / "samples.jsonl"
     manifest_path = tmp_path / "manifest.json"
     sample_path.write_text(
@@ -120,7 +121,7 @@ def test_stage1_batch_scores_retrieved_and_cited_ids_separately(tmp_path: Path) 
 
         return run_actual
 
-    result = run_stage1_batch(
+    result = await run_stage1_batch(
         sample_path=sample_path,
         manifest_path=manifest_path,
         output_root=tmp_path / "runs",

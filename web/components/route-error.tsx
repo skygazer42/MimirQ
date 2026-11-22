@@ -1,9 +1,8 @@
 'use client'
 
-import { startTransition, useEffect } from 'react'
+import { useEffect } from 'react'
 import { ConnectionLost } from '@/components/icons'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
 import { useTranslations } from 'next-intl'
 
 import { FullScreenFrame } from '@/components/full-screen-frame'
@@ -23,8 +22,7 @@ type RouteErrorProps = Readonly<{
   fullScreen?: boolean
 }>
 
-export function RouteError({ error, reset, title, message, href = '/', hrefLabel, fullScreen }: RouteErrorProps) {
-  const router = useRouter()
+export function RouteError({ error, title, message, href = '/', hrefLabel, fullScreen }: RouteErrorProps) {
   const t = useTranslations('RouteBoundaries')
   const requestId = extractRequestIdFromError(error)
   const resolvedTitle = title ?? t('error.title')
@@ -44,15 +42,7 @@ export function RouteError({ error, reset, title, message, href = '/', hrefLabel
       className="min-h-dvh"
       actions={
         <>
-          <Button
-            className={pageStatusActionClass}
-            onClick={() => {
-              startTransition(() => {
-                router.refresh()
-                reset()
-              })
-            }}
-          >
+          <Button className={pageStatusActionClass} onClick={() => window.location.reload()}>
             {t('error.retry')}
           </Button>
           <Button variant="outline" className={pageStatusActionClass} asChild>

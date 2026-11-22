@@ -9,6 +9,7 @@ const config = {
   test: {
     environment: 'node',
     pool: 'threads',
+    setupFiles: ['./vitest.setup.ts'],
     include: ['**/*.test.{ts,tsx}'],
     reporters: ['default'],
     testTimeout: 15000,

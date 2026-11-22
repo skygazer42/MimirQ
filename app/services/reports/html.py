@@ -70,7 +70,7 @@ def _fmt_int(n: Any) -> str:
 def _fmt_bytes(n: Any) -> str:
     try:
         b = int(n)
-    except Exception:
+    except (TypeError, ValueError, OverflowError):
         b = 0
     if b <= 0:
         return "0 B"

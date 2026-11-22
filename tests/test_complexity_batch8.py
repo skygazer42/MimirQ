@@ -80,7 +80,7 @@ async def test_relation_processor_extract_relations_preserves_normalization_and_
                     "subject_id": "E1",
                     "predicate": "works at",
                     "object_id": "E2",
-                    "confidence": "0.9",
+                    "confidence": 0.9,
                     "qualifiers": {"since": "2024"},
                     "evidence_quote": "Alice works at Acme.",
                 },
@@ -88,8 +88,7 @@ async def test_relation_processor_extract_relations_preserves_normalization_and_
                     "subject_id": "E1",
                     "predicate": "located_in",
                     "object_id": "E2",
-                    "confidence": "nan",
-                    "qualifiers": ["ignore-me"],
+                    "qualifiers": None,
                     "evidence_quote": "",
                 },
                 {"subject_id": "E1", "predicate": "alias_of", "object_id": "E1"},
@@ -140,12 +139,10 @@ async def test_relation_verifier_verify_preserves_dedup_and_evidence_trimming() 
                 {
                     "rid": "R1",
                     "predicate": "works at",
-                    "confidence": "nan",
                     "evidence_quote": "x" * 320,
                 },
                 {"rid": "R1", "predicate": "works_for", "confidence": 0.1},
                 {"rid": "R2", "predicate": "located_in", "confidence": 0.8},
-                {"rid": "R9", "predicate": "works_for", "confidence": 0.8},
             ]
         }
     )

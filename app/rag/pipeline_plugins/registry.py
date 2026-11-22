@@ -1002,6 +1002,7 @@ def compute_plugin_package_hash(
     contract_paths: dict[str, str] | None = None,
 ) -> str:
     hasher = hashlib.sha256()
+    manifest_path = manifest_path.resolve()
     files: list[Path] = [manifest_path]
     for file_path in _plugin_package_file_paths(plugin_dir):
         if file_path not in files:

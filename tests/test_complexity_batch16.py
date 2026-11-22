@@ -319,7 +319,7 @@ def test_etl4llm_parse_characterizes_page_image_fallback(tmp_path: Path, monkeyp
 
     assert document.page_content == "![page 1](images/page_0001.jpg)\n\nMerged text"
     assert document.metadata["etl4llm_page_images"] == 1
-    assert document.metadata["asset_base_dir"].endswith(".etl4llm/doc-1")
+    assert Path(document.metadata["asset_base_dir"]) == tmp_path / ".etl4llm" / "doc-1"
     assert (Path(document.metadata["asset_base_dir"]) / "images" / "page_0001.jpg").read_bytes() == b"jpg-bytes"
 
 

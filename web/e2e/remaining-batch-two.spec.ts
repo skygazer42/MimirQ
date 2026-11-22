@@ -20,7 +20,11 @@ test('monitor filters and pages real-shaped tasks, with failure recovery in plac
   await page.getByRole('button', { name: '重新读取', exact: true }).click()
   await expect(page.getByRole('alert').filter({ hasText: '任务目录暂不可用' })).toBeVisible({ timeout: 20000 })
   state.failDocuments = false
-  await page.getByRole('alert').getByRole('button', { name: '重新读取', exact: true }).click()
+  await page
+    .getByRole('alert')
+    .filter({ hasText: '任务目录暂不可用' })
+    .getByRole('button', { name: '重新读取', exact: true })
+    .click()
   await expect(table.getByRole('row')).toHaveCount(21)
   expect(state.base.base.blocked).toEqual([])
 })

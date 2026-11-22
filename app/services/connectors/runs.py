@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import asyncio
 import contextlib
 from typing import TYPE_CHECKING, Any, NotRequired, TypedDict
@@ -342,13 +340,13 @@ def _connector_run_has_abortable_task(*, task_queue_enabled: bool, task_id: obje
     return bool(task_queue_enabled and isinstance(task_id, str) and task_id)
 
 
-def _load_arq_job_class() -> type[Job]:
+def _load_arq_job_class() -> "type[Job]":
     from arq.jobs import Job
 
     return Job
 
 
-async def _get_queue_or_none() -> ArqRedis | None:
+async def _get_queue_or_none() -> "ArqRedis | None":
     try:
         return await get_queue()
     except Exception:

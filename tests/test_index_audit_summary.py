@@ -273,6 +273,11 @@ def test_plan_index_audit_reconcile_reports_only_pending_error_as_candidates(mon
         },
         raising=True,
     )
+    monkeypatch.setattr(
+        audit_service,
+        "summarize_document_index_channels",
+        lambda _db, *, document: SimpleNamespace(to_dict=lambda: payloads[str(document.id)]["current_index_readiness"]),
+    )
 
     plan = audit_service.plan_index_audit_reconcile(
         db=SimpleNamespace(),

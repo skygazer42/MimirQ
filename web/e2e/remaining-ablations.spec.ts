@@ -80,6 +80,7 @@ test('a later comparison selector cancels an older ranking detail selection', as
     () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))),
   )
   await expect(selector).toContainText('baseline')
+  await page.getByRole('button', { name: '设为基线 candidate-run', exact: true }).click()
   await page.getByRole('button', { name: '生成对比', exact: true }).click()
-  await expect.poll(() => state.diffs.at(-1)?.target).toBe('baseline-run')
+  await expect.poll(() => state.diffs.at(-1)).toEqual({ target: 'baseline-run', base: 'candidate-run' })
 })

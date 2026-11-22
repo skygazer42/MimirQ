@@ -57,15 +57,29 @@ def test_tenant_dependency_cannot_disable_verified_jwt_tenant_binding(monkeypatc
     assert res.json()["tenant_id"] == jwt_tid
 
 
-def test_tenant_dependency_uses_header_when_no_jwt_tenant_claim_is_configured(monkeypatch):
+def test_authenticated_tenant_fallback_requires_a_trusted_header_in_production(monkeypatch):
     monkeypatch.setenv("ENV", "production")
     monkeypatch.setattr(settings, "AUTH_MODE", "jwt", raising=False)
     monkeypatch.setattr(settings, "JWT_TENANT_CLAIM", "", raising=False)
     monkeypatch.setattr(settings, "TENANT_PREFER_JWT_TENANT", False, raising=False)
+    monkeypatch.setattr(settings, "JWT_ENFORCE_TENANT_HEADER_MATCH", False)
+    monkeypatch.setattr(settings, "TENANT_HEADER_TRUSTED", False)
+    monkeypatch.setattr(settings, "JWT_ISSUER", "")
+    monkeypatch.setattr(settings, "JWT_AUDIENCE", "")
+    monkeypatch.setattr(settings, "ALGORITHM", "HS256")
+    secret_key = "k" * 40
+    monkeypatch.setattr(settings, "SECRET_KEY", secret_key)
+    token = _jwt_token(secret_key=secret_key, sub="u-1", tenant_id=str(uuid.uuid4()))
 
     header_tid = str(uuid.uuid4())
     client = TestClient(_build_app())
-    res = client.get("/tid", headers={"X-Tenant-ID": header_tid})
+    headers = {"X-Tenant-ID": header_tid}
+    assert client.get("/tid", headers=headers).status_code == 401
+    headers["Authorization"] = f"Bearer {token}"
+    assert client.get("/tid", headers=headers).status_code == 400
+
+    monkeypatch.setattr(settings, "TENANT_HEADER_TRUSTED", True)
+    res = client.get("/tid", headers=headers)
 
     assert res.status_code == 200
     assert res.json()["tenant_id"] == header_tid

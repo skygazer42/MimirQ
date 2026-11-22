@@ -23,9 +23,10 @@ def test_multi_query_experiment_preserves_explicit_empty_labels(value: str | Non
 
 @pytest.mark.parametrize("field", ["multi_query_ab_test_key", "multi_query_ab_variant"])
 @pytest.mark.parametrize("value", [False, 0])
-def test_multi_query_label_parser_exposes_invalid_internal_types(field: str, value) -> None:
+def test_multi_query_label_resolution_exposes_invalid_internal_types(field: str, value) -> None:
+    overrides = parse_model_query_overrides({field: value})
     with pytest.raises(AttributeError):
-        parse_model_query_overrides({field: value})
+        resolve_model_query_settings(overrides)
 
 
 @pytest.mark.parametrize("field", ["top_k", "score_threshold"])

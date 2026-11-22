@@ -8,12 +8,17 @@ describe('buildFetchError', () => {
       status: 403,
       headers: { 'Content-Type': 'application/json' },
     })
-    await expect(buildFetchError(response, 'Failed')).resolves.toEqual(new Error('Denied (request_id=req-1)'))
+    await expect(buildFetchError(response, 'Failed')).resolves.toMatchObject({
+      message: 'Denied (request_id=req-1)',
+      requestId: 'req-1',
+      response: { status: 403 },
+    })
   })
 
   it('keeps the fallback message when the response body is empty', async () => {
-    await expect(buildFetchError(new Response('', { status: 401 }), 'Failed')).resolves.toEqual(
-      new Error('Failed (HTTP 401)'),
-    )
+    await expect(buildFetchError(new Response('', { status: 401 }), 'Failed')).resolves.toMatchObject({
+      message: 'Failed (HTTP 401)',
+      response: { status: 401 },
+    })
   })
 })

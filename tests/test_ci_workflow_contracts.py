@@ -64,15 +64,15 @@ def test_self_hosted_python_jobs_allow_a_cold_cache_fill() -> None:
 
 
 def test_ci_seed_entrypoints_bootstrap_the_repository_before_app_imports() -> None:
-    for relative_path in (
-        "scripts/seed_ci_retrieval_regression.py",
-        "scripts/seed_ci_kg_search_regression.py",
+    for relative_path, registry_import in (
+        ("scripts/seed_ci_retrieval_regression.py", "import app.models.registry"),
+        ("scripts/seed_ci_kg_search_regression.py", 'importlib.import_module("app.models.registry")'),
     ):
         script = _read(relative_path)
         bootstrap = "sys.path.insert(0, str(REPO_ROOT))"
         assert "REPO_ROOT = Path(__file__).resolve().parents[1]" in script
         assert bootstrap in script
-        assert script.index(bootstrap) < script.index("import app.models._all")
+        assert script.index(bootstrap) < script.index(registry_import)
 
     workflow = _read(".github/workflows/ci.yml")
     for step_name in (
@@ -360,8 +360,10 @@ def test_main_ci_routes_public_prs_to_hosted_smoke_checks() -> None:
     assert "/home/user/.local/share/uv" not in workflow
     assert "/data/actions-runner" not in workflow
     assert "127.0.0.1:35983" not in workflow
-    assert "docker build --network host" in workflow
-    assert workflow.count("docker build --network host") == 3
+    for image, dockerfile in (("backend", "docker/Dockerfile"), ("web", "web/Dockerfile.prod")):
+        build_step = workflow.split(f"- name: Build {image} image", 1)[1].split("\n      - name:", 1)[0]
+        assert "docker build --network host" in build_step
+        assert f"-t mimirq-{image} -f {dockerfile}" in build_step
     assert "docker/setup-buildx-action" not in workflow
     assert "docker/build-push-action" not in workflow
     assert "Prepare Docker build proxy" in workflow
@@ -756,16 +758,14 @@ def test_playwright_prod_server_can_reuse_an_existing_build_artifact() -> None:
     playwright_config = _read("web/playwright.config.ts")
 
     assert "const reuseBuildOutput = process.env.PLAYWRIGHT_REUSE_BUILD === '1'" in playwright_config
-    assert (
-        "MARKDOWN_IMAGE_PROXY_SECRET=${markdownImageProxySecret} HOST=127.0.0.1 PORT=${PORT} pnpm start"
-        in playwright_config
+    assert re.search(
+        r"\? reuseBuildOutput\s+\? 'pnpm start'\s+: 'pnpm exec next build --webpack && pnpm start'",
+        playwright_config,
     )
-    assert (
-        "MARKDOWN_IMAGE_PROXY_SECRET=${markdownImageProxySecret} "
-        "pnpm exec next build --webpack && "
-        "MARKDOWN_IMAGE_PROXY_SECRET=${markdownImageProxySecret} "
-        "HOST=127.0.0.1 PORT=${PORT} pnpm start" in playwright_config
-    )
+    assert "env: useProdServer" in playwright_config
+    assert "MARKDOWN_IMAGE_PROXY_SECRET: markdownImageProxySecret" in playwright_config
+    assert "HOST: '127.0.0.1'" in playwright_config
+    assert "PORT: String(PORT)" in playwright_config
 
 
 def test_generic_browser_suite_does_not_probe_an_ambient_live_backend() -> None:
@@ -841,15 +841,13 @@ def test_live_browser_smoke_never_bootstraps_a_persistent_admin() -> None:
 def test_live_browser_smoke_targets_the_current_full_index_execution_controls() -> None:
     live_spec = _read("web/e2e/live-stack.smoke.spec.ts")
 
-    assert "getByRole('group', { name: '执行终点' })" in live_spec
-    assert 'input[name="ingestion-execution-mode"][value="full_index"]' in live_spec
-    assert "await fullIndexMode.check()" in live_spec
-    assert "await expect(fullIndexMode).toBeChecked()" in live_spec
-    assert "getByText('执行阶段', { exact: true })" not in live_spec
-    assert "getByRole('combobox')" not in live_spec
-    assert "getByRole('option', { name: /解析 \\+ 索引/ })" not in live_spec
+    full_index_control = live_spec.split("async function selectFullIndexExecutionMode", 1)[1].split("\n}\n", 1)[0]
+    assert "getByRole('group', { name: '处理方式', exact: true })" in full_index_control
+    assert r"getByRole('radio', { name: /^解析 \+ 索引/ })" in full_index_control
+    assert "await fullIndexMode.check()" in full_index_control
+    assert "await expect(fullIndexMode).toBeChecked()" in full_index_control
     assert "/api/v1/documents/upload-batch" in live_spec
-    assert "选择数据集" in live_spec
+    assert "getByRole('dialog', { name: '数据集', exact: true })" in live_spec
     assert "来源与证据" in live_spec
 
 

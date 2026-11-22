@@ -740,11 +740,6 @@ export function useSettingsPageState() {
       setSaveError('配置正在保存，请完成后再修改模型配置。')
       return
     }
-    if (provider.category === 'reranker') {
-      setSaveError('请在「检索与生成」中选择重排服务与数量。')
-      setDialogOpen(false)
-      return
-    }
     setSelectedProvider(provider)
     setDialogOpen(true)
   }
@@ -813,13 +808,12 @@ export function useSettingsPageState() {
   }
 
   const groupedProviders = useMemo(() => {
-    const groups: Record<ProviderCategory, ModelProvider[]> = {
+    const groups: Record<'model' | 'embedding', ModelProvider[]> = {
       model: [],
       embedding: [],
-      reranker: [],
     }
     providers.forEach((provider) => {
-      groups[provider.category].push(provider)
+      if (provider.category !== 'reranker') groups[provider.category].push(provider)
     })
     return groups
   }, [providers])

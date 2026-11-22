@@ -25,7 +25,7 @@ def _rate_limited_app() -> FastAPI:
         burst_size=1,
         chat_requests_per_second=0.000001,
         chat_burst_size=1,
-        chat_prefixes=["/api/v1/chat/stream"],
+        chat_route_prefixes=["/api/v1/chat/stream"],
     )
 
     @app.get("/api/work")

@@ -1,14 +1,16 @@
 'use client'
 
 import { ModelProviderCard } from '@/components/model-provider-card'
-import type { ModelProvider, ProviderCategory } from '@/types/models'
+import { Button } from '@/components/ui/button'
+import type { ModelProvider } from '@/types/models'
 import type { PlatformIcon } from '@/components/icons'
 import { Cpu, Layers, Server } from '@/components/icons'
 import { settingsTextTokens } from '@/components/ui/system-page-tokens'
 
-const PROVIDER_CATEGORIES: readonly ProviderCategory[] = ['model', 'embedding', 'reranker']
+const PROVIDER_CATEGORIES = ['model', 'embedding'] as const
+type ConfigurableCategory = (typeof PROVIDER_CATEGORIES)[number]
 
-const CATEGORY_INFO: Record<ProviderCategory, { title: string; description: string; icon: PlatformIcon }> = {
+const CATEGORY_INFO: Record<ConfigurableCategory, { title: string; description: string; icon: PlatformIcon }> = {
   model: {
     title: '语言模型',
     description: '用于对话和文本生成的大语言模型',
@@ -19,22 +21,19 @@ const CATEGORY_INFO: Record<ProviderCategory, { title: string; description: stri
     description: '将文档和问题转换为检索向量。更换模型后，已有文档需重新入库。',
     icon: Cpu,
   },
-  reranker: {
-    title: '重排序模型',
-    description: '优化检索结果的相关性排序',
-    icon: Layers,
-  },
 }
 
 type ModelProvidersSectionProps = {
-  groupedProviders: Readonly<Record<ProviderCategory, readonly ModelProvider[]>>
+  groupedProviders: Readonly<Record<ConfigurableCategory, readonly ModelProvider[]>>
   onConfigure: (provider: ModelProvider) => void
+  onConfigureReranker: () => void
   retiredEmbeddingModel: string | null
 }
 
 export function ModelProvidersSection({
   groupedProviders,
   onConfigure,
+  onConfigureReranker,
   retiredEmbeddingModel,
 }: Readonly<ModelProvidersSectionProps>) {
   return (
@@ -70,6 +69,13 @@ export function ModelProvidersSection({
             </div>
           )
         })}
+        <div className="flex flex-wrap items-center gap-2">
+          <Layers className="h-4 w-4 shrink-0 text-muted-foreground" />
+          <h3 className="mr-2 text-sm font-medium leading-6 text-foreground">重排序模型</h3>
+          <Button type="button" variant="outline" aria-controls="sec-rag" onClick={onConfigureReranker}>
+            配置重排服务
+          </Button>
+        </div>
       </div>
     </section>
   )

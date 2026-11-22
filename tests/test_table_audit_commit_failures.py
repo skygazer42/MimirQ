@@ -32,7 +32,11 @@ def test_audit_commit_failure_rolls_back_and_warns(operation, caplog):
             dataset_tables._audit_table_query(**args, table_id="table", sql="SELECT 1")
         else:
             dataset_tables._audit_fls_redaction(
-                **args, source="preview", resource_type="dataset_table", resource_id="table"
+                **args,
+                source="preview",
+                resource_type="dataset_table",
+                resource_id="table",
+                details={"redacted_columns": ["secret"]},
             )
 
     assert db.rolled_back

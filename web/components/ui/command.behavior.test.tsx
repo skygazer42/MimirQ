@@ -44,7 +44,7 @@ it('focuses search on open and returns focus to the opener without a Radix trigg
     expect(document.activeElement).toBe(document.querySelector('input'))
 
     await act(async () => {
-      document.querySelector<HTMLButtonElement>('[data-command-dialog] > button')!.click()
+      document.activeElement?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
     })
     await act(async () => {
       await vi.waitFor(() => expect(document.activeElement).toBe(opener))

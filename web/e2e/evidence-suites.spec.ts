@@ -165,9 +165,12 @@ for (const width of [1440, 390]) {
     await page.setViewportSize({ width, height: width === 390 ? 844 : 900 })
     const server = await installSuiteApi(page)
     const response = {
+      schema: 'mimirq.evidence.v1',
       query_for_retrieval: '原文问题',
       has_evidence: true,
+      abstain_triggered: false,
       citations: [{ document_id: 'minimal' }, source],
+      metrics: {},
       retrieval_trace: { kept: false },
     }
     await page.route(
@@ -236,7 +239,16 @@ for (const width of [1440, 390]) {
         (url) => url.pathname === '/api/v1/rag/retrieve',
         async (route) => {
           await retrieval.promise
-          return route.fulfill({ json: { query_for_retrieval: '旧请求', citations: [source], has_evidence: true } })
+          return route.fulfill({
+            json: {
+              schema: 'mimirq.evidence.v1',
+              query_for_retrieval: '旧请求',
+              citations: [source],
+              metrics: {},
+              has_evidence: true,
+              abstain_triggered: false,
+            },
+          })
         },
       )
       await openWorkbench(page)

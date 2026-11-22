@@ -33,6 +33,9 @@ class _Query:
     def filter(self, *_args, **_kwargs):
         return self
 
+    def add_columns(self, *_columns):
+        return self
+
     def order_by(self, *_args, **_kwargs):
         return self
 
@@ -191,18 +194,18 @@ def test_diff_document_versions_scans_sqlite_legacy_rows_and_chunk_ids(monkeypat
         params=DocumentVersionDiffQuery.model_validate({"from": "v1", "to": "v2"}),
     )
 
-    assert result["from_chunk_count"] == 2
-    assert result["to_chunk_count"] == 2
-    assert result["unchanged_chunks"] == 1
-    assert result["added_chunks"] == 1
-    assert result["removed_chunks"] == 1
-    assert result["added_hashes"] == [f"id:{to_chunk_id}"]
-    assert result["removed_hashes"] == [f"id:{removed_from_chunk_id}"]
+    assert result.from_chunk_count == 2
+    assert result.to_chunk_count == 2
+    assert result.unchanged_chunks == 1
+    assert result.added_chunks == 1
+    assert result.removed_chunks == 1
+    assert result.added_hashes == [f"id:{to_chunk_id}"]
+    assert result.removed_hashes == [f"id:{removed_from_chunk_id}"]
 
 
 def test_delete_document_version_scans_sqlite_metadata_and_restores_current_hash(monkeypatch) -> None:
     from app.api.v1.documents import versions as document_versions
-    from app.rag.retrieval.recall import retriever as retriever_module
+    from app.rag.retrieval import corpus
 
     tenant_id = uuid.uuid4()
     document_id = uuid.uuid4()
@@ -248,13 +251,7 @@ def test_delete_document_version_scans_sqlite_metadata_and_restores_current_hash
     )
     monkeypatch.setattr(document_versions, "Indexer", _FakeIndexer, raising=True)
     monkeypatch.setattr(document_versions, "audit_log_event", lambda *_a, **_k: None, raising=True)
-    retriever_cls = type(retriever_module.hybrid_retriever)
-    monkeypatch.setattr(
-        retriever_cls,
-        "remove_from_bm25_index_by_metadata_filter",
-        lambda _self, **_kwargs: None,
-        raising=False,
-    )
+    monkeypatch.setattr(corpus, "get_corpus_index", lambda: SimpleNamespace(remove=lambda **_kwargs: None))
 
     response = document_versions.delete_document_version(
         document_id=document_id,

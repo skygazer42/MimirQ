@@ -14,6 +14,8 @@ import app.rag.embedding.adapter as adapter_module
 class _DeterministicEmbeddingModel:
     def __init__(self) -> None:
         self.dimension = 3
+        self.model = "deterministic-fixture"
+        self.base_url = ""
 
     def encode(self, texts: list[str]) -> list[list[float]]:
         vectors: list[list[float]] = []
@@ -22,6 +24,9 @@ class _DeterministicEmbeddingModel:
             checksum = float(sum(ord(ch) for ch in text) % 17)
             vectors.append([size, checksum, size + checksum + 1.0])
         return vectors
+
+    async def aencode(self, texts: list[str]) -> list[list[float]]:
+        return self.encode(texts)
 
 
 def test_langchain_embeddings_adapter_satisfies_embeddings_contract(monkeypatch: pytest.MonkeyPatch) -> None:

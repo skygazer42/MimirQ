@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test'
 import { realDatasetFixture, remainingShot } from './remaining-pages.helpers'
-test('retain the three original second-batch pages', async ({ page }) => {
+test('capture the three live second-batch workspaces', async ({ page }) => {
   test.setTimeout(600000)
   const state = await realDatasetFixture(page)
   await page.setViewportSize({ width: 1600, height: 1000 })
@@ -11,6 +11,6 @@ test('retain the three original second-batch pages', async ({ page }) => {
   ]) {
     await page.goto(url, { waitUntil: 'domcontentloaded' })
     await expect(page.getByRole('heading', { level: 1 }).first()).toBeVisible({ timeout: 60000 })
-    await remainingShot(page, `before-${name}`)
+    await remainingShot(page, `baseline-${name}`)
   }
 })

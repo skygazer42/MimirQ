@@ -12,6 +12,7 @@ if not hasattr(_starlette_status, "HTTP_422_UNPROCESSABLE_CONTENT"):
 
 from app.api.dependencies import get_current_account_id, get_tenant_id
 from app.infrastructure.database.connection import get_db
+from app.services.identity.rbac import TenantPermissions
 from app.services.runtime import readiness_cache as health_readiness
 
 
@@ -38,6 +39,27 @@ def _build_app() -> tuple[FastAPI, object, object, object]:
 def _reset_caches(health_module: object) -> None:
     health_readiness.invalidate_ready_cache()
     health_module._redis_client_slot.invalidate()  # type: ignore[attr-defined]
+
+
+def _assert_observability_gate(app, module, path, monkeypatch):
+    client = TestClient(app)
+    assert client.get(path).status_code == 401
+
+    tenant_id = uuid.uuid4()
+    app.dependency_overrides[get_db] = _override_get_db
+    app.dependency_overrides[get_tenant_id] = lambda: tenant_id
+    app.dependency_overrides[get_current_account_id] = lambda: "test-account"
+
+    def deny(_db, tenant, account_id, permission, *, detail):
+        assert tenant == tenant_id
+        assert account_id == "test-account"
+        assert permission == TenantPermissions.OBSERVABILITY_READ
+        raise HTTPException(status_code=403, detail=detail)
+
+    monkeypatch.setattr(module, "ensure_tenant_permission", deny)
+    assert client.get(path).status_code == 403
+    monkeypatch.setattr(module, "ensure_tenant_permission", lambda *_args, **_kwargs: None)
+    return client
 
 
 def test_public_version_metadata_matches_package_version() -> None:
@@ -141,20 +163,12 @@ def test_public_ready_endpoint_preserves_probe_status_without_detail_leak(monkey
     assert response.json() == {"ok": False, "status": "unready"}
 
 
-def test_health_details_are_admin_gated_and_expose_dependency_details(monkeypatch):  # noqa: ANN001
+def test_health_details_are_admin_gated_and_expose_dependency_details(monkeypatch, tmp_path):  # noqa: ANN001
     app, _main_module, health_module, _meta_module = _build_app()
     _reset_caches(health_module)
 
-    app.dependency_overrides[get_db] = _override_get_db
-
-    def _deny_observability_permission(*_args, **_kwargs):
-        raise HTTPException(status_code=403, detail="No permission to access observability dashboards")
-
-    monkeypatch.setattr(health_module, "ensure_tenant_permission", _deny_observability_permission)
-    forbidden = TestClient(app).get("/api/v1/health/details")
-    assert forbidden.status_code == 403
-
-    monkeypatch.setattr(health_module, "_ensure_admin", lambda *_args, **_kwargs: None, raising=True)
+    client = _assert_observability_gate(app, health_module, "/api/v1/health/details", monkeypatch)
+    monkeypatch.setattr(health_module.settings, "UPLOAD_DIR", str(tmp_path))
     monkeypatch.setattr(
         health_module, "check_database", lambda *_args, **_kwargs: ({"status": "ok"}, True), raising=True
     )
@@ -187,15 +201,10 @@ def test_health_details_are_admin_gated_and_expose_dependency_details(monkeypatc
         raising=True,
     )
     monkeypatch.setattr(health_module, "rag_runtime_warmup_ready", lambda: True, raising=True)
-    monkeypatch.setattr(health_module, "_get_redis_client", lambda: object(), raising=True)
     monkeypatch.setattr(health_module, "_ready_cache_key", lambda: ("test",), raising=True)
     monkeypatch.setattr(health_readiness, "_READY_CACHE_TTL_SEC", 0.0)
 
-    app.dependency_overrides[get_db] = _override_get_db
-    app.dependency_overrides[get_tenant_id] = lambda: uuid.uuid4()
-    app.dependency_overrides[get_current_account_id] = lambda: "test-account"
-
-    response = TestClient(app).get("/api/v1/health/details")
+    response = client.get("/api/v1/health/details")
 
     assert response.status_code == 200
     assert response.json()["database"] == {"status": "ok"}
@@ -256,21 +265,8 @@ def test_public_meta_is_trimmed_and_details_are_admin_gated(monkeypatch):  # noq
     assert set(public.json().keys()) == {"name", "api_version", "build", "features"}
     assert set(public.json()["features"].keys()) == {"auth_mode"}
 
-    app.dependency_overrides[get_db] = _override_get_db
-
-    def _deny_observability_permission(*_args, **_kwargs):
-        raise HTTPException(status_code=403, detail="No permission to access observability dashboards")
-
-    monkeypatch.setattr(meta_module, "ensure_tenant_permission", _deny_observability_permission)
-    forbidden = TestClient(app).get("/api/v1/meta/details")
-    assert forbidden.status_code == 403
-
-    monkeypatch.setattr(meta_module, "_ensure_admin", lambda *_args, **_kwargs: None, raising=True)
-    app.dependency_overrides[get_db] = _override_get_db
-    app.dependency_overrides[get_tenant_id] = lambda: uuid.uuid4()
-    app.dependency_overrides[get_current_account_id] = lambda: "test-account"
-
-    detailed = TestClient(app).get("/api/v1/meta/details")
+    client = _assert_observability_gate(app, meta_module, "/api/v1/meta/details", monkeypatch)
+    detailed = client.get("/api/v1/meta/details")
 
     assert detailed.status_code == 200
     assert "features" in detailed.json()

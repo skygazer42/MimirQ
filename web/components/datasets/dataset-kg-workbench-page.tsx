@@ -40,7 +40,9 @@ import { cn, detachPromise } from '@/lib/utils'
 import { fetchInitialGraph } from '@/lib/graph-service'
 import type { GraphClusteringWorkerApi } from '@/workers/graph-clustering.worker'
 
-import type { Document, KGExtractResponse, KGGraphNode, KGStatsResponse } from '@/types'
+import type { Document, KGGraphNode, KGStatsResponse } from '@/types'
+
+type KGExtractionResult = Awaited<ReturnType<typeof kgApi.extract>>
 
 function limitPositiveInt(raw: unknown, fallback: number, opts?: { min?: number; max?: number }): number {
   const n = Math.floor(Number(raw))
@@ -197,7 +199,7 @@ function DatasetKGWorkbench({ datasetId }: Readonly<{ datasetId: string }>) {
   const extractionRequest = useRef<symbol | null>(null)
   const [extractProgress, setExtractProgress] = useState<{ done: number; total: number } | null>(null)
   const [extractResults, setExtractResults] = useState<
-    Record<string, { ok: true; res: KGExtractResponse } | { ok: false; error: string }>
+    Record<string, { ok: true; res: KGExtractionResult } | { ok: false; error: string }>
   >({})
   const extractionBusy = extractRunning || singleExtractingDocId !== null
 
@@ -443,7 +445,6 @@ function DatasetKGWorkbench({ datasetId }: Readonly<{ datasetId: string }>) {
   const extractDocument = useCallback(
     (documentId: string) =>
       kgApi.extract(documentId, {
-        async: false,
         pipeline_hash: effectivePipelineHash,
         replace_existing: replaceExisting,
         prune_orphan_entities: pruneOrphans,
@@ -463,7 +464,7 @@ function DatasetKGWorkbench({ datasetId }: Readonly<{ datasetId: string }>) {
         const res = await extractDocument(id)
         if (extractionRequest.current !== request) return
         setExtractResults((prev) => ({ ...prev, [id]: { ok: true, res } }))
-        toast.success(`KG 抽取完成：events=${res.event_count}`)
+        toast.success(res.queued ? '已提交图谱抽取任务' : `图谱抽取完成，共 ${res.event_count} 个事件`)
       } catch (e: unknown) {
         if (extractionRequest.current !== request) return
         const msg = formatApiError(e, 'KG 抽取失败')
@@ -502,7 +503,7 @@ function DatasetKGWorkbench({ datasetId }: Readonly<{ datasetId: string }>) {
     setExtractProgress({ done: 0, total: docIds.length })
     setExtractResults({})
 
-    const nextResults: Record<string, { ok: true; res: KGExtractResponse } | { ok: false; error: string }> = {}
+    const nextResults: Record<string, { ok: true; res: KGExtractionResult } | { ok: false; error: string }> = {}
 
     try {
       await runWithConcurrency(docIds, concurrency, async (docId) => {
@@ -522,9 +523,17 @@ function DatasetKGWorkbench({ datasetId }: Readonly<{ datasetId: string }>) {
       })
 
       if (!isCurrent()) return
-      const okCount = Object.values(nextResults).filter((x) => x.ok).length
+      const results = Object.values(nextResults)
+      const okCount = results.filter((result) => result.ok).length
+      const queuedCount = results.filter((result) => result.ok && result.res.queued).length
       const failCount = docIds.length - okCount
-      const resultLabel = `抽取完成：${okCount} 份成功，${failCount} 份失败`
+      const resultLabel = [
+        queuedCount > 0 && `已提交 ${queuedCount} 份`,
+        okCount > queuedCount && `已完成 ${okCount - queuedCount} 份`,
+        failCount > 0 && `${failCount} 份失败`,
+      ]
+        .filter(Boolean)
+        .join('，')
       if (failCount) toast.error(resultLabel)
       else toast.success(resultLabel)
     } finally {
@@ -667,8 +676,16 @@ function DatasetKGWorkbench({ datasetId }: Readonly<{ datasetId: string }>) {
                 <DropdownMenuItem onSelect={() => router.push(`/datasets/${datasetId}/ingestion`)}>
                   入库策略
                 </DropdownMenuItem>
-                <DropdownMenuItem onSelect={() => router.push('/graph/diagnostics')}>图谱诊断</DropdownMenuItem>
-                <DropdownMenuItem onSelect={() => router.push('/graph/snapshots')}>图谱快照</DropdownMenuItem>
+                <DropdownMenuItem
+                  onSelect={() => router.push(`/graph/diagnostics?dataset_id=${encodeURIComponent(datasetId)}`)}
+                >
+                  图谱诊断
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onSelect={() => router.push(`/graph/snapshots?dataset_id=${encodeURIComponent(datasetId)}`)}
+                >
+                  图谱快照
+                </DropdownMenuItem>
                 <DropdownMenuItem disabled={docsQuery.isFetching} onSelect={() => detachPromise(docsQuery.refetch())}>
                   重新读取文档
                 </DropdownMenuItem>
@@ -1002,7 +1019,7 @@ function DatasetKGWorkbench({ datasetId }: Readonly<{ datasetId: string }>) {
                             <span className="font-mono text-xs truncate">{docId}</span>
                             {r.ok ? (
                               <Badge variant="outline" className="font-mono text-xs">
-                                events={r.res.event_count}
+                                {r.res.queued ? '已提交' : `${r.res.event_count} 个事件`}
                               </Badge>
                             ) : (
                               <Badge variant="soft" className="font-mono text-xs">

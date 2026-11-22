@@ -8,9 +8,8 @@ import pytest
 from fastapi import HTTPException
 from fastapi.responses import Response
 from langchain_core.documents import Document
-from starlette.requests import Request
 
-from app.api.schemas.documents import ChunkPreviewFormFields
+from app.api.schemas.documents import ChunkPreviewByShaForm, ChunkPreviewQuery
 from app.api.v1.documents import routes as documents_module
 from app.api.v1.pipelines import parsing as parsing_module
 from app.main import _expand_dev_cors_origins, app, lifespan
@@ -18,22 +17,6 @@ from app.rag.ingestion.indexing.support import recovery as recovery_module
 from app.services.documents.preview_cache import ParseCacheEntry
 
 preview_module = documents_module.document_chunk_preview
-
-
-def _request() -> Request:
-    return Request(
-        {
-            "type": "http",
-            "method": "POST",
-            "path": "/",
-            "headers": [],
-            "query_string": b"",
-        }
-    )
-
-
-def _preview_params(**overrides: object) -> ChunkPreviewFormFields:
-    return ChunkPreviewFormFields(parser_backend="basic", chunk_strategy="langchain_recursive", **overrides)
 
 
 def test_expand_dev_cors_origins_adds_local_aliases_without_touching_remote_origins() -> None:
@@ -48,13 +31,17 @@ def test_expand_dev_cors_origins_adds_local_aliases_without_touching_remote_orig
 
 
 @pytest.mark.asyncio
-async def test_lifespan_preserves_startup_and_shutdown_order(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_lifespan_preserves_startup_and_shutdown_order(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     import app.main as main_module
+    from app.services.dify import warmup as dify_warmup
 
     events: list[str] = []
 
     class _DB:
-        def close(self) -> None:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
             events.append("db.close")
 
     async def _init_queue() -> None:
@@ -66,11 +53,13 @@ async def test_lifespan_preserves_startup_and_shutdown_order(monkeypatch: pytest
     async def _close_queue() -> None:
         events.append("close_queue")
 
-    fake_dify = types.SimpleNamespace(
-        start_dify_external_knowledge_warmup=lambda: events.append("dify_warmup"),
-    )
+    def shutdown_recorder(event):
+        async def record(*_args):
+            events.append(event)
 
-    monkeypatch.setattr(main_module.settings, "UPLOAD_DIR", "/tmp/mimirq-tests", raising=False)
+        return record
+
+    monkeypatch.setattr(main_module.settings, "UPLOAD_DIR", str(tmp_path))
     monkeypatch.setattr(main_module.settings, "TABLE_STORE_DIR", None, raising=False)
     monkeypatch.setattr(main_module.settings, "VECTOR_BACKEND", "milvus", raising=False)
     monkeypatch.setattr(main_module.settings, "DB_RUNTIME_MIGRATIONS_ENABLED", True, raising=False)
@@ -102,9 +91,21 @@ async def test_lifespan_preserves_startup_and_shutdown_order(monkeypatch: pytest
     monkeypatch.setattr(main_module, "_start_runtime_warmup", lambda: events.append("warmup_runtime"), raising=True)
     monkeypatch.setattr(main_module, "close_http_client_pool", _close_http, raising=True)
     monkeypatch.setattr(main_module, "close_queue", _close_queue, raising=True)
+    for name in (
+        "_stop_background_warmups",
+        "_stop_task_queue_observability_poller",
+        "drain_blocking_retrieval_workers",
+        "close_mcp_client",
+    ):
+        monkeypatch.setattr(main_module, name, shutdown_recorder(name))
+    monkeypatch.setattr(main_module, "close_tracing", lambda: events.append("close_tracing"))
+    monkeypatch.setattr(main_module, "reset_rag_engine", lambda: events.append("reset_rag_engine"))
+    monkeypatch.setattr(main_module, "reset_reranker_caches", lambda: events.append("reset_reranker_caches"))
     monkeypatch.setattr(main_module.engine, "dispose", lambda: events.append("dispose"), raising=True)
     monkeypatch.setattr(main_module, "shutdown_otel", lambda: events.append("shutdown_otel"), raising=True)
-    monkeypatch.setitem(sys.modules, "app.api.v1.integrations.dify", fake_dify)
+    monkeypatch.setattr(
+        dify_warmup, "start_dify_external_knowledge_warmup", lambda: events.append("dify_warmup")
+    )
 
     async with lifespan(app):
         events.append("yield")
@@ -120,8 +121,15 @@ async def test_lifespan_preserves_startup_and_shutdown_order(monkeypatch: pytest
         "warmup_runtime",
         "dify_warmup",
         "yield",
-        "close_http",
+        "_stop_background_warmups",
+        "_stop_task_queue_observability_poller",
+        "drain_blocking_retrieval_workers",
+        "close_tracing",
+        "close_mcp_client",
         "close_queue",
+        "reset_rag_engine",
+        "reset_reranker_caches",
+        "close_http",
         "dispose",
         "shutdown_otel",
     ]
@@ -157,16 +165,6 @@ def test_build_pdf_fallback_candidates_preserves_order_and_basic_fallback(
         "markitdown",
         "basic",
     ]
-
-
-class _PreviewPipeline:
-    governance_enabled = False
-    chunk_strategy_params: dict[str, object] = {}
-    chunk_merge_small_min_chars = 0
-    governance_regex_rules: list[object] = []
-
-    def __getattr__(self, _name: str) -> object:
-        return 0
 
 
 def test_preview_chunking_by_sha_preserves_offsets_metadata_and_dataset_authorization(
@@ -205,13 +203,7 @@ def test_preview_chunking_by_sha_preserves_offsets_metadata_and_dataset_authoriz
     monkeypatch.setattr(
         preview_module.dataset_service,
         "assert_dataset_readable",
-        lambda _db, _ds, acct: readable_calls.append(("readable", acct)),
-        raising=True,
-    )
-    monkeypatch.setattr(
-        preview_module,
-        "resolve_pipeline_effective",
-        lambda **_kwargs: _PreviewPipeline(),
+        lambda _db, ds, acct: readable_calls.append((str(ds.id), acct)),
         raising=True,
     )
     monkeypatch.setattr(preview_module.chunker_factory, "resolve_strategy", lambda _strategy: "langchain_recursive")
@@ -246,21 +238,24 @@ def test_preview_chunking_by_sha_preserves_offsets_metadata_and_dataset_authoriz
     )
 
     response = preview_module.preview_chunking_by_sha(
-        request=_request(),
         response=Response(),
-        file_fields=preview_module.ChunkPreviewByShaFileFields(
+        form=ChunkPreviewByShaForm(
             file_sha256="a" * 64,
             file_type="txt",
             filename="demo.txt",
             file_size=10,
+            parser_backend="basic",
+            chunk_strategy="langchain_recursive",
+            dataset_id=str(dataset_id),
+            pipeline='{"chunk_merge_small_min_chars":0,"governance_enabled":false}',
         ),
-        params=_preview_params(dataset_id=str(dataset_id)),
+        query=ChunkPreviewQuery(),
         tenant_id=tenant_id,
         account_id=account_id,
         db=object(),
     )
 
-    assert readable_calls == [("readable", account_id)]
+    assert readable_calls == [(str(dataset_id), account_id)]
     assert response.parse_cache_hit is True
     assert response.parse_cache_age_ms == 17
     assert response.total_characters == len("abcdef\nwxyz")

@@ -1,6 +1,7 @@
 import { expect, test, type Page } from '@playwright/test'
 
 import type { ChunkPreviewItem, ChunkPreviewResponse } from '@/types'
+import { changePreviewAppearance } from './chunk-compare.helpers'
 import { installCommonApiMocks } from './enterprise-quality-telemetry.helpers'
 
 test.use({ serviceWorkers: 'block' })
@@ -67,6 +68,7 @@ test('keeps Unicode positions and chunk identity across source, reading and actu
   await original.getByRole('button', { name: '阅读', exact: true }).click()
   await expect(original.locator('[data-source-selected]')).toHaveText('😀AB')
   await original.getByRole('button', { name: '编辑器', exact: true }).click()
+  await expect(original.locator('.monaco-editor')).toBeVisible({ timeout: 30_000 })
   await expect
     .poll(async () => (await original.locator('.mimirq-monaco-active-highlight').allTextContents()).join(''))
     .toBe('AB')
@@ -140,6 +142,7 @@ test('keeps a linked parent and theme colors across the actual source and editor
   await expect(original.locator('mark mark')).toHaveText('AB')
   await expect(original.locator('mark').first()).toHaveText(text)
   await original.getByRole('button', { name: '编辑器', exact: true }).click()
+  await expect(original.locator('.monaco-editor')).toBeVisible({ timeout: 30_000 })
   const active = original.locator('.mimirq-monaco-active-highlight')
   await expect.poll(async () => (await active.allTextContents()).join('')).toBe('AB')
   await expect
@@ -148,8 +151,7 @@ test('keeps a linked parent and theme colors across the actual source and editor
   await original.locator('.view-line').getByText('cc', { exact: true }).click()
   await expect(original).toContainText(`位置 ${nextStart}-${nextStart + 2}`)
   await expect.poll(async () => (await active.allTextContents()).join('')).toBe('cc')
-  await page.getByRole('button', { name: '切换主题', exact: true }).click()
-  await page.getByRole('menuitem', { name: '浅色', exact: true }).click()
+  await changePreviewAppearance(page, '浅色')
   await expect(page.locator('html')).toHaveClass(/light/)
   const lightColor = await active.evaluate((element) => getComputedStyle(element).backgroundColor)
   expect(lightColor).not.toBe('rgba(0, 0, 0, 0)')
@@ -157,8 +159,7 @@ test('keeps a linked parent and theme colors across the actual source and editor
     path: '../.frontend-structure/20261112-full-frontend-guidelines/monaco-contracts/linked-parent-light.png',
     fullPage: true,
   })
-  await page.getByRole('button', { name: '切换主题', exact: true }).click()
-  await page.getByRole('menuitem', { name: '深色', exact: true }).click()
+  await changePreviewAppearance(page, '深色')
   await expect(page.locator('html')).toHaveClass(/dark/)
   await expect.poll(() => active.evaluate((element) => getComputedStyle(element).backgroundColor)).not.toBe(lightColor)
   await page.screenshot({

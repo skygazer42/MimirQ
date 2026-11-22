@@ -4,8 +4,6 @@ Edits are limited to equivalent nested conditions and else blocks after a direct
 terminating statement. Cached-value reparsing is reported for call-chain review.
 """
 
-from __future__ import annotations
-
 import argparse
 import ast
 import hashlib

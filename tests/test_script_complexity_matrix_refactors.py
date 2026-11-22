@@ -813,10 +813,6 @@ def test_sample_main_uses_cli_defaults_and_preserves_stdout(
             "output_path": (sample_mod._repo_root() / "runs" / "sample_bench.json").resolve(),
             "top_k": None,
             "retrieval_mode": None,
-            "sparse_retrieval_enabled": False,
-            "sparse_retrieval_provider": "deterministic",
-            "colbert_retrieval_enabled": None,
-            "colbert_retrieval_provider": None,
         }
     ]
     assert stdout == (

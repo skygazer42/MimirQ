@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from collections.abc import Iterable, Mapping
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, TypedDict
@@ -10,6 +8,12 @@ if TYPE_CHECKING:
     from app.models.documents.records import Document
 
 CONNECTOR_RECONCILE_SCHEMA_V1 = "mimirq.connector_reconcile.v1"
+_DB_CATALOG_CONNECTORS = frozenset({"mysql_catalog", "sqlserver_catalog"})
+
+
+def db_catalog_row_source_ref(connector_id: str, config_id: str | None) -> str:
+    ref = f"db_catalog_rows:{connector_id}"
+    return f"{ref}:{config_id}" if config_id else ref
 
 
 class _ConnectorSourceIdentity(TypedDict):
@@ -62,7 +66,7 @@ def resolve_connector_reconcile_source_refs(
     return []
 
 
-def extract_connector_source_identity(doc: Document) -> _ConnectorSourceIdentity:
+def extract_connector_source_identity(doc: "Document") -> _ConnectorSourceIdentity:
     meta = doc.doc_metadata
     meta_map = meta if isinstance(meta, Mapping) else {}
     connector = meta_map.get("connector") if isinstance(meta_map.get("connector"), Mapping) else {}
@@ -88,10 +92,10 @@ def extract_connector_source_identity(doc: Document) -> _ConnectorSourceIdentity
 
 def _collect_connector_reconcile_documents(
     *,
-    documents: Iterable[Document],
+    documents: "Iterable[Document]",
     connector_id: str,
     config_id: str | None,
-) -> tuple[dict[str, list[Document]], dict[str, list[Document]], int, int, int]:
+) -> "tuple[dict[str, list[Document]], dict[str, list[Document]], int, int, int]":
     active_by_ref: dict[str, list[Document]] = {}
     disabled_by_ref: dict[str, list[Document]] = {}
     documents_scanned = 0
@@ -115,6 +119,12 @@ def _collect_connector_reconcile_documents(
         if not source_ref:
             documents_without_identity += 1
             continue
+        if (
+            connector_id in _DB_CATALOG_CONNECTORS
+            and config_id
+            and source_ref == db_catalog_row_source_ref(connector_id, None)
+        ):
+            source_ref = db_catalog_row_source_ref(connector_id, config_id)
         bucket = disabled_by_ref if doc.disabled_at is not None else active_by_ref
         bucket.setdefault(source_ref, []).append(doc)
 
@@ -125,8 +135,8 @@ def _apply_connector_reconcile_changes(
     *,
     apply: bool,
     now_dt: datetime,
-    active_by_ref: dict[str, list[Document]],
-    disabled_by_ref: dict[str, list[Document]],
+    active_by_ref: "dict[str, list[Document]]",
+    disabled_by_ref: "dict[str, list[Document]]",
     stale_refs: list[str],
     reenable_refs: list[str],
 ) -> tuple[int, int]:
@@ -153,7 +163,7 @@ def plan_connector_reconcile(
     connector_id: str,
     config_id: str | None,
     dataset_id: str | None,
-    documents: Iterable[Document],
+    documents: "Iterable[Document]",
     desired_source_refs: list[str],
     apply: bool,
     now: datetime | None = None,
@@ -162,6 +172,9 @@ def plan_connector_reconcile(
     now_dt = now or _now_utc()
     normalized_connector_id = connector_id.strip()
     desired_refs = _normalize_refs(desired_source_refs)
+    if normalized_connector_id in _DB_CATALOG_CONNECTORS and desired_refs:
+        # Table manifests describe the contents of one row sidecar per saved config.
+        desired_refs = [db_catalog_row_source_ref(normalized_connector_id, config_id)]
     desired_set = set(desired_refs)
     limit = max(1, int(sample_limit or 0))
 
@@ -212,6 +225,7 @@ def plan_connector_reconcile(
 
 __all__ = [
     "CONNECTOR_RECONCILE_SCHEMA_V1",
+    "db_catalog_row_source_ref",
     "extract_connector_source_identity",
     "plan_connector_reconcile",
     "resolve_connector_reconcile_source_refs",

@@ -3,12 +3,13 @@ from uuid import uuid4
 
 import pytest
 
+from app.models.documents.records import DocumentChunk
 from app.rag.retrieval.stages import knowledge_graph
 
 
 def test_authoritative_kg_rows_cannot_disappear_when_content_is_missing():
     chunk_id = uuid4()
-    row = SimpleNamespace(id=chunk_id, document_id=uuid4(), content=None)
+    row = DocumentChunk(id=chunk_id, document_id=uuid4(), content=None, doc_metadata={})
     with pytest.raises((TypeError, ValueError)):
         knowledge_graph._build_kg_injection_docs([chunk_id], [row], scores={}, features={})
 

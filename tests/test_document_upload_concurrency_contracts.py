@@ -14,33 +14,10 @@ import app.services.documents.ingestion as upload_owner
 import app.services.documents.ingestion_policy as ingestion_policy_owner
 import app.services.documents.processing_dispatch as document_dispatch
 import app.services.documents.source_persistence as source_owner
-from app.api.v1.documents import routes as documents_module
+from app.api.schemas.documents import UploadDocumentFormFields, UploadDocumentsBatchFormFields
+from app.api.v1.documents import upload as document_upload
 from app.services.documents import source_persistence as document_dedup_service
 from app.services.documents.ingestion import DUPLICATE_DOCUMENT_PROCESSING_DETAIL
-
-document_upload = documents_module.document_upload
-
-
-def _build_overrides_form() -> document_upload.PipelineOverridesFormFields:
-    return document_upload.PipelineOverridesFormFields(
-        governance_enabled=None,
-        governance_remove_toc_lines=None,
-        governance_remove_noise_lines=None,
-        governance_unwrap_lines=None,
-        governance_remove_common_lines=None,
-        governance_unwrap_max_line_length=None,
-        governance_noise_min_chars=None,
-        governance_noise_ratio_threshold=None,
-        governance_common_lines_min_docs=None,
-        governance_common_lines_min_ratio=None,
-        chunk_size=None,
-        chunk_overlap=None,
-        chunk_vector_enabled=None,
-        bm25_index_enabled=None,
-        kg_enabled=None,
-        event_vector_enabled=None,
-        entity_vector_enabled=None,
-    )
 
 
 def _make_upload(filename: str, content: str = "hello") -> UploadFile:
@@ -178,8 +155,8 @@ async def test_upload_batch_rejects_nonpositive_max_concurrent() -> None:
     with pytest.raises(HTTPException) as exc_info:
         await document_upload.upload_documents_batch(
             background_tasks=BackgroundTasks(),
-            files=[_make_upload("bad.txt")],
-            form=document_upload.UploadDocumentsBatchFormFields(
+            form=UploadDocumentsBatchFormFields(
+                files=[_make_upload("bad.txt")],
                 parser_backend="auto",
                 chunk_strategy="langchain_recursive",
                 pipeline=None,
@@ -190,7 +167,6 @@ async def test_upload_batch_rejects_nonpositive_max_concurrent() -> None:
                 user_metadata_map=None,
                 max_concurrent=0,
             ),
-            overrides_form=_build_overrides_form(),
             tenant_id=uuid.uuid4(),
             account_id="acct-1",
             db=SimpleNamespace(),
@@ -297,8 +273,8 @@ async def test_upload_batch_cancellation_cleans_staged_temp_file(
     task = asyncio.create_task(
         document_upload.upload_documents_batch(
             background_tasks=BackgroundTasks(),
-            files=[_make_upload("staged.txt")],
-            form=document_upload.UploadDocumentsBatchFormFields(
+            form=UploadDocumentsBatchFormFields(
+                files=[_make_upload("staged.txt")],
                 parser_backend="auto",
                 chunk_strategy="langchain_recursive",
                 pipeline=None,
@@ -309,7 +285,6 @@ async def test_upload_batch_cancellation_cleans_staged_temp_file(
                 user_metadata_map=None,
                 max_concurrent=1,
             ),
-            overrides_form=_build_overrides_form(),
             tenant_id=uuid.uuid4(),
             account_id="acct-1",
             db=SimpleNamespace(),
@@ -358,8 +333,8 @@ async def test_upload_batch_uses_isolated_item_sessions_and_response_survives_cl
     result = (
         await document_upload.upload_documents_batch(
             background_tasks=BackgroundTasks(),
-            files=[_make_upload("one.txt"), _make_upload("two.txt")],
-            form=document_upload.UploadDocumentsBatchFormFields(
+            form=UploadDocumentsBatchFormFields(
+                files=[_make_upload("one.txt"), _make_upload("two.txt")],
                 parser_backend="auto",
                 chunk_strategy="langchain_recursive",
                 pipeline=None,
@@ -370,7 +345,6 @@ async def test_upload_batch_uses_isolated_item_sessions_and_response_survives_cl
                 user_metadata_map=None,
                 max_concurrent=2,
             ),
-            overrides_form=_build_overrides_form(),
             tenant_id=uuid.uuid4(),
             account_id="acct-1",
             db=outer_db,
@@ -439,8 +413,8 @@ async def test_upload_batch_closes_intake_after_attaching_successes_in_both_bran
     result = (
         await document_upload.upload_documents_batch(
             background_tasks=BackgroundTasks(),
-            files=[_make_upload("dup.txt"), _make_upload("bad.exe")],
-            form=document_upload.UploadDocumentsBatchFormFields(
+            form=UploadDocumentsBatchFormFields(
+                files=[_make_upload("dup.txt"), _make_upload("bad.exe")],
                 parser_backend="auto",
                 chunk_strategy="langchain_recursive",
                 pipeline=None,
@@ -451,7 +425,6 @@ async def test_upload_batch_closes_intake_after_attaching_successes_in_both_bran
                 user_metadata_map=None,
                 max_concurrent=2,
             ),
-            overrides_form=_build_overrides_form(),
             tenant_id=tenant_id,
             account_id="acct-1",
             db=outer_db,
@@ -505,15 +478,14 @@ async def test_single_upload_releases_ingest_lock_on_dedup_hit(monkeypatch: pyte
 
     result = await document_upload.upload_document(
         background_tasks=BackgroundTasks(),
-        file=_make_upload("dup.txt"),
-        form=document_upload.UploadDocumentFormFields(
+        form=UploadDocumentFormFields(
+            file=_make_upload("dup.txt"),
             parser_backend="auto",
             chunk_strategy="langchain_recursive",
             pipeline=None,
             dataset_id=dataset_id,
             user_metadata=None,
         ),
-        overrides_form=_build_overrides_form(),
         tenant_id=tenant_id,
         account_id="acct-1",
         db=SimpleNamespace(commit=lambda: None, refresh=lambda *_args: None),
@@ -559,15 +531,14 @@ async def test_single_upload_uses_timeout_based_ingest_lock_ttl(monkeypatch: pyt
 
     result = await document_upload.upload_document(
         background_tasks=BackgroundTasks(),
-        file=_make_upload("dup.txt"),
-        form=document_upload.UploadDocumentFormFields(
+        form=UploadDocumentFormFields(
+            file=_make_upload("dup.txt"),
             parser_backend="auto",
             chunk_strategy="langchain_recursive",
             pipeline=None,
             dataset_id=dataset_id,
             user_metadata=None,
         ),
-        overrides_form=_build_overrides_form(),
         tenant_id=tenant_id,
         account_id="acct-1",
         db=SimpleNamespace(commit=lambda: None, refresh=lambda *_args: None),
@@ -631,15 +602,14 @@ async def test_single_upload_returns_pending_same_pipeline_follower(monkeypatch:
 
     result = await document_upload.upload_document(
         background_tasks=BackgroundTasks(),
-        file=_make_upload("dup.txt"),
-        form=document_upload.UploadDocumentFormFields(
+        form=UploadDocumentFormFields(
+            file=_make_upload("dup.txt"),
             parser_backend="auto",
             chunk_strategy="langchain_recursive",
             pipeline=None,
             dataset_id=dataset_id,
             user_metadata=None,
         ),
-        overrides_form=_build_overrides_form(),
         tenant_id=tenant_id,
         account_id="acct-1",
         db=SimpleNamespace(),
@@ -670,15 +640,14 @@ async def test_single_upload_keeps_pending_different_pipeline_conflict(monkeypat
     with pytest.raises(HTTPException) as exc_info:
         await document_upload.upload_document(
             background_tasks=BackgroundTasks(),
-            file=_make_upload("dup.txt"),
-            form=document_upload.UploadDocumentFormFields(
+            form=UploadDocumentFormFields(
+                file=_make_upload("dup.txt"),
                 parser_backend="auto",
                 chunk_strategy="langchain_recursive",
                 pipeline=None,
                 dataset_id=dataset_id,
                 user_metadata=None,
             ),
-            overrides_form=_build_overrides_form(),
             tenant_id=tenant_id,
             account_id="acct-1",
             db=SimpleNamespace(),
@@ -735,22 +704,21 @@ async def test_single_upload_fails_closed_when_ingest_lock_queue_unavailable(mon
     with pytest.raises(HTTPException) as exc_info:
         await document_upload.upload_document(
             background_tasks=BackgroundTasks(),
-            file=_make_upload("queue-down.txt"),
-            form=document_upload.UploadDocumentFormFields(
+            form=UploadDocumentFormFields(
+                file=_make_upload("queue-down.txt"),
                 parser_backend="auto",
                 chunk_strategy="langchain_recursive",
                 pipeline=None,
                 dataset_id=dataset_id,
                 user_metadata=None,
             ),
-            overrides_form=_build_overrides_form(),
             tenant_id=uuid.uuid4(),
             account_id="acct-1",
             db=SimpleNamespace(),
         )
 
     assert exc_info.value.status_code == 503
-    assert exc_info.value.detail == document_upload.INGEST_LOCK_UNAVAILABLE_DETAIL
+    assert exc_info.value.detail == "Ingest lock unavailable"
 
 
 @pytest.mark.asyncio
@@ -775,22 +743,21 @@ async def test_single_upload_fails_closed_when_ingest_lock_set_fails(monkeypatch
     with pytest.raises(HTTPException) as exc_info:
         await document_upload.upload_document(
             background_tasks=BackgroundTasks(),
-            file=_make_upload("set-fails.txt"),
-            form=document_upload.UploadDocumentFormFields(
+            form=UploadDocumentFormFields(
+                file=_make_upload("set-fails.txt"),
                 parser_backend="auto",
                 chunk_strategy="langchain_recursive",
                 pipeline=None,
                 dataset_id=dataset_id,
                 user_metadata=None,
             ),
-            overrides_form=_build_overrides_form(),
             tenant_id=uuid.uuid4(),
             account_id="acct-1",
             db=SimpleNamespace(),
         )
 
     assert exc_info.value.status_code == 503
-    assert exc_info.value.detail == document_upload.INGEST_LOCK_UNAVAILABLE_DETAIL
+    assert exc_info.value.detail == "Ingest lock unavailable"
 
 
 @pytest.mark.asyncio
@@ -824,15 +791,14 @@ async def test_single_upload_skips_ingest_lock_when_queue_disabled(monkeypatch: 
     db = _FakeItemSession("single-disabled")
     result = await document_upload.upload_document(
         background_tasks=BackgroundTasks(),
-        file=_make_upload("local-disabled.txt"),
-        form=document_upload.UploadDocumentFormFields(
+        form=UploadDocumentFormFields(
+            file=_make_upload("local-disabled.txt"),
             parser_backend="auto",
             chunk_strategy="langchain_recursive",
             pipeline=None,
             dataset_id=dataset_id,
             user_metadata=None,
         ),
-        overrides_form=_build_overrides_form(),
         tenant_id=uuid.uuid4(),
         account_id="acct-1",
         db=db,
@@ -881,15 +847,14 @@ async def test_single_upload_releases_ingest_lock_without_worker_handoff(monkeyp
     db = _FakeItemSession("single")
     result = await document_upload.upload_document(
         background_tasks=BackgroundTasks(),
-        file=_make_upload("local.txt"),
-        form=document_upload.UploadDocumentFormFields(
+        form=UploadDocumentFormFields(
+            file=_make_upload("local.txt"),
             parser_backend="auto",
             chunk_strategy="langchain_recursive",
             pipeline=None,
             dataset_id=dataset_id,
             user_metadata=None,
         ),
-        overrides_form=_build_overrides_form(),
         tenant_id=uuid.uuid4(),
         account_id="acct-1",
         db=db,
@@ -939,15 +904,14 @@ async def test_single_upload_hands_retry_ingest_lock_to_worker(monkeypatch: pyte
     db = SimpleNamespace(commit=lambda: None, refresh=lambda *_args: None)
     result = await document_upload.upload_document(
         background_tasks=BackgroundTasks(),
-        file=_make_upload("queued.txt"),
-        form=document_upload.UploadDocumentFormFields(
+        form=UploadDocumentFormFields(
+            file=_make_upload("queued.txt"),
             parser_backend="auto",
             chunk_strategy="langchain_recursive",
             pipeline=None,
             dataset_id=dataset_id,
             user_metadata=None,
         ),
-        overrides_form=_build_overrides_form(),
         tenant_id=uuid.uuid4(),
         account_id="acct-1",
         db=db,
@@ -988,15 +952,14 @@ async def test_single_upload_reuses_matching_sha_only_duplicate_while_pending_or
 
     result = await document_upload.upload_document(
         background_tasks=BackgroundTasks(),
-        file=_make_upload("dup.txt"),
-        form=document_upload.UploadDocumentFormFields(
+        form=UploadDocumentFormFields(
+            file=_make_upload("dup.txt"),
             parser_backend="auto",
             chunk_strategy="langchain_recursive",
             pipeline=None,
             dataset_id=dataset_id,
             user_metadata=None,
         ),
-        overrides_form=_build_overrides_form(),
         tenant_id=tenant_id,
         account_id="acct-1",
         db=SimpleNamespace(commit=lambda: None, refresh=lambda *_args: None),
@@ -1036,15 +999,14 @@ async def test_single_upload_releases_ingest_lock_on_exception(monkeypatch: pyte
     with pytest.raises(RuntimeError, match="store failed"):
         await document_upload.upload_document(
             background_tasks=BackgroundTasks(),
-            file=_make_upload("boom.txt"),
-            form=document_upload.UploadDocumentFormFields(
+            form=UploadDocumentFormFields(
+                file=_make_upload("boom.txt"),
                 parser_backend="auto",
                 chunk_strategy="langchain_recursive",
                 pipeline=None,
                 dataset_id=dataset_id,
                 user_metadata=None,
             ),
-            overrides_form=_build_overrides_form(),
             tenant_id=uuid.uuid4(),
             account_id="acct-1",
             db=SimpleNamespace(),
@@ -1222,15 +1184,14 @@ async def test_single_upload_preserves_local_source_when_queue_handoff_fails_aft
     with pytest.raises(HTTPException) as exc_info:
         await document_upload.upload_document(
             background_tasks=BackgroundTasks(),
-            file=_make_upload("local-queue-fail.txt"),
-            form=document_upload.UploadDocumentFormFields(
+            form=UploadDocumentFormFields(
+                file=_make_upload("local-queue-fail.txt"),
                 parser_backend="auto",
                 chunk_strategy="langchain_recursive",
                 pipeline=None,
                 dataset_id=dataset_id,
                 user_metadata=None,
             ),
-            overrides_form=_build_overrides_form(),
             tenant_id=uuid.uuid4(),
             account_id="acct-1",
             db=db,
@@ -1288,8 +1249,8 @@ async def test_batch_upload_hands_retry_ingest_lock_to_worker(monkeypatch: pytes
     result = (
         await document_upload.upload_documents_batch(
             background_tasks=BackgroundTasks(),
-            files=[_make_upload("batch.txt")],
-            form=document_upload.UploadDocumentsBatchFormFields(
+            form=UploadDocumentsBatchFormFields(
+                files=[_make_upload("batch.txt")],
                 parser_backend="auto",
                 chunk_strategy="langchain_recursive",
                 pipeline=None,
@@ -1300,7 +1261,6 @@ async def test_batch_upload_hands_retry_ingest_lock_to_worker(monkeypatch: pytes
                 user_metadata_map=None,
                 max_concurrent=1,
             ),
-            overrides_form=_build_overrides_form(),
             tenant_id=uuid.uuid4(),
             account_id="acct-1",
             db=SimpleNamespace(),
@@ -1367,8 +1327,8 @@ async def test_batch_pending_duplicate_respects_pipeline_identity(
     result = (
         await document_upload.upload_documents_batch(
             background_tasks=BackgroundTasks(),
-            files=[_make_upload("batch.txt")],
-            form=document_upload.UploadDocumentsBatchFormFields(
+            form=UploadDocumentsBatchFormFields(
+                files=[_make_upload("batch.txt")],
                 parser_backend="auto",
                 chunk_strategy="langchain_recursive",
                 pipeline=None,
@@ -1379,7 +1339,6 @@ async def test_batch_pending_duplicate_respects_pipeline_identity(
                 user_metadata_map=None,
                 max_concurrent=1,
             ),
-            overrides_form=_build_overrides_form(),
             tenant_id=tenant_id,
             account_id="acct-1",
             db=_OuterDB(),
@@ -1463,15 +1422,14 @@ async def test_single_upload_returns_existing_document_after_dedup_constraint_co
     db = _ConflictDB()
     result = await document_upload.upload_document(
         background_tasks=BackgroundTasks(),
-        file=_make_upload("dup.txt"),
-        form=document_upload.UploadDocumentFormFields(
+        form=UploadDocumentFormFields(
+            file=_make_upload("dup.txt"),
             parser_backend="auto",
             chunk_strategy="langchain_recursive",
             pipeline=None,
             dataset_id=dataset_id,
             user_metadata=None,
         ),
-        overrides_form=_build_overrides_form(),
         tenant_id=tenant_id,
         account_id="acct-1",
         db=db,
@@ -1546,8 +1504,8 @@ async def test_precheck_staged_batch_hands_retry_ingest_lock_to_worker(
     result = (
         await document_upload.upload_documents_batch(
             background_tasks=BackgroundTasks(),
-            files=[_make_upload("batch.txt")],
-            form=document_upload.UploadDocumentsBatchFormFields(
+            form=UploadDocumentsBatchFormFields(
+                files=[_make_upload("batch.txt")],
                 parser_backend="auto",
                 chunk_strategy="langchain_recursive",
                 pipeline=None,
@@ -1558,7 +1516,6 @@ async def test_precheck_staged_batch_hands_retry_ingest_lock_to_worker(
                 user_metadata_map=None,
                 max_concurrent=1,
             ),
-            overrides_form=_build_overrides_form(),
             tenant_id=uuid.uuid4(),
             account_id="acct-1",
             db=_OuterDB(),

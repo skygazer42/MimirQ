@@ -3,10 +3,12 @@ from collections.abc import Callable, Mapping, Sequence
 from contextlib import closing
 from dataclasses import dataclass, replace
 from math import isfinite
+from types import ModuleType
 from typing import Any
 
 from PIL import Image as PILImage
 
+from app.infrastructure.runtime.dependencies import optional_import
 from app.rag.ingestion.parsing.enrich.table_cell_schema import TableCell, TableExtraction
 from app.rag.ingestion.parsing.utils.scalars import coerce_float
 
@@ -71,51 +73,53 @@ def _coerce_score(value: Any) -> float:
     return score
 
 
+def _load_table_ocr_dependency(module: str, *, pip_name: str) -> ModuleType:
+    dependency = optional_import(module, feature="table_ocr", pip_name=pip_name)
+    if dependency is None:
+        raise TableImageModelUnavailableError("The selected table OCR dependency is unavailable")
+    return dependency
+
+
 class _TableOcrBackend:
     """One selected OCR engine reused within a table operation."""
 
     def __init__(self) -> None:
         kwargs = _project_rapidocr_kwargs()
-        try:
-            from onnxruntime.capi.onnxruntime_pybind11_state import (
-                EngineError,
-                EPFail,
-                Fail,
-                InvalidArgument,
-                InvalidGraph,
-                InvalidProtobuf,
-                NoModel,
-                NoSuchFile,
-                NotFound,
-                RuntimeException,
-            )
-            from onnxruntime.capi.onnxruntime_pybind11_state import NotImplemented as OrtNotImplemented
-            from rapidocr_onnxruntime import LoadImageError, RapidOCR  # type: ignore
-            from rapidocr_onnxruntime.ch_ppocr_det.utils import ResizeImgError as DetectionResizeError
-            from rapidocr_onnxruntime.utils.infer_engine import ONNXRuntimeError
-            from rapidocr_onnxruntime.utils.process_img import ResizeImgError as ProcessingResizeError
-        except ImportError as exc:
-            raise TableImageModelUnavailableError("The selected table OCR dependency is unavailable") from exc
-        self._backend_errors = (
-            OSError,
-            EPFail,
-            EngineError,
-            Fail,
-            InvalidArgument,
-            InvalidGraph,
-            InvalidProtobuf,
-            NoModel,
-            NoSuchFile,
-            NotFound,
-            OrtNotImplemented,
-            RuntimeException,
-            LoadImageError,
-            DetectionResizeError,
-            ProcessingResizeError,
-            ONNXRuntimeError,
+        ort = _load_table_ocr_dependency("onnxruntime.capi.onnxruntime_pybind11_state", pip_name="onnxruntime")
+        rapidocr = _load_table_ocr_dependency("rapidocr_onnxruntime", pip_name="rapidocr-onnxruntime")
+        detection = _load_table_ocr_dependency(
+            "rapidocr_onnxruntime.ch_ppocr_det.utils", pip_name="rapidocr-onnxruntime"
+        )
+        inference = _load_table_ocr_dependency(
+            "rapidocr_onnxruntime.utils.infer_engine", pip_name="rapidocr-onnxruntime"
+        )
+        processing = _load_table_ocr_dependency(
+            "rapidocr_onnxruntime.utils.process_img", pip_name="rapidocr-onnxruntime"
         )
         try:
-            self._engine = RapidOCR(**kwargs)
+            self._backend_errors = (
+                OSError,
+                ort.EPFail,
+                ort.EngineError,
+                ort.Fail,
+                ort.InvalidArgument,
+                ort.InvalidGraph,
+                ort.InvalidProtobuf,
+                ort.NoModel,
+                ort.NoSuchFile,
+                ort.NotFound,
+                ort.NotImplemented,
+                ort.RuntimeException,
+                rapidocr.LoadImageError,
+                detection.ResizeImgError,
+                processing.ResizeImgError,
+                inference.ONNXRuntimeError,
+            )
+            engine_factory = rapidocr.RapidOCR
+        except AttributeError as exc:
+            raise TableImageModelUnavailableError("The selected table OCR dependency is unavailable") from exc
+        try:
+            self._engine = engine_factory(**kwargs)
         except self._backend_errors as exc:
             raise TableImageBackendError(f"The selected table OCR engine could not load: {str(exc)[:300]}") from exc
 

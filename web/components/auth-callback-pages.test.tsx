@@ -75,9 +75,11 @@ describe('SSO callback presentation preserves session and return contracts', () 
   it('does not establish a session for an invalid SAML bridge', async () => {
     mocks.bridge.mockResolvedValue({ kind: 'error', error: 'saml_session_missing' })
     await act(async () => root.render(<SamlCallback />))
-    expect(container.querySelector('[role="alert"]')?.textContent).toContain('登录失败')
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain('单点登录未完成')
     expect(mocks.session).not.toHaveBeenCalled()
     expect(mocks.replace).not.toHaveBeenCalled()
+    act(() => container.querySelector('button')?.click())
+    expect(mocks.replace).toHaveBeenCalledWith('/auth')
   })
   it.each(['working', 'success'] as const)('announces the %s status without a recovery action', async (status) => {
     await act(async () => root.render(<AuthCallbackState status={status} error={null} onBack={mocks.replace} />))

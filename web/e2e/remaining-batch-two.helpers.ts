@@ -35,7 +35,7 @@ export async function batchTwoFixture(page: Page, theme: 'light' | 'dark' = 'lig
     previewGate: null as Promise<void> | null,
   }
   const documents = Array.from({ length: 24 }, (_, index) => ({
-    id: `doc-${index}`,
+    id: `00000000-0000-4000-8000-${String(index + 1).padStart(12, '0')}`,
     dataset_id: policyDatasetId,
     filename: index === 0 ? '很长名称的产品使用与维护手册及售后服务记录.pdf' : `产品说明-${index + 1}.pdf`,
     file_type: 'pdf',
@@ -65,7 +65,7 @@ export async function batchTwoFixture(page: Page, theme: 'light' | 'dark' = 'lig
       return json(route, {
         by_status: { completed: 6, processing: 6, pending: 6, failed: 6 },
         bucket_minutes: 20,
-        timeseries: [],
+        timeseries: { ts_ms: [], completed: [], failed: [], quarantined: [], cancelled: [] },
       })
     if (p === '/api/v1/observability/task-queue/snapshot')
       return json(route, { enabled: false, broker_up: false, recent_job_outcomes: [] })
@@ -97,6 +97,8 @@ export async function batchTwoFixture(page: Page, theme: 'light' | 'dark' = 'lig
     }
     if (p === '/api/v1/industry-rules/rulesets')
       return json(route, {
+        schema: 'mimirq.industry_rules_index.v1',
+        count: 1,
         rulesets: [
           {
             name: ruleset.name,
@@ -112,7 +114,12 @@ export async function batchTwoFixture(page: Page, theme: 'light' | 'dark' = 'lig
         state.writes.push({ path: p, payload })
         if (state.failSave) return json(route, { detail: '规则保存失败，请重试' }, 422)
         Object.assign(ruleset, payload)
-        return json(route, { updated_count: 3 })
+        return json(route, {
+          schema: 'mimirq.industry_rules_update.v1',
+          ruleset: ruleset.name,
+          section: p.split('/').at(-1),
+          updated_count: 3,
+        })
       }
       if (state.failRules) return json(route, { detail: '规则读取暂不可用' }, 503)
       return json(route, {
@@ -128,7 +135,13 @@ export async function batchTwoFixture(page: Page, theme: 'light' | 'dark' = 'lig
     if (p === '/api/v1/industry-rules/preview-rewrite') {
       const payload = req.postDataJSON()
       if (payload.query === '旧问题' && state.previewGate) await state.previewGate
-      return json(route, { original_query: payload.query, expanded_query: `已补全：${payload.query}`, changed: true })
+      return json(route, {
+        schema: 'mimirq.industry_rules_preview.v1',
+        ruleset: ruleset.name,
+        original_query: payload.query,
+        expanded_query: `已补全：${payload.query}`,
+        changed: true,
+      })
     }
     if (p.endsWith('/analysis/rule-suggestions'))
       return json(route, { glossary_suggestions: [{ token: '知识治理', count: 6, source: '产品说明.pdf' }] })

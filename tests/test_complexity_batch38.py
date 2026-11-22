@@ -1,7 +1,12 @@
+import json
+import shutil
+import subprocess
 from copy import deepcopy
 
 import pytest
 
+from app.infrastructure.config import settings
+from app.infrastructure.hashing import stable_json_hash
 from app.rag.evaluation.poc_runner.source_builder import build_dataset_analysis_sources
 from app.rag.evaluation.regression import chunk_diagnostics
 from app.rag.retrieval.configuration import profiles as retrieval_profiles
@@ -52,6 +57,66 @@ def test_evidence_capsule_validation_preserves_hash_anchor_and_signature_reasons
     ) == (True, "ok")
 
 
+@pytest.mark.skipif(shutil.which("node") is None, reason="Node.js is required for JSON round-trip coverage")
+def test_signed_evidence_capsule_survives_javascript_json_round_trip(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(settings, "EVIDENCE_CAPSULE_SIGNING_ENABLED", True)
+    monkeypatch.setattr(settings, "EVIDENCE_CAPSULE_SIGNING_SECRET", "test-signing-secret")
+    citation = {"document_id": "doc-1", "chunk_id": "chunk-1", "page_number": 2.0, "retrieval_score": 1.0}
+    trace = {"passes": [{"scores": [-0.0, 0.25, 1.0000000000000001e18, 1e21]}]}
+    capsule = build_evidence_capsule(
+        query_for_retrieval="Where is the policy?",
+        citations=[citation, {**citation, "page_number": 2, "retrieval_score": 1}],
+        metrics={"parse_risk_score": 0.0, "retrieval_elapsed_sec": 1.0},
+        retrieval_trace=trace,
+        query_debug={"weights": [1.0, True, "1.0"]},
+        request_context={"limit": 20.0},
+    )
+    result = subprocess.run(
+        [
+            "node",
+            "-e",
+            "const fs = require('node:fs');"
+            "process.stdout.write(JSON.stringify(JSON.parse(fs.readFileSync(0, 'utf8'))))",
+        ],
+        input=json.dumps(capsule),
+        text=True,
+        capture_output=True,
+        check=True,
+        timeout=10,
+    )
+    received = json.loads(result.stdout)
+    assert validate_evidence_capsule(received, strict=True, verify_signature=True) == (True, "ok")
+    assert received["citations"][0]["evidence_anchor_hash"] == received["citations"][1]["evidence_anchor_hash"]
+    assert received["citation_hashes"][0] == received["citation_hashes"][1]
+    assert type(citation["retrieval_score"]) is float
+    assert type(trace["passes"][0]["scores"][0]) is float
+
+    received["citations"][0]["retrieval_score"] = 0.5
+    assert validate_evidence_capsule(received, strict=True, verify_signature=True) == (False, "capsule_hash_mismatch")
+    received["capsule_hash"] = recompute_capsule_hash(received)
+    assert validate_evidence_capsule(received, strict=True, verify_signature=True) == (False, "citation_hash_mismatch")
+
+
+def test_legacy_signed_capsule_keeps_its_original_numeric_representation(monkeypatch: pytest.MonkeyPatch) -> None:
+    secret = "test-signing-secret"
+    monkeypatch.setattr(settings, "EVIDENCE_CAPSULE_SIGNING_SECRET", secret)
+    citation = {"evidence_anchor_hash": "anchor-1", "retrieval_score": 1.0}
+    citation["citation_hash"] = stable_json_hash(citation, length=16)
+    legacy = {
+        "schema": "mimirq.evidence_capsule.v1",
+        "citations": [citation],
+        "citation_hashes": [citation["citation_hash"]],
+        "retrieval_summary": {"retrieval_elapsed_sec": 0.0},
+    }
+    legacy["capsule_hash"] = stable_json_hash(legacy, length=24)
+    legacy["signature"] = sign_evidence_capsule(legacy, secret=secret)
+    reread = json.loads(json.dumps(legacy))
+    assert validate_evidence_capsule(reread, strict=True, verify_signature=True) == (True, "ok")
+    reread["retrieval_summary"]["retrieval_elapsed_sec"] = 0.125
+    reread["capsule_hash"] = recompute_capsule_hash(reread)
+    assert validate_evidence_capsule(reread, strict=True, verify_signature=True) == (False, "signature_mismatch")
+
+
 @pytest.mark.parametrize(
     ("profile", "kwargs", "expected"),
     [
@@ -89,11 +154,12 @@ def test_evidence_capsule_validation_preserves_hash_anchor_and_signature_reasons
         ),
         (
             "hierarchy_grounded_strict",
-            {},
+            {"reranker_provider": "openai"},
             {
                 "retrieval_contract_mode": "evidence_strict",
                 "visible_evidence_only": True,
                 "enable_hierarchy_recall": True,
+                "reranker_provider": "openai",
             },
         ),
     ],

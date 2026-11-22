@@ -14,7 +14,7 @@ import { listAllDatasets } from './datasets'
 
 describe('listAllDatasets', () => {
   beforeEach(() => {
-    vi.clearAllMocks()
+    openapi.request.mockReset()
   })
 
   it('reads every dataset page until the reported total is reached', async () => {
@@ -101,38 +101,29 @@ describe('listAllDatasets', () => {
     )
   })
 
-  it('stops when a later full page repeats only already-seen dataset ids', async () => {
+  it('rejects an incomplete directory when a later page repeats already-seen ids', async () => {
     openapi.request
       .mockResolvedValueOnce({
-        total: 10_000,
+        total: 400,
         items: Array.from({ length: 200 }, (_, index) => ({ id: `dataset-${index}` })),
       })
       .mockResolvedValueOnce({
-        total: 10_000,
+        total: 400,
         items: Array.from({ length: 200 }, (_, index) => ({ id: `dataset-${index}` })),
       })
 
-    const datasets = await listAllDatasets()
-
-    expect(datasets).toHaveLength(200)
+    await expect(listAllDatasets()).rejects.toThrow('数据集目录在读取期间发生变化，请重新读取')
     expect(openapi.request).toHaveBeenCalledTimes(2)
   })
 
-  it('treats invalid totals as untrusted and still terminates on a short page', async () => {
-    openapi.request
-      .mockResolvedValueOnce({
-        total: 'not-a-number',
-        items: Array.from({ length: 200 }, (_, index) => ({ id: `dataset-${index}` })),
-      })
-      .mockResolvedValueOnce({
-        total: 'not-a-number',
-        items: Array.from({ length: 5 }, (_, index) => ({ id: `dataset-${200 + index}` })),
-      })
+  it('rejects an invalid total before requesting another page', async () => {
+    openapi.request.mockResolvedValueOnce({
+      total: 'not-a-number',
+      items: [{ id: 'dataset-a' }],
+    })
 
-    const datasets = await listAllDatasets()
-
-    expect(datasets).toHaveLength(205)
-    expect(openapi.request).toHaveBeenCalledTimes(2)
+    await expect(listAllDatasets()).rejects.toThrow('数据集目录总数无效，请重新读取')
+    expect(openapi.request).toHaveBeenCalledOnce()
   })
 
   it('does not convert a missing required items envelope into a successful empty list', async () => {

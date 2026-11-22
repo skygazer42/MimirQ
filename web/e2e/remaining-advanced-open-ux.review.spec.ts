@@ -119,7 +119,7 @@ test('open UX task diagnostics identify a weak question', async ({ page }) => {
   await record(page, 'diagnostics-desktop-result')
   await page.getByText('抽取质量', { exact: true }).click()
   await page.getByRole('button', { name: '读取质量报告', exact: true }).click()
-  await expect(page.getByText('43', { exact: true })).toBeVisible({ timeout: 30000 })
+  await expect(page.getByText('实体数', { exact: true }).locator('..').getByRole('definition')).toHaveText('43')
   await record(page, 'diagnostics-desktop-quality')
   await mobile(page)
   await page.getByText('本次评测', { exact: true }).click()
@@ -148,7 +148,7 @@ test('open UX task ablations assess the candidate configuration', async ({ page 
   await page.getByRole('button', { name: '运行消融实验', exact: true }).click()
   await expect(page.getByRole('dialog')).toBeHidden({ timeout: 30000 })
   await expect.poll(() => state.writes.length).toBe(1)
-  await page.getByRole('button', { name: '重新读取', exact: true }).click()
+  await page.getByRole('main').getByRole('button', { name: '重新读取', exact: true }).click()
   await expect(page.getByRole('button', { name: '设为基线 new-verification-run', exact: true })).toBeVisible({
     timeout: 30000,
   })
@@ -202,15 +202,17 @@ test('open UX risk similarity failed calculation preserves source choices', asyn
   } finally {
     releaseCalculation()
   }
-  await expect(page.getByRole('button', { name: '检查数据源', exact: true })).toBeVisible({ timeout: 30000 })
+  const retry = page.getByRole('button', { name: '重试失败项', exact: true })
+  await expect(retry).toBeVisible({ timeout: 30000 })
   await record(page, 'similarity-mobile-calculation-failed')
-  await page.getByRole('button', { name: '检查数据源', exact: true }).click()
+  await page.getByRole('button', { name: '数据源与计算', exact: true }).click()
   await expect(page.getByRole('combobox', { name: '横轴数据源 1', exact: true })).toHaveValue('source-a')
   await expect(page.getByRole('combobox', { name: '纵轴数据源 1', exact: true })).toHaveValue('source-b')
   await record(page, 'similarity-mobile-failed-source-choices')
+  await page.keyboard.press('Escape')
+  await expect(page.getByRole('dialog')).toBeHidden()
   state.fail = false
-  await page.getByRole('button', { name: '计算相似度', exact: true }).click()
-  await expect(page.getByRole('dialog')).toBeHidden({ timeout: 30000 })
+  await retry.click()
   await expect(page.getByRole('button', { name: '统计与详情', exact: true })).toBeEnabled()
   await record(page, 'similarity-mobile-recovered-result')
   await expect(page.locator('svg').getByText('型号说明', { exact: true })).toBeVisible({ timeout: 60000 })

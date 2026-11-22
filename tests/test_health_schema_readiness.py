@@ -35,6 +35,19 @@ def test_database_readiness_fails_closed_when_managed_schema_version_is_missing(
     assert status["expected_revisions"] == ["head"]
 
 
+def test_database_readiness_reports_an_unreadable_schema_revision(monkeypatch) -> None:
+    engine, session_local = _session_local()
+    with engine.begin() as connection:
+        connection.execute(text("CREATE TABLE alembic_version (unexpected_column VARCHAR(32))"))
+    monkeypatch.setattr(health_checks, "_expected_alembic_heads", lambda: frozenset({"head"}))
+
+    status, ok = health_checks.check_database(session_local, require_schema_current=True)
+
+    assert ok is False
+    assert status["status"] == "schema_check_failed"
+    assert status["schema_current"] is False
+
+
 def test_database_readiness_requires_every_expected_alembic_head(monkeypatch) -> None:
     engine, session_local = _session_local()
     with engine.begin() as connection:
@@ -106,9 +119,6 @@ def _stub_ready_dependencies(monkeypatch: pytest.MonkeyPatch, health_module: obj
         raising=True,
     )
     monkeypatch.setattr(health_module, "rag_runtime_warmup_ready", lambda: True, raising=True)
-    monkeypatch.setattr(
-        health_module, "minio_service", type("_Probe", (), {"is_enabled": lambda self: False})(), raising=True
-    )
 
 
 @pytest.mark.parametrize(

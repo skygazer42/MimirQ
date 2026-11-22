@@ -471,15 +471,9 @@ def _has_image_table(tbls):
     return False
 
 
-def _load_vision_runtime(callback):
-    try:
-        from app.rag.llm.vision_client import VisionCaptionClient
-    except ImportError as exc:  # pragma: no cover
-        if callback:
-            callback(-1, f"Vision enrichment import failed; using parsed tables unchanged. ({exc})")
-        else:
-            logger.warning("Vision enrichment import unavailable: %s", exc)
-        return None
+def _load_vision_runtime():
+    from app.rag.llm.vision_client import VisionCaptionClient
+
     return VisionCaptionClient
 
 
@@ -554,9 +548,7 @@ def enrich_figures(tbls, *, callback=None):
         return tbls
     if not _has_image_table(tbls):
         return tbls
-    vision_client = _load_vision_runtime(callback)
-    if vision_client is None:
-        return tbls
+    vision_client = _load_vision_runtime()
     vision_model = _build_vision_model(vision_client, callback)
     if vision_model is None:
         return tbls

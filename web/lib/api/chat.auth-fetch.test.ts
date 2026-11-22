@@ -14,6 +14,7 @@ const oidc = vi.hoisted(() => ({
 vi.mock('@/lib/auth-storage', () => ({
   clearAuthSession: auth.clear,
   getAccessToken: () => auth.token,
+  getAuthSessionKey: () => 'default:user-a',
   getAuthSessionRevision: () => 0,
   getAuthCacheScope: () => 'default:user-a',
   setAccessToken: (token: { access_token: string }) => {

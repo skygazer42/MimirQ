@@ -111,7 +111,7 @@ def test_frontmatter_detection_keywords_and_chinese_questions_preserve_contract(
     assert calls == [("# 文档标题\n\n第一段摘", "jieba", 4)]
 
 
-def test_detection_failures_remain_best_effort_and_question_generation_can_be_disabled(
+def test_keyword_failure_is_best_effort_and_question_generation_can_be_disabled(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
@@ -131,8 +131,12 @@ def test_detection_failures_remain_best_effort_and_question_generation_can_be_di
         lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("keywords failed")),
     )
 
+    with pytest.raises(RuntimeError, match="language failed"):
+        metadata_enrichment.build_document_metadata_enrichment("# Title\n\nBody paragraph")
+
     result = metadata_enrichment.build_document_metadata_enrichment(
         "# Title\n\nBody paragraph",
+        metadata={"document_language": "en"},
         generate_questions=False,
     )
 
@@ -140,6 +144,7 @@ def test_detection_failures_remain_best_effort_and_question_generation_can_be_di
         "metadata_enrichment_schema": "mimirq.metadata_enrichment.v1",
         "document_title": "Title",
         "document_summary": "Body paragraph",
+        "document_language": "en",
     }
 
 

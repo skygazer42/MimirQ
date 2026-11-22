@@ -33,7 +33,10 @@ vi.mock('@/components/theme-customizer', () => ({
 vi.mock('@/components/chat/voice-mode-overlay', () => ({ VoiceModeOverlay: () => null }))
 vi.mock('@/components/chat/conversation-summary-dialog', () => ({ ConversationSummaryDialog: () => null }))
 vi.mock('@/components/rag-trace/rag-trace-dialog', () => ({ RagTraceDialog: () => null }))
-vi.mock('@/i18n/navigation', () => ({ useRouter: () => ({ push: vi.fn(), replace: vi.fn() }) }))
+vi.mock('@/i18n/navigation', () => ({
+  Link: (props: React.ComponentProps<'a'>) => <a {...props} />,
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
+}))
 vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn(), info: vi.fn() } }))
 vi.mock('@/lib/client-logging', () => ({ reportClientError: vi.fn(), reportClientWarning: vi.fn() }))
 vi.mock('next-intl', () => {
@@ -96,9 +99,7 @@ function deferred<T>() {
 
 async function ready(container: HTMLElement) {
   await waitForAssertion(() => {
-    expect(
-      container.querySelector<HTMLButtonElement>('button[aria-controls="chat-conversation-tools"]')?.textContent,
-    ).toContain('Dataset A')
+    expect(container.querySelector('button[aria-label="Dataset A"]')).not.toBeNull()
     expect(container.querySelector<HTMLButtonElement>('button[aria-label="send"]')?.disabled).toBe(false)
   })
 }

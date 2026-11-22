@@ -7,6 +7,8 @@ from app.api.schemas.conversations.chat import ChatRAGConfig
 from app.infrastructure.config import settings
 from app.rag.retrieval.configuration.profiles import apply_retrieval_profile_overrides, is_recall_first_profile
 from app.rag.retrieval.recall.retriever import HybridRetriever
+from app.rag.retrieval.recall.text_preparation import prepare_retrieval_document
+from tests.candidate_fixtures import ranking_algorithms
 
 
 def _mk_result(*, doc_id: str, chunk_index: int, score: float, content: str = "") -> dict:
@@ -19,7 +21,7 @@ def _mk_result(*, doc_id: str, chunk_index: int, score: float, content: str = ""
 
 
 def test_budgeted_rrf_fusion_respects_quotas_and_dedup() -> None:
-    r = HybridRetriever()
+    r = ranking_algorithms()
 
     vector = [
         _mk_result(doc_id="d1", chunk_index=0, score=0.99),
@@ -35,48 +37,38 @@ def test_budgeted_rrf_fusion_respects_quotas_and_dedup() -> None:
         _mk_result(doc_id="d5", chunk_index=0, score=5.0),
         _mk_result(doc_id="d6", chunk_index=0, score=4.0),
     ]
-    sparse = [
-        _mk_result(doc_id="d7", chunk_index=0, score=3.0),
-    ]
-
     out = r._merge_results(
         vector,
         bm25,
         lexical,
-        sparse,
         alpha=0.5,
         fusion_strategy="budgeted_rrf",
         rrf_k=60,
-        top_k=4,
+        top_k=3,
     )
 
-    keys = [r._result_key(x) for x in out[:4]]
-    # Default quotas follow active channels: with 4 healthy channels and top_k=4,
+    keys = [r._result_key(x) for x in out[:3]]
+    # Default quotas follow active channels: with three healthy channels and top_k=3,
     # each active channel gets one visible-prefix slot.
-    assert set(keys) == {"d1:0", "d2:0", "d5:0", "d7:0"}
-    assert len(keys) == 4
-    scores = [float(x.get("score") or 0.0) for x in out[:4]]
+    assert set(keys) == {"d1:0", "d2:0", "d5:0"}
+    assert len(keys) == 3
+    scores = [float(x.get("score") or 0.0) for x in out[:3]]
     assert scores == sorted(scores, reverse=True)
-    assert r._last_channel_metrics["fusion_budgeted_rrf"]["picked_by_channel"]["sparse"] == 1
+    assert r.metrics["fusion_budgeted_rrf"]["picked_by_channel"]["lexical"] == 1
 
-    for item in out[:4]:
+    for item in out[:3]:
         assert item.get("fusion_strategy") == "budgeted_rrf"
         assert 0.0 <= float(item.get("score") or 0.0) <= 1.0
         # Rank-based calibrated scores should be present for observability.
         assert "vector_rank_score" in item
         assert "bm25_rank_score" in item
         assert "lexical_rank_score" in item
-        assert "sparse_rank_score" in item
 
 
 def test_budgeted_rrf_fusion_min_score_threshold_truncates_channel_queue() -> None:
-    r = HybridRetriever().model_copy(
-        update={
-            # Force a quota that would try to take 2 lexical items.
-            "fusion_budgets": {"vector": 2, "bm25": 1, "lexical": 2},
-            # Only allow the first lexical item (rank_score==1.0).
-            "fusion_min_scores": {"lexical": 1.0},
-        }
+    r = ranking_algorithms(
+        fusion_budgets={"vector": 2, "bm25": 1, "lexical": 2},
+        fusion_min_scores={"lexical": 1.0},
     )
 
     vector = [
@@ -90,41 +82,35 @@ def test_budgeted_rrf_fusion_min_score_threshold_truncates_channel_queue() -> No
         _mk_result(doc_id="d4", chunk_index=0, score=5.0),
         _mk_result(doc_id="d5", chunk_index=0, score=4.0),
     ]
-    sparse = [
-        _mk_result(doc_id="d6", chunk_index=0, score=3.0),
-    ]
-
     out = r._merge_results(
         vector,
         bm25,
         lexical,
-        sparse,
         alpha=0.5,
         fusion_strategy="budgeted_rrf",
         rrf_k=60,
-        top_k=5,
+        top_k=4,
     )
 
-    keys = [r._result_key(x) for x in out[:5]]
+    keys = [r._result_key(x) for x in out[:4]]
     # Lexical has quota=2 but threshold keeps only the first lexical item.
-    assert set(keys) == {"d1:0", "d2:0", "d3:0", "d4:0", "d6:0"}
+    assert set(keys) == {"d1:0", "d2:0", "d3:0", "d4:0"}
     assert "d5:0" not in keys
 
 
 def test_budgeted_rrf_default_budgets_follow_healthy_channels() -> None:
-    retriever = HybridRetriever()
+    retriever = ranking_algorithms()
     out = retriever._merge_results(
         [_mk_result(doc_id="d1", chunk_index=0, score=0.9)],
-        [],
         [],
         [_mk_result(doc_id="d2", chunk_index=0, score=0.8)],
         fusion_strategy="budgeted_rrf",
         top_k=3,
     )
 
-    stats = retriever._last_channel_metrics["fusion_budgeted_rrf"]
-    assert stats["budgets"] == {"bm25": 0, "lexical": 0, "sparse": 1, "vector": 2}
-    assert stats["picked_by_channel"]["sparse"] == 1
+    stats = retriever.metrics["fusion_budgeted_rrf"]
+    assert stats["budgets"] == {"bm25": 0, "lexical": 1, "vector": 2}
+    assert stats["picked_by_channel"]["lexical"] == 1
     assert [retriever._result_key(item) for item in out[:2]] == ["d1:0", "d2:0"]
 
 
@@ -136,7 +122,7 @@ def test_budgeted_rrf_default_budgets_follow_healthy_channels() -> None:
     ],
 )
 def test_linear_fusion_respects_alpha_boundaries(alpha: float, expected: list[str]) -> None:
-    retriever = HybridRetriever()
+    retriever = ranking_algorithms()
     vector = [
         _mk_result(doc_id="d1", chunk_index=0, score=0.99),
         _mk_result(doc_id="d2", chunk_index=0, score=0.50),
@@ -158,7 +144,7 @@ def test_linear_fusion_respects_alpha_boundaries(alpha: float, expected: list[st
 
 
 def test_budgeted_rrf_weights_exact_hits_inside_existing_candidates() -> None:
-    retriever = HybridRetriever()
+    retriever = ranking_algorithms()
     vector = [_mk_result(doc_id="d1", chunk_index=0, score=0.9, content="generic deployment notes")]
     exact_candidate = _mk_result(doc_id="d2", chunk_index=0, score=9.0, content="generic error notes")
     exact_candidate["metadata"]["_retrieval_text"] = "[keywords] error code abc-42"
@@ -287,8 +273,7 @@ def test_candidate_metadata_priors_do_not_query_database(monkeypatch: pytest.Mon
 
 
 def test_bm25_document_uses_index_text_but_keeps_display_body() -> None:
-    retriever = HybridRetriever()
-    prepared = retriever._prepare_retrieval_document(
+    prepared = prepare_retrieval_document(
         Document(
             page_content="Original Body",
             metadata={
@@ -299,7 +284,7 @@ def test_bm25_document_uses_index_text_but_keeps_display_body() -> None:
     )
 
     assert prepared.page_content == "[title] guide original body"
-    assert retriever._result_content_from_doc(prepared) == "Original Body"
+    assert prepared.metadata["_retrieval_display_content"] == "Original Body"
 
 
 def test_default_fusion_reuses_budgeted_rrf() -> None:
@@ -322,24 +307,19 @@ def test_enterprise_profiles_gate_expensive_work_on_runtime_readiness() -> None:
     balanced = apply_retrieval_profile_overrides(profile="balanced", **common)
     quality = apply_retrieval_profile_overrides(profile="quality", **common)
 
-    assert (fast["retrieval_mode"], fast["enable_reranker"], fast["sparse_retrieval_enabled"]) == (
-        "vector",
-        False,
-        False,
-    )
+    assert (fast["retrieval_mode"], fast["enable_reranker"]) == ("vector", False)
     assert fast["reranker_top_n"] >= 1
     assert (balanced["retrieval_mode"], balanced["enable_reranker"]) == ("hybrid", False)
-    assert balanced.get("sparse_retrieval_enabled") is None
     assert quality["enable_hierarchy_recall"] is True
     assert quality["enable_reranker"] is False
     assert is_recall_first_profile("quality") is True
 
-    ready = {**common, "enable_reranker": True, "reranker_provider": "cross_encoder"}
+    ready = {**common, "enable_reranker": True, "reranker_provider": "openai"}
     balanced_ready = apply_retrieval_profile_overrides(profile="balanced", **ready)
     quality_ready = apply_retrieval_profile_overrides(profile="quality", **ready)
 
     assert balanced_ready["enable_reranker"] is True
-    assert balanced_ready["reranker_provider"] == "cross_encoder"
+    assert balanced_ready["reranker_provider"] == "openai"
     assert quality_ready["reranker_top_n"] > balanced_ready["reranker_top_n"]
 
     fast_config = ChatRAGConfig(retrieval_profile="fast")
@@ -374,19 +354,21 @@ def test_reranking_profiles_preserve_configured_remote_provider(profile: str) ->
 
 
 @pytest.mark.parametrize("profile", ["grounded_strict", "hierarchy_grounded_strict"])
-def test_grounded_strict_profiles_fall_back_to_cross_encoder_when_provider_is_disabled(profile: str) -> None:
-    applied = apply_retrieval_profile_overrides(
+def test_grounded_strict_profiles_require_an_explicit_reranker(profile: str) -> None:
+    common = dict(
         profile=profile,
         top_k=10,
         score_threshold=0.0,
         retrieval_mode="keyword",
         enable_reranker=False,
-        reranker_provider="none",
         reranker_top_n=5,
         enable_weight_rerank=True,
     )
+    with pytest.raises(ValueError, match="requires an explicitly configured reranker provider"):
+        apply_retrieval_profile_overrides(reranker_provider="none", **common)
 
+    applied = apply_retrieval_profile_overrides(reranker_provider="openai", **common)
     assert applied["enable_reranker"] is True
-    assert applied["reranker_provider"] == "cross_encoder"
+    assert applied["reranker_provider"] == "openai"
     assert applied["retrieval_contract_mode"] == "evidence_strict"
     assert applied["visible_evidence_only"] is True

@@ -183,6 +183,7 @@ test('highlights the actual Unicode text while preserving API coordinates in cop
   )
   await page.goto(`/?doc=${UPLOADED_DOCUMENT_ID}&chunk=unicode-hit&start=1&end=3`)
   await page.getByRole('tab', { name: '文本定位', exact: true }).click()
+  await expect(page.locator('.monaco-editor')).toBeVisible({ timeout: 30_000 })
   const citation = page.locator('.mimirq-monaco-citation-highlight')
   await expect.poll(async () => (await citation.allTextContents()).join('')).toBe('AB')
   await expect

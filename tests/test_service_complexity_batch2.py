@@ -263,7 +263,7 @@ def test_run_daily_index_audit_report_summarizes_dataset_issues_and_errors(monke
     assert summary["milvus_orphan_ids_sampled_total"] == 2
     assert summary["top_issue_datasets"] == [
         {
-            "dataset_id": str(dataset_bad),
+            "dataset_id": dataset_bad,
             "active_documents": 4,
             "active_chunks": 8,
             "vector_id_missing": 2,

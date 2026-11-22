@@ -8,6 +8,8 @@ import pytest
 from fastapi import HTTPException
 from starlette.datastructures import UploadFile
 
+from app.models import registry as _model_registry  # noqa: F401
+
 
 class _CaptureQuery:
     def __init__(self, first_result=None) -> None:  # noqa: ANN001
@@ -43,6 +45,12 @@ class _CaptureDB:
         self.added: list[object] = []
         self.commits = 0
         self.refreshed: list[object] = []
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_args):
+        self.close()
 
     def query(self, _model: object) -> _CaptureQuery:
         return self.query_obj

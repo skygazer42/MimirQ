@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test'
 import { openRemaining, remainingShot } from './remaining-pages.helpers'
-import { diagnosticsFixture, secondDataset } from './remaining-advanced-diagnostics.helpers'
+import { diagnosticReport, diagnosticsFixture, secondDataset } from './remaining-advanced-diagnostics.helpers'
 import { policyDatasetId } from './dataset-policy.helpers'
 
 test('diagnostics retain failed configuration, expose results and reject a late dataset result', async ({ page }) => {
@@ -19,7 +19,7 @@ test('diagnostics retain failed configuration, expose results and reject a late 
   await remainingShot(page, 'after-graph-diagnostics-filled')
   await page.getByRole('tab', { name: '抽取质量', exact: true }).click()
   await page.getByRole('button', { name: '读取质量报告', exact: true }).click()
-  await expect(page.getByText('43', { exact: true })).toBeVisible()
+  await expect(page.getByText('实体数', { exact: true }).locator('..').getByRole('definition')).toHaveText('43')
   let release!: () => void
   state.gate = new Promise<void>((resolve) => {
     release = resolve
@@ -39,45 +39,33 @@ test('diagnostics exclude retrieval errors from scores and retain measured zero 
   let includeMeasuredZero = false
   await page.route('**/api/v1/evaluations/kg/search/diagnostics', (route) =>
     route.fulfill({
-      json: {
-        summary: {
-          dataset_id: policyDatasetId,
-          cases_total: includeMeasuredZero ? 2 : 1,
-          cases_evaluated: includeMeasuredZero ? 2 : 1,
-          hardcases_generated: 0,
-          baseline_hit_rate: includeMeasuredZero ? 0 : null,
-          baseline_mrr: includeMeasuredZero ? 0 : null,
-          baseline_recall: includeMeasuredZero ? 0 : null,
-          baseline_ndcg: includeMeasuredZero ? 0 : null,
-          baseline_map: includeMeasuredZero ? 0 : null,
-          baseline_valid_searches: includeMeasuredZero ? 1 : 0,
-          baseline_search_errors: 1,
-        },
-        items: [
+      json: diagnosticReport(
+        policyDatasetId,
+        [
           {
-            case_id: '11111111-1111-4111-8111-111111111111',
+            caseId: '11111111-1111-4111-8111-111111111111',
             question: '检索执行失败的样本',
-            baseline: { error: '检索服务不可用', metrics: { hit_at_k: false, mrr: 0, recall: 0 } },
+            error: '检索服务不可用',
           },
           ...(includeMeasuredZero
             ? [
                 {
-                  case_id: '22222222-2222-4222-8222-222222222222',
+                  caseId: '22222222-2222-4222-8222-222222222222',
                   question: '实际未命中的零分样本',
-                  baseline: { error: null, metrics: { hit_at_k: false, mrr: 0, recall: 0 } },
                 },
               ]
             : []),
         ],
-      },
+        'diagnostic-run-1',
+      ),
     }),
   )
   await openRemaining(page, '/graph/diagnostics', '图谱检索评测')
   await page.getByRole('button', { name: '开始评测', exact: true }).click()
   const errorRow = page.getByRole('row').filter({ hasText: '检索执行失败的样本' })
-  await expect(errorRow.getByRole('cell', { name: '检索失败', exact: true })).toBeVisible()
+  await expect(errorRow.getByRole('cell', { name: '检索失败 检索服务不可用', exact: true })).toBeVisible()
   await expect(errorRow.getByRole('cell', { name: '—', exact: true })).toHaveCount(2)
-  await expect(page.getByText('Baseline MRR', { exact: true }).locator('..')).toContainText('-')
+  await expect(page.getByText('Baseline MRR', { exact: true }).locator('..').getByRole('definition')).toHaveText('-')
   await expect(page.getByText('诊断包含检索失败样本', { exact: true })).toBeVisible()
 
   includeMeasuredZero = true

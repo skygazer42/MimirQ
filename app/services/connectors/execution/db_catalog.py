@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import contextlib
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
@@ -43,7 +41,7 @@ def _db_catalog_connector_config_id(stats: dict[str, Any]) -> UUID | None:
 
 def _build_db_catalog_run_context(
     db: Session, *, run: ConnectorRun
-) -> tuple[str, dict[str, Any], dict[str, Any], UUID | None, SQLAlchemyCatalogStore]:
+) -> "tuple[str, dict[str, Any], dict[str, Any], UUID | None, SQLAlchemyCatalogStore]":
     from app.connectors.store import SQLAlchemyCatalogStore
     from app.infrastructure.security.secrets import decrypt_connector_config_secrets
 
@@ -61,7 +59,7 @@ def _run_db_catalog_sync(
     dataset_id: UUID,
     connector_id: str,
     cfg: dict[str, Any],
-    store: CatalogStore,
+    store: "CatalogStore",
     connector_config_id: UUID | None,
 ) -> tuple[dict[str, Any], float]:
     import time

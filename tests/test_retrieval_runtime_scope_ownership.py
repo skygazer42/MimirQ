@@ -51,8 +51,8 @@ def test_runtime_scope_owns_document_resolution_shard_grouping_and_filters(monke
         tenant_id=tenant_id,
         documents=[(document_a, dataset_a), (document_b, dataset_b)],
         datasets=[
-            (dataset_a, {"embedding_defaults": {"provider": "local", "model": "model-a"}}),
-            (dataset_b, {"embedding_defaults": {"provider": "local", "model": "model-b"}}),
+            (dataset_a, {"embedding_defaults": {"provider": "openai_compatible", "model": "model-a"}}),
+            (dataset_b, {"embedding_defaults": {"provider": "openai_compatible", "model": "model-b"}}),
         ],
     )
     scope = RetrievalScope(
@@ -116,9 +116,6 @@ def test_reader_resolves_runtime_once_and_passes_that_runtime_to_enrichment(monk
     for name in (
         "BM25_INDEX_ENABLED",
         "LEXICAL_DB_ENABLED",
-        "COLBERT_RETRIEVAL_ENABLED",
-        "COLPALI_RETRIEVAL_ENABLED",
-        "SPARSE_RETRIEVAL_ENABLED",
         "RETRIEVAL_CANDIDATE_CACHE_ENABLED",
         "RETRIEVAL_CANDIDATE_SINGLEFLIGHT_ENABLED",
         "SEMANTIC_CACHE_ENABLED",
@@ -131,7 +128,7 @@ def test_reader_resolves_runtime_once_and_passes_that_runtime_to_enrichment(monk
     tenant_id, dataset_id = uuid4(), uuid4()
     db = ScopedDB(
         tenant_id=tenant_id,
-        datasets=[(dataset_id, {"embedding_defaults": {"provider": "local", "model": "one-runtime"}})],
+        datasets=[(dataset_id, {"embedding_defaults": {"provider": "openai_compatible", "model": "one-runtime"}})],
     )
     monkeypatch.setattr(reader_module, "SessionLocal", lambda: db)
     monkeypatch.setattr(channel_collection, "get_vector_store", lambda: object())
@@ -145,7 +142,7 @@ def test_reader_resolves_runtime_once_and_passes_that_runtime_to_enrichment(monk
 
     def vectors(request, *, runtime, shards, **kwargs):
         received.append(runtime)
-        return vector_search.VectorSearchBatch([hit], (vector_search.VectorShardResult(shards[0], [hit], None, None),))
+        return vector_search.VectorSearchBatch([hit], (vector_search.VectorShardResult(shards[0], [hit], None),))
 
     def enrich(self, results, *, embedding_runtime=None, **kwargs):
         received.append(embedding_runtime)
@@ -237,9 +234,6 @@ def test_legacy_unscoped_documents_preserve_the_runtime_coverage_admission_guard
         "VECTOR_BACKEND": "milvus",
         "BM25_INDEX_ENABLED": False,
         "LEXICAL_DB_ENABLED": False,
-        "SPARSE_RETRIEVAL_ENABLED": False,
-        "COLBERT_RETRIEVAL_ENABLED": False,
-        "COLPALI_RETRIEVAL_ENABLED": False,
         "RETRIEVAL_CANDIDATE_CACHE_ENABLED": False,
         "RETRIEVAL_CANDIDATE_SINGLEFLIGHT_ENABLED": False,
         "SEMANTIC_CACHE_ENABLED": False,
@@ -264,7 +258,6 @@ def test_legacy_unscoped_documents_preserve_the_runtime_coverage_admission_guard
         document_ids=[scoped_document, unscoped_document],
         retrieval_mode="vector",
         enable_reranker=False,
-        sparse_enabled=False,
         dedup_enabled=False,
     )
     with pytest.raises(LookupError, match="dataset-scoped embedding runtime unavailable"):

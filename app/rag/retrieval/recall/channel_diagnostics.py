@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from collections import Counter
 from typing import TYPE_CHECKING, Any
 
@@ -26,12 +24,12 @@ def empty_channel_metrics() -> dict[str, Any]:
 
 
 def serialize_collected_channels(
-    request: ChannelRequest,
-    collection: ChannelCollection,
+    request: "ChannelRequest",
+    collection: "ChannelCollection",
     *,
-    policy: ChannelPolicy,
-    fusion: FusionPolicy,
-    channels: HybridChannelResults,
+    policy: "ChannelPolicy",
+    fusion: "FusionPolicy",
+    channels: "HybridChannelResults",
 ) -> dict[str, Any]:
     metrics = empty_channel_metrics()
     lexical_methods: Counter[str] = Counter()

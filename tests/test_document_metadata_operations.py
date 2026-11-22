@@ -10,6 +10,7 @@ from app.api.schemas.documents.document import (
     DocumentUserMetadataPatchRequest,
 )
 from app.api.schemas.documents.qa import DocumentQAGenerateRequest
+from app.models.identity.workspaces import TenantMember
 from app.services.documents import metadata_operations as operations
 from app.services.documents import qa as document_qa_service
 
@@ -32,7 +33,9 @@ class DB:
         self.rollbacks = 0
         self.refreshed = []
 
-    def query(self, _model):
+    def query(self, model):
+        if model is TenantMember:
+            return Query(SimpleNamespace(role="editor", is_active=True))
         return Query(self.document)
 
     def commit(self):
@@ -62,10 +65,7 @@ def document(monkeypatch):
     )
     monkeypatch.setattr(operations, "assert_document_writable_for_lifecycle", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(operations, "audit_log_event", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(
-        document_qa_service, "assert_document_writable_for_lifecycle", lambda *_args, **_kwargs: None, raising=False
-    )
-    monkeypatch.setattr(document_qa_service, "audit_log_event", lambda *_args, **_kwargs: None, raising=False)
+    monkeypatch.setattr(document_qa_service, "audit_log_event", lambda *_args, **_kwargs: None)
     return row, DB(row)
 
 

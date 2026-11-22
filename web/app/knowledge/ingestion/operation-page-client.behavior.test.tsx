@@ -607,7 +607,7 @@ describe('knowledge ingestion operation page behavior', () => {
         }),
       }),
     )
-    expect(routerMock.push).toHaveBeenCalledWith('/knowledge/ingestion?mode=execution-monitor')
+    expect(routerMock.push).toHaveBeenCalledWith('/knowledge/ingestion?mode=execution-monitor&datasetId=ds-1')
 
     act(() => root.unmount())
   })
@@ -671,7 +671,7 @@ describe('knowledge ingestion operation page behavior', () => {
         }),
       }),
     )
-    expect(routerMock.push).toHaveBeenCalledWith('/knowledge/ingestion?mode=execution-monitor')
+    expect(routerMock.push).toHaveBeenCalledWith('/knowledge/ingestion?mode=execution-monitor&datasetId=ds-1')
 
     act(() => root.unmount())
   })
@@ -725,10 +725,12 @@ describe('knowledge ingestion operation page behavior', () => {
       )
     })
 
-    expect(container.textContent).toContain('高级设置')
-    expect(container.textContent).toContain('入库模式')
-    expect(container.textContent).toContain('目标目录')
-    expect(container.textContent).toContain('重复处理')
+    const advanced = container.querySelector('[data-ingestion-advanced-settings="true"]')
+    expect(advanced?.querySelector('summary')?.textContent).toContain('高级设置')
+    expect(advanced?.textContent).toContain('目标目录')
+    expect(advanced?.textContent).toContain('标签')
+    expect(Array.from(container.querySelectorAll('legend'), (legend) => legend.textContent)).toContain('处理方式')
+    expect(container.textContent).toContain('近重复检测')
 
     act(() => root.unmount())
   })

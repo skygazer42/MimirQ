@@ -2,6 +2,7 @@ import logging
 from pathlib import Path
 from typing import Any
 
+from app.infrastructure.runtime.dependencies import optional_import
 from app.rag.ingestion.parsing.factory import ParserFactory
 
 logger = logging.getLogger(__name__)
@@ -27,10 +28,8 @@ def sample_pdf_text_pages(
         "is_scanned": bool
       }
     """
-    try:
-        import fitz  # PyMuPDF
-    except ImportError as exc:
-        logger.debug("PDF diagnostics unavailable: %s", exc)
+    fitz = optional_import("fitz", feature="pdf_diagnostics", pip_name="PyMuPDF")
+    if fitz is None:
         return _empty_pdf_text_sample()
 
     path = Path(pdf_path)

@@ -135,6 +135,7 @@ def test_embedding_quota_gate_can_degrade_without_failing_closed(monkeypatch: py
     import app.services.identity.tenant_quotas as quota_service
 
     events: list[tuple[str, str]] = []
+    rollbacks = []
 
     monkeypatch.setattr(indexer_mod.settings, "TENANT_QUOTA_FAIL_CLOSED", False, raising=False)
     monkeypatch.setattr(
@@ -152,7 +153,7 @@ def test_embedding_quota_gate_can_degrade_without_failing_closed(monkeypatch: py
     monkeypatch.setattr(indexer_mod, "_audit_ingest_gate_event", lambda *_args, **_kwargs: None, raising=True)
 
     result = indexer_mod._enforce_embedding_quota_gate(
-        object(),  # type: ignore[arg-type]
+        SimpleNamespace(rollback=lambda: rollbacks.append(True)),
         tenant_id=UUID(int=1),
         document_id=UUID(int=2),
         additional_chars=123,
@@ -161,12 +162,14 @@ def test_embedding_quota_gate_can_degrade_without_failing_closed(monkeypatch: py
     assert result["gate_outcome"] == "degraded"
     assert result["gate_reason"] == "tenant_quota_gate_unavailable"
     assert events == [("degraded", "tenant_quota_gate_unavailable")]
+    assert rollbacks == [True]
 
 
 def test_embedding_quota_gate_can_fail_closed_on_quota_backend_errors(monkeypatch: pytest.MonkeyPatch) -> None:
     import app.rag.ingestion.indexing.indexer as indexer_mod
     import app.services.identity.tenant_quotas as quota_service
 
+    rollbacks = []
     monkeypatch.setattr(indexer_mod.settings, "TENANT_QUOTA_FAIL_CLOSED", True, raising=False)
     monkeypatch.setattr(
         quota_service,
@@ -181,7 +184,7 @@ def test_embedding_quota_gate_can_fail_closed_on_quota_backend_errors(monkeypatc
 
     with pytest.raises(quota_service.TenantQuotaExceededError) as exc_info:
         indexer_mod._enforce_embedding_quota_gate(
-            object(),  # type: ignore[arg-type]
+            SimpleNamespace(rollback=lambda: rollbacks.append(True)),
             tenant_id=UUID(int=1),
             document_id=UUID(int=2),
             additional_chars=123,
@@ -190,6 +193,7 @@ def test_embedding_quota_gate_can_fail_closed_on_quota_backend_errors(monkeypatc
     assert exc_info.value.quota == "embedding_chars_gate_unavailable"
     assert exc_info.value.meta["outcome"] == "closed"
     assert exc_info.value.meta["reason"] == "tenant_quota_gate_unavailable"
+    assert rollbacks == [True]
 
 
 def test_index_chunks_tracks_vector_and_bm25_channel_transitions(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -271,12 +275,13 @@ def test_index_chunks_tracks_vector_and_bm25_channel_transitions(monkeypatch: py
     )
 
     indexer = indexer_mod.Indexer(_FakeSession())  # type: ignore[arg-type]
-    indexer.index_chunks(
-        tenant_id=UUID(int=1),
-        document_id=UUID(int=2),
-        chunks=[indexer_mod.ChunkInput(content="body", metadata={})],
-        options=indexer_mod.IndexingOptions(chunk_vector_enabled=True, bm25_index_enabled=True),
-    )
+    with pytest.raises(RuntimeError, match="bm25 down"):
+        indexer.index_chunks(
+            tenant_id=UUID(int=1),
+            document_id=UUID(int=2),
+            chunks=[indexer_mod.ChunkInput(content="body", metadata={})],
+            options=indexer_mod.IndexingOptions(chunk_vector_enabled=True, bm25_index_enabled=True),
+        )
 
     assert transitions == [
         ("vector", "processing", True, None),

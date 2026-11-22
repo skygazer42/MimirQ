@@ -295,16 +295,14 @@ def test_failed_native_backfill_does_not_publish_cache_revisions(corpus_db):
 
 def test_empty_persisted_rebuild_initializes_the_real_native_schema(corpus_db):
     pytest.importorskip("pymilvus")
-    from app.rag.retrieval.corpus import CorpusIndex
+    from app.rag.retrieval.corpus import CorpusIndex, CorpusScope
     from app.storage.bm25.milvus import MilvusBM25Store
     from tests.test_milvus_native_bm25 import Client
 
     db, _, _ = corpus_db
     client = Client(exists=False)
-    result = CorpusIndex(bm25_store=MilvusBM25Store(client=client)).rebuild_persisted_retrieval_indexes(
-        db, tenant_id=uuid4()
-    )
-    assert result["bm25_rebuilt"] is True
+    count = CorpusIndex(bm25_store=MilvusBM25Store(client=client)).rebuild(db, scope=CorpusScope(uuid4()))
+    assert count == 0
     assert client.exists is True
     assert any(name == "create" for name, _ in client.calls)
 
@@ -316,12 +314,13 @@ def test_backfill_cli_commits_only_explicit_apply(apply, monkeypatch, capsys):
 
     class Session:
         commits = 0
+        closed = False
 
         def __enter__(self):
             return self
 
         def __exit__(self, *_args):
-            pass
+            self.closed = True
 
         def commit(self):
             self.commits += 1
@@ -331,28 +330,4 @@ def test_backfill_cli_commits_only_explicit_apply(apply, monkeypatch, capsys):
     monkeypatch.setattr(cli, "run_backfill", lambda **kwargs: {"mode": "apply" if kwargs["apply"] else "dry-run"})
     assert cli.main(["--tenant-id", str(uuid4()), *(["--apply"] if apply else [])]) == 0
     assert db.commits == int(apply)
-
-
-def test_legacy_persisted_rebuild_cli_commits_its_owned_revision_transaction(monkeypatch):
-    from app.infrastructure.database import connection as database
-    from app.rag.retrieval.recall.retriever import HybridRetriever
-    from scripts import rebuild_retrieval_indexes as cli
-
-    class Session:
-        commits = 0
-        closed = False
-
-        def commit(self):
-            self.commits += 1
-
-        def close(self):
-            self.closed = True
-
-    db = Session()
-    monkeypatch.setattr(database, "SessionLocal", lambda: db)
-    monkeypatch.setattr(
-        HybridRetriever, "rebuild_persisted_retrieval_indexes", lambda *_args, **_kwargs: {"doc_count": 0}
-    )
-    monkeypatch.setattr("sys.argv", ["rebuild_retrieval_indexes.py", "--tenant-id", str(uuid4())])
-    assert cli.main() == 0
-    assert db.commits == 1 and db.closed
+    assert db.closed is True

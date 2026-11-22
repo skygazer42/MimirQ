@@ -162,8 +162,8 @@ def test_regression_bundle_retains_context_privacy_requirement():
 _NUMERIC_BOUNDARY_HELPERS = [
     ("app.services.chunking.quality_gate", "_as_int", 0),
     ("app.services.chunking.quality_gate", "_as_float", 0.0),
-    ("app.rag.ingestion.parsing.enrich.reading_order_fixer", "_coerce_int", None),
-    ("app.rag.ingestion.parsing.enrich.reading_order_fixer", "_coerce_float", None),
+    ("app.rag.ingestion.parsing.utils.scalars", "coerce_int", None),
+    ("app.rag.ingestion.parsing.utils.scalars", "coerce_float", None),
     ("app.rag.ingestion.parsing.quality.reading_order", "_coerce_int", None),
     ("app.rag.ingestion.parsing.quality.reading_order", "_coerce_float", None),
     ("app.services.datasets.profile_statistics", "safe_int", 0),
@@ -216,7 +216,7 @@ def _failing_milvus_count():
         def num_entities(self):
             raise RuntimeError("Milvus RPC unavailable")
 
-    store = SimpleNamespace(_require_store=lambda: None, _store=SimpleNamespace(col=FailedCollection()))
+    store = SimpleNamespace(_require_store=lambda: SimpleNamespace(col=FailedCollection()))
     return MilvusVectorStore.get_collection_count(store)
 
 
@@ -229,7 +229,9 @@ def test_vector_health_reports_failed_milvus_count_as_disconnected():
     from app.infrastructure.observability.health import check_vector
 
     vector, milvus, ok = check_vector(
-        SimpleNamespace(VECTOR_BACKEND="milvus"), mode="health", milvus_get_collection_count=_failing_milvus_count
+        SimpleNamespace(VECTOR_BACKEND="milvus", DATA_REGION=""),
+        mode="health",
+        milvus_get_collection_count=_failing_milvus_count,
     )
     assert ok is False
     assert vector["status"] == "disconnected"

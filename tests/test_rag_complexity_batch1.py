@@ -309,28 +309,17 @@ def test_clean_python_plugin_ref_accepts_registered_and_allowed_import_refs(monk
         clean_python_plugin_ref("pkg/module.py", file_path_message="custom path message")
 
 
-def test_load_near_dedup_index_filters_invalid_rows_and_normalizes_values(tmp_path: Path) -> None:
+def test_load_near_dedup_index_accepts_valid_fingerprints_and_discards_invalid_index(tmp_path: Path) -> None:
     path = tmp_path / "near-dedup.json"
-    path.write_text(
-        json.dumps(
-            {
-                "version": INDEX_VERSION,
-                "buckets": {
-                    "band-1": [" ABCD ", "", None, "ef01"],
-                    3: ["skip-key"],
-                    "band-2": "skip-value",
-                },
-            }
-        ),
-        encoding="utf-8",
-    )
+    buckets = {"0:abcd": [" ABCDEFABCDEFABCD ", "0123456789abcdef"]}
+    path.write_text(json.dumps({"version": INDEX_VERSION, "buckets": buckets}), encoding="utf-8")
+    assert load_near_dedup_index(path) == {"0:abcd": ["abcdefabcdefabcd", "0123456789abcdef"]}
 
-    assert load_near_dedup_index(path) == {
-        "3": ["skip-key"],
-        "band-1": ["abcd", "ef01"],
-    }
+    invalid_buckets = {**buckets, "1:1234": ["not-a-fingerprint"]}
+    path.write_text(json.dumps({"version": INDEX_VERSION, "buckets": invalid_buckets}), encoding="utf-8")
+    assert load_near_dedup_index(path) == {}
 
-    path.write_text(json.dumps({"version": INDEX_VERSION + 1, "buckets": {"band-1": ["abcd"]}}), encoding="utf-8")
+    path.write_text(json.dumps({"version": INDEX_VERSION + 1, "buckets": buckets}), encoding="utf-8")
     assert load_near_dedup_index(path) == {}
 
 

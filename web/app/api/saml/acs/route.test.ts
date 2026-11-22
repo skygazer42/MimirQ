@@ -19,7 +19,7 @@ function makeRequest() {
   const form = new FormData()
   form.set('SAMLResponse', 'base64-response')
   form.set('RelayState', '/datasets/123')
-  return new NextRequest('https://app.example.com/api/saml/acs?provider_id=default', {
+  return new NextRequest('http://localhost:3807/api/saml/acs?provider_id=default', {
     method: 'POST',
     body: form,
   })
@@ -50,7 +50,11 @@ describe('SAML ACS route', () => {
     const response = await POST(makeRequest())
 
     expect(response.status).toBe(303)
-    expect(response.headers.get('location')).toBe('https://app.example.com/auth/saml/callback')
+    const location = response.headers.get('location')
+    expect(location).toBe('/auth/saml/callback')
+    expect(new URL(location ?? '', 'http://127.0.0.1:3807/api/saml/acs').href).toBe(
+      'http://127.0.0.1:3807/auth/saml/callback',
+    )
     expect(mocks.fetch).toHaveBeenCalledWith(
       'https://api.example.com/api/v1/auth/saml/exchange',
       expect.objectContaining({
@@ -78,9 +82,7 @@ describe('SAML ACS route', () => {
     const response = await POST(makeRequest())
 
     expect(response.status).toBe(303)
-    expect(response.headers.get('location')).toBe(
-      'https://app.example.com/auth/saml/callback?error=saml_invalid_response',
-    )
+    expect(response.headers.get('location')).toBe('/auth/saml/callback?error=saml_invalid_response')
     expect(response.headers.get('location')).not.toContain('Invalid+SAML+signature')
     const cookie = response.headers.get('set-cookie')
     expect(cookie).toContain('mimirq_saml_bridge=')

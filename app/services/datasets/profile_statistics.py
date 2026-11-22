@@ -18,7 +18,7 @@ def safe_int(value: object, *, default: int = 0) -> int:
         if isinstance(value, bool):
             return int(default)
         return int(value)  # type: ignore[arg-type]
-    except Exception:
+    except (TypeError, ValueError, OverflowError):
         return int(default)
 
 
@@ -29,7 +29,7 @@ def safe_float(value: object, *, default: float = 0.0) -> float:
         if isinstance(value, bool):
             return float(default)
         return float(value)  # type: ignore[arg-type]
-    except Exception:
+    except (TypeError, ValueError, OverflowError):
         return float(default)
 
 

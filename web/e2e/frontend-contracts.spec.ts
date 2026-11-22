@@ -8,6 +8,17 @@ test.use({ serviceWorkers: 'block' })
 
 type JsonResponse = { status: number; json: unknown }
 
+async function changeTenant(page: Page) {
+  await page.evaluate(() => {
+    const key = 'mimirq_tenant_id'
+    const oldValue = localStorage.getItem(key)
+    const newValue = '99999999-9999-4999-8999-999999999999'
+    sessionStorage.setItem('mimirq_access_token', 'browser-contract-token')
+    localStorage.setItem(key, newValue)
+    window.dispatchEvent(new StorageEvent('storage', { key, oldValue, newValue, storageArea: localStorage }))
+  })
+}
+
 async function mockWorkspaceApi(page: Page, findResponse: (url: URL) => JsonResponse | undefined) {
   await page.route('**/api/v1/**', async (route) => {
     const url = new URL(route.request().url())
@@ -73,7 +84,7 @@ test('continues a conversation after visiting its paginated history', async ({ p
   page.on('pageerror', (error) => pageErrors.push(error.message))
   await mockWorkspaceApi(page, (url) => {
     if (url.pathname.endsWith('/chat/conversations')) {
-      return { status: 200, json: { total: 1, items: [conversation], returned: 1, has_more: false } }
+      return { status: 200, json: { total: 1, items: [conversation], returned: 1, has_more: false, next_skip: null } }
     }
     if (url.pathname.endsWith(`/chat/conversations/${conversationId}/messages`)) {
       const limit = url.searchParams.get('limit')
@@ -177,7 +188,7 @@ test('replaces idle task content after the shared auth scope invalidation', asyn
   await page.getByRole('button', { name: '任务中心', exact: true }).click()
   await expect(page.locator('[data-task-center-panel]')).toContainText('scope-a.pdf')
   hasNewTasks = true
-  await page.evaluate(() => window.dispatchEvent(new Event('mimirq:auth-scope-changed')))
+  await changeTenant(page)
   await expect(page.locator('[data-task-center-panel]')).toHaveCount(0)
   await page.getByRole('button', { name: '任务中心', exact: true }).click()
   await expect(page.locator('[data-task-center-panel]')).toContainText('scope-b.pdf')
@@ -205,7 +216,20 @@ test('searches server results, reports failures and retires the command menu on 
         status: 200,
         json: {
           total: 1,
-          items: [{ id: 'command-conversation', title: null, last_message: null, last_message_at: null }],
+          returned: 1,
+          has_more: false,
+          next_skip: null,
+          items: [
+            {
+              id: 'command-conversation',
+              title: '维护手册对话',
+              last_message: null,
+              last_message_at: null,
+              message_count: 0,
+              created_at: '2026-11-12T00:00:00Z',
+              updated_at: '2026-11-12T00:00:00Z',
+            },
+          ],
         },
       }
     }
@@ -219,13 +243,13 @@ test('searches server results, reports failures and retires the command menu on 
   await expect(input).toBeFocused()
   await input.fill('内容线索')
   await expect(dialog.getByText('正文命中的资料.pdf', { exact: true })).toBeVisible()
-  await expect(dialog.getByText('未命名对话', { exact: true })).toBeVisible()
+  await expect(dialog.getByRole('option', { name: '维护手册对话', exact: true })).toBeVisible()
 
   await input.fill('查询失败')
   await expect(dialog.getByRole('alert').filter({ hasText: '搜索服务暂不可用' })).toBeVisible()
   await expect(dialog.getByText('未找到文档', { exact: true })).toHaveCount(0)
 
-  await page.evaluate(() => window.dispatchEvent(new Event('mimirq:auth-scope-changed')))
+  await changeTenant(page)
   await expect(dialog).toHaveCount(0)
   await page.keyboard.press('Control+k')
   await expect(input).toHaveValue('')
@@ -326,7 +350,6 @@ test('restores cached file metadata and keeps document close and resume actions 
                 markdownContent: '',
                 parsedAt: '',
                 parser: 'test',
-                source: 'parsing_workspace',
                 status: 'parsed',
               },
             ],
@@ -377,8 +400,13 @@ test('restores cached file metadata and keeps document close and resume actions 
     }
   })
 
-  await page.goto('/zh-CN/data-governance')
-  await expect(page.getByText('Saved local note.md', { exact: true }).first()).toBeVisible()
+  await page.goto('/zh-CN/parsing')
+  await page.getByLabel('选择文档', { exact: true }).click()
+  await expect(
+    page.getByRole('dialog', { name: '文件目录', exact: true }).getByText('Saved local note.md', { exact: true }),
+  ).toBeVisible()
+  await page.keyboard.press('Escape')
+  await page.getByRole('button', { name: '知识库管理', exact: true, expanded: false }).click()
   await page.getByRole('link', { name: '知识库', exact: true }).click()
   await page.waitForURL(/\/knowledge$/)
   const heading = page.getByRole('heading', { name: 'stored-view.md', exact: true })
@@ -387,7 +415,7 @@ test('restores cached file metadata and keeps document close and resume actions 
   await expect(heading).toHaveCount(0)
 
   await page.keyboard.press('Control+k')
-  await page.getByRole('combobox').fill('/resume')
+  await page.getByRole('dialog', { name: '命令中心', exact: true }).getByRole('combobox').fill('/resume')
   await page.keyboard.press('Enter')
   await page.waitForURL((url) => url.pathname === '/')
   await expect(heading).toBeVisible()

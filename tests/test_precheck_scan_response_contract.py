@@ -66,6 +66,7 @@ def batch_context(tmp_path, monkeypatch):
             AsyncMock(return_value={"success": False, "filename": "sample.txt", "error": "unrelated per-file failure"}),
         )
         form = module.UploadDocumentsBatchFormFields(
+            files=[UploadFile(BytesIO(b"x"), filename="sample.txt")],
             parser_backend="auto",
             chunk_strategy="recursive",
             pipeline=None,
@@ -76,15 +77,14 @@ def batch_context(tmp_path, monkeypatch):
             user_metadata_map=None,
             max_concurrent=1,
         )
-        overrides = {}
 
         def invoke():
             return asyncio.run(
                 module.ingest_batch(
                     background_tasks=BackgroundTasks(),
-                    files=[UploadFile(BytesIO(b"x"), filename="sample.txt")],
+                    files=form.files,
                     form=form,
-                    overrides_form=overrides,
+                    overrides_form=form.to_pipeline_overrides(),
                     tenant_id=uuid4(),
                     account_id="owner",
                     db=db,

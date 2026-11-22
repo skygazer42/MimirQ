@@ -2,6 +2,7 @@
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { useSearchParams } from 'next/navigation'
 import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 import { Download, Loader2 } from '@/components/icons'
@@ -286,13 +287,14 @@ export function KGDiagnosticsPage() {
 
 function KGDiagnosticsWorkspace({ sessionKey }: Readonly<{ sessionKey: string }>) {
   const t = useTranslations('KGDiagnosticsPage')
+  const datasetIdFromUrl = useSearchParams().get('dataset_id')?.trim() ?? ''
   const datasetsQuery = useQuery({
     queryKey: queryKeys.datasets.exhaustive(),
     queryFn: ({ signal }) => datasetApi.listAll(undefined, { signal }),
     staleTime: 30_000,
   })
   const datasets = useMemo(() => datasetsQuery.data ?? [], [datasetsQuery.data])
-  const [datasetId, setDatasetId] = useState('')
+  const [datasetId, setDatasetId] = useState(datasetIdFromUrl)
   const [pane, setPane] = useState<'directory' | 'detail'>('detail')
   const [activeView, setActiveView] = useState('run')
   const [maxCases, setMaxCases] = useState('50')
@@ -336,6 +338,7 @@ function KGDiagnosticsWorkspace({ sessionKey }: Readonly<{ sessionKey: string }>
   const scope = useRef<DiagnosticsScope | null>(null)
   const requests = useRef({ runs: 0, a: 0, b: 0, quality: 0 })
   const selectionInitialized = useRef(false)
+  useEffect(() => setDatasetId(datasetIdFromUrl), [datasetIdFromUrl])
   useEffect(() => {
     if (!datasetId && datasets[0]) setDatasetId(datasets[0].id)
   }, [datasets, datasetId])

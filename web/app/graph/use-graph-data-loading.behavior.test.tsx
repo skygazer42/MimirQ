@@ -289,7 +289,10 @@ describe('graph data loading through React DOM file inputs', () => {
     const older = deferred<string>()
     await selectFile('Trace file', 'older.json', older.promise)
     await changeScope()
-    expect(controlled.kg.getGraph).toHaveBeenLastCalledWith(expect.objectContaining({ document_ids: ['new-document'] }))
+    expect(controlled.kg.getGraph).toHaveBeenLastCalledWith(
+      expect.objectContaining({ document_ids: ['new-document'] }),
+      { signal: expect.any(AbortSignal) },
+    )
     const current = surface()
     await act(async () => older.resolve(traceText('older')))
 

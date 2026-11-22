@@ -8,6 +8,39 @@ import pytest
 from langchain_core.documents import Document
 
 
+class _NativeStore:
+    def __init__(self):
+        self.documents_by_tenant = {}
+
+    def upsert(self, documents, *, tenant_id):
+        records = self.documents_by_tenant.setdefault(tenant_id, {})
+        for document in documents:
+            assert document.metadata["tenant_id"] == str(tenant_id)
+            records[document.id] = document
+
+    def search(self, query, *, tenant_id, dataset_ids, document_ids, metadata_filter, top_k):
+        assert not document_ids and metadata_filter is None
+        documents = self.documents_by_tenant.get(tenant_id, {}).values()
+        datasets = {str(dataset_id) for dataset_id in dataset_ids}
+        selected = [
+            document
+            for document in documents
+            if (not datasets or document.metadata["dataset_id"] in datasets) and query in document.page_content
+        ]
+        return [{"chunk_id": document.id, "metadata": document.metadata} for document in selected[:top_k]]
+
+    def delete(self, *, tenant_id, metadata_filter):
+        documents = self.documents_by_tenant[tenant_id]
+        removed = [
+            document_id
+            for document_id, document in documents.items()
+            if document.metadata["dataset_id"] == metadata_filter["dataset_id"]
+        ]
+        for document_id in removed:
+            del documents[document_id]
+        return len(removed)
+
+
 def test_corpus_scope_is_an_immutable_explicit_identity() -> None:
     from app.rag.retrieval.corpus import CorpusScope
 
@@ -21,13 +54,8 @@ def test_corpus_upsert_search_delete_keeps_tenant_and_dataset_isolation(monkeypa
     from app.rag.retrieval.corpus import CorpusIndex, CorpusScope
 
     monkeypatch.setattr(settings, "BM25_INDEX_ENABLED", True)
-    monkeypatch.setattr(settings, "BM25_LAZY_BUILD_ENABLED", False)
-    monkeypatch.setattr(settings, "BM25_EAGER_UPSERT_MAX_CHUNKS", 1000)
-    monkeypatch.setattr(settings, "SPARSE_RETRIEVAL_ENABLED", False)
-    monkeypatch.setattr(settings, "COLBERT_RETRIEVAL_ENABLED", False)
-    # This test exercises in-memory corpus changes; cross-process version reads are a separate I/O boundary.
-    monkeypatch.setattr(CorpusIndex, "_bm25_dataset_cache_version", lambda self, **_kwargs: "")
-    corpus = CorpusIndex()
+    monkeypatch.setattr(settings, "VECTOR_BACKEND", "milvus")
+    corpus = CorpusIndex(bm25_store=_NativeStore())
     tenants, datasets = (uuid4(), uuid4()), (uuid4(), uuid4())
     expected = {}
     for tenant_id in tenants:
@@ -46,7 +74,7 @@ def test_corpus_upsert_search_delete_keeps_tenant_and_dataset_isolation(monkeypa
                 for text in ("orchard apple", "winter river", "stone mountain")
             ]
             expected[(tenant_id, dataset_id)] = documents[0].id
-            corpus.upsert(object(), tenant_id=tenant_id, documents=documents)
+            corpus.upsert(None, tenant_id=tenant_id, documents=documents)
 
     for tenant_id in tenants:
         for dataset_id in datasets:
@@ -156,17 +184,10 @@ def test_upsert_refreshes_existing_tenant_and_multi_dataset_views_with_call_loca
     from app.infrastructure.config import settings
     from app.rag.retrieval.corpus import CorpusIndex, CorpusScope
 
-    for field, value in {
-        "BM25_INDEX_ENABLED": True,
-        "BM25_LAZY_BUILD_ENABLED": False,
-        "BM25_EAGER_UPSERT_MAX_CHUNKS": 1000,
-        "SPARSE_RETRIEVAL_ENABLED": False,
-        "COLBERT_RETRIEVAL_ENABLED": False,
-    }.items():
-        monkeypatch.setattr(settings, field, value)
-    monkeypatch.setattr(CorpusIndex, "_bm25_dataset_cache_version", lambda self, **_kwargs: "")
+    monkeypatch.setattr(settings, "BM25_INDEX_ENABLED", True)
+    monkeypatch.setattr(settings, "VECTOR_BACKEND", "milvus")
     tenant_id, dataset_a, dataset_b = uuid4(), uuid4(), uuid4()
-    owner = CorpusIndex()
+    owner = CorpusIndex(bm25_store=_NativeStore())
     documents = [
         Document(
             page_content=text,
@@ -181,8 +202,9 @@ def test_upsert_refreshes_existing_tenant_and_multi_dataset_views_with_call_loca
         for dataset_id, text in [(dataset_a, "old orchard"), (dataset_b, "winter river"), (dataset_b, "stone mountain")]
     ]
     scopes = [CorpusScope(tenant_id=tenant_id), CorpusScope(tenant_id=tenant_id, dataset_ids=(dataset_a, dataset_b))]
+    owner.upsert(None, tenant_id=tenant_id, documents=documents)
     for scope in scopes:
-        owner._build_bm25_index_from_documents(documents, tenant_id=tenant_id, cache_key=owner.scope_key(scope))
+        assert owner.search("cobalt", scope=scope, top_k=1, metadata_filter=None).records == []
     incoming = Document(
         page_content="cobalt orchard",
         id=str(uuid4()),

@@ -241,7 +241,7 @@ def test_main_uses_defaults_and_writes_default_artifacts(
     assert stdout_lines[-1] == "[chunk_autotune] done. candidates=60 best_score=0 out_dir=chunk_autotune_out"
 
 
-def test_main_preserves_current_zero_score_and_http_error_ranking_behavior(
+def test_main_ranks_zero_scores_before_failed_candidates(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
@@ -292,15 +292,15 @@ def test_main_preserves_current_zero_score_and_http_error_ranking_behavior(
     assert [row["rank"] for row in rows] == [1, 2, 3]
     assert [row["candidate"]["chunk_strategy"] for row in rows] == [
         "langchain_recursive",
-        "markdown_header",
         "outline",
+        "markdown_header",
     ]
     assert rows[0]["score"] == 0
-    assert rows[1]["score"] == 9_999_999
-    assert rows[1]["score_reasons"] == ["http_error"]
-    assert rows[1]["http_status"] == 503
-    assert rows[1]["http_error"] == "upstream unavailable"
-    assert rows[2]["score"] == 0
+    assert rows[1]["score"] == 0
+    assert rows[2]["score"] == 9_999_999
+    assert rows[2]["score_reasons"] == ["http_error"]
+    assert rows[2]["http_status"] == 503
+    assert rows[2]["http_error"] == "upstream unavailable"
 
     preset_patch = json.loads((out_dir / "preset_patch.json").read_text(encoding="utf-8"))
     assert preset_patch == {

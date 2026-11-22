@@ -73,14 +73,18 @@ test('a delayed previous report cannot replace the selected history run', async 
   state.summaryGates[runOne] = new Promise<void>((resolve) => {
     release = resolve
   })
-  await openPrecheck(page)
-  await expect.poll(() => state.reads.includes(`${runOne}/summary`)).toBeTruthy()
-  await page.getByRole('combobox', { name: '历史运行', exact: true }).click()
-  await page.getByRole('option').filter({ hasText: '2026/10/25' }).click()
-  await expect(page.locator('[data-precheck-total]')).toContainText('64', { timeout: 30000 })
-  const oldResponse = page.waitForResponse((response) => response.url().includes(`${runOne}/summary`))
-  release()
-  await oldResponse
+  const oldRequest = page.waitForRequest((request) => request.url().includes(`${runOne}/summary`))
+  try {
+    await openPrecheck(page)
+    await oldRequest
+    await page.getByRole('combobox', { name: '历史运行', exact: true }).click()
+    await page.getByRole('option', { selected: false }).click()
+    await expect(page.locator('[data-precheck-total]')).toContainText('64', { timeout: 30000 })
+  } finally {
+    release()
+  }
+  const response = await (await oldRequest).response()
+  await response?.finished()
   await expect(page.locator('[data-precheck-total]')).toContainText('64')
   expect(state.reads).toContain(`${runTwo}/summary`)
 })

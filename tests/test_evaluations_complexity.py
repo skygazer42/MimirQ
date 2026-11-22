@@ -4,17 +4,8 @@ from uuid import uuid4
 import pytest
 from fastapi import HTTPException
 
-from app.api.schemas.evaluation.regression import RagasRegressionCasePatchRequest
+from app.api.schemas.evaluation.regression import RagasRegressionCasePatchRequest, StoredReferenceSource
 from app.api.v1.evaluation import routes as evaluations
-
-
-class _DumpableEvidence:
-    def __init__(self, payload: dict[str, object]) -> None:
-        self.payload = payload
-
-    def model_dump(self, *, mode: str) -> dict[str, object]:
-        assert mode == "json"
-        return dict(self.payload)
 
 
 class _ReferenceQuery:
@@ -147,30 +138,13 @@ class _AutoSaveDB:
 
 
 def test_normalize_evidence_chain_keeps_valid_fields_and_caps_items() -> None:
-    raw: list[object] = [None, "invalid", {"document_id": "", "chunk_id": "missing"}]
-    raw.append(
-        _DumpableEvidence(
-            {
-                "document_id": " doc-1 ",
-                "chunk_id": " chunk-1 ",
-                "chunk_index": "7",
-                "label": "x" * 120,
-            }
-        )
-    )
-    raw.append({"document_id": "doc-2", "chunk_id": "chunk-2", "chunk_index": "bad"})
-    raw.extend({"document_id": f"doc-{index}", "chunk_id": f"chunk-{index}"} for index in range(3, 30))
+    first = {"document_id": str(uuid4()), "chunk_id": str(uuid4()), "chunk_index": 7, "label": "x" * 120}
+    following = [{"document_id": str(uuid4()), "chunk_id": str(uuid4())} for _ in range(25)]
+    assert evaluations.normalize_evidence_chain([first, *following]) == [first, *following[:19]]
 
-    normalized = evaluations.normalize_evidence_chain(raw)
-
-    assert len(normalized) == 20
-    assert normalized[0] == {
-        "document_id": "doc-1",
-        "chunk_id": "chunk-1",
-        "chunk_index": 7,
-        "label": "x" * 100,
-    }
-    assert normalized[1] == {"document_id": "doc-2", "chunk_id": "chunk-2"}
+    with pytest.raises(HTTPException, match="Invalid evidence_chain reference") as exc_info:
+        evaluations.normalize_evidence_chain([first, None])
+    assert exc_info.value.status_code == 400
 
 
 def test_merge_regression_case_extra_preserves_unknown_keys_and_removes_empty_reasoning() -> None:
@@ -203,12 +177,7 @@ def test_finalize_reference_sources_enforces_acl_and_enriches_payload(monkeypatc
         account_id="account-1",
         dataset_id=dataset_id,
         reference_sources=[
-            _DumpableEvidence(
-                {
-                    "document_id": str(document_id),
-                    "chunk_id": str(chunk_id),
-                }
-            )
+            StoredReferenceSource(document_id=document_id, chunk_id=chunk_id)
         ],
     )
 
@@ -218,7 +187,7 @@ def test_finalize_reference_sources_enforces_acl_and_enriches_payload(monkeypatc
             "chunk_id": str(chunk_id),
             "chunk_index": 4,
             "pipeline_hash": "hash",
-            "quote": f"{'q' * 2000}...",
+            "quote": "q" * 2000,
         }
     ]
 
@@ -310,6 +279,8 @@ def test_import_regression_cases_creates_updates_and_commits_once(monkeypatch: p
         "reference_sources": [{"document_id": str(uuid4()), "chunk_id": str(uuid4())}],
         "tags": ["created"],
         "extra": {"new": True},
+        "reasoning_hops": [],
+        "evidence_chain": [],
     }
     update_item = {
         "question": "existing",
@@ -317,6 +288,8 @@ def test_import_regression_cases_creates_updates_and_commits_once(monkeypatch: p
         "reference_sources": [{"document_id": str(uuid4()), "chunk_id": str(uuid4())}],
         "tags": ["updated"],
         "extra": {"incoming": True},
+        "reasoning_hops": [],
+        "evidence_chain": [],
     }
     payload = SimpleNamespace(
         dataset_id=dataset_id,

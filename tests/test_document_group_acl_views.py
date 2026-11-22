@@ -162,15 +162,15 @@ def test_group_only_reader_sees_same_documents_across_library_views(group_acl_db
         db=db,
     )
 
-    assert listing["total"] == 2
-    assert {document.id for document in listing["items"]} == ctx.visible_document_ids
-    assert stats["total"] == 2
-    assert stats["total_chunks"] == 4
+    assert listing.total == 2
+    assert {document.id for document in listing.items} == ctx.visible_document_ids
+    assert stats.total == 2
+    assert stats.total_chunks == 4
     assert folders.total_documents == 2
     assert folders.total_with_source_path == 2
-    assert duplicates["total"] == 1
-    assert duplicates["items"][0]["count"] == 2
-    assert {item["id"] for item in duplicates["items"][0]["documents"]} == ctx.visible_document_ids
+    assert duplicates.total == 1
+    assert duplicates.items[0].count == 2
+    assert {item.id for item in duplicates.items[0].documents} == ctx.visible_document_ids
     assert ingestion.total_documents == 2
     assert ingestion.total_chunks == 4
 
@@ -249,8 +249,8 @@ def test_legacy_documents_without_dataset_fail_closed_for_inherited_access(group
         )
     )
 
-    assert {document.id for document in listing["items"]} & set(legacy_ids.values()) == expected_legacy_ids
-    assert stats["total"] == len(ctx.visible_document_ids) + len(expected_legacy_ids)
+    assert {document.id for document in listing.items} & set(legacy_ids.values()) == expected_legacy_ids
+    assert stats.total == len(ctx.visible_document_ids) + len(expected_legacy_ids)
     assert allowed_ids == expected_legacy_ids
     assert missing_ids == set()
     assert accessible_ids & set(legacy_ids.values()) == expected_legacy_ids
@@ -414,18 +414,18 @@ def test_list_datasets_q_filters_name_and_description(group_acl_db) -> None:  # 
         db=db,
     )
 
-    assert by_name["total"] == 1
-    assert [item.name for item in by_name["items"]] == ["Needle Handbook"]
-    assert by_description["total"] == 1
-    assert [item.name for item in by_description["items"]] == ["Operations"]
-    assert literal_percent["total"] == 1
-    assert [item.name for item in literal_percent["items"]] == ["100% Knowledge"]
-    assert literal_underscore["total"] == 1
-    assert [item.name for item in literal_underscore["items"]] == ["Ops_A"]
-    assert partial_hyphenated_id["total"] == 1
-    assert [item.id for item in partial_hyphenated_id["items"]] == [id_search_dataset_id]
-    assert partial_compact_id["total"] == 1
-    assert [item.id for item in partial_compact_id["items"]] == [id_search_dataset_id]
+    assert by_name.total == 1
+    assert [item.name for item in by_name.items] == ["Needle Handbook"]
+    assert by_description.total == 1
+    assert [item.name for item in by_description.items] == ["Operations"]
+    assert literal_percent.total == 1
+    assert [item.name for item in literal_percent.items] == ["100% Knowledge"]
+    assert literal_underscore.total == 1
+    assert [item.name for item in literal_underscore.items] == ["Ops_A"]
+    assert partial_hyphenated_id.total == 1
+    assert [item.id for item in partial_hyphenated_id.items] == [id_search_dataset_id]
+    assert partial_compact_id.total == 1
+    assert [item.id for item in partial_compact_id.items] == [id_search_dataset_id]
 
 
 def test_list_datasets_operational_status_facets_and_sort(group_acl_db) -> None:  # noqa: ANN001
@@ -583,33 +583,33 @@ def test_list_datasets_operational_status_facets_and_sort(group_acl_db) -> None:
         db=db,
     )
 
-    assert page["total"] == 6
-    assert [item.name for item in page["items"]] == ["Alpha Active", "Bravo Issue"]
-    assert page["facets"].scope_total == 6
-    assert page["facets"].filtered_total == 6
-    assert page["facets"].status_counts == {
+    assert page.total == 6
+    assert [item.name for item in page.items] == ["Alpha Active", "Bravo Issue"]
+    assert page.facets.scope_total == 6
+    assert page.facets.filtered_total == 6
+    assert page.facets.status_counts == {
         "active": 3,
         "anomaly": 1,
         "pending": 1,
         "testing": 1,
     }
 
-    alpha = next(item for item in page["items"] if item.name == "Alpha Active")
-    bravo = next(item for item in page["items"] if item.name == "Bravo Issue")
+    alpha = next(item for item in page.items if item.name == "Alpha Active")
+    bravo = next(item for item in page.items if item.name == "Bravo Issue")
     assert alpha.operational_status == "active"
     assert alpha.ingestion_summary.total_documents == 1
     assert alpha.ingestion_summary.total_chunks == 3
     assert bravo.operational_status == "anomaly"
     assert bravo.ingestion_summary.by_status == {"failed": 1}
 
-    assert pending_only["total"] == 1
-    assert [item.name for item in pending_only["items"]] == ["Charlie Pending"]
-    assert pending_only["items"][0].operational_status == "pending"
-    assert pending_only["facets"].status_counts["pending"] == 1
+    assert pending_only.total == 1
+    assert [item.name for item in pending_only.items] == ["Charlie Pending"]
+    assert pending_only.items[0].operational_status == "pending"
+    assert pending_only.facets.status_counts["pending"] == 1
 
-    assert testing_only["total"] == 1
-    assert [item.name for item in testing_only["items"]] == ["Demo Broken"]
-    assert testing_only["items"][0].operational_status == "testing"
+    assert testing_only.total == 1
+    assert [item.name for item in testing_only.items] == ["Demo Broken"]
+    assert testing_only.items[0].operational_status == "testing"
 
 
 def test_list_datasets_filtered_total_count_avoids_document_stats_join(group_acl_db) -> None:  # noqa: ANN001
@@ -672,9 +672,9 @@ def test_list_datasets_filtered_total_count_avoids_document_stats_join(group_acl
         if "count(" in statement.lower() and "datasets" in statement.lower() and "group by" not in statement.lower()
     ]
 
-    assert result["total"] == 1
-    assert [item.name for item in result["items"]] == ["Contest Knowledge"]
-    assert result["facets"].filtered_total == 1
+    assert result.total == 1
+    assert [item.name for item in result.items] == ["Contest Knowledge"]
+    assert result.facets.filtered_total == 1
     assert len(dataset_count_sql) == 2
     assert all("documents" not in statement for statement in dataset_count_sql)
     assert all("join" not in statement for statement in dataset_count_sql)

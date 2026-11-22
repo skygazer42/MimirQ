@@ -17,6 +17,7 @@ from typing import Any
 
 import pdfplumber  # type: ignore
 
+from app.infrastructure.runtime.dependencies import optional_import
 from app.rag.ingestion.parsing.quality.ocr_validator import rapid_ocr_service
 from app.rag.ingestion.parsing.quality.reading_order import score_pdfplumber_reading_order
 from app.rag.ingestion.parsing.utils.scalars import coerce_float
@@ -125,10 +126,8 @@ def _detect_preprocess_info(file_path: Path, *, sample_pages: int) -> dict[str, 
     This is intentionally lightweight and does not run model inference.
     """
     info = _empty_preprocess_info()
-    try:
-        import fitz  # PyMuPDF
-    except ImportError as exc:
-        logger.debug("PDF preprocess hints unavailable: %s", exc)
+    fitz = optional_import("fitz", feature="pdf_preprocess_hints", pip_name="PyMuPDF")
+    if fitz is None:
         return info
 
     doc = None

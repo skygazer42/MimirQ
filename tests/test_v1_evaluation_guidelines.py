@@ -5,7 +5,8 @@ from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
-from fastapi import UploadFile
+from fastapi import HTTPException, UploadFile
+from pydantic import ValidationError
 from sqlalchemy import create_engine, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.compiler import compiles
@@ -99,11 +100,13 @@ class BrokenNumber:
         raise RuntimeError("numeric implementation failed")
 
 
-def test_evaluation_optional_chunk_index_does_not_hide_implementation_failure():
-    with pytest.raises(RuntimeError, match="numeric implementation failed"):
+def test_evaluation_optional_chunk_index_rejects_an_invalid_value():
+    with pytest.raises(HTTPException, match="Invalid evidence_chain reference") as caught:
         evaluation_case_import._normalize_evidence_item(
             {"document_id": str(uuid4()), "chunk_id": str(uuid4()), "chunk_index": BrokenNumber()}
         )
+    assert caught.value.status_code == 400
+    assert isinstance(caught.value.__cause__, ValidationError)
 
 
 def test_health_json_probe_does_not_hide_response_implementation_failure(monkeypatch):
@@ -225,7 +228,13 @@ def test_evidence_import_runs_blocking_database_work_off_event_loop(monkeypatch)
                 suite_id, file, tenant_id=tenant_id, account_id="owner", db=db, query=EvidenceItemImportQuery()
             )
         return await run_blocking_in_thread(
-            evidence.import_evidence_items, suite_id, file, tenant_id=tenant_id, account_id="owner", db=db
+            evidence.import_evidence_items,
+            suite_id,
+            file,
+            tenant_id=tenant_id,
+            account_id="owner",
+            db=db,
+            query=EvidenceItemImportQuery(),
         )
 
     result = asyncio.run(request())

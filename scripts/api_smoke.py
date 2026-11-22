@@ -1629,6 +1629,23 @@ def run_feedback_smokes(ctx: SmokeContext) -> None:
 
 def run_observability_smokes(ctx: SmokeContext) -> None:
     call_embedding_drift_snapshot(ctx.runner, timeout=ctx.args.timeout)
+    path = "/api/v1/observability/perf-suite/run"
+    response = ctx.runner.call(
+        "POST",
+        path,
+        path,
+        expected=[200, 403],
+        json={"iterations": 1, "timeout_sec": 2.0},
+    )
+    if response is None or response.status_code != 200:
+        return
+
+    cases = parse_json(response).get("current_report", {}).get("cases", [])
+    successful = {case["name"] for case in cases if case.get("ok_count") == 1}
+    if successful != {"health", "ready", "meta"}:
+        result = ctx.runner.results[-1]
+        result.ok = False
+        result.note = f"performance probes that reached the API: {sorted(successful)}"
 
 
 def run_kg_smokes(ctx: SmokeContext) -> None:

@@ -200,6 +200,7 @@ async def test_stream_graph_chat_events_preserve_event_order_and_result_contract
 ) -> None:
     import app.services.chat.stream_graph as chat_stream_graph
     import app.services.tables.chat_context as chat_tag_service
+    from app.api.schemas.conversations.chat import ChatRAGConfig
 
     tag_calls: list[dict[str, object]] = []
     rollback_calls: list[str] = []
@@ -209,7 +210,6 @@ async def test_stream_graph_chat_events_preserve_event_order_and_result_contract
         return ["doc"], {"enabled": True, "used": True}
 
     fake_langgraph = types.ModuleType("app.rag.runtime.graph.workflow")
-    fake_langgraph.build_rag_state = lambda **_kwargs: {"seed": True}
     fake_langgraph.rag_workflow = SimpleNamespace(
         stream=lambda _state, **_kwargs: iter(
             [
@@ -226,7 +226,7 @@ async def test_stream_graph_chat_events_preserve_event_order_and_result_contract
 
     db = SimpleNamespace(rollback=lambda: rollback_calls.append("rollback"))
     request = SimpleNamespace(message="Where is it?", structured_output=False, structured_preset=None)
-    effective_rag_config = _AttrNamespace(retrieval_mode="hybrid", top_k=4, use_graph=True)
+    effective_rag_config = ChatRAGConfig(retrieval_mode="hybrid", top_k=4, use_graph=True)
     context = chat_stream_graph.ChatExecutionContext(
         db=db,
         tenant_id=uuid.uuid4(),
@@ -263,4 +263,4 @@ async def test_stream_graph_chat_events_preserve_event_order_and_result_contract
         "structured_data": None,
     }
     assert rollback_calls == ["rollback"]
-    assert tag_calls and "must_recall_expected_source_keys" not in tag_calls[0]
+    assert tag_calls and tag_calls[0]["must_recall_expected_source_keys"] is None

@@ -9,6 +9,7 @@ from app.api.schemas.sources import (
     MySQLCatalogConnectorConfig,
     SQLServerCatalogConnectorConfig,
 )
+from app.connectors.odbc import find_sqlserver_odbc_driver
 from app.infrastructure.runtime.async_bridge import run_blocking_in_thread
 from app.services.connectors.egress_policy import validate_db_connector_config
 
@@ -89,13 +90,7 @@ def _check_mysql_connection(config: MySQLCatalogConnectorConfig) -> tuple[dict[s
 def _check_sqlserver_connection(config: SQLServerCatalogConnectorConfig) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     import pyodbc
 
-    installed = pyodbc.drivers()
-    preferred = ("ODBC Driver 18 for SQL Server", "ODBC Driver 17 for SQL Server")
-    driver = next((name for name in preferred if name in installed), None)
-    if driver is None:
-        if not installed:
-            raise RuntimeError("No SQL Server ODBC driver found")
-        driver = installed[-1]
+    driver = find_sqlserver_odbc_driver()
     connection_string = (
         f"DRIVER={{{driver}}};"
         f"SERVER={config.host},{config.port};"

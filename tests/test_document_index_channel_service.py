@@ -155,15 +155,19 @@ def test_summarize_document_index_channels_reports_pending_and_errors(monkeypatc
     assert summary.pending_channels == []
 
 
+class _SavepointDB:
+    no_autoflush = nullcontext()
+
+    def begin_nested(self):  # noqa: ANN201
+        return nullcontext()
+
+    def get_bind(self):  # noqa: ANN201
+        return SimpleNamespace(dialect=SimpleNamespace(name="sqlite"))
+
+
 def test_transition_document_index_channel_tracks_attempts_and_timestamps(monkeypatch: pytest.MonkeyPatch) -> None:
     doc = _document(status="processing")
     rows: dict[str, SimpleNamespace] = {}
-
-    class _DB:
-        no_autoflush = nullcontext()
-
-        def begin_nested(self):  # noqa: ANN201
-            return nullcontext()
 
     monkeypatch.setattr(
         svc,
@@ -191,7 +195,7 @@ def test_transition_document_index_channel_tracks_attempts_and_timestamps(monkey
     monkeypatch.setattr(svc, "upsert_document_index_channel", _fake_upsert, raising=True)
 
     processing_row = svc.transition_document_index_channel(
-        _DB(),
+        _SavepointDB(),
         document=doc,
         channel="vector",
         status="processing",
@@ -202,7 +206,7 @@ def test_transition_document_index_channel_tracks_attempts_and_timestamps(monkey
     assert processing_row.attempt_count == 1
     assert processing_row.last_attempted_at is not None
     ready_row = svc.transition_document_index_channel(
-        _DB(),
+        _SavepointDB(),
         document=doc,
         channel="vector",
         status="ready",
@@ -219,12 +223,6 @@ def test_transition_document_index_channel_keeps_disabled_optional_channels_out_
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     doc = _document(status="completed")
-
-    class _DB:
-        no_autoflush = nullcontext()
-
-        def begin_nested(self):  # noqa: ANN201
-            return nullcontext()
 
     monkeypatch.setattr(
         svc,
@@ -249,7 +247,7 @@ def test_transition_document_index_channel_keeps_disabled_optional_channels_out_
     monkeypatch.setattr(svc, "upsert_document_index_channel", _fake_upsert, raising=True)
 
     row = svc.transition_document_index_channel(
-        _DB(),
+        _SavepointDB(),
         document=doc,
         channel="event_vector",
         status="error",
@@ -270,12 +268,6 @@ def test_transition_document_index_channel_savepoint_failure_does_not_block_next
 ) -> None:
     doc = _document(status="processing")
     calls = {"count": 0}
-
-    class _DB:
-        no_autoflush = nullcontext()
-
-        def begin_nested(self):  # noqa: ANN201
-            return nullcontext()
 
     monkeypatch.setattr(
         svc,
@@ -299,22 +291,23 @@ def test_transition_document_index_channel_savepoint_failure_does_not_block_next
 
     monkeypatch.setattr(svc, "upsert_document_index_channel", _fake_upsert, raising=True)
 
-    first = svc.transition_document_index_channel(
-        _DB(),
-        document=doc,
-        channel="vector",
-        status="processing",
-        increment_attempt=True,
-    )
+    db = _SavepointDB()
+    with pytest.raises(RuntimeError, match="db write failed"):
+        svc.transition_document_index_channel(
+            db,
+            document=doc,
+            channel="vector",
+            status="processing",
+            increment_attempt=True,
+        )
     second = svc.transition_document_index_channel(
-        _DB(),
+        db,
         document=doc,
         channel="bm25",
         status="processing",
         increment_attempt=True,
     )
 
-    assert first is None
     assert second is not None
     assert second.channel == "bm25"
 

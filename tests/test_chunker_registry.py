@@ -9,7 +9,6 @@ import pytest
 from app.rag.ingestion.chunking.factory import chunker_factory
 
 EXPECTED_SUPPORTED_STRATEGIES = [
-    "agentic_chunker",
     "ansible_playbook",
     "api_reference",
     "asciidoc_sections",
@@ -37,8 +36,6 @@ EXPECTED_SUPPORTED_STRATEGIES = [
     "kv_config",
     "langchain_recursive",
     "langchain_token",
-    "late_chunking",
-    "late_chunking_jina",
     "latex_sections",
     "laws_structured",
     "llama_index",
@@ -71,7 +68,6 @@ EXPECTED_SUPPORTED_STRATEGIES = [
     "proto_schema",
     "qa_markdown",
     "qa_pairs",
-    "raptor",
     "resume_structured",
     "rst_sections",
     "semantic_sentence",
@@ -297,10 +293,11 @@ def _run_python_snippet(snippet: str) -> dict[str, object]:
     result = subprocess.run(
         [sys.executable, "-c", textwrap.dedent(snippet)],
         capture_output=True,
-        check=True,
+        check=False,
         env=env,
         text=True,
     )
+    assert result.returncode == 0, result.stderr
     return json.loads(result.stdout.strip())
 
 
@@ -360,7 +357,7 @@ def test_chunker_factory_rejects_integrated_pipeline_with_current_guidance() -> 
 
     assert str(exc_info.value) == (
         "Chunk strategy 'integrated_naive' is handled by the integrated parse+chunk pipeline. "
-        "Use 'chunk_file' from app.rag.chunking.integrated_pipeline.bridge instead."
+        "Use 'chunk_file' from app.rag.ingestion.chunking.factory instead."
     )
 
 
@@ -371,9 +368,9 @@ def test_importing_chunker_factory_does_not_load_strategy_modules_by_default() -
         import sys
 
         before = set(sys.modules)
-        import app.rag.chunking.factory as factory  # noqa: F401
+        import app.rag.ingestion.chunking.factory as factory  # noqa: F401
         after = set(sys.modules)
-        added = sorted(name for name in after - before if name.startswith("app.rag.chunking.strategies"))
+        added = sorted(name for name in after - before if name.startswith("app.rag.ingestion.chunking.strategies"))
         print(json.dumps({"added": added}))
         """
     )
@@ -388,7 +385,7 @@ def test_strategy_exports_remain_lazy_and_backward_compatible() -> None:
         import sys
 
         before = set(sys.modules)
-        import app.rag.chunking.strategies as strategies
+        import app.rag.ingestion.chunking.strategies as strategies
         after_import = set(sys.modules)
         separator_cls = strategies.SeparatorChunker
         after_attr = set(sys.modules)
@@ -396,10 +393,10 @@ def test_strategy_exports_remain_lazy_and_backward_compatible() -> None:
             json.dumps(
                 {
                     "after_import": sorted(
-                        name for name in after_import - before if name.startswith("app.rag.chunking.strategies")
+                        name for name in after_import - before if name.startswith("app.rag.ingestion.chunking.strategies")
                     ),
                     "after_attr": sorted(
-                        name for name in after_attr - after_import if name.startswith("app.rag.chunking.strategies")
+                        name for name in after_attr - after_import if name.startswith("app.rag.ingestion.chunking.strategies")
                     ),
                     "class_name": separator_cls.__name__,
                 }
@@ -410,7 +407,10 @@ def test_strategy_exports_remain_lazy_and_backward_compatible() -> None:
 
     assert payload == {
         "after_import": ["app.rag.ingestion.chunking.strategies"],
-        "after_attr": ["app.rag.ingestion.chunking.strategies.separator"],
+        "after_attr": [
+            "app.rag.ingestion.chunking.strategies.text",
+            "app.rag.ingestion.chunking.strategies.text.separator",
+        ],
         "class_name": "SeparatorChunker",
     }
 
@@ -421,7 +421,7 @@ def test_supported_strategy_lookup_loads_only_requested_strategy_module() -> Non
         import json
         import sys
 
-        import app.rag.chunking.factory as factory
+        import app.rag.ingestion.chunking.factory as factory
 
         before = set(sys.modules)
         chunker_cls = factory.chunker_factory.SUPPORTED_STRATEGIES["separator"]
@@ -429,7 +429,7 @@ def test_supported_strategy_lookup_loads_only_requested_strategy_module() -> Non
         print(
             json.dumps(
                 {
-                    "added": sorted(name for name in after - before if name.startswith("app.rag.chunking.strategies")),
+                    "added": sorted(name for name in after - before if name.startswith("app.rag.ingestion.chunking.strategies")),
                     "class_name": chunker_cls.__name__,
                 }
             )
@@ -440,7 +440,8 @@ def test_supported_strategy_lookup_loads_only_requested_strategy_module() -> Non
     assert payload == {
         "added": [
             "app.rag.ingestion.chunking.strategies",
-            "app.rag.ingestion.chunking.strategies.separator",
+            "app.rag.ingestion.chunking.strategies.text",
+            "app.rag.ingestion.chunking.strategies.text.separator",
         ],
         "class_name": "SeparatorChunker",
     }

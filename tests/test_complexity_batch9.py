@@ -306,11 +306,11 @@ def test_list_document_duplicates_sqlite_scan_preserves_group_order_and_limits(
         params=DocumentDuplicateQuery(dataset_id=dataset_id, min_count=2, max_groups=2, max_docs_per_group=2),
     )
 
-    assert result["total"] == 3
-    assert [item["file_sha256"] for item in result["items"]] == ["sha-b", "sha-a"]
-    assert [item["count"] for item in result["items"]] == [3, 3]
-    assert [doc["filename"] for doc in result["items"][0]["documents"]] == ["beta-3.pdf", "beta-2.pdf"]
-    assert [doc["filename"] for doc in result["items"][1]["documents"]] == ["alpha-3.pdf", "alpha-2.pdf"]
+    assert result.total == 3
+    assert [item.file_sha256 for item in result.items] == ["sha-b", "sha-a"]
+    assert [item.count for item in result.items] == [3, 3]
+    assert [doc.filename for doc in result.items[0].documents] == ["beta-3.pdf", "beta-2.pdf"]
+    assert [doc.filename for doc in result.items[1].documents] == ["alpha-3.pdf", "alpha-2.pdf"]
 
 
 def test_list_documents_applies_processing_lifecycle_prefix_and_ordering(
@@ -415,8 +415,8 @@ def test_list_documents_applies_processing_lifecycle_prefix_and_ordering(
         db=db,
     )
 
-    assert result["total"] == 2
-    assert [document.filename for document in result["items"]] == ["alpha.pdf", "beta.pdf"]
+    assert result.total == 2
+    assert [document.filename for document in result.items] == ["alpha.pdf", "beta.pdf"]
     assert touched == [document.id for document in visible_docs]
 
 

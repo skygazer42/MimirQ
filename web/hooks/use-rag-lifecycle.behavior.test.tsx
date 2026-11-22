@@ -13,8 +13,10 @@ const authStorage = vi.hoisted(() => ({
   clearAuthSession: vi.fn(),
   getAccessToken: vi.fn(() => null as string | null),
   getAuthSessionRevision: vi.fn(() => 0),
+  getAuthSessionKey: vi.fn(() => 'test-session'),
   getStoredUser: vi.fn(() => null),
   setStoredUser: vi.fn(),
+  subscribeAuthSession: () => () => {},
 }))
 
 const documentApiMock = vi.hoisted(() => ({
@@ -308,24 +310,27 @@ describe('RAG hook lifecycle behavior', () => {
     },
   )
 
-  it('keeps the newer reconciliation when an earlier submission completes last', async () => {
+  it('rejects duplicate reconciliation while a task is pending and accepts another after it settles', async () => {
     const earlier = deferred<IndexAuditReconcileResponse>()
     const latest = deferred<IndexAuditReconcileResponse>()
     indexAuditApi.reconcileIndexAudit.mockReturnValueOnce(earlier.promise).mockReturnValueOnce(latest.promise)
     const harness = renderIndexAudit()
     let earlierCompletion!: Promise<void>
-    let latestCompletion!: Promise<void>
     act(() => {
       earlierCompletion = harness.current().reconcileIndexAudit()
-      latestCompletion = harness.current().reconcileIndexAudit()
+      void harness.current().reconcileIndexAudit()
     })
-    await act(async () => {
-      latest.resolve(reconcileResponse({ task_id: 'task-latest' }))
-      await latestCompletion
-    })
+    expect(indexAuditApi.reconcileIndexAudit).toHaveBeenCalledOnce()
     await act(async () => {
       earlier.resolve(reconcileResponse({ task_id: 'task-earlier' }))
       await earlierCompletion
+    })
+    expect(harness.current().indexAuditReconcileState.taskId).toBe('task-earlier')
+
+    await act(async () => {
+      const completion = harness.current().reconcileIndexAudit()
+      latest.resolve(reconcileResponse({ task_id: 'task-latest' }))
+      await completion
     })
 
     expect(harness.current().indexAuditReconcileState.status).toBe('success')

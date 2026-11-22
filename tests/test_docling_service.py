@@ -17,6 +17,7 @@ class _FakeResponse:
     def __init__(self, payload: Any, *, status_code: int = 200) -> None:
         self._payload = payload
         self.status_code = status_code
+        self.closed = False
 
     def raise_for_status(self) -> None:
         if self.status_code >= 400:
@@ -25,6 +26,9 @@ class _FakeResponse:
     def json(self) -> Any:
         return self._payload
 
+    def close(self) -> None:
+        self.closed = True
+
 
 class _FakeSession:
     def __init__(self, *, health: _FakeResponse, conversion: _FakeResponse) -> None:
@@ -32,6 +36,7 @@ class _FakeSession:
         self.conversion = conversion
         self.get_calls: list[tuple[str, dict[str, Any]]] = []
         self.post_calls: list[tuple[str, dict[str, Any]]] = []
+        self.uploaded_content: bytes | None = None
 
     def get(self, url: str, **kwargs: Any) -> _FakeResponse:
         self.get_calls.append((url, kwargs))
@@ -39,6 +44,7 @@ class _FakeSession:
 
     def post(self, url: str, **kwargs: Any) -> _FakeResponse:
         self.post_calls.append((url, kwargs))
+        self.uploaded_content = kwargs["files"]["files"][1].read()
         return self.conversion
 
 
@@ -98,11 +104,16 @@ def test_docling_service_health_and_conversion_use_stable_v1_contract(
     post_url, post_kwargs = session.post_calls[0]
     assert post_url == "http://docling:5001/v1/convert/file"
     assert post_kwargs["headers"] == {"X-Api-Key": "secret"}
-    assert post_kwargs["files"]["files"] == ("sample.pdf", b"%PDF-1.4\n", "application/pdf")
+    filename, source_stream, content_type = post_kwargs["files"]["files"]
+    assert (filename, content_type) == ("sample.pdf", "application/pdf")
+    assert session.uploaded_content == b"%PDF-1.4\n"
+    assert source_stream.closed
     assert dict(post_kwargs["data"])["from_formats"] == "pdf"
     assert dict(post_kwargs["data"])["to_formats"] == "md"
     assert dict(post_kwargs["data"])["do_ocr"] == "true"
     assert post_kwargs["timeout"] == 45.0
+    assert session.health.closed
+    assert session.conversion.closed
     assert progress[0][0] == 0.1
     assert progress[-1][0] == 1.0
 
@@ -113,7 +124,6 @@ def test_docling_service_requires_external_url(monkeypatch: pytest.MonkeyPatch) 
 
     assert parser.check_installation() is False
     assert parser.trust_env is False
-    assert parser._session.trust_env is False
     assert parser.unavailable_reason == "DOCLING_API_URL is not configured"
     with pytest.raises(RuntimeError, match="requires DOCLING_API_URL"):
         parser.parse_pdf("missing.pdf")

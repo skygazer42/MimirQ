@@ -123,11 +123,11 @@ def test_rerank_cache_distinguishes_malformed_scores_from_internal_failures(monk
         module.get_cached_evidence_post_rerank_result("cache-key")
 
 
-def test_citation_snippet_preserves_internal_span_conversion_failures():
+def test_citation_snippet_rejects_non_integer_span_coordinates():
     module = importlib.import_module("app.rag.retrieval.evidence.citations")
-    assert module._build_snippet_from_span("text", None, span_start="invalid", span_end=2) == ("", [])
-    with pytest.raises(RuntimeError, match="broken numeric conversion"):
-        module._build_snippet_from_span("text", None, span_start=_BrokenNumber(), span_end=2)
+    assert module._build_snippet_from_span("text", None, span_start=2, span_end=2) == ("", [])
+    with pytest.raises(TypeError):
+        module._build_snippet_from_span("text", None, span_start="invalid", span_end=2)
 
 
 def test_kg_initialization_keeps_internal_override_conversion_failure_visible():
@@ -292,7 +292,14 @@ def test_evidence_security_options_preserve_configuration_failures(monkeypatch, 
             module._signing_secret_from_settings()
 
 
-def test_evidence_signing_failure_cannot_return_unsigned_capsule(monkeypatch):
+@pytest.mark.parametrize(
+    ("failure", "error", "message"),
+    [
+        (RuntimeError("signing failed"), RuntimeError, "signing failed"),
+        (None, ValueError, "produced no signature"),
+    ],
+)
+def test_evidence_signing_failure_cannot_return_unsigned_capsule(monkeypatch, failure, error, message):
     config = importlib.import_module("app.infrastructure.config")
     module = importlib.import_module("app.rag.retrieval.evidence.capsule")
     monkeypatch.setattr(
@@ -306,10 +313,12 @@ def test_evidence_signing_failure_cannot_return_unsigned_capsule(monkeypatch):
     )
 
     def fail_sign(*_args, **_kwargs):
-        raise RuntimeError("signing failed")
+        if failure is not None:
+            raise failure
+        return None
 
     monkeypatch.setattr(module, "sign_evidence_capsule", fail_sign)
-    with pytest.raises(RuntimeError, match="signing failed"):
+    with pytest.raises(error, match=message):
         module.build_evidence_capsule(query_for_retrieval="query", citations=[], metrics={}, retrieval_trace=None)
 
 

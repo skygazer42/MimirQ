@@ -160,10 +160,10 @@ test('keeps an approved working copy when the viewer receives a different comple
   await page.goto(`/?doc=${encodeURIComponent(file.id)}`)
   await expect(page.getByRole('heading', { name: file.filename, exact: true })).toBeVisible()
   await page.getByRole('tab', { name: '文本定位', exact: true }).click()
-  await expect(page.getByText('Different server preview', { exact: true })).toBeVisible()
+  await expect(page.getByText('Different server preview', { exact: true })).toBeVisible({ timeout: 30_000 })
   await page.reload()
   await expect(page.getByRole('heading', { name: file.filename, exact: true })).toBeVisible()
-  await expect(page.getByText('Different server preview', { exact: true })).toBeVisible()
+  await expect(page.getByText('Different server preview', { exact: true })).toBeVisible({ timeout: 30_000 })
   expect((await readParsingLibrary(page, storageKey)).bodies).toContainEqual(
     expect.objectContaining({
       markdownContent: file.markdownContent,

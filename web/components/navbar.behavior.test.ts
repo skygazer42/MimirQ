@@ -146,7 +146,12 @@ vi.mock('@/store/command-menu', () => ({
   useCommandMenuState: (selector: (state: typeof commandMenuStore) => unknown) => selector(commandMenuStore),
 }))
 
+vi.mock('@/components/recent-conversations', () => ({
+  RecentConversations: () => null,
+}))
+
 vi.mock('@/components/theme-customizer', () => ({
+  ThemeAppearancePanel: () => React.createElement('div', { 'data-testid': 'appearance-panel' }),
   ThemeCustomizer: ({ trigger }: { trigger?: React.ReactNode }) =>
     React.createElement('div', { 'data-testid': 'appearance-customizer' }, trigger),
 }))
@@ -226,9 +231,7 @@ describe('Navbar behavior', () => {
     backendReadyState.data = { ok: true, status: 'ready' }
     const view = renderComponent(React.createElement(Navbar))
     expect(backendHealthMock).toHaveBeenLastCalledWith({ enabled: false })
-    expect(view.container.querySelector('button[aria-label="deps.openStatus"]')?.textContent).toContain(
-      'deps.statusReady',
-    )
+    expect(view.container.querySelector('button[aria-label="user.menu"] [title="deps.statusReady"]')).not.toBeNull()
     view.unmount()
   })
 
@@ -236,17 +239,13 @@ describe('Navbar behavior', () => {
     backendReadyState.data = { ok: true, status: 'ready' }
     backendReadyState.isError = true
     const view = renderComponent(React.createElement(Navbar))
-    expect(view.container.querySelector('button[aria-label="deps.openStatus"]')?.textContent).toContain(
-      'deps.statusNotReady',
-    )
+    expect(view.container.querySelector('button[aria-label="user.menu"] [title="deps.statusNotReady"]')).not.toBeNull()
     view.unmount()
   })
 
   it('keeps the advanced similarity route out of the primary sidebar', () => {
     const view = renderComponent(React.createElement(Navbar))
 
-    const knowledgeSection = view.container.querySelector('button[aria-controls="sidebar-section-knowledge"]')
-    const analysisSection = view.container.querySelector('button[aria-controls="sidebar-section-analysis"]')
     const knowledgeBaseLink = view.container.querySelector('a[href="/knowledge"]')
     const evaluationsLink = Array.from(view.container.querySelectorAll('a')).find((node) =>
       node.textContent?.includes('items.ragas'),
@@ -304,13 +303,12 @@ describe('Navbar behavior', () => {
   it('offers appearance customization from the global navigation', () => {
     const view = renderComponent(React.createElement(Navbar))
 
-    const appearance = view.container.querySelector('[data-testid="appearance-customizer"]')
-    const appearanceButton = appearance?.querySelector('button')
-    expect(appearance).not.toBeNull()
-    expect(appearance?.textContent).toContain('界面外观')
-    expect(appearance?.textContent).toContain('5 种风格')
-    expect(appearanceButton?.getAttribute('aria-label')).toBe('界面外观')
-    expect(appearanceButton?.getAttribute('title')).toBe('界面外观')
+    const appearanceButton = Array.from(view.container.querySelectorAll('button')).find(
+      (button) => button.textContent?.trim() === '界面外观',
+    )
+    expect(appearanceButton).toBeDefined()
+    act(() => appearanceButton?.click())
+    expect(view.container.querySelector('[data-testid="appearance-panel"]')).not.toBeNull()
 
     view.unmount()
   })
@@ -340,33 +338,26 @@ describe('Navbar behavior', () => {
     view.unmount()
   })
 
-  it('preserves manually collapsed sections across remounts while opening the active section', () => {
+  it('restores the selected section after remount and opens the active route section', () => {
     routerMocks.pathname = '/'
 
     const firstView = renderComponent(React.createElement(Navbar))
-    const coreToggle = firstView.container.querySelector(
-      'button[aria-controls="sidebar-section-core"]',
-    ) as HTMLButtonElement
     const knowledgeToggle = firstView.container.querySelector(
       'button[aria-controls="sidebar-section-knowledge"]',
     ) as HTMLButtonElement
 
-    act(() => {
-      coreToggle.click()
-      knowledgeToggle.click()
-    })
+    act(() => knowledgeToggle.click())
 
     firstView.unmount()
 
-    routerMocks.pathname = '/graph'
-
     const secondView = renderComponent(React.createElement(Navbar))
-    const coreToggleAfterRemount = secondView.container.querySelector(
-      'button[aria-controls="sidebar-section-core"]',
-    ) as HTMLButtonElement
     const knowledgeToggleAfterRemount = secondView.container.querySelector(
       'button[aria-controls="sidebar-section-knowledge"]',
     ) as HTMLButtonElement
+    expect(knowledgeToggleAfterRemount.getAttribute('aria-expanded')).toBe('true')
+
+    routerMocks.pathname = '/graph'
+    secondView.rerender(React.createElement(Navbar))
     const analysisToggle = secondView.container.querySelector(
       'button[aria-controls="sidebar-section-analysis"]',
     ) as HTMLButtonElement
@@ -374,7 +365,6 @@ describe('Navbar behavior', () => {
       node.textContent?.includes('items.knowledgeGraph'),
     )
 
-    expect(coreToggleAfterRemount.getAttribute('aria-expanded')).toBe('false')
     expect(knowledgeToggleAfterRemount.getAttribute('aria-expanded')).toBe('false')
     expect(analysisToggle.getAttribute('aria-expanded')).toBe('true')
     expect(graphLink?.getAttribute('aria-current')).toBe('page')

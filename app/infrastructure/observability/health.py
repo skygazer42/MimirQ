@@ -60,10 +60,10 @@ def check_database(
             db_status["status"] = "connected"
             if require_schema_current:
                 try:
+                    from alembic.migration import MigrationContext
+
                     expected_revisions = _expected_alembic_heads()
-                    current_revisions = frozenset(
-                        str(row[0]) for row in db.execute(text("SELECT version_num FROM alembic_version"))
-                    )
+                    current_revisions = frozenset(MigrationContext.configure(db.connection()).get_current_heads())
                 except Exception as exc:  # noqa: BLE001
                     db_status.update(
                         {

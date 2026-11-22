@@ -457,14 +457,14 @@ def _retrieval_audit_failure_categories(
     return categories
 
 
-def _retrieval_audit_next_action(categories: dict[str, int], *, status: str | None = None) -> str:
+def _retrieval_audit_next_action(categories: dict[str, int], *, status: str | None) -> str:
     if not categories:
-        normalized_status = str(status or "").strip().lower()
+        normalized_status = str(status).strip().lower()
         if normalized_status in {"failed", "error"}:
             return "Inspect failed retrieval gates before enabling production retrieval."
-        if normalized_status and normalized_status not in {"passed", "completed", "success"}:
-            return "Run a Golden / regression gate before enabling production retrieval."
-        return "Retrieval audit passed; keep golden gates fresh before production changes."
+        if normalized_status in {"passed", "completed", "success"}:
+            return "Retrieval audit passed; keep golden gates fresh before production changes."
+        return "Run a Golden / regression gate before enabling production retrieval."
     labels = {
         "scope": "metadata scope",
         "chunking": "chunking",

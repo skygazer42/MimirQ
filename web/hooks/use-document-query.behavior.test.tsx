@@ -168,7 +168,7 @@ describe('document query ownership', () => {
 
     expect(api.getStatus.mock.calls[0]?.[1]?.signal?.aborted).toBe(false)
     await act(async () => status.resolve(statusRow('doc-a', 35)))
-    expect(hook.result.current.documents[0].processing_progress).toBe(35)
+    await waitForAssertion(() => expect(hook.result.current.documents[0].processing_progress).toBe(35))
   })
 
   it('keeps the newer polling result when the previous request completes last', async () => {

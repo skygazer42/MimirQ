@@ -1,7 +1,5 @@
 """Read database catalogs and bounded row snapshots for connector runs."""
 
-from __future__ import annotations
-
 import hashlib
 import json
 import logging
@@ -17,12 +15,14 @@ from sqlalchemy.engine import URL, Connection
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.pool import NullPool
 
+from app.connectors.odbc import find_sqlserver_odbc_driver
+
 logger = logging.getLogger(__name__)
 
 MYSQL_TABLES_SQL = (
     "SELECT "
     "table_schema AS db_name, "
-    "table_name, "
+    "table_name AS table_name, "
     "CASE WHEN table_type = 'VIEW' THEN 'view' ELSE 'table' END AS table_type, "
     "table_comment AS comment, "
     "table_rows AS row_count_estimate "
@@ -133,16 +133,21 @@ def _connect_catalog(*, engine_name: str, config: Mapping[str, Any]) -> Iterator
     username = config["username"].strip()
     if not host or not database or not username:
         raise ValueError(f"{engine_name} config requires host/database/username")
+    password = config["password"]
     port = int(config.get("port") or (3306 if is_mysql else 1433))
     query = {"charset": "utf8mb4"}
     if not is_mysql:
         raw_driver = config.get("odbc_driver")
-        driver = "ODBC Driver 18 for SQL Server" if raw_driver is None else raw_driver.strip()
-        query = {"driver": driver or "ODBC Driver 18 for SQL Server", "TrustServerCertificate": "yes"}
+        driver = raw_driver.strip() if raw_driver is not None else ""
+        query = {
+            "driver": driver or find_sqlserver_odbc_driver(),
+            "Encrypt": "yes",
+            "TrustServerCertificate": "yes",
+        }
     url = URL.create(
         "mysql+pymysql" if is_mysql else "mssql+pyodbc",
         username=username,
-        password=config["password"],
+        password=password,
         host=host,
         port=port,
         database=database,

@@ -6,6 +6,8 @@ import numpy as np
 from sklearn.decomposition import TruncatedSVD
 from sklearn.feature_extraction.text import TfidfVectorizer
 
+from app.infrastructure.runtime.dependencies import optional_import
+
 _SCHEMA = "mimirq.dataset_analysis.umap_scatter.v1"
 logger = logging.getLogger(__name__)
 
@@ -85,9 +87,9 @@ def _project_points(texts: list[str]) -> tuple[np.ndarray, str]:
     if len(texts) == 2:
         return np.array([[0.0, 0.0], [1.0, 0.0]], dtype=float), "fixed_layout"
     matrix = TfidfVectorizer(min_df=1).fit_transform(texts)
-    try:
-        from umap.umap_ import UMAP
-    except ImportError:
+    umap = optional_import("umap.umap_", feature="dataset_analysis_umap", pip_name="umap-learn")
+    umap_projector = getattr(umap, "UMAP", None)
+    if umap_projector is None:
         logger.debug("UMAP is unavailable; using the declared SVD projection")
         dense = np.asarray(matrix.toarray(), dtype=float)
         if dense.shape[1] <= 1:
@@ -97,7 +99,7 @@ def _project_points(texts: list[str]) -> tuple[np.ndarray, str]:
             return zeros, "single_feature"
         projector = TruncatedSVD(n_components=2, random_state=42)
         return np.asarray(projector.fit_transform(matrix), dtype=float), "svd"
-    projector = UMAP(
+    projector = umap_projector(
         n_components=2,
         n_neighbors=max(2, min(10, len(texts) - 1)),
         min_dist=0.15,

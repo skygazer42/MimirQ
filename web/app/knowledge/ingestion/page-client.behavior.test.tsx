@@ -17,6 +17,10 @@ const routerMock = vi.hoisted(() => ({
 
 const datasetsState = vi.hoisted(() => ({
   datasets: [{ id: 'ds-1', name: 'Dataset One' }],
+  isLoading: false,
+  isFetching: false,
+  error: null,
+  refreshDatasets: vi.fn(),
 }))
 
 const documentApiMock = vi.hoisted(() => ({

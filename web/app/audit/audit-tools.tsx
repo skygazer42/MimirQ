@@ -42,6 +42,7 @@ export function AuditTools({ audit }: Readonly<{ audit: AuditState }>) {
     >
       <DialogContent
         className={styles.toolDialog}
+        showCloseButton={!busy}
         onCloseAutoFocus={audit.restoreOpener}
         onEscapeKeyDown={(event) => {
           if (busy) event.preventDefault()

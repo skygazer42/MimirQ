@@ -98,7 +98,7 @@ def test_lexical_operation_preserves_scope_rows_and_the_callers_transaction(monk
         if hasattr(condition, "left") and hasattr(condition, "right") and hasattr(condition.right, "value")
     }
     assert conditions["document_chunks.tenant_id"] == request.scope.tenant_id
-    assert conditions["documents.dataset_id"] == dataset_id
+    assert conditions["documents.dataset_id"] == [dataset_id]
     assert not db.closed and not db.committed and not db.rolled_back
 
 

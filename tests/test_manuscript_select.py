@@ -11,8 +11,8 @@ if not hasattr(dt, "UTC"):
     dt.UTC = dt.timezone.utc
 
 _DETECTOR_NAMES = [
-    "_looks_like_json",
-    "_looks_like_markdown",
+    "looks_like_json",
+    "looks_like_markdown",
     "looks_like_ansible_playbook",
     "looks_like_api_reference",
     "looks_like_asciidoc",
@@ -231,7 +231,7 @@ def test_split_documents_exposes_file_type_predicate_routes(
         pytest.param("looks_like_outline", "outline", id="outline"),
         pytest.param("looks_like_transcript", "transcript", id="transcript"),
         pytest.param("looks_like_markdown_table", "markdown_table", id="markdown-table"),
-        pytest.param("_looks_like_markdown", "markdown_aware", id="markdown-heuristic"),
+        pytest.param("looks_like_markdown", "markdown_aware", id="markdown-heuristic"),
     ],
 )
 def test_split_documents_exposes_heuristic_routes(
@@ -251,7 +251,7 @@ def test_split_documents_exposes_heuristic_routes(
 @pytest.mark.parametrize(
     ("file_type", "truthy_detectors", "expected_selected"),
     [
-        pytest.param("", ("_looks_like_json", "looks_like_jsonl_records"), "json", id="json-before-jsonl"),
+        pytest.param("", ("looks_like_json", "looks_like_jsonl_records"), "json", id="json-before-jsonl"),
         pytest.param(
             "csv",
             ("looks_like_csv_rows", "looks_like_markdown_table"),
@@ -278,7 +278,7 @@ def test_split_documents_exposes_heuristic_routes(
         ),
         pytest.param(
             "md",
-            ("looks_like_markdown_table", "looks_like_markdown_frontmatter", "_looks_like_markdown"),
+            ("looks_like_markdown_table", "looks_like_markdown_frontmatter", "looks_like_markdown"),
             "markdown_table",
             id="table-before-markdown",
         ),
@@ -321,7 +321,9 @@ def test_split_documents_prefers_nginx_when_config_detectors_collide(
         expected_selected="nginx_config",
     )
 
-    assert [chunk.metadata["nginx_server_name"] for chunk in chunks] == ["example.com", "secure.example.com"]
+    assert chunks[0].page_content == "# meta"
+    assert "nginx_server_name" not in chunks[0].metadata
+    assert [chunk.metadata["nginx_server_name"] for chunk in chunks[1:]] == ["example.com", "secure.example.com"]
     assert all(chunk.metadata["doc_type_kwd"] == "nginx" for chunk in chunks)
 
 
@@ -378,7 +380,7 @@ def test_split_documents_prefers_presentation_before_laws(
 def test_split_documents_prefers_outline_before_markdown(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _stub_detectors(monkeypatch, ("looks_like_outline", "_looks_like_markdown"))
+    _stub_detectors(monkeypatch, ("looks_like_outline", "looks_like_markdown"))
     text = (
         "# Manual\n"
         "This introduction establishes context before the numbered sections.\n"

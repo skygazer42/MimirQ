@@ -15,12 +15,12 @@ describe('datasets-page server pagination contract', () => {
     expect(src).toContain('buildDatasetListParams({')
     expect(src).toContain('searchQuery: debouncedSearchQuery')
     expect(src).toContain('queryKeys.datasets.list(datasetListParams)')
-    expect(src).toContain('queryFn: () => datasetApi.list(datasetListParams)')
+    expect(src).toContain('queryFn: ({ signal }) => datasetApi.list(datasetListParams, { signal })')
     expect(src).toContain('operational_status: input.collectionFilter')
     expect(src).toContain("order_by: input.sortBy === 'name_asc' ? 'name' : 'created_at'")
     expect(src).toContain("order_dir: input.sortBy === 'name_asc' ? 'asc' : 'desc'")
     expect(src).toContain('const scopeTotal = response?.facets?.scope_total ?? 0')
-    expect(src).toContain('const filteredTotal = response?.facets?.filtered_total ?? 0')
+    expect(src).toContain('const displayedTotal = response?.total ?? 0')
     expect(src).not.toContain('datasetApi.listAll(datasetListParams)')
     expect(src).not.toContain('datasetApi.getIngestionStats(')
   })
@@ -33,10 +33,10 @@ describe('datasets-page header action contract', () => {
     expect(src).toMatch(/onClick=\{\(\) => \{\s*detachPromise\(refreshDatasets\(\)\)\s*\}\}/)
     expect(src).toContain('disabled={isRefreshing}')
     expect(src).toMatch(
-      /<Dialog\s+open=\{createOpen\}\s+onOpenChange=\{\(open\) => \{\s*setCreateOpen\(open\);?\s*if \(open\) resetForm\(\)\s*\}\}\s*>/,
+      /<Dialog\s+open=\{createOpen\}\s+onOpenChange=\{\(open\) => \{\s*if \(datasetSaveRef\.current !== null\) return\s*setCreateOpen\(open\)\s*if \(open\) resetForm\(\)\s*\}\}\s*>/,
     )
     expect(src).toContain('<DialogTrigger asChild>')
-    expect(src).toContain('<CreateDatasetButton')
-    expect(src).toMatch(/<Button onClick=\{handleCreate\} disabled=\{!canSubmit\}>\s*确认创建\s*<\/Button>/)
+    expect(src).toMatch(/<DialogTrigger asChild>\s*<Button[\s\S]*?<span>新建数据集<\/span>/)
+    expect(src).toContain('<Button onClick={handleCreate} disabled={!canSubmit || savingDataset}>')
   })
 })

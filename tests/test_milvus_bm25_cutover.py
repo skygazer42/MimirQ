@@ -153,7 +153,6 @@ def test_missing_native_index_reaches_the_real_channel_caller(monkeypatch):
     monkeypatch.setattr(settings, "VECTOR_BACKEND", "milvus")
     monkeypatch.setattr(settings, "BM25_INDEX_ENABLED", True)
     monkeypatch.setattr(settings, "LEXICAL_DB_ENABLED", False)
-    monkeypatch.setattr(settings, "SPARSE_RETRIEVAL_ENABLED", False)
     store = Store()
 
     def unavailable(*_args, **_kwargs):

@@ -60,7 +60,6 @@ def test_metric_gate_normalizes_thresholds_and_uses_default_output(
             "metrics": {
                 " score ": 0.75,
                 "ratio": {"min": "0.1", "max": "0.9", "required": 0},
-                "ignored": {"min": "bad", "max": "also-bad"},
                 "skip": True,
                 "": {"min": 1},
             },
@@ -70,11 +69,12 @@ def test_metric_gate_normalizes_thresholds_and_uses_default_output(
     assert normalized == {
         "score": {"min": 0.75, "required": True},
         "ratio": {"min": 0.1, "max": 0.9, "required": False},
-        "ignored": {"required": True},
     }
 
     with pytest.raises(ValueError, match="invalid_threshold_schema"):
         module.normalize_thresholds({"schema": "wrong.schema", "metrics": {}})
+    with pytest.raises(ValueError, match=r"invalid_threshold_bound: score\.min"):
+        module.normalize_thresholds({"schema": threshold_schema, "metrics": {"score": {"min": "bad"}}})
 
     input_path = _write_json(tmp_path / "summary.json", input_payload)
     thresholds_path = _write_json(
@@ -325,7 +325,7 @@ def test_init_env_main_dry_run_and_secret_fill(
         f"[init-env] WRITE: {web_env.as_posix()} <= {web_env_example.as_posix()}",
         "[init-env] filled SECRET_KEY in .env",
         "[init-env] filled MARKDOWN_IMAGE_PROXY_SECRET in .env",
-        "[init-env] filled MARKDOWN_IMAGE_PROXY_SECRET in web/.env.local",
+        f"[init-env] filled MARKDOWN_IMAGE_PROXY_SECRET in {web_env.relative_to(repo_root)}",
     ]
     assert root_env.read_text(encoding="utf-8") == (
         "SECRET_KEY=secret-token\nEXISTING=keep\nMARKDOWN_IMAGE_PROXY_SECRET=proxy-token\n"

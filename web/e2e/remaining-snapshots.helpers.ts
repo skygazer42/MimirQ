@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import type { Page } from '@playwright/test'
-import { remainingFixture } from './remaining-pages.helpers'
+import { profileSummary, remainingFixture } from './remaining-pages.helpers'
 import { policyDatasetId } from './dataset-policy.helpers'
 
 export async function snapshotFixture(page: Page, theme: 'light' | 'dark' = 'light') {
@@ -29,15 +29,52 @@ export async function snapshotFixture(page: Page, theme: 'light' | 'dark' = 'lig
       return route.fulfill({
         json: {
           dataset_id: policyDatasetId,
+          dataset_name: '产品知识库',
           pipeline_hash: 'version-b',
+          generated_at: '2026-10-27T08:00:00Z',
+          data_provenance: { source: 'database', mocked: false, generated_by: 'fixture', sections: {} },
           pipeline_versions: [
             { pipeline_hash: 'version-a', documents: 2 },
             { pipeline_hash: 'version-b', documents: 2 },
           ],
-          profile: { document_count: 2 },
+          profile: { ...profileSummary(), total_documents: 2 },
+          compliance: {
+            pii_hits_total: {},
+            secrets_hits_total: {},
+            quarantined_documents: 0,
+            failed_documents: 0,
+          },
+          pipeline_snapshots: {},
+          connectors: [],
+          dataset_metadata: {},
+          folder_tree: null,
+          governance_metrics: null,
+          governance_audit: null,
+          retrieval_audit: null,
         },
       })
-    if (p === '/api/v1/documents') return route.fulfill({ json: { total: 0, items: [] } })
+    if (p === '/api/v1/documents')
+      return route.fulfill({
+        json: {
+          total: 2,
+          items: [
+            {
+              id: '44444444-4444-4444-8444-444444444444',
+              dataset_id: policyDatasetId,
+              filename: '设备手册.pdf',
+              status: 'completed',
+              metadata: { active_pipeline_hash: 'version-b' },
+            },
+            {
+              id: '55555555-5555-4555-8555-555555555555',
+              dataset_id: policyDatasetId,
+              filename: '维护规范.pdf',
+              status: 'completed',
+              metadata: { pipeline_hash: 'version-a' },
+            },
+          ],
+        },
+      })
     if (p === '/api/v1/kg/snapshots/export') {
       state.exports.push(url.search)
       return route.fulfill({ json: url.searchParams.get('pipeline_hash') === 'version-a' ? data.a : data.b })

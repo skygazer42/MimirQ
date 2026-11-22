@@ -387,7 +387,7 @@ def test_orchestrator_preserves_query_contract_defaults_and_hash_contract(
                 "retrieval_mode": "auto",
                 "retrieval_profile": " Grounded_Strict ",
                 "enable_reranker": False,
-                "reranker_provider": "none",
+                "reranker_provider": "openai",
                 "reranker_top_n": 5,
                 "enable_weight_rerank": True,
                 "rag_config_template": {
@@ -422,7 +422,7 @@ def test_orchestrator_preserves_query_contract_defaults_and_hash_contract(
     assert config.get("retrieval_contract_mode") == "evidence_strict"
     assert config.get("rag_config_template") == {
         "template_key": "baseline",
-        "version": 2,
+        "version": "2",
         "ab_variant": "B",
         "patch_hash": "patch-01",
     }

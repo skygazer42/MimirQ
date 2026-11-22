@@ -82,6 +82,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { WorkspaceNotice } from '@/components/ui/operational-workspace'
 import { Panel } from '@/components/ui/panel'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
@@ -751,6 +752,13 @@ export function DatasetsPage() {
           </div>
         </div>
 
+        {datasetsQuery.isRefetchError ? (
+          <div className={styles.refreshNotice}>
+            <WorkspaceNotice retry={() => detachPromise(refreshDatasets())} retryLabel="重试" pending={isRefreshing}>
+              加载数据集失败，显示上次结果。
+            </WorkspaceNotice>
+          </div>
+        ) : null}
         <div className={styles.workspace} data-testid="datasets-workspace">
           <div
             className={cn(styles.tableScroll, 'custom-scrollbar')}
@@ -801,7 +809,7 @@ export function DatasetsPage() {
                       </div>
                     </td>
                   </tr>
-                ) : datasetsQuery.isError ? (
+                ) : datasetsQuery.isLoadingError ? (
                   <tr className={styles.stateRow}>
                     <td colSpan={7}>
                       <EmptyState
@@ -1028,7 +1036,7 @@ export function DatasetsPage() {
           <span className={styles.total} role="status" aria-live="polite">
             {isLoading ? (
               '加载中…'
-            ) : datasetsQuery.isError ? (
+            ) : datasetsQuery.isLoadingError ? (
               '加载失败'
             ) : (
               <>
@@ -1036,7 +1044,7 @@ export function DatasetsPage() {
               </>
             )}
           </span>
-          {displayedTotal > 0 && !datasetsQuery.isError ? (
+          {displayedTotal > 0 ? (
             <div className={styles.pagination}>
               <Select
                 value={String(pageSize)}

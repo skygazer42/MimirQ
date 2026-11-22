@@ -175,7 +175,9 @@ def test_root_keeps_candidates_and_reports_timestamp_storage_failure(monkeypatch
 
 
 @pytest.mark.asyncio
-async def test_stream_records_timestamp_failure_without_erasing_successful_intent_detection(monkeypatch, caplog):
+async def test_stream_records_timestamp_failure_without_erasing_successful_intent_detection(monkeypatch):
+    from types import SimpleNamespace
+
     from app.infrastructure.config import settings
     from app.rag.runtime.streaming import evidence as standard_stream_evidence
     from app.rag.runtime.streaming.state import StandardStreamState
@@ -184,6 +186,7 @@ async def test_stream_records_timestamp_failure_without_erasing_successful_inten
         def __getattr__(self, name):
             raise AssertionError("temporal operation read an engine module helper: " + name)
 
+    monkeypatch.setattr(settings, "RAG_TEMPORAL_INTENT_ENABLED", True)
     monkeypatch.setattr(settings, "RAG_TEMPORAL_INTENT_RECENCY_BOOST_ENABLED", True)
     failure = TimeoutError("timestamp read failed")
 
@@ -191,6 +194,12 @@ async def test_stream_records_timestamp_failure_without_erasing_successful_inten
         raise failure
 
     monkeypatch.setattr(freshness, "_query_document_timestamp_rows", query)
+    failures = []
+    monkeypatch.setattr(
+        standard_stream_evidence,
+        "logger",
+        SimpleNamespace(debug=lambda _message, *, exc_info: failures.append(exc_info)),
+    )
     document = _document()
     runtime = StandardStreamState(
         engine=NoEngineHelpers(),
@@ -203,10 +212,11 @@ async def test_stream_records_timestamp_failure_without_erasing_successful_inten
             "temporal_intent_meta": {"detected": False, "reason_codes": []},
         },
     )
-    with caplog.at_level(logging.DEBUG):
-        await standard_stream_evidence.apply_temporal_rerank(runtime)
+    await standard_stream_evidence.apply_temporal_rerank(runtime)
     assert runtime.data.docs == [document]
     assert runtime.data.temporal_intent_meta == {"detected": True, "reason_codes": ["keyword"]}
     assert runtime.data.temporal_recency_meta["reason"] == "exception"
     assert runtime.data.temporal_recency_meta["error"] == "timestamp read failed"
-    assert any(record.exc_info and record.exc_info[1] is failure for record in caplog.records)
+    assert len(failures) == 1
+    assert isinstance(failures[0], TimeoutError)
+    assert str(failures[0]) == str(failure)

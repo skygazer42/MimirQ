@@ -374,12 +374,14 @@ def test_profile_projection_exposes_missing_internal_baseline_fields(field: str)
         _effective_profile(None, baseline=baseline)
 
 
-def test_profile_baseline_reports_the_actual_sparse_provider(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_profile_baseline_reports_the_configured_reranker_provider(monkeypatch: pytest.MonkeyPatch) -> None:
     from app.api.v1.retrieval.profiles import _runtime_baseline, settings
 
-    monkeypatch.setattr(settings, "SPARSE_RETRIEVAL_PROVIDER", "")
+    monkeypatch.setattr(settings, "RERANKER_PROVIDER", "openai")
 
-    assert _runtime_baseline()["sparse_retrieval_provider"] == ""
+    baseline = _runtime_baseline()
+    assert baseline["reranker_provider"] == "openai"
+    assert "sparse_retrieval_provider" not in baseline
 
 
 @pytest.mark.parametrize("stored", ["", None])

@@ -1,4 +1,4 @@
-// @vitest-environment happy-dom
+// @vitest-environment jsdom
 
 import React, { act, useState } from 'react'
 import { createRoot } from 'react-dom/client'

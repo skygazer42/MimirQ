@@ -196,6 +196,17 @@ def test_sitemap_and_xml_feed_chunkers_characterize_offsets_and_entry_metadata()
                 "chunk_index": 2,
             },
         ),
+        (
+            "</urlset>",
+            {
+                "chunk_strategy": "sitemap_xml",
+                "start_char": 115,
+                "end_char": 124,
+                "doc_type_kwd": "sitemap",
+                "sitemap_xml_unstructured": True,
+                "chunk_index": 3,
+            },
+        ),
     ]
     assert _summarize_chunks(XMLFeedChunker(1000, 0), xml_feed_text) == [
         (
@@ -235,6 +246,17 @@ def test_sitemap_and_xml_feed_chunkers_characterize_offsets_and_entry_metadata()
                 "xml_feed_count": 2,
                 "xml_feed_title": "Gamma",
                 "chunk_index": 2,
+            },
+        ),
+        (
+            "</channel></rss>",
+            {
+                "chunk_strategy": "xml_feed",
+                "start_char": 181,
+                "end_char": 197,
+                "doc_type_kwd": "xml",
+                "xml_feed_unstructured": True,
+                "chunk_index": 3,
             },
         ),
     ]

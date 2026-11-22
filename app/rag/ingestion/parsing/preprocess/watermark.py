@@ -7,8 +7,6 @@ This provides three best-effort paths:
 3) Local ONNX inpainting with OCR/rule/geometry-derived mask boxes.
 """
 
-from __future__ import annotations
-
 import asyncio
 import logging
 import math
@@ -23,6 +21,7 @@ import httpx
 from PIL import Image, ImageDraw
 
 from app.infrastructure.runtime.async_bridge import run_coroutine_sync as _run_coroutine_sync
+from app.infrastructure.runtime.dependencies import optional_import
 from app.rag.ingestion.parsing.enrich.watermark_suppressor import suppress_watermark_file
 from app.rag.ingestion.parsing.preprocess.model_loader import get_preprocess_model_loader, positive_onnx_dimension
 
@@ -104,16 +103,19 @@ def _normalize_ocr_line(line: Any) -> dict[str, Any] | None:
 
 
 def _ocr_lines_for_mask(image: Image.Image) -> list[dict[str, Any]]:
-    try:
-        from rapidocr_onnxruntime import RapidOCR  # type: ignore
-    except ImportError:
-        logger.warning("Watermark mask OCR is unavailable; install rapidocr-onnxruntime", exc_info=True)
+    rapidocr = optional_import(
+        "rapidocr_onnxruntime",
+        feature="watermark_mask_ocr",
+        pip_name="rapidocr-onnxruntime",
+    )
+    engine_factory = getattr(rapidocr, "RapidOCR", None)
+    if engine_factory is None:
         return []
 
     with tempfile.TemporaryDirectory(prefix="watermark_ocr_") as tmp_dir:
         tmp_path = Path(tmp_dir) / "sample.png"
         image.save(tmp_path)
-        engine = RapidOCR(det_box_thresh=0.2)
+        engine = engine_factory(det_box_thresh=0.2)
         result, _ = engine(str(tmp_path))
 
     out: list[dict[str, Any]] = []
@@ -317,7 +319,7 @@ def _output_changed(*, input_path: Path, output_path: Path) -> bool:
 
 
 def _run_local_onnx_inpaint(
-    *, input_path: Path, output_path: Path, session: InferenceSession, mask_image: Image.Image
+    *, input_path: Path, output_path: Path, session: "InferenceSession", mask_image: Image.Image
 ) -> bool:
     import numpy as np
 

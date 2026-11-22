@@ -60,7 +60,7 @@ def test_compact_fast_record_content_falls_back_to_metadata_then_body(monkeypatc
             query="q",
             metadata={"x": 1},
         )
-        == "metadata..."
+        == "metad..."
     )
     assert (
         _compact_fast_record_content(
@@ -68,7 +68,7 @@ def test_compact_fast_record_content_falls_back_to_metadata_then_body(monkeypatc
             query="q",
             metadata=None,
         )
-        == "body tex..."
+        == "body..."
     )
 
 

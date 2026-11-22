@@ -1436,9 +1436,9 @@ async def _run_deterministic_hardcases_for_case(
 
 
 async def _load_kg_diagnostics_llm_client() -> "BaseLLMClient | None":
-    try:
-        from app.rag.llm.factory import create_llm_client
+    from app.rag.llm.factory import create_llm_client
 
+    try:
         return await create_llm_client()
     except (ConfigError, ImportError) as exc:
         logger.warning("KG diagnostics hardcase LLM unavailable: %s", str(exc)[:200])

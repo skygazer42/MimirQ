@@ -929,14 +929,14 @@ def _fixture_document(strategy: str) -> Document:
 
 
 def _is_expected_unavailable(strategy: str, exc: Exception) -> bool:
-    message = str(exc)
-    if strategy in {"llama_index", "llama_index_hierarchical"}:
-        try:
-            import llama_index.core as llama_index_core
-        except ImportError:
-            return True
-        del llama_index_core
-    return "disabled" in message.lower() or "not installed" in message.lower()
+    if (
+        strategy in {"llama_index", "llama_index_hierarchical"}
+        and isinstance(exc, ModuleNotFoundError)
+        and exc.name in {"llama_index", "llama_index.core"}
+    ):
+        return True
+    message = str(exc).lower()
+    return "disabled" in message or "not installed" in message
 
 
 def run_chunk_strategy_matrix(

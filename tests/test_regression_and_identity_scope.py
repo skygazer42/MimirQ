@@ -2,14 +2,12 @@ from uuid import uuid4
 
 import pytest
 from fastapi import HTTPException
-from langchain_core.documents import Document
 
 from app.models.documents.records import Document as StoredDocument
 from app.models.evaluation.results import RagasRegressionCase
 from app.rag.evaluation.regression import ragas
 from app.rag.ingestion.indexing.index_channels import _pipeline_hash_from_document
-from app.rag.ingestion.indexing.support.chunk_postprocess import _record_identity_key as _chunk_record_identity_key
-from app.rag.ingestion.indexing.support.chunk_postprocess import _record_identity_key as _dedup_record_identity_key
+from app.rag.ingestion.indexing.support.chunk_postprocess import _record_identity_key
 from app.services.documents import read_scope as document_access
 
 
@@ -96,20 +94,15 @@ def test_present_but_invalid_record_identity_is_not_treated_as_absent(key, error
     metadata = {"_record_identity": {"key": key}}
 
     with pytest.raises(error):
-        _chunk_record_identity_key(Document(page_content="text", metadata=metadata))
-    with pytest.raises(error):
-        _dedup_record_identity_key(metadata)
+        _record_identity_key(metadata)
 
 
 def test_missing_key_in_an_existing_record_identity_exposes_the_broken_contract() -> None:
     metadata = {"_record_identity": {}}
 
     with pytest.raises(KeyError):
-        _chunk_record_identity_key(Document(page_content="text", metadata=metadata))
-    with pytest.raises(KeyError):
-        _dedup_record_identity_key(metadata)
+        _record_identity_key(metadata)
 
 
 def test_genuinely_absent_record_identity_remains_optional() -> None:
-    assert _chunk_record_identity_key(Document(page_content="text", metadata={})) is None
-    assert _dedup_record_identity_key({}) is None
+    assert _record_identity_key({}) is None

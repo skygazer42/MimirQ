@@ -24,7 +24,6 @@ def test_sparse_selector_does_not_turn_invalid_values_into_inheritance(value) ->
 def test_valid_optional_blank_and_alias_selectors_keep_their_contract() -> None:
     assert ChatRAGConfig(fusion_strategy="  ").fusion_strategy is None
     assert ChatRAGConfig(fusion_strategy=" RRF ").fusion_strategy == "rrf"
-    assert (
-        RagasRegressionRunCreateRequest(dataset_id=uuid4(), sparse_retrieval_provider="  ").sparse_retrieval_provider
-        is None
-    )
+    assert RagasRegressionRunCreateRequest(dataset_id=uuid4(), fusion_strategy="  ").fusion_strategy is None
+    with pytest.raises(ValidationError, match="Sparse retrieval has been retired"):
+        RagasRegressionRunCreateRequest(dataset_id=uuid4(), sparse_retrieval_provider="  ")

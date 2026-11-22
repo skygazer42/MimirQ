@@ -24,12 +24,16 @@ describe('authApi', () => {
       acs_url: 'https://app.example.com/api/saml/acs',
     })
 
-    expect(post).toHaveBeenCalledWith('/auth/saml/exchange', {
-      provider_id: 'okta',
-      saml_response: 'base64-response',
-      relay_state: 'relay',
-      acs_url: 'https://app.example.com/api/saml/acs',
-    })
+    expect(post).toHaveBeenCalledWith(
+      '/auth/saml/exchange',
+      {
+        provider_id: 'okta',
+        saml_response: 'base64-response',
+        relay_state: 'relay',
+        acs_url: 'https://app.example.com/api/saml/acs',
+      },
+      { headers: { Authorization: false } },
+    )
     expect(result).toEqual({
       user: { id: 'u1' },
       token: { access_token: 'token', token_type: 'bearer', expires_in: 3600 },

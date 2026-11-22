@@ -67,6 +67,15 @@ def test_describe_reranker_provider_reports_colbert_as_retired() -> None:
     }
 
 
+@pytest.mark.parametrize("provider", ["colbert", "late_interaction", "ltr", "xgboost_ltr"])
+def test_reranker_factory_rejects_retired_offline_providers(provider: str) -> None:
+    from app.infrastructure.model_policy import RetiredModelProviderError
+    from app.rag.retrieval.reranking.factory import get_reranker
+
+    with pytest.raises(RetiredModelProviderError, match="has been retired from the API"):
+        get_reranker(provider)
+
+
 def test_get_reranker_passes_explicit_openai_timeout_once(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

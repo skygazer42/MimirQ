@@ -211,7 +211,7 @@ function SettingsSectionFrame({
       className={cn(styles.section, className)}
     >
       <header className={styles.sectionHeader}>
-        <h2 id={`${section.id}-title`} className={styles.sectionTitle}>
+        <h2 id={`${section.id}-title`} className={styles.sectionTitle} tabIndex={-1}>
           {section.label}
         </h2>
         <p className={styles.sectionHint}>{section.hint}</p>
@@ -487,6 +487,12 @@ function SettingsContent({
                 <ModelProvidersSection
                   groupedProviders={state.groupedProviders}
                   onConfigure={state.handleConfigure}
+                  onConfigureReranker={() => {
+                    selectSection('sec-rag')
+                    requestAnimationFrame(() =>
+                      document.getElementById('sec-rag-title')?.focus({ preventScroll: true }),
+                    )
+                  }}
                   retiredEmbeddingModel={state.retiredEmbeddingModel}
                 />
               </SettingsSectionFrame>

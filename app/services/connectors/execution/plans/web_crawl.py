@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import hashlib
 import re
 from typing import TYPE_CHECKING, Any, Literal, TypedDict
@@ -187,7 +185,7 @@ def _build_web_crawl_execution_plan(
 
 
 def _initialize_web_crawl_run_stats(
-    *, run: ConnectorRun, crawl: WebCrawlResult, plan: WebCrawlExecutionPlan
+    *, run: ConnectorRun, crawl: "WebCrawlResult", plan: WebCrawlExecutionPlan
 ) -> dict[str, Any]:
     discovered_urls = plan["discovered_urls"]
     delta_urls = plan["delta_urls"]

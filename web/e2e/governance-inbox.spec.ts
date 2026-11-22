@@ -154,6 +154,17 @@ async function noOverflow(page: Page) {
   expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(1)
 }
 
+const errorToast = (page: Page, message: string) =>
+  page.locator('[data-sonner-toast][data-type=error]').filter({ hasText: message })
+
+async function selectEarthTheme(page: Page) {
+  await page.getByRole('button', { name: '工作空间与外观设置', exact: true }).click()
+  await page.getByRole('button', { name: '界面外观', exact: true }).click()
+  await page.getByRole('radio', { name: '米白', exact: true }).press('Space')
+  await expect(page.locator('html')).toHaveAttribute('data-surface-theme', 'earth')
+  await page.keyboard.press('Escape')
+}
+
 test('governance checks, cleans, retains failed saves and reloads saved content and tags', async ({ page }) => {
   const state = await fixture(page)
   await openInbox(page)
@@ -177,11 +188,11 @@ test('governance checks, cleans, retains failed saves and reloads saved content 
   await expect(reader).toContainText('尚未检测')
   state.failScan = true
   await page.getByRole('button', { name: '开始检测', exact: true }).click()
-  await expect(reader.getByRole('alert')).toContainText('完整检测未完成')
+  await expect(errorToast(page, '完整检测未完成')).toBeVisible()
   await expect(reader).toContainText('尚未检测')
   await page.screenshot({ path: path.join(evidence, 'scan-error.png') })
   state.failScan = false
-  await page.getByRole('button', { name: '重试检测', exact: true }).click()
+  await page.getByRole('button', { name: '开始检测', exact: true }).click()
   await expect(page.getByRole('button', { name: '重新检测', exact: true })).toBeVisible()
   await expect(page.locator('[aria-label="检测问题"] button')).toHaveCount(3)
   await page.screenshot({ path: path.join(evidence, 'desktop.png') })
@@ -198,13 +209,13 @@ test('governance checks, cleans, retains failed saves and reloads saved content 
   await page.getByRole('tab', { name: '文档清洗', exact: true }).click()
   state.failClean = true
   await page.getByRole('button', { name: '运行清洗', exact: true }).click()
-  await expect(reader.getByRole('alert')).toBeVisible()
+  await expect(errorToast(page, '清洗服务暂不可用')).toBeVisible()
   await expect(page.locator('[data-governance-document]')).toContainText('maintenance@example.test')
   await page.screenshot({ path: path.join(evidence, 'clean-error.png') })
   state.failClean = false
   state.filteredClean = true
   await page.getByRole('button', { name: '运行清洗', exact: true }).click()
-  await expect(reader.getByRole('alert')).toBeVisible()
+  await expect(errorToast(page, '正文内容不足')).toBeVisible()
   await expect(page.locator('[data-governance-document]')).toContainText('maintenance@example.test')
   state.filteredClean = false
   await page.getByRole('button', { name: '运行清洗', exact: true }).click()
@@ -217,7 +228,7 @@ test('governance checks, cleans, retains failed saves and reloads saved content 
     ;(window as unknown as { failGovernanceSave: boolean }).failGovernanceSave = true
   })
   await page.getByRole('button', { name: '保存并继续切块', exact: true }).click()
-  await expect(reader.getByRole('alert')).toContainText('保存失败')
+  await expect(errorToast(page, '保存失败')).toBeVisible()
   await expect(page).toHaveURL(/data-governance$/)
   await expect(reader).toContainText('维护记录')
   await page.screenshot({ path: path.join(evidence, 'save-error.png') })
@@ -241,7 +252,7 @@ test('governance checks, cleans, retains failed saves and reloads saved content 
   await expect(page).toHaveURL(/\/chunk-preview/, { timeout: 60_000 })
 })
 
-test('governance binds delayed operations to the initiating document and preserves other drafts', async ({ page }) => {
+test('governance discards stale operations after leaving a document and preserves drafts', async ({ page }) => {
   const state = await fixture(page)
   await openInbox(page)
   let finishScan!: () => void
@@ -251,9 +262,15 @@ test('governance binds delayed operations to the initiating document and preserv
   await page.getByRole('button', { name: '开始检测', exact: true }).click()
   await expect.poll(() => state.scanStarted).toBe(1)
   await page.locator('[data-governance-file="gov-2"]').click()
+  const scanResponse = page.waitForResponse((response) =>
+    new URL(response.url()).pathname.endsWith('/governance-analyze'),
+  )
   finishScan()
+  await (await scanResponse).finished()
   await expect(page.locator('[data-governance-reader]')).toContainText('尚未检测')
   await page.locator('[data-governance-file="gov-1"]').click()
+  await expect(page.locator('[data-governance-reader]')).toContainText('尚未检测')
+  await page.getByRole('button', { name: '开始检测', exact: true }).click()
   await expect(page.getByRole('button', { name: '重新检测', exact: true })).toBeVisible()
   await page.getByRole('button', { name: '编辑', exact: true }).click()
   await page.getByRole('textbox', { name: '编辑文档正文' }).fill(original + '\n\n文档一的草稿。')
@@ -344,6 +361,8 @@ test('annotation results separate document attributes, keywords and long text wh
         label: index === 0 ? '实体' : '关键词',
         start: original.indexOf(text),
         end: original.indexOf(text) + text.length,
+        confidence: 0.85,
+        source: 'rules',
       })),
       document_tags: [
         { type: 'topic', value: '设备维护' },
@@ -378,10 +397,7 @@ test('annotation results separate document attributes, keywords and long text wh
   await page.screenshot({ path: path.join(evidence, 'annotation-long-text.png') })
   await longDetails.locator('summary').press('Enter')
   await expect(longDetails.getByText(longTags[1], { exact: true })).toBeHidden()
-  await page.getByRole('button', { name: '界面外观', exact: true }).click()
-  await page.getByRole('radio', { name: '米白配色', exact: true }).press('Space')
-  await expect(page.locator('html')).toHaveAttribute('data-surface-theme', 'earth')
-  await page.keyboard.press('Escape')
+  await selectEarthTheme(page)
   await page.screenshot({ path: path.join(evidence, 'annotation-earth.png') })
   const records = page.locator('details').filter({ has: page.locator('ul[aria-label="正文标注"]') })
   await records.locator('summary').click()
@@ -505,7 +521,7 @@ test('classification uses tag values, separates long text and retains manual edi
     ;(window as unknown as { failGovernanceSave: boolean }).failGovernanceSave = true
   })
   await page.getByRole('button', { name: '保存', exact: true }).click()
-  await expect(page.locator('[data-governance-reader]').getByRole('alert')).toContainText('保存失败')
+  await expect(errorToast(page, '保存失败')).toBeVisible()
   await expect(page.getByLabel('文档分类', { exact: true })).toHaveValue('维护指南')
   await page.evaluate(() => {
     ;(window as unknown as { failGovernanceSave: boolean }).failGovernanceSave = false
@@ -522,10 +538,7 @@ test('classification uses tag values, separates long text and retains manual edi
   await expect(longDetails.getByRole('listitem')).toHaveCount(1)
   await expect(longDetails.getByText(longTags[1], { exact: true })).toBeVisible()
   await longDetails.locator('summary').click()
-  await page.getByRole('button', { name: '界面外观', exact: true }).click()
-  await page.getByRole('radio', { name: '米白配色', exact: true }).press('Space')
-  await expect(page.locator('html')).toHaveAttribute('data-surface-theme', 'earth')
-  await page.keyboard.press('Escape')
+  await selectEarthTheme(page)
   await page.screenshot({ path: path.join(evidence, 'classifier-earth.png') })
   await page.setViewportSize({ width: 390, height: 844 })
   await expect(page.getByRole('button', { name: '展开侧边栏', exact: true })).toBeVisible()

@@ -141,6 +141,7 @@ export async function lastBatchFixture(page: Page, theme: 'light' | 'dark' = 'li
         json: state.failEvidence
           ? { detail: '证据检索暂不可用' }
           : {
+              schema: 'mimirq.evidence.v1',
               query_for_retrieval: route.request().postDataJSON().query,
               has_evidence: mode === 'evidence',
               abstain_triggered: mode === 'abstain',

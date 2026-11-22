@@ -1,7 +1,5 @@
 """Format the completed retrieval state into the stable diagnostic payload."""
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING, Any
 
 from langchain_core.documents import Document
@@ -60,7 +58,7 @@ def _chunk_quality_summary(docs: list[Document], *, top_k: int) -> dict[str, Any
         return None
 
 
-def build_retrieval_trace(ctx: RetrievalRuntimeState) -> dict[str, Any]:
+def build_retrieval_trace(ctx: "RetrievalRuntimeState") -> dict[str, Any]:
     variants = _retrieval_variant_counts(ctx.retrieval_plan)
     per_query_trace = [_trace_per_query_item(item) for item in ctx.retrieval_per_query[:8]]
     citations_by_role = _citations_by_role(ctx.citations)

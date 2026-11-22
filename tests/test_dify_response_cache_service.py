@@ -170,20 +170,20 @@ async def test_invalid_redis_records_are_a_cache_miss(monkeypatch: pytest.Monkey
     assert await cache._dify_response_cache_redis_payload("corrupt-cache") is None
 
 
-def test_response_cache_executes_without_api_imports() -> None:
+def test_response_cache_executes_without_api_routes_or_dependencies() -> None:
     code = """
 import asyncio
 import importlib.abc
 import sys
 
 attempts = []
-class NoApi(importlib.abc.MetaPathFinder):
+class NoApiRoutes(importlib.abc.MetaPathFinder):
     def find_spec(self, fullname, path=None, target=None):
-        if fullname == 'app.api' or fullname.startswith('app.api.'):
+        if fullname.startswith('app.api.') and fullname != 'app.api.schemas' and not fullname.startswith('app.api.schemas.'):
             attempts.append(fullname)
             raise AssertionError(fullname)
 
-sys.meta_path.insert(0, NoApi())
+sys.meta_path.insert(0, NoApiRoutes())
 from app.services.dify import response_cache
 async def compute():
     return [{'content': 'evidence', 'score': 0.9, 'title': 'source', 'metadata': {}}]

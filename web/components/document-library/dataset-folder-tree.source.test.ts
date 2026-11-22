@@ -19,7 +19,8 @@ describe('dataset-folder-tree visual contract', () => {
     expect(src).toMatch(
       /selectedPath\s*\? 'hover:bg-muted\/40'\s*: 'border-foreground\/10 bg-primary\/\[0\.06\] text-primary'/,
     )
-    expect(src).toContain('pointer-events-none absolute bottom-2 top-0 left-[15px] w-px bg-foreground/10')
+    expect(src).toContain('pointer-events-none absolute bottom-2 top-0 w-px bg-foreground/10')
+    expect(src).toContain('style={{ left: 15 + depth * 12 }}')
     expect(src).not.toContain('shadow-[inset_0_0_12px_-6px_rgba(var(--primary),0.3)]')
     expect(src).not.toContain('transition-all duration-200')
   })

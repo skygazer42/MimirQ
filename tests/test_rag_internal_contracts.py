@@ -76,10 +76,11 @@ def test_hierarchy_fetcher_must_return_its_internal_mapping():
         _fetch_hierarchy_docs(cache={}, pairs={("document", "parent")}, fetch_by_key=lambda _pairs: None)
 
 
-def test_retriever_default_tenant_configuration_failure_is_explicit(monkeypatch):
-    from app.infrastructure.config import settings
-    from app.rag.retrieval.recall.retriever import HybridRetriever
+def test_scoped_retrieval_requires_a_tenant_before_reading_a_dataset():
+    from uuid import uuid4
 
-    monkeypatch.setattr(settings, "DEFAULT_TENANT_ID", "invalid")
-    with pytest.raises(ValueError):
-        HybridRetriever._resolve_tenant_uuid(None)
+    from app.rag.retrieval.recall.runtime_scope import RetrievalScope, resolve_runtime_scope
+
+    scope = RetrievalScope(tenant_id=None, account_id="member", dataset_ids=(uuid4(),))
+    with pytest.raises(LookupError, match="dataset-scoped embedding runtime unavailable"):
+        resolve_runtime_scope(object(), scope=scope)

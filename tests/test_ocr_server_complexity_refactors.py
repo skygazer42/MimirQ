@@ -1,11 +1,12 @@
 import asyncio
-import inspect
 import io
+import os
 import shutil
 import signal
 import subprocess
 import zipfile
 from pathlib import Path
+from types import ModuleType
 from typing import Any
 
 import pytest
@@ -80,27 +81,24 @@ def _upload_file(name: str, content: bytes = b"payload") -> UploadFile:
     return UploadFile(filename=name, file=io.BytesIO(content))
 
 
-def test_ocr_server_convert_signatures_stay_stable() -> None:
-    assert str(inspect.signature(olmocr_server.convert)) == (
-        "(request: starlette.requests.Request, file: "
-        "typing.Annotated[fastapi.datastructures.UploadFile, File(PydanticUndefined)], "
-        "output_format: typing.Annotated[str, Form(PydanticUndefined)] = 'markdown') -> "
-        "dict[str, typing.Any]"
-    )
-    assert str(inspect.signature(paddlevl_server.convert)) == (
-        "(file: typing.Annotated[fastapi.datastructures.UploadFile, File(PydanticUndefined)], "
-        "output_format: typing.Annotated[str, Form(PydanticUndefined)] = 'markdown', "
-        "dpi: typing.Annotated[int, Form(PydanticUndefined)] = 150, "
-        "pipeline_version: typing.Annotated[str, Form(PydanticUndefined)] = '', "
-        "device: typing.Annotated[str, Form(PydanticUndefined)] = '') -> "
-        "starlette.responses.Response"
-    )
-    assert str(inspect.signature(qianfanocr_server.convert)) == (
-        "(file: typing.Annotated[fastapi.datastructures.UploadFile, File(PydanticUndefined)], "
-        "output_format: typing.Annotated[str, Form(PydanticUndefined)] = 'markdown', "
-        "layout_as_thought: typing.Annotated[str, Form(PydanticUndefined)] = '') -> "
-        "dict[str, typing.Any]"
-    )
+@pytest.mark.parametrize(
+    ("server", "expected_defaults"),
+    [
+        (olmocr_server, {"output_format": "markdown"}),
+        (paddlevl_server, {"output_format": "markdown", "dpi": 150, "pipeline_version": "", "device": ""}),
+        (qianfanocr_server, {"output_format": "markdown", "layout_as_thought": ""}),
+    ],
+    ids=["olmocr", "paddlevl", "qianfanocr"],
+)
+def test_ocr_server_convert_multipart_contract(server: ModuleType, expected_defaults: dict[str, str | int]) -> None:
+    openapi = server.app.openapi()
+    request_body = openapi["paths"]["/convert"]["post"]["requestBody"]
+    schema_ref = request_body["content"]["multipart/form-data"]["schema"]["$ref"]
+    form = openapi["components"]["schemas"][schema_ref.rsplit("/", 1)[1]]
+    assert request_body["required"] is True
+    assert form["required"] == ["file"]
+    assert form["properties"]["file"]["contentMediaType"] == "application/octet-stream"
+    assert {name: field["default"] for name, field in form["properties"].items() if name != "file"} == expected_defaults
 
 
 def test_olmocr_build_pipeline_command_includes_optional_overrides(
@@ -250,6 +248,7 @@ async def test_olmocr_convert_maps_pipeline_timeout_to_504(monkeypatch: pytest.M
     assert exc_info.value.detail == "olmocr_pipeline_timeout"
 
 
+@pytest.mark.skipif(os.name != "posix", reason="requires POSIX process groups and SIGKILL")
 def test_paddlevl_terminate_process_group_escalates_to_sigkill(monkeypatch: pytest.MonkeyPatch) -> None:
     proc = _FakePopen()
     kill_calls: list[tuple[int, signal.Signals]] = []

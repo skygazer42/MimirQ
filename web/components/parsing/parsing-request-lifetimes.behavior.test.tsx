@@ -150,6 +150,7 @@ describe('extraction document ownership', () => {
     expect(api.parsing.extract).toHaveBeenCalledWith(
       'current',
       expect.objectContaining({ mode: 'schema', max_evidence: 3 }),
+      { signal: expect.any(AbortSignal) },
     )
     act(() => view.container.querySelector<HTMLButtonElement>('[data-testid="extract-evidence-button"]')!.click())
     expect(onSelectEvidence).toHaveBeenCalledWith({ fieldName: 'field', evidence: response.result.field.evidence[0] })

@@ -417,7 +417,13 @@ async def test_retrieval_explain_replaces_request_session_before_offload(
 
     def fake_retrieval(state):  # noqa: ANN001, ANN202
         assert state["db"] is worker_db
-        return {"citations": [], "metrics": {}}
+        return {
+            "citations": [],
+            "metrics": {},
+            "query_debug": {},
+            "retrieval_trace": {},
+            "query_for_retrieval": "where",
+        }
 
     monkeypatch.setattr(explain, "run_retrieval", fake_retrieval)
 
@@ -478,6 +484,9 @@ async def test_retrieval_explain_uses_chat_rag_defaults_when_rag_config_omitted(
             "retrieval_degraded": False,
             "fallback_reason": None,
             "channel_health": {},
+            "query_debug": {},
+            "retrieval_trace": {},
+            "query_for_retrieval": "where",
         },
         raising=True,
     )

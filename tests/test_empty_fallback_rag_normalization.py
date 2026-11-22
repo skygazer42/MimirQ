@@ -13,4 +13,6 @@ def test_required_normalization_text_does_not_become_empty(value):
 def test_normalization_preserves_empty_text_and_normalizes_real_text():
     assert normalize_text("") == ""
     assert normalize_text("A\r\nB\u00a0\ufb01\u200b\x00") == "A\nB fi"
-    assert normalize_query(" A\r\n B\u00a0fi ") == "A B fi"
+    normalized = normalize_query(" A\r\n B\u00a0fi ")
+    assert normalized.normalized_text == "a b fi"
+    assert normalized.applied_rules == ["nfkc", "casefold", "whitespace"]

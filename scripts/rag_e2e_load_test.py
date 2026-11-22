@@ -96,6 +96,13 @@ def _p95_ms(section: dict[str, Any], key: str) -> int:
     return _as_int(raw.get("p95_ms"))
 
 
+def _required_load_count(section: dict[str, Any], phase: str, field: str) -> int:
+    value = section[field]
+    if type(value) is not int or value < 0:
+        raise ValueError(f"{phase}.{field} must be a nonnegative integer")
+    return value
+
+
 def evaluate_load_gate(
     result: dict[str, Any],
     *,
@@ -109,25 +116,25 @@ def evaluate_load_gate(
     chat = result.get("chat") if isinstance(result.get("chat"), dict) else {}
     failures: list[str] = []
 
-    expected_ingest = _as_int(ingest.get("requested"))
-    completed_ingest = _as_int(ingest.get("completed"))
-    ingest_errors = _as_int(ingest.get("errors"))
+    expected_ingest = _required_load_count(ingest, "ingest", "requested")
+    completed_ingest = _required_load_count(ingest, "ingest", "completed")
+    ingest_errors = _required_load_count(ingest, "ingest", "errors")
     if expected_ingest > 0 and completed_ingest < expected_ingest:
         failures.append(f"ingest_completed {completed_ingest} < requested {expected_ingest}")
     if ingest_errors > 0:
         failures.append(f"ingest_errors {ingest_errors} > 0")
 
-    expected_retrieve = _as_int(retrieve.get("requested"))
-    ok_retrieve = _as_int(retrieve.get("ok"))
-    retrieve_errors = _as_int(retrieve.get("errors"))
+    expected_retrieve = _required_load_count(retrieve, "retrieve", "requested")
+    ok_retrieve = _required_load_count(retrieve, "retrieve", "ok")
+    retrieve_errors = _required_load_count(retrieve, "retrieve", "errors")
     if expected_retrieve > 0 and ok_retrieve < expected_retrieve:
         failures.append(f"retrieve_ok {ok_retrieve} < requested {expected_retrieve}")
     if retrieve_errors > 0:
         failures.append(f"retrieve_errors {retrieve_errors} > 0")
 
-    expected_chat = _as_int(chat.get("requested"))
-    ok_chat = _as_int(chat.get("ok"))
-    chat_errors = _as_int(chat.get("errors"))
+    expected_chat = _required_load_count(chat, "chat", "requested")
+    ok_chat = _required_load_count(chat, "chat", "ok")
+    chat_errors = _required_load_count(chat, "chat", "errors")
     if expected_chat > 0 and ok_chat < expected_chat:
         failures.append(f"chat_ok {ok_chat} < requested {expected_chat}")
     if chat_errors > 0:

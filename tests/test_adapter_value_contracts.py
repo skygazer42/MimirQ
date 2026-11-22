@@ -29,7 +29,7 @@ def test_milvus_status_passes_configured_credentials_to_sdk(
 
     result = settings_api._get_milvus_status()
 
-    assert result == {"connected": True, "message": "connected"}
+    assert result.model_dump() == {"connected": True, "message": "connected"}
     assert calls[0][1]["user"] == user
     assert calls[0][1]["password"] == password
     assert calls[1] == ("disconnect", "status_check")

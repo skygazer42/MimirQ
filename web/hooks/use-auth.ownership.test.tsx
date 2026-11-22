@@ -2,7 +2,7 @@
 
 import { act, type ReactNode } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import type { AxiosResponse, InternalAxiosRequestConfig } from 'axios'
+import { AxiosError, type AxiosResponse, type InternalAxiosRequestConfig } from 'axios'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { QueryProvider } from '@/components/providers/query-provider'
@@ -13,6 +13,8 @@ import { queryKeys } from '@/lib/query-keys'
 import { renderHook, waitForAssertion } from '@/test/hook-harness'
 import type { AuthToken, UserProfile } from '@/types/backend'
 import { useAuth } from './use-auth'
+
+vi.hoisted(() => vi.stubGlobal('BroadcastChannel', undefined))
 
 const token: AuthToken = { access_token: 'same-session-token', token_type: 'bearer', expires_in: 3600 }
 const profile: UserProfile = {
@@ -47,6 +49,7 @@ function mountAuth() {
 
 describe('useAuth session ownership across the real client chain', () => {
   beforeEach(() => {
+    vi.stubGlobal('BroadcastChannel', undefined)
     localStorage.clear()
     sessionStorage.clear()
     __resetOidcRefreshForTests()
@@ -97,9 +100,12 @@ describe('useAuth session ownership across the real client chain', () => {
           })
         } else {
           response.reject(
-            Object.assign(new Error('previous profile failed'), {
+            new AxiosError('previous profile failed', AxiosError.ERR_BAD_REQUEST, request, undefined, {
               config: request,
-              response: { status: Number(settlement), data: {}, headers: {} },
+              status: Number(settlement),
+              statusText: 'Previous profile failed',
+              data: {},
+              headers: {},
             }),
           )
         }
@@ -126,7 +132,13 @@ describe('useAuth session ownership across the real client chain', () => {
       const authorization = String(config.headers.Authorization)
       seen.push(authorization)
       if (authorization === 'Bearer same-session-token') {
-        throw Object.assign(new Error('expired token'), { config, response: { status: 401, data: {}, headers: {} } })
+        throw new AxiosError('expired token', AxiosError.ERR_BAD_REQUEST, config, undefined, {
+          config,
+          status: 401,
+          statusText: 'Unauthorized',
+          data: {},
+          headers: {},
+        })
       }
       return { config, data: updated, status: 200, statusText: 'OK', headers: {} }
     })

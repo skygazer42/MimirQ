@@ -48,7 +48,7 @@ const api = vi.hoisted(() => ({
   },
   router: { replace: vi.fn() },
   search: new URLSearchParams(),
-  toast: { success: vi.fn(), error: vi.fn(), info: vi.fn(), message: vi.fn() },
+  toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn(), message: vi.fn() },
 }))
 vi.hoisted(() => vi.stubGlobal('BroadcastChannel', undefined))
 vi.mock('@/lib/api', () => ({
@@ -1257,6 +1257,10 @@ describe('preview file content and source identity', () => {
     expect(hook.result.current.isPreviewDirty).toBe(true)
     expect(hook.container.contains(editor)).toBe(true)
     expect(editor.value).toBe('unsaved editor draft')
+
+    await act(async () => hook.result.current.runPreview())
+    expect(hook.result.current.previewData).not.toBe(previous)
+    expect(hook.container.contains(editor)).toBe(false)
   })
 
   it('does not attach an accepted older write status to a newer source revision', async () => {

@@ -54,13 +54,14 @@ async def test_disabled_async_rewrite_has_no_attempt_and_does_not_resolve_models
 
 
 @pytest.mark.asyncio
-async def test_standard_rewrite_event_precedes_industry_expansion_and_does_not_use_module(monkeypatch):
+async def test_standard_rewrite_feeds_industry_before_publishing_effective_query(monkeypatch):
     from app.infrastructure.config import settings
     from app.rag.retrieval.planning import planner as query_planning
     from app.rag.runtime.streaming import setup as standard_stream_setup
     from app.rag.runtime.streaming.state import StandardStreamState
 
     monkeypatch.setattr(settings, "QUERY_REWRITE_STRATEGY", "kb_followup.v1")
+    monkeypatch.setattr(settings, "ENABLE_QUERY_REWRITE", True)
     observed = []
 
     def industry(query, **kwargs):
@@ -88,11 +89,10 @@ async def test_standard_rewrite_event_precedes_industry_expansion_and_does_not_u
     stream = standard_stream_setup.rewrite_and_apply_industry_rules(runtime)
     try:
         event = await anext(stream)
-        assert event["type"] == "rewrite" and event["data"]["rewritten"] == "What is Ragvia?"
-        assert observed == []
+        assert event["type"] == "rewrite" and event["data"]["rewritten"] == "What is Ragvia? industry"
+        assert observed == ["What is Ragvia?"]
         with pytest.raises(StopAsyncIteration):
             await anext(stream)
-        assert observed == ["What is Ragvia?"]
         assert runtime.data.query_for_retrieval == "What is Ragvia? industry"
     finally:
         await stream.aclose()

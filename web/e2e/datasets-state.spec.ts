@@ -51,7 +51,7 @@ test('请求进行中明确展示加载状态', async ({ page }, testInfo) => {
   try {
     await page.goto('/datasets')
     await expect(page.getByRole('heading', { name: '数据集', exact: true })).toBeVisible({ timeout: 60_000 })
-    await expect(page.getByRole('status').filter({ hasText: '正在加载数据集' })).toBeVisible()
+    await expect(page.getByRole('status').filter({ hasText: '加载数据集…' })).toBeVisible()
     await expect(page.getByRole('heading', { name: '暂无数据集' })).toHaveCount(0)
     await page.screenshot({ path: testInfo.outputPath('datasets-loading.png'), animations: 'disabled' })
     releaseRequest()
@@ -92,7 +92,7 @@ test('后台刷新失败保留已有列表并允许重试', async ({ page }, tes
   const item = page.locator('[data-dataset-catalog-scroll]').getByText('运维手册', { exact: true })
   await expect(item).toBeVisible({ timeout: 60_000 })
   failRequest = true
-  await page.getByRole('button', { name: '刷新', exact: true }).click()
+  await page.getByRole('button', { name: '刷新数据集', exact: true }).click()
   const error = page.getByRole('alert').filter({ hasText: '加载数据集失败' })
   await expect(error).toBeVisible({ timeout: 60_000 })
   await expect(item).toBeVisible()
@@ -122,14 +122,14 @@ test('搜索排序刷新仍使用服务端参数且创建入口可用', async ({
       url.searchParams.get('order_dir') === 'asc'
     )
   })
-  await page.getByText('默认排序', { exact: true }).click()
-  await page.getByRole('option', { name: '按名称', exact: true }).click()
+  await page.getByRole('combobox', { name: '排序方式', exact: true }).click()
+  await page.getByRole('option', { name: '名称 A–Z', exact: true }).click()
   await sortRequest
   const refreshRequest = page.waitForRequest((request) => {
     const url = new URL(request.url())
     return datasetListUrl(url) && url.searchParams.get('q') === '手册' && url.searchParams.get('order_by') === 'name'
   })
-  await page.getByRole('button', { name: '刷新', exact: true }).click()
+  await page.getByRole('button', { name: '刷新数据集', exact: true }).click()
   await refreshRequest
   await page.getByRole('button', { name: '新建数据集', exact: true }).click()
   await expect(page.getByRole('dialog').getByRole('heading', { name: '新建数据集', exact: true })).toBeVisible()

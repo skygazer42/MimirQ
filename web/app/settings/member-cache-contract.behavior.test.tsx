@@ -49,9 +49,9 @@ describe('RTBF raw member DTO and complete member table cache', () => {
   it('keeps the raw response shape while showing the actual current subject', async () => {
     const view = mountAdmin(() => null, governance())
     await waitForAssertion(() => expect(view.container.textContent).toContain(adminAccess.account_id))
-    expect(view.client.getQueryData(rawKey)).toEqual({ items: members, total: 2 })
+    await waitForAssertion(() => expect(view.client.getQueryData(rawKey)).toEqual({ items: members, total: 2 }))
     expect(Array.isArray(view.client.getQueryData(rawKey))).toBe(false)
-    expect(api.list).toHaveBeenCalledWith({ limit: 500 })
+    expect(api.list).toHaveBeenCalledWith({ limit: 500 }, { signal: expect.any(AbortSignal) })
   })
   it.each(['table first', 'governance first'] as const)(
     'keeps both consumers valid when mounting %s',

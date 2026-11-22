@@ -6,8 +6,6 @@ reject unavailable backends through TENANT_QUOTA_FAIL_CLOSED. Usage comes from
 aggregate queries, with rolling windows computed server-side in UTC.
 """
 
-from __future__ import annotations
-
 import logging
 import math
 from collections.abc import Callable
@@ -217,11 +215,11 @@ class TenantQuotaExceededError(RuntimeError):
         self.meta: dict[str, Any] = dict(meta or {})
 
 
-_tenant_qps_limiter: RateLimiter | RedisRateLimiter | None = None
+_tenant_qps_limiter: "RateLimiter | RedisRateLimiter | None" = None
 _tenant_qps_cfg: tuple[bool, str, float, int, str, int] | None = None
 
 
-def _get_tenant_qps_limiter() -> RateLimiter | RedisRateLimiter:
+def _get_tenant_qps_limiter() -> "RateLimiter | RedisRateLimiter":
     """
     Return a token-bucket limiter for per-tenant QPS enforcement.
 

@@ -1,7 +1,8 @@
 import { expect, test } from '@playwright/test'
 
-import type { Document } from '../types'
+import type { DatasetProfileDocumentOut, Document } from '../types'
 import processingFixtures from '@/components/document-detail-dialog/document-processing.fixture.json'
+import { makeProfileScan } from '../test/dataset-profile-fixtures'
 import { policyDatasetId } from './dataset-policy.helpers'
 import { installCommonApiMocks, UPLOADED_DOCUMENT_ID } from './enterprise-quality-telemetry.helpers'
 import { profileSummary } from './remaining-pages.helpers'
@@ -26,8 +27,9 @@ for (const viewport of [
     const initialRead = new Promise<void>((resolve) => {
       releaseInitialRead = resolve
     })
-    let stored: Document = {
+    let stored: Document & DatasetProfileDocumentOut = {
       id: UPLOADED_DOCUMENT_ID,
+      dataset_id: policyDatasetId,
       filename: 'processing-facts.md',
       file_type: 'md',
       file_size: 100,
@@ -36,12 +38,16 @@ for (const viewport of [
       status: 'completed',
       processing_progress: 100,
       processing_attempts: 0,
+      error_message: null,
       publication_status: 'draft',
+      preview: null,
+      preview_truncated: false,
       created_at: '2026-11-16T00:00:00Z',
       updated_at: '2026-11-16T00:00:00Z',
       ...processingFixtures.empty,
     }
     await installCommonApiMocks(page, { uploaded: true, parsingDocuments: [] })
+    const profile = profileSummary()
     await page.route(
       (url) => url.pathname.startsWith(`/api/v1/datasets/${policyDatasetId}`),
       async (route) => {
@@ -49,8 +55,9 @@ for (const viewport of [
         const datasetPath = `/api/v1/datasets/${policyDatasetId}`
         if (path === datasetPath)
           await route.fulfill({ json: { id: policyDatasetId, name: 'Processing facts', document_count: 1 } })
-        else if (path === `${datasetPath}/profile/summary`) await route.fulfill({ json: profileSummary() })
-        else if (path === `${datasetPath}/profile/scan-runs`) await route.fulfill({ json: { total: 0, items: [] } })
+        else if (path === `${datasetPath}/profile/summary`) await route.fulfill({ json: profile })
+        else if (path === `${datasetPath}/profile/scan-runs`)
+          await route.fulfill({ json: { total: 1, items: [makeProfileScan(profile)] } })
         else if (path.startsWith(`${datasetPath}/profile/findings/`))
           await route.fulfill({ json: { total: 1, items: [stored] } })
         else await route.fallback()

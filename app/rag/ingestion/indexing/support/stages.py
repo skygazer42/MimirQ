@@ -1,7 +1,5 @@
 """Pipeline stage functions and document transformations."""
 
-from __future__ import annotations
-
 import asyncio
 import datetime as dt
 import hashlib
@@ -136,10 +134,10 @@ class _InlineAssetStats:
 @dataclass(frozen=True)
 class _ChunkAssetDeps:
     append_image_understanding_text: Callable[..., str]
-    decode_image_codes: Callable[[PILImage.Image], dict[str, Any]]
+    decode_image_codes: "Callable[[PILImage.Image], dict[str, Any]]"
     derive_image_caption: Callable[..., str]
-    infer_visual_kind_from_pixels: Callable[[PILImage.Image], str]
-    load_image_for_ocr: Callable[..., tuple[PILImage.Image | None, bool]]
+    infer_visual_kind_from_pixels: "Callable[[PILImage.Image], str]"
+    load_image_for_ocr: "Callable[..., tuple[PILImage.Image | None, bool]]"
     ocr_image: Callable[..., str]
     redact_ocr_text: Callable[..., tuple[str, dict[str, int], dict[str, int]]]
     score_chunk_quality: Callable[..., dict[str, Any]]
@@ -1150,7 +1148,7 @@ def _apply_code_info(meta: dict[str, Any], code_info: dict[str, Any]) -> str:
     return image_code_text
 
 
-def _ensure_visual_kind(meta: dict[str, Any], img: PILImage.Image, deps: _ChunkAssetDeps) -> None:
+def _ensure_visual_kind(meta: dict[str, Any], img: "PILImage.Image", deps: _ChunkAssetDeps) -> None:
     existing = meta.get("visual_kind")
     if isinstance(existing, str) and existing.strip():
         return
@@ -1165,7 +1163,7 @@ def _ensure_visual_kind(meta: dict[str, Any], img: PILImage.Image, deps: _ChunkA
 
 def _maybe_read_ocr(
     *,
-    img: PILImage.Image,
+    img: "PILImage.Image",
     image_ocr_enabled: bool,
     image_ocr_max_chars: int,
     ocr_remaining: int | None,

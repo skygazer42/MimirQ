@@ -24,7 +24,10 @@ const api = vi.hoisted(() => ({
 }))
 
 vi.mock('next/navigation', () => ({ useParams: () => ({ id: 'dataset-a' }) }))
-vi.mock('@/i18n/navigation', () => ({ useRouter: () => ({ push: vi.fn() }) }))
+vi.mock('@/i18n/navigation', () => ({
+  useRouter: () => ({ push: vi.fn() }),
+  Link: ({ href, children }: { href: string; children: ReactNode }) => <a href={href}>{children}</a>,
+}))
 vi.mock('@/lib/api', () => ({ datasetApi: api, documentApi: {}, sseApi: {} }))
 vi.mock('@/lib/client-logging', () => ({ reportClientError: vi.fn(), reportClientWarning: vi.fn() }))
 vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn() } }))
@@ -182,9 +185,9 @@ describe('dataset workspace request ownership', () => {
 
   function mountTables() {
     return mount(<DatasetTablesPage />, (client) =>
-      client.setQueryData(queryKeys.datasets.tables('dataset-a', { skip: 0, limit: 200 }), {
-        items: [first, second],
-        total: 2,
+      client.setQueryData(queryKeys.datasets.tables('dataset-a', { limit: 200 }), {
+        pages: [{ items: [first, second], total: 2, next_skip: null }],
+        pageParams: [0],
       }),
     )
   }
@@ -215,7 +218,7 @@ describe('dataset workspace request ownership', () => {
     await click(button('执行查询'))
 
     expect(api.queryTable).toHaveBeenCalledWith('dataset-a', 'table-b', { sql: 'SELECT * FROM "sheet_2" LIMIT 20' })
-    expect(view.container.textContent).toContain('CURRENT_RESULT')
+    await act(async () => vi.waitFor(() => expect(view.container.textContent).toContain('CURRENT_RESULT')))
   })
 
   it.each(['queryTable', 'askTable', 'lotusSemFilter'] as const)(
@@ -266,10 +269,12 @@ describe('dataset workspace request ownership', () => {
       }),
     )
     await act(async () => {})
-    expect(api.getPrecheckSummary).toHaveBeenCalledWith('dataset-a', 'run-a')
+    expect(api.getPrecheckSummary).toHaveBeenCalledWith('dataset-a', 'run-a', { signal: expect.any(AbortSignal) })
+    const earlierSignal = api.getPrecheckSummary.mock.calls[0][2].signal as AbortSignal
     await chooseRun('run-b')
     await act(async () => vi.waitFor(() => expect(view.container.textContent).toContain('FINDING_FOR_B')))
-    expect(api.getPrecheckSummary).toHaveBeenCalledWith('dataset-a', 'run-b')
+    expect(api.getPrecheckSummary).toHaveBeenCalledWith('dataset-a', 'run-b', { signal: expect.any(AbortSignal) })
+    expect(earlierSignal.aborted).toBe(true)
     await act(async () => {
       if (outcome === 'success') earlier.resolve(summary('run-a', 'OLD_FINDING_FOR_A'))
       else earlier.reject(new Error('old summary unavailable'))

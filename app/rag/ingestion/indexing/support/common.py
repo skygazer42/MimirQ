@@ -1,7 +1,5 @@
 """Shared document metadata writes, gate outcomes and processor logging."""
 
-from __future__ import annotations
-
 import logging
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
@@ -19,7 +17,7 @@ def _log_processor_fallback(context: str, exc: BaseException) -> None:
     logger.debug("processor fallback failed in %s: %s", context, exc, exc_info=True)
 
 
-def commit_and_refresh(db: Session, instance: object) -> None:
+def commit_and_refresh(db: "Session", instance: object) -> None:
     """Commit once and refresh, preserving the producer's exception type.
 
     A commit callback can fail after the database has committed. The caller owns
@@ -29,7 +27,7 @@ def commit_and_refresh(db: Session, instance: object) -> None:
     db.refresh(instance)
 
 
-def _commit_document_metadata(db: Session, db_document: DBDocument, metadata: dict[str, Any]) -> None:
+def _commit_document_metadata(db: "Session", db_document: "DBDocument", metadata: dict[str, Any]) -> None:
     db_document.doc_metadata = metadata
     commit_and_refresh(db, db_document)
 

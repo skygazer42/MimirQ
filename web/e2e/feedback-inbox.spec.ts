@@ -21,6 +21,13 @@ function makeFeedback(index: number) {
     expected_answer:
       '1. 说明应该在哪个设置入口调整策略，以及这些设置作用于整个知识库、哪些作用于单次入库。\n2. 给出一份可核对的分段配置示例，解释长度、重叠及计量单位，并注明适用的文档类型。\n3. 提供原始资料的步骤：使用相同问题比较命中片段，检查引用覆盖，再决定是否重新入库。',
     tags: ['配置示例', '引用不足'],
+    category: null,
+    category_source: null,
+    query_hash: null,
+    retrieval_trace_ref: null,
+    profile: null,
+    judge_score_ref: null,
+    message_created_at: null,
     extra: {
       source: index % 2 ? 'web' : 'api',
       feedback_issue: '答案不完整',
@@ -34,7 +41,7 @@ function makeFeedback(index: number) {
 async function json(route: Route, body: unknown, status = 200) {
   await route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) })
 }
-async function fixture(page: Page) {
+async function fixture(page: Page, originalAnswer = '原回答') {
   await installCommonApiMocks(page, { uploaded: false })
   const state = {
     records: Array.from({ length: 12 }, (_, index) => makeFeedback(index + 1)),
@@ -59,11 +66,26 @@ async function fixture(page: Page) {
     if (url.pathname.endsWith('/loop/candidates'))
       return json(route, {
         schema: 'test',
-        summary: { feedback_total: 12 },
+        summary: {
+          feedback_total: 12,
+          negative_feedback_total: 9,
+          hard_negative_records: 1,
+          training_triples: 0,
+          eval_case_candidates: 0,
+          rules_glossary_candidates: 1,
+          rules_pattern_candidates: 0,
+          rules_intent_candidates: 0,
+        },
         hard_negative_records: [{ query: '分段策略', source_feedback_id: 'feedback-1' }],
         training_triples: [],
         eval_case_candidates: [],
-        rules_suggestions: { glossary_suggestions: [{ token: '分段', expansion: '文档切分策略' }] },
+        rules_suggestions: {
+          schema: 'test',
+          ruleset: null,
+          glossary_suggestions: [{ token: '分段', expansion: '文档切分策略' }],
+          pattern_suggestions: [],
+          intent_suggestions: [],
+        },
       })
     const id = url.pathname.split('/messages/')[1]?.split('/')[0]
     if (route.request().method() === 'PATCH') {
@@ -85,6 +107,8 @@ async function fixture(page: Page) {
     const index = Number(id.split('-')[1]) || 1
     return json(route, {
       conversation_id: id,
+      returned: 2,
+      has_more: false,
       messages: [
         {
           id: `question-${index}`,
@@ -95,7 +119,7 @@ async function fixture(page: Page) {
         {
           id: `message-${index}`,
           role: 'assistant',
-          content: '原回答',
+          content: originalAnswer,
           created_at: new Date().toISOString(),
           citations: [
             {
@@ -126,6 +150,8 @@ async function openInbox(page: Page) {
   await expect(page.getByRole('heading', { name: '反馈质检', exact: true })).toBeVisible({ timeout: 60_000 })
   await expect(page.locator('[data-feedback-item]')).toHaveCount(12)
   await expect(page.getByRole('button', { name: /知识库配置指南/ })).toBeVisible()
+  await expect(page.getByRole('button', { name: '归档反馈', exact: true })).toBeEnabled()
+  await expect(page.getByRole('button', { name: '创建回归用例', exact: true })).toBeEnabled()
   await page.evaluate(() => document.fonts.ready)
 }
 async function noOverflow(page: Page) {
@@ -194,7 +220,7 @@ test('feedback inbox preserves filters, persists archive and binds delayed regre
 test('feedback inbox handles empty and error states, long content, phone navigation and theme surfaces', async ({
   page,
 }) => {
-  const state = await fixture(page)
+  const state = await fixture(page, '需要核对很长的原始回答。'.repeat(500))
   await openInbox(page)
   await page.setViewportSize({ width: 1280, height: 800 })
   await noOverflow(page)
@@ -215,7 +241,6 @@ test('feedback inbox handles empty and error states, long content, phone navigat
   await page.getByRole('button', { name: '返回反馈队列' }).click()
   await expect(page.locator('[data-feedback-item="feedback-1"]')).toBeFocused()
   await page.setViewportSize({ width: 1600, height: 1000 })
-  state.records[0].message_content += '\n\n' + '需要核对很长的原始回答。'.repeat(500)
   await page.getByRole('button', { name: '刷新反馈' }).click()
   const content = page.getByLabel('反馈内容', { exact: true })
   await expect(content).toContainText('需要核对很长的原始回答。')

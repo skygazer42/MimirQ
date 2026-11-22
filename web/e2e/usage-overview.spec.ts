@@ -84,7 +84,8 @@ test('window changes never relabel old usage and late responses stay out of the 
   try {
     await page.getByRole('button', { name: '近 14 天', exact: true }).click()
     await expect(page.locator('dl[aria-label="累计用量"] dd').nth(1)).toHaveText('—')
-    await expect(page.getByRole('heading', { name: '正在读取用量…', exact: true })).toBeVisible()
+    await expect(page.getByRole('region', { name: '数据集用量归因', exact: true })).toHaveAttribute('aria-busy', 'true')
+    await expect(page.getByRole('table', { name: '正在读取用量。', exact: true })).toBeVisible()
     await page.getByRole('button', { name: '近 30 天', exact: true }).click()
     await expect(page.locator('dl[aria-label="累计用量"] dd').nth(1)).toHaveText(
       summaryFor(30).total_assistant_tokens.toLocaleString('zh-CN'),
@@ -201,6 +202,7 @@ test('reports a missing resource window when only assistant usage is still pendi
 
   try {
     await page.goto('/usage?view=resources', { waitUntil: 'domcontentloaded' })
+    await expect(page.getByRole('button', { name: '重试链路资源', exact: true })).toBeVisible({ timeout: 30_000 })
     await expect(page.getByRole('region', { name: '链路资源状态', exact: true })).toContainText('未取得完整用量数据')
     await expect(page.getByText('统计窗口未取得', { exact: true })).toBeVisible()
     await expect(page.getByText('正在读取统计窗口…', { exact: true })).toHaveCount(0)

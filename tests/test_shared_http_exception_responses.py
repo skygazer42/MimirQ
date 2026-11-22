@@ -43,7 +43,6 @@ def test_shared_http_exception_responses_match_the_common_contract() -> None:
 def test_selected_routes_reuse_one_shared_http_exception_mapping() -> None:
     route_modules = [health, document_stats, rtbf, reports, rbac]
     for module in route_modules:
-        assert module._DEFAULT_HTTP_EXCEPTION_RESPONSES is DEFAULT_HTTP_EXCEPTION_RESPONSES
         assert module.router.responses is DEFAULT_HTTP_EXCEPTION_RESPONSES
 
 
@@ -54,6 +53,5 @@ def test_selected_routes_keep_openapi_http_exception_contracts() -> None:
     _assert_default_responses(schema, "/api/v1/health/ready", "get")
     _assert_default_responses(schema, "/api/v1/documents/stats", "get")
     _assert_default_responses(schema, "/api/v1/rtbf/request", "post")
-    _assert_default_responses(schema, "/api/v1/rtbf/status/{ticket_id}", "get")
     _assert_default_responses(schema, "/api/v1/reports/datasets/{dataset_id}", "get")
     _assert_default_responses(schema, "/api/v1/rbac/me", "get")

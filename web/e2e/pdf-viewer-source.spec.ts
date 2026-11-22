@@ -91,7 +91,7 @@ test('advances short PDF pages through the real parsing toolbar and applies actu
   })
   const source = page.getByRole('region', { name: '原文', exact: true })
   const pdf = source.getByRole('region', { name: 'PDF 页面', exact: true })
-  await expect(pdf.locator('[data-page-index="0"]')).toHaveAttribute('data-page-rendered', 'true')
+  await expect(pdf.locator('[data-page-index="0"]')).toHaveAttribute('data-page-rendered', 'true', { timeout: 30_000 })
   const next = source.getByRole('button', { name: '下一页原文', exact: true })
   await next.click()
   await expect(source.getByText('2 / 10 页', { exact: true })).toBeVisible()

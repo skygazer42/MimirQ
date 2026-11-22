@@ -27,19 +27,15 @@ test('独立 UX：手机从健康诊断找到准备资料的下一步', async ({
   await evidence(page, 'mobile-isolated-health')
   await page.getByRole('button', { name: '数据画像', exact: true }).tap()
   await expect(page.getByRole('heading', { name: '数据画像', exact: true })).toBeVisible({ timeout: 60_000 })
-  await expect(page.getByText('最近扫描', { exact: true })).toBeVisible({ timeout: 60_000 })
+  await expect(page.getByRole('heading', { name: '先上传入库文档', exact: true })).toBeVisible()
   await evidence(page, 'mobile-isolated-profile')
-  await page.getByText('扫描历史', { exact: true }).tap()
-  await expect(
-    page.getByText('暂无扫描记录。启动一次深度扫描后，这里会显示快照和可对比版本。', { exact: true }),
-  ).toBeVisible({ timeout: 60_000 })
-  await evidence(page, 'mobile-isolated-profile-history')
   await page.getByRole('button', { name: '数据集操作', exact: true }).tap()
   await page.getByText('表格资产', { exact: true }).tap()
   await expect(page.getByRole('heading', { name: '表格资产', exact: true })).toBeVisible({ timeout: 60_000 })
-  await expect(page.getByRole('button', { name: '去入库操作', exact: true })).toBeVisible({ timeout: 60_000 })
+  const ingest = page.getByRole('link', { name: '前往入库操作', exact: true })
+  await expect(ingest).toBeVisible()
   await evidence(page, 'mobile-isolated-tables')
-  await page.getByRole('button', { name: '去入库操作', exact: true }).tap()
+  await ingest.tap()
   await expect(page.getByRole('heading', { name: '入库管理', exact: true })).toBeVisible({ timeout: 60_000 })
   await evidence(page, 'mobile-isolated-tables-next-step')
   await page.getByRole('button', { name: '入库配置', exact: true }).tap()
@@ -50,6 +46,11 @@ test('独立 UX：手机从健康诊断找到准备资料的下一步', async ({
 
 test('独立 UX：手机读回复核证据集并检查创建表单', async ({ page }) => {
   const state = await realDatasetFixture(page)
+  const suite = await page.request.post('/api/v1/evidence/suites', {
+    headers: { 'X-User-ID': state.user_id, 'X-Tenant-ID': state.tenant_id },
+    data: { dataset_id: state.dataset_id, name: suiteName },
+  })
+  await expect(suite).toBeOK()
   await page.goto(`/datasets/${state.dataset_id}/evidence`, { waitUntil: 'domcontentloaded' })
   await expect(page.getByRole('heading', { name: '证据库', exact: true })).toBeVisible({ timeout: 60_000 })
   await expect(page.getByText(suiteName, { exact: true }).first()).toBeVisible({ timeout: 60_000 })

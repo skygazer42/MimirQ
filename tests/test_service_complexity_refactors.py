@@ -795,8 +795,10 @@ def test_build_ingestion_policy_suggestion_preserves_schema_and_bucket_order(
 
     tenant_id = uuid4()
     fixed_now = datetime(2026, 8, 16, 14, 0, tzinfo=UTC)
-    jsonl_path = tmp_path / "files.jsonl"
-    near_dups_path = tmp_path / "near_dups.json"
+    tenant_dir = tmp_path / str(tenant_id)
+    tenant_dir.mkdir()
+    jsonl_path = tenant_dir / "files.jsonl"
+    near_dups_path = tenant_dir / "near_dups.json"
     jsonl_path.write_text(
         "\n".join(
             [
@@ -813,8 +815,7 @@ def test_build_ingestion_policy_suggestion_preserves_schema_and_bucket_order(
         json.dumps(
             {
                 "clusters": [
-                    {"members": ["b.csv", "a.csv", "", "a.csv", None]},
-                    {"members": "skip"},
+                    {"members": ["b.csv", "a.csv", "", "a.csv"]},
                 ]
             }
         ),
@@ -849,12 +850,7 @@ def test_build_ingestion_policy_suggestion_preserves_schema_and_bucket_order(
     }
 
     monkeypatch.setattr(service, "datetime", SimpleNamespace(now=lambda _timezone: fixed_now), raising=True)
-    monkeypatch.setattr(
-        service,
-        "_assert_artifact_path_under_tenant",
-        lambda **_kwargs: None,
-        raising=True,
-    )
+    monkeypatch.setattr(service.settings, "UPLOAD_DIR", str(tmp_path))
     monkeypatch.setattr(
         service,
         "_list_finding_from_jsonl",

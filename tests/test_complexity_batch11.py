@@ -458,6 +458,7 @@ def test_process_jira_project_issues_tracks_progress_and_completion(
                 "search_url": "https://jira.example.com/rest/api/3/search",
                 "headers": {"Authorization": "Bearer token"},
                 "jql": "project = ABC",
+                "source_acl": None,
                 "source_acl_mode": "disabled",
                 "source_acl_fallback_mode": "partial_members",
                 "enable_source_acl": False,
@@ -678,6 +679,7 @@ def test_ask_dataset_table_masks_rows_before_answer_and_hides_sql(
     )
     answer_inputs: list[dict[str, object]] = []
 
+    monkeypatch.setattr(dataset_tables.settings, "TABLE_NL2SQL_ENABLED", True)
     monkeypatch.setattr(dataset_tables.settings, "LLM_API_KEY", "key", raising=False)
     monkeypatch.setattr(dataset_tables.settings, "TABLE_LLM_ALLOW_RESULT_EGRESS", True, raising=False)
     monkeypatch.setattr(
@@ -711,6 +713,7 @@ def test_ask_dataset_table_masks_rows_before_answer_and_hides_sql(
             {
                 "schema_link": {"matched": True},
                 "planner": {"sql_fingerprint": "abc123"},
+                "sql_fingerprint": "abc123",
                 "join_provenance": [
                     {
                         "left_table": "a",
@@ -723,17 +726,18 @@ def test_ask_dataset_table_masks_rows_before_answer_and_hides_sql(
         ),
         raising=True,
     )
-    monkeypatch.setattr(
-        dataset_tables,
-        "run_table_query",
-        lambda **_k: {
+
+    def _run_table_query(**kwargs):
+        assert kwargs["expected_sql_fingerprint"] == "abc123"
+        return {
             "sql": "SELECT secret FROM sheet_1",
             "columns": ["secret"],
             "rows": [["top-secret"]],
             "truncated": False,
-        },
-        raising=True,
-    )
+            "planner_execution_mismatch": {"mismatch": False},
+        }
+
+    monkeypatch.setattr(dataset_tables, "run_table_query", _run_table_query)
 
     def _answer_from_result(**kwargs) -> str:
         answer_inputs.append(kwargs)
@@ -774,6 +778,7 @@ def test_lotus_sem_filter_dataset_table_fallback_runs_nl2sql_and_masks_rows(
     )
 
     monkeypatch.setattr(dataset_tables.settings, "TABLE_LOTUS_ENABLED", True, raising=False)
+    monkeypatch.setattr(dataset_tables.settings, "TABLE_NL2SQL_ENABLED", True)
     monkeypatch.setattr(dataset_tables.settings, "LLM_API_KEY", "key", raising=False)
     monkeypatch.setattr(
         dataset_tables, "get_lotus_availability", lambda: SimpleNamespace(ok=False, reason="missing"), raising=True

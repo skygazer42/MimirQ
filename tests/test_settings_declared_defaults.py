@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
 import pytest
+from pydantic import ValidationError
 
 
 @pytest.mark.parametrize("weight,max_promoted,enabled", [(0.0, 2, True), (0.15, 0, True), (0.15, 2, False)])
@@ -73,8 +74,7 @@ def test_preprocess_zero_sample_pages_reaches_scorer(monkeypatch):
     assert score.call_args.kwargs["sample_pages"] == 0
 
 
-@pytest.mark.parametrize("invalid_required_value", [False, True])
-def test_evaluation_snapshot_uses_declared_values_without_fabricating_zero(invalid_required_value, monkeypatch):
+def test_evaluation_snapshot_uses_declared_values_without_fabricating_zero(monkeypatch):
     from app.api.v1.evaluation import routes as evaluations
     from app.rag.evaluation.benchmarks import kg_search_diagnostics
     from app.services.runtime import retrieval_limiter as rag_runtime_limiter
@@ -86,8 +86,6 @@ def test_evaluation_snapshot_uses_declared_values_without_fabricating_zero(inval
     monkeypatch.setattr(settings, "KG_SEARCH_GRAPH_EMBEDDINGS_MIN_SIMILARITY", 0.0)
     monkeypatch.setattr(settings, "KG_SEARCH_GRAPH_EMBEDDINGS_ENABLED", False)
     monkeypatch.setattr(settings, "KG_RELATION_ENABLED", False)
-    if invalid_required_value:
-        monkeypatch.setattr(settings, "KG_SEARCH_GRAPH_EMBEDDINGS_DIM", None)
     from app.api.schemas.evaluation.diagnostics import KGSearchDiagnosticsResponse, KGSearchDiagnosticsSummary
 
     dataset_id = uuid4()
@@ -100,14 +98,17 @@ def test_evaluation_snapshot_uses_declared_values_without_fabricating_zero(inval
     monkeypatch.setattr(rag_runtime_limiter, "SessionLocal", lambda: db)
     payload = evaluations.KGSearchDiagnosticsRequest(dataset_id=dataset_id, persist_run=True)
     asyncio.run(evaluations.run_kg_search_diagnostics(payload, tenant_id=uuid4(), account_id="owner", db=db))
-    if invalid_required_value:
-        db.add.assert_not_called()
-        db.rollback.assert_called_once()
-    else:
-        snapshot = db.add.call_args.args[0].params["settings_snapshot"]
-        assert snapshot["KG_SEARCH_GRAPH_EMBEDDINGS_DIM"] == 0
-        assert snapshot["KG_SEARCH_GRAPH_EMBEDDINGS_SEED"] == 0
-        assert snapshot["KG_SEARCH_RELATION_MAX_EDGES"] == 0
-        assert snapshot["KG_SEARCH_GRAPH_EMBEDDINGS_MIN_SIMILARITY"] == 0.0
-        assert snapshot["KG_SEARCH_GRAPH_EMBEDDINGS_ENABLED"] is False
-        assert snapshot["KG_RELATION_ENABLED"] is False
+    snapshot = db.add.call_args.args[0].params["settings_snapshot"]
+    assert snapshot["KG_SEARCH_GRAPH_EMBEDDINGS_DIM"] == 0
+    assert snapshot["KG_SEARCH_GRAPH_EMBEDDINGS_SEED"] == 0
+    assert snapshot["KG_SEARCH_RELATION_MAX_EDGES"] == 0
+    assert snapshot["KG_SEARCH_GRAPH_EMBEDDINGS_MIN_SIMILARITY"] == 0.0
+    assert snapshot["KG_SEARCH_GRAPH_EMBEDDINGS_ENABLED"] is False
+    assert snapshot["KG_RELATION_ENABLED"] is False
+
+
+def test_configuration_rejects_a_missing_required_graph_embedding_dimension() -> None:
+    from app.infrastructure.config import Settings
+
+    with pytest.raises(ValidationError, match="KG_SEARCH_GRAPH_EMBEDDINGS_DIM"):
+        Settings.model_validate({"KG_SEARCH_GRAPH_EMBEDDINGS_DIM": None})

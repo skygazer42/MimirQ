@@ -69,6 +69,7 @@ function PdfPreviewContent({ file, preview }: Readonly<{ file: File; preview: Ch
         try {
           const worker = new Worker(new URL('../../../../../workers/pdf-preview.worker.ts', import.meta.url), {
             type: 'module',
+            name: 'pdf-preview',
           })
           workerCleanup = () => worker.terminate()
           try {

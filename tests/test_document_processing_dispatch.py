@@ -199,9 +199,13 @@ class NoDocumentAssembler(importlib.abc.MetaPathFinder):
 sys.meta_path.insert(0, NoDocumentAssembler())
 
 from fastapi import BackgroundTasks
+from app.models import registry
 from app.models.documents.records import Document
 from app.services.documents import processing_dispatch as dispatch
 from app.services.documents import processing as operations
+from app.services.runtime import retrieval_limiter
+
+assert registry.REGISTERED_MODEL_MODULES
 
 async def accepted(**kwargs):
     return "accepted-job"
@@ -219,8 +223,9 @@ class DB:
     def first(self): return document
     def commit(self): pass
     def refresh(self, row): pass
+    def close(self): pass
 
-operations.SessionLocal = DB
+retrieval_limiter.SessionLocal = DB
 dispatch.SessionLocal = DB
 
 with TemporaryDirectory() as directory:

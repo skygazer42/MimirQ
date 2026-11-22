@@ -952,6 +952,7 @@ def get_embedding_drift_snapshot(
 @router.post("/perf-suite/run", response_model=PerfSuiteRunResponse)
 def run_perf_suite(
     payload: PerfSuiteRunRequest,
+    request: Request,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -966,8 +967,12 @@ def run_perf_suite(
 
     from app.services.observability.performance_suite import run_minimal_perf_suite_report_and_diff
 
+    # Probe the bound listener even when a proxy exposes a different port.
+    listener = request.scope.get("server")
+    base_url = f"http://127.0.0.1:{listener[1]}" if listener and listener[1] else None
     try:
         return run_minimal_perf_suite_report_and_diff(
+            base_url=base_url,
             iterations=payload.iterations,
             timeout_sec=payload.timeout_sec,
         )

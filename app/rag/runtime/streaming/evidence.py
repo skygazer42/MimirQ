@@ -35,8 +35,10 @@ async def apply_temporal_rerank(runtime: StandardStreamState) -> None:
     # This does NOT filter documents; it only applies a small additive boost to more
     # recently updated documents when the query indicates freshness intent ("latest", "as of", "最新"...).
     if runtime.data.temporal_intent_enabled and runtime.data.docs:
+        intent_resolved = False
         try:
             runtime.data.temporal_intent_meta = detect_temporal_intent(runtime.data.query_for_retrieval)
+            intent_resolved = True
             runtime.data.temporal_boost_enabled = bool(settings.RAG_TEMPORAL_INTENT_RECENCY_BOOST_ENABLED)
             if (
                 bool(runtime.data.temporal_intent_meta.get("detected"))
@@ -81,8 +83,11 @@ async def apply_temporal_rerank(runtime: StandardStreamState) -> None:
                     "reason": "not_detected_or_missing_scope",
                 }
         except Exception as exc:  # noqa: BLE001
-            runtime.data.temporal_intent_meta = {"detected": False, "reason_codes": [], "error": str(exc)[:200]}
-            runtime.data.temporal_recency_meta = {"enabled": True, "used": False, "reason": "exception"}
+            error = str(exc)[:200]
+            if not intent_resolved:
+                runtime.data.temporal_intent_meta = {"detected": False, "reason_codes": [], "error": error}
+            runtime.data.temporal_recency_meta = {"enabled": True, "used": False, "reason": "exception", "error": error}
+            logger.debug("Temporal rerank failed", exc_info=exc)
 
 
 async def apply_rail_and_build_citations(runtime: StandardStreamState) -> AsyncGenerator[dict[str, Any], None]:

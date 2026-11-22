@@ -7,7 +7,8 @@ describe('group-directory scope and safe writes', () => {
   it('keeps absent and invalid timestamps distinct from a recent update', () => {
     expect(formatGroupDate(null)).toBe('未记录')
     expect(formatGroupDate('not-a-date')).toBe('not-a-date')
-    expect(formatGroupDate('2026-09-08T10:20:00+08:00')).toMatch(/2026-09-08.*\d{2}:\d{2}/)
+    const localInstant = new Date(2026, 8, 8, 10, 20).toISOString()
+    expect(formatGroupDate(localInstant)).toMatch(/2026-09-08.*10:20/)
   })
   it('restores a deep selection and rejects invalid page settings', () => {
     expect(parseGroupScope('?group=g-2&q=研发&external=filled&size=50&page=3&mq=lin&mp=2')).toMatchObject({

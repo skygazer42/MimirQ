@@ -27,6 +27,7 @@ vi.mock('@/lib/auth-storage', () => ({
   getAuthSessionRevision: () => 0,
   getStoredUser: () => (authState.token ? authState.storedUser : null),
   setStoredUser: authState.setStoredUser,
+  subscribeAuthSession: () => () => undefined,
 }))
 
 import { useAuth } from './use-auth'

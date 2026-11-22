@@ -23,8 +23,8 @@ def test_hierarchy_audit_reports_missing_sources(
     assert rendered.splitlines() == [
         "| check | status | observed |",
         "|---|---|---|",
-        "| hierarchy_profiles_present | warn | retrieval_profiles.py missing |",
-        "| must_recall_anchor_excludes_hierarchy_context | warn | orchestrator.py missing |",
+        "| hierarchy_profiles_present | warn | profiles.py missing |",
+        "| must_recall_anchor_excludes_hierarchy_context | warn | requirements.py missing |",
         "| eval_summary_includes_doc_family_recall | warn | evidence_retrieve_gate.py missing |",
     ]
 
@@ -47,7 +47,7 @@ def test_hierarchy_audit_accepts_profiles_safe_defaults_and_guardrails(
     )
     _write(
         tmp_path,
-        "app/rag/retrieval/orchestrator.py",
+        "app/rag/retrieval/stages/requirements.py",
         "exclude_retrieval_role_prefixes = ['hierarchy_']",
     )
     _write(

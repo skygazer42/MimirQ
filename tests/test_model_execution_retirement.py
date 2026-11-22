@@ -319,7 +319,10 @@ def test_profile_payloads_remain_readable_and_only_reject_retired_choices_on_wri
 
 
 def test_hf_colbert_is_not_advertised_by_capability_discovery() -> None:
-    from app.rag.retrieval.reranking.providers import get_reranker_capabilities
+    from app.rag.retrieval.reranking.providers import get_reranker_capabilities, list_reranker_capabilities
 
-    with pytest.raises(ValueError, match="retired"):
-        get_reranker_capabilities("colbert", provider_name="hf")
+    capability = get_reranker_capabilities("colbert", provider_name="hf")
+    assert capability["tier"] == "retired"
+    assert capability["resolved_provider"] is None
+    assert capability["lazy_modules"] == []
+    assert not any(entry["resolved_provider"] == "colbert" for entry in list_reranker_capabilities())

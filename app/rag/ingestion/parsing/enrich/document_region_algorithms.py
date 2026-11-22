@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import logging
 import math
 import re
@@ -138,7 +136,7 @@ def profile_document_image(image: PILImage.Image) -> dict[str, Any]:
 def profile_document_image_with_models(
     image: PILImage.Image,
     *,
-    runtime: SmallModelRuntime | None = None,
+    runtime: "SmallModelRuntime | None" = None,
     run_unwarp: bool = True,
 ) -> dict[str, Any]:
     profile = profile_document_image(image)

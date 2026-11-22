@@ -162,6 +162,9 @@ test('failed reads are distinct from empty rules and successful writes survive f
   await editor.getByRole('button', { name: '加入策略', exact: true }).click()
   state.failReadAfterWrite = true
   await page.getByRole('button', { name: '保存策略', exact: true }).click()
+  await expect(page.getByText('产品知识库的入库策略已保存', { exact: true })).toBeVisible()
+  await page.getByRole('button', { name: '数据集操作', exact: true }).click()
+  await page.getByRole('menuitem', { name: '重新读取策略', exact: true }).click()
   await expect(page.locator(workspace).getByRole('alert')).toContainText('策略更新失败，保留上次数据')
   await expect(page.getByRole('table')).toContainText('文档规则')
   await expect(page.getByRole('button', { name: '重试保存', exact: true })).toHaveCount(0)

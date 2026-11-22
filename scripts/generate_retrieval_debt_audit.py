@@ -92,7 +92,7 @@ def _render_flaky_tests() -> tuple[str, dict[str, int]]:
 
 
 def _render_unstable_profiles() -> tuple[str, dict[str, int]]:
-    path = REPO_ROOT / "app" / "rag" / "core" / "retrieval_profiles.py"
+    path = REPO_ROOT / "app" / "rag" / "retrieval" / "configuration" / "profiles.py"
     if not path.exists():
         return "Profile definition file not found.", {"profiles_flagged": 0}
 
@@ -104,7 +104,7 @@ def _render_unstable_profiles() -> tuple[str, dict[str, int]]:
     if "coverage80" in text:
         rows.append(("coverage80", "very high fanout (top_k>=80), sensitive to timeout/recall tradeoff"))
     if "hybrid_ce" in text:
-        rows.append(("hybrid_ce", "depends on cross-encoder reranker availability/versioning"))
+        rows.append(("hybrid_ce", "depends on configured reranker availability/versioning"))
 
     if not rows:
         return "No profile risk signals detected.", {"profiles_flagged": 0}
@@ -127,7 +127,7 @@ def _extract_int(text: str, pattern: str) -> int | None:
 
 def _hierarchy_profile_checks(path: Path) -> tuple[list[tuple[str, str, str]], int]:
     if not path.exists():
-        return [("hierarchy_profiles_present", "warn", "retrieval_profiles.py missing")], 1
+        return [("hierarchy_profiles_present", "warn", f"{path.name} missing")], 1
 
     text = path.read_text(encoding="utf-8", errors="ignore")
     has_profiles = all(
@@ -161,7 +161,7 @@ def _hierarchy_profile_checks(path: Path) -> tuple[list[tuple[str, str, str]], i
 def _hierarchy_anchor_check(path: Path) -> tuple[tuple[str, str, str], int]:
     name = "must_recall_anchor_excludes_hierarchy_context"
     if not path.exists():
-        return (name, "warn", "orchestrator.py missing"), 1
+        return (name, "warn", f"{path.name} missing"), 1
     text = path.read_text(encoding="utf-8", errors="ignore")
     ok = bool(re.search(r"exclude_retrieval_role_prefixes\s*=\s*\[\s*[\"']hierarchy_[\"']\s*\]", text))
     observed = (
@@ -191,15 +191,15 @@ def _render_hierarchy_recall_audit() -> tuple[str, dict[str, int]]:
     - Keep it deterministic: scan source files for expected knobs and guardrails.
     """
 
-    profiles_path = REPO_ROOT / "app" / "rag" / "core" / "retrieval_profiles.py"
+    profiles_path = REPO_ROOT / "app" / "rag" / "retrieval" / "configuration" / "profiles.py"
     checks, risk_signals = _hierarchy_profile_checks(profiles_path)
 
-    orchestrator_path = REPO_ROOT / "app" / "rag" / "retrieval" / "orchestrator.py"
-    anchor_check, anchor_risks = _hierarchy_anchor_check(orchestrator_path)
+    requirements_path = REPO_ROOT / "app" / "rag" / "retrieval" / "stages" / "requirements.py"
+    anchor_check, anchor_risks = _hierarchy_anchor_check(requirements_path)
     checks.append(anchor_check)
     risk_signals += anchor_risks
 
-    eval_path = REPO_ROOT / "app" / "rag" / "evaluation" / "evidence_retrieve_gate.py"
+    eval_path = REPO_ROOT / "app" / "rag" / "evaluation" / "regression" / "evidence_retrieve_gate.py"
     eval_check, eval_risks = _hierarchy_eval_check(eval_path)
     checks.append(eval_check)
     risk_signals += eval_risks

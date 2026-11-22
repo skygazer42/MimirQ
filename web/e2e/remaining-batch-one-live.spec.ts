@@ -40,7 +40,7 @@ test('migrated dataset routes read the dedicated data through the real API', asy
     if (route === 'profile') await expect(page.getByText('正在读取数据画像…', { exact: true })).toHaveCount(0)
     if (route === 'health') await expect(page.locator('[data-health-document-count]')).toHaveText('0')
     if (route === 'tables')
-      await expect(page.getByRole('heading', { name: '还没有表格资产', exact: true }).first()).toBeVisible()
+      await expect(page.getByRole('heading', { name: '当前数据集尚无结构化表格资产', exact: true })).toBeVisible()
     if (route === 'db-catalog')
       await expect(page.getByRole('heading', { name: '尚未同步数据库目录', exact: true })).toBeVisible()
     if (route === 'evidence') await expect(page.getByText('正在读取证据条目…', { exact: true })).toHaveCount(0)
@@ -69,7 +69,7 @@ test('a new evidence suite is saved by the real API and readable after reload', 
   const suite = await response.json()
   expect(suite.dataset_id).toBe(state.dataset_id)
   await expect(dialog).toHaveCount(0)
-  const readback = await request.get(`http://127.0.0.1:8000/api/v1/evidence/suites/${suite.id}`, {
+  const readback = await request.get(`/api/v1/evidence/suites/${suite.id}`, {
     headers: { 'X-User-ID': state.user_id, 'X-Tenant-ID': state.tenant_id },
   })
   expect((await readback.json()).name).toBe(name)

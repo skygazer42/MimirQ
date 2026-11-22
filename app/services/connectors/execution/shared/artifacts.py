@@ -9,6 +9,7 @@ from app.models.connectors.runs import ConnectorRun, ConnectorRunDocument
 from app.models.documents.records import Document as DBDocument
 from app.services.connectors.execution.shared.common import _connector_config_id_from_run, _optional_source_text
 from app.services.connectors.execution.shared.runtime import _now
+from app.services.connectors.reconcile import db_catalog_row_source_ref
 
 
 def _apply_connector_identity_metadata(
@@ -126,11 +127,11 @@ def _upsert_db_row_sidecar_document(
         connector_id=connector_id,
         connector_config_id=connector_config_id,
     )
-    source_ref = f"db_catalog_rows:{connector_id}"
+    config_ref = _optional_source_text(connector_config_id)
+    source_ref = db_catalog_row_source_ref(connector_id, config_ref)
     source_id = f"{connector_id}:{run.dataset_id}"
-    if _optional_source_text(connector_config_id):
-        source_ref = f"{source_ref}:{connector_config_id}"
-        source_id = f"{source_id}:{connector_config_id}"
+    if config_ref:
+        source_id = f"{source_id}:{config_ref}"
 
     doc = (
         db.query(DBDocument)

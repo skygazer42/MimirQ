@@ -110,30 +110,23 @@ async function expectHealthEndpoints(page: Page) {
 }
 
 async function selectFullIndexExecutionMode(page: Page) {
-  const executionGroup = page.getByRole('group', { name: '执行终点' })
-  const fullIndexMode = executionGroup.locator('input[name="ingestion-execution-mode"][value="full_index"]')
-
-  await expect(executionGroup).toBeVisible({ timeout: 60_000 })
-  await expect(executionGroup.getByText('解析 + 索引', { exact: true })).toBeVisible()
-  await expect(fullIndexMode).toBeVisible()
+  const fullIndexMode = page
+    .getByRole('group', { name: '处理方式', exact: true })
+    .getByRole('radio', { name: /^解析 \+ 索引/ })
+  await expect(fullIndexMode).toBeVisible({ timeout: 60_000 })
   await fullIndexMode.check()
   await expect(fullIndexMode).toBeChecked()
 }
 
 async function selectChatDatasetScope(page: Page, datasetName: string) {
-  const scopeTrigger = page.getByRole('button', { name: '选择数据集', exact: true })
-  if (!(await scopeTrigger.isVisible())) {
-    const toolsTrigger = page.locator('button[aria-controls="chat-conversation-tools"]')
-    await expect(toolsTrigger).toBeVisible({ timeout: 60_000 })
-    await toolsTrigger.click()
-  }
+  const scopeTrigger = page
+    .getByRole('main')
+    .locator('button[aria-haspopup="dialog"]:has(svg[data-platform-icon="dataset"])')
   await expect(scopeTrigger).toBeVisible({ timeout: 60_000 })
   await scopeTrigger.click()
-  await page
-    .getByRole('button', { name: new RegExp(datasetName) })
-    .last()
-    .click()
-  await expect(scopeTrigger).toContainText(datasetName)
+  const picker = page.getByRole('dialog', { name: '数据集', exact: true })
+  await picker.getByRole('button', { name: new RegExp(`^${escapeRegExp(datasetName)}(?:\\s|$)`) }).click()
+  await expect(scopeTrigger).toHaveAccessibleName(datasetName)
 }
 
 async function readAccessToken(page: Page) {
@@ -157,12 +150,12 @@ async function authenticateThroughUi(page: Page): Promise<JwtAuthState> {
   }
 
   await page.goto('/auth')
-  await expect(page.getByLabel('账号')).toBeVisible()
+  await expect(page.getByLabel('账号', { exact: true })).toBeVisible()
   await expect(page.getByLabel('密码')).toBeVisible()
 
-  await page.getByLabel('账号').fill(configuredIdentifier)
+  await page.getByLabel('账号', { exact: true }).fill(configuredIdentifier)
   await page.getByLabel('密码').fill(configuredPassword)
-  await page.locator('form').getByRole('button', { name: '登 录', exact: true }).click()
+  await page.locator('form').getByRole('button', { name: '登录', exact: true }).click()
   await page.waitForURL(/\/$/, { timeout: 60_000 })
   return { mode: 'jwt', accessToken: await readAccessToken(page) }
 }
@@ -276,7 +269,7 @@ test('browser reaches the live backend and completes upload-to-grounded-chat evi
       },
       { timeout: 180_000 },
     )
-    await page.locator('input[type="file"][multiple]').setInputFiles(FIXTURE_PATH)
+    await page.getByLabel('选择待入库文件', { exact: true }).setInputFiles(FIXTURE_PATH)
 
     await expect(page.getByText(FIXTURE_FILENAME).first()).toBeVisible({ timeout: 30_000 })
     const ingestButton = page.getByRole('button', { name: '解析并建索引' })
@@ -297,7 +290,7 @@ test('browser reaches the live backend and completes upload-to-grounded-chat evi
     await waitForDocumentCompletion(request, auth, documentId)
 
     await page.goto('/')
-    const composer = page.getByPlaceholder('问点什么... (Shift + Enter 换行)')
+    const composer = page.getByRole('textbox', { name: '消息输入框', exact: true })
     await expect(composer).toBeVisible({ timeout: 60_000 })
     await selectChatDatasetScope(page, dataset.name)
     await composer.fill('请返回刚上传文档中的 release token，并说明它来自哪个文件；务必给出知识库引用证据。')
@@ -313,4 +306,66 @@ test('browser reaches the live backend and completes upload-to-grounded-chat evi
   } finally {
     await cleanupDataset(request, auth, datasetId)
   }
+})
+
+test('local JWT registration uses the real login and logout buttons', async ({ page, request }) => {
+  test.skip((await detectAuthMode(request)) !== 'jwt', 'Requires JWT auth')
+  const policy = await request.get('/api/v1/auth/policy')
+  await expect(policy).toBeOK()
+  test.skip(!(await policy.json()).registration_enabled, 'Requires ordinary local registration')
+
+  const identifier = `qa-${uniqueSuffix()}`
+  const email = `${identifier}@example.com`
+  const password = `Ragvia-${uniqueSuffix()}!`
+  await page.goto('/auth')
+  await page.getByRole('button', { name: '忘记密码？', exact: true }).click()
+  await expect(page.getByRole('link', { name: '联系管理员', exact: true })).toBeVisible()
+  await page.getByRole('button', { name: '忘记密码？', exact: true }).click()
+  await expect(page.getByRole('link', { name: '联系管理员', exact: true })).toHaveCount(0)
+
+  const accountOptions = page.getByRole('group', { name: '账号选项', exact: true })
+  await accountOptions.getByRole('button', { name: '注册', exact: true }).click()
+  await accountOptions.getByRole('button', { name: '登录', exact: true }).click()
+  await expect(page.getByLabel('账号', { exact: true })).toBeVisible()
+  await accountOptions.getByRole('button', { name: '注册', exact: true }).click()
+  await page.getByLabel('邮箱地址').fill(email)
+  await page.getByLabel('用户名').fill(identifier)
+  await page.getByLabel('设置密码', { exact: true }).fill(password)
+  await page.getByRole('button', { name: '显示密码', exact: true }).click()
+  await expect(page.getByLabel('设置密码', { exact: true })).toHaveAttribute('type', 'text')
+  await page.getByRole('button', { name: '隐藏密码', exact: true }).click()
+  await expect(page.getByLabel('设置密码', { exact: true })).toHaveAttribute('type', 'password')
+  const confirmation = page.getByLabel('确认密码', { exact: true })
+  await confirmation.fill(password)
+  await page.getByRole('button', { name: '显示确认密码', exact: true }).click()
+  await expect(confirmation).toHaveAttribute('type', 'text')
+  await page.getByRole('button', { name: '隐藏确认密码', exact: true }).click()
+  await expect(confirmation).toHaveAttribute('type', 'password')
+  const form = page.locator('#auth-form')
+  const registration = page.waitForResponse(
+    (response) => response.request().method() === 'POST' && response.url().endsWith('/api/v1/auth/signup'),
+    { timeout: 15_000 },
+  )
+  await form.getByRole('button', { name: '注册', exact: true }).click()
+  expect((await registration).status()).toBe(201)
+  await expect(page.getByText('注册成功，请登录。', { exact: true })).toBeVisible()
+
+  await page.getByLabel('账号', { exact: true }).fill(identifier)
+  await page.getByLabel('密码', { exact: true }).fill(password)
+  await form.getByRole('button', { name: '登录', exact: true }).click()
+  await page.waitForURL(/\/$/, { timeout: 60_000 })
+  const token = await readAccessToken(page)
+  const profile = await request.get('/api/v1/auth/me', { headers: { Authorization: `Bearer ${token}` } })
+  await expect(profile).toBeOK()
+  expect((await profile.json()).username).toBe(identifier)
+
+  await page.getByRole('button', { name: '工作空间与外观设置', exact: true }).click()
+  await page.getByRole('button', { name: '退出登录', exact: true }).click()
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        Boolean(sessionStorage.getItem('mimirq_access_token') || localStorage.getItem('mimirq_access_token')),
+      ),
+    )
+    .toBe(false)
 })

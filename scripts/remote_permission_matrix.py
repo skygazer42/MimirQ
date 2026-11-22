@@ -639,14 +639,14 @@ def run_matrix(
 
 def build_output(
     summary: dict[str, Any],
-    dataset_id: str,
-    document_id: str,
+    dataset_id: str | None,
+    document_id: str | None,
 ) -> dict[str, Any]:
     return {
         "ok": summary.get("ok"),
         "artifact_dir": summary.get("artifact_dir"),
-        "dataset_id": (dataset_id),
-        "document_id": (document_id),
+        "dataset_id": dataset_id,
+        "document_id": document_id,
         "error": summary.get("error"),
     }
 
@@ -680,7 +680,7 @@ def main() -> int:
         "artifact_dir": str(artifact_dir),
         "base_url": args.base_url,
     }
-    resource_ids = {"dataset_id": "", "document_id": ""}
+    resource_ids: dict[str, str] = {}
     try:
         dataset_id, document_id = run_matrix(
             args,
@@ -709,8 +709,8 @@ def main() -> int:
             json.dumps(
                 build_output(
                     summary,
-                    resource_ids["dataset_id"],
-                    resource_ids["document_id"],
+                    resource_ids.get("dataset_id"),
+                    resource_ids.get("document_id"),
                 ),
                 ensure_ascii=False,
                 indent=2,

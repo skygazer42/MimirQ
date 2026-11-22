@@ -66,6 +66,15 @@ class _FakeRedis:
         return 1 if existed else 0
 
     def eval(self, script, numkeys, *args):
+        if script == png_tasks._COMPLETE_TASK_LUA:
+            assert numkeys == 2
+            state_key, result_key, expected, updated, png_bytes, ttl_sec = args
+            if self.get(state_key) != expected:
+                return 0
+            self.set(result_key, png_bytes, ex=ttl_sec)
+            self.set(state_key, updated, ex=ttl_sec)
+            return 1
+
         assert numkeys == 1
         key = str(args[0])
         argv = args[1:]

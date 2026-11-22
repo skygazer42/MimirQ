@@ -1,6 +1,6 @@
 import path from 'node:path'
 import { expect, test, type Page } from '@playwright/test'
-import { fixture, json, noOverflow, open } from './chunk-compare.helpers'
+import { changePreviewAppearance, fixture, json, noOverflow, open } from './chunk-compare.helpers'
 
 const evidence = path.resolve(__dirname, '../../artifacts/rebrand/chunk-config-workbench-v1/tests')
 const notifications = (page: Page, type: string) => page.locator(`[data-sonner-toast][data-type=${type}]`)
@@ -49,7 +49,7 @@ test('B opens as a centered workbench; changes, failures and retry retain values
   expect(editor!.width).toBeGreaterThan(results!.width)
   await dialog.getByRole('spinbutton', { name: '目标长度（字符）', exact: true }).fill('800')
   await dialog.getByRole('spinbutton', { name: '重叠长度（字符）', exact: true }).fill('120')
-  const warning = notifications(page, 'warning').filter({ hasText: '参数已变更' })
+  const warning = notifications(page, 'warning').filter({ hasText: '更新预览后可确认入库。' })
   await expect(warning).toBeVisible()
   const toastRect = await warning.boundingBox()
   expect(Math.abs(toastRect!.x + toastRect!.width / 2 - 800)).toBeLessThan(12)
@@ -115,12 +115,11 @@ test('B keeps its footer and input state reachable on phone and follows the glob
   await setup(page)
   await open(page)
   await page.setViewportSize({ width: 390, height: 844 })
-  await page.getByRole('button', { name: '收起侧边栏', exact: true }).click()
   const dialog = await config(page)
   await expect(dialog.getByRole('button', { name: '生成预览', exact: true })).toBeInViewport()
   await expect(dialog.getByRole('spinbutton', { name: '目标长度（字符）', exact: true })).toHaveValue('1000')
   await dialog.getByRole('spinbutton', { name: '目标长度（字符）', exact: true }).fill('700')
-  const message = notifications(page, 'warning').filter({ hasText: '参数已变更' })
+  const message = notifications(page, 'warning').filter({ hasText: '更新预览后可确认入库。' })
   await expect(message).toBeVisible()
   const titleRect = await dialog.getByRole('heading', { name: '高级切块配置', exact: true }).boundingBox()
   await expect.poll(async () => (await message.boundingBox())?.y || 0).toBeGreaterThan(titleRect!.y + titleRect!.height)
@@ -132,14 +131,13 @@ test('B keeps its footer and input state reachable on phone and follows the glob
   await expect(dialog.getByRole('spinbutton', { name: '目标长度（字符）', exact: true })).toHaveValue('700')
   await noOverflow(page)
   await page.screenshot({ path: path.join(evidence, 'phone-settings.png') })
+  await page.keyboard.press('Escape')
+  await expect(dialog).toBeHidden()
   await page.setViewportSize({ width: 1600, height: 1000 })
-  await page.evaluate(() => {
-    localStorage.setItem('theme', 'dark')
-    localStorage.setItem('mimirq.surfaceTheme', 'earth')
-  })
-  await page.reload()
+  await changePreviewAppearance(page, '深色', '米白')
   const dark = await config(page)
   await expect(page.locator('html')).toHaveClass(/dark/)
+  await expect(page.locator('html')).toHaveAttribute('data-surface-theme', 'earth')
   await expect(dark.locator('[data-config-editor]')).toBeVisible()
   await expect(dark.locator('[data-config-results]')).toBeVisible()
   await page.screenshot({ path: path.join(evidence, 'dark-b.png') })
@@ -199,7 +197,6 @@ test('the gap metric opens the existing quality filter and retains a usable sour
   await expect(page.locator('[data-compare-original] mark')).toContainText('日常检查')
   await page.screenshot({ path: path.join(evidence, 'gap-review.png') })
   await page.setViewportSize({ width: 390, height: 844 })
-  await page.getByRole('button', { name: '收起侧边栏', exact: true }).click()
   await page.getByRole('button', { name: '文档原文', exact: true }).click()
   const phone = await config(page)
   await phone.getByRole('button', { name: '上次预览', exact: true }).click()

@@ -12,7 +12,7 @@ describe('audit response contracts', () => {
   })
 
   it('exports the requested log scope as a blob and supports cancellation', async () => {
-    const blob = new Blob(['row'])
+    const blob = new Blob(['{"request_id":"req-1"}\n'], { type: 'application/x-ndjson' })
     const signal = new AbortController().signal
     const params = { request_id: 'req-1', limit: 50, include_sensitive: false, gzip: true }
     client.get.mockResolvedValueOnce({ data: blob })

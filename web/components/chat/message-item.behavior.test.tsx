@@ -11,7 +11,6 @@ import type { Citation } from '@/types/processing'
 const boundary = vi.hoisted(() => ({
   createFeedback: vi.fn(),
   toRegressionCase: vi.fn(),
-  getDocument: vi.fn(),
   openDocument: vi.fn(),
   prefetch: vi.fn(),
   push: vi.fn(),
@@ -23,11 +22,6 @@ vi.mock('framer-motion', async (importOriginal) => {
   const actual = await importOriginal<typeof import('framer-motion')>()
   return { ...actual, useReducedMotion: () => true }
 })
-vi.mock('@/lib/api', () => ({
-  documentApi: { get: boundary.getDocument },
-  feedbackApi: { create: boundary.createFeedback, toRegressionCase: boundary.toRegressionCase },
-}))
-vi.mock('@/lib/api/documents', () => ({ documentApi: { get: boundary.getDocument } }))
 vi.mock('@/lib/api/feedback', () => ({
   feedbackApi: { create: boundary.createFeedback, toRegressionCase: boundary.toRegressionCase },
 }))
@@ -344,7 +338,7 @@ describe('message rendering contracts', () => {
   it('preserves an explicit zero confidence score', () => {
     const view = mount(assistant({ message_metadata: { confidence_score: 0 } }))
 
-    expect(view.container.textContent).toContain('证据不足')
+    expect(view.container.textContent).toContain('置信度')
     expect(view.container.textContent).toContain('0%')
   })
 
@@ -381,7 +375,7 @@ describe('feedback operation lifetime', () => {
     expect(boundary.error).toHaveBeenCalledOnce()
     expect(boundary.createFeedback.mock.calls.map(([payload]) => payload)).toEqual([
       { message_id: MESSAGE_ID, rating: 4 },
-      { message_id: MESSAGE_ID, rating: 1 },
+      { message_id: MESSAGE_ID, rating: 1, reason: '可复现问题', tags: ['review'], expected_answer: '正确答案' },
     ])
   })
 
@@ -497,17 +491,11 @@ describe('feedback operation lifetime', () => {
     expect(boundary.success).toHaveBeenCalledOnce()
   })
 
-  it('does not navigate when a dataset lookup resolves after leaving the message', async () => {
-    const document = deferred<{ dataset_id: string }>()
-    boundary.getDocument.mockReturnValue(document.promise)
+  it('reports that the dataset is unknown when feedback and the message have no dataset scope', async () => {
     const view = mount(assistant({ citations: [citation()] }))
     await rate(view.container, 2)
     await act(async () => button(view.container, '送入证据库').click())
-    expect(boundary.getDocument).toHaveBeenCalledWith('document-a', { includeChunks: false })
-    view.unmount()
-
-    await act(async () => document.resolve({ dataset_id: 'dataset-a' }))
-
+    expect(boundary.error).toHaveBeenCalledWith('未解析到数据集，暂时无法打开证据库')
     expect(boundary.push).not.toHaveBeenCalled()
   })
 

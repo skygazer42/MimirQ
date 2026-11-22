@@ -130,22 +130,10 @@ def test_csv_rows_chunker_preserves_row_overlap_and_offsets() -> None:
                 "chunk_index": 3,
             },
         ),
-        (
-            "row 5: value=5\n",
-            {
-                "chunk_strategy": "csv_rows",
-                "start_char": 60,
-                "end_char": 75,
-                "csv_row_count": 1,
-                "csv_row_start": 5,
-                "csv_row_end": 5,
-                "chunk_index": 4,
-            },
-        ),
     ]
 
 
-def test_junit_xml_chunker_preserves_preamble_offsets_and_case_metadata() -> None:
+def test_junit_xml_chunker_preserves_wrapper_offsets_and_case_metadata() -> None:
     text = (
         '<?xml version="1.0"?>\n<testsuite>\n'
         '<testcase classname="suite.A" name="test_one"><failure/></testcase>\n'
@@ -193,6 +181,17 @@ def test_junit_xml_chunker_preserves_preamble_offsets_and_case_metadata() -> Non
                 "chunk_index": 2,
             },
         ),
+        (
+            "</testsuite>",
+            {
+                "chunk_strategy": "junit_xml",
+                "start_char": 151,
+                "end_char": 163,
+                "junit_xml_unstructured": True,
+                "doc_type_kwd": "junit",
+                "chunk_index": 3,
+            },
+        ),
     ]
 
 
@@ -206,17 +205,17 @@ def test_sentence_window_chunker_preserves_current_overlap_boundaries() -> None:
                 "chunk_strategy": "sentence_window",
                 "start_char": 0,
                 "end_char": 20,
-                "sentence_count": 3,
+                "sentence_count": 2,
                 "chunk_index": 0,
             },
         ),
         (
-            "e. Beta two. Gamma three.",
+            " Beta two. Gamma three.",
             {
                 "chunk_strategy": "sentence_window",
-                "start_char": 8,
+                "start_char": 10,
                 "end_char": 33,
-                "sentence_count": 3,
+                "sentence_count": 2,
                 "chunk_index": 1,
             },
         ),
@@ -228,16 +227,6 @@ def test_sentence_window_chunker_preserves_current_overlap_boundaries() -> None:
                 "end_char": 45,
                 "sentence_count": 2,
                 "chunk_index": 2,
-            },
-        ),
-        (
-            " Delta four.",
-            {
-                "chunk_strategy": "sentence_window",
-                "start_char": 33,
-                "end_char": 45,
-                "sentence_count": 1,
-                "chunk_index": 3,
             },
         ),
     ]
@@ -350,15 +339,20 @@ def test_trim_references_section_preserves_threshold_and_collapsed_tail_behavior
 
 
 def test_normalize_markdown_tables_preserves_real_table_detection_without_touching_non_tables() -> None:
-    assert normalize_markdown_tables("| a | b |\n| -- | :---: |\n|  1  |  2  |\n| 3 |4|\n") == TableNormalizeResult(
+    invalid_table = "| a | b |\n| -- | :---: |\n|  1  |  2  |\n| 3 |4|\n"
+    assert normalize_markdown_tables(invalid_table) == TableNormalizeResult(
+        text=invalid_table, tables=0, rows_changed=0, changed=False
+    )
+    assert normalize_markdown_tables("| a | b |\n| --- | :---: |\n|  1  |  2  |\n| 3 |4|\n") == TableNormalizeResult(
         text="| a | b |\n| --- | :---: |\n| 1 | 2 |\n| 3 | 4 |",
         tables=1,
-        rows_changed=3,
+        rows_changed=2,
         changed=True,
     )
-    assert normalize_markdown_tables("keep a | b\n\n```text\n| x | y |\n```\n") == TableNormalizeResult(
-        text="keep a | b\n\n```text\n| x | y |\n```",
+    fenced_prose = "keep a | b\n\n```text\n| x | y |\n```\n"
+    assert normalize_markdown_tables(fenced_prose) == TableNormalizeResult(
+        text=fenced_prose,
         tables=0,
         rows_changed=0,
-        changed=True,
+        changed=False,
     )

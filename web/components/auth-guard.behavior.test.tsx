@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const authMock = vi.hoisted(() => ({
   token: 'token' as string | null,
+  revision: 0,
 }))
 const backendMetaMock = vi.hoisted(() => ({
   authMode: 'jwt' as string | null,
@@ -19,9 +20,10 @@ const routerMock = vi.hoisted(() => ({
   replace: vi.fn(),
 }))
 
-vi.mock('@/lib/auth-storage', () => ({
-  AUTH_SCOPE_CHANGED_EVENT: 'mimirq:auth-scope-changed',
+vi.mock('@/lib/auth-storage', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/auth-storage')>()),
   getAccessToken: () => authMock.token,
+  getAuthSessionRevision: () => authMock.revision,
 }))
 vi.mock('@/hooks/use-backend-meta', () => ({
   useBackendMeta: () => ({
@@ -45,6 +47,7 @@ beforeEach(() => {
 afterEach(() => {
   vi.clearAllMocks()
   authMock.token = 'token'
+  authMock.revision = 0
   backendMetaMock.authMode = 'jwt'
   backendMetaMock.isPending = false
   backendMetaMock.isError = false
@@ -77,6 +80,7 @@ describe('AuthGuard session changes', () => {
 
     authMock.token = 'signed-in-token'
     act(() => {
+      authMock.revision++
       window.dispatchEvent(new Event('mimirq:auth-scope-changed'))
     })
 
@@ -101,6 +105,7 @@ describe('AuthGuard session changes', () => {
 
     authMock.token = null
     act(() => {
+      authMock.revision++
       window.dispatchEvent(new Event('mimirq:auth-scope-changed'))
     })
 
@@ -130,6 +135,7 @@ describe('AuthGuard session changes', () => {
     expect(container.textContent).toBe('private-a')
 
     act(() => {
+      authMock.revision++
       window.dispatchEvent(new Event('mimirq:auth-scope-changed'))
     })
 

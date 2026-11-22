@@ -4,6 +4,11 @@ import { expect, test, type Page, type Route } from '@playwright/test'
 import { installCommonApiMocks } from './enterprise-quality-telemetry.helpers'
 
 const evidence = path.resolve(__dirname, '../../artifacts/rebrand/evaluation-matrix-v1/tests')
+const conversationId = '11111111-1111-4111-8111-111111111111'
+const missingConversationId = '22222222-2222-4222-8222-222222222222'
+const runAId = '33333333-3333-4333-8333-333333333333'
+const runBId = '44444444-4444-4444-8444-444444444444'
+const sampleId = (index: number) => `55555555-5555-4555-8555-${String(index).padStart(12, '0')}`
 const metricKeys = ['faithfulness', 'response_relevancy', 'context_precision']
 const scores = [
   [0.96, 0.94, 0.91],
@@ -37,21 +42,24 @@ async function fixture(page: Page, options: { empty?: boolean; theme?: 'light' |
     localStorage.setItem('mimirq.surfaceTheme', 'ocean')
     localStorage.setItem('mimirq.themeColor', '#20262e')
   }, options.theme || 'light')
-  const runs = ['run-a', 'run-b'].map((id, i) => ({
+  const runs = [runAId, runBId].map((id, i) => ({
     id,
-    conversation_id: 'conv-a',
+    conversation_id: conversationId,
     status: 'completed',
     metrics: metricKeys,
     params: { max_turns: 20, skip_empty_contexts: true },
     summary: { faithfulness: 0.83, response_relevancy: 0.89, context_precision: 0.82, items: 8 },
+    error_message: null,
     created_at: `2026-10-25T${i ? '09' : '10'}:42:00Z`,
     started_at: '2026-10-25T10:42:00Z',
     finished_at: '2026-10-25T10:42:22Z',
   }))
   const items = scores.map((values, i) => ({
-    id: `item-${i + 1}`,
-    run_id: 'run-a',
+    id: sampleId(i + 1),
+    run_id: runAId,
     turn_index: i + 1,
+    user_message_id: null,
+    assistant_message_id: null,
     user_input: questions[i],
     response: i === 4 ? '高级工程师主要以代码生成量与自动化比例作为衡量标准。' : `回答 ${i + 1}`,
     retrieved_contexts: [`引用 ${i + 1}：能够主导建立跨模块的系统架构规范与复用标准。`],
@@ -74,19 +82,38 @@ async function fixture(page: Page, options: { empty?: boolean; theme?: 'light' |
     if (p === '/api/v1/chat/conversations')
       return json(route, {
         total: 2,
+        returned: 2,
+        has_more: false,
+        next_skip: null,
         items: [
-          { id: 'conv-a', title: '工程能力问答', message_count: 16, created_at: '2026-10-25T09:00:00Z' },
-          { id: 'conv-missing', title: '缺少引用的对话', message_count: 2, created_at: '2026-10-24T09:00:00Z' },
+          {
+            id: conversationId,
+            title: '工程能力问答',
+            message_count: 16,
+            created_at: '2026-10-25T09:00:00Z',
+            updated_at: '2026-10-25T09:00:00Z',
+          },
+          {
+            id: missingConversationId,
+            title: '缺少引用的对话',
+            message_count: 2,
+            created_at: '2026-10-24T09:00:00Z',
+            updated_at: '2026-10-24T09:00:00Z',
+          },
         ],
       })
     if (p.endsWith('/messages'))
       return json(route, {
+        conversation_id: p.split('/').at(-2),
+        returned: 1,
+        has_more: false,
         messages: [
           {
             id: 'assistant',
             role: 'assistant',
             content: '原始回答',
-            citations: p.includes('conv-missing') ? [] : [{ content: '原始证据' }],
+            created_at: '2026-10-25T09:00:00Z',
+            citations: p.includes(missingConversationId) ? [] : [{ content: '原始证据' }],
           },
         ],
       })
@@ -94,9 +121,15 @@ async function fixture(page: Page, options: { empty?: boolean; theme?: 'light' |
       return json(route, {
         total: 2,
         items: [
-          { conversation_id: 'conv-a', assistant_turns: 8, evaluable_turns: 8, citations_count: 8, is_evaluable: true },
           {
-            conversation_id: 'conv-missing',
+            conversation_id: conversationId,
+            assistant_turns: 8,
+            evaluable_turns: 8,
+            citations_count: 8,
+            is_evaluable: true,
+          },
+          {
+            conversation_id: missingConversationId,
             assistant_turns: 1,
             evaluable_turns: 0,
             citations_count: 0,
@@ -109,26 +142,27 @@ async function fixture(page: Page, options: { empty?: boolean; theme?: 'light' |
       state.posts.push(payload)
       return json(
         route,
-        state.failStart ? { detail: '评测服务暂不可用' } : { ...runs[0], id: 'run-new', status: 'pending' },
+        state.failStart
+          ? { detail: '评测服务暂不可用' }
+          : { ...runs[0], id: '66666666-6666-4666-8666-666666666666', status: 'pending' },
         state.failStart ? 503 : 200,
       )
     }
-    if (p === '/api/v1/evaluations/ragas/runs')
-      return json(route, {
-        total: options.empty ? 0 : 2,
-        items: options.empty || url.searchParams.get('conversation_id') === 'conv-missing' ? [] : runs,
-      })
+    if (p === '/api/v1/evaluations/ragas/runs') {
+      const visibleRuns = options.empty || url.searchParams.get('conversation_id') === missingConversationId ? [] : runs
+      return json(route, { total: visibleRuns.length, items: visibleRuns })
+    }
     if (p.startsWith('/api/v1/evaluations/ragas/runs/')) {
       const id = p.split('/').at(-1)!
       if (state.failDetail) return json(route, { detail: '无法读取运行结果' }, 503)
       return json(route, {
         run: { ...(runs.find((run) => run.id === id) || runs[0]), id },
         items:
-          id === 'run-b'
+          id === runBId
             ? [
                 {
                   ...items[0],
-                  id: 'other-item',
+                  id: sampleId(9),
                   run_id: id,
                   user_input: '另一轮运行的问题',
                   response: '另一轮的回答',
@@ -184,7 +218,10 @@ test('C reviews actual per-item scores, filters low samples and isolates evidenc
   await expect(page.getByText('没有匹配的样本', { exact: true })).toBeVisible()
   await page.getByRole('searchbox', { name: '搜索评测问题' }).fill('')
   await page.getByRole('button', { name: /运行记录/ }).click()
-  await page.getByRole('dialog', { name: '运行记录' }).getByRole('button', { name: /run-b/ }).click()
+  await page
+    .getByRole('dialog', { name: '运行记录' })
+    .getByRole('button', { name: new RegExp(runBId.slice(0, 8)) })
+    .click()
   await expect(page.getByRole('region', { name: '样本阅读区' })).toContainText('另一轮的证据')
   await expect(page.getByRole('region', { name: '样本阅读区' })).not.toContainText('引用 5：')
   await page.screenshot({ path: `${evidence}/run-scope.png` })
@@ -201,7 +238,7 @@ test('parameters survive failed start, and both additional evaluation tabs remai
   state.failStart = true
   await page.getByRole('button', { name: '开始评测', exact: true }).click()
   await expect.poll(() => state.posts.length).toBe(1)
-  expect(state.posts[0]).toMatchObject({ conversation_id: 'conv-a', max_turns: 35 })
+  expect(state.posts[0]).toMatchObject({ conversation_id: conversationId, max_turns: 35 })
   await expect(page.getByText('评测服务暂不可用', { exact: false }).first()).toBeVisible()
   await page.getByRole('tab', { name: 'Golden 评测集', exact: true }).click()
   await expect(page).toHaveURL(/tab=regression/)
@@ -261,7 +298,7 @@ test('light and dark appearance retain the matrix and reader at double pixel den
         .getByRole('table', { name: '逐轮评分矩阵' })
         .getByRole('button', { name: question, exact: true })
         .click()
-      await expect(page.locator('[data-evaluation-reader-item="item-5"]')).toHaveCSS('opacity', '1')
+      await expect(page.locator(`[data-evaluation-reader-item="${sampleId(5)}"]`)).toHaveCSS('opacity', '1')
       backgrounds.push(
         await page.locator('[data-evaluation-page]').evaluate((element) => getComputedStyle(element).backgroundColor),
       )

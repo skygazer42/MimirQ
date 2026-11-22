@@ -873,32 +873,33 @@ def test_patch_message_feedback_archive_state_persists_in_extra() -> None:
 
 
 @pytest.mark.parametrize(
-    ("endpoint", "kwargs"),
+    ("endpoint", "query"),
     [
         (
             feedback_api.preview_feedback_loop_candidates,
-            {"max_rating": 2, "limit": 20, "ruleset": None},
+            feedback_api.FeedbackLoopCandidatesQuery(max_rating=2, limit=20),
         ),
         (
             feedback_api.export_feedback_loop_hard_negatives,
-            {"max_rating": 2, "limit": 20, "dry_run": True, "append": True, "ruleset": None},
+            feedback_api.FeedbackLoopExportQuery(max_rating=2, limit=20, dry_run=True, append=True),
         ),
     ],
 )
-def test_feedback_loop_endpoints_require_triage_permission(monkeypatch, endpoint, kwargs) -> None:  # noqa: ANN001
-    def _deny(*_args, **_kwargs):  # noqa: ANN002,ANN003
+def test_feedback_loop_endpoints_require_triage_permission(monkeypatch, endpoint, query) -> None:  # noqa: ANN001
+    tenant_id = uuid.uuid4()
+    db = object()
+
+    def _deny(session, scoped_tenant, account_id, permission, *, detail):  # noqa: ANN001
+        assert session is db
+        assert scoped_tenant == tenant_id
+        assert account_id == "member"
+        assert permission == feedback_api.TenantPermissions.FEEDBACK_TRIAGE_WRITE
+        assert detail
         raise HTTPException(status_code=403, detail="denied")
 
     monkeypatch.setattr(feedback_api, "ensure_tenant_permission", _deny)
 
     with pytest.raises(HTTPException) as exc_info:
-        asyncio.run(
-            endpoint(
-                **kwargs,
-                tenant_id=uuid.uuid4(),
-                account_id="member",
-                db=object(),
-            )
-        )
+        endpoint(query, tenant_id=tenant_id, account_id="member", db=db)
 
     assert exc_info.value.status_code == 403

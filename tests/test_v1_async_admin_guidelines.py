@@ -126,7 +126,7 @@ async def test_connector_validation_moves_membership_and_dns_off_loop_but_keeps_
     async def connectivity(**kwargs):
         assert asyncio.get_running_loop() is loop
         assert opened == closed
-        assert kwargs["cfg"].host == "db.example.com"
+        assert kwargs["config"].host == "db.example.com"
         return {"db_connectivity": {"ok": True}}, []
 
     monkeypatch.setattr(connectors_validation.dataset_service, "ensure_member", authorize)
@@ -244,6 +244,7 @@ async def test_rtbf_permission_and_candidate_audit_work_use_workers(monkeypatch)
 async def test_document_retry_uses_owned_database_stages_and_keeps_queue_on_the_request_loop(monkeypatch, tmp_path):
     from app.models.documents.records import Document
     from app.services.documents import processing_dispatch as document_processing_dispatch
+    from app.services.runtime import retrieval_limiter
 
     loop, loop_thread = asyncio.get_running_loop(), threading.get_ident()
     opened, closed = [], []
@@ -271,15 +272,25 @@ async def test_document_retry_uses_owned_database_stages_and_keeps_queue_on_the_
     def check_worker(*args, **kwargs):
         assert threading.get_ident() != loop_thread
 
-    @contextmanager
-    def factory():
+    def open_worker_db():
         check_worker()
         db = SimpleNamespace(query=lambda *args: Query(), commit=check_worker, refresh=check_worker)
+
+        def close():
+            check_worker()
+            closed.append(db)
+
+        db.close = close
         opened.append(db)
+        return db
+
+    @contextmanager
+    def factory():
+        db = open_worker_db()
         try:
             yield db
         finally:
-            closed.append(db)
+            db.close()
 
     async def enqueue(**kwargs):
         assert asyncio.get_running_loop() is loop
@@ -287,7 +298,7 @@ async def test_document_retry_uses_owned_database_stages_and_keeps_queue_on_the_
         assert kwargs["document_id"] == document.id
         return "accepted-retry"
 
-    monkeypatch.setattr(document_processing_operations, "SessionLocal", factory, raising=False)
+    monkeypatch.setattr(retrieval_limiter, "SessionLocal", open_worker_db)
     monkeypatch.setattr(document_processing_dispatch, "SessionLocal", factory, raising=False)
     monkeypatch.setattr(document_processing_operations.dataset_service, "ensure_member", check_worker)
     monkeypatch.setattr(document_processing_operations, "assert_document_writable_for_lifecycle", check_worker)

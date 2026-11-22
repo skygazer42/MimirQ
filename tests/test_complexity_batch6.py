@@ -64,7 +64,14 @@ def test_scim_patch_group_membership_characterizes_add_remove_audit_and_response
     monkeypatch.setattr(
         scim.tenant_group_service,
         "get_group",
-        lambda _db, *, tenant_id, group_id: SimpleNamespace(id=group_id, tenant_id=tenant_id),
+        lambda _db, *, tenant_id, group_id: SimpleNamespace(
+            id=group_id,
+            tenant_id=tenant_id,
+            name="Reviewers",
+            external_id=None,
+            created_at=None,
+            updated_at=None,
+        ),
     )
     monkeypatch.setattr(
         scim.tenant_group_service,
@@ -75,16 +82,7 @@ def test_scim_patch_group_membership_characterizes_add_remove_audit_and_response
         ),
     )
     monkeypatch.setattr(scim, "audit_log_event", fake_audit_log_event)
-    monkeypatch.setattr(
-        scim,
-        "_scim_group",
-        lambda group, *, members, include_members=False: {
-            "id": str(group.id),
-            "include_members": include_members,
-            "members": list(members or []),
-        },
-    )
-
+    db = _FakeDB()
     response = scim.patch_group_membership(
         group_id,
         {
@@ -111,15 +109,19 @@ def test_scim_patch_group_membership_characterizes_add_remove_audit_and_response
         },
         tenant_id=tenant_id,
         actor_id="system:scim",
-        db=_FakeDB(),
+        db=db,
     )
 
     assert response.status_code == 200
     assert json.loads(response.body) == {
+        "schemas": [scim._URN_GROUP],
         "id": str(group_id),
-        "include_members": True,
-        "members": ["alice", "bob"],
+        "displayName": "Reviewers",
+        "externalId": None,
+        "meta": {"resourceType": "Group", "created": None, "lastModified": None},
+        "members": [{"value": "alice", "display": "alice"}, {"value": "bob", "display": "bob"}],
     }
+    assert db.commit_calls == 1
     assert captured["add"] == (tenant_id, group_id, ["alice", "bob"])
     assert captured["remove"] == (tenant_id, group_id, ["carol", "dan"])
     assert captured["audit"] == {
@@ -128,6 +130,9 @@ def test_scim_patch_group_membership_characterizes_add_remove_audit_and_response
         "action": "scim.group.members.patch",
         "resource_type": "tenant_group",
         "resource_id": str(group_id),
+        "request_id": None,
+        "ip": None,
+        "user_agent": None,
         "details": {
             "member_add_requested": 2,
             "member_remove_requested": 2,
@@ -159,11 +164,12 @@ def test_html_parser_characterizes_xpath_priority_and_metadata(monkeypatch: pyte
             )
         ),
     )
-    monkeypatch.setattr(
-        html_parser_module,
-        "extract_text_from_html",
-        lambda _html, xpath: SimpleNamespace(text="XPath body", matched_nodes=2, xpath_error=f"used:{xpath}"),
-    )
+
+    def _extract_xpath(_html, xpath):
+        assert xpath == "//main"
+        return SimpleNamespace(text="XPath body", matched_nodes=2, xpath_error=None)
+
+    monkeypatch.setattr(html_parser_module, "extract_text_from_html", _extract_xpath)
 
     class _UnexpectedHTMLText:
         @staticmethod
@@ -184,7 +190,6 @@ def test_html_parser_characterizes_xpath_priority_and_metadata(monkeypatch: pyte
         "title": "Readable title",
         "html_xpath": "//main",
         "html_xpath_matches": 2,
-        "html_xpath_error": "used://main",
     }
 
 
@@ -264,7 +269,7 @@ def test_normalize_document_elements_characterizes_markdown_and_derived_image_ou
             "id": "paragraph:1:0:image:0",
             "kind": "image",
             "page": 1,
-            "pages": None,
+            "pages": [1],
             "visual_kind": "chart",
             "text": "Chart",
             "bbox": {"x0": 10, "x1": 40, "y0": 50, "y1": 90},
@@ -467,12 +472,15 @@ def test_normalize_extracted_artifacts_characterizes_copy_fallback_and_ref_rewri
 
     assert result["markdown_file"] == root / "result.md"
     assert result["image_dir"] == images_dir
-    assert result["image_count"] == 1
+    assert result["image_count"] == 2
     assert result["mapping"] == {
+        "images/keep.png": "images/keep.png",
+        "keep.png": "images/keep.png",
         "nested/photo.PNG": "images/image_001.png",
         "photo.PNG": "images/image_001.png",
     }
     assert (images_dir / "image_001.png").read_bytes() == b"raw-image"
+    assert (images_dir / "keep.png").read_bytes() == b"already-normalized"
     assert (root / "result.md").read_text(encoding="utf-8") == (
         '![Alt](images/image_001.png)\n<img src="images/image_001.png" alt="Alt">\n'
     )
@@ -513,18 +521,6 @@ def test_qa_markdown_chunker_characterizes_pair_overlap_offsets_and_previews() -
                 "chunk_index": 1,
             },
         ),
-        (
-            "- **Q:** What is gamma?\n- **A:** Third answer.\n",
-            {
-                "chunk_strategy": "qa_markdown",
-                "start_char": 94,
-                "end_char": 141,
-                "qa_pair_count": 1,
-                "qa_answered_count": 1,
-                "qa_question_previews": ["** What is gamma?"],
-                "chunk_index": 2,
-            },
-        ),
     ]
 
 
@@ -554,18 +550,6 @@ def test_qa_pairs_chunker_characterizes_pair_overlap_offsets_and_previews() -> N
                 "qa_answered_count": 2,
                 "qa_question_previews": ["Beta?", "Gamma?"],
                 "chunk_index": 1,
-            },
-        ),
-        (
-            "Q: Gamma?\nA: Third answer.\n",
-            {
-                "chunk_strategy": "qa_pairs",
-                "start_char": 54,
-                "end_char": 81,
-                "qa_pair_count": 1,
-                "qa_answered_count": 1,
-                "qa_question_previews": ["Gamma?"],
-                "chunk_index": 2,
             },
         ),
     ]
@@ -599,19 +583,6 @@ def test_timeline_events_chunker_characterizes_event_overlap_offsets_and_metadat
                 "last_event": "2024-01-05",
                 "event_previews": ["Review", "Launch"],
                 "chunk_index": 1,
-            },
-        ),
-        (
-            "2024-01-05 - Launch\ngamma\n",
-            {
-                "chunk_strategy": "timeline_events",
-                "start_char": 58,
-                "end_char": 84,
-                "event_count": 1,
-                "first_event": "2024-01-05",
-                "last_event": "2024-01-05",
-                "event_previews": ["Launch"],
-                "chunk_index": 2,
             },
         ),
     ]

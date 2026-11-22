@@ -8,6 +8,7 @@ from uuid import UUID
 from langchain_core.prompts import PromptTemplate
 
 from app.infrastructure.hashing import stable_json_hash
+from app.infrastructure.runtime.dependencies import optional_import
 from app.rag.llm.response_parsing import parse_json_from_text
 from app.services.prompts.resolver import resolve_prompt_template
 
@@ -540,12 +541,12 @@ def _attach_llm_judge_items(
 
 
 def _load_openai_callback_getter() -> Any:
-    try:
-        from langchain_community.callbacks.manager import get_openai_callback  # type: ignore
-    except ImportError:
-        logger.debug("OpenAI token/cost callback is unavailable", exc_info=True)
-        return None
-    return get_openai_callback
+    manager = optional_import(
+        "langchain_community.callbacks.manager",
+        feature="evaluation_openai_usage",
+        pip_name="langchain-community",
+    )
+    return getattr(manager, "get_openai_callback", None)
 
 
 def _mean_judge_score(values: list[float]) -> float | None:

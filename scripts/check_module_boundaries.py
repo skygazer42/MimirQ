@@ -4,8 +4,6 @@ The explicit migration baseline is a ratchet, not a wildcard allowlist: removed
 edges must be removed from it and new edges fail even inside a legacy file.
 """
 
-from __future__ import annotations
-
 import argparse
 import ast
 import json

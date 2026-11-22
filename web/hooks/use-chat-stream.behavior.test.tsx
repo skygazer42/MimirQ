@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 
 import React, { act, useRef, useState } from 'react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { Message } from '@/types'
@@ -69,7 +70,8 @@ function createFallbackResponse() {
 }
 
 function renderChatStreamHook(onError = vi.fn(), structuredOutput = false) {
-  return renderHook(() => {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } })
+  function useStream() {
     const [conversationId, setConversationId] = useState<string | undefined>()
     const [messages, setMessages] = useState<Message[]>([])
     const messagesRef = useRef(messages)
@@ -89,6 +91,9 @@ function renderChatStreamHook(onError = vi.fn(), structuredOutput = false) {
       conversationId,
       messages,
     }
+  }
+  return renderHook(useStream, {
+    wrapper: ({ children }) => <QueryClientProvider client={client}>{children}</QueryClientProvider>,
   })
 }
 

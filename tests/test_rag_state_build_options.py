@@ -20,12 +20,7 @@ def test_build_rag_state_does_not_deepcopy_runtime_database_dependency(monkeypat
     monkeypatch.setattr(langgraph, "_resolve_prompt_template_fields", fake_prompt_fields)
     monkeypatch.setattr(langgraph, "_apply_active_pipeline_metadata_filter", fake_metadata_filter)
 
-    state = langgraph.build_rag_state(
-        options=langgraph.RagStateBuildOptions(
-            question="What is the launch code?",
-            db=runtime_db,
-        )
-    )
+    state = langgraph.build_rag_state(question="What is the launch code?", db=runtime_db)
 
     assert seen == [runtime_db, runtime_db]
     assert state["question"] == "What is the launch code?"

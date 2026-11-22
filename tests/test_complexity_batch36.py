@@ -29,6 +29,7 @@ def test_maven_pom_chunker_preserves_preamble_records_and_artifacts() -> None:
             chunk.metadata["start_char"],
             chunk.metadata["end_char"],
             chunk.metadata.get("maven_pom_preamble", False),
+            chunk.metadata.get("maven_pom_unstructured", False),
             chunk.metadata.get("maven_record_count"),
             chunk.metadata.get("maven_kinds"),
             chunk.metadata.get("maven_artifacts"),
@@ -36,11 +37,16 @@ def test_maven_pom_chunker_preserves_preamble_records_and_artifacts() -> None:
         )
         for chunk in chunks
     ] == [
-        (0, 59, True, None, None, None, 0),
-        (60, 134, False, 1, ["dependency"], ["a:one"], 1),
-        (134, 208, False, 1, ["dependency"], ["b:two"], 2),
-        (241, 309, False, 1, ["plugin"], ["c:three"], 3),
+        (0, 59, True, False, None, None, None, 0),
+        (60, 134, False, False, 1, ["dependency"], ["a:one"], 1),
+        (134, 208, False, False, 1, ["dependency"], ["b:two"], 2),
+        (208, 240, False, True, None, None, None, 3),
+        (241, 309, False, False, 1, ["plugin"], ["c:three"], 4),
+        (309, 338, False, True, None, None, None, 5),
     ]
+    assert all(
+        chunk.page_content == text[chunk.metadata["start_char"] : chunk.metadata["end_char"]] for chunk in chunks
+    )
 
 
 def test_toml_chunker_preserves_tables_entry_overlap_and_offsets() -> None:
@@ -67,15 +73,16 @@ def test_toml_chunker_preserves_tables_entry_overlap_and_offsets() -> None:
             chunk.metadata["start_char"],
             chunk.metadata["end_char"],
             chunk.metadata.get("toml_table"),
-            chunk.metadata["toml_entry_count"],
-            chunk.metadata["toml_keys"],
+            chunk.metadata.get("toml_fallback", False),
+            chunk.metadata.get("toml_entry_count"),
+            chunk.metadata.get("toml_keys"),
             chunk.metadata["chunk_index"],
         )
         for chunk in chunks
     ] == [
-        ('title = "demo"\n', 0, 15, None, 1, ["title"], 0),
-        ("a = 1\nb = 2\nc = 3\n", 26, 44, "table:tool.one", 3, ["a", "b", "c"], 1),
-        ("c = 3\n", 38, 44, "table:tool.one", 1, ["c"], 2),
-        ('x = "yes"\ny = "no"\n', 55, 74, "table:tool.two", 2, ["x", "y"], 3),
-        ('y = "no"\n', 65, 74, "table:tool.two", 1, ["y"], 4),
+        ('title = "demo"\n', 0, 15, None, False, 1, ["title"], 0),
+        ("[tool.one]", 15, 25, "table:tool.one", True, None, None, 1),
+        ("a = 1\nb = 2\nc = 3\n", 26, 44, "table:tool.one", False, 3, ["a", "b", "c"], 2),
+        ("[tool.two]", 44, 54, "table:tool.two", True, None, None, 3),
+        ('x = "yes"\ny = "no"\n', 55, 74, "table:tool.two", False, 2, ["x", "y"], 4),
     ]

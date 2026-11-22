@@ -28,12 +28,11 @@ function applyNoStore(resp: NextResponse) {
   return resp
 }
 
-function redirectToCallback(req: Request, error?: SamlCallbackErrorCode) {
-  const url = new URL('/auth/saml/callback', req.url)
-  if (error !== undefined) {
-    url.searchParams.set('error', error)
-  }
-  const resp = applyNoStore(NextResponse.redirect(url, 303))
+function redirectToCallback(error?: SamlCallbackErrorCode) {
+  const query = error === undefined ? '' : `?${new URLSearchParams({ error })}`
+  const resp = applyNoStore(
+    new NextResponse(null, { status: 303, headers: { Location: `/auth/saml/callback${query}` } }),
+  )
   return error === undefined ? resp : clearSamlBridgeCookie(resp)
 }
 
@@ -51,12 +50,12 @@ export async function POST(req: NextRequest) {
 
   const form = await req.formData().catch(() => null)
   if (!form) {
-    return redirectToCallback(req, 'saml_invalid_request')
+    return redirectToCallback('saml_invalid_request')
   }
 
   const samlResponse = readNonEmptyString(form.get('SAMLResponse'))
   if (samlResponse === undefined) {
-    return redirectToCallback(req, 'saml_missing_response')
+    return redirectToCallback('saml_missing_response')
   }
 
   const relayState = readNonEmptyString(form.get('RelayState'))
@@ -76,19 +75,19 @@ export async function POST(req: NextRequest) {
   }).catch(() => null)
 
   if (!backendRes) {
-    return redirectToCallback(req, 'saml_backend_unreachable')
+    return redirectToCallback('saml_backend_unreachable')
   }
 
   if (!backendRes.ok) {
-    return redirectToCallback(req, mapExchangeError(backendRes.status))
+    return redirectToCallback(mapExchangeError(backendRes.status))
   }
 
   const exchange = samlBridgeExchangeSchema.safeParse(await backendRes.json().catch(() => null))
   if (!exchange.success) {
-    return redirectToCallback(req, 'saml_invalid_session')
+    return redirectToCallback('saml_invalid_session')
   }
 
-  const resp = redirectToCallback(req)
+  const resp = redirectToCallback()
   resp.cookies.set({
     name: SAML_BRIDGE_COOKIE_NAME,
     value: exchange.data.bridge_code,

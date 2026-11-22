@@ -17,6 +17,9 @@ class _Query:
     def order_by(self, *_args, **_kwargs):  # noqa: ANN002, ANN003
         return self
 
+    def with_entities(self, *_entities):  # noqa: ANN002
+        return self
+
     def first(self):  # noqa: ANN201
         return self._first_result
 

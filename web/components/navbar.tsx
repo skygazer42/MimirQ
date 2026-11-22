@@ -422,7 +422,12 @@ export function Navbar({
           aria-label={t('toolbar.navLabel')}
           className="flex h-full w-16 shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground"
         >
-          <Link href="/" aria-label={BRAND_NAME} className="mx-auto mt-6 mb-6 block rounded-md focus-ring">
+          <Link
+            href="/"
+            prefetch={false}
+            aria-label={BRAND_NAME}
+            className="mx-auto mt-6 mb-6 block rounded-md focus-ring"
+          >
             <BrandLogo variant="mark" className="size-8" decorative priority />
           </Link>
           <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain no-scrollbar">
@@ -463,6 +468,7 @@ export function Navbar({
             {canOpenSettings ? (
               <Link
                 href="/settings"
+                prefetch={false}
                 aria-label={t('items.settings')}
                 title={t('items.settings')}
                 aria-current={activeHref === '/settings' ? 'page' : undefined}
@@ -525,6 +531,7 @@ export function Navbar({
         <div className="flex h-16 shrink-0 items-center gap-3 px-5">
           <Link
             href="/"
+            prefetch={false}
             aria-label={BRAND_NAME}
             className="rounded-md transition-opacity hover:opacity-75 focus-ring motion-reduce:transition-none"
           >

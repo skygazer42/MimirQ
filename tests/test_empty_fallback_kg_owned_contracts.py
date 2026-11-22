@@ -96,7 +96,8 @@ async def test_kg_event_extraction_rejects_invalid_external_response_text(payloa
 
     chunk = DocumentChunk(id=UUID(int=1), content="policy body", doc_metadata={})
 
-    assert await EventProcessor(Client()).extract_from_sections([chunk], batch_index=0) == []
+    with pytest.raises(ValueError, match="Extracted event title and summary must be strings"):
+        await EventProcessor(Client()).extract_from_sections([chunk], batch_index=0)
 
 
 @pytest.mark.parametrize("provenance, expected", [(None, None), (UUID(int=2), "00000000-0000-0000-0000-000000000002")])

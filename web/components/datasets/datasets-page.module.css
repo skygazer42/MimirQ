@@ -195,6 +195,11 @@
   font-size: 12px;
 }
 
+.refreshNotice {
+  flex-shrink: 0;
+  padding: 0 var(--content-gutter) 8px;
+}
+
 .workspace {
   display: flex;
   min-height: 0;
@@ -931,8 +936,9 @@ tr[data-selected='true'] .rowAction:hover {
     min-height: 44px;
     padding: 0 9px;
   }
-  .workspace {
-    padding: 0 16px;
+  .workspace,
+  .refreshNotice {
+    padding-inline: 16px;
   }
   .table {
     min-width: 0;

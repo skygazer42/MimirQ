@@ -13,12 +13,12 @@ def rewrite(source):  # noqa: ANN001, ANN202
 
 
 def test_unicode_and_crlf_source_spans_preserve_surrounding_text():
-    source = 'from app.core.config import settings\r\nresult = {"标签": str(getattr(settings, "LABEL", "") or "")}\r\n'
-    assert rewrite(source) == 'from app.core.config import settings\r\nresult = {"标签": settings.LABEL}\r\n'
+    source = 'from app.infrastructure.config import settings\r\nresult = {"标签": str(getattr(settings, "LABEL", "") or "")}\r\n'
+    assert rewrite(source) == 'from app.infrastructure.config import settings\r\nresult = {"标签": settings.LABEL}\r\n'
 
 
 def test_identity_cast_removal_preserves_operator_precedence_and_non_neutral_default():
-    source = 'from app.core.config import settings\nresult = 5 * int(getattr(settings, "COUNT", 0) or 3)\n'
+    source = 'from app.infrastructure.config import settings\nresult = 5 * int(getattr(settings, "COUNT", 0) or 3)\n'
     result = rewrite(source)
     assert "getattr" not in result
     for count in (0, 1, -3, 12):
@@ -31,7 +31,7 @@ def test_identity_cast_removal_preserves_operator_precedence_and_non_neutral_def
 
 
 def test_multiline_conversion_keeps_the_expression_parenthesized():
-    source = """from app.core.config import settings
+    source = """from app.infrastructure.config import settings
 result = 5 * int(
     getattr(settings, "COUNT", 0)
     or 3
@@ -52,17 +52,17 @@ result = 5 * int(
 @pytest.mark.parametrize(
     "source",
     [
-        'from app.core.config import settings\ndef f(settings):\n return str(getattr(settings, "LABEL", ""))\n',
-        'from app.core.config import settings\nsettings = fake()\nresult = str(getattr(settings, "LABEL", ""))\n',
-        'from app.core.config import settings\ndef f(getattr):\n return getattr(settings, "LABEL", "")\n',
-        "from app.core.config import settings\nstr = custom\nresult = str(settings.LABEL)\n",
-        'from app.core.config import settings\nresult = [getattr(settings, "LABEL", "fallback") for settings in rows]\n',
-        'from app.core.config import settings\nclass C:\n settings = fake()\n result = getattr(settings, "LABEL", "fallback")\n',
-        "from app.core.config import settings\nclass C:\n str = custom\n result = str(settings.LABEL)\n",
-        'from app.core.config import settings\nif flag:\n settings = fake()\nresult = getattr(settings, "LABEL", "fallback")\n',
-        "from app.core.config import settings\nfor str in wrappers:\n result = str(settings.LABEL)\n",
-        'from app.core.config import settings\ndef f(value=(settings := fake())):\n return getattr(settings, "LABEL", "fallback")\n',
-        'from app.core.config import settings\nf = lambda: ((settings := fake()), getattr(settings, "LABEL", "fallback"))\n',
+        'from app.infrastructure.config import settings\ndef f(settings):\n return str(getattr(settings, "LABEL", ""))\n',
+        'from app.infrastructure.config import settings\nsettings = fake()\nresult = str(getattr(settings, "LABEL", ""))\n',
+        'from app.infrastructure.config import settings\ndef f(getattr):\n return getattr(settings, "LABEL", "")\n',
+        "from app.infrastructure.config import settings\nstr = custom\nresult = str(settings.LABEL)\n",
+        'from app.infrastructure.config import settings\nresult = [getattr(settings, "LABEL", "fallback") for settings in rows]\n',
+        'from app.infrastructure.config import settings\nclass C:\n settings = fake()\n result = getattr(settings, "LABEL", "fallback")\n',
+        "from app.infrastructure.config import settings\nclass C:\n str = custom\n result = str(settings.LABEL)\n",
+        'from app.infrastructure.config import settings\nif flag:\n settings = fake()\nresult = getattr(settings, "LABEL", "fallback")\n',
+        "from app.infrastructure.config import settings\nfor str in wrappers:\n result = str(settings.LABEL)\n",
+        'from app.infrastructure.config import settings\ndef f(value=(settings := fake())):\n return getattr(settings, "LABEL", "fallback")\n',
+        'from app.infrastructure.config import settings\nf = lambda: ((settings := fake()), getattr(settings, "LABEL", "fallback"))\n',
     ],
 )
 def test_shadowed_names_are_not_treated_as_live_settings_or_builtins(source):  # noqa: ANN001
@@ -70,7 +70,7 @@ def test_shadowed_names_are_not_treated_as_live_settings_or_builtins(source):  #
 
 
 def test_optional_and_float_serialization_casts_remain_explicit():
-    source = 'from app.core.config import settings\na = str(getattr(settings, "OPTIONAL", None) or "")\nb = float(settings.RATIO)\nc = float(getattr(settings, "RATIO", 0))\n'
+    source = 'from app.infrastructure.config import settings\na = str(getattr(settings, "OPTIONAL", None) or "")\nb = float(settings.RATIO)\nc = float(getattr(settings, "RATIO", 0))\n'
     result = rewrite(source)
     assert 'str(settings.OPTIONAL or "")' in result
     assert "float(settings.RATIO)" in result
@@ -78,7 +78,7 @@ def test_optional_and_float_serialization_casts_remain_explicit():
 
 
 def test_unsupported_fields_and_fallbacks_with_side_effects_are_not_automatically_removed():
-    source = 'from app.core.config import settings\na = getattr(settings, "MISSING", "")\nb = getattr(settings, "LABEL", side_effect())\n'
+    source = 'from app.infrastructure.config import settings\na = getattr(settings, "MISSING", "")\nb = getattr(settings, "LABEL", side_effect())\n'
     assert rewrite(source) == source
 
 
@@ -100,14 +100,14 @@ def _coerce_uuid(raw: object):
 
 
 def test_parent_conversion_render_does_not_bypass_comprehension_scope():
-    source = """from app.core.config import settings
+    source = """from app.infrastructure.config import settings
 result = int(int(sum([int(settings.COUNT) for int in [lambda value: value * 2]])))
 """
     assert rewrite(source) == source
 
 
 def test_nested_dictionary_edits_are_applied_in_source_order():
-    source = """from app.core.config import settings
+    source = """from app.infrastructure.config import settings
 result = int(int(len({str(settings.LABEL): str(settings.LABEL), str(settings.MODE): "value"})))
 """
     result = rewrite(source)
@@ -125,7 +125,7 @@ def test_double_string_cast_may_normalize_a_custom_string_subclass():
 
 
 def test_local_builtin_import_remains_an_explicit_conversion():
-    source = """from app.core.config import settings
+    source = """from app.infrastructure.config import settings
 def f():
     from builtins import ascii as str
     return str(settings.LABEL)

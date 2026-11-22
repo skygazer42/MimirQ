@@ -75,9 +75,10 @@ test('last-batch read failure and stale evidence cannot appear as another succes
   const state = await lastBatchFixture(page)
   state.failHealth = true
   await openRemaining(page, `/knowledge/${auditDocumentId}/health`, '文档健康审计')
-  await expect(page.getByRole('alert').filter({ hasText: '健康审计暂不可用' })).toBeVisible()
+  const healthError = page.getByRole('alert').filter({ hasText: '健康审计暂不可用' })
+  await expect(healthError).toBeVisible()
   state.failHealth = false
-  await page.getByRole('alert').getByRole('button', { name: '重新读取', exact: true }).click()
+  await healthError.getByRole('button', { name: '重新读取', exact: true }).click()
   await expect(page.getByText('解析链路', { exact: true })).toBeVisible()
   state.failEvidence = true
   await openRemaining(page, '/knowledge/evidence', '证据调试')

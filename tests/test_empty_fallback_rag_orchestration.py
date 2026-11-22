@@ -31,4 +31,4 @@ def test_trace_does_not_turn_broken_internal_kinds_into_main_or_empty_history():
     with pytest.raises((AttributeError, TypeError)):
         _retrieval_variant_counts([(None, "question", None)])
     with pytest.raises(KeyError):
-        _per_query_trace([{"ok": True}])
+        _per_query_trace({"ok": True})

@@ -6,8 +6,10 @@ from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
-from fastapi import BackgroundTasks
+from fastapi import HTTPException
 
+from app.services.runtime import retrieval_limiter
+from app.tasks.queue import TaskEnqueueRejectedError
 from tests.test_dataset_scan_queue_contracts import _FakeScanDB
 
 
@@ -69,6 +71,7 @@ async def test_scan_creation_owns_database_thread_and_keeps_queue_on_request_loo
         return "queued"
 
     monkeypatch.setattr(module, "SessionLocal", Database)
+    monkeypatch.setattr(retrieval_limiter, "SessionLocal", Database)
     monkeypatch.setattr(module.settings, "TASK_QUEUE_ENABLED", True)
     monkeypatch.setattr(module, "get_task_job_status", status)
     if kind == "profile":
@@ -83,9 +86,9 @@ async def test_scan_creation_owns_database_thread_and_keeps_queue_on_request_loo
             module.create_dataset_precheck_scan_run,
             module.DatasetPrecheckScanRunCreateRequest(root_path="/source"),
         )
-    result = await create(dataset_id, body, BackgroundTasks(), tenant_id=tenant_id, account_id="owner", db=object())
+    result = await create(dataset_id, body, tenant_id=tenant_id, account_id="owner")
     assert result.status == "pending"
-    assert len(sessions) == 1 and sessions[0].closed
+    assert len(sessions) == 2 and all(session.closed for session in sessions)
 
 
 @pytest.mark.asyncio
@@ -137,10 +140,7 @@ async def test_cancelled_scan_queue_check_does_not_commit_or_leave_worker_alive(
             module.create_dataset_precheck_scan_run,
             module.DatasetPrecheckScanRunCreateRequest(root_path="/source"),
         )
-    request_db = _FakeScanDB(rows_by_model={model: [old_row]})
-    task = asyncio.create_task(
-        create(dataset_id, body, BackgroundTasks(), tenant_id=tenant_id, account_id="owner", db=request_db)
-    )
+    task = asyncio.create_task(create(dataset_id, body, tenant_id=tenant_id, account_id="owner"))
     await asyncio.wait_for(started.wait(), 5)
     task.cancel()
     with pytest.raises(asyncio.CancelledError):
@@ -351,9 +351,10 @@ async def test_compensation_query_failure_preserves_enqueue_error(monkeypatch, k
 
     async def enqueue(**kwargs):
         broken.set()
-        raise module.TaskEnqueueRejectedError("queue rejected")
+        raise TaskEnqueueRejectedError("queue rejected")
 
     monkeypatch.setattr(module, "SessionLocal", Database)
+    monkeypatch.setattr(retrieval_limiter, "SessionLocal", Database)
     if kind == "profile":
         monkeypatch.setattr(module.dataset_service, "get_dataset", lambda *a, **k: object())
         monkeypatch.setattr(module.dataset_service, "assert_dataset_writable", lambda *a, **k: None)
@@ -366,9 +367,7 @@ async def test_compensation_query_failure_preserves_enqueue_error(monkeypatch, k
             module.create_dataset_precheck_scan_run,
             module.DatasetPrecheckScanRunCreateRequest(root_path="/source"),
         )
-    from fastapi import HTTPException
-
     with pytest.raises(HTTPException) as error:
-        await create(dataset_id, body, BackgroundTasks(), tenant_id=tenant_id, account_id="owner", db=object())
+        await create(dataset_id, body, tenant_id=tenant_id, account_id="owner")
     assert error.value.status_code == 503
-    assert isinstance(error.value.__cause__, module.TaskEnqueueRejectedError)
+    assert isinstance(error.value.__cause__, TaskEnqueueRejectedError)

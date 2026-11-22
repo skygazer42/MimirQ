@@ -208,7 +208,7 @@ def test_png_task_endpoints_forward_current_account(
             return {"task_id": "task-1", "status": "done"}
         return b"\x89PNG\r\n\x1a\n"
 
-    monkeypatch.setattr(dataset_analysis_api, service_name, _capture, raising=True)
+    monkeypatch.setattr(dataset_analysis_service, service_name, _capture, raising=True)
 
     response = client.request(method, path.format(dataset_id=dataset_id))
 

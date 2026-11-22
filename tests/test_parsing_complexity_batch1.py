@@ -1,5 +1,6 @@
 import io
 import sys
+from contextlib import closing
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
 
@@ -20,11 +21,11 @@ def test_csv_parser_characterizes_headerless_rows(tmp_path: Path) -> None:
     document = CsvParser().parse(path)[0]
 
     assert document.page_content == (
-        "CSV: sample.csv\nDelimiter: ','\nColumns: 1, 2\n\nrow 1: 1=1 | 2=2\nrow 2: 1=3 | 2=4\n"
+        "CSV: sample.csv\nDelimiter: ','\nColumns: col1, col2\n\nrow 1: col1=1 | col2=2\nrow 2: col1=3 | col2=4\n"
     )
     assert document.metadata["csv_has_header"] is False
     assert document.metadata["csv_rows_emitted"] == 2
-    assert document.metadata["csv_columns"] == ["1", "2"]
+    assert document.metadata["csv_columns"] == ["col1", "col2"]
 
 
 def test_csv_parser_characterizes_empty_cells_and_truncation(
@@ -175,7 +176,7 @@ def test_normalize_pdf_rotation_characterizes_uniform_rotation(monkeypatch: pyte
 
     fake_doc = _FakeDoc()
     fitz_module = ModuleType("fitz")
-    fitz_module.open = lambda _path: fake_doc  # type: ignore[attr-defined]
+    fitz_module.open = lambda _path: closing(fake_doc)  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "fitz", fitz_module)
 
     output_path = tmp_path / "normalized" / "sample.pdf"
@@ -225,7 +226,7 @@ def test_normalize_pdf_rotation_characterizes_mixed_sample_skip(
 
     fake_doc = _FakeDoc()
     fitz_module = ModuleType("fitz")
-    fitz_module.open = lambda _path: fake_doc  # type: ignore[attr-defined]
+    fitz_module.open = lambda _path: closing(fake_doc)  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "fitz", fitz_module)
 
     changed, note, meta = normalize_pdf_rotation(

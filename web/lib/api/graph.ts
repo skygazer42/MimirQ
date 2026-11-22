@@ -57,13 +57,13 @@ export const kgApi = {
       prompt_template_key?: string
       prompt_ab_experiment_key?: string
     },
-  ): Promise<KGExtractResponse> {
-    const { data } = await apiClient.post<KGExtractResponse>(
+  ): Promise<KGExtractResponse & { queued: boolean }> {
+    const { data, status } = await apiClient.post<KGExtractResponse>(
       `/kg/documents/${encodeURIComponent(documentId)}/extract`,
       null,
-      { params },
+      { params, headers: { Prefer: 'respond-async' } },
     )
-    return data
+    return { ...data, queued: status === 202 }
   },
 
   async deleteDocumentKG(documentId: string, params?: { prune_orphan_entities?: boolean }): Promise<KGDeleteResponse> {

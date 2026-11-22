@@ -55,7 +55,7 @@ def test_missing_required_generated_question_is_not_a_successful_empty_batch() -
             tenant_id=uuid4(),
             dataset_id=uuid4(),
             account_id="reader",
-            max_created=1,
+            remaining_budget=1,
             tag="generated",
             dry_run=True,
             existing_keys=set(),

@@ -13,6 +13,7 @@ test('snapshot comparison uses real-shaped changes, paging, detail and original 
   const table = page.getByRole('table', { name: '快照变更明细' })
   await expect(table.getByRole('row')).toHaveCount(21)
   await remainingShot(page, 'after-graph-snapshots-filled')
+  await expect(page.getByRole('button', { name: '任务中心', exact: true })).toBeVisible()
   await page.getByRole('button', { name: '下一页变更' }).click()
   await expect(table.getByRole('row')).toHaveCount(8)
   await page.getByRole('button', { name: '查看变更 设备手册', exact: true }).click()

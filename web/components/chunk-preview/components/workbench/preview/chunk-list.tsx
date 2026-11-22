@@ -78,7 +78,7 @@ type ViewMode = 'flat' | 'hierarchy'
 type GroupMode = 'none' | 'section'
 type ChunkInspection = {
   preview: ChunkPreviewResponse
-  fileRevision: string | undefined
+  fileId: string | undefined
   position: number
   open: boolean
 }
@@ -400,9 +400,7 @@ export function ChunkList({ mobileView }: Readonly<{ mobileView?: 'original' | '
   )
 
   const currentInspection =
-    inspection !== null &&
-    inspection.preview === previewData &&
-    inspection.fileRevision === currentFileItem?.fileRevision
+    inspection !== null && inspection.preview === previewData && inspection.fileId === currentFileItem?.id
       ? inspection
       : null
   const inspectorChunk = currentInspection === null ? undefined : effectiveChunks[currentInspection.position]
@@ -1496,7 +1494,7 @@ export function ChunkList({ mobileView }: Readonly<{ mobileView?: 'original' | '
                             onEdit={() => {
                               setInspection({
                                 preview: previewData,
-                                fileRevision: currentFileItem?.fileRevision,
+                                fileId: currentFileItem?.id,
                                 position,
                                 open: true,
                               })

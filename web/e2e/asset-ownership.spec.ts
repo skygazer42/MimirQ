@@ -107,6 +107,7 @@ for (const width of [1440, 390]) {
         schema: 'mimirq.evidence.v1',
         query_for_retrieval: '查看图片',
         citations: [imageCitation()],
+        metrics: {},
         has_evidence: true,
         abstain_triggered: false,
       }

@@ -105,6 +105,9 @@ describe('group directory operation ownership', () => {
       void view.result.current.saveEditor()
     })
     act(() => login())
+    await waitForAssertion(() => {
+      expect(view.client.getQueryData(queryKeys.groups.detail(A))).toEqual(group(A, 'Alpha'))
+    })
     const original = view.client.getQueryData(queryKeys.groups.detail(A))
     const reads = api.get.mock.calls.length
     await act(async () => pending.resolve(group(A, 'Retired response')))
@@ -123,7 +126,7 @@ describe('group directory operation ownership', () => {
     act(() => view.result.current.changeEditor({ external: '  legal  ' }))
     await act(async () => view.result.current.saveEditor())
     expect(api.create).toHaveBeenCalledWith({ name: 'Legal', external_id: 'legal' })
-    expect(api.list).toHaveBeenLastCalledWith({ skip: 0, limit: 500 })
+    expect(api.list).toHaveBeenLastCalledWith({ skip: 0, limit: 500 }, { signal: expect.any(AbortSignal) })
     expect(view.result.current.group?.name).toBe('Legal')
   })
   it('keeps the submitted fields frozen and starts one request synchronously', async () => {

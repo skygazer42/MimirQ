@@ -60,6 +60,7 @@ describe('member table operation ownership', () => {
     })
     await waitForAssertion(() => expect(api.patch).toHaveBeenCalledOnce())
     act(() => login())
+    await waitForAssertion(() => expect(view.client.getQueryData(key)).toEqual(members))
     const original = view.client.getQueryData(key)
     await act(async () => pending.resolve(member(A, 'editor')))
     expect(view.client.getQueryData(key)).toBe(original)

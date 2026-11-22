@@ -1,19 +1,20 @@
 from datetime import UTC, datetime, timedelta
 from typing import Annotated
+from uuid import uuid4
 
 import jwt
 from fastapi import Depends, FastAPI, Request
 from fastapi.testclient import TestClient
 
-from app.api.dependencies import get_current_account_id
+from app.api.dependencies import get_current_account_id, get_tenant_id
 from app.infrastructure.config import settings
 from tests.helpers.async_utils import yield_control
 
 
-def _build_app() -> FastAPI:
+def _build_app(*, resolve_tenant: bool = False) -> FastAPI:
     app = FastAPI()
 
-    @app.get("/state")
+    @app.get("/state", dependencies=[Depends(get_tenant_id)] if resolve_tenant else None)
     async def state_endpoint(*, request: Request, account_id: Annotated[str, Depends(get_current_account_id)]):  # noqa: B008
         await yield_control()
         tenant_state = getattr(request.state, "tenant_id", None)
@@ -53,14 +54,14 @@ def test_auth_dependency_sets_request_state_user_and_tenant_in_jwt_mode(monkeypa
 
     monkeypatch.setattr(settings, "JWT_TENANT_CLAIM", "tenant_id", raising=False)
 
-    tenant_id = "00000000-0000-0000-0000-000000000000"
+    tenant_id = str(uuid4())
     token = jwt.encode(
         {"sub": "jwt-user", "tenant_id": tenant_id, "exp": datetime.now(UTC) + timedelta(minutes=5)},
         secret_key,
         algorithm="HS256",
     )
 
-    client = TestClient(_build_app())
+    client = TestClient(_build_app(resolve_tenant=True))
     res = client.get("/state", headers={"Authorization": f"Bearer {token}"})
     assert res.status_code == 200
     payload = res.json()

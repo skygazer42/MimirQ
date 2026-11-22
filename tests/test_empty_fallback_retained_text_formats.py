@@ -29,10 +29,8 @@ def deepdoc_adapter(monkeypatch):
 def test_section_text_coercion_preserves_falsy_scalars(value, deepdoc_adapter):
     assert BaseAdvancedParser._normalize_section(None, value)[0] == str(value)
     assert BaseAdvancedParser._normalize_section(None, (value,))[0] == str(value)
-    assert deepdoc_adapter._normalize_pdf_section(value)[0] == str(value)
-    assert deepdoc_adapter._normalize_pdf_section((value,))[0] == str(value)
-    assert deepdoc_adapter._docx_section_parts([value, (value, None)]) == [str(value), str(value)]
-    assert deepdoc_adapter._docx_table_parts([value]) == [str(value)]
+    assert deepdoc_adapter._docx_section_parts([(str(value), None)]) == [str(value)]
+    assert deepdoc_adapter._docx_table_parts([[str(value)]]) == [str(value)]
 
 
 @pytest.mark.parametrize("value", [0, False])
@@ -58,6 +56,6 @@ def test_layout_text_coercion_preserves_falsy_content(value):
 
 def test_absent_parser_text_keeps_actual_empty_text_format(deepdoc_adapter):
     assert BaseAdvancedParser._normalize_section(None, None)[0] == ""
-    assert deepdoc_adapter._normalize_pdf_section(None)[0] == ""
-    assert deepdoc_adapter._docx_section_parts([None]) == []
+    assert deepdoc_adapter._docx_section_parts([("", None)]) == []
+    assert deepdoc_adapter._docx_table_parts([[""]]) == []
     assert _as_lines([None]) == []

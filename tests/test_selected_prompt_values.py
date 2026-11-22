@@ -24,7 +24,7 @@ def _template(**overrides) -> PromptTemplate:
 
 
 def test_selected_judge_prompt_keeps_actual_empty_metadata_and_version(monkeypatch: pytest.MonkeyPatch) -> None:
-    template = _template()
+    template = _template(content="Judge the answer.")
     monkeypatch.setattr(llm_judge, "resolve_prompt_template", lambda **_kwargs: template)
 
     content, variables, version, metadata = llm_judge._resolve_generation_judge_prompt(
@@ -36,7 +36,7 @@ def test_selected_judge_prompt_keeps_actual_empty_metadata_and_version(monkeypat
         ab_user_key=None,
     )
 
-    assert content == ""
+    assert content == "Judge the answer."
     assert variables == []
     assert version == 0
     assert metadata == {
@@ -132,12 +132,17 @@ def test_kg_entity_description_is_prepared_before_alias_branch_and_embedding(
     raw_entity = {"name": "Acme", "type": "organization", "description": description}
     _key, event = extractor._normalize_event_payload(
         chunk=chunk,
-        event_data={"title": "product", "summary": "Acme product", "entities": [raw_entity]},
+        event_data={"title": "product", "summary": "Acme product", "content": "Acme product", "entities": [raw_entity]},
         max_entities_per_event=10,
     )
     texts = []
     extractor._collect_chunk_embed_texts(chunk, event, seen_text=set(), to_embed=texts)
-    state = SimpleNamespace(chunk_key_by_id={}, chunk_hash_by_id={}, chunk_len_by_id={}, chosen_template_id=None)
+    state = SimpleNamespace(
+        chunk_key_by_id={},
+        chunk_hash_by_id={chunk.id: "fixture-content-hash"},
+        chunk_len_by_id={chunk.id: len(chunk.content)},
+        chosen_template_id=None,
+    )
 
     records, count = extractor._build_event_index_records(
         state=state, config=ExtractConfig(chunk_ids=[]), processed_events=[(chunk, event)], embed_cache={}
@@ -160,6 +165,11 @@ def test_kg_entity_preparation_exposes_invalid_description_types(
     with pytest.raises(AttributeError):
         extractor._normalize_event_payload(
             chunk=DocumentChunk(content="Acme", doc_metadata={}),
-            event_data={"entities": [{"name": "Acme", "description": False}]},
+            event_data={
+                "title": "product",
+                "summary": "Acme product",
+                "content": "Acme product",
+                "entities": [{"name": "Acme", "description": False}],
+            },
             max_entities_per_event=10,
         )

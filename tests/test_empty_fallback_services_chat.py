@@ -8,7 +8,10 @@ from app.services.chunking.statistics import compute_chunking_stats_from_texts, 
 
 
 def test_cache_hit_requires_the_content_written_by_the_cache_producer(monkeypatch):
-    monkeypatch.setattr(chat_cache_runtime, "prepare_chat_cache_lookup", lambda **kwargs: (True, "cache-key", None))
+    async def lookup_cache(_work, *, request_db):
+        return True, "cache-key", None
+
+    monkeypatch.setattr(chat_cache_runtime, "run_blocking_call_with_managed_session", lookup_cache)
 
     async def get_payload(key):
         assert key == "cache-key"
@@ -16,7 +19,7 @@ def test_cache_hit_requires_the_content_written_by_the_cache_producer(monkeypatc
 
     monkeypatch.setattr(chat_cache_runtime, "get_cached_chat_response_async", get_payload)
     with pytest.raises(KeyError, match="content"):
-        asyncio.run(chat_cache_runtime.prepare_non_streaming_chat_cache_state(options=SimpleNamespace()))
+        asyncio.run(chat_cache_runtime.prepare_non_streaming_chat_cache_state(options=SimpleNamespace(db=object())))
 
 
 def test_cache_store_does_not_silently_ignore_invalid_required_content(monkeypatch):

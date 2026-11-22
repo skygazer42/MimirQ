@@ -1,3 +1,5 @@
+from types import SimpleNamespace
+
 import pytest
 
 from app.rag.retrieval.reranking.types import RerankCandidate
@@ -40,49 +42,62 @@ def test_redis_limiter_preserves_explicit_zero_burst_without_connecting() -> Non
     assert limiter.burst_size == 0
 
 
-@pytest.mark.parametrize("value,expected", [(None, None), (0, "0"), (False, "false"), ("", None), (" value ", "value")])
-def test_optional_override_normalization_keeps_zero_and_false(value, expected) -> None:
+@pytest.mark.parametrize(
+    "value,expected", [(None, None), ("0", "0"), ("False", "false"), ("", None), (" value ", "value")]
+)
+def test_optional_string_override_normalization_keeps_nonempty_values(value, expected) -> None:
     from app.services.pipelines.ingestion_policy import _normalize_optional_override
 
     assert _normalize_optional_override(value) == expected
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("provided", [False, True])
-async def test_lazy_summary_creates_a_client_only_when_missing(monkeypatch, provided) -> None:
+@pytest.mark.parametrize("cached", [False, True])
+async def test_lazy_summary_creates_one_client_for_uncached_reports(monkeypatch, cached) -> None:
     from app.rag.kg.search import searcher
+
+    calls = []
 
     class Client:
         def __bool__(self) -> bool:
             return False
 
-    client = Client()
-    created = []
+        async def aclose(self) -> None:
+            calls.append("close")
 
-    async def create_client(**kwargs):
-        created.append(kwargs)
+    client = Client()
+
+    async def create_client():
+        calls.append("create")
         return client
 
     async def summarize(**kwargs):
         assert kwargs["llm_client"] is client
+        calls.append("summarize")
         return "summary"
 
+    monkeypatch.setattr(
+        searcher,
+        "_lazy_community_summary_settings",
+        lambda: {"enabled": True, "top_n": 2, "max_tokens": 64, "ttl_sec": 60, "max_entries": 2},
+    )
+    monkeypatch.setattr(
+        searcher,
+        "kg_community_summary_cache",
+        SimpleNamespace(
+            get=lambda *_args, **_kwargs: ("summary" if cached else None, 0), set=lambda *_args, **_kwargs: None
+        ),
+    )
     monkeypatch.setattr(searcher, "create_llm_client", create_client)
     monkeypatch.setattr(searcher, "lazy_summarize", summarize)
-    report = {}
-    meta = {"enabled": True, "used": True, "cache_hits": 0, "generated": 0, "errors": 0}
-    result = await searcher._generate_lazy_summary(
-        llm_client=client if provided else None,
-        report=report,
+    reports = [{"community_id": "one"}, {"community_id": "two"}]
+    meta = await searcher._apply_lazy_community_summaries(
+        config=searcher.SearchConfig(query="query"),
+        reports=reports,
         query="query",
-        max_tokens=64,
-        cache_enabled=False,
-        cache_key="test",
-        ttl_sec=0,
-        max_entries=1,
-        meta=meta,
     )
-    assert result is client
-    assert len(created) == (0 if provided else 1)
-    assert report["llm_summary"] == "summary"
-    assert meta["generated"] == 1
+    assert calls == ([] if cached else ["create", "summarize", "summarize", "close"])
+    assert [report["llm_summary"] for report in reports] == ["summary", "summary"]
+    assert meta["cache_hits"] == (2 if cached else 0)
+    assert meta["generated"] == (0 if cached else 2)
+    assert meta["errors"] == 0

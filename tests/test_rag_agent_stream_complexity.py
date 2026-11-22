@@ -632,9 +632,17 @@ async def test_tool_phase_yields_call_before_execution_then_populates_result_sta
 
     tool_call_event = await anext(phase)
 
+    tool_call_id = tool_call_event["data"]["tool_call_id"]
+    assert isinstance(tool_call_id, str) and tool_call_id
     assert tool_call_event == {
         "type": "agentic_step",
-        "data": {"step": "tool_call", "tool": "calculate", "rationale": "calculate exactly"},
+        "data": {
+            "step": "tool_call",
+            "tool": "calculate",
+            "tool_call_id": tool_call_id,
+            "arguments": {"expression": "2+2"},
+            "rationale": "calculate exactly",
+        },
     }
     assert tool_calls == []
     assert state.tool_metrics == []
@@ -645,7 +653,13 @@ async def test_tool_phase_yields_call_before_execution_then_populates_result_sta
     assert tool_calls == [("calculate", {"expression": "2+2"})]
     assert tool_result_event == {
         "type": "agentic_step",
-        "data": {"step": "tool_result", "tool": "calculate", "success": True, "error": None},
+        "data": {
+            "step": "tool_result",
+            "tool": "calculate",
+            "tool_call_id": tool_call_id,
+            "success": True,
+            "error": None,
+        },
     }
     assert state.tool_metrics == [{"name": "calculate", "success": True, "backend": "test-tool", "error": None}]
     assert state.tool_context_blocks == ["[Tool: calculate]\nExpression: 2+2\nResult: 4"]

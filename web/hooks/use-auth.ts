@@ -1,7 +1,7 @@
 'use client'
 
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useCallback } from 'react'
+import { useCallback, useSyncExternalStore } from 'react'
 import { authApi } from '@/lib/api/auth'
 import { extractHttpStatus } from '@/lib/api-errors'
 import {
@@ -10,11 +10,13 @@ import {
   getAuthSessionRevision,
   getStoredUser,
   setStoredUser,
+  subscribeAuthSession,
 } from '@/lib/auth-storage'
 import { queryKeys } from '@/lib/query-keys'
 
 export function useAuth() {
   const queryClient = useQueryClient()
+  useSyncExternalStore(subscribeAuthSession, getAuthSessionRevision, () => 0)
   const accessToken = getAccessToken()
   const initialUser = getStoredUser()
 

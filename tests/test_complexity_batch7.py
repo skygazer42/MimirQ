@@ -198,10 +198,6 @@ def test_normalize_query_contract_routes_auto_mode_and_applies_strict_profile() 
             "reranker_provider": "custom-reranker",
         },
         query_for_retrieval="列举差异",
-        requested_retrieval_mode=None,
-        requested_retrieval_profile=None,
-        sparse_enabled=False,
-        sparse_provider="bm25",
         hierarchy=_query_contract_hierarchy(),
         defaults=_query_contract_defaults(),
     )
@@ -231,10 +227,6 @@ def test_normalize_query_contract_disables_dedup_for_recall_first_profiles() -> 
             "top_k": 12,
         },
         query_for_retrieval="status code",
-        requested_retrieval_mode=None,
-        requested_retrieval_profile=None,
-        sparse_enabled=True,
-        sparse_provider="splade",
         hierarchy=_query_contract_hierarchy(),
         defaults=_query_contract_defaults(),
     )

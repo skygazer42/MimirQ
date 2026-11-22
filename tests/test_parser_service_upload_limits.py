@@ -1,12 +1,10 @@
 import asyncio
+from importlib import import_module
 from pathlib import Path
 
 import pytest
 import yaml
 from fastapi import HTTPException
-
-from docker.magicpdf import server as magicpdf_server
-from docker.qianfanocr import server as qianfanocr_server
 
 
 class _Upload:
@@ -22,8 +20,11 @@ class _Upload:
         return chunk
 
 
-@pytest.mark.parametrize("module", [magicpdf_server, qianfanocr_server])
-def test_parser_uploads_have_a_hard_streamed_limit(module: object, monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.parametrize("parser_service", ["magicpdf", "qianfanocr"])
+def test_parser_uploads_have_a_hard_streamed_limit(parser_service: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    if parser_service == "magicpdf":
+        pytest.importorskip("torch", reason="MagicPDF service requires its optional container PyTorch runtime")
+    module = import_module(f"docker.{parser_service}.server")
     monkeypatch.setattr(module, "_MAX_UPLOAD_BYTES", 3)
 
     with pytest.raises(HTTPException) as exc_info:

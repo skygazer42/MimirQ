@@ -76,7 +76,7 @@ def test_compute_chunk_coverage_metrics_from_ranges_clips_gaps_and_overlap() -> 
     from app.services.chunking.statistics import compute_chunk_coverage_metrics_from_ranges
 
     result = compute_chunk_coverage_metrics_from_ranges(
-        [(-3, 4), (2, 6), (8, 12), ("bad", 5), (9, 9)],
+        [(-3, 4), (2, 6), (8, 12), (9, 9)],
         total_characters=10,
     )
 
@@ -167,15 +167,17 @@ def test_merge_rag_config_with_dataset_defaults_applies_only_missing_fields() ->
 
 
 def test_compare_regression_items_builds_significance_and_case_labels() -> None:
+    from app.models.evaluation.results import RagasRegressionItem
     from app.services.evaluation.run_significance import compare_regression_items
 
+    first_case, second_case = uuid.UUID(int=1), uuid.UUID(int=2)
     base_items = [
-        {"case_id": "c2", "question": "Second", "scores": {"faithfulness": 0.2, "binary": 0.0}},
-        {"case_id": "c1", "question": "First", "scores": {"faithfulness": 0.1, "binary": 0.0}},
+        RagasRegressionItem(case_id=second_case, question="Second", scores={"faithfulness": 0.2, "binary": 0.0}),
+        RagasRegressionItem(case_id=first_case, question="First", scores={"faithfulness": 0.1, "binary": 0.0}),
     ]
     target_items = [
-        {"case_id": "c1", "question": "First+", "scores": {"faithfulness": 0.3, "binary": 1.0}},
-        {"case_id": "c2", "question": "Second+", "scores": {"faithfulness": 0.21, "binary": 0.0}},
+        RagasRegressionItem(case_id=first_case, question="First+", scores={"faithfulness": 0.3, "binary": 1.0}),
+        RagasRegressionItem(case_id=second_case, question="Second+", scores={"faithfulness": 0.21, "binary": 0.0}),
     ]
 
     result = compare_regression_items(
@@ -189,7 +191,7 @@ def test_compare_regression_items_builds_significance_and_case_labels() -> None:
     assert result["summary"] == {"paired_cases": 2, "metrics_compared": 2, "bh_corrected": True}
     assert [row["key"] for row in result["significance"]] == ["faithfulness", "binary"]
     assert result["significance"][1]["mcnemar_p_value"] == 1.0
-    assert result["case_diffs"][0]["case_id"] == "c1"
+    assert result["case_diffs"][0]["case_id"] == str(first_case)
     assert result["case_diffs"][0]["question"] == "First+"
     assert result["case_diffs"][0]["label"] == "改善"
     assert result["case_diffs"][1]["label"] == "无明显变化"

@@ -52,11 +52,11 @@ def test_resolve_scope_rejects_direct_dataset_uuid_in_production(monkeypatch: py
     assert exc_info.value.detail == "Dify knowledge mapping not found"
 
 
-def test_policy_fallback_multiplier_uses_default_for_invalid_configured_max() -> None:
+def test_policy_fallback_multiplier_caps_expansion_without_shrinking_the_baseline() -> None:
     from app.services.dify.retrieval_policy import apply_policy_fallback_candidate_multiplier
 
-    assert apply_policy_fallback_candidate_multiplier(7, multiplier=9, configured_max="bad") == 50
-    assert apply_policy_fallback_candidate_multiplier(60, multiplier=1, configured_max="bad") == 60
+    assert apply_policy_fallback_candidate_multiplier(7, multiplier=9, configured_max=50) == 50
+    assert apply_policy_fallback_candidate_multiplier(60, multiplier=1, configured_max=50) == 60
 
 
 def test_sibling_scope_requires_opt_in_and_a_specific_service_query(monkeypatch: pytest.MonkeyPatch) -> None:

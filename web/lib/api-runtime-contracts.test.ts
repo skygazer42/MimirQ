@@ -188,10 +188,12 @@ describe('API runtime contracts', () => {
     expect(requestArgs?.responseSchemaName).toBe('EvidenceRetrieveResponse')
     expect(
       requestArgs?.responseSchema.safeParse({
+        schema: 'mimirq.evidence.v1',
         query_for_retrieval: 'question',
         citations: [{ document_id: SAMPLE_UUID }],
         metrics: { top_k: 5 },
         has_evidence: true,
+        abstain_triggered: false,
       }).success,
     ).toBe(true)
     expect(requestArgs?.responseSchema.safeParse({ query_for_retrieval: 1, citations: 'nope' }).success).toBe(false)

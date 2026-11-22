@@ -19,12 +19,11 @@ class StructuredClient:
 
 
 @pytest.mark.asyncio
-async def test_entity_verification_keeps_valid_matches_beside_invalid_items():
+async def test_entity_verification_rejects_missing_ids_beside_valid_items():
     verifier = EntityVerifier(StructuredClient({"kept": [{}, {"id": "E1"}]}))
 
-    result = await verifier.verify(text="MimirQ", candidates=[EntityCandidate(cid="E1", name="MimirQ")])
-
-    assert [item["id"] for item in result["kept"]] == ["E1"]
+    with pytest.raises(ValueError, match="Verified entity IDs must be strings"):
+        await verifier.verify(text="MimirQ", candidates=[EntityCandidate(cid="E1", name="MimirQ")])
 
 
 @pytest.mark.asyncio
@@ -41,31 +40,30 @@ async def test_entity_verification_keeps_absent_optional_text():
 async def test_relation_extraction_rejects_a_missing_external_predicate():
     processor = RelationProcessor(StructuredClient({"relations": [{"subject_id": "E1", "object_id": "E2"}]}))
 
-    assert (
+    with pytest.raises(ValueError, match="Extracted relation endpoints and predicate must be strings"):
         await processor.extract_relations(
             text="MimirQ uses a database",
             candidates=[CandidateEntity(cid="E1", name="MimirQ"), CandidateEntity(cid="E2", name="database")],
         )
-        == []
-    )
 
 
 @pytest.mark.asyncio
 async def test_relation_verification_rejects_an_invalid_candidate_id():
     verifier = RelationVerifier(StructuredClient({"kept": [{"rid": None}]}))
 
-    result = await verifier.verify(
-        text="MimirQ uses a database",
-        candidates=[RelationCandidate(rid="R1", subject_id="E1", object_id="E2", predicate="uses")],
-    )
-    assert result == {"kept": []}
+    with pytest.raises(ValueError, match="Verified relation ID must be a string"):
+        await verifier.verify(
+            text="MimirQ uses a database",
+            candidates=[RelationCandidate(rid="R1", subject_id="E1", object_id="E2", predicate="uses")],
+        )
 
 
 @pytest.mark.asyncio
 async def test_skill_extraction_rejects_a_missing_external_skill_name():
     processor = SkillProcessor(StructuredClient({"skills": [{"steps": ["copy the file"]}]}))
 
-    assert await processor.extract_skills(text="Copy the file") == []
+    with pytest.raises(ValueError, match="Extracted skill name must be a string"):
+        await processor.extract_skills(text="Copy the file")
 
 
 @pytest.mark.asyncio

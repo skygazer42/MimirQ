@@ -759,46 +759,48 @@ function HistoryPageContent() {
                               </div>
                             </div>
                           </div>
-                          <div className={styles.detailActions}>
-                            <Button
-                              variant="default"
-                              size="sm"
-                              onClick={() => handleContinueChat()}
-                              disabled={isDeletingSelected || isNavigating}
-                              aria-label="继续当前对话"
-                              className={styles.continueButton}
-                            >
-                              继续对话
-                              <ArrowUpRight className="size-4" />
-                            </Button>
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <IconButton
-                                  label="更多对话操作"
-                                  disabled={isDeletingSelected || isNavigating}
-                                  variant="ghost"
-                                  className="size-11 text-muted-foreground md:size-9"
-                                >
-                                  <MoreHorizontal className="size-[18px]" />
-                                </IconButton>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end" className={styles.menu}>
-                                <DropdownMenuItem onSelect={handleEvaluateConversation} aria-label="进行对话分析评测">
-                                  <BarChart3 className="size-4" />
-                                  分析评测
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onSelect={() => setIsTraceOpen(true)} aria-label="查看数据追踪">
-                                  <Route className="size-4" />
-                                  数据追踪
-                                </DropdownMenuItem>
-                                <DropdownMenuSeparator />
-                                <DropdownMenuItem onSelect={() => setIsOpsOpen(true)}>
-                                  <Download className="size-4" />
-                                  导出与检查点
-                                </DropdownMenuItem>
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-                          </div>
+                          {(selectedConversation !== null || messagesQuery.data !== undefined) && (
+                            <div className={styles.detailActions}>
+                              <Button
+                                variant="default"
+                                size="sm"
+                                onClick={() => handleContinueChat()}
+                                disabled={isDeletingSelected || isNavigating}
+                                aria-label="继续当前对话"
+                                className={styles.continueButton}
+                              >
+                                继续对话
+                                <ArrowUpRight className="size-4" />
+                              </Button>
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <IconButton
+                                    label="更多对话操作"
+                                    disabled={isDeletingSelected || isNavigating}
+                                    variant="ghost"
+                                    className="size-11 text-muted-foreground md:size-9"
+                                  >
+                                    <MoreHorizontal className="size-[18px]" />
+                                  </IconButton>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end" className={styles.menu}>
+                                  <DropdownMenuItem onSelect={handleEvaluateConversation} aria-label="进行对话分析评测">
+                                    <BarChart3 className="size-4" />
+                                    分析评测
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem onSelect={() => setIsTraceOpen(true)} aria-label="查看数据追踪">
+                                    <Route className="size-4" />
+                                    数据追踪
+                                  </DropdownMenuItem>
+                                  <DropdownMenuSeparator />
+                                  <DropdownMenuItem onSelect={() => setIsOpsOpen(true)}>
+                                    <Download className="size-4" />
+                                    导出与检查点
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            </div>
+                          )}
                         </div>
                       </motion.div>
                     </div>

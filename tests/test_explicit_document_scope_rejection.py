@@ -27,9 +27,13 @@ class _NoDocumentsDB:
 class _DeniedDocumentDB:
     def __init__(self, document_id) -> None:
         self.document_id = document_id
+        self.closed = False
 
     def query(self, *_args):
         return _NoDocumentsQuery([(self.document_id, None, "only_me", "different-owner")])
+
+    def close(self):
+        self.closed = True
 
 
 @pytest.fixture
@@ -67,11 +71,15 @@ def test_genuinely_unselected_document_scope_keeps_the_open_scope_policy(allow_r
 async def test_explain_rejects_unavailable_selection_before_building_graph_state(
     allow_real_open_scope, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    from app.services.runtime import retrieval_limiter
+
     def unexpected_graph_state(**_kwargs):
         pytest.fail("A rejected document selection must not reach graph state construction")
 
     monkeypatch.setattr(retrieval_explain, "build_rag_state", unexpected_graph_state)
     document_id = uuid4()
+    worker_db = _DeniedDocumentDB(document_id)
+    monkeypatch.setattr(retrieval_limiter, "SessionLocal", lambda: worker_db)
     with pytest.raises(HTTPException) as error:
         await retrieval_explain.explain_retrieval(
             retrieval_explain.RetrievalExplainRequest(
@@ -79,7 +87,8 @@ async def test_explain_rejects_unavailable_selection_before_building_graph_state
             ),
             tenant_id=uuid4(),
             account_id="reader",
-            db=_DeniedDocumentDB(document_id),
+            db=_NoDocumentsDB(),
         )
 
     assert error.value.status_code == 403
+    assert worker_db.closed is True

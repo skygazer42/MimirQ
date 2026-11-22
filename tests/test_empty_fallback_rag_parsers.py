@@ -1,10 +1,18 @@
-from app.rag.industry_rules.loaders.yaml_loader import _normalize_glossary
+import pytest
+
+from app.rag.industry_rules.loaders.yaml_loader import RulesetFormatError, _normalize_glossary
 from app.rag.llm.factory import _normalize_fallback_spec
 from app.rag.llm.prompt_cache import message_content_to_text
 
 
-def test_glossary_scalar_aliases_preserve_supplied_zero_and_false():
-    assert _normalize_glossary({"term": [None, 0, False, "valid"]}) == {"term": ["0", "False", "valid"]}
+@pytest.mark.parametrize("alias", [None, 0, False])
+def test_glossary_rejects_nontext_aliases(alias):
+    with pytest.raises(RulesetFormatError, match="aliases must be strings"):
+        _normalize_glossary({"term": [alias, "valid"]})
+
+
+def test_glossary_preserves_zero_and_false_as_explicit_text():
+    assert _normalize_glossary({"term": ["0", "False", "valid"]}) == {"term": ["0", "False", "valid"]}
 
 
 def test_fallback_model_candidate_preserves_zero_and_skips_only_absent_name():

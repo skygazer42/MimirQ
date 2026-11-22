@@ -58,13 +58,16 @@ async def test_chat_cache_reader_preserves_nested_payload_validation(monkeypatch
     import app.services.chat.response_cache as service
 
     monkeypatch.setattr(service.settings, "CHAT_RESPONSE_CACHE_ENABLED", True)
-    monkeypatch.setattr(runtime, "prepare_chat_cache_lookup", lambda **_kwargs: (True, "key", None))
+    async def lookup_cache(_work, *, request_db):
+        return True, "key", None
+
+    monkeypatch.setattr(runtime, "run_blocking_call_with_managed_session", lookup_cache)
 
     async def decoded_payload(_key):
         return {"content": "cached answer", "metrics": {}, "citations": "invalid nested citations"}
 
     monkeypatch.setattr(service, "get_best_effort_json_cache_value", decoded_payload)
-    prepared = await runtime.prepare_non_streaming_chat_cache_state(options=SimpleNamespace())
+    prepared = await runtime.prepare_non_streaming_chat_cache_state(options=SimpleNamespace(db=object()))
     assert prepared.cache_hit is True
     assert prepared.full_response == "cached answer"
     assert prepared.citations_data == []

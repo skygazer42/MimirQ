@@ -71,6 +71,7 @@ from app.infrastructure.config_validation import (
     parse_object_storage_region_profiles,
 )
 from app.infrastructure.database.connection import get_db
+from app.infrastructure.runtime.dependencies import optional_import
 from app.infrastructure.security.jwt_inspect import format_unix_ts_utc, try_get_jwt_exp
 from app.services.identity.navigation import normalize_navigation_modules
 from app.services.identity.rbac import TenantPermissions, ensure_tenant_permission
@@ -1764,9 +1765,9 @@ def _get_database_status(worker_db: Session) -> SettingsConnectionStatus:
 
 
 def _get_milvus_status() -> SettingsConnectionStatus:
-    try:
-        from pymilvus import connections
-    except ImportError:
+    pymilvus = optional_import("pymilvus", feature="settings_milvus_status")
+    connections = getattr(pymilvus, "connections", None)
+    if connections is None:
         return SettingsConnectionStatus(connected=False, message="Milvus 客户端未安装")
 
     try:

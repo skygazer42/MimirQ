@@ -310,7 +310,10 @@ export function SnapshotDiffView({
             )}
           </div>
           {filtered.length ? (
-            <div className="flex shrink-0 items-center justify-between gap-3 border-t border-border px-4 py-3 text-[13px] md:px-6">
+            <div
+              data-task-center-dock
+              className="flex shrink-0 items-center justify-between gap-3 border-t border-border px-4 py-3 text-[13px] md:px-6"
+            >
               <span className="text-muted-foreground">
                 匹配 {filtered.length} 项 · 每页 {CHANGE_PAGE_SIZE} 项
               </span>

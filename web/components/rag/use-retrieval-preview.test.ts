@@ -45,11 +45,10 @@ describe('retrieval console requests', () => {
     await act(async () => {
       await hook.result.current.search()
     })
-    expect(api.retrieve).toHaveBeenCalledExactlyOnceWith({
-      query: '如何管理权限？',
-      dataset_ids: ['team-a', 'team-b'],
-      rag_config: {},
-    })
+    expect(api.retrieve).toHaveBeenCalledExactlyOnceWith(
+      { query: '如何管理权限？', dataset_ids: ['team-a', 'team-b'], rag_config: {} },
+      { signal: expect.any(AbortSignal) },
+    )
     expect(hook.result.current.run?.hits).toHaveLength(1)
     expect(hook.result.current.history).toHaveLength(1)
     expect(hook.result.current.run?.queryForRetrieval).toBe('实际检索问题')
@@ -98,8 +97,10 @@ describe('retrieval console requests', () => {
     act(() => {
       pending = hook.result.current.search()
     })
+    const request = api.retrieve.mock.calls[0][1]
     scope = 'team-b'
     hook.rerender()
+    expect(request.signal.aborted).toBe(true)
     expect(hook.result.current.isSearching).toBe(false)
     expect(hook.result.current.run).toBeNull()
     await act(async () => {
@@ -112,7 +113,10 @@ describe('retrieval console requests', () => {
     await act(async () => {
       await hook.result.current.search()
     })
-    expect(api.retrieve).toHaveBeenLastCalledWith({ query: '权限', dataset_id: 'team-b', rag_config: {} })
+    expect(api.retrieve).toHaveBeenLastCalledWith(
+      { query: '权限', dataset_id: 'team-b', rag_config: {} },
+      { signal: expect.any(AbortSignal) },
+    )
   })
 
   it('retains the failed question for retry and does not fabricate history', async () => {

@@ -1136,7 +1136,7 @@ export function CommandMenu() {
                         conversation.title === null ||
                         conversation.title === undefined ||
                         conversation.title.trim() === ''
-                          ? conversation.id
+                          ? t('results.untitledConversation')
                           : conversation.title
                       }
                       description={conversation.last_message === null ? undefined : conversation.last_message}

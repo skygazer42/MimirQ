@@ -69,7 +69,6 @@ async def test_entity_verifier_sanitizes_limits_normalizes_types_and_trims_promp
                     "type": "PERSON",
                     "description": "d" * 450,
                     "evidence_quote": "q" * 320,
-                    "confidence": "nan",
                 },
                 {
                     "id": _VERIFY_KEEP_ID,
@@ -149,18 +148,19 @@ async def test_entity_verifier_sanitizes_limits_normalizes_types_and_trims_promp
 
 
 @pytest.mark.asyncio
-async def test_entity_verifier_returns_noop_on_llm_errors() -> None:
+async def test_entity_verifier_propagates_llm_errors() -> None:
     from app.rag.kg.extraction.entity_verifier import EntityCandidate, EntityVerifier
 
-    verifier = EntityVerifier(_FakeLLM(exc=RuntimeError("boom")))
-    result = await verifier.verify(
-        text="Entity text",
-        candidates=[EntityCandidate(cid=_VERIFY_KEEP_ID, name="Keep")],
-        max_keep=2,
-        max_alias_edges=1,
-    )
-
-    assert result == {"kept": [], "aliases": []}
+    failure = RuntimeError("boom")
+    verifier = EntityVerifier(_FakeLLM(exc=failure))
+    with pytest.raises(RuntimeError, match="boom") as raised:
+        await verifier.verify(
+            text="Entity text",
+            candidates=[EntityCandidate(cid=_VERIFY_KEEP_ID, name="Keep")],
+            max_keep=2,
+            max_alias_edges=1,
+        )
+    assert raised.value is failure
 
 
 @pytest.mark.asyncio
@@ -191,30 +191,28 @@ async def test_entity_verifier_empty_inputs_return_stable_schema_without_llm_cal
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "payload",
+    ("payload", "error", "message"),
     [
-        None,
-        [],
-        {"kept": {}, "aliases": "invalid"},
-        {
-            "kept": [None, "invalid", {}, {"id": "missing"}],
-            "aliases": [None, "invalid", {}, {"alias_id": _VERIFY_ALIAS_ID}],
-        },
+        (None, AttributeError, "has no attribute 'get'"),
+        ([], AttributeError, "has no attribute 'get'"),
+        ({"kept": {}, "aliases": "invalid"}, ValueError, "requires a kept array"),
+        ({"kept": [None]}, ValueError, "kept items must be objects"),
     ],
 )
-async def test_entity_verifier_malformed_payloads_return_stable_schema(payload: object) -> None:
+async def test_entity_verifier_rejects_malformed_payloads(
+    payload: object, error: type[Exception], message: str
+) -> None:
     from app.rag.kg.extraction.entity_verifier import EntityCandidate, EntityVerifier
 
     llm = _FakeLLM(result=payload)
-    result = await EntityVerifier(llm).verify(
-        text="Entity text",
-        candidates=[
-            EntityCandidate(cid=_VERIFY_KEEP_ID, name="Keep"),
-            EntityCandidate(cid=_VERIFY_ALIAS_ID, name="Alias"),
-        ],
-    )
-
-    assert result == {"kept": [], "aliases": []}
+    with pytest.raises(error, match=message):
+        await EntityVerifier(llm).verify(
+            text="Entity text",
+            candidates=[
+                EntityCandidate(cid=_VERIFY_KEEP_ID, name="Keep"),
+                EntityCandidate(cid=_VERIFY_ALIAS_ID, name="Alias"),
+            ],
+        )
     assert len(llm.calls) == 1
 
 

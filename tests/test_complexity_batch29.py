@@ -1,4 +1,5 @@
 import importlib
+import json
 from dataclasses import dataclass
 from types import SimpleNamespace
 from uuid import uuid4
@@ -150,8 +151,10 @@ async def test_kg_search_classifier_disabled_annotates_query_mode(
     )
     monkeypatch.setattr(kg_pipeline.settings, "KG_SEARCH_CACHE_ENABLED", False, raising=False)
 
-    result = await kg_pipeline.kg_search(query="overall status", query_mode="auto")
+    tenant_id = uuid4()
+    result = await kg_pipeline.kg_search(query="overall status", query_mode="auto", tenant_id=tenant_id)
 
+    assert engine.calls[0]["tenant_id"] == tenant_id
     assert engine.calls[0]["query_mode"] == "auto"
     assert engine.calls[0]["query_mode_confidence"] == "disabled"
     assert engine.calls[0]["query_mode_reason_codes"] == ["query_mode_classifier_disabled"]
@@ -284,7 +287,7 @@ class _VisionHTTPClient:
 
 
 @pytest.mark.asyncio
-async def test_stream_vision_chat_completions_tokens_ignores_noise(
+async def test_stream_vision_chat_completions_tokens_ignores_control_lines_and_rejects_bad_data(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(vision_reader.settings, "VISION_LLM_API_KEY", "vision-key", raising=False)
@@ -301,7 +304,6 @@ async def test_stream_vision_chat_completions_tokens_ignores_noise(
             "",
             "event: ping",
             'data: {"choices":[{"delta":{"content":"Hello"}}]}',
-            "data: not-json",
             'data: {"choices":[{"delta":{"content":" world"}}]}',
             "data: [DONE]",
         ]
@@ -318,6 +320,14 @@ async def test_stream_vision_chat_completions_tokens_ignores_noise(
     assert chunks == ["Hello", " world"]
     assert client.calls[0]["method"] == "POST"
     assert client.calls[0]["url"] == "https://vision.example/v1/chat/completions"
+
+    bad_response = _VisionHTTPClient(["data: not-json"])
+    with pytest.raises(json.JSONDecodeError):
+        async for _token in vision_reader.stream_vision_chat_completions_tokens(
+            http_client=bad_response,
+            messages=[{"role": "user", "content": "hi"}],
+        ):
+            pytest.fail("malformed SSE data must fail before producing a token")
 
 
 @pytest.mark.asyncio

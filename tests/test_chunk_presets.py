@@ -109,24 +109,21 @@ class _ChunkPresetStore:
         self,
         *,
         db,
-        tenant_id: uuid.UUID,
-        preset_id: str,
+        preset: _Row,
         dataset_id: uuid.UUID | None,
         name: str,
         description: str | None,
         payload: dict,
     ):  # noqa: ANN001, ARG002
-        row = self.rows.get(preset_id)
-        if row is None:
-            return None
+        row = self.rows[str(preset.id)]
         row.dataset_id = dataset_id
         row.name = name
         row.description = description
         row.payload = payload
         return row
 
-    def delete_row(self, *, db, tenant_id: uuid.UUID, preset_id: str) -> bool:  # noqa: ANN001, ARG002
-        return self.rows.pop(preset_id, None) is not None
+    def delete_row(self, *, db, preset: _Row) -> None:  # noqa: ANN001, ARG002
+        del self.rows[str(preset.id)]
 
 
 def _build_chunk_presets_client(  # noqa: ANN202
@@ -177,11 +174,12 @@ def _build_chunk_presets_client(  # noqa: ANN202
         _assert_dataset_writable,
         raising=True,
     )
-    monkeypatch.setattr(chunk_presets_module, "_list_chunk_preset_rows", store.list_rows, raising=True)
-    monkeypatch.setattr(chunk_presets_module, "_get_chunk_preset_row", store.get_row, raising=True)
-    monkeypatch.setattr(chunk_presets_module, "_create_chunk_preset_row", store.create_row, raising=True)
-    monkeypatch.setattr(chunk_presets_module, "_update_chunk_preset_row", store.update_row, raising=True)
-    monkeypatch.setattr(chunk_presets_module, "_delete_chunk_preset_row", store.delete_row, raising=True)
+    service = chunk_presets_module.chunk_preset_service
+    monkeypatch.setattr(service, "list_chunk_presets", store.list_rows)
+    monkeypatch.setattr(service, "get_chunk_preset", store.get_row)
+    monkeypatch.setattr(service, "create_chunk_preset", store.create_row)
+    monkeypatch.setattr(service, "update_chunk_preset", store.update_row)
+    monkeypatch.setattr(service, "delete_chunk_preset", store.delete_row)
 
     _DummyDB.readable_dataset_ids = [uuid.UUID(key) for key, acl in dataset_access.items() if acl["readable"]]
 

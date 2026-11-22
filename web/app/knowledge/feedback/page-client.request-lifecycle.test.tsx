@@ -3,7 +3,7 @@ import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { setAccessToken, setAuthSession } from '@/lib/auth-storage'
+import { getAuthSessionKey, setAccessToken, setAuthSession } from '@/lib/auth-storage'
 import type { MessageFeedbackEnriched } from '@/types/feedback'
 
 const api = vi.hoisted(() => ({
@@ -141,7 +141,9 @@ describe('feedback reader request ownership', () => {
     await click(host, '创建回归用例')
     await act(async () => first.resolve({ id: 'case-A' }))
     expect(host.querySelector('a[title="用例 case-A"]')).toBeNull()
-    expect(button(host, '正在创建…').disabled).toBe(true)
+    const create = host.querySelector<HTMLButtonElement>('[data-feedback-reader] button[aria-busy="true"]')
+    expect(create?.textContent).toContain('创建回归用例')
+    expect(create?.disabled).toBe(true)
     expect(notices.success).not.toHaveBeenCalled()
     await act(async () => second.resolve({ id: 'case-B' }))
     expect(host.querySelector('a[title="用例 case-B"]')).not.toBeNull()
@@ -152,15 +154,16 @@ describe('feedback reader request ownership', () => {
     const { host } = renderPage()
     await ready(host)
     await click(host, '创建回归用例')
-    setAuthSession(session)
+    await act(async () => setAuthSession(session))
     await act(async () => first.resolve({ id: 'retired-case' }))
+    await ready(host)
     expect(host.querySelector('a[title="用例 retired-case"]')).toBeNull()
     expect(notices.success).not.toHaveBeenCalled()
     expect(button(host, '创建回归用例').disabled).toBe(false)
     const second = pending<{ id: string }>()
     api.toRegressionCase.mockReturnValueOnce(second.promise)
     await click(host, '创建回归用例')
-    setAccessToken({ access_token: 'refreshed', token_type: 'bearer', expires_in: 3600 })
+    await act(async () => setAccessToken({ access_token: 'refreshed', token_type: 'bearer', expires_in: 3600 }))
     await act(async () => second.resolve({ id: 'current-case' }))
     expect(host.querySelector('a[title="用例 current-case"]')).not.toBeNull()
   })
@@ -180,7 +183,7 @@ describe('feedback reader request ownership', () => {
       response.resolve(feedback('A'))
       await vi.waitFor(() => expect(api.listEnriched).toHaveBeenCalledTimes(count + 1))
     })
-    expect(client.getQueryState(['feedback-enriched'])?.status).toBe('success')
+    expect(client.getQueryState(['feedback-enriched', getAuthSessionKey()])?.status).toBe('success')
     expect(search.value).toBe('question-B')
     expect(host.querySelectorAll('[data-feedback-item]')).toHaveLength(1)
     expect(host.querySelector('[data-feedback-reader]')?.textContent).toContain('answer-B')

@@ -120,7 +120,7 @@ def test_manual_chunk_mutations_route_vector_ops_through_indexer_helpers(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from app.rag.ingestion.indexing import indexer as indexer_module
-    from app.rag.retrieval.recall import retriever as retriever_module
+    from app.rag.retrieval import corpus
 
     chunk_routes = importlib.import_module("app.api.v1.documents.chunks_write")
     chunk_operations = importlib.import_module("app.services.documents.chunks")
@@ -192,18 +192,10 @@ def test_manual_chunk_mutations_route_vector_ops_through_indexer_helpers(
         lambda *_a, **_k: existing_chunk,
         raising=True,
     )
-    retriever_cls = type(retriever_module.hybrid_retriever)
     monkeypatch.setattr(
-        retriever_cls,
-        "remove_from_bm25_index_by_metadata_filter",
-        lambda _self, **_kwargs: None,
-        raising=False,
-    )
-    monkeypatch.setattr(
-        retriever_cls,
-        "upsert_bm25_documents",
-        lambda _self, *_args, **_kwargs: None,
-        raising=False,
+        corpus,
+        "get_corpus_index",
+        lambda: SimpleNamespace(remove=lambda **_kwargs: None, upsert=lambda *_a, **_k: None),
     )
 
     create_db = _QueuedDB(
@@ -286,8 +278,8 @@ def test_manual_chunk_mutations_route_vector_ops_through_indexer_helpers(
         account_id=account_id,
         db=reembed_db,
     )
-    assert reembed_result["reembedded"] == 1
-    assert reembed_result["conflicts"] == []
+    assert reembed_result.reembedded == 1
+    assert reembed_result.conflicts == []
     assert [call["op"] for call in helper_calls] == ["delete", "upsert"]
     assert helper_calls[0]["metadata_filter"] == {"chunk_id": {"$eq": str(existing_chunk.id)}}
 
@@ -302,7 +294,7 @@ def test_delete_document_version_routes_vector_cleanup_through_indexer_helper(
     from app.models.documents.records import Document as DBDocument
     from app.models.documents.records import DocumentChunk
     from app.rag.ingestion.indexing import indexer as indexer_module
-    from app.rag.retrieval.recall import retriever as retriever_module
+    from app.rag.retrieval import corpus
 
     tenant_id = uuid.uuid4()
     dataset_id = uuid.uuid4()
@@ -376,12 +368,7 @@ def test_delete_document_version_routes_vector_cleanup_through_indexer_helper(
         document_versions, "assert_document_writable_for_lifecycle", lambda *_a, **_k: None, raising=True
     )
     monkeypatch.setattr(document_versions, "audit_log_event", lambda *_a, **_k: None, raising=True)
-    monkeypatch.setattr(
-        retriever_module.hybrid_retriever,
-        "remove_from_bm25_index_by_metadata_filter",
-        lambda **_kwargs: None,
-        raising=True,
-    )
+    monkeypatch.setattr(corpus, "get_corpus_index", lambda: SimpleNamespace(remove=lambda **_kwargs: None))
 
     response = document_versions.delete_document_version(
         document_id=document_id,

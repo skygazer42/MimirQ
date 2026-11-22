@@ -13,7 +13,7 @@ const ports = vi.hoisted(() => ({
   toast: { success: vi.fn(), error: vi.fn() },
 }))
 vi.mock('@/lib/api', () => ({
-  evaluationApi: { listRegressionCases: ports.list, deleteRegressionCase: ports.delete },
+  evaluationApi: { listRegressionCaseWindow: ports.list, deleteRegressionCase: ports.delete },
   ragApi: {},
 }))
 vi.mock('next-intl', () => ({ useTranslations: () => (key: string) => key }))
@@ -74,7 +74,7 @@ afterEach(() => {
 it('removes confirmed successes and retries only the failed cases from a batch', async () => {
   const cases = new Map(['a', 'b'].map((id) => [id, caseFixture(id)]))
   let blocked = true
-  ports.list.mockImplementation(async () => ({ total: cases.size, items: [...cases.values()] }))
+  ports.list.mockImplementation(async () => ({ total: cases.size, items: [...cases.values()], fullyLoaded: true }))
   ports.delete.mockImplementation(async (id: string) => {
     if (id === 'b' && blocked) throw new Error('Case b deletion failed')
     if (!cases.delete(id)) throw new Error('Case already deleted: 404')
@@ -96,7 +96,7 @@ it('removes confirmed successes and retries only the failed cases from a batch',
     container.remove()
   })
   await settle()
-  act(() => button('全选').click())
+  act(() => button('全选当前筛选结果').click())
   act(() => button('删除').click())
   const confirmation = document.querySelector('[role="alertdialog"]')
   if (confirmation === null) throw new Error('Expected the actual batch confirmation')
@@ -108,8 +108,8 @@ it('removes confirmed successes and retries only the failed cases from a batch',
   expect(document.querySelector('[role="alertdialog"]')).not.toBeNull()
   expect(document.body.textContent).not.toContain('Question a')
   expect(document.body.textContent).toContain('Question b')
-  expect(document.querySelector('[role="alert"]')?.textContent).toContain('失败')
-  expect(confirmation.textContent).toContain('将删除 1 个测试用例')
+  expect(document.querySelector('[role="alert"]')?.textContent).toContain('1 个未确认删除')
+  expect(confirmation.textContent).toContain('将删除已选的 1 个测试用例')
   expect(ports.toast.success).not.toHaveBeenCalled()
 
   blocked = false
@@ -131,6 +131,7 @@ it('does not report deletion success after its panel was unmounted', async () =>
   ports.list.mockResolvedValue({
     total: 1,
     items: [caseFixture('a')],
+    fullyLoaded: true,
   })
   ports.delete.mockReturnValue(pending)
   const container = document.createElement('div')
@@ -152,7 +153,9 @@ it('does not report deletion success after its panel was unmounted', async () =>
   await settle()
   act(() => button('Question a').click())
   expect(button('Question a').getAttribute('aria-pressed')).toBe('true')
-  act(() => document.querySelector<HTMLButtonElement>('button[title="删除"]')?.click())
+  const deleteButton = document.querySelector<HTMLButtonElement>('button[aria-label="删除测试用例"]')
+  expect(deleteButton).not.toBeNull()
+  act(() => deleteButton?.click())
   const confirmation = document.querySelector('[role="alertdialog"]')
   if (confirmation === null) throw new Error('Expected the case confirmation')
   act(() => button('删除', confirmation).click())

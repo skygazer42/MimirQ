@@ -5,8 +5,6 @@ API compatibility:
 - If TASK_QUEUE_ENABLED=false, callers can still use BackgroundTasks.
 """
 
-from __future__ import annotations
-
 import asyncio
 import logging
 import threading
@@ -22,7 +20,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger("tasks.queue")
 
 # arq is optional: when TASK_QUEUE_ENABLED=false, do not require arq.
-_queue: ArqRedis | None = None
+_queue: "ArqRedis | None" = None
 _queue_lock = asyncio.Lock()
 
 
@@ -40,7 +38,7 @@ def is_queue_initialized() -> bool:
     return _queue is not None
 
 
-def _redis_settings() -> RedisSettings:
+def _redis_settings() -> "RedisSettings":
     # arq RedisSettings supports full DSN.
     from arq.connections import RedisSettings
 
@@ -92,7 +90,7 @@ async def close_queue() -> None:
             logger.warning("Failed to close task queue: %s", str(exc)[:200])
 
 
-async def get_queue() -> ArqRedis | None:
+async def get_queue() -> "ArqRedis | None":
     """Get queue connection (lazy init)."""
     if not settings.TASK_QUEUE_ENABLED:
         return None
@@ -113,7 +111,7 @@ async def get_task_job_status(job_id: str) -> str | None:
     return status.value
 
 
-async def _resolve_job_handoff(job: Job | None, *, job_id: str | None) -> str:
+async def _resolve_job_handoff(job: "Job | None", *, job_id: str | None) -> str:
     if job is not None:
         return job.job_id
     if not job_id:
@@ -220,7 +218,7 @@ async def enqueue_document_processing(
 
     queue_name = settings.TASK_QUEUE_NAME
 
-    async def submit(candidate_id: str | None) -> Job | None:
+    async def submit(candidate_id: str | None) -> "Job | None":
         return await q.enqueue_job(
             "process_document_job",
             str(tenant_id),

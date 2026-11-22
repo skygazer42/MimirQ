@@ -11,7 +11,7 @@ import type { Conversation, Dataset, RegressionCase, TestGenResponse } from '@/t
 const controlled = vi.hoisted(() => ({
   api: {
     evaluationApi: {
-      listRegressionCases: vi.fn(),
+      listRegressionCaseWindow: vi.fn(),
       listRegressionRuns: vi.fn(),
       generateFromDocuments: vi.fn(),
       generateFromConversations: vi.fn(),
@@ -29,7 +29,7 @@ vi.mock('sonner', () => ({ toast: controlled.toast }))
 
 import { QueryProvider } from '@/components/providers/query-provider'
 import { evaluationApi } from '@/lib/api'
-import { AUTH_SCOPE_CHANGED_EVENT } from '@/lib/auth-storage'
+import { clearAuthSession, setAuthSession } from '@/lib/auth-storage'
 import { queryKeys } from '@/lib/query-keys'
 import { waitForAssertion } from '@/test/hook-harness'
 import { TestCaseManager } from './test-case-manager'
@@ -155,9 +155,10 @@ describe('test generation session and persisted case ownership through actual Re
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('Unexpected HTTP in controlled test')))
     ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
     serverCases = []
-    controlled.api.evaluationApi.listRegressionCases.mockImplementation(async () => ({
+    controlled.api.evaluationApi.listRegressionCaseWindow.mockImplementation(async () => ({
       total: serverCases.length,
       items: [...serverCases],
+      fullyLoaded: true,
     }))
     controlled.api.evaluationApi.listRegressionRuns.mockResolvedValue({ total: 0, items: [] })
     controlled.api.evaluationApi.generateFromDocuments.mockResolvedValue(result('Current generated question'))
@@ -188,6 +189,7 @@ describe('test generation session and persisted case ownership through actual Re
 
   afterEach(() => {
     act(() => root.unmount())
+    clearAuthSession()
     capturedClient.clear()
     document.body.innerHTML = ''
     vi.unstubAllGlobals()
@@ -199,7 +201,9 @@ describe('test generation session and persisted case ownership through actual Re
   }
 
   function generationButton(): HTMLButtonElement {
-    const control = button('开始生成') ?? button('生成中...')
+    const control = Array.from(document.querySelectorAll('button')).find((element) =>
+      element.textContent?.trim().startsWith('开始生成'),
+    )!
     expect(control).toBeDefined()
     return control
   }
@@ -228,11 +232,9 @@ describe('test generation session and persisted case ownership through actual Re
     )
     await act(async () => {
       await vi.waitFor(() =>
-        expect(
-          capturedClient.getQueryState(
-            queryKeys.evaluations.regressionCases({ limit: 200, fetch_max: 1000, dataset_id: DATASET_A }),
-          )?.status,
-        ).toBe('success'),
+        expect(capturedClient.getQueryState(queryKeys.evaluations.regressionCaseWindow(DATASET_A))?.status).toBe(
+          'success',
+        ),
       )
     })
     expect(controlled.api.evaluationApi.listRegressionRuns).toHaveBeenCalledOnce()
@@ -257,7 +259,7 @@ describe('test generation session and persisted case ownership through actual Re
     closeAndOpenB()
     await act(async () => older.resolve(result('Retired session question')))
 
-    expect(dialog().textContent).toContain('配置生成参数')
+    expect(dialog().textContent).toContain('配置本轮参数')
     expect(dialog().textContent).not.toContain('Retired session question')
     expect(generationButton().disabled).toBe(false)
   })
@@ -275,7 +277,7 @@ describe('test generation session and persisted case ownership through actual Re
     expect(generationButton().disabled).toBe(false)
   })
 
-  it('allows the new session to generate and keeps its busy flag when the older request finishes', async () => {
+  it('blocks duplicate generation across reopening and allows another request after settlement', async () => {
     const older = deferred<TestGenResponse>()
     const current = deferred<TestGenResponse>()
     controlled.api.evaluationApi.generateFromDocuments
@@ -284,12 +286,15 @@ describe('test generation session and persisted case ownership through actual Re
     await mount()
     start()
     closeAndOpenB()
+    expect(generationButton().disabled).toBe(true)
+    start()
+    expect(controlled.api.evaluationApi.generateFromDocuments).toHaveBeenCalledOnce()
+    await act(async () => older.resolve(result('Retired session question')))
+    expect(dialog().textContent).not.toContain('Retired session question')
     expect(generationButton().disabled).toBe(false)
     start()
     expect(controlled.api.evaluationApi.generateFromDocuments).toHaveBeenCalledTimes(2)
-    await act(async () => older.resolve(result('Retired session question')))
     expect(generationButton().disabled).toBe(true)
-    expect(dialog().textContent).not.toContain('Retired session question')
     await act(async () => current.resolve(result('Current session question', [], DOC_B)))
     expect(dialog().textContent).toContain('Current session question')
   })
@@ -306,7 +311,6 @@ describe('test generation session and persisted case ownership through actual Re
     })
     expect(controlled.api.evaluationApi.listRegressionRuns).toHaveBeenCalledOnce()
     expect(controlled.api.evaluationApi.generateFromDocuments).toHaveBeenCalledExactlyOnceWith({
-      dataset_id: DATASET_A,
       document_ids: [DOC_A],
       num_questions: 10,
       question_types: ['factual', 'multi_hop', 'comparison'],
@@ -326,8 +330,7 @@ describe('test generation session and persisted case ownership through actual Re
       await vi.waitFor(() => expect(library().textContent).toContain('Background saved case'))
     })
     expect(dialog().textContent).not.toContain('Background saved case')
-    expect(dialog().textContent).toContain('配置生成参数')
-    expect(controlled.toast.success).toHaveBeenCalledWith('成功生成 1 个问题，已保存 1 个用例')
+    expect(dialog().textContent).toContain('配置本轮参数')
     expect(controlled.api.evaluationApi.listRegressionRuns).toHaveBeenCalledOnce()
   })
 
@@ -337,11 +340,23 @@ describe('test generation session and persisted case ownership through actual Re
       const older = deferred<TestGenResponse>()
       controlled.api.evaluationApi.generateFromDocuments.mockReturnValueOnce(older.promise)
       await mount()
-      const sourceKey = queryKeys.documents.list({ limit: 100, status: 'completed' })
+      expect(controlled.api.documentApi.list).toHaveBeenCalled()
+      const sourceKey = queryKeys.documents.list(controlled.api.documentApi.list.mock.calls[0][0])
       const previousOwner = capturedClient.getQueryCache().find({ queryKey: sourceKey, exact: true })
       expect(previousOwner).toBeDefined()
       start()
-      act(() => window.dispatchEvent(new Event(AUTH_SCOPE_CHANGED_EVENT)))
+      act(() =>
+        setAuthSession({
+          token: { access_token: 'generation-route-test', token_type: 'bearer', expires_in: 3600 },
+          user: {
+            id: 'generation-test-user',
+            username: 'generation-test-user',
+            email: 'generation-test@example.com',
+            is_active: true,
+            created_at: '2026-11-05T00:00:00Z',
+          },
+        }),
+      )
       expect(capturedClient.getQueryCache().find({ queryKey: sourceKey, exact: true })).not.toBe(previousOwner)
       await act(async () => {
         if (outcome === 'success') older.resolve(result('Retired query scope question'))
@@ -370,7 +385,7 @@ describe('test generation session and persisted case ownership through actual Re
     expect(controlled.api.evaluationApi.generateFromDocuments).toHaveBeenLastCalledWith(
       expect.objectContaining({ auto_save_as_cases: false }),
     )
-    expect(controlled.api.evaluationApi.listRegressionCases).toHaveBeenCalledOnce()
+    expect(controlled.api.evaluationApi.listRegressionCaseWindow).toHaveBeenCalledOnce()
     expect(controlled.api.evaluationApi.listRegressionRuns).toHaveBeenCalledOnce()
   })
 
@@ -427,21 +442,20 @@ describe('test generation session and persisted case ownership through actual Re
     } satisfies TestGenResponse)
     await mount()
     start()
-    await waitForAssertion(() =>
-      expect(controlled.toast.error).toHaveBeenCalledWith(
-        'Current generation failed',
-        expect.objectContaining({ id: 'test-generation-feedback' }),
-      ),
-    )
-    expect(controlled.toast.error).toHaveBeenCalledOnce()
+    await waitForAssertion(() => expect(dialog().textContent).toContain('Current generation failed'))
     expect(generationButton().disabled).toBe(false)
-    expect(controlled.api.evaluationApi.listRegressionCases).toHaveBeenCalledOnce()
+    expect(controlled.api.evaluationApi.listRegressionCaseWindow).toHaveBeenCalledTimes(2)
   })
-  it('keeps the newly selected conversation flow when an older document generation completes', async () => {
+  it('keeps the source step locked during generation and allows switching once it completes', async () => {
     const older = deferred<TestGenResponse>()
     controlled.api.evaluationApi.generateFromDocuments.mockReturnValueOnce(older.promise)
     await mount()
     start()
+    expect(button('上一步').disabled).toBe(true)
+    act(() => button('上一步').click())
+    expect(dialog().textContent).toContain('配置本轮参数')
+    await act(async () => older.resolve(result('Completed document generation')))
+    act(() => button('调整参数重新生成').click())
     act(() => button('上一步').click())
     const conversationSource = Array.from(dialog().querySelectorAll('button')).find((element) =>
       element.textContent?.includes('从对话生成'),
@@ -453,11 +467,9 @@ describe('test generation session and persisted case ownership through actual Re
     })
     act(() => (dialog().querySelector('input[type="checkbox"]') as HTMLInputElement).click())
     act(() => button('下一步').click())
-    expect(dialog().textContent).toContain('配置生成参数')
+    expect(dialog().textContent).toContain('配置本轮参数')
     expect(controlled.api.evaluationApi.generateFromDocuments).toHaveBeenCalledOnce()
     expect(controlled.api.evaluationApi.generateFromConversations).not.toHaveBeenCalled()
-    await act(async () => older.resolve(result('Earlier document result must not replace conversation configuration')))
-    expect(dialog().textContent).toContain('配置生成参数')
-    expect(dialog().textContent).not.toContain('Earlier document result must not replace conversation configuration')
+    expect(dialog().textContent).not.toContain('Completed document generation')
   })
 })

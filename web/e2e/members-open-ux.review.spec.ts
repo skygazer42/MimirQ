@@ -70,12 +70,7 @@ test('independent open UX narrow entry', async ({ page }) => {
   await openMembers(page)
   await page.screenshot({ path: path.join(evidence, '07-narrow-entry.png'), animations: 'disabled' })
   fs.writeFileSync(path.join(evidence, 'narrow-entry-accessibility.txt'), await page.locator('body').ariaSnapshot())
-  console.log(
-    'NARROW_UNNAMED_HEADER_BUTTONS',
-    await page.locator('main').getByRole('button', { name: '', exact: true }).count(),
-  )
-  // The two unnamed header controls were identified from the observed 390px screenshot.
-  await page.locator('main').getByRole('button', { name: '', exact: true }).first().click()
+  await page.getByRole('button', { name: '角色说明', exact: true }).click()
   await expect(page.getByRole('dialog', { name: '角色说明', exact: true })).toBeVisible()
   await page.screenshot({ path: path.join(evidence, '08-narrow-role-help.png'), animations: 'disabled' })
   await page.keyboard.press('Escape')

@@ -62,7 +62,7 @@ function UsageOverview({ sessionKey }: Readonly<{ sessionKey: string }>) {
     cost,
     rows,
     attributionWindowDays,
-    hasAttributionSnapshot,
+    hasCompleteAttribution,
     quotas,
     quotaPending,
     rawQuota,
@@ -87,15 +87,16 @@ function UsageOverview({ sessionKey }: Readonly<{ sessionKey: string }>) {
     summarySnapshot !== undefined &&
     (costSnapshot.windowDays !== summarySnapshot.windowDays || resourceWindow !== displayedWindow)
   const updatedAt = windowSource?.receivedAt
+  const incompleteEmptyAttribution = rows.length === 0 && !hasCompleteAttribution
   const tableFailed =
     view === 'resources'
       ? costSnapshot === undefined && costQuery.isError
-      : !hasAttributionSnapshot && (summaryQuery.isError || costQuery.isError)
+      : incompleteEmptyAttribution && (summaryQuery.isError || costQuery.isError)
   const tablePending =
     !tableFailed &&
     (view === 'resources'
       ? costSnapshot === undefined && costQuery.isPending
-      : !hasAttributionSnapshot && (summaryQuery.isPending || costQuery.isPending))
+      : incompleteEmptyAttribution && (summaryQuery.isPending || costQuery.isPending))
 
   return (
     <AppFrame>

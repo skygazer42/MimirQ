@@ -12,9 +12,14 @@ async function emptyProfile(page: Page) {
   return state
 }
 
+async function openProfile(page: Page) {
+  await page.goto(datasetRoute('profile'), { waitUntil: 'domcontentloaded' })
+  await expect(page.getByRole('tablist', { name: '数据画像视图', exact: true })).toBeVisible({ timeout: 30_000 })
+}
+
 test('空库只显示入库引导，没有伪健康、更新时间和空图表', async ({ page }, testInfo) => {
   await emptyProfile(page)
-  await page.goto(datasetRoute('profile'))
+  await openProfile(page)
   await expect(page.getByRole('heading', { name: '先上传入库文档', exact: true })).toBeVisible()
   await expect(page.getByRole('button', { name: '深度扫描', exact: true })).toBeDisabled()
   await expect(page.getByRole('button', { name: '导出画像', exact: true })).toBeDisabled()
@@ -35,7 +40,7 @@ test('空库只显示入库引导，没有伪健康、更新时间和空图表',
 test('有文档无扫描显示首次扫描入口，不提前展示质检结论', async ({ page }) => {
   const state = await emptyProfile(page)
   state.profile.total_documents = 1
-  await page.goto(datasetRoute('profile'))
+  await openProfile(page)
   await expect(page.getByRole('heading', { name: '启动首次深度扫描', exact: true })).toBeVisible()
   await expect(page.getByRole('button', { name: '导出画像', exact: true })).toBeDisabled()
   await expect(page.getByRole('table', { name: '画像问题清单' })).toHaveCount(0)
@@ -53,7 +58,7 @@ test('重新进入时从历史恢复运行中扫描，不被摘要缓存误导',
     polls += 1
     await route.fulfill({ json: { ...running, progress: 60 } })
   })
-  await page.goto(datasetRoute('profile'))
+  await openProfile(page)
   await expect(page.getByRole('heading', { name: '扫描进行中', exact: true })).toBeVisible()
   await expect(page.getByRole('button', { name: '正在扫描（60%）', exact: true })).toBeDisabled()
   expect(polls).toBeGreaterThan(0)
@@ -66,7 +71,7 @@ test('首次扫描失败在引导区保留真实原因，不伪装成尚未就�
   state.scanRuns = [
     makeProfileScan(state.profile, { status: 'failed', summary: {}, error_message: '文档读取失败，请检查来源文件' }),
   ]
-  await page.goto(datasetRoute('profile'))
+  await openProfile(page)
   await expect(page.getByRole('heading', { name: '扫描失败', exact: true })).toBeVisible()
   await expect(page.getByText('文档读取失败，请检查来源文件', { exact: true })).toBeVisible()
   await expect(page.getByRole('button', { name: '导出画像', exact: true })).toBeDisabled()
@@ -77,7 +82,7 @@ test('已完成但尚未保存有效结果时仍禁止导出，刷新后可进�
   const state = await emptyProfile(page)
   state.profile.total_documents = 1
   state.scanRuns = [makeProfileScan(state.profile, { summary: {} })]
-  await page.goto(datasetRoute('profile'))
+  await openProfile(page)
   await expect(page.getByRole('heading', { name: '尚无可用扫描结果', exact: true })).toBeVisible()
   await expect(page.getByRole('button', { name: '导出画像', exact: true })).toBeDisabled()
   state.scanRuns = [makeProfileScan(state.profile)]
@@ -115,7 +120,7 @@ test('保留更早有效扫描，零命中不等于全部通过，空图使用�
     makeProfileScan(state.profile, { id: 'new-failed', status: 'failed', summary: {}, error_message: '扫描未完成' }),
     completed,
   ]
-  await page.goto(datasetRoute('profile'))
+  await openProfile(page)
   await expect(page.getByRole('button', { name: '导出画像', exact: true })).toBeEnabled()
   await expect(page.locator('[data-page-title-icon="dataset-profile"]')).toBeVisible()
   await expect(page.getByText('当前画像没有问题命中记录。', { exact: true })).toBeVisible()
@@ -141,7 +146,7 @@ test('导出入口统一，HTML 保持脱敏且不冒充固定历史快照', asy
     expect(new URL(route.request().url()).searchParams.get('redact')).toBe('true')
     await route.fulfill({ contentType: 'text/html', body: '<html><body>当前画像</body></html>' })
   })
-  await page.goto(datasetRoute('profile'))
+  await openProfile(page)
   await expect(page.getByRole('button', { name: '导出画像', exact: true })).toBeEnabled()
   await page.getByRole('tab', { name: '扫描历史', exact: true }).click()
   await expect(page.getByRole('table', { name: '数据集画像扫描运行记录' })).toContainText('已完成')
@@ -163,7 +168,7 @@ test('扫描记录读取失败不当作未扫描，手机空态可操作且无�
   const failedRead = page.waitForResponse(
     (response) => new URL(response.url()).pathname.endsWith('/profile/scan-runs') && response.status() === 503,
   )
-  await page.goto(datasetRoute('profile'))
+  await openProfile(page)
   await failedRead
   await expect(page.getByRole('alert').filter({ hasText: '扫描历史读取暂不可用' })).toBeVisible({ timeout: 30000 })
   await expect(page.getByRole('heading', { name: '启动首次深度扫描', exact: true })).toHaveCount(0)

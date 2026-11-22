@@ -1,5 +1,6 @@
 import logging
 from datetime import UTC, datetime
+from decimal import Decimal
 from typing import Any
 
 from app.infrastructure.hashing import stable_json_hash, stable_json_hmac
@@ -23,6 +24,17 @@ def _coerce_bool(value: Any) -> bool | None:
     if value is None:
         return None
     return bool(value)
+
+
+def _normalize_json_numbers(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {key: _normalize_json_numbers(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_normalize_json_numbers(item) for item in value]
+    if isinstance(value, float) and value.is_integer() and abs(value) < 1e21:
+        # JSON.stringify emits whole numbers below 1e21 in decimal notation.
+        return int(Decimal(str(value)))
+    return value
 
 
 def _sanitize_citation(citation: dict[str, Any]) -> dict[str, Any]:
@@ -63,7 +75,7 @@ def _sanitize_citation(citation: dict[str, Any]) -> dict[str, Any]:
         value = citation[key]
         if value is None:
             continue
-        out[key] = value
+        out[key] = _normalize_json_numbers(value)
     if "evidence_anchor_hash" not in out:
         anchor_payload = {
             "document_id": out.get("document_id"),
@@ -224,19 +236,20 @@ def build_evidence_capsule(
         query_debug=query_debug,
         request_context=request_context,
     )
+    payload = _normalize_json_numbers(payload)
     capsule_hash = stable_json_hash(payload, length=24)
     payload["capsule_hash"] = capsule_hash
-    try:
-        from app.infrastructure.config import settings  # noqa: WPS433
+    from app.infrastructure.config import settings  # noqa: WPS433
 
-        if settings.EVIDENCE_CAPSULE_SIGNING_ENABLED:
-            secret = str(settings.EVIDENCE_CAPSULE_SIGNING_SECRET).strip()
-            key_id = str(settings.EVIDENCE_CAPSULE_SIGNING_KEY_ID).strip() or "default"
-            sig = sign_evidence_capsule(payload, secret=secret, key_id=key_id)
-            if isinstance(sig, dict):
-                payload["signature"] = sig
-    except Exception as exc:
-        logger.debug("Ignoring evidence capsule signature attachment failure: %s", exc)
+    if settings.EVIDENCE_CAPSULE_SIGNING_ENABLED:
+        signature = sign_evidence_capsule(
+            payload,
+            secret=settings.EVIDENCE_CAPSULE_SIGNING_SECRET,
+            key_id=settings.EVIDENCE_CAPSULE_SIGNING_KEY_ID,
+        )
+        if signature is None:
+            raise ValueError("Evidence capsule signing is enabled but produced no signature")
+        payload["signature"] = signature
     return payload
 
 

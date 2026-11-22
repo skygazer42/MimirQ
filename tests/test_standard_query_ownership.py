@@ -17,10 +17,14 @@ def _runtime(**overrides):
     from app.rag.retrieval.planning.contracts import QueryPreparationOverrides
     from app.rag.retrieval.planning.options import QUERY_PLANNING_OPTION_KEYS, resolve_query_preparation_request
     from app.rag.retrieval.planning.routing import resolve_stream_query_routing
+    from app.rag.runtime.model_routing import LlmRoutingMixin
     from app.rag.runtime.streaming.state import StandardStreamState
 
+    class RuntimeEngine(LlmRoutingMixin, NoModuleCollaborators):
+        pass
+
     selected = FakeListChatModel(responses=['["alternate"]', "hypothesis", "broader", '["part query"]'])
-    engine = NoModuleCollaborators(
+    engine = RuntimeEngine(
         models={},
         multi_query_prompt=ChatPromptTemplate.from_template("{query} {n}"),
         hyde_prompt=ChatPromptTemplate.from_template("{query}"),
@@ -93,24 +97,19 @@ async def test_standard_query_phases_consume_actual_shared_owners_and_selected_m
 
 
 @pytest.mark.asyncio
-async def test_standard_query_results_are_not_copied_back_into_flat_runtime_fields(monkeypatch):
+async def test_standard_query_plan_retains_its_model_result_when_metrics_are_projected(monkeypatch):
     from app.infrastructure.config import settings
     from app.query import expand
     from app.rag.runtime.streaming import query as standard_stream_query
 
-    class QueryData(SimpleNamespace):
-        def __setattr__(self, name, value):
-            if name in {"alias_queries", "dict_expansions", "hyde_text", "step_back_query", "sub_questions"}:
-                raise AssertionError("copied owned query result into flat stream state: " + name)
-            super().__setattr__(name, value)
-
     monkeypatch.setattr(settings, "ENABLE_STEP_BACK_QUERY", False)
     monkeypatch.setattr(expand, "load_base_dictionary_rules", lambda: {})
     runtime = _runtime(enable_hyde=False, enable_query_decomposition=False)
-    runtime.data = QueryData(**vars(runtime.data))
     await standard_stream_query.prepare_query_plan(runtime)
     assert runtime.data.multi_query is runtime.data.query_plan.models.multi_query
-    assert runtime.data.multi_query.queries == ["alternate"]
+    assert runtime.data.multi_queries == ["alternate"]
+    runtime.data.multi_queries.append("metrics-only projection")
+    assert runtime.data.query_plan.models.multi_query.queries == ["alternate"]
 
 
 @pytest.mark.asyncio
@@ -177,7 +176,7 @@ async def test_stream_builds_the_actual_retriever_and_queries_from_the_plan(monk
 
 
 @pytest.mark.asyncio
-async def test_corrective_query_generation_uses_the_shared_owner_without_engine_generation_helpers(monkeypatch) -> None:
+async def test_corrective_query_generation_uses_the_selected_model_and_extends_retry_queries(monkeypatch) -> None:
     from app.infrastructure.config import settings
     from app.query import expand
     from app.rag.runtime.streaming import corrective as standard_stream_corrective
@@ -197,17 +196,17 @@ async def test_corrective_query_generation_uses_the_shared_owner_without_engine_
     runtime.data.corrective_second_enable_mq = True
     runtime.data.corrective_second_mq_count = 2
     runtime.data.score_threshold_used = 0.1
+    runtime.data.retrieval_queries_base = [("main", "base query")]
+    runtime.data.retriever_update = {}
     await standard_stream_corrective._prepare_retry_queries(runtime)
-    assert runtime.data.multi_query.queries == ["retry question"]
+    assert runtime.data.multi_queries == ["retry question"]
     assert runtime.data.retry_queries == [("main", "base query"), ("mq", "retry question")]
-    assert runtime.data.retry_model_query_outcome.failure is None
+    assert runtime.data.retry_mq_parse_meta["ok"] is True
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("response", ['["retry question"]', "[]"])
-async def test_correction_replaces_only_the_effective_query_result_and_keeps_the_plan(monkeypatch, response):
-    from dataclasses import replace
-
+async def test_correction_updates_only_effective_query_metrics_and_keeps_the_plan(monkeypatch, response):
     from app.infrastructure.config import settings
     from app.query import expand
     from app.rag.runtime.streaming import corrective as standard_stream_corrective
@@ -222,22 +221,26 @@ async def test_correction_replaces_only_the_effective_query_result_and_keeps_the
     runtime = _runtime(enable_multi_query=False, enable_hyde=False, enable_query_decomposition=False)
     await standard_stream_query.prepare_query_plan(runtime)
     original = runtime.data.query_plan.models.multi_query
-    previous = replace(original, elapsed_sec=2.0, model_used="previous", failure=TimeoutError("first attempt"))
-    runtime.data.multi_query = previous
+    previous = {"ok": False, "method": None, "error": "first attempt"}
+    runtime.data.multi_query_elapsed = 2.0
+    runtime.data.multi_query_model_used = "previous"
+    runtime.data.multi_query_parse_meta = previous
     runtime.data.llm = FakeListChatModel(responses=[response])
     monkeypatch.setattr(standard_stream_corrective, "hybrid_retriever", Retriever())
     runtime.data.corrective_second_profile = "recall50"
     runtime.data.corrective_second_enable_mq = True
     runtime.data.corrective_second_mq_count = 2
     runtime.data.score_threshold_used = 0.1
+    runtime.data.retrieval_queries_base = [("main", "base query")]
+    runtime.data.retriever_update = {}
     await standard_stream_corrective._prepare_retry_queries(runtime)
     assert runtime.data.query_plan.models.multi_query is original
     if response == "[]":
-        assert runtime.data.multi_query is previous
+        assert runtime.data.multi_query_parse_meta is previous
+        assert runtime.data.multi_queries == []
         assert runtime.data.retry_queries == [("main", "base query")]
     else:
-        assert runtime.data.multi_query is not previous
-        assert runtime.data.multi_query.queries == ["retry question"]
-        assert runtime.data.multi_query.elapsed_sec == 2.0
-        assert runtime.data.multi_query.model_used == "previous"
-        assert runtime.data.multi_query.failure is None
+        assert runtime.data.multi_queries == ["retry question"]
+        assert runtime.data.multi_query_elapsed >= 2.0
+        assert runtime.data.multi_query_model_used == "previous"
+        assert runtime.data.multi_query_parse_meta["ok"] is True

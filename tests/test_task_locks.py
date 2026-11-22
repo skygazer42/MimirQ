@@ -710,8 +710,9 @@ async def test_document_job_propagates_failed_processor_result(
 
     observed_processor_db: list[object] = []
 
-    async def _process(**_kwargs):  # noqa: ANN003, ANN202
-        observed_processor_db.append(_kwargs.get("db"))
+    async def _process(file_path, requested_document, requested_tenant, parser_backend, chunk_strategy, db=None):
+        assert requested_document == document_id and requested_tenant == tenant_id
+        observed_processor_db.append(db)
         return {"status": "failed", "reason": "retry_cleanup_deferred"}
 
     monkeypatch.setattr(jobs, "SessionLocal", lambda: db, raising=True)
@@ -778,8 +779,10 @@ async def test_document_job_downloads_generic_object_storage_source(
     async def _release(*_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
         return None
 
-    async def _process(**kwargs):  # noqa: ANN003, ANN202
-        processed.append(kwargs["file_path"])
+    async def _process(file_path, requested_document, requested_tenant, parser_backend, chunk_strategy, db=None):
+        assert requested_document == document_id and requested_tenant == tenant_id
+        assert file_path.read_bytes() == b"pdf-data"
+        processed.append(file_path)
         return {"status": "success"}
 
     monkeypatch.setattr(jobs, "SessionLocal", lambda: db, raising=True)

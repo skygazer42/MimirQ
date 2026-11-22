@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import re
 import time
 import warnings
@@ -480,7 +478,7 @@ class DeepDocParser:
             self._pdf_parser = LayoutPdfParser()
         return self._pdf_parser
 
-    def _ensure_docx_parser(self) -> DocxParser:
+    def _ensure_docx_parser(self) -> "DocxParser":
         if self._docx_parser is None:
             from app.rag.ingestion.parsing.parsers.docx_parser import DocxParser
 

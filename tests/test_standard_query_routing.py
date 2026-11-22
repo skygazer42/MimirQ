@@ -66,7 +66,7 @@ async def test_stream_must_recall_keeps_its_strict_contract_when_default_is_blan
     from app.rag.runtime.streaming import setup as standard_stream_setup
 
     monkeypatch.setattr(settings, "RETRIEVAL_CONTRACT_MODE", "")
-    runtime = _runtime(must_recall=True)
+    runtime = _runtime(must_recall=True, retrieval_contract_mode="must_recall_strict")
     await standard_stream_setup.route_query(runtime)
     assert runtime.data.retrieval_contract_mode_effective == "must_recall_strict"
     assert runtime.data.retrieval_contract_policy["must_recall_strict"] is True

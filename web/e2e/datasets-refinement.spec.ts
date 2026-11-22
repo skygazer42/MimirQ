@@ -204,7 +204,7 @@ test('基础信息不覆盖权限管线，可清空描述，已有部分成员�
   const categories = page
     .getByRole('dialog')
     .filter({ has: page.getByRole('heading', { name: '编辑分类', exact: true }) })
-  await categories.getByRole('button', { name: '生产文档', exact: true }).click()
+  await categories.getByRole('checkbox', { name: '生产文档', exact: true }).check()
   await categories.getByRole('button', { name: '保存', exact: true }).click()
   await expect(categories).toHaveCount(0)
   await expect(page.getByTestId('dataset-inspector').getByText('生产文档', { exact: true })).toBeVisible()

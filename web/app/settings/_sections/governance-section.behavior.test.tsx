@@ -152,7 +152,7 @@ describe('RTBF input and wire policy', () => {
       max_docs: 100,
       max_retries: 0,
     })
-    expect(api.members).toHaveBeenCalledWith({ limit: 500 })
+    expect(api.members).toHaveBeenCalledWith({ limit: 500 }, { signal: expect.any(AbortSignal) })
   })
 
   it('uses the authenticated account even when another member is marked current', async () => {
@@ -223,18 +223,20 @@ describe('RTBF input and wire policy', () => {
 })
 
 describe('RTBF result lifetime', () => {
-  it('preserves request inputs edited while a preview is pending', async () => {
+  it('blocks request edits and deletion mode while a preview is pending', async () => {
     const pending = deferred<ReturnType<typeof result>>()
     api.request.mockReturnValueOnce(pending.promise)
     const view = await mount()
     act(() => button(view.container, '开始安全预演').click())
     await waitForAssertion(() => expect(api.request).toHaveBeenCalledOnce())
     const manual = view.container.querySelector<HTMLInputElement>('input[placeholder^="例如 user-123"]')!
-    fill(manual, 'next-subject')
-    fill(input(view.container, '最多扫描文档'), '25')
-    fill(input(view.container, '失败重试'), '0')
-    act(() => button(view.container, '执行删除').click())
-    expect(button(view.container, '确认执行删除').disabled).toBe(true)
+    expect(manual.disabled).toBe(true)
+    expect(input(view.container, '最多扫描文档').disabled).toBe(true)
+    expect(input(view.container, '失败重试').disabled).toBe(true)
+    const deletion = button(view.container, '执行删除')
+    expect(deletion.disabled).toBe(true)
+    act(() => deletion.click())
+    expect(button(view.container, '开始安全预演').disabled).toBe(true)
     expect(api.request).toHaveBeenCalledExactlyOnceWith({
       subject_account_id: 'account-a',
       dry_run: true,
@@ -242,11 +244,11 @@ describe('RTBF result lifetime', () => {
       max_retries: 1,
     })
     await act(async () => pending.resolve(result()))
-    await waitForAssertion(() => expect(button(view.container, '确认执行删除').disabled).toBe(false))
+    await waitForAssertion(() => expect(button(view.container, '开始安全预演').disabled).toBe(false))
 
-    expect(manual.value).toBe('next-subject')
-    expect(input(view.container, '最多扫描文档').value).toBe('25')
-    expect(input(view.container, '失败重试').value).toBe('0')
+    expect(manual.disabled).toBe(false)
+    expect(input(view.container, '最多扫描文档').value).toBe('100')
+    expect(input(view.container, '失败重试').value).toBe('1')
     expect(notices.success).toHaveBeenCalledWith('RTBF 安全预演完成')
     expect(view.container.querySelector('[data-testid="rtbf-result-summary"]')?.textContent).toContain('安全预演完成')
   })

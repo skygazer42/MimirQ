@@ -40,9 +40,10 @@ vi.mock('@/hooks/use-auth', () => ({
     isAuthenticated: authState.isAuthenticated,
   }),
 }))
-vi.mock('@/lib/auth-storage', () => ({
-  AUTH_SCOPE_CHANGED_EVENT: 'mimirq:auth-scope-changed',
+vi.mock('@/lib/auth-storage', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/auth-storage')>()),
   getAuthSessionRevision: () => authState.revision,
+  getAuthSessionKey: () => String(authState.revision),
   getAccessToken: () => (authState.isAuthenticated ? 'controlled-access-token' : null),
 }))
 vi.mock('@/hooks/use-backend-meta', () => ({

@@ -35,10 +35,16 @@ class _GeneratedText:
     failure: Exception | None = None
 
 
+def _require_model_text(value: object) -> str:
+    if not isinstance(value, str):
+        raise QueryModelOutputError("Query strategy must return text")
+    return value
+
+
 def _invoke_text(model: TextQueryModel, *, query: str, operation: str) -> _GeneratedText:
     started = time.perf_counter()
     try:
-        text = model.invoke(query=query)
+        text = _require_model_text(model.invoke(query=query))
         return _GeneratedText(text, time.perf_counter() - started, model.model_name)
     except Exception as exc:
         _log_orchestrator_fallback(operation, exc)
@@ -48,7 +54,7 @@ def _invoke_text(model: TextQueryModel, *, query: str, operation: str) -> _Gener
 async def _ainvoke_text(model: AsyncTextQueryModel, *, query: str, operation: str) -> _GeneratedText:
     started = time.perf_counter()
     try:
-        text = await model.ainvoke(query=query)
+        text = _require_model_text(await model.ainvoke(query=query))
         return _GeneratedText(text, time.perf_counter() - started, model.model_name)
     except Exception as exc:
         _log_orchestrator_fallback(operation, exc)

@@ -46,6 +46,10 @@ UNKNOWN_ERROR = "Unknown error"
 MINERU_FALLBACK_LOG_MESSAGE = "Ignoring non-critical MinerU fallback failure: %s"
 
 
+class MinerUOnlineUnavailableError(RuntimeError):
+    """The online MinerU API is disabled, unconfigured, or rejecting its credentials."""
+
+
 def _normalize_local_backend(value: Any) -> str:
     backend = str(value or "pipeline").strip().lower().replace("_", "-")
     aliases = {
@@ -199,7 +203,7 @@ def _normalize_batch_state_counters(extract_result: list[Any]) -> tuple[int, int
                 if err:
                     first_error = err
             continue
-        if state == "running":
+        if state in {"running", "converting"}:
             running_files += 1
     return completed_files, failed_files, running_files, first_error
 
@@ -414,11 +418,11 @@ class MinerUService:
     def _ensure_online_enabled(self) -> None:
         self._refresh_config()
         if not bool(settings.MINERU_ENABLED):
-            raise RuntimeError("MinerU is disabled. Set MINERU_ENABLED=true to enable.")
+            raise MinerUOnlineUnavailableError("MinerU is disabled. Set MINERU_ENABLED=true to enable.")
         if not self.api_token:
-            raise RuntimeError("MinerU online API requires MINERU_API_TOKEN.")
+            raise MinerUOnlineUnavailableError("MinerU online API requires MINERU_API_TOKEN.")
         if self._token_exp is not None and self._token_exp <= int(time.time()):
-            raise RuntimeError(
+            raise MinerUOnlineUnavailableError(
                 f"MINERU_API_TOKEN expired at {format_unix_ts_utc(self._token_exp)}. Please refresh token."
             )
 
@@ -456,9 +460,9 @@ class MinerUService:
         try:
             resp = await pool.request_with_retry(method, url, headers=headers, timeout=30.0, **kwargs)
         except httpx.HTTPStatusError as exc:
-            status = int(exc.response.status_code or 0)
+            status = exc.response.status_code
             if status in {401, 403}:
-                raise RuntimeError(self._format_auth_error(status)) from exc
+                raise MinerUOnlineUnavailableError(self._format_auth_error(status)) from exc
             raise RuntimeError(f"MinerU API request failed (HTTP {status}): {str(exc)[:200]}") from exc
         except httpx.HTTPError as exc:
             raise RuntimeError(f"MinerU API request failed: {str(exc)[:200]}") from exc

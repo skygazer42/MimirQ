@@ -12,8 +12,6 @@ Scope:
 - Best-effort PDF watermark annotation stripping (cheap path) before model-based removal.
 """
 
-from __future__ import annotations
-
 import logging
 import time
 from contextlib import closing
@@ -94,7 +92,7 @@ def _run_handwriting_cleanup_stage(
     artifact_root: Path,
     output_stem: str,
     warnings: list[str],
-) -> tuple[Path, bool, ImagePreprocessStepLog, dict[str, Any] | None]:
+) -> "tuple[Path, bool, ImagePreprocessStepLog, dict[str, Any] | None]":
     t0 = time.perf_counter()
     if not settings.HANDWRITING_CLEANUP_ENABLED:
         return (
@@ -142,7 +140,7 @@ def _run_paddle_doc_preprocess_stage(
     artifact_root: Path,
     output_stem: str,
     warnings: list[str],
-) -> tuple[Path, bool, ImagePreprocessStepLog, dict[str, Any] | None]:
+) -> "tuple[Path, bool, ImagePreprocessStepLog, dict[str, Any] | None]":
     t0 = time.perf_counter()
     if not settings.PADDLE_OCR_PREPROCESS_ENABLED:
         return (

@@ -71,6 +71,22 @@ test('keeps Unicode source positions and actual chunk selection aligned through 
   page,
 }, testInfo) => {
   await page.setViewportSize({ width: 1440, height: 900 })
+  await page.addInitScript(() => {
+    const NativeWorker = globalThis.Worker
+    globalThis.Worker = class extends NativeWorker {
+      constructor(url: string | URL, options?: WorkerOptions) {
+        super(url, options)
+        if (options?.name !== 'pdf-preview') return
+        this.addEventListener(
+          'message',
+          () => {
+            document.documentElement.dataset.pdfPreviewWorkerResponded = 'true'
+          },
+          { once: true },
+        )
+      }
+    }
+  })
   const workerUrls: string[] = []
   const workerWarnings: string[] = []
   page.on('worker', (worker) => workerUrls.push(worker.url()))
@@ -96,7 +112,8 @@ test('keeps Unicode source positions and actual chunk selection aligned through 
   await firstBox.press('Enter')
   await expect.poll(() => new URL(page.url()).searchParams.get('chunk')).toBe('1')
   await expect(firstBox).toHaveAttribute('data-bbox-overlay-active', 'true')
-  expect(workerUrls.some((url) => url.includes('pdf-preview'))).toBe(true)
+  await expect(page.locator('html')).toHaveAttribute('data-pdf-preview-worker-responded', 'true')
+  expect(workerWarnings).toEqual([])
   await testInfo.attach('actual-worker-observations', {
     body: JSON.stringify({ workerUrls, workerWarnings }),
     contentType: 'application/json',
@@ -116,11 +133,12 @@ test('keeps real PDF pages and chunk overlays after a native worker module fails
       private failureUrl: string | null
 
       constructor(url: string | URL, options?: WorkerOptions) {
-        const failureUrl = String(url).includes('pdf-preview')
-          ? URL.createObjectURL(
-              new Blob(['throw new Error("forced PDF worker module failure")'], { type: 'text/javascript' }),
-            )
-          : null
+        const failureUrl =
+          options?.name === 'pdf-preview'
+            ? URL.createObjectURL(
+                new Blob(['throw new Error("forced PDF worker module failure")'], { type: 'text/javascript' }),
+              )
+            : null
         super(failureUrl === null ? url : failureUrl, options)
         this.failureUrl = failureUrl
         if (failureUrl !== null) {

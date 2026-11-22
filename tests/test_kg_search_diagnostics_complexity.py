@@ -1,136 +1,11 @@
 import asyncio
-import importlib.util
-import sys
-from enum import Enum
-from pathlib import Path
-from types import ModuleType, SimpleNamespace
+from types import SimpleNamespace
 from typing import Any
 from uuid import uuid4
 
 import pytest
 
-MODULE_PATH = Path(__file__).resolve().parents[1] / "app/rag/evaluation/benchmarks/kg_search_diagnostics.py"
-
-
-class _SimpleModel:
-    def __init__(self, **kwargs: Any) -> None:
-        self.__dict__.update(kwargs)
-
-
-class _RerankStrategy(str, Enum):
-    PAGERANK = "pagerank"
-    RRF = "rrf"
-
-
-class _SearchConfig:
-    def __init__(self, **kwargs: Any) -> None:
-        self.__dict__.update(kwargs)
-        self.rerank = SimpleNamespace(strategy=_RerankStrategy.PAGERANK, max_results=0)
-        self.expand = SimpleNamespace(enabled=True, max_hops=2)
-
-
-def _compute_kg_hit_metrics(*, events: list[dict[str, Any]], evidence_chunk_ids: set[str], k: int) -> dict[str, Any]:
-    evidence = {str(value).strip() for value in evidence_chunk_ids}
-    matches = [
-        index for index, event in enumerate(events or [], 1) if str(event.get("chunk_id") or "").strip() in evidence
-    ]
-    first_hit = matches[0] if matches else None
-    matched = {
-        str(event.get("chunk_id") or "").strip()
-        for event in events or []
-        if str(event.get("chunk_id") or "").strip() in evidence
-    }
-    return {
-        "hit_at_k": bool(first_hit is not None and first_hit <= k),
-        "mrr": (1.0 / first_hit) if first_hit else 0.0,
-        "recall": (len(matched) / len(evidence)) if evidence else 0.0,
-        "ndcg": (1.0 / first_hit) if first_hit else 0.0,
-        "map": (1.0 / first_hit) if first_hit else 0.0,
-        "matched_evidence_chunks": len(matched),
-        "total_evidence_chunks": len(evidence),
-        "k": k,
-    }
-
-
-def _install_module(monkeypatch: pytest.MonkeyPatch) -> ModuleType:
-    def add_module(name: str, **attrs: Any) -> ModuleType:
-        module = ModuleType(name)
-        for key, value in attrs.items():
-            setattr(module, key, value)
-        if "." not in name:
-            module.__path__ = []  # type: ignore[attr-defined]
-        monkeypatch.setitem(sys.modules, name, module)
-        return module
-
-    for package_name in [
-        "app",
-        "app.api",
-        "app.api.schemas",
-        "app.infrastructure",
-        "app.models",
-        "app.rag",
-        "app.rag.evaluation",
-        "app.rag.kg",
-        "app.rag.kg.search",
-        "app.services",
-    ]:
-        pkg = add_module(package_name)
-        pkg.__path__ = []  # type: ignore[attr-defined]
-
-    add_module(
-        "app.api.schemas.evaluation.diagnostics",
-        KGEvalAttribution=_SimpleModel,
-        KGHardcaseOut=_SimpleModel,
-        KGSearchDiagnosticsItem=_SimpleModel,
-        KGSearchDiagnosticsRequest=_SimpleModel,
-        KGSearchDiagnosticsResponse=_SimpleModel,
-        KGSearchDiagnosticsSummary=_SimpleModel,
-        KGSearchEntityOut=_SimpleModel,
-        KGSearchEventOut=_SimpleModel,
-        KGSearchRunMetrics=_SimpleModel,
-        KGSearchRunResult=_SimpleModel,
-    )
-    add_module("app.infrastructure.config", settings=SimpleNamespace(KG_EXTRACT_MAX_CONCURRENCY=3))
-    add_module(
-        "app.models.documents.records", Document=type("Document", (), {}), DocumentChunk=type("DocumentChunk", (), {})
-    )
-    add_module("app.models.evaluation.results", RagasRegressionCase=type("RagasRegressionCase", (), {}))
-    add_module(
-        "app.rag.evaluation.generation.kg_hardcase_deterministic",
-        generate_hardcases_deterministic=lambda **_kwargs: [],
-    )
-    add_module(
-        "app.rag.evaluation.generation.kg_hardcase_generator",
-        generate_hardcases_llm=lambda **_kwargs: [],
-    )
-    add_module(
-        "app.rag.evaluation.benchmarks.kg_search_diagnostics_metrics",
-        compute_kg_hit_metrics=_compute_kg_hit_metrics,
-    )
-    add_module(
-        "app.models.knowledge_graph.entities",
-        KgEntity=type("KgEntity", (), {}),
-        KgEventEntity=type("KgEventEntity", (), {}),
-        KgRelation=type("KgRelation", (), {}),
-        KgSourceEvent=type("KgSourceEvent", (), {}),
-    )
-    add_module(
-        "app.rag.kg.search.config",
-        RerankStrategy=_RerankStrategy,
-        SearchConfig=_SearchConfig,
-    )
-    add_module("app.rag.kg.search.searcher", search=None)
-    add_module(
-        "app.services.evaluation.run_scope",
-        validate_case_ids_belong_to_dataset=lambda **_kwargs: None,
-    )
-
-    spec = importlib.util.spec_from_file_location("tests.kg_search_diagnostics_module", MODULE_PATH)
-    assert spec and spec.loader
-    module = importlib.util.module_from_spec(spec)
-    monkeypatch.setitem(sys.modules, spec.name, module)
-    spec.loader.exec_module(module)  # type: ignore[union-attr]
-    return module
+from app.rag.evaluation.benchmarks import kg_search_diagnostics as diagnostics
 
 
 class _FakeField:
@@ -220,8 +95,7 @@ def _event(chunk_id: Any, *, title: str = "event") -> dict[str, Any]:
 
 
 def test_load_cases_validates_case_acl_and_preserves_updated_order(monkeypatch: pytest.MonkeyPatch) -> None:
-    module = _install_module(monkeypatch)
-    module.RagasRegressionCase = type(
+    case_model = type(
         "FakeCaseModel",
         (),
         {
@@ -231,6 +105,7 @@ def test_load_cases_validates_case_acl_and_preserves_updated_order(monkeypatch: 
             "updated_at": _FakeField("updated_at"),
         },
     )
+    monkeypatch.setattr(diagnostics, "RagasRegressionCase", case_model)
 
     tenant_id = uuid4()
     dataset_id = uuid4()
@@ -239,9 +114,11 @@ def test_load_cases_validates_case_acl_and_preserves_updated_order(monkeypatch: 
     case_other = SimpleNamespace(id=uuid4(), tenant_id=tenant_id, dataset_id=uuid4(), updated_at=9)
     db = _CaseDB([case_old, case_new, case_other])
     validate_calls: list[dict[str, Any]] = []
-    monkeypatch.setattr(module, "validate_case_ids_belong_to_dataset", lambda **kwargs: validate_calls.append(kwargs))
+    monkeypatch.setattr(
+        diagnostics, "validate_case_ids_belong_to_dataset", lambda **kwargs: validate_calls.append(kwargs)
+    )
 
-    total, cases = module._load_cases(
+    total, cases = diagnostics._load_cases(
         db,
         tenant_id=tenant_id,
         dataset_id=dataset_id,
@@ -261,7 +138,6 @@ def test_load_cases_validates_case_acl_and_preserves_updated_order(monkeypatch: 
 def test_run_kg_search_diagnostics_deterministic_scope_order_and_schema(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    module = _install_module(monkeypatch)
     dataset_id = uuid4()
     scoped_doc_id = uuid4()
     chunk_hit = uuid4()
@@ -290,27 +166,27 @@ def test_run_kg_search_diagnostics_deterministic_scope_order_and_schema(
         {"events": [_event(chunk_miss, title="hardcase hit")], "entities": [], "clues": [], "stats": {}},
     ]
     fake_searcher = _FakeSearcher(responses)
-    monkeypatch.setattr(module, "search_kg", fake_searcher.search)
-    monkeypatch.setattr(module, "_load_cases", lambda *_a, **_k: (2, [case_scoped, case_failed]))
+    monkeypatch.setattr(diagnostics, "search_kg", fake_searcher.search)
+    monkeypatch.setattr(diagnostics, "_load_cases", lambda *_a, **_k: (2, [case_scoped, case_failed]))
     monkeypatch.setattr(
-        module,
+        diagnostics,
         "_resolve_ground_truth_event_ids",
         lambda _db, **kwargs: ["gt"] if str(chunk_miss) in kwargs["evidence_chunk_ids"] else ["gt-hit"],
     )
-    monkeypatch.setattr(module, "_ground_truth_has_skill", lambda *_a, **_k: False)
+    monkeypatch.setattr(diagnostics, "_ground_truth_has_skill", lambda *_a, **_k: False)
     monkeypatch.setattr(
-        module,
+        diagnostics,
         "_deterministic_hardcase_candidates",
         lambda *_a, **_k: ([("a", "b")], ["skill"], ["tag"]),
     )
     monkeypatch.setattr(
-        module,
+        diagnostics,
         "generate_hardcases_deterministic",
         lambda **_kwargs: [SimpleNamespace(kind="knowledge_pressure", question="hardcase q", rationale="why")],
     )
 
     response = asyncio.run(
-        module.run_kg_search_diagnostics(
+        diagnostics.run_kg_search_diagnostics(
             db=SimpleNamespace(rollback=lambda: None),
             tenant_id=uuid4(),
             account_id="acct",
@@ -343,7 +219,6 @@ def test_run_kg_search_diagnostics_deterministic_scope_order_and_schema(
 def test_run_kg_search_diagnostics_preflight_and_llm_hardcases(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    module = _install_module(monkeypatch)
     dataset_id = uuid4()
     doc_ok = uuid4()
     doc_fail = uuid4()
@@ -398,29 +273,34 @@ def test_run_kg_search_diagnostics_preflight_and_llm_hardcases(
         },
     ]
     fake_searcher = _FakeSearcher(responses)
-    monkeypatch.setattr(module, "search_kg", fake_searcher.search)
-    monkeypatch.setattr(module, "_load_cases", lambda *_a, **_k: (1, [case]))
-    monkeypatch.setattr(module, "_resolve_ground_truth_event_ids", lambda *_a, **_k: ["gt"])
-    monkeypatch.setattr(module, "_ground_truth_has_skill", lambda *_a, **_k: False)
-    monkeypatch.setattr(module, "_load_missing_kg_document_ids", lambda *_a, **_k: [doc_ok, doc_fail])
+    monkeypatch.setattr(diagnostics, "search_kg", fake_searcher.search)
+    monkeypatch.setattr(diagnostics, "_load_cases", lambda *_a, **_k: (1, [case]))
+    monkeypatch.setattr(diagnostics, "_resolve_ground_truth_event_ids", lambda *_a, **_k: ["gt"])
+    monkeypatch.setattr(diagnostics, "_ground_truth_has_skill", lambda *_a, **_k: False)
+    monkeypatch.setattr(diagnostics, "_load_missing_kg_document_ids", lambda *_a, **_k: [doc_ok, doc_fail])
 
     async def fake_extract(**kwargs: Any) -> tuple[bool, str | None, int]:
         if kwargs["document_id"] == doc_ok:
             return True, None, 2
         return False, "boom", 0
 
+    close_calls = []
+
+    async def close_llm_client() -> None:
+        close_calls.append(True)
+
     async def fake_llm_client() -> object:
-        return object()
+        return SimpleNamespace(aclose=close_llm_client)
 
     async def fake_llm_hardcases(**_kwargs: Any) -> list[Any]:
         return [SimpleNamespace(kind="reasoning_pressure", question="llm hardcase", rationale="because")]
 
-    monkeypatch.setattr(module, "_ensure_kg_extracted_for_document", fake_extract)
-    monkeypatch.setattr(module, "_load_kg_diagnostics_llm_client", fake_llm_client)
-    monkeypatch.setattr(module, "generate_hardcases_llm", fake_llm_hardcases)
+    monkeypatch.setattr(diagnostics, "_ensure_kg_extracted_for_document", fake_extract)
+    monkeypatch.setattr(diagnostics, "_load_kg_diagnostics_llm_client", fake_llm_client)
+    monkeypatch.setattr(diagnostics, "generate_hardcases_llm", fake_llm_hardcases)
 
     response = asyncio.run(
-        module.run_kg_search_diagnostics(
+        diagnostics.run_kg_search_diagnostics(
             db=db,
             tenant_id=uuid4(),
             account_id="acct",
@@ -449,3 +329,4 @@ def test_run_kg_search_diagnostics_preflight_and_llm_hardcases(
     assert response.items[0].attribution.primary_cause == "relation"
     assert response.summary.hardcases_generated == 1
     assert response.items[0].hardcases[0].run.metrics.hit_at_k is True
+    assert close_calls == [True]

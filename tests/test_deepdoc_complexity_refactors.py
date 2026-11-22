@@ -265,7 +265,7 @@ def test_docx_table_composition_preserves_wide_and_narrow_return_shapes() -> Non
 
 
 def test_figure_enrichment_keeps_non_image_tables_without_loading_vision(monkeypatch):
-    monkeypatch.setattr(figure_parser, "_load_vision_runtime", lambda _callback: pytest.fail("unexpected runtime load"))
+    monkeypatch.setattr(figure_parser, "_load_vision_runtime", lambda: pytest.fail("unexpected runtime load"))
     tables = [("plain text", ["caption"])]
     assert figure_parser.enrich_figures(tables) is tables
 
@@ -295,7 +295,7 @@ def test_figure_enrichment_closes_client_on_success_fallback_and_unexpected_erro
         def __init__(self, *_args):
             raise RuntimeError("unexpected failure")
 
-    monkeypatch.setattr(figure_parser, "_load_vision_runtime", lambda _callback: Client)
+    monkeypatch.setattr(figure_parser, "_load_vision_runtime", lambda: Client)
     with Image.new("RGB", (4, 4), "white") as image:
         tables = [((image, ["caption"]), [])]
         monkeypatch.setattr(figure_parser, "VisionFigureParser", SuccessfulParser)

@@ -140,19 +140,13 @@ def test_minio_delete_images_uses_batch_remove_objects_and_surfaces_aggregated_f
     )
 
 
-def test_dataset_scoped_vector_collections_stream_chunk_metadata_fields(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_dataset_scoped_vector_collections_stream_chunk_metadata_fields(monkeypatch: pytest.MonkeyPatch) -> None:
     from app.rag.ingestion.indexing import indexer
-    from app.services.datasets.embedding_config import DatasetEmbeddingRuntimeConfig
 
+    monkeypatch.setattr(indexer.settings, "MILVUS_COLLECTION_NAME", "documents")
     tenant_id = uuid4()
     document_id = uuid4()
     query_args: list[object] = []
-
-    class _Row:
-        def __init__(self, **mapping: object) -> None:
-            self._mapping = mapping
 
     class _Query:
         def __init__(self) -> None:
@@ -168,16 +162,8 @@ def test_dataset_scoped_vector_collections_stream_chunk_metadata_fields(
         def __iter__(self):
             return iter(
                 [
-                    _Row(
-                        vector_collection_name="",
-                        embedding_space_hash="space-a",
-                        dataset_scoped="true",
-                    ),
-                    _Row(
-                        vector_collection_name="documents_emb_oldbase_space_b",
-                        embedding_space_hash="space-b",
-                        dataset_scoped=True,
-                    ),
+                    ("", "space-a"),
+                    ("documents_emb_oldbase_space_b", "space-b"),
                 ]
             )
 
@@ -186,30 +172,15 @@ def test_dataset_scoped_vector_collections_stream_chunk_metadata_fields(
 
     query = _Query()
 
-    monkeypatch.setattr(
-        indexer,
-        "resolve_dataset_embedding_runtime",
-        lambda _meta: DatasetEmbeddingRuntimeConfig(
-            provider="local",
-            model="model-default",
-            api_base="",
-            api_key="",
-            embedding_space_hash="space-default",
-            collection_name="documents",
-            dataset_scoped=False,
-        ),
-    )
-
     service = object.__new__(indexer.Indexer)
     service._db = SimpleNamespace(query=lambda *args: query_args.extend(args) or query)
 
     collections = service._dataset_scoped_vector_collections_for_document(
         tenant_id=tenant_id,
         document_id=document_id,
-        assume_dataset_scoped=False,
     )
 
-    assert len(query_args) == 3
+    assert [column.key for column in query_args] == ["vector_collection_name", "embedding_space_hash"]
     assert query.batch_size == indexer._CHUNK_METADATA_SCAN_BATCH_SIZE
     assert collections == ["documents_emb_oldbase_space_b", "documents_emb_space_a"]
 

@@ -8,14 +8,15 @@ import { PAGE_TITLE_ICON_NAMES, PageTitleIcon } from './page-title-icon'
 
 describe('PageTitleIcon vector coverage', () => {
   it('renders every existing title name as a decorative, theme-colored vector', () => {
-    expect(PAGE_TITLE_ICON_NAMES).toHaveLength(29)
+    const iconDirectory = path.resolve(__dirname, '../../public/page-title-icons')
+    const svgNames = fs.readdirSync(iconDirectory).filter((file) => file.endsWith('.svg')).map((file) => path.basename(file, '.svg'))
+    expect([...PAGE_TITLE_ICON_NAMES].sort()).toEqual(svgNames.sort())
     for (const name of PAGE_TITLE_ICON_NAMES) {
       const rendered = renderToStaticMarkup(createElement(PageTitleIcon, { name }))
       expect(rendered, name).toContain('<svg')
       expect(rendered, name).toContain('aria-hidden="true"')
       expect(rendered, name).toContain('stroke="currentColor"')
       expect(rendered, name).not.toMatch(/<img|<image|filter=/)
-      expect(fs.existsSync(path.resolve(__dirname, '../../public/page-title-icons', name + '.svg'))).toBe(true)
     }
   })
 })

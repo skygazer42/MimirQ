@@ -50,7 +50,7 @@ def test_rerank_cache_distinguishes_empty_and_absent_corpus_tokens() -> None:
     parameters = {
         "tenant_id": "tenant-1",
         "account_id": "account-1",
-        "provider": "colbert",
+        "provider": "openai",
         "top_n": 3,
         "query": "policy",
         "candidates_fingerprint": "candidates-1",

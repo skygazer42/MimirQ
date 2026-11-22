@@ -94,7 +94,7 @@ def test_update_settings_preserves_write_apply_and_reset_order(monkeypatch: pyte
     )
     monkeypatch.setitem(sys.modules, "app.rag.runtime.engine", SimpleNamespace(reset_rag_engine=_reset_rag_engine))
 
-    result = settings_api.update_settings(
+    response = settings_api.update_settings(
         settings_api.UpdateSettingsRequest(
             llm=settings_api.LLMConfig(
                 api_key="llm-secret",
@@ -111,6 +111,7 @@ def test_update_settings_preserves_write_apply_and_reset_order(monkeypatch: pyte
         db=db,
     )
 
+    result = response.model_dump()
     assert result == {
         "success": True,
         "message": "配置已保存，大多数修改会影响后续请求；外部解析器仍需对应服务已启动。",
@@ -153,7 +154,7 @@ def test_get_system_status_reports_parser_health_branches(monkeypatch: pytest.Mo
 
     class _Session:
         def execute(self, query):
-            assert query == "SELECT 1"
+            assert str(query) == "SELECT 1"
 
         def close(self):
             pass
@@ -165,7 +166,8 @@ def test_get_system_status_reports_parser_health_branches(monkeypatch: pytest.Mo
         def disconnect(self, alias):
             assert alias == "status_check"
 
-    async def _probe_http_json(url: str, *, timeout_sec: float = 0.6):
+    async def _probe_http_json(url: str, *, timeout_sec: float, headers=None, trust_env=None):
+        assert timeout_sec == 0.6
         if "qianfan.example.test" in url:
             return {"ok": False, "reason": "upstream-down"}, None
         if "paddlevl.example.test" in url:
@@ -179,9 +181,8 @@ def test_get_system_status_reports_parser_health_branches(monkeypatch: pytest.Mo
     monkeypatch.setattr(settings_api, "_ensure_settings_readable", lambda *_args, **_kwargs: None, raising=True)
     monkeypatch.setattr(settings_api, "_probe_http_json", _probe_http_json, raising=True)
     monkeypatch.setattr(settings_api.importlib.util, "find_spec", _find_spec, raising=True)
-    monkeypatch.setattr("app.infrastructure.database.connection.SessionLocal", lambda: _Session(), raising=True)
+    monkeypatch.setattr("app.services.runtime.retrieval_limiter.SessionLocal", _Session, raising=True)
     monkeypatch.setitem(sys.modules, "pymilvus", SimpleNamespace(connections=_Connections()))
-    monkeypatch.setitem(sys.modules, "sqlalchemy", SimpleNamespace(text=lambda query: query))
     monkeypatch.setattr(
         "app.rag.ingestion.parsing.utils.cli.resolve_cli_command",
         lambda command: f"/usr/bin/{command}",
@@ -237,7 +238,7 @@ def test_get_system_status_reports_parser_health_branches(monkeypatch: pytest.Mo
             account_id="reader",
             db=SimpleNamespace(),
         )
-    )
+    ).model_dump(exclude_unset=True)
 
     assert status["database"] == {"connected": True, "message": "connected"}
     assert status["milvus"] == {"connected": True, "message": "connected"}
@@ -297,11 +298,12 @@ def test_get_system_status_without_optional_milvus_client(
 
     monkeypatch.setattr(settings_api, "_ensure_settings_readable", lambda *_args: None)
     monkeypatch.setattr(settings_api, "_build_parser_statuses", _parser_statuses)
-    monkeypatch.setattr("app.infrastructure.database.connection.SessionLocal", _Session)
+    monkeypatch.setattr("app.services.runtime.retrieval_limiter.SessionLocal", _Session)
     monkeypatch.setattr(settings, "VECTOR_BACKEND", backend)
     monkeypatch.setitem(sys.modules, "pymilvus", None)
 
     status = asyncio.run(settings_api.get_system_status(tenant_id=uuid4(), account_id="reader", db=SimpleNamespace()))
+    status = status.model_dump(exclude_unset=True)
 
     assert status["database"] == {"connected": True, "message": "connected"}
     assert status["milvus"] == expected_vector_status

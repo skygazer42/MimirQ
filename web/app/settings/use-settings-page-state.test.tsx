@@ -56,6 +56,7 @@ describe('settings automatic saving', () => {
     vi.useFakeTimers()
     vi.clearAllMocks()
     stored = {
+      llm: { api_key: '', api_base: '', model: '', temperature: 0.7, timeout: 60, max_retries: 1 },
       embedding: { provider: 'openai_compatible', model: '', api_base: '', api_key: '' },
       feature_flags: { kg_enabled: false },
       governance: { enabled: false, pii_anonymize: false, secrets_redact: false, quarantine_on_drop: false },
@@ -291,24 +292,26 @@ describe('settings automatic saving', () => {
     expect(hook.result.current.hasChanges).toBe(false)
   })
 
-  it('retains edits when the save succeeds but confirmation fails', async () => {
+  it('retries only the read when a successful save cannot be read back', async () => {
     const hook = await openSettings()
     api.get.mockRejectedValueOnce(new Error('confirmation unavailable'))
     await act(async () => {
       hook.result.current.updateGovernance({ enabled: true })
     })
     expect(stored.governance.enabled).toBe(true)
-    expect(hook.result.current.isGovernanceEnabled).toBe(true)
-    expect(hook.result.current.hasChanges).toBe(true)
-    expect(hook.result.current.saveError).toContain('confirmation unavailable')
+    expect(hook.result.current.hasChanges).toBe(false)
+    expect(hook.result.current.saveError).toBeNull()
+    expect(hook.result.current.loadError).toContain('配置已保存，读取最新配置失败')
+    expect(hook.result.current.loadError).toContain('confirmation unavailable')
     expect(hook.result.current.loading).toBe(false)
     await advance(6000)
     expect(api.update).toHaveBeenCalledTimes(1)
     await act(async () => {
-      await hook.result.current.retrySave()
+      await hook.result.current.loadSettings()
     })
-    expect(hook.result.current.hasChanges).toBe(false)
-    expect(hook.result.current.saveError).toBeNull()
+    expect(hook.result.current.isGovernanceEnabled).toBe(true)
+    expect(hook.result.current.loadError).toBeNull()
+    expect(api.update).toHaveBeenCalledTimes(1)
   })
 
   it('drains edits made during an active save after leaving the page', async () => {

@@ -399,6 +399,17 @@ def test_nginx_config_chunker_characterizes_server_block_metadata() -> None:
 
     assert _summarize_chunks(NginxConfigChunker(10_000, 0), text) == [
         (
+            "# meta",
+            {
+                "chunk_strategy": "nginx_config",
+                "start_char": 0,
+                "end_char": 6,
+                "doc_type_kwd": "nginx",
+                "nginx_block_kind": "nginx",
+                "chunk_index": 0,
+            },
+        ),
+        (
             "server {\n    listen 80;\n    server_name example.com;\n}",
             {
                 "chunk_strategy": "nginx_config",
@@ -408,7 +419,7 @@ def test_nginx_config_chunker_characterizes_server_block_metadata() -> None:
                 "nginx_block_kind": "server",
                 "nginx_server_name": "example.com",
                 "nginx_listen": "80",
-                "chunk_index": 0,
+                "chunk_index": 1,
             },
         ),
         (
@@ -421,7 +432,7 @@ def test_nginx_config_chunker_characterizes_server_block_metadata() -> None:
                 "nginx_block_kind": "server",
                 "nginx_server_name": "secure.example.com",
                 "nginx_listen": "443",
-                "chunk_index": 1,
+                "chunk_index": 2,
             },
         ),
     ]

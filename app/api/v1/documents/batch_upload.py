@@ -9,7 +9,7 @@ from app.api.schemas.documents import BatchTaskStatus, BatchUploadRequest, Batch
 from app.infrastructure.database.connection import SessionLocal
 from app.infrastructure.runtime.async_bridge import run_blocking_in_thread
 from app.services.datasets.management import EDIT_ROLES
-from app.services.parsing.mineru import mineru_service
+from app.services.parsing.mineru import MinerUOnlineUnavailableError, mineru_service
 
 router = APIRouter(
     responses={
@@ -17,6 +17,7 @@ router = APIRouter(
         403: {"description": "Forbidden"},
         404: {"description": "Not Found"},
         500: {"description": "Internal Server Error"},
+        503: {"description": "MinerU online API unavailable"},
     }
 )
 
@@ -48,6 +49,8 @@ async def apply_batch_upload_urls(
         result = await mineru_service.aapply_batch_upload_urls(files=files)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except MinerUOnlineUnavailableError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     except RuntimeError as exc:
         raise HTTPException(status_code=500, detail=f"Failed to apply upload URLs: {exc}") from exc
     return BatchUploadResponse(batch_id=result["batch_id"], file_urls=result["file_urls"], files=request.files)
@@ -68,6 +71,8 @@ async def get_batch_task_status(
         status = await mineru_service.aget_task_status(batch_id)
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except MinerUOnlineUnavailableError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     except RuntimeError as exc:
         raise HTTPException(status_code=500, detail=f"Failed to get task status: {exc}") from exc
     return BatchTaskStatus(batch_id=batch_id, **status)

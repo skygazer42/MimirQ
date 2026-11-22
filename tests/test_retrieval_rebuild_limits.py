@@ -4,13 +4,14 @@ from types import SimpleNamespace
 import pytest
 from langchain_core.documents import Document
 
-from app.rag.retrieval.corpus import CorpusIndex
+from app.rag.retrieval.corpus import CorpusIndex, CorpusScope
 from tests.test_milvus_bm25_cutover import Store
 
 
 def test_rebuild_persisted_retrieval_indexes_blocks_scope_over_cap(monkeypatch):
     store = Store()
     corpus = CorpusIndex(bm25_store=store)
+    monkeypatch.setattr("app.rag.retrieval.corpus.is_milvus_bm25_enabled", lambda: True)
     monkeypatch.setattr("app.rag.retrieval.corpus.settings.RETRIEVAL_REBUILD_MAX_CHUNKS", 2)
     monkeypatch.setattr(corpus, "_count_retrieval_docs_in_db", lambda *_args, **_kwargs: 3)
     monkeypatch.setattr(
@@ -19,13 +20,14 @@ def test_rebuild_persisted_retrieval_indexes_blocks_scope_over_cap(monkeypatch):
         lambda *_args, **_kwargs: pytest.fail("over-cap corpus must not be read"),
     )
     with pytest.raises(RuntimeError, match="RETRIEVAL_REBUILD_MAX_CHUNKS=2"):
-        corpus.rebuild_persisted_retrieval_indexes(object(), tenant_id=uuid.uuid4())
+        corpus.rebuild(object(), scope=CorpusScope(uuid.uuid4()))
     assert store.calls == []
 
 
 def test_rebuild_persisted_retrieval_indexes_rechecks_cap_after_load(monkeypatch):
     store = Store()
     corpus = CorpusIndex(bm25_store=store)
+    monkeypatch.setattr("app.rag.retrieval.corpus.is_milvus_bm25_enabled", lambda: True)
     docs = [Document(page_content="text", id=str(uuid.uuid4())) for _ in range(3)]
     limits = []
     monkeypatch.setattr("app.rag.retrieval.corpus.settings.RETRIEVAL_REBUILD_MAX_CHUNKS", 2)
@@ -37,7 +39,7 @@ def test_rebuild_persisted_retrieval_indexes_rechecks_cap_after_load(monkeypatch
 
     monkeypatch.setattr(corpus, "_load_retrieval_docs_from_db", load)
     with pytest.raises(RuntimeError, match="RETRIEVAL_REBUILD_MAX_CHUNKS=2"):
-        corpus.rebuild_persisted_retrieval_indexes(object(), tenant_id=uuid.uuid4())
+        corpus.rebuild(object(), scope=CorpusScope(uuid.uuid4()))
     assert limits == [3] and store.calls == []
 
 
@@ -59,8 +61,6 @@ def test_rebuild_persisted_retrieval_indexes_builds_under_cap(monkeypatch):
 
     monkeypatch.setattr(settings, "VECTOR_BACKEND", "milvus")
     monkeypatch.setattr(settings, "BM25_INDEX_ENABLED", True)
-    monkeypatch.setattr(settings, "SPARSE_RETRIEVAL_ENABLED", False)
-    monkeypatch.setattr(settings, "COLBERT_RETRIEVAL_ENABLED", False)
     monkeypatch.setattr(settings, "RETRIEVAL_REBUILD_MAX_CHUNKS", 2)
     store = Store()
     corpus = CorpusIndex(bm25_store=store)
@@ -68,8 +68,7 @@ def test_rebuild_persisted_retrieval_indexes_builds_under_cap(monkeypatch):
     tenant = uuid.uuid4()
     monkeypatch.setattr(corpus, "_count_retrieval_docs_in_db", lambda *_args, **_kwargs: 2)
     monkeypatch.setattr(corpus, "_load_retrieval_docs_from_db", lambda *_args, **_kwargs: docs)
-    result = corpus.rebuild_persisted_retrieval_indexes(object(), tenant_id=tenant, batch_size=8)
-    assert result["doc_count"] == 2 and result["bm25_rebuilt"] is True
+    assert corpus.rebuild(object(), scope=CorpusScope(tenant), batch_size=8) == 2
     assert store.calls == [("upsert", docs, tenant)]
 
 
@@ -87,9 +86,9 @@ def test_indexer_rebuild_chunk_indexes_uses_operational_rebuild_helper(monkeypat
         module,
         "get_corpus_index",
         lambda: SimpleNamespace(
-            rebuild_bm25_index_for_operational_scope=lambda db, **kwargs: calls.append(kwargs) or 2
+            rebuild=lambda db, **kwargs: calls.append(kwargs) or 2
         ),
     )
     indexer.rebuild_chunk_indexes(tenant_id=tenant, document_ids=document_ids)
-    assert calls == [{"tenant_id": tenant, "document_ids": document_ids, "batch_size": 2000}]
+    assert calls == [{"scope": CorpusScope(tenant, document_ids=tuple(document_ids)), "batch_size": 2000}]
     assert touched == document_ids

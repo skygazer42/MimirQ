@@ -165,17 +165,17 @@ describe('history page delete action', () => {
         await vi.waitFor(() => expect(container.textContent).toContain(conversation.title))
       })
       const sidebar = container.querySelector('[data-history-sidebar="true"]')
-      expect(sidebar?.hasAttribute('inert')).toBe(true)
+      expect(sidebar?.classList.contains('hidden')).toBe(true)
       const expandButton = container.querySelector<HTMLButtonElement>('[aria-label="expandHistory"]')
       expect(expandButton).not.toBeNull()
       act(() => expandButton?.click())
-      expect(sidebar?.hasAttribute('inert')).toBe(false)
+      expect(sidebar?.classList.contains('hidden')).toBe(false)
       const activeRow = Array.from(container.querySelectorAll('button')).find((button) =>
         button.textContent?.includes(conversation.title),
       )
       expect(activeRow).not.toBeUndefined()
       act(() => activeRow?.click())
-      expect(sidebar?.hasAttribute('inert')).toBe(true)
+      expect(sidebar?.classList.contains('hidden')).toBe(true)
     } finally {
       act(() => root.unmount())
       matchMedia.mockRestore()
@@ -375,10 +375,11 @@ describe('history page delete action', () => {
     })
 
     await act(async () => {
-      await vi.waitFor(() => expect(container.querySelector('[data-history-main-empty="true"]')).not.toBeNull())
+      await vi.waitFor(() => expect(container.querySelector('[role="alert"]')).not.toBeNull())
     })
 
     expect(container.querySelector('[aria-label="继续当前对话"]')).toBeNull()
+    expect(container.querySelector('[aria-label="更多对话操作"]')).toBeNull()
     expect(container.querySelector('[aria-label="进行对话分析评测"]')).toBeNull()
     expect(container.querySelector('[aria-label="查看数据追踪"]')).toBeNull()
     act(() => root.unmount())

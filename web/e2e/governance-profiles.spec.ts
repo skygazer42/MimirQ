@@ -12,6 +12,7 @@ const scripts = [
     language: 'python' as const,
     stage: 'post_governance' as const,
     content: 'def clean(text):\n    return text',
+    enabled: false,
   },
 ]
 const payload: GovernanceProfilePayload = {
@@ -27,6 +28,7 @@ const payload: GovernanceProfilePayload = {
     governance_max_blank_lines: 1,
   },
   regex_rules: [],
+  processing_scripts: [],
 }
 const builtins: GovernanceProfileOut[] = [
   {
@@ -288,7 +290,7 @@ test('import honors overwrite, exports target the current ref and failed deletio
   expect((await download).suggestedFilename()).toBe('builtin_pdf_text.governance-profile.json')
   expect(state.requests.at(-1)?.ref).toBe('builtin:pdf_text')
   await page.getByRole('button', { name: '导入', exact: true }).click()
-  await page.getByRole('menuitemcheckbox', { name: '覆盖同名配置', exact: true }).click()
+  await page.getByRole('menuitemcheckbox', { name: '覆盖相同标识的配置', exact: true }).click()
   await page
     .getByLabel('导入治理配置文件', { exact: true })
     .setInputFiles({ name: 'profiles.json', mimeType: 'application/json', buffer: Buffer.from('{"items":[]}') })
@@ -335,23 +337,16 @@ test('directory supports search, retry and mobile back focus, while surfaces fol
   state.failList = false
   await page.getByRole('button', { name: '重试读取', exact: true }).click()
   await expect(page.locator('[data-profile-detail] table')).toBeVisible()
-  const before = await page
-    .locator('[data-profile-detail]')
-    .evaluate((element) => getComputedStyle(element.parentElement!).backgroundColor)
+  const profilePage = page.locator('[data-profile-page]')
+  const before = await profilePage.evaluate((element) => getComputedStyle(element).backgroundColor)
+  await page.getByRole('button', { name: '工作空间与外观设置', exact: true }).click()
   await page.getByRole('button', { name: '界面外观', exact: true }).click()
-  await page.getByRole('radio', { name: '米白配色', exact: true }).press('Space')
+  await page.getByRole('radio', { name: '米白', exact: true }).press('Space')
   await expect(page.locator('html')).toHaveAttribute('data-surface-theme', 'earth')
   await page.keyboard.press('Escape')
-  await expect
-    .poll(() =>
-      page
-        .locator('[data-profile-detail]')
-        .evaluate((element) => getComputedStyle(element.parentElement!).backgroundColor),
-    )
-    .not.toBe(before)
+  await expect(profilePage).not.toHaveCSS('background-color', before)
   await page.screenshot({ path: path.join(evidence, 'earth.png') })
   await page.setViewportSize({ width: 390, height: 844 })
-  await page.getByRole('button', { name: '收起侧边栏', exact: true }).click()
   await expect(page.locator('[data-profile-directory]')).toBeVisible()
   await page.locator('[data-profile-ref="builtin:pdf_text"]').click()
   await expect(page.locator('[data-profile-detail] h2')).toBeFocused()
@@ -484,6 +479,7 @@ test('source list, content and cleaning failures recover in place; late source a
   await page.getByRole('button', { name: '重新预览', exact: true }).click()
   await expect.poll(() => preview.previewStarted).toBe(started + 1)
   preview.holdPreview = null
+  const abortedPreview = page.waitForEvent('requestfailed', (request) => request.url().endsWith('/clean-preview'))
   let releaseContent!: () => void
   state.holdContentId = 'parsed-two'
   state.holdContent = new Promise((resolve) => {
@@ -496,10 +492,9 @@ test('source list, content and cleaning failures recover in place; late source a
   await page.getByRole('button', { name: /^更换预览文档/ }).click()
   await page.getByRole('button', { name: '使用文档 空正文.pdf', exact: true }).click()
   await expect(page.getByText('此文档没有可预览的正文，请返回文档解析检查结果。', { exact: true })).toBeVisible()
-  const oldResponse = page.waitForResponse((response) => response.url().endsWith('/clean-preview'))
   releasePreview()
   releaseContent()
-  await oldResponse
+  expect((await abortedPreview).failure()?.errorText).toBe('net::ERR_ABORTED')
   await expect(page.getByRole('textbox', { name: '清洗前', exact: true })).toHaveValue('')
   await expect(page.locator('[data-profile-preview-output]')).not.toContainText('原始正文')
   await expect(page.locator('[data-profile-preview-output]')).not.toContainText('第二份正文')
@@ -520,14 +515,13 @@ test('source picker handles pagination, mobile keyboard access and parsed Markdo
   await page.getByRole('button', { name: '选择已解析文档', exact: true }).click()
   const picker = page.getByRole('dialog', { name: '选择已解析文档', exact: true })
   await picker.getByRole('searchbox').fill('第二份')
-  await expect(picker.getByText('没有找到匹配的文档', { exact: true })).toBeVisible()
+  await expect(picker.getByText('已加载的文档中没有匹配项', { exact: true })).toBeVisible()
   await picker.getByRole('button', { name: '加载更多文档', exact: true }).click()
   await picker.getByRole('button', { name: '使用文档 第二份资料.md', exact: true }).press('Enter')
   await expect(page.locator('[data-profile-preview-output]')).toContainText('第二份正文')
   expect(preview.previewRequests.at(-1)).toMatchObject({ input_format: 'markdown' })
   expect(state.listSkips).toEqual([0, 1])
   await page.setViewportSize({ width: 390, height: 844 })
-  await page.getByRole('button', { name: '收起侧边栏', exact: true }).click()
   await page.locator('[data-profile-ref="builtin:html_web"]').click()
   await page.getByRole('button', { name: /^更换预览文档/ }).click()
   await expect(picker.getByRole('searchbox')).toBeFocused()

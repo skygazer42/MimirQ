@@ -5,33 +5,6 @@ from types import ModuleType
 import pytest
 
 
-def _documents_module() -> ModuleType:
-    from app.api.v1.documents import routes as documents
-
-    return documents
-
-
-def _document_upload_module() -> ModuleType:
-    _documents_module()
-    from app.api.v1.documents import upload as document_upload
-
-    return document_upload
-
-
-def _chat_module() -> ModuleType:
-    _documents_module()
-    from app.api.v1.conversations import routes as chat
-
-    return chat
-
-
-def _api_modules() -> tuple[ModuleType, ModuleType, ModuleType]:
-    documents = _documents_module()
-    document_upload = _document_upload_module()
-    chat = _chat_module()
-    return chat, document_upload, documents
-
-
 def _hostile_lazy_module(name: str) -> ModuleType:
     module = ModuleType(name)
 
@@ -77,28 +50,27 @@ def _fail_import(
     monkeypatch.setattr(builtins, "__import__", _import)
 
 
-def test_chat_module_keeps_auto_title_monkeypatch_seam() -> None:
-    from app.services.chat import conversation_titles as titles
+def test_chat_bootstrap_uses_the_shared_auto_title_service() -> None:
+    from app.services.chat import bootstrap, conversation_titles
 
-    chat, _, _ = _api_modules()
-
-    assert chat._apply_auto_conversation_title is titles.apply_auto_conversation_title
+    assert bootstrap.apply_auto_conversation_title is conversation_titles.apply_auto_conversation_title
 
 
-def test_document_upload_module_keeps_minio_service_seam() -> None:
-    from app.storage.object import minio
+def test_document_storage_uses_enabled_legacy_minio(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.infrastructure.config import settings
+    from app.storage.object import minio, runtime
 
-    _, document_upload, _ = _api_modules()
+    monkeypatch.setattr(settings, "OBJECT_STORAGE_ENABLED", False)
+    monkeypatch.setattr(settings, "MINIO_ENABLED", True)
+    monkeypatch.setattr(settings, "MINIO_DOCUMENTS_ENABLED", True)
+    assert runtime.get_document_object_store() is minio.minio_service
 
-    assert document_upload.minio_service is minio.minio_service
 
-
-def test_documents_module_keeps_object_reference_resolver_seam() -> None:
+def test_document_assets_use_the_shared_object_reference_resolver() -> None:
+    from app.api.v1.documents import assets
     from app.storage.object import runtime as object_runtime
 
-    _, _, documents = _api_modules()
-
-    assert documents.resolve_document_object_reference is object_runtime.resolve_document_object_reference
+    assert assets.resolve_document_object_reference is object_runtime.resolve_document_object_reference
 
 
 def test_http_client_keeps_h2_probe_binding() -> None:
@@ -134,13 +106,20 @@ def test_llama_strategy_preserves_expected_unavailable_messages(
     assert strategy_matrix._is_expected_unavailable("llama_index", RuntimeError(message)) is True
 
 
-@pytest.mark.parametrize("error_type", [ModuleNotFoundError, RuntimeError])
-def test_llama_strategy_treats_missing_or_broken_import_as_unavailable(
+@pytest.mark.parametrize("module_name", ["llama_index", "llama_index.core"])
+def test_llama_strategy_reports_missing_optional_dependency_as_unavailable(module_name: str) -> None:
+    from app.rag.ingestion.chunking import strategy_matrix
+
+    missing = ModuleNotFoundError(name=module_name)
+    assert strategy_matrix._is_expected_unavailable("llama_index", missing) is True
+
+
+def test_llama_strategy_keeps_failed_imports_visible_without_reimporting(
     monkeypatch: pytest.MonkeyPatch,
-    error_type: type[Exception],
 ) -> None:
     from app.rag.ingestion.chunking import strategy_matrix
 
-    _fail_import(monkeypatch, "llama_index.core", error_type("optional dependency failed"))
-
-    assert strategy_matrix._is_expected_unavailable("llama_index", RuntimeError("boom")) is True
+    _fail_import(
+        monkeypatch, "llama_index.core", AssertionError("failure classification must not reimport the dependency")
+    )
+    assert strategy_matrix._is_expected_unavailable("llama_index", RuntimeError("optional dependency failed")) is False

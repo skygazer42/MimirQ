@@ -90,9 +90,9 @@ async function query(value: string) {
   })
 }
 
-async function expectExecution(label: string) {
+async function expectSelectedCommand(value: string) {
   await act(async () => {
-    await vi.waitFor(() => expect(executionButton()?.getAttribute('aria-label')).toBe(label))
+    await vi.waitFor(() => expect(command(value)?.getAttribute('aria-selected')).toBe('true'))
   })
 }
 
@@ -102,24 +102,24 @@ async function pressKey(element: Element, key: string) {
   })
 }
 
-function executionButton() {
-  return document.querySelector<HTMLButtonElement>('[data-command-execute]')
+function command(value: string) {
+  return document.querySelector<HTMLElement>(`[cmdk-item][data-value="${value}"]`)
 }
 
 describe('command menu explicit execution', () => {
-  it('opens the selected command once through the visible action button', async () => {
+  it('opens the selected command once through its result row', async () => {
     await query('/upload')
-    await expectExecution('打开：上传文档')
+    await expectSelectedCommand('slash:upload')
     mocks.setOpen.mockClear()
-    await act(async () => executionButton()?.click())
+    await act(async () => command('slash:upload')?.click())
     expect(mocks.push).toHaveBeenCalledExactlyOnceWith('/knowledge')
     expect(mocks.setOpen).toHaveBeenCalledExactlyOnceWith(false)
   })
 
   it('offers a short question and sends that exact question to the conversation', async () => {
     await query('你好')
-    await expectExecution('提问：向知识库提问')
-    await act(async () => executionButton()?.click())
+    await expectSelectedCommand('ai 你好')
+    await act(async () => command('ai 你好')?.click())
     expect(mocks.push).toHaveBeenCalledTimes(1)
     const target = new URL(mocks.push.mock.calls[0][0], 'http://localhost')
     expect(target.pathname).toBe('/')
@@ -129,23 +129,22 @@ describe('command menu explicit execution', () => {
 
   it('disables unavailable document restoration without closing or running an action', async () => {
     await query('/resume')
-    const option = document.querySelector('[cmdk-item]')
+    const option = command('slash:resume')
     expect(option?.getAttribute('data-disabled')).toBe('true')
-    expect(executionButton()).not.toBeNull()
-    expect(executionButton()?.disabled).toBe(true)
     mocks.setOpen.mockClear()
-    await act(async () => executionButton()?.click())
+    await act(async () => option?.click())
+    await pressKey(document.querySelector('[cmdk-input]')!, 'Enter')
     expect(mocks.reopenLastDocument).not.toHaveBeenCalled()
     expect(mocks.push).not.toHaveBeenCalled()
     expect(mocks.setOpen).not.toHaveBeenCalled()
   })
 
-  it('updates the footer with keyboard selection and executes the same action with Enter', async () => {
+  it('moves keyboard selection and executes the selected result with Enter', async () => {
     await query('/')
-    await expectExecution('打开：上传文档')
+    await expectSelectedCommand('slash:upload')
     const input = document.querySelector('[cmdk-input]')!
     await pressKey(input, 'ArrowDown')
-    await expectExecution('提问：分析当前视图')
+    await expectSelectedCommand('slash:analyze')
     await pressKey(input, 'Enter')
     expect(mocks.push).toHaveBeenCalledTimes(1)
     const target = new URL(mocks.push.mock.calls[0][0], 'http://localhost')
@@ -153,22 +152,24 @@ describe('command menu explicit execution', () => {
     expect(target.searchParams.get('prompt')).toContain('当前所在页面')
   })
 
-  it('does not let the footer Enter key bubble into a second command execution', async () => {
+  it('closes the command menu without executing the highlighted command', async () => {
     await query('/upload')
-    await expectExecution('打开：上传文档')
-    const button = executionButton()!
+    await expectSelectedCommand('slash:upload')
+    const button = document.querySelector<HTMLButtonElement>('button[aria-label="关闭命令中心"]')!
+    mocks.setOpen.mockClear()
     await pressKey(button, 'Enter')
     expect(mocks.push).not.toHaveBeenCalled()
     // Browser activation clicks a focused native button after keydown.
     await act(async () => button.click())
-    expect(mocks.push).toHaveBeenCalledExactlyOnceWith('/knowledge')
+    expect(mocks.push).not.toHaveBeenCalled()
+    expect(mocks.setOpen).toHaveBeenCalledExactlyOnceWith(false)
   })
 
   it('keeps an unmatched slash query editable and prevents a stale action', async () => {
     await query('/upload')
-    await expectExecution('打开：上传文档')
+    await expectSelectedCommand('slash:upload')
     await query('/no-such-command')
-    expect(executionButton()?.disabled).toBe(true)
+    expect(document.querySelector('[cmdk-item][aria-disabled="false"]')).toBeNull()
     expect(document.querySelector<HTMLInputElement>('[cmdk-input]')?.value).toBe('/no-such-command')
     await pressKey(document.querySelector('[cmdk-input]')!, 'Enter')
     expect(mocks.push).not.toHaveBeenCalled()
@@ -176,20 +177,21 @@ describe('command menu explicit execution', () => {
 
   it('opens dataset selection for precheck scans and reports', async () => {
     await query('/precheck')
-    await expectExecution('打开：预检数据集')
-    await act(async () => executionButton()?.click())
+    await expectSelectedCommand('slash:precheck')
+    await act(async () => command('slash:precheck')?.click())
     expect(mocks.push).toHaveBeenLastCalledWith('/datasets')
 
     await query('/report')
-    await expectExecution('打开：查看数据集预检报告')
-    await act(async () => executionButton()?.click())
+    await expectSelectedCommand('slash:report')
+    await act(async () => command('slash:report')?.click())
     expect(mocks.push).toHaveBeenLastCalledWith('/datasets')
   })
 
   it.each(['/retry-failed', '/pause-active'])('does not offer an unsupported bulk action for %s', async (command) => {
     await query(command)
     expect(document.querySelector('[cmdk-item]')).toBeNull()
-    expect(executionButton()?.disabled).toBe(true)
+    await pressKey(document.querySelector('[cmdk-input]')!, 'Enter')
+    expect(mocks.push).not.toHaveBeenCalled()
   })
 
   it('keeps text search working and distinguishes results that share a filename', async () => {
@@ -202,8 +204,8 @@ describe('command menu explicit execution', () => {
     const input = document.querySelector('[cmdk-input]')!
     await pressKey(input, 'ArrowDown')
     await pressKey(input, 'ArrowDown')
-    expect(executionButton()?.getAttribute('aria-label')).toBe('打开：设计说明.pdf')
-    await act(async () => executionButton()?.click())
+    expect(command('document:doc-2')?.getAttribute('aria-selected')).toBe('true')
+    await act(async () => command('document:doc-2')?.click())
     expect(mocks.openDocument).toHaveBeenCalledExactlyOnceWith('doc-2')
     expect(mocks.push).toHaveBeenCalledExactlyOnceWith('/')
   })

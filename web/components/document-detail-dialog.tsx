@@ -1091,7 +1091,7 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex flex-wrap gap-2">
               <DocumentVersionsDialog
-                key={`${metadataResourceKey}:${open}`}
+                key={`versions:${metadataResourceKey}:${open}`}
                 open={versionsDialogOpen}
                 onOpenChange={handleVersionsDialogOpenChange}
                 versions={versions}
@@ -1107,7 +1107,7 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
               />
 
               <DocumentAccessDialog
-                key={`${metadataResourceKey}:${open}`}
+                key={`access:${metadataResourceKey}:${open}`}
                 open={accessDialogOpen}
                 onOpenChange={handleAccessDialogOpenChange}
                 access={accessInfo}
@@ -1122,7 +1122,7 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
               />
 
               <DocumentDetailActions
-                key={`${metadataResourceKey}:${open}`}
+                key={`actions:${metadataResourceKey}:${open}`}
                 graphAction={pendingGraphRequests.get(metadataResourceKey)}
                 downloadPending={pendingDownloads.has(metadataResourceKey)}
                 canExtract={displayDoc.status === 'completed'}

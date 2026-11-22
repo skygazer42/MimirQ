@@ -3,6 +3,7 @@ from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
+from pydantic import ValidationError
 
 from app.rag.evaluation.agents import agent_evals, agent_redteam
 from app.rag.evaluation.benchmarks.recall_at_k_runner import run_recall_at_k_runner
@@ -67,22 +68,22 @@ def test_hybrid_answer_does_not_fall_through_provided_falsy_value(value):
         (agent_evals.AnswerCorrectnessEvaluator, ("q", "answer", "answer")),
     ],
 )
-def test_incomplete_llm_score_uses_existing_observable_heuristic_path(factory, arguments):
+def test_incomplete_llm_score_fails_without_claiming_a_valid_result(factory, arguments):
     class MissingExplanationLLM:
         async def ainvoke(self, prompt):
             return SimpleNamespace(content='{"score": 0.123}')
 
     evaluator = factory(MissingExplanationLLM())
-    result = asyncio.run(evaluator._llm_evaluate(*arguments))
-    assert result.score != 0.123
-    assert result.explanation
+    with pytest.raises(KeyError, match="explanation"):
+        asyncio.run(evaluator._llm_evaluate(*arguments))
 
 
-def test_testgen_drops_invalid_items_and_preserves_valid_siblings():
-    result = {"questions": [None, {}, {"question": []}, {"question": "valid", "expected_answer": "answer"}]}
-    rows = test_generator._normalize_testgen_result_rows(result)
-    assert [row["question"] for row in rows] == ["valid"]
-    questions = test_generator._conversation_generated_questions(result)
+def test_testgen_validates_the_response_and_preserves_optional_context():
+    row = {"question": "valid", "expected_answer": "answer"}
+    with pytest.raises(ValidationError, match=r"questions\.1"):
+        test_generator._conversation_generated_questions({"questions": [row, {"question": []}]})
+
+    questions = test_generator._conversation_generated_questions({"questions": [row]})
     assert [row.question for row in questions] == ["valid"]
     assert questions[0].metadata["original_question"] is None
     assert "source_id" not in questions[0].metadata
@@ -96,9 +97,10 @@ def test_judge_prompt_selection_forwards_provided_spaces(monkeypatch):
         return None
 
     monkeypatch.setattr(llm_judge, "resolve_prompt_template", resolve)
-    llm_judge._resolve_generation_judge_prompt(
-        db=object(), tenant_id=uuid4(), template_id=None, template_key="  ", ab_experiment_key=None, ab_user_key=None
-    )
+    with pytest.raises(ValueError, match="Selected LLM judge prompt was not found"):
+        llm_judge._resolve_generation_judge_prompt(
+            db=object(), tenant_id=uuid4(), template_id=None, template_key="  ", ab_experiment_key=None, ab_user_key=None
+        )
     assert calls[0]["template_key"] == "  "
 
 

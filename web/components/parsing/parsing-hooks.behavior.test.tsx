@@ -933,7 +933,7 @@ describe('shared parsing helper contracts', () => {
     expect(ports.documents.getParsedContent).toHaveBeenCalledWith(
       'library-a',
       { max_chars: 2_000_000 },
-      { signal: undefined },
+      { signal: expect.any(AbortSignal) },
     )
     expect(ports.update).toHaveBeenCalledWith(
       'library-a',
@@ -1175,7 +1175,11 @@ describe('library source availability and retry', () => {
       await view.current().run.parseFile('library-a')
     })
     await settle()
-    expect(ports.documents.download).toHaveBeenCalledWith('library-a', { inline: true })
+    expect(ports.documents.download).toHaveBeenCalledWith(
+      'library-a',
+      { inline: true },
+      { signal: expect.any(AbortSignal) },
+    )
     expect(ports.parsing.parse).toHaveBeenCalledWith('library-a', expect.anything())
     expect(view.current().files[0]).toMatchObject({ libraryId: 'library-a', status: 'parsed' })
   })
@@ -1348,18 +1352,24 @@ describe('source restoration contracts', () => {
     const newer = new File(['New source'], 'newer.pdf')
     let firstRequest!: Promise<string | null>
     let secondRequest!: Promise<string | null>
-    act(() => {
+    await act(async () => {
       firstRequest = view.current().library.mountLibraryFileToQueue('library-a', older)
+    })
+    expect(ports.parsing.getContent).toHaveBeenCalledTimes(1)
+    const firstSignal = ports.parsing.getContent.mock.calls[0][1].signal as AbortSignal
+    const firstAborted = expect(firstRequest).rejects.toMatchObject({ name: 'AbortError' })
+    await act(async () => {
       secondRequest = view.current().library.mountLibraryFileToQueue('library-a', newer)
     })
-    await settle()
+    expect(firstSignal.aborted).toBe(true)
+    expect(ports.parsing.getContent).toHaveBeenCalledTimes(2)
     await act(async () => {
       second.resolve(content())
       await secondRequest
     })
     await act(async () => {
       first.resolve(content())
-      await firstRequest
+      await firstAborted
     })
     expect(view.current().files).toHaveLength(1)
     expect(view.current().files[0].file).toBe(newer)
@@ -1861,9 +1871,21 @@ describe('parsing content restoration', () => {
     await settle()
 
     expect(ports.documents.get).toHaveBeenCalledTimes(2)
-    expect(ports.documents.getParsedContent).toHaveBeenCalledTimes(1)
+    expect(ports.documents.getParsedContent).toHaveBeenCalledWith(
+      'library-a',
+      { max_chars: 2_000_000 },
+      { signal: expect.any(AbortSignal) },
+    )
     expect(view.current().libraryFiles[0]).toMatchObject({ status: 'parsed', markdownContent: 'Finished body' })
     expect(view.current().view.hasLibraryContent).toBe(true)
+
+    // The completed status opens its own cache entry after the final poll.
+    expect(ports.documents.getParsedContent).toHaveBeenCalledTimes(2)
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(4_000)
+    })
+    expect(ports.documents.get).toHaveBeenCalledTimes(2)
+    expect(ports.documents.getParsedContent).toHaveBeenCalledTimes(2)
   })
 
   it('ends knowledge polling with the actual failed task and keeps its saved body', async () => {

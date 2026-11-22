@@ -1,3 +1,4 @@
+import sys
 from contextlib import nullcontext
 from io import BytesIO
 from types import SimpleNamespace
@@ -81,7 +82,7 @@ def test_malformed_odbc_driver_cannot_select_named_default(monkeypatch, driver):
             pass
 
 
-def test_absent_odbc_driver_selects_existing_driver_18_default(monkeypatch):
+def test_absent_odbc_driver_prefers_installed_driver_18(monkeypatch):
     drivers = []
     engine = SimpleNamespace(connect=lambda: nullcontext(object()), dispose=lambda: None)
 
@@ -89,6 +90,7 @@ def test_absent_odbc_driver_selects_existing_driver_18_default(monkeypatch):
         drivers.append(url.query["driver"])
         return engine
 
+    monkeypatch.setitem(sys.modules, "pyodbc", SimpleNamespace(drivers=lambda: ["ODBC Driver 18 for SQL Server"]))
     monkeypatch.setattr(catalog, "create_engine", create)
     with catalog._connect_catalog(
         engine_name="sqlserver", config={"host": "host", "database": "db", "username": "user", "password": ""}

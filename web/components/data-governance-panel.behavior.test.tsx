@@ -821,10 +821,15 @@ describe('upload and content boundaries', () => {
       markdownContent: 'First\n\nSecond',
       status: 'parsed',
     })
-    expect(boundary.preview).toHaveBeenCalledWith(file, 'auto', undefined, {
-      signal: expect.any(AbortSignal),
-      dataset_id: undefined,
-    })
+    expect(boundary.preview).toHaveBeenCalledWith(
+      file,
+      'auto',
+      { governance_enabled: false },
+      {
+        signal: expect.any(AbortSignal),
+        dataset_id: undefined,
+      },
+    )
     expect(boundary.updateContent).toHaveBeenCalledWith(
       expect.objectContaining({ markdownContent: 'First\n\nSecond', originalMarkdownContent: 'First\n\nSecond' }),
       'tenant-a:user-a',

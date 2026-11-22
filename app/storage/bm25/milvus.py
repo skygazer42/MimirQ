@@ -178,7 +178,8 @@ class MilvusBM25Store:
             analyzer = text_params.get("analyzer_params")
             if isinstance(analyzer, str):
                 analyzer = json.loads(analyzer)
-            analyzed = text_params.get("enable_analyzer") is True and analyzer == {"type": "chinese"}
+            analyzer_enabled = text_params.get("enable_analyzer")
+            analyzed = (analyzer_enabled is True or analyzer_enabled == "true") and analyzer == {"type": "chinese"}
             functions = schema.get("functions", [])
             native = any(
                 function.get("name") == "content_bm25"

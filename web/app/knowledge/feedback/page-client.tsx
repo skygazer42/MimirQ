@@ -389,12 +389,12 @@ function FeedbackReader({
               </Link>
             </Button>
           ) : (
-            <LoadingButton variant="outline" onClick={onCreate} disabled={busy !== undefined} loading={busy === 'case'}>
+            <LoadingButton variant="outline" onClick={onCreate} disabled={busy !== null} loading={busy === 'case'}>
               <TestTube2 />
               创建回归用例
             </LoadingButton>
           )}
-          <LoadingButton onClick={onArchive} disabled={busy !== undefined} loading={busy === 'archive'}>
+          <LoadingButton onClick={onArchive} disabled={busy !== null} loading={busy === 'archive'}>
             {isFeedbackArchived(item) ? <Archive /> : <CheckCheck />}
             {isFeedbackArchived(item) ? '取消归档' : '归档反馈'}
           </LoadingButton>

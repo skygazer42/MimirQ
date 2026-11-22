@@ -11,7 +11,7 @@ from uuid import UUID
 # GraphML export only constructs and serializes a new tree; no untrusted XML is parsed.
 from xml.etree import ElementTree as ET  # nosemgrep: python.lang.security.use-defused-xml.use-defused-xml
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from sqlalchemy.orm import Session
 
 import app.services.datasets.management as dataset_service
@@ -2382,6 +2382,7 @@ def delete_kg_for_document(
 )
 async def run_kg_extraction_for_document(
     document_id: UUID,
+    request: Request,
     response: Response,
     options: Annotated[KGExtractionOptions, Depends(kg_extraction_options)],
     *,
@@ -2398,8 +2399,8 @@ async def run_kg_extraction_for_document(
     effective = _effective_kg_extraction_options(document, options)
     chunks = _scope_chunks_to_pipeline(chunks, document_id=document_id, pipeline_hash=effective.pipeline_hash)
 
-    # If async=true, enqueue KG extraction (default remains synchronous for compatibility).
-    if bool(options.async_mode):
+    prefer_async = request.headers.get("Prefer") == "respond-async"
+    if options.async_mode or (prefer_async and "async" not in request.query_params and settings.TASK_QUEUE_ENABLED):
         return await _enqueue_kg_extraction_response(
             db=db,
             document=document,

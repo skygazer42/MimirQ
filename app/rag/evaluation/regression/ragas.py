@@ -36,7 +36,7 @@ from app.models.evaluation.results import (
     RagasRegressionRun,
 )
 from app.rag.embedding import create_langchain_embeddings_from_config
-from app.rag.evaluation.judging.llm_judge import attach_llm_judge_to_eval_items
+from app.rag.evaluation.judging.llm_judge import _load_openai_callback_getter, attach_llm_judge_to_eval_items
 from app.rag.evaluation.regression.evidence_retrieve_gate import (
     build_retrieval_gate_summary,
     compute_retrieval_item_meta,
@@ -1221,18 +1221,6 @@ def _persist_run_failure(
     )
     if run is not None:
         _mark_run_failed(db, run, message)
-
-
-def _load_openai_callback_getter() -> Any:
-    try:  # best-effort; works with LangChain OpenAI-compatible backends
-        from langchain_community.callbacks.manager import (
-            get_openai_callback as _get_openai_callback,  # type: ignore
-        )
-
-        return _get_openai_callback
-    except ImportError:
-        logger.debug("OpenAI token/cost callback is unavailable", exc_info=True)
-        return None
 
 
 async def _evaluate_ragas_dataset(

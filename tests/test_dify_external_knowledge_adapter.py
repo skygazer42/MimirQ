@@ -12,6 +12,7 @@ import pytest
 from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 
+from app.api.middleware.request_context import RequestContextMiddleware
 from app.api.schemas.conversations.retrieval import EvidenceRetrieveResponse
 from app.api.v1.integrations.dify_support import external_api as dify_external_api
 from app.infrastructure.database.connection import get_db
@@ -45,16 +46,25 @@ class _DummyDB:
 
 @pytest.fixture(autouse=True)
 def _offline_dify_workers(monkeypatch):
+    from app.api.v1.integrations import dify as dify_api
     from app.services.chat import response_cache as chat_response_cache
     from app.services.runtime import retrieval_limiter as rag_runtime_limiter
 
     monkeypatch.setattr(chat_response_cache, "_get_redis_client", lambda: None)
     monkeypatch.setattr(rag_runtime_limiter, "SessionLocal", _DummyDB)
     monkeypatch.setattr(chunk_hydration, "SessionLocal", _DummyDB)
+    monkeypatch.setattr(dify_api, "get_readable_datasets_map", lambda *_args: {})
+    monkeypatch.setattr(dify_api, "_resolve_dify_response_cache_corpus_token", lambda **_kwargs: "fixture-corpus")
 
 
 def _override_get_db():  # noqa: ANN202
     yield _DummyDB()
+
+
+def _new_dify_test_app() -> FastAPI:
+    app = FastAPI()
+    app.add_middleware(RequestContextMiddleware)
+    return app
 
 
 class _FakeRedis:
@@ -177,7 +187,7 @@ async def test_dify_lease_heartbeat_tolerates_transient_redis_extend_errors(
 async def test_startup_warmup_retries_once_after_locked_lease(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations.dify as dify_api
+    from app.services.dify import warmup
 
     results = iter(
         [
@@ -193,11 +203,10 @@ async def test_startup_warmup_retries_once_after_locked_lease(
     async def _sleep(seconds: float) -> None:
         sleeps.append(seconds)
 
-    monkeypatch.setattr(dify_api, "_resolve_dify_warmup_start_delay_sec", lambda: 0.0, raising=True)
-    monkeypatch.setattr(dify_api, "warmup_dify_external_knowledge", _warmup, raising=True)
-    monkeypatch.setattr(dify_api.asyncio, "sleep", _sleep, raising=False)
+    monkeypatch.setattr(warmup, "warmup_dify_external_knowledge", _warmup, raising=True)
+    monkeypatch.setattr(warmup.asyncio, "sleep", _sleep, raising=False)
 
-    result = await dify_api._delayed_warmup_dify_external_knowledge()
+    result = await warmup._delayed_warmup_dify_external_knowledge(0.0)
 
     assert result == {"reason": "completed"}
     assert sleeps == [0, 120]
@@ -484,7 +493,7 @@ def _patch_empty_chunk_content_map(monkeypatch: pytest.MonkeyPatch, dify_api: ob
 
 
 def _make_dify_test_client(dify_api: object) -> TestClient:
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     return TestClient(app)
@@ -606,12 +615,12 @@ class _CapturingMetadataFallbackDB(_MetadataFallbackDB):
 
 
 def test_dify_warmup_knowledge_ids_default_to_map_keys(monkeypatch: pytest.MonkeyPatch) -> None:
-    import app.api.v1.integrations.dify as dify_api
+    from app.services.dify import warmup
 
-    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_KNOWLEDGE_IDS", "", raising=False)
-    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_MAX_KNOWLEDGE_IDS", 2, raising=False)
+    monkeypatch.setattr(warmup.settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_KNOWLEDGE_IDS", "", raising=False)
+    monkeypatch.setattr(warmup.settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_MAX_KNOWLEDGE_IDS", 2, raising=False)
 
-    ids = dify_api._resolve_dify_warmup_knowledge_ids(
+    ids = warmup.resolve_warmup_knowledge_ids(
         {"city": "dataset-a", "district": "dataset-b", "faq": "dataset-c"}
     )
 
@@ -622,7 +631,7 @@ def test_dify_warmup_knowledge_ids_default_to_map_keys(monkeypatch: pytest.Monke
 async def test_dify_warmup_runs_internal_retrieval_for_configured_knowledge_ids(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations.dify as dify_api
+    from app.services.dify import warmup
 
     tenant_id = uuid.uuid4()
     city_dataset_id = uuid.uuid4()
@@ -642,30 +651,30 @@ async def test_dify_warmup_runs_internal_retrieval_for_configured_knowledge_ids(
         return []
 
     async def _acquire_warmup_lease(**_kwargs):  # noqa: ANN003, ANN202
-        return dify_api._DifyDistributedLease(lease_key="warmup", owner="test"), 300
+        return warmup._DifyDistributedLease(lease_key="warmup", owner="test"), 300
 
     async def _release_warmup_lease(_lease) -> None:  # noqa: ANN001
         return None
 
-    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ENABLED", True, raising=False)
-    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_ENABLED", True, raising=False)
-    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_TENANT_ID", str(tenant_id), raising=False)
-    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID", "system:dify", raising=False)
-    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_KNOWLEDGE_IDS", "city,faq", raising=False)
-    monkeypatch.setattr(dify_api.settings, "RAG_RETRIEVAL_OFFLOAD_MAX_CONCURRENCY", 2, raising=False)
-    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_QUERY", "warmup probe", raising=False)
-    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_TOP_K", 1, raising=False)
+    monkeypatch.setattr(warmup.settings, "DIFY_EXTERNAL_KNOWLEDGE_ENABLED", True, raising=False)
+    monkeypatch.setattr(warmup.settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_ENABLED", True, raising=False)
+    monkeypatch.setattr(warmup.settings, "DIFY_EXTERNAL_KNOWLEDGE_TENANT_ID", str(tenant_id), raising=False)
+    monkeypatch.setattr(warmup.settings, "DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID", "system:dify", raising=False)
+    monkeypatch.setattr(warmup.settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_KNOWLEDGE_IDS", "city,faq", raising=False)
+    monkeypatch.setattr(warmup.settings, "RAG_RETRIEVAL_OFFLOAD_MAX_CONCURRENCY", 2, raising=False)
+    monkeypatch.setattr(warmup.settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_QUERY", "warmup probe", raising=False)
+    monkeypatch.setattr(warmup.settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_TOP_K", 1, raising=False)
     monkeypatch.setattr(
-        dify_api.settings,
+        warmup.settings,
         "DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON",
         f'{{"city": "{city_dataset_id}", "faq": "{faq_dataset_id}"}}',
         raising=False,
     )
-    monkeypatch.setattr(dify_api, "_acquire_dify_warmup_lease", _acquire_warmup_lease, raising=True)
-    monkeypatch.setattr(dify_api, "_release_distributed_dify_response_lease", _release_warmup_lease, raising=True)
-    monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
+    monkeypatch.setattr(warmup, "_acquire_dify_warmup_lease", _acquire_warmup_lease, raising=True)
+    monkeypatch.setattr(warmup, "_release_distributed_dify_response_lease", _release_warmup_lease, raising=True)
+    monkeypatch.setattr(warmup, "retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
 
-    result = await dify_api.warmup_dify_external_knowledge(db_factory=lambda: session)
+    result = await warmup.warmup_dify_external_knowledge(db_factory=lambda: session)
 
     assert result["attempted"] == 2
     assert result["completed"] == 2
@@ -684,19 +693,19 @@ async def test_dify_warmup_runs_internal_retrieval_for_configured_knowledge_ids(
 async def test_dify_delayed_warmup_stays_on_startup_event_loop(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations.dify as dify_api
+    from app.services.dify import warmup
 
     startup_loop = asyncio.get_running_loop()
     observed_loops: list[asyncio.AbstractEventLoop] = []
 
     async def fake_warmup() -> dict[str, object]:
         observed_loops.append(asyncio.get_running_loop())
-        return {"enabled": True}
+        return {"enabled": True, "reason": "completed"}
 
-    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_START_DELAY_SEC", 0.0)
-    monkeypatch.setattr(dify_api, "warmup_dify_external_knowledge", fake_warmup)
+    monkeypatch.setattr(warmup.settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_START_DELAY_SEC", 0.0)
+    monkeypatch.setattr(warmup, "warmup_dify_external_knowledge", fake_warmup)
 
-    assert await dify_api._delayed_warmup_dify_external_knowledge() == {"enabled": True}
+    assert await warmup._delayed_warmup_dify_external_knowledge(0.0) == {"enabled": True, "reason": "completed"}
     assert observed_loops == [startup_loop]
 
 
@@ -704,7 +713,7 @@ async def test_dify_delayed_warmup_stays_on_startup_event_loop(
 async def test_dify_warmup_skips_when_only_one_retrieval_slot_exists(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations.dify as dify_api
+    from app.services.dify import warmup
 
     tenant_id = uuid.uuid4()
     retrieval_calls: list[dict[str, object]] = []
@@ -713,20 +722,20 @@ async def test_dify_warmup_skips_when_only_one_retrieval_slot_exists(
         retrieval_calls.append(dict(kwargs))
         return []
 
-    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ENABLED", True, raising=False)
-    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_ENABLED", True, raising=False)
-    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_TENANT_ID", str(tenant_id), raising=False)
-    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_KNOWLEDGE_IDS", "city", raising=False)
-    monkeypatch.setattr(dify_api.settings, "RAG_RETRIEVAL_OFFLOAD_MAX_CONCURRENCY", 1, raising=False)
+    monkeypatch.setattr(warmup.settings, "DIFY_EXTERNAL_KNOWLEDGE_ENABLED", True, raising=False)
+    monkeypatch.setattr(warmup.settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_ENABLED", True, raising=False)
+    monkeypatch.setattr(warmup.settings, "DIFY_EXTERNAL_KNOWLEDGE_TENANT_ID", str(tenant_id), raising=False)
+    monkeypatch.setattr(warmup.settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_KNOWLEDGE_IDS", "city", raising=False)
+    monkeypatch.setattr(warmup.settings, "RAG_RETRIEVAL_OFFLOAD_MAX_CONCURRENCY", 1, raising=False)
     monkeypatch.setattr(
-        dify_api.settings,
+        warmup.settings,
         "DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON",
         f'{{"city": "{uuid.uuid4()}"}}',
         raising=False,
     )
-    monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
+    monkeypatch.setattr(warmup, "retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
 
-    result = await dify_api.warmup_dify_external_knowledge(db_factory=lambda: _DummyDB())
+    result = await warmup.warmup_dify_external_knowledge(db_factory=lambda: _DummyDB())
 
     assert result["reason"] == "warmup_skipped_single_retrieval_slot"
     assert retrieval_calls == []
@@ -736,7 +745,7 @@ async def test_dify_warmup_skips_when_only_one_retrieval_slot_exists(
 async def test_dify_warmup_skips_when_distributed_lease_is_held(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations.dify as dify_api
+    from app.services.dify import warmup
 
     tenant_id = uuid.uuid4()
     fake_redis = _FakeRedis()
@@ -746,22 +755,22 @@ async def test_dify_warmup_skips_when_distributed_lease_is_held(
         retrieval_calls.append(dict(kwargs))
         return []
 
-    _patch_fake_dify_redis(monkeypatch, dify_api, fake_redis)
-    fake_redis.set(dify_api._DIFY_WARMUP_LEASE_KEY, "owner-a", ex=300, nx=True)
-    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ENABLED", True, raising=False)
-    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_ENABLED", True, raising=False)
-    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_TENANT_ID", str(tenant_id), raising=False)
-    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_KNOWLEDGE_IDS", "city", raising=False)
-    monkeypatch.setattr(dify_api.settings, "RAG_RETRIEVAL_OFFLOAD_MAX_CONCURRENCY", 2, raising=False)
+    _patch_fake_dify_redis(monkeypatch, response_cache, fake_redis)
+    fake_redis.set(response_cache._DIFY_WARMUP_LEASE_KEY, "owner-a", ex=300, nx=True)
+    monkeypatch.setattr(warmup.settings, "DIFY_EXTERNAL_KNOWLEDGE_ENABLED", True, raising=False)
+    monkeypatch.setattr(warmup.settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_ENABLED", True, raising=False)
+    monkeypatch.setattr(warmup.settings, "DIFY_EXTERNAL_KNOWLEDGE_TENANT_ID", str(tenant_id), raising=False)
+    monkeypatch.setattr(warmup.settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_KNOWLEDGE_IDS", "city", raising=False)
+    monkeypatch.setattr(warmup.settings, "RAG_RETRIEVAL_OFFLOAD_MAX_CONCURRENCY", 2, raising=False)
     monkeypatch.setattr(
-        dify_api.settings,
+        warmup.settings,
         "DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON",
         f'{{"city": "{uuid.uuid4()}"}}',
         raising=False,
     )
-    monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
+    monkeypatch.setattr(warmup, "retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
 
-    result = await dify_api.warmup_dify_external_knowledge(db_factory=lambda: _DummyDB())
+    result = await warmup.warmup_dify_external_knowledge(db_factory=lambda: _DummyDB())
 
     assert result["reason"] == "warmup_locked"
     assert retrieval_calls == []
@@ -771,7 +780,7 @@ async def test_dify_warmup_skips_when_distributed_lease_is_held(
 async def test_dify_warmup_skips_when_distributed_lease_is_unavailable(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.integrations.dify as dify_api
+    from app.services.dify import warmup
 
     tenant_id = uuid.uuid4()
     retrieval_calls: list[dict[str, object]] = []
@@ -783,21 +792,21 @@ async def test_dify_warmup_skips_when_distributed_lease_is_unavailable(
         retrieval_calls.append(dict(kwargs))
         return []
 
-    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ENABLED", True, raising=False)
-    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_ENABLED", True, raising=False)
-    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_TENANT_ID", str(tenant_id), raising=False)
-    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_KNOWLEDGE_IDS", "city", raising=False)
-    monkeypatch.setattr(dify_api.settings, "RAG_RETRIEVAL_OFFLOAD_MAX_CONCURRENCY", 2, raising=False)
+    monkeypatch.setattr(warmup.settings, "DIFY_EXTERNAL_KNOWLEDGE_ENABLED", True, raising=False)
+    monkeypatch.setattr(warmup.settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_ENABLED", True, raising=False)
+    monkeypatch.setattr(warmup.settings, "DIFY_EXTERNAL_KNOWLEDGE_TENANT_ID", str(tenant_id), raising=False)
+    monkeypatch.setattr(warmup.settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_KNOWLEDGE_IDS", "city", raising=False)
+    monkeypatch.setattr(warmup.settings, "RAG_RETRIEVAL_OFFLOAD_MAX_CONCURRENCY", 2, raising=False)
     monkeypatch.setattr(
-        dify_api.settings,
+        warmup.settings,
         "DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON",
         f'{{"city": "{uuid.uuid4()}"}}',
         raising=False,
     )
-    monkeypatch.setattr(dify_api, "_acquire_dify_warmup_lease", _lease_unavailable, raising=True)
-    monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
+    monkeypatch.setattr(warmup, "_acquire_dify_warmup_lease", _lease_unavailable, raising=True)
+    monkeypatch.setattr(warmup, "retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
 
-    result = await dify_api.warmup_dify_external_knowledge(db_factory=lambda: _DummyDB())
+    result = await warmup.warmup_dify_external_knowledge(db_factory=lambda: _DummyDB())
 
     assert result["reason"] == "warmup_lease_unavailable"
     assert retrieval_calls == []
@@ -832,25 +841,32 @@ async def test_dify_lease_heartbeat_renews_owner_ttl(
     assert renewals == [("lease:key", "owner-a", 90)]
 
 
-def test_dify_warmup_scheduler_is_fire_and_forget(monkeypatch: pytest.MonkeyPatch) -> None:
-    import app.api.v1.integrations.dify as dify_api
+@pytest.mark.asyncio
+async def test_dify_warmup_scheduler_is_fire_and_forget(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.services.dify import warmup
 
-    scheduled = []
+    started = asyncio.Event()
+    finish = asyncio.Event()
 
-    def _fake_create_task(coro):  # noqa: ANN001, ANN202
-        scheduled.append(coro)
-        coro.close()
-        return object()
+    async def probe() -> dict[str, object]:
+        started.set()
+        await finish.wait()
+        return {"enabled": True, "reason": "completed"}
 
-    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ENABLED", True, raising=False)
-    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_ENABLED", True, raising=False)
-    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_START_DELAY_SEC", 1.0, raising=False)
-
-    task = dify_api.start_dify_external_knowledge_warmup(create_task=_fake_create_task)
+    monkeypatch.setattr(warmup.settings, "DIFY_EXTERNAL_KNOWLEDGE_ENABLED", True)
+    monkeypatch.setattr(warmup.settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_ENABLED", True)
+    monkeypatch.setattr(warmup.settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_START_DELAY_SEC", 0.0)
+    monkeypatch.setattr(warmup, "warmup_dify_external_knowledge", probe)
+    task = warmup.start_dify_external_knowledge_warmup()
 
     assert task is not None
-    assert scheduled
-    assert scheduled[0].cr_code.co_name == "_delayed_warmup_dify_external_knowledge"
+    try:
+        await asyncio.wait_for(started.wait(), timeout=1)
+        assert not task.done()
+        finish.set()
+        assert await asyncio.wait_for(task, timeout=1) == {"enabled": True, "reason": "completed"}
+    finally:
+        await warmup.stop_dify_external_knowledge_warmup()
 
 
 def test_dify_retrieval_logs_request_diagnostics(
@@ -891,7 +907,7 @@ def test_dify_retrieval_logs_request_diagnostics(
     monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
     monkeypatch.setattr(chunk_hydration, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     client = TestClient(app)
@@ -1673,16 +1689,6 @@ def test_dify_resolve_knowledge_policy_helpers_use_mapping_plugin_refs(monkeypat
     import app.api.v1.integrations.dify as dify_api
 
     monkeypatch.setattr(
-        dify_api,
-        "_load_knowledge_map",
-        lambda: {
-            "city": {
-                "plugin_refs": [" plugin-a ", "plugin-b", "plugin-a"],
-            }
-        },
-        raising=True,
-    )
-    monkeypatch.setattr(
         knowledge_scope,
         "load_knowledge_map",
         lambda: {"city": {"plugin_refs": [" plugin-a ", "plugin-b", "plugin-a"]}},
@@ -1710,7 +1716,6 @@ def test_dify_resolve_knowledge_policy_helpers_use_mapping_plugin_refs(monkeypat
 def test_dify_resolve_knowledge_policy_helpers_fall_back_for_unknown_mapping(monkeypatch: pytest.MonkeyPatch) -> None:
     import app.api.v1.integrations.dify as dify_api
 
-    monkeypatch.setattr(dify_api, "_load_knowledge_map", lambda: {}, raising=True)
     monkeypatch.setattr(knowledge_scope, "load_knowledge_map", lambda: {}, raising=True)
 
     assert dify_api._resolve_knowledge_policy_plugin_refs("missing") == ()
@@ -2451,7 +2456,7 @@ def test_dify_retrieval_uses_rag_before_question_anchor_fallback(
         raising=True,
     )
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     client = TestClient(app)
@@ -2536,7 +2541,7 @@ def test_dify_retrieval_uses_question_anchor_preflight_when_enabled(
         raising=True,
     )
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     client = TestClient(app)
@@ -2654,7 +2659,7 @@ def test_dify_preflight_records_still_use_final_reranker(
     )
     monkeypatch.setattr(dify_api, "get_reranker", lambda _provider: _FakeReranker(), raising=True)
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     client = TestClient(app)
@@ -2791,7 +2796,7 @@ def test_dify_mixed_intent_caps_internal_candidates_without_disabling_retrieval_
     monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
     monkeypatch.setattr(chunk_hydration, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     client = TestClient(app)
@@ -2877,7 +2882,7 @@ def test_dify_retrieval_uses_plugin_question_intent_preflight(
         raising=True,
     )
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     client = TestClient(app)
@@ -2962,7 +2967,7 @@ def test_dify_retrieval_uses_short_query_question_anchor_preflight(
         raising=True,
     )
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     client = TestClient(app)
@@ -3054,7 +3059,7 @@ def test_dify_retrieval_supplements_question_anchor_when_rag_only_has_service_an
         raising=True,
     )
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     client = TestClient(app)
@@ -3138,7 +3143,7 @@ def test_dify_retrieval_uses_service_anchor_preflight_when_enabled(
         raising=True,
     )
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     client = TestClient(app)
@@ -3241,7 +3246,7 @@ def test_dify_preflight_anchor_content_uses_metadata_answer(
         raising=True,
     )
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     client = TestClient(app)
@@ -3360,7 +3365,7 @@ def test_dify_mixed_quoted_preflight_requires_exact_slot_composite(
         raising=True,
     )
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     client = TestClient(app)
@@ -3456,7 +3461,7 @@ def test_dify_retrieval_skips_preflight_for_plugin_slot_query(
         raising=True,
     )
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     client = TestClient(app)
@@ -3477,6 +3482,30 @@ def test_dify_retrieval_skips_preflight_for_plugin_slot_query(
     assert res.json()["records"][0]["metadata"]["section_type"] == "channels"
 
 
+def _mock_cache_document_access(monkeypatch: pytest.MonkeyPatch, document_id: uuid.UUID) -> None:
+    from app.api.v1.integrations import dify as dify_api
+
+    def document_ids(_db, _tenant_id, _account_id, ids, *, check_member):
+        requested = set(ids)
+        return requested & {document_id}, requested - {document_id}
+
+    monkeypatch.setattr(dify_api, "get_allowed_document_id_sets", document_ids)
+
+
+async def _wait_for_mocked_retrieval(started: asyncio.Event, request: asyncio.Task[httpx.Response]) -> None:
+    signal = asyncio.create_task(started.wait())
+    try:
+        completed, _ = await asyncio.wait({signal, request}, timeout=10, return_when=asyncio.FIRST_COMPLETED)
+        if signal in completed:
+            return
+        if request in completed:
+            response = request.result()
+            pytest.fail(f"Retrieval returned HTTP {response.status_code} before starting: {response.text}")
+        pytest.fail("Request did not reach mocked retrieval within 10 seconds")
+    finally:
+        signal.cancel()
+
+
 @pytest.mark.asyncio
 async def test_dify_retrieval_singleflight_then_cache_reuses_identical_request(
     monkeypatch: pytest.MonkeyPatch,
@@ -3485,6 +3514,8 @@ async def test_dify_retrieval_singleflight_then_cache_reuses_identical_request(
 
     token = "dify-test-token"
     dataset_id = uuid.uuid4()
+    document_id = uuid.uuid4()
+    _mock_cache_document_access(monkeypatch, document_id)
     calls = {"rag": 0}
     request_sessions = []
     corpus_sessions = []
@@ -3545,6 +3576,7 @@ async def test_dify_retrieval_singleflight_then_cache_reuses_identical_request(
                 "relevance_score": 0.91,
                 "document_name": "service-rag.txt",
                 "chunk_id": str(uuid.uuid4()),
+                "document_id": str(document_id),
                 "dataset_id": str(dataset_id),
                 "metadata": {
                     "dataset_id": str(dataset_id),
@@ -3570,7 +3602,7 @@ async def test_dify_retrieval_singleflight_then_cache_reuses_identical_request(
         raising=True,
     )
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_tracking_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     payload = {
@@ -3583,7 +3615,7 @@ async def test_dify_retrieval_singleflight_then_cache_reuses_identical_request(
         first_task = asyncio.create_task(
             client.post("/api/v1/integrations/dify/retrieval", headers=_auth(token), json=payload)
         )
-        await retrieval_started.wait()
+        await _wait_for_mocked_retrieval(retrieval_started, first_task)
         second_task = asyncio.create_task(
             client.post("/api/v1/integrations/dify/retrieval", headers=_auth(token), json=payload)
         )
@@ -3622,6 +3654,8 @@ async def test_dify_distributed_singleflight_and_redis_cache_reuse_across_instan
 
     token = "dify-test-token"
     dataset_id = uuid.uuid4()
+    document_id = uuid.uuid4()
+    _mock_cache_document_access(monkeypatch, document_id)
     calls = {"rag": 0}
     retrieval_started = asyncio.Event()
     release_retrieval = asyncio.Event()
@@ -3652,7 +3686,7 @@ async def test_dify_distributed_singleflight_and_redis_cache_reuse_across_instan
     monkeypatch.setattr(
         dify_api,
         "_acquire_or_wait_for_inflight_response",
-        lambda _key: asyncio.sleep(0, result=(True, None)),
+        lambda _key: asyncio.sleep(0, result=(True, None, None)),
         raising=True,
     )
     monkeypatch.setattr(dify_api, "resolve_inflight_response", lambda *_args, **_kwargs: None, raising=True)
@@ -3669,6 +3703,7 @@ async def test_dify_distributed_singleflight_and_redis_cache_reuse_across_instan
                 "relevance_score": 0.91,
                 "document_name": "service-rag.txt",
                 "chunk_id": str(uuid.uuid4()),
+                "document_id": str(document_id),
                 "dataset_id": str(dataset_id),
                 "metadata": {"dataset_id": str(dataset_id), "service_name": "学区划分查询"},
             }
@@ -3677,7 +3712,7 @@ async def test_dify_distributed_singleflight_and_redis_cache_reuse_across_instan
     monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
     monkeypatch.setattr(chunk_hydration, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     payload = {
@@ -3691,7 +3726,7 @@ async def test_dify_distributed_singleflight_and_redis_cache_reuse_across_instan
         leader = asyncio.create_task(
             client.post("/api/v1/integrations/dify/retrieval", headers=_auth(token), json=payload)
         )
-        await retrieval_started.wait()
+        await _wait_for_mocked_retrieval(retrieval_started, leader)
         lease_keys = [key for key in fake_redis._values if key.endswith(":lease")]
         assert len(lease_keys) == 1
         assert (fake_redis.ttl_remaining(lease_keys[0]) or 0) >= 60
@@ -3724,6 +3759,8 @@ async def test_dify_distributed_singleflight_reuses_transient_result_when_respon
 
     token = "dify-test-token"
     dataset_id = uuid.uuid4()
+    document_id = uuid.uuid4()
+    _mock_cache_document_access(monkeypatch, document_id)
     calls = {"rag": 0}
     retrieval_started = asyncio.Event()
     release_retrieval = asyncio.Event()
@@ -3754,7 +3791,7 @@ async def test_dify_distributed_singleflight_reuses_transient_result_when_respon
     monkeypatch.setattr(
         dify_api,
         "_acquire_or_wait_for_inflight_response",
-        lambda _key: asyncio.sleep(0, result=(True, None)),
+        lambda _key: asyncio.sleep(0, result=(True, None, None)),
         raising=True,
     )
     monkeypatch.setattr(dify_api, "resolve_inflight_response", lambda *_args, **_kwargs: None, raising=True)
@@ -3771,6 +3808,7 @@ async def test_dify_distributed_singleflight_reuses_transient_result_when_respon
                 "relevance_score": 0.91,
                 "document_name": "service-rag.txt",
                 "chunk_id": str(uuid.uuid4()),
+                "document_id": str(document_id),
                 "dataset_id": str(dataset_id),
                 "metadata": {"dataset_id": str(dataset_id), "service_name": "学区划分查询"},
             }
@@ -3779,7 +3817,7 @@ async def test_dify_distributed_singleflight_reuses_transient_result_when_respon
     monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
     monkeypatch.setattr(chunk_hydration, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     payload = {
@@ -3793,7 +3831,7 @@ async def test_dify_distributed_singleflight_reuses_transient_result_when_respon
         leader = asyncio.create_task(
             client.post("/api/v1/integrations/dify/retrieval", headers=_auth(token), json=payload)
         )
-        await retrieval_started.wait()
+        await _wait_for_mocked_retrieval(retrieval_started, leader)
         lease_keys = [key for key in fake_redis._values if key.endswith(":lease")]
         assert len(lease_keys) == 1
         assert (fake_redis.ttl_remaining(lease_keys[0]) or 0) >= 60
@@ -3887,7 +3925,7 @@ async def test_dify_singleflight_follower_takes_over_after_leader_cancellation(
 
     monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
     monkeypatch.setattr(chunk_hydration, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     payload = {
@@ -3962,7 +4000,7 @@ async def test_dify_distributed_singleflight_releases_lease_after_leader_cancell
     monkeypatch.setattr(
         dify_api,
         "_acquire_or_wait_for_inflight_response",
-        lambda _key: asyncio.sleep(0, result=(True, None)),
+        lambda _key: asyncio.sleep(0, result=(True, None, None)),
         raising=True,
     )
     monkeypatch.setattr(dify_api, "resolve_inflight_response", lambda *_args, **_kwargs: None, raising=True)
@@ -3996,7 +4034,7 @@ async def test_dify_distributed_singleflight_releases_lease_after_leader_cancell
     monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
     monkeypatch.setattr(chunk_hydration, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     payload = {
@@ -4136,7 +4174,7 @@ def test_dify_retrieval_timeout_stays_http_503_in_route(
     monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fail_retrieve_dataset_citations, raising=True)
     monkeypatch.setattr(chunk_hydration, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     client = TestClient(app)
@@ -4195,7 +4233,7 @@ async def test_dify_uncacheable_request_cancellation_is_not_delayed_by_blocking_
         return await asyncio.to_thread(_blocking_retrieve_dataset_citations)
 
     monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     payload = {
@@ -4274,7 +4312,7 @@ def test_dify_quality_metadata_anchor_calls_share_request_budget(
     monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
     monkeypatch.setattr(chunk_hydration, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     client = TestClient(app)
@@ -4343,7 +4381,7 @@ async def test_dify_metadata_anchor_budget_includes_offload_queue_wait(
     monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _empty_retrieval, raising=True)
     monkeypatch.setattr(chunk_hydration, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     transport = httpx.ASGITransport(app=app)
@@ -4410,7 +4448,7 @@ def test_dify_kg_on_demand_skips_kg_for_confident_rag_anchor(
     monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
     monkeypatch.setattr(chunk_hydration, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     client = TestClient(app)
@@ -4508,7 +4546,7 @@ def test_dify_kg_on_demand_runs_kg_for_low_confidence_rag(
     monkeypatch.setattr(dify_api, "_dify_kg_on_demand_records", _fake_kg_on_demand_records, raising=True)
     monkeypatch.setattr(chunk_hydration, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     client = TestClient(app)
@@ -4697,7 +4735,7 @@ def test_dify_metadata_anchor_supplement_uses_inherited_route_scope_for_aggregat
         raising=True,
     )
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     client = TestClient(app)
@@ -4837,7 +4875,7 @@ def test_dify_metadata_anchor_expands_to_sibling_policy_datasets_for_specific_se
         raising=True,
     )
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     client = TestClient(app)
@@ -4981,7 +5019,7 @@ def test_dify_mixed_preflight_uses_sibling_policy_scope_for_specific_service_anc
         raising=True,
     )
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     client = TestClient(app)
@@ -7267,7 +7305,7 @@ def test_dify_retrieval_uses_rag_path_without_fast_chunk_runtime(monkeypatch: py
     monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
     monkeypatch.setattr(chunk_hydration, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     client = TestClient(app)
@@ -7353,7 +7391,7 @@ def test_dify_retrieval_runs_supplemental_queries_for_mixed_intent(monkeypatch: 
     monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
     monkeypatch.setattr(chunk_hydration, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     client = TestClient(app)
@@ -7437,7 +7475,7 @@ def test_dify_retrieval_skips_mixed_intent_queries_when_exact_anchor_is_complete
     monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
     monkeypatch.setattr(chunk_hydration, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     client = TestClient(app)
@@ -7511,7 +7549,7 @@ def test_dify_retrieval_skips_unquoted_mixed_intent_when_exact_anchor_record_is_
     monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
     monkeypatch.setattr(chunk_hydration, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     client = TestClient(app)
@@ -7601,7 +7639,7 @@ def test_dify_retrieval_does_not_skip_mixed_intent_queries_for_unquoted_anchor(
     monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
     monkeypatch.setattr(chunk_hydration, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     client = TestClient(app)
@@ -7648,7 +7686,7 @@ def test_dify_retrieval_request_passes_kg_overrides_to_rag(monkeypatch: pytest.M
 
     monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     client = TestClient(app)
@@ -7726,7 +7764,7 @@ def test_dify_retrieval_maps_knowledge_id_to_multiple_datasets(monkeypatch: pyte
 
     monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     client = TestClient(app)
@@ -7793,7 +7831,7 @@ def test_dify_retrieval_caps_top_k_for_external_timeout_budget(monkeypatch: pyte
     monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
     monkeypatch.setattr(chunk_hydration, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     client = TestClient(app)
@@ -8475,7 +8513,7 @@ def test_dify_metadata_condition_rejects_fields_not_allowed_by_plugin_policy(
     monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
     monkeypatch.setattr(chunk_hydration, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     client = TestClient(app)
@@ -8549,7 +8587,7 @@ def test_dify_metadata_condition_allows_plugin_policy_filter_fields(
     monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
     monkeypatch.setattr(chunk_hydration, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     client = TestClient(app)
@@ -8622,7 +8660,7 @@ def test_dify_plugin_retrieval_policy_fallback_expands_candidate_window(
     monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
     monkeypatch.setattr(chunk_hydration, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     client = TestClient(app)
@@ -8775,7 +8813,7 @@ def test_dify_fast_latency_profile_limits_candidates_and_compacts_context(
     monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
     monkeypatch.setattr(chunk_hydration, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     client = TestClient(app)
@@ -9144,8 +9182,8 @@ def test_dify_fast_latency_profile_can_short_circuit_with_metadata_preflight(
         raising=True,
     )
     monkeypatch.setattr(
-        record_ranking,
-        "_query_has_specific_service_anchor_candidate",
+        dify_api,
+        "_query_has_specific_fast_metadata_anchor_candidate",
         lambda *_args, **_kwargs: True,
         raising=True,
     )
@@ -9386,7 +9424,7 @@ def test_dify_retrieval_logs_policy_diagnostics(
     monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
     monkeypatch.setattr(chunk_hydration, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     client = TestClient(app)
@@ -9474,7 +9512,7 @@ def test_dify_retrieval_expands_dataset_mapping_by_query_terms(monkeypatch: pyte
     monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
     monkeypatch.setattr(chunk_hydration, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     client = TestClient(app)
@@ -9550,7 +9588,7 @@ def test_dify_retrieval_expands_scope_when_primary_has_no_evidence(monkeypatch: 
     monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
     monkeypatch.setattr(chunk_hydration, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     client = TestClient(app)
@@ -9672,7 +9710,7 @@ def test_dify_unmatched_route_hints_can_be_enabled_for_aggregate_knowledge(
     monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
     monkeypatch.setattr(chunk_hydration, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     client = TestClient(app)
@@ -9749,7 +9787,7 @@ def test_dify_matched_replace_route_prioritizes_route_dataset_without_narrowing_
     monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
     monkeypatch.setattr(chunk_hydration, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     client = TestClient(app)
@@ -10192,7 +10230,7 @@ def test_dify_retrieval_preserves_short_citation_snippet_over_full_chunk_hydrati
     monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
     monkeypatch.setattr(chunk_hydration, "_load_chunk_content_map", _fake_load_chunk_content_map, raising=True)
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     client = TestClient(app)
@@ -10502,7 +10540,7 @@ def test_dify_retrieval_uses_map_plugin_refs_for_content_hints_when_citation_lac
         raising=True,
     )
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     client = TestClient(app)
@@ -10933,7 +10971,7 @@ def test_dify_retrieval_prepends_structured_answer_hints_for_fee_fields(
     monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
     monkeypatch.setattr(chunk_hydration, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     client = TestClient(app)
@@ -10997,7 +11035,7 @@ def test_dify_retrieval_prepends_qa_answer_hints_for_long_answers(
     monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
     monkeypatch.setattr(chunk_hydration, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     client = TestClient(app)
@@ -11064,7 +11102,7 @@ def test_dify_retrieval_frontloads_enumerated_options_from_existing_answer_hints
     monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
     monkeypatch.setattr(chunk_hydration, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     client = TestClient(app)
@@ -11121,7 +11159,7 @@ def test_dify_retrieval_frontloads_options_with_closing_parenthesis_markers(
     monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
     monkeypatch.setattr(chunk_hydration, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     client = TestClient(app)
@@ -11181,7 +11219,7 @@ def test_dify_retrieval_frontloads_named_way_markers_from_real_qa_shape(
     monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
     monkeypatch.setattr(chunk_hydration, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     client = TestClient(app)
@@ -11241,7 +11279,7 @@ def test_dify_retrieval_does_not_treat_numbered_process_steps_as_answer_options(
     monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
     monkeypatch.setattr(chunk_hydration, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     client = TestClient(app)
@@ -11298,7 +11336,7 @@ def test_dify_retrieval_does_not_frontload_enumerated_options_for_non_option_que
     monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
     monkeypatch.setattr(chunk_hydration, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     client = TestClient(app)
@@ -11355,7 +11393,7 @@ def test_dify_retrieval_does_not_prepend_service_hints_for_weak_service_match(
     monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
     monkeypatch.setattr(chunk_hydration, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     client = TestClient(app)
@@ -11421,7 +11459,7 @@ def test_dify_retrieval_uses_plugin_retrieval_intents_for_tie_breaking(
     monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
     monkeypatch.setattr(chunk_hydration, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     client = TestClient(app)
@@ -11495,7 +11533,7 @@ def test_dify_retrieval_prefers_metadata_question_anchor_for_tie_breaking(
     monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
     monkeypatch.setattr(chunk_hydration, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     client = TestClient(app)
@@ -11567,7 +11605,7 @@ def test_dify_retrieval_prefers_regional_qa_question_anchor_over_service_item_ti
     monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
     monkeypatch.setattr(chunk_hydration, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     client = TestClient(app)
@@ -11642,7 +11680,7 @@ def test_dify_retrieval_uses_plugin_policy_value_intents_without_metadata_intent
     monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
     monkeypatch.setattr(chunk_hydration, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     client = TestClient(app)
@@ -11717,7 +11755,7 @@ def test_dify_retrieval_plugin_policy_value_intent_can_beat_small_score_gap(
     monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
     monkeypatch.setattr(chunk_hydration, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     client = TestClient(app)
@@ -11778,7 +11816,7 @@ def test_dify_retrieval_ignores_content_search_anchor_without_metadata_hints(
     monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
     monkeypatch.setattr(chunk_hydration, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     client = TestClient(app)
@@ -11839,7 +11877,7 @@ def test_dify_retrieval_does_not_boost_generic_anchor_terms_over_specific_hits(
     monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
     monkeypatch.setattr(chunk_hydration, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     client = TestClient(app)
@@ -11866,7 +11904,7 @@ def test_dify_retrieval_rejects_missing_or_wrong_bearer_token(monkeypatch: pytes
     monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ENABLED", True, raising=False)
     monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_API_KEYS", "expected-token", raising=False)
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     client = TestClient(app)
@@ -11903,7 +11941,7 @@ def test_dify_retrieval_rejects_unmapped_dataset_uuid_by_default(
         raising=False,
     )
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     client = TestClient(app)
@@ -11964,7 +12002,7 @@ def test_dify_retrieval_uses_server_tenant_when_header_attempts_override(
     monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
     monkeypatch.setattr(chunk_hydration, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     client = TestClient(app)
@@ -12696,7 +12734,7 @@ def test_dify_retrieval_endpoint_logs_trace_for_dify_conversation_context(
     monkeypatch.setattr(dify_external_api, "_ensure_dify_trace_conversation", _fake_ensure, raising=True)
     monkeypatch.setattr(tracing, "log_metrics", lambda payload: logged.append(payload), raising=True)
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     client = TestClient(app)
@@ -12789,7 +12827,7 @@ def test_dify_retrieval_trace_includes_mixed_intent_subqueries_and_paths(
         raising=True,
     )
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     client = TestClient(app)
@@ -12859,7 +12897,7 @@ def test_dify_conversation_turn_endpoint_persists_final_answer(
         raising=False,
     )
 
-    app = FastAPI()
+    app = _new_dify_test_app()
     app.dependency_overrides[get_db] = _override_get_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
     client = TestClient(app)

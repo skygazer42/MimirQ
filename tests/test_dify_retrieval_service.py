@@ -112,6 +112,7 @@ async def test_dify_retrieval_executes_and_disabled_warmup_never_opens_storage(m
 
     from app.api.schemas.integrations import DifyExternalKnowledgeRequest, DifyRetrievalSetting
     from app.api.v1.integrations import dify
+    from app.services.dify import warmup
     from app.services.runtime import retrieval_limiter
     from app.types.dify_integration import DifyActor
 
@@ -164,6 +165,6 @@ async def test_dify_retrieval_executes_and_disabled_warmup_never_opens_storage(m
         raise AssertionError("Disabled warmup must not open storage")
 
     monkeypatch.setattr(dify.settings, "DIFY_EXTERNAL_KNOWLEDGE_ENABLED", False)
-    assert (await dify.warmup_dify_external_knowledge(db_factory=forbidden_storage))[
+    assert (await warmup.warmup_dify_external_knowledge(db_factory=forbidden_storage))[
         "reason"
     ] == "external_knowledge_disabled"

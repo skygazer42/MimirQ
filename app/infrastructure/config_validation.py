@@ -1,7 +1,5 @@
 """Startup validation and input normalization for application settings."""
 
-from __future__ import annotations
-
 import ipaddress
 import json
 import os
@@ -110,7 +108,7 @@ def validate_jwt_remote_url(raw_url: str, *, field_name: str) -> None:
     raise ValueError(f"{field_name} must use https")
 
 
-def _set_if_changed(settings: Settings, field_name: str, value: object) -> None:
+def _set_if_changed(settings: "Settings", field_name: str, value: object) -> None:
     if getattr(settings, field_name) != value:
         setattr(settings, field_name, value)
 
@@ -153,7 +151,7 @@ def _normalize_lower_choice(value: str, default: str) -> str:
 
 
 def _normalize_choice_setting(
-    settings: Settings, field_name: str, default: str, valid_values: set[str], message: str
+    settings: "Settings", field_name: str, default: str, valid_values: set[str], message: str
 ) -> str:
     normalized = _normalize_lower_choice(getattr(settings, field_name, default), default)
     _raise_if(normalized not in valid_values, message)
@@ -186,7 +184,7 @@ def _validate_tokenized_sha256_digests(token_raw: str, field_name: str, required
     return tokens
 
 
-def _validate_initial_registration_token(settings: Settings) -> None:
+def _validate_initial_registration_token(settings: "Settings") -> None:
     initial_registration_token = settings.INITIAL_REGISTRATION_TOKEN.strip()
     _validate_sha256_digest(
         initial_registration_token,
@@ -194,7 +192,7 @@ def _validate_initial_registration_token(settings: Settings) -> None:
     )
 
 
-def _validate_jwt_tenant_source(settings: Settings, auth_mode: str, is_production: bool) -> None:
+def _validate_jwt_tenant_source(settings: "Settings", auth_mode: str, is_production: bool) -> None:
     if auth_mode != "jwt" or not is_production:
         return
     tenant_claim = settings.JWT_TENANT_CLAIM.strip()
@@ -206,7 +204,7 @@ def _validate_jwt_tenant_source(settings: Settings, auth_mode: str, is_productio
         )
 
 
-def _validate_jwt_member_auto_provision(settings: Settings, auth_mode: str) -> None:
+def _validate_jwt_member_auto_provision(settings: "Settings", auth_mode: str) -> None:
     if not settings.JWT_TENANT_MEMBER_AUTO_PROVISION_ENABLED:
         return
     _raise_if(auth_mode != "jwt", "JWT_TENANT_MEMBER_AUTO_PROVISION_ENABLED requires AUTH_MODE=jwt")
@@ -217,7 +215,7 @@ def _validate_jwt_member_auto_provision(settings: Settings, auth_mode: str) -> N
     )
 
 
-def _validate_jwt_remote_settings(settings: Settings) -> None:
+def _validate_jwt_remote_settings(settings: "Settings") -> None:
     issuer = settings.JWT_ISSUER.strip()
     if issuer:
         validate_jwt_remote_url(issuer, field_name="JWT_ISSUER")
@@ -257,7 +255,7 @@ def _validate_initial_admin_email(email: str) -> str:
     return normalized_email
 
 
-def _validate_initial_admin_password(settings: Settings, password: str) -> None:
+def _validate_initial_admin_password(settings: "Settings", password: str) -> None:
     if not password:
         return
     min_len = settings.PASSWORD_MIN_LENGTH
@@ -268,7 +266,7 @@ def _validate_initial_admin_password(settings: Settings, password: str) -> None:
     )
 
 
-def _validate_scim_allowlist(settings: Settings) -> None:
+def _validate_scim_allowlist(settings: "Settings") -> None:
     allow_raw = settings.SCIM_IP_ALLOWLIST_CIDRS.strip()
     if not allow_raw:
         return
@@ -314,7 +312,7 @@ def _validate_object_storage_region_profile(
     _validate_object_storage_profile(f"OBJECT_STORAGE_REGION_PROFILES[{region!r}]", merged_profile)
 
 
-def validate_uvicorn_workers_and_distributed_limits(settings: Settings) -> None:
+def validate_uvicorn_workers_and_distributed_limits(settings: "Settings") -> None:
     is_production = is_production_env()
 
     workers_raw = str(os.getenv("UVICORN_WORKERS", "1") or "1").strip()
@@ -335,7 +333,7 @@ def validate_uvicorn_workers_and_distributed_limits(settings: Settings) -> None:
             )
 
 
-def validate_saml_replay(settings: Settings) -> None:
+def validate_saml_replay(settings: "Settings") -> None:
     is_production = is_production_env()
     if is_production and settings.SAML_PROVIDERS_JSON.strip():
         if not settings.SAML_REPLAY_REDIS_ENABLED:
@@ -344,7 +342,7 @@ def validate_saml_replay(settings: Settings) -> None:
             raise ValueError("REDIS_URL is required for SAML replay protection in production")
 
 
-def validate_trusted_hosts(settings: Settings) -> None:
+def validate_trusted_hosts(settings: "Settings") -> None:
     is_production = is_production_env()
     # Security: Host header hardening (production-only by default).
     if is_production and settings.TRUSTED_HOSTS_ENABLED:
@@ -355,7 +353,7 @@ def validate_trusted_hosts(settings: Settings) -> None:
             raise ValueError("ALLOWED_HOSTS must not include '*' in production")
 
 
-def validate_production_api_surface(settings: Settings) -> None:
+def validate_production_api_surface(settings: "Settings") -> None:
     is_production = is_production_env()
     # Security: Reduce public API surface in production by default.
     if is_production:
@@ -373,7 +371,7 @@ def validate_production_api_surface(settings: Settings) -> None:
             settings.API_OPENAPI_ENABLED = True
 
 
-def validate_cors(settings: Settings) -> None:
+def validate_cors(settings: "Settings") -> None:
     is_production = is_production_env()
     # Security: CORS hardening (production guardrails).
     if is_production:
@@ -402,7 +400,7 @@ def validate_cors(settings: Settings) -> None:
                 raise ValueError("CORS_ORIGINS must not include localhost origins in production")
 
 
-def validate_auth_mode_and_jwt_claims(settings: Settings) -> None:
+def validate_auth_mode_and_jwt_claims(settings: "Settings") -> None:
     is_production = is_production_env()
     # Security: Auth mode guard
     auth_mode = _normalize_lower_choice(settings.AUTH_MODE, "jwt")
@@ -418,7 +416,7 @@ def validate_auth_mode_and_jwt_claims(settings: Settings) -> None:
     _validate_jwt_remote_settings(settings)
 
 
-def validate_initial_admin_bootstrap(settings: Settings) -> None:
+def validate_initial_admin_bootstrap(settings: "Settings") -> None:
     email = settings.INITIAL_ADMIN_EMAIL.strip()
     username = settings.INITIAL_ADMIN_USERNAME.strip()
     password = settings.INITIAL_ADMIN_PASSWORD
@@ -435,7 +433,7 @@ def validate_initial_admin_bootstrap(settings: Settings) -> None:
     settings.INITIAL_ADMIN_PASSWORD_FILE = password_file
 
 
-def validate_scim(settings: Settings) -> None:
+def validate_scim(settings: "Settings") -> None:
     # Security: SCIM provisioning auth guard (enterprise).
     if not settings.SCIM_ENABLED:
         return
@@ -451,7 +449,7 @@ def validate_scim(settings: Settings) -> None:
     _validate_scim_allowlist(settings)
 
 
-def validate_dify_resolution_mode(settings: Settings) -> None:
+def validate_dify_resolution_mode(settings: "Settings") -> None:
     is_production = is_production_env()
     dify_resolution_mode = settings.DIFY_EXTERNAL_KNOWLEDGE_RESOLUTION_MODE.strip().lower()
     valid_dify_resolution_modes = {"mapped_only", "allow_dataset_uuid"}
@@ -465,12 +463,12 @@ def validate_dify_resolution_mode(settings: Settings) -> None:
         settings.DIFY_EXTERNAL_KNOWLEDGE_RESOLUTION_MODE = dify_resolution_mode
 
 
-def validate_rag_runtime_warmup(settings: Settings) -> None:
+def validate_rag_runtime_warmup(settings: "Settings") -> None:
     if settings.RAG_RUNTIME_WARMUP_REQUIRED_FOR_READY and not settings.RAG_RUNTIME_WARMUP_ENABLED:
         raise ValueError("RAG_RUNTIME_WARMUP_ENABLED must be true when RAG_RUNTIME_WARMUP_REQUIRED_FOR_READY=true")
 
 
-def validate_dify_external_knowledge(settings: Settings) -> None:
+def validate_dify_external_knowledge(settings: "Settings") -> None:
     is_production = is_production_env()
     # Security: Dify external knowledge adapter auth guard.
     if not settings.DIFY_EXTERNAL_KNOWLEDGE_ENABLED:
@@ -680,7 +678,7 @@ def validate_dify_external_knowledge(settings: Settings) -> None:
     )
 
 
-def validate_secret_key_and_jwt_key_source(settings: Settings) -> None:
+def validate_secret_key_and_jwt_key_source(settings: "Settings") -> None:
     auth_mode = settings.AUTH_MODE.lower()
     issuer = settings.JWT_ISSUER.strip()
     jwks_urls_raw = settings.JWT_JWKS_URLS.strip()
@@ -712,7 +710,7 @@ def validate_secret_key_and_jwt_key_source(settings: Settings) -> None:
             )
 
 
-def validate_minio(settings: Settings) -> None:
+def validate_minio(settings: "Settings") -> None:
     is_production = is_production_env()
     # Security: Warn about default MinIO credentials
     if settings.MINIO_ENABLED:
@@ -756,7 +754,7 @@ def validate_minio(settings: Settings) -> None:
                 )
 
 
-def validate_object_storage(settings: Settings) -> None:
+def validate_object_storage(settings: "Settings") -> None:
     object_storage_provider = normalize_object_storage_provider_name(settings.OBJECT_STORAGE_PROVIDER)
     settings.OBJECT_STORAGE_PROVIDER = object_storage_provider
     object_storage_profiles = parse_object_storage_region_profiles(settings.OBJECT_STORAGE_REGION_PROFILES)
@@ -788,7 +786,7 @@ def validate_object_storage(settings: Settings) -> None:
         _validate_object_storage_region_profile(region, raw_profile, base_object_storage, object_storage_provider)
 
 
-def validate_chunk_llm_and_retrieval(settings: Settings) -> None:
+def validate_chunk_llm_and_retrieval(settings: "Settings") -> None:
     is_production = is_production_env()
     # Validate chunk settings
     _raise_if(
@@ -925,7 +923,7 @@ def validate_chunk_llm_and_retrieval(settings: Settings) -> None:
     )
 
 
-def validate_embedding_and_migration(settings: Settings) -> None:
+def validate_embedding_and_migration(settings: "Settings") -> None:
     reject_retired_provider(settings.EMBEDDING_PROVIDER, capability="embedding")
     reject_retired_provider(settings.DEFAULT_PARSER_BACKEND, capability="parser")
     reject_retired_chunk_strategy(settings.DEFAULT_CHUNK_STRATEGY)
@@ -1007,7 +1005,7 @@ def validate_embedding_and_migration(settings: Settings) -> None:
     )
 
 
-def validate_chat_and_retrieval_caches(settings: Settings) -> None:
+def validate_chat_and_retrieval_caches(settings: "Settings") -> None:
     _require_int_min(settings.CHAT_RESPONSE_CACHE_TTL_SEC, 0, "CHAT_RESPONSE_CACHE_TTL_SEC must be >= 0")
     _require_int_min(
         settings.CHAT_RESPONSE_CACHE_MAX_VALUE_BYTES, 0, "CHAT_RESPONSE_CACHE_MAX_VALUE_BYTES must be >= 0"
@@ -1102,7 +1100,7 @@ def validate_chat_and_retrieval_caches(settings: Settings) -> None:
     _require_int_min(settings.RAG_KG_CHUNK_BOOST_MAX_PROMOTED, 0, "RAG_KG_CHUNK_BOOST_MAX_PROMOTED must be >= 0")
 
 
-def validate_kg_search(settings: Settings) -> None:
+def validate_kg_search(settings: "Settings") -> None:
     _require_int_min(settings.KG_SEARCH_CACHE_TTL_SEC, 0, "KG_SEARCH_CACHE_TTL_SEC must be >= 0")
     _require_int_min(settings.KG_SEARCH_CACHE_MAX_ENTRIES, 0, "KG_SEARCH_CACHE_MAX_ENTRIES must be >= 0")
     _require_int_between(
@@ -1169,7 +1167,7 @@ def validate_kg_search(settings: Settings) -> None:
     )
 
 
-def validate_vector_write_and_table_catalog(settings: Settings) -> None:
+def validate_vector_write_and_table_catalog(settings: "Settings") -> None:
     _require_nonempty(settings.UPLOAD_DIR.strip(), "UPLOAD_DIR must be non-empty")
     _require_nonempty(settings.TABLE_STORE_DIR.strip(), "TABLE_STORE_DIR must be non-empty")
     _require_int_min(settings.VECTOR_WRITE_BATCH_SIZE, 1, "VECTOR_WRITE_BATCH_SIZE must be >= 1")
@@ -1217,7 +1215,7 @@ def validate_vector_write_and_table_catalog(settings: Settings) -> None:
     )
 
 
-def validate_evidence_governance_and_quotas(settings: Settings) -> None:
+def validate_evidence_governance_and_quotas(settings: "Settings") -> None:
     signing_key_id = settings.EVIDENCE_CAPSULE_SIGNING_KEY_ID.strip()
     _require_nonempty(signing_key_id, "EVIDENCE_CAPSULE_SIGNING_KEY_ID must be non-empty")
     _require_no_whitespace(signing_key_id, "EVIDENCE_CAPSULE_SIGNING_KEY_ID must not contain whitespace")
@@ -1272,7 +1270,7 @@ def validate_evidence_governance_and_quotas(settings: Settings) -> None:
     )
 
 
-def validate_workflow_and_retrieval_profiles(settings: Settings) -> None:
+def validate_workflow_and_retrieval_profiles(settings: "Settings") -> None:
     # Validate workflow mode
     valid_workflow_modes = {"chain", "routing", "parallel", "react", "planner", "evaluator"}
     if settings.WORKFLOW_MODE not in valid_workflow_modes:
@@ -1308,7 +1306,7 @@ def validate_workflow_and_retrieval_profiles(settings: Settings) -> None:
         settings.RETRIEVAL_CONTRACT_MODE = retrieval_contract_mode
 
 
-def validate_claim_verifier(settings: Settings) -> None:
+def validate_claim_verifier(settings: "Settings") -> None:
     claim_verifier_mode = settings.RAG_CLAIM_VERIFIER_MODE.strip().lower()
     valid_claim_verifier_modes = {"token_overlap", "semantic_heuristic", "strict"}
     if claim_verifier_mode not in valid_claim_verifier_modes:
@@ -1346,7 +1344,7 @@ def validate_claim_verifier(settings: Settings) -> None:
             settings.RAG_CLAIM_NLI_VERIFIER_MODEL = claim_nli_model
 
 
-def validate_retrieval_fallback_modes(settings: Settings) -> None:
+def validate_retrieval_fallback_modes(settings: "Settings") -> None:
     valid_retrieval_modes = {"hybrid", "vector", "keyword", "mmr"}
     fallback_mode = _normalize_lower_choice(settings.RETRIEVAL_HARD_FALLBACK_MODE, "keyword")
     _raise_if(
@@ -1430,7 +1428,7 @@ def validate_retrieval_fallback_modes(settings: Settings) -> None:
     _set_if_changed(settings, "RAG_INTENT_ROUTER_MODEL_PATH", intent_router_model_path)
 
 
-def validate_parse_quality(settings: Settings) -> None:
+def validate_parse_quality(settings: "Settings") -> None:
     low_quality = settings.RETRIEVAL_PARSE_QUALITY_LOW_THRESHOLD
     _require_float_between(low_quality, 0.0, 1.0, "RETRIEVAL_PARSE_QUALITY_LOW_THRESHOLD must be between 0 and 1")
     alert_ratio = settings.RETRIEVAL_PARSE_QUALITY_ALERT_RATIO
@@ -1483,11 +1481,11 @@ def validate_parse_quality(settings: Settings) -> None:
     _require_int_min(parse_risk_reparse_max_docs, 1, "RETRIEVAL_PARSE_RISK_REPARSE_MAX_DOCS must be >= 1")
 
 
-def validate_keyword_provider(settings: Settings) -> None:
+def validate_keyword_provider(settings: "Settings") -> None:
     reject_retired_provider(settings.GOVERNANCE_KEYWORDS_PROVIDER, capability="keyword")
 
 
-def validate_checkpoint_memory_reranker(settings: Settings) -> None:
+def validate_checkpoint_memory_reranker(settings: "Settings") -> None:
     # Validate checkpoint backend
     valid_checkpoint_backends = {"memory", "sqlite"}
     if settings.CHECKPOINT_BACKEND not in valid_checkpoint_backends:
@@ -1521,7 +1519,7 @@ def validate_checkpoint_memory_reranker(settings: Settings) -> None:
         raise ValueError(f"RERANKER_PROVIDER ({settings.RERANKER_PROVIDER}) must be one of {valid_reranker_providers}")
 
 
-def validate_rag_eval_gate(settings: Settings) -> None:
+def validate_rag_eval_gate(settings: "Settings") -> None:
     rag_eval_faithfulness_min = settings.RAG_EVAL_GATE_FAITHFULNESS_MIN
     if rag_eval_faithfulness_min < 0.0 or rag_eval_faithfulness_min > 1.0:
         raise ValueError("RAG_EVAL_GATE_FAITHFULNESS_MIN must be between 0 and 1")

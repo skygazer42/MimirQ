@@ -43,8 +43,10 @@ import asyncio
 import importlib.abc
 import io
 import sys
+from contextlib import nullcontext
 from uuid import uuid4
 from fastapi import HTTPException, Request, UploadFile
+from app.api.schemas.documents import DocumentPreviewForm
 from app.api.v1.documents import preview
 
 class NoDocumentAggregator(importlib.abc.MetaPathFinder):
@@ -56,16 +58,15 @@ def forbidden(*args):
     raise HTTPException(status_code=403, detail="membership gate")
 
 preview.dataset_service.ensure_member = forbidden
+preview.SessionLocal = lambda: nullcontext(object())
 sys.meta_path.insert(0, NoDocumentAggregator())
 
 async def verify():
     try:
         await preview.preview_document(
             request=Request({"type": "http", "headers": []}),
-            file=UploadFile(filename="input.txt", file=io.BytesIO(b"text")),
-            form=preview.PreviewDocumentFormFields(),
-            gov_overrides_form=preview.PreviewDocumentGovernanceOverridesFormFields(),
-            tenant_id=uuid4(), account_id="member", db=object(),
+            form=DocumentPreviewForm(file=UploadFile(filename="input.txt", file=io.BytesIO(b"text"))),
+            tenant_id=uuid4(), account_id="member",
         )
     except HTTPException as error:
         assert error.status_code == 403 and error.detail == "membership gate"

@@ -1,6 +1,6 @@
 import path from 'node:path'
 import { expect, test } from '@playwright/test'
-import { fixture, open, original, noOverflow } from './chunk-compare.helpers'
+import { changePreviewAppearance, fixture, open, original, noOverflow } from './chunk-compare.helpers'
 
 const evidence = path.resolve(__dirname, '../../artifacts/rebrand/chunk-compare-v1/tests')
 test('equal columns link actual source positions and preserve edited, reviewed and skipped chunks through export and failed ingestion', async ({
@@ -140,7 +140,6 @@ test('documents and advanced controls remain reachable, while narrow views and t
   await advanced.getByRole('button', { name: '返回预览', exact: true }).click()
   await page.getByRole('button', { name: '切块 #2', exact: true }).click()
   await page.setViewportSize({ width: 390, height: 844 })
-  await page.getByRole('button', { name: '收起侧边栏', exact: true }).click()
   await expect(page.locator('[data-compare-original]')).toBeHidden()
   await page.getByRole('button', { name: '文档原文', exact: true }).click()
   await expect(page.locator('[data-compare-original] mark')).toContainText('作业前检查紧固件')
@@ -151,13 +150,12 @@ test('documents and advanced controls remain reachable, while narrow views and t
   await expect(page.locator('[data-chunk-card][data-selected=true]')).toHaveAttribute('data-chunk-index', '1')
   await page.screenshot({ path: path.join(evidence, 'phone-result.png') })
   await page.setViewportSize({ width: 1600, height: 1000 })
-  await page.evaluate(() => {
-    localStorage.setItem('theme', 'dark')
-    localStorage.setItem('mimirq.surfaceTheme', 'earth')
-  })
-  await page.reload()
+  await changePreviewAppearance(page, '深色', '米白')
   await expect(page.locator('html')).toHaveClass(/dark/)
+  await expect(page.locator('html')).toHaveAttribute('data-surface-theme', 'earth')
+  await expect(page.getByRole('combobox', { name: '选择预览文档', exact: true })).toContainText('设备维护手册.md')
   await expect(page.locator('[data-chunk-card]')).toHaveCount(3)
+  await expect(page.locator('[data-chunk-card][data-selected=true]')).toHaveAttribute('data-chunk-index', '1')
   await noOverflow(page)
   await page.screenshot({ path: path.join(evidence, 'dark-earth.png') })
 })
@@ -203,7 +201,6 @@ test('reading mode locates a late source range and preserves it across mobile so
   await page.getByRole('textbox', { name: '搜索切块内容', exact: true }).fill('')
   await expect(page.locator('[data-compare-results]').getByText('1 / 14', { exact: true })).toHaveCount(0)
   await page.setViewportSize({ width: 390, height: 844 })
-  await page.getByRole('button', { name: '收起侧边栏', exact: true }).click()
   await page.getByRole('button', { name: '文档原文', exact: true }).click()
   await page.getByRole('button', { name: '阅读', exact: true }).click()
   await expect(marker).toBeInViewport()

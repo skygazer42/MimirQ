@@ -175,6 +175,9 @@ async def preflight_model_provider_fast() -> tuple[bool, str | None]:
             mark_model_provider_unavailable()
             return False, str(exc)[:400]
         return True, None
+    except httpx.TimeoutException:
+        # Let generation use its configured timeout when the short probe is inconclusive.
+        return True, None
     except Exception as exc:  # noqa: BLE001
         if is_model_provider_unavailable_error(exc):
             mark_model_provider_unavailable()

@@ -25,12 +25,11 @@ def test_invalid_form_override_without_pipeline_is_a_bad_request():
     assert caught.value.status_code == 400
 
 
-@pytest.mark.parametrize("raw", [None, "", "null", "none", "undefined", "   "])
-def test_absent_form_pipeline_stays_absent(raw):  # noqa: ANN001
-    assert inputs.parse_pipeline_json(raw) is None
+def test_absent_form_pipeline_stays_absent():
+    assert inputs.parse_pipeline_json(None) is None
 
 
-@pytest.mark.parametrize("raw", ['{"unexpected":true}', "[]", "not-json"])
+@pytest.mark.parametrize("raw", ['{"unexpected":true}', "[]", "not-json", "", "null", "none", "undefined", "   "])
 def test_invalid_pipeline_keeps_bad_request_contract(raw):  # noqa: ANN001
     with pytest.raises(HTTPException) as caught:
         inputs.parse_pipeline_json(raw)

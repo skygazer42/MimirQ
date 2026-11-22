@@ -40,12 +40,13 @@ def test_conversation_response_keeps_historical_reranker_provenance(provider):
 def test_real_bootstrap_and_preview_boundaries_propagate_retirement(flow, patch, monkeypatch):
     from app.api.v1.retrieval import routes as rag
     from app.services.chat import bootstrap
+    from app.services.retrieval import requests
 
     dataset_id, tenant_id, template_id = uuid4(), uuid4(), uuid4()
     config = ChatRAGConfig()
     db = _DB()
     if flow.endswith("dataset"):
-        module = bootstrap if flow.startswith("chat") else rag
+        module = bootstrap if flow.startswith("chat") else requests
         monkeypatch.setattr(module, "load_dataset_metadata", lambda *_args, **_kwargs: {"rag_defaults": patch})
     else:
         module = bootstrap if flow.startswith("chat") else rag

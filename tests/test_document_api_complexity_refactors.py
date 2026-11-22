@@ -13,6 +13,7 @@ from app.api.v1.documents import processing as document_processing
 from app.rag.ingestion.parsing.subprocess_runner import SubprocessCancelled, SubprocessWorkerError
 from app.services.documents import processing as document_processing_operations
 from app.services.documents import processing_dispatch as document_processing_dispatch
+from app.services.runtime import retrieval_limiter
 
 
 class _Request:
@@ -63,6 +64,9 @@ class _DB:
     def rollback(self) -> None:
         self.rollbacks += 1
 
+    def close(self) -> None:
+        return None
+
     def __enter__(self):
         return self
 
@@ -71,7 +75,7 @@ class _DB:
 
 
 def _bind_retry_sessions(monkeypatch, db):
-    monkeypatch.setattr(document_processing_operations, "SessionLocal", lambda: db)
+    monkeypatch.setattr(retrieval_limiter, "SessionLocal", lambda: db)
     monkeypatch.setattr(document_processing_dispatch, "SessionLocal", lambda: db)
 
 

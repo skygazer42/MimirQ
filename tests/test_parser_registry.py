@@ -40,10 +40,6 @@ EXPECTED_BACKEND_ALIASES = {
     "paddleocrvl": "paddle_vl",
     "glm-ocr": "glm_ocr",
     "glmocr": "glm_ocr",
-    "col-pali": "colpali",
-    "colpali": "colpali",
-    "col-qwen": "colpali",
-    "colqwen": "colpali",
     "olmocr": "olmocr",
     "olm-ocr": "olmocr",
     "olmocr-pdf": "olmocr",
@@ -55,7 +51,6 @@ EXPECTED_BACKEND_ALIASES = {
 EXPECTED_PDF_BACKENDS = [
     "auto",
     "basic",
-    "colpali",
     "deepdoc",
     "deepseek_ocr",
     "docling",
@@ -73,7 +68,6 @@ EXPECTED_PDF_BACKENDS = [
 
 EXPECTED_NON_PDF_BACKENDS = [
     "auto",
-    "colpali",
     "csv",
     "deepdoc",
     "docling",
@@ -159,18 +153,17 @@ EXPECTED_OPTIONAL_BACKENDS = {
     "textin",
 }
 
-EXPECTED_EXPERIMENTAL_BACKENDS = {"colpali"}
-
 
 def _run_python_snippet(snippet: str) -> dict[str, object]:
     env = {**os.environ, "PYTHONWARNINGS": "ignore::FutureWarning"}
     result = subprocess.run(
         [sys.executable, "-c", textwrap.dedent(snippet)],
         capture_output=True,
-        check=True,
+        check=False,
         env=env,
         text=True,
     )
+    assert result.returncode == 0, result.stderr
     return json.loads(result.stdout.strip())
 
 
@@ -223,7 +216,7 @@ def test_parser_backend_capability_discovery_covers_factory_supported_backends()
 
     families = {item["resolved_backend"]: item for item in parsers.list_parser_backend_capabilities()}
 
-    assert set(families) == (EXPECTED_DEFAULT_BACKENDS | EXPECTED_OPTIONAL_BACKENDS | EXPECTED_EXPERIMENTAL_BACKENDS)
+    assert set(families) == (EXPECTED_DEFAULT_BACKENDS | EXPECTED_OPTIONAL_BACKENDS)
 
     supported_pdf = {
         name
@@ -269,21 +262,7 @@ def test_parser_backend_capability_discovery_reports_tiers_and_aliases() -> None
         "experimental": False,
         "lazy_modules": ["app.rag.ingestion.parsing.parsers.etl4llm_parser"],
     }
-    assert colpali == {
-        "requested_backend": "col-qwen",
-        "resolved_backend": "colpali",
-        "aliases": ["colpali", "col-pali", "col-qwen", "colqwen"],
-        "tier": "experimental",
-        "category": "vision",
-        "supports_pdf": True,
-        "supports_non_pdf": True,
-        "user_selectable": True,
-        "implicit_only": False,
-        "default": False,
-        "optional": False,
-        "experimental": True,
-        "lazy_modules": ["app.rag.ingestion.parsing.parsers.colpali_parser"],
-    }
+    assert colpali == {**unknown, "requested_backend": "col-qwen"}
     assert basic == {
         "requested_backend": "pymupdf",
         "resolved_backend": "basic",
@@ -340,7 +319,7 @@ def test_parsers_package_missing_attribute_error_is_stable() -> None:
     with pytest.raises(AttributeError) as exc_info:
         parsers.MissingParser  # type: ignore[attr-defined]
 
-    assert str(exc_info.value) == "module 'app.parsing.parsers' has no attribute 'MissingParser'"
+    assert str(exc_info.value) == "module 'app.rag.ingestion.parsing.parsers' has no attribute 'MissingParser'"
 
 
 def test_parser_factory_rejects_unsupported_pdf_backend_with_current_message() -> None:
@@ -468,9 +447,9 @@ def test_importing_parsers_package_keeps_default_import_surface_light() -> None:
         import sys
 
         before = set(sys.modules)
-        import app.parsing.parsers as parsers  # noqa: F401
+        import app.rag.ingestion.parsing.parsers as parsers  # noqa: F401
         after = set(sys.modules)
-        added = sorted(name for name in after - before if name.startswith("app.parsing.parsers"))
+        added = sorted(name for name in after - before if name.startswith("app.rag.ingestion.parsing.parsers"))
         print(json.dumps({"added": added}))
         """
     )
@@ -490,7 +469,7 @@ def test_parser_capability_discovery_is_lazy() -> None:
         import sys
 
         before = set(sys.modules)
-        import app.parsing.parsers as parsers
+        import app.rag.ingestion.parsing.parsers as parsers
         after_import = set(sys.modules)
         capabilities = parsers.get_parser_capabilities()
         after_capabilities = set(sys.modules)
@@ -498,10 +477,10 @@ def test_parser_capability_discovery_is_lazy() -> None:
             json.dumps(
                 {
                     "after_import": sorted(
-                        name for name in after_import - before if name.startswith("app.parsing.parsers")
+                        name for name in after_import - before if name.startswith("app.rag.ingestion.parsing.parsers")
                     ),
                     "after_capabilities": sorted(
-                        name for name in after_capabilities - after_import if name.startswith("app.parsing.parsers")
+                        name for name in after_capabilities - after_import if name.startswith("app.rag.ingestion.parsing.parsers")
                     ),
                     "exports": [item.export_name for item in capabilities],
                 }
@@ -530,7 +509,7 @@ def test_parser_backend_capability_discovery_is_lazy() -> None:
         import sys
 
         before = set(sys.modules)
-        import app.parsing.parsers as parsers
+        import app.rag.ingestion.parsing.parsers as parsers
         after_import = set(sys.modules)
         capabilities = parsers.list_parser_backend_capabilities()
         after_capabilities = set(sys.modules)
@@ -538,10 +517,10 @@ def test_parser_backend_capability_discovery_is_lazy() -> None:
             json.dumps(
                 {
                     "after_import": sorted(
-                        name for name in after_import - before if name.startswith("app.parsing.parsers")
+                        name for name in after_import - before if name.startswith("app.rag.ingestion.parsing.parsers")
                     ),
                     "after_capabilities": sorted(
-                        name for name in after_capabilities - after_import if name.startswith("app.parsing.parsers")
+                        name for name in after_capabilities - after_import if name.startswith("app.rag.ingestion.parsing.parsers")
                     ),
                     "count": len(capabilities),
                     "resolved_backends": [item["resolved_backend"] for item in capabilities],
@@ -560,7 +539,7 @@ def test_parser_backend_capability_discovery_is_lazy() -> None:
             "app.rag.ingestion.parsing.parsers.capabilities",
             "app.rag.ingestion.parsing.parsers.registry",
         ],
-        "count": 29,
+        "count": len(EXPECTED_DEFAULT_BACKENDS | EXPECTED_OPTIONAL_BACKENDS),
         "resolved_backends": [
             "auto",
             "basic",
@@ -577,7 +556,6 @@ def test_parser_backend_capability_discovery_is_lazy() -> None:
             "markitdown",
             "docling",
             "magicpdf",
-            "colpali",
             "pandoc",
             "excel",
             "docx",
@@ -601,35 +579,34 @@ def test_parser_factory_and_backend_capability_discovery_do_not_import_implement
         import sys
 
         parser_modules = [
-            "app.parsing.parsers.pdf_parser",
-            "app.parsing.parsers.marker_parser",
-            "app.parsing.parsers.paddle_vl_parser",
-            "app.parsing.parsers.glm_ocr_parser",
-            "app.parsing.parsers.olmocr_parser",
-            "app.parsing.parsers.qianfan_ocr_parser",
-            "app.parsing.parsers.textin_parser",
-            "app.parsing.parsers.mineru_parser",
-            "app.parsing.parsers.deepdoc_parser",
-            "app.parsing.parsers.deepseek_ocr_parser",
-            "app.parsing.parsers.etl4llm_parser",
-            "app.parsing.parsers.markitdown_parser",
-            "app.parsing.parsers.docling_parser",
-            "app.parsing.parsers.magic_pdf_parser",
-            "app.parsing.parsers.colpali_parser",
-            "app.parsing.parsers.pandoc_parser",
-            "app.parsing.parsers.excel_parser",
-            "app.parsing.parsers.docx_parser",
-            "app.parsing.parsers.pptx_parser",
-            "app.parsing.parsers.html_parser",
-            "app.parsing.parsers.csv_parser",
-            "app.parsing.parsers.json_parser",
-            "app.parsing.parsers.email_parser",
-            "app.parsing.parsers.image_parser",
+            "app.rag.ingestion.parsing.parsers.pdf_parser",
+            "app.rag.ingestion.parsing.parsers.marker_parser",
+            "app.rag.ingestion.parsing.parsers.paddle_vl_parser",
+            "app.rag.ingestion.parsing.parsers.glm_ocr_parser",
+            "app.rag.ingestion.parsing.parsers.olmocr_parser",
+            "app.rag.ingestion.parsing.parsers.qianfan_ocr_parser",
+            "app.rag.ingestion.parsing.parsers.textin_parser",
+            "app.rag.ingestion.parsing.parsers.mineru_parser",
+            "app.rag.ingestion.parsing.parsers.deepdoc_parser",
+            "app.rag.ingestion.parsing.parsers.deepseek_ocr_parser",
+            "app.rag.ingestion.parsing.parsers.etl4llm_parser",
+            "app.rag.ingestion.parsing.parsers.markitdown_parser",
+            "app.rag.ingestion.parsing.parsers.docling_parser",
+            "app.rag.ingestion.parsing.parsers.magic_pdf_parser",
+            "app.rag.ingestion.parsing.parsers.pandoc_parser",
+            "app.rag.ingestion.parsing.parsers.excel_parser",
+            "app.rag.ingestion.parsing.parsers.docx_parser",
+            "app.rag.ingestion.parsing.parsers.pptx_parser",
+            "app.rag.ingestion.parsing.parsers.html_parser",
+            "app.rag.ingestion.parsing.parsers.csv_parser",
+            "app.rag.ingestion.parsing.parsers.json_parser",
+            "app.rag.ingestion.parsing.parsers.email_parser",
+            "app.rag.ingestion.parsing.parsers.image_parser",
         ]
         for name in parser_modules:
             sys.modules.pop(name, None)
-        importlib.import_module("app.parsing.factory")
-        from app.parsing.parsers import list_parser_backend_capabilities
+        importlib.import_module("app.rag.ingestion.parsing.factory")
+        from app.rag.ingestion.parsing.parsers import list_parser_backend_capabilities
 
         list_parser_backend_capabilities()
         print(json.dumps([name for name in parser_modules if name in sys.modules]))
@@ -646,7 +623,7 @@ def test_parser_export_resolution_loads_only_requested_parser_module() -> None:
         import sys
 
         before = set(sys.modules)
-        import app.parsing.parsers as parsers
+        import app.rag.ingestion.parsing.parsers as parsers
         after_import = set(sys.modules)
         parser_cls = parsers.Etl4LlmParser
         after_attr = set(sys.modules)
@@ -654,10 +631,10 @@ def test_parser_export_resolution_loads_only_requested_parser_module() -> None:
             json.dumps(
                 {
                     "after_import": sorted(
-                        name for name in after_import - before if name.startswith("app.parsing.parsers")
+                        name for name in after_import - before if name.startswith("app.rag.ingestion.parsing.parsers")
                     ),
                     "after_attr": sorted(
-                        name for name in after_attr - after_import if name.startswith("app.parsing.parsers")
+                        name for name in after_attr - after_import if name.startswith("app.rag.ingestion.parsing.parsers")
                     ),
                     "class_name": parser_cls.__name__,
                 }

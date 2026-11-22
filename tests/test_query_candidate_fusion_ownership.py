@@ -236,7 +236,7 @@ def test_public_retrieval_consumes_the_owned_fusion_result(monkeypatch):
     from app.rag.retrieval.planning import model_expansion as model_query_expansion
     from app.rag.retrieval.planning.contracts import QueryListOutcome
     from app.rag.retrieval.ranking import queries as candidate_ranking
-    from app.rag.retrieval.stages import preparation
+    from app.rag.retrieval.stages import fusion, preparation
 
     for flag in (
         "ENABLE_QUERY_REWRITE",
@@ -279,7 +279,7 @@ def test_public_retrieval_consumes_the_owned_fusion_result(monkeypatch):
         outcomes.append(result)
         return result
 
-    monkeypatch.setattr(candidate_ranking, "fuse_query_candidates", capture)
+    monkeypatch.setattr(fusion, "fuse_query_candidates", capture)
     result = orchestrator.run_retrieval(
         {
             "question": "base question",

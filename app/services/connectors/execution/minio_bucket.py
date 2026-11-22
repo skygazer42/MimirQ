@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import contextlib
 import hashlib
 from datetime import UTC, datetime, timedelta
@@ -72,7 +70,7 @@ def _minio_source_scope_hash(*, bucket_name: str, prefix: str | None, include_se
     return hashlib.sha256("|".join(scope_parts).encode("utf-8")).hexdigest()[:16]
 
 
-def _minio_object_token(obj: Object) -> str:
+def _minio_object_token(obj: "Object") -> str:
     etag = _optional_source_text(obj.etag)
 
     last_modified_raw = getattr(obj, "last_modified", None)
@@ -96,7 +94,7 @@ def _minio_object_token(obj: Object) -> str:
     return "|".join(parts) or "unknown"
 
 
-def _build_minio_bucket_run_settings(cfg: dict[str, Any], *, minio_service: MinIOService) -> dict[str, Any]:
+def _build_minio_bucket_run_settings(cfg: dict[str, Any], *, minio_service: "MinIOService") -> dict[str, Any]:
     bucket = cfg.get("bucket") if isinstance(cfg.get("bucket"), str) else None
     prefix = cfg.get("prefix") if isinstance(cfg.get("prefix"), str) else None
     bucket_name = _optional_source_text(bucket, minio_service._bucket_name)
@@ -116,7 +114,7 @@ def _build_minio_bucket_run_settings(cfg: dict[str, Any], *, minio_service: MinI
     }
 
 
-def _list_minio_bucket_objects(client: Minio, *, bucket_name: str, prefix: str | None) -> list[dict[str, str]]:
+def _list_minio_bucket_objects(client: "Minio", *, bucket_name: str, prefix: str | None) -> list[dict[str, str]]:
     listed_objects: list[dict[str, str]] = []
     for obj in client.list_objects(bucket_name=bucket_name, prefix=prefix, recursive=True):
         name = obj.object_name.strip()
@@ -232,7 +230,7 @@ def _initialize_minio_bucket_run_stats(*, run: ConnectorRun, plan: dict[str, Any
 
 
 async def _ingest_minio_bucket_object(
-    client: Minio,
+    client: "Minio",
     db: Session,
     *,
     run: ConnectorRun,
@@ -348,7 +346,7 @@ def _persist_minio_bucket_progress(
 
 
 async def _process_minio_bucket_objects(
-    client: Minio,
+    client: "Minio",
     db: Session,
     *,
     run: ConnectorRun,

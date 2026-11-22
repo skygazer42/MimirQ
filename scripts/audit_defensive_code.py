@@ -5,8 +5,6 @@ eligible for automatic edits. Input coercion and exception policies are reported
 for call-chain review, not deleted by a text replacement.
 """
 
-from __future__ import annotations
-
 import argparse
 import ast
 import hashlib

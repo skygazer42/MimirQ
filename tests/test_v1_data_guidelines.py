@@ -14,6 +14,7 @@ from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.orm import Session
 from starlette.requests import Request
 
+from app.api.schemas.datasets.profile import DatasetProfileScanRunOut
 from app.api.schemas.documents import DocumentDuplicateQuery
 from app.api.schemas.identity.groups import (
     TenantGroupCreateRequest,
@@ -31,7 +32,6 @@ from app.models.datasets.scans import DatasetProfileScanRun
 from app.models.documents.records import Document, DocumentChunk
 from app.models.identity.workspaces import Tenant, TenantGroup, TenantGroupMember, TenantMember
 from app.models.knowledge_graph.entities import KgEntity, KgEventEntity, KgRelation, KgSourceEvent
-from app.services.datasets.precheck.results import _scan_run_out_from_row
 from app.services.identity import groups as tenant_group_service
 
 
@@ -299,15 +299,16 @@ def test_profile_scan_projection_rejects_null_required_fields(field):
     values = {"kind": "deep", "status": "running", "progress": 0, "config": {}, "summary": {}}
     values[field] = None
     row = DatasetProfileScanRun(id=uuid4(), tenant_id=uuid4(), dataset_id=uuid4(), **values)
-    with pytest.raises(ValidationError):
-        _scan_run_out_from_row(row)
+    with pytest.raises(ValidationError) as raised:
+        DatasetProfileScanRunOut.model_validate(row, from_attributes=True)
+    assert [error["loc"] for error in raised.value.errors()] == [(field,)]
 
 
 def test_profile_scan_projection_preserves_empty_strings_and_zero_progress():
     row = DatasetProfileScanRun(
         id=uuid4(), tenant_id=uuid4(), dataset_id=uuid4(), kind="", status="", progress=0, config={}, summary={}
     )
-    result = _scan_run_out_from_row(row)
+    result = DatasetProfileScanRunOut.model_validate(row, from_attributes=True)
     assert (result.kind, result.status, result.progress, result.config, result.summary) == ("", "", 0, {}, {})
 
 
@@ -364,7 +365,7 @@ def test_sqlite_document_versions_keep_legacy_hashes_and_version_scope(data_db, 
         == chunk_ids[:2]
     )
     result = document_versions.list_document_versions(document_id, tenant_id=tenant_id, account_id="owner", db=data_db)
-    assert [(item["pipeline_hash"], item["chunk_count"], item["active"]) for item in result["items"]] == [
+    assert [(item.pipeline_hash, item.chunk_count, item.active) for item in result.items] == [
         ("new", 1, True),
         ("old", 2, False),
     ]
@@ -446,7 +447,7 @@ def test_postgres_duplicate_query_failure_does_not_retry_a_scan(data_db, monkeyp
     monkeypatch.setattr(document_duplicates, "build_document_read_filter", lambda **kwargs: True)
     monkeypatch.setattr(data_db, "get_bind", lambda: SimpleNamespace(dialect=SimpleNamespace(name="postgresql")))
 
-    def fail_query(**kwargs):
+    def fail_query(_base_query, _params):
         raise failure
 
     monkeypatch.setattr(document_duplicates, "_list_document_duplicates_fast_path", fail_query)

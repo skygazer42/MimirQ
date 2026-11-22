@@ -58,6 +58,11 @@ class _RecallEntityRepository:
 
 
 class _RecallEventRepository:
+    def search_events_lexical(self, **kwargs: object) -> list[dict[str, object]]:
+        assert kwargs["tenant_id"] == UUID(int=1)
+        assert kwargs["document_ids"] == [UUID(int=2)]
+        return []
+
     def filter_entity_ids_in_documents(
         self,
         entity_ids: object,
@@ -239,6 +244,13 @@ async def test_kg_recall_relation_expansion_clues_include_provenance_and_confide
     monkeypatch.setattr(recall_mod, "generate_embedding", _fake_generate_embedding, raising=True)
     monkeypatch.setattr(recall_mod, "EntityRepository", lambda _session: _RecallEntityRepository(), raising=True)
     monkeypatch.setattr(recall_mod, "EventRepository", lambda _session: _RecallEventRepository(), raising=True)
+
+    def match_aliases(*, query: str, tenant_id: UUID, limit: int) -> list[dict[str, object]]:
+        assert (query, tenant_id) == ("q", UUID(int=1))
+        assert limit > 0
+        return []
+
+    monkeypatch.setattr(recall_mod, "AliasRepository", lambda _session: SimpleNamespace(match_aliases=match_aliases))
 
     relation = SimpleNamespace(
         id=UUID(int=500),

@@ -151,12 +151,14 @@ describe('feedback inbox', () => {
     }))
     chat.getMessages.mockImplementation(async (conversationId: string) => ({
       conversation_id: conversationId,
+      returned: 2,
+      has_more: false,
       messages: [
         { id: `user-${conversationId}`, role: 'user', content: `原问题 ${conversationId}`, created_at: '' },
         {
           id: conversationId.replace('conversation-', 'message-'),
           role: 'assistant',
-          content: '会话答复',
+          content: `会话答复 ${conversationId}`,
           citations: [],
           created_at: '',
         },
@@ -179,32 +181,40 @@ describe('feedback inbox', () => {
     const container = renderPage()
     await ready(container)
     await act(async () =>
-      vi.waitFor(() => expect(container.querySelector('[data-feedback-reader]')?.textContent).toContain('原回答 1')),
+      vi.waitFor(() =>
+        expect(container.querySelector('[data-feedback-reader]')?.textContent).toContain('会话答复 conversation-1'),
+      ),
     )
     expect(container.querySelector('[role="dialog"]')).toBeNull()
     await click(button(container, '下一条反馈'))
-    expect(container.querySelector('[data-feedback-reader]')?.textContent).toContain('原回答 2')
+    await act(async () =>
+      vi.waitFor(() =>
+        expect(container.querySelector('[data-feedback-reader]')?.textContent).toContain('会话答复 conversation-2'),
+      ),
+    )
     const search = container.querySelector('input')!
     await act(async () => {
       search.value = '问题 3'
       search.dispatchEvent(new Event('input', { bubbles: true }))
     })
     expect(container.querySelectorAll('[data-feedback-item]')).toHaveLength(1)
-    expect(container.querySelector('[data-feedback-reader]')?.textContent).toContain('原回答 3')
+    await act(async () =>
+      vi.waitFor(() =>
+        expect(container.querySelector('[data-feedback-reader]')?.textContent).toContain('会话答复 conversation-3'),
+      ),
+    )
   })
 
   it('keeps the failed record and filters, then archives and reads back the persisted status', async () => {
-    const { toast } = await import('sonner')
     const container = renderPage()
     await ready(container)
     api.update.mockRejectedValueOnce(new Error('不能归档'))
-    await click(button(container, '归档反馈'))
+    const archive = button(container, '归档反馈') as HTMLButtonElement
+    expect(archive.disabled).toBe(false)
+    await click(archive)
     await act(async () =>
       vi.waitFor(() =>
-        expect(toast.error).toHaveBeenCalledWith(
-          expect.stringContaining('归档失败'),
-          expect.objectContaining({ duration: 4000 }),
-        ),
+        expect(container.querySelector('[data-feedback-reader] [role="alert"]')?.textContent).toContain('归档失败'),
       ),
     )
     expect(

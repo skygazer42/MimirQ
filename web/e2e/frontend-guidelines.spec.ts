@@ -76,7 +76,9 @@ test('public readiness and connector refresh errors preserve usable task data', 
 
   await page.goto('/zh-CN/knowledge')
   await expect(page.getByRole('heading', { name: '知识库', exact: true })).toBeVisible()
-  await expect(page.getByRole('button', { name: '查看后端依赖状态', exact: true })).toContainText('服务已就绪')
+  await page.getByRole('button', { name: '工作空间与外观设置', exact: true }).click()
+  await expect(page.getByRole('dialog', { name: '工作空间与外观设置', exact: true })).toContainText('核心服务已就绪')
+  await page.keyboard.press('Escape')
   await page.getByRole('button', { name: '任务历史', exact: true }).click()
   await expect(page.getByText('11111111', { exact: false }).first()).toBeVisible()
 

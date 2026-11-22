@@ -1,23 +1,31 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { expect, test, type Page, type Route } from '@playwright/test'
+import type { DatasetReport } from '../lib/report-schema'
 import { installCommonApiMocks } from './enterprise-quality-telemetry.helpers'
+import { profileSummary } from './remaining-pages.helpers'
 
 const evidence = path.resolve(__dirname, '../../artifacts/rebrand/reports-overview-v1/tests')
 async function json(route: Route, value: unknown, status = 200) {
   await route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(value) })
 }
-function report(datasetId = 'dataset-a', hash = '') {
+function report(datasetId = 'dataset-a', hash = ''): DatasetReport {
   const empty = datasetId === 'dataset-b',
     n = empty ? 0 : hash ? 96 : 128
+  const profile = profileSummary()
   return {
     dataset_id: datasetId,
     dataset_name: empty ? '空数据集' : '工程文档库',
     pipeline_hash: hash || null,
     generated_at: '2026-10-25T10:42:00Z',
-    data_provenance: { source: 'database', mocked: false, sections: { profile: 'database' } },
+    data_provenance: { source: 'database', mocked: false, generated_by: 'fixture', sections: { profile: 'database' } },
     dataset_metadata: {},
+    pipeline_snapshots: {},
+    folder_tree: null,
+    governance_metrics: null,
+    governance_audit: null,
     profile: {
+      ...profile,
       dataset_id: datasetId,
       generated_at: '2026-10-25T10:42:00Z',
       total_documents: n,
@@ -32,13 +40,11 @@ function report(datasetId = 'dataset-a', hash = '') {
       file_size_histogram: [],
       length_percentiles: { p25: 100, p50: 400, p75: 900, p90: 1200, p99: 2000 },
       length_histogram: [],
-      chunk_count_histogram: empty ? [] : [{ label: '1–10', count: n - 5 }],
+      chunk_count_histogram: empty ? [] : [{ label: '1–10', min: 1, max: 10, count: n - 5 }],
       pdf_scan: { scanned: 0, not_scanned: n, unknown: 0 },
       parsing_provenance: {
+        ...profile.parsing_provenance,
         docs_with_provenance: Math.max(0, n - 3),
-        by_resolved_backend: {},
-        fallback_docs: 0,
-        elapsed_ms_percentiles: {},
       },
       pii_hits_total: {},
       secrets_hits_total: {},
@@ -53,10 +59,10 @@ function report(datasetId = 'dataset-a', hash = '') {
               description: '有 6 个文档未记录目录字段。',
             },
             { key: 'duplicate_hash', label: '重复文档', severity: 'warning', count: 4, description: '内容哈希重复。' },
-            { key: 'low_confidence', label: '低置信度内容', severity: 'warning', count: 5 },
-            { key: 'parse_failed', label: '解析失败', severity: 'error', count: hash ? 2 : 3 },
-            { key: 'info', label: '扫描范围完整', severity: 'info', count: 0 },
-            { key: 'zero_warning', label: '零命中规则', severity: 'warning', count: 0 },
+            { key: 'low_confidence', label: '低置信度内容', severity: 'warning', count: 5, description: null },
+            { key: 'parse_failed', label: '解析失败', severity: 'error', count: hash ? 2 : 3, description: null },
+            { key: 'info', label: '扫描范围完整', severity: 'info', count: 0, description: null },
+            { key: 'zero_warning', label: '零命中规则', severity: 'warning', count: 0, description: null },
           ],
     },
     compliance: {
@@ -81,6 +87,7 @@ function report(datasetId = 'dataset-a', hash = '') {
             connector_id: 'source-1',
             status: 'failed',
             created_at: '2026-10-25T09:00:00Z',
+            finished_at: '2026-10-25T09:01:00Z',
             stats: {},
             error_message: '上游连接超时',
           },
@@ -106,6 +113,7 @@ function report(datasetId = 'dataset-a', hash = '') {
               },
               failed_conditions: ['hit_at_1 < 0.90'],
               generated_at: '2026-10-25T10:40:00Z',
+              source: null,
             },
           ],
         },
@@ -168,7 +176,7 @@ async function fixture(page: Page, theme: 'light' | 'dark' = 'light') {
 }
 async function open(page: Page) {
   await page.goto('/reports', { waitUntil: 'domcontentloaded' })
-  await expect(page.locator('[data-reports-overview]')).toBeVisible({ timeout: 60000 })
+  await expect(page.getByRole('region', { name: '报告摘要', exact: true })).toBeVisible({ timeout: 60000 })
 }
 test('A renders live report values, filters anomalies and exposes all report sections', async ({ page }) => {
   const state = await fixture(page)
@@ -225,7 +233,7 @@ test('version and run scope reach the original API, and report failure preserves
   await expect(page.getByRole('combobox', { name: '处理版本', exact: true })).toContainText('全部处理版本')
   expect(state.writes).toEqual([])
 })
-test('all six exports stay available and redaction is sent only to HTML and ZIP; export failure retains settings', async ({
+test('all six exports stay available and redaction is sent to HTML and ZIP; export failure retains settings', async ({
   page,
 }) => {
   const state = await fixture(page)
@@ -237,7 +245,9 @@ test('all six exports stay available and redaction is sent only to HTML and ZIP;
   await firstDownload
   expect(new URL(state.exports.at(-1)!).searchParams.get('redact')).toBe('true')
   await menu()
-  await page.getByRole('menuitemcheckbox', { name: 'HTML／ZIP 脱敏', exact: true }).uncheck()
+  const redact = page.getByRole('menuitemcheckbox', { name: 'HTML／ZIP 脱敏', exact: true })
+  await redact.click()
+  await expect(redact).not.toBeChecked()
   await page.keyboard.press('Escape')
   await menu()
   const jsonDownload = page.waitForEvent('download')
@@ -248,7 +258,11 @@ test('all six exports stay available and redaction is sent only to HTML and ZIP;
     await menu()
     const download = page.waitForEvent('download')
     await page.getByRole('menuitem', { name: label, exact: true }).click()
-    await download
+    const file = await download
+    if (label === '导出 RAG 审计报告') {
+      expect(new URL(state.exports.at(-1)!).searchParams.get('redact')).toBe('false')
+      expect(file.suggestedFilename()).toMatch(/\.rag_audit\.html$/)
+    }
   }
   state.failExport = true
   await menu()
@@ -300,16 +314,21 @@ test('MRR and non-summary gates remain visible in audit details', async ({ page 
         plugin_refs: [],
         plugin_package_hashes: [],
         failure_categories: {},
-        gates: [{ name: '排序门禁', status: 'passed', metrics, failed_conditions: [] }],
+        kg_recommendation: null,
+        recommended_next_action: null,
+        gates: [
+          { name: '排序门禁', status: 'passed', metrics, failed_conditions: [], generated_at: null, source: null },
+        ],
       },
     }),
   )
   await open(page)
   await page.getByRole('tab', { name: '召回审计', exact: true }).click()
-  await expect(page.getByRole('table', { name: '召回门禁指标' })).toContainText('0.620')
+  const audit = page.getByRole('table', { name: '召回门禁指标', exact: true })
+  await expect(audit.getByRole('row', { name: 'MRR 0.62 排序门禁', exact: true })).toBeVisible()
   metrics = { probe_errors: 2 }
   await page.getByRole('button', { name: '刷新报告', exact: true }).click()
-  await expect(page.getByText('当前门禁没有摘要指标，可展开门禁详情。', { exact: true })).toBeVisible()
+  await expect(page.getByText('当前门禁没有摘要指标。', { exact: true })).toBeVisible()
   await expect(page.getByText('暂无召回审计记录', { exact: true })).toHaveCount(0)
   await page.getByText('排序门禁', { exact: true }).click()
   await page.getByText('原始门禁指标', { exact: true }).click()

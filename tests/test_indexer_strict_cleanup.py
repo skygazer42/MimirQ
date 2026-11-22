@@ -75,11 +75,13 @@ def test_delete_chunk_indexes_strict_deletes_plausible_scoped_collection_for_amb
         def filter(self, *_args, **_kwargs):  # noqa: ANN002, ANN003
             return self
 
-        def all(self):
-            return [({"embedding_space_hash": "space-default"},)]
+        def yield_per(self, batch_size: int):
+            assert batch_size > 0
+            return iter([(None, "space-default")])
 
     test_tenant_id = tenant_id
     monkeypatch.setattr(indexer.settings, "VECTOR_BACKEND", "milvus", raising=False)
+    monkeypatch.setattr(indexer.settings, "MILVUS_COLLECTION_NAME", "documents")
     monkeypatch.setattr(indexer, "resolve_collection_name", lambda name: name)
     monkeypatch.setattr(indexer, "get_milvus_adapter", lambda name: _Adapter(name))
     monkeypatch.setattr(
@@ -274,11 +276,13 @@ def test_delete_dataset_scoped_chunk_vectors_uses_persisted_chunk_space_on_runti
         def filter(self, *_args, **_kwargs):  # noqa: ANN002, ANN003
             return self
 
-        def all(self):
-            return [({"embedding_space_hash": "space-a"},)]
+        def yield_per(self, batch_size: int):
+            assert batch_size > 0
+            return iter([(None, "space-a")])
 
     test_tenant_id = tenant_id
     monkeypatch.setattr(indexer.settings, "VECTOR_BACKEND", "milvus", raising=False)
+    monkeypatch.setattr(indexer.settings, "MILVUS_COLLECTION_NAME", "documents")
     monkeypatch.setattr(indexer, "resolve_collection_name", lambda name: name)
     monkeypatch.setattr(indexer, "get_milvus_adapter", lambda name: _Adapter(name))
     monkeypatch.setattr(
@@ -315,7 +319,7 @@ def test_delete_dataset_scoped_chunk_vectors_uses_persisted_chunk_space_on_runti
     assert deleted == ["documents_emb_space_a"]
 
 
-def test_delete_dataset_scoped_chunk_vectors_prefers_persisted_collection_identity(
+def test_delete_dataset_scoped_chunk_vectors_uses_persisted_and_current_collections(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from app.rag.ingestion.indexing import indexer
@@ -334,19 +338,13 @@ def test_delete_dataset_scoped_chunk_vectors_prefers_persisted_collection_identi
             assert tenant_id == test_tenant_id
             deleted.append(self.collection_name)
 
-    class _Row:
-        def __init__(self, metadata: dict[str, object]) -> None:
-            self._mapping = {"metadata": metadata}
-
-        def __getitem__(self, key):  # noqa: ANN001
-            return self._mapping[key]
-
     class _Query:
         def filter(self, *_args, **_kwargs):  # noqa: ANN002, ANN003
             return self
 
-        def all(self):
-            return [_Row({"dataset_scoped": True, "vector_collection_name": "documents_emb_oldbase_space_a"})]
+        def yield_per(self, batch_size: int):
+            assert batch_size > 0
+            return iter([("documents_emb_oldbase_space_a", "space-a")])
 
     test_tenant_id = tenant_id
     monkeypatch.setattr(indexer.settings, "VECTOR_BACKEND", "milvus", raising=False)
@@ -370,7 +368,7 @@ def test_delete_dataset_scoped_chunk_vectors_prefers_persisted_collection_identi
 
     service._delete_dataset_scoped_chunk_vectors(tenant_id=tenant_id, document_id=document_id)
 
-    assert deleted == ["documents_emb_oldbase_space_a"]
+    assert deleted == ["documents_emb_oldbase_space_a", "documents_emb_space_b"]
 
 
 def test_delete_dataset_scoped_chunk_vectors_deletes_ambiguous_default_space_from_plausible_scoped_collection(
@@ -396,11 +394,13 @@ def test_delete_dataset_scoped_chunk_vectors_deletes_ambiguous_default_space_fro
         def filter(self, *_args, **_kwargs):  # noqa: ANN002, ANN003
             return self
 
-        def all(self):
-            return [({"embedding_space_hash": "space-default"},)]
+        def yield_per(self, batch_size: int):
+            assert batch_size > 0
+            return iter([(None, "space-default")])
 
     test_tenant_id = tenant_id
     monkeypatch.setattr(indexer.settings, "VECTOR_BACKEND", "milvus", raising=False)
+    monkeypatch.setattr(indexer.settings, "MILVUS_COLLECTION_NAME", "documents")
     monkeypatch.setattr(indexer, "resolve_collection_name", lambda name: name)
     monkeypatch.setattr(indexer, "get_milvus_adapter", lambda name: _Adapter(name))
     monkeypatch.setattr(

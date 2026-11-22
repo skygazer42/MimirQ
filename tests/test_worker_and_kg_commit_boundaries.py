@@ -82,7 +82,14 @@ def test_evidence_job_audit_commit_failure_is_observable(monkeypatch, caplog):
     monkeypatch.setattr(jobs, "tenant_release", AsyncMock())
     monkeypatch.setattr(jobs, "release_lock", AsyncMock())
     monkeypatch.setattr(jobs, "_acquire_task_lock_or_retry", AsyncMock(return_value=True))
-    monkeypatch.setattr(jobs, "repair_evidence_suite_reference_sources", lambda *a, **k: {})
+    repair_result = {
+        "scanned_items": 1,
+        "scanned_references": 1,
+        "drifted_references": 1,
+        "repaired_references": 1,
+        "changes_truncated": False,
+    }
+    monkeypatch.setattr(jobs, "repair_evidence_suite_reference_sources", lambda *a, **k: repair_result)
     monkeypatch.setattr(jobs, "_job_result", AsyncMock(side_effect=lambda *a, **k: k))
     with caplog.at_level(logging.WARNING):
         result = asyncio.run(
@@ -100,5 +107,6 @@ def test_evidence_job_audit_commit_failure_is_observable(monkeypatch, caplog):
             )
         )
     assert result["ok"] is True
+    db.commit.assert_called_once()
     db.rollback.assert_called_once()
     assert any(r.exc_info and r.exc_info[1] is failure for r in caplog.records)

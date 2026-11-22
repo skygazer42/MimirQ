@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import contextlib
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
@@ -47,7 +45,7 @@ if TYPE_CHECKING:
     from app.services.connectors.crawler import WebCrawlResult
 
 
-async def crawl_site(**kwargs: Any) -> WebCrawlResult:
+async def crawl_site(**kwargs: Any) -> "WebCrawlResult":
     from app.services.connectors.crawler import crawl_site as crawl
 
     return await crawl(**kwargs)

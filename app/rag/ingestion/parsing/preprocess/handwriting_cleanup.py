@@ -6,8 +6,6 @@ This stage is feature-flagged and best-effort:
 - http backend: forward the file to a remote cleanup service and store returned bytes
 """
 
-from __future__ import annotations
-
 import asyncio
 from contextlib import ExitStack, closing
 from pathlib import Path
@@ -75,7 +73,7 @@ def _infer_onnx_channels(shape: Any, *, layout: str) -> int:
     return channels if channels in {1, 3} else 3
 
 
-def _onnx_input_spec(session: InferenceSession) -> tuple[str, Any, str, int]:
+def _onnx_input_spec(session: "InferenceSession") -> tuple[str, Any, str, int]:
     inputs = session.get_inputs()
     input_info = inputs[0]
     input_name = input_info.name
@@ -142,7 +140,7 @@ def _save_cleaned_output(*, result: Any, output_path: Path, original_size: tuple
         cleaned.save(output_path)
 
 
-def _run_local_onnx_cleanup(*, input_path: Path, output_path: Path, session: InferenceSession) -> bool:
+def _run_local_onnx_cleanup(*, input_path: Path, output_path: Path, session: "InferenceSession") -> bool:
     from PIL import Image
 
     if input_path.suffix.lower() not in _RASTER_EXTS:

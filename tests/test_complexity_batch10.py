@@ -118,7 +118,7 @@ def test_event_processor_template_fallback_and_entity_merge(monkeypatch: pytest.
                     "name": "Fallback Entity",
                     "normalized_name": "fallback entity",
                     "type": "unknown",
-                    "description": "",
+                    "description": None,
                     "role": None,
                     "weight": None,
                     "evidence_quote": None,
@@ -521,13 +521,6 @@ def test_pptx_parser_extracts_tables_and_text_frames(monkeypatch: pytest.MonkeyP
             }
             return values[(row, col)]
 
-    class _BrokenShape:
-        has_text_frame = True
-
-        @property
-        def text_frame(self):
-            raise RuntimeError("ignore me")
-
     table_shape = SimpleNamespace(has_table=True, table=_Table())
     text_shape = SimpleNamespace(
         has_table=False,
@@ -539,7 +532,8 @@ def test_pptx_parser_extracts_tables_and_text_frames(monkeypatch: pytest.MonkeyP
             ]
         ),
     )
-    presentation = SimpleNamespace(slides=[SimpleNamespace(shapes=[table_shape, text_shape, _BrokenShape()])])
+    nontext_shape = SimpleNamespace(has_table=False, has_text_frame=False)
+    presentation = SimpleNamespace(slides=[SimpleNamespace(shapes=[table_shape, text_shape, nontext_shape])])
     monkeypatch.setattr(parser_module, "Presentation", lambda _path: presentation)
 
     documents = parser_module.PptxParser().parse(Path("slides.pptx"))
@@ -605,13 +599,13 @@ def test_jsonl_records_chunker_preserves_fallback_and_record_overlap_metadata() 
     jsonl_text = '{"a":1}\n{"b":2}\n{"c":3}\n'
     record_chunks = chunker.split_documents([Document(page_content=jsonl_text, metadata={"source": "doc-b"})])
 
-    assert [chunk.metadata["chunk_index"] for chunk in record_chunks] == [0, 1, 2]
+    assert [chunk.metadata["chunk_index"] for chunk in record_chunks] == [0, 1]
     assert record_chunks[0].metadata["jsonl_first_index"] == 0
     assert record_chunks[0].metadata["jsonl_last_index"] == 1
     assert record_chunks[1].metadata["jsonl_first_index"] == 1
     assert record_chunks[1].metadata["jsonl_last_index"] == 2
-    assert record_chunks[2].metadata["jsonl_first_index"] == 2
-    assert record_chunks[2].metadata["jsonl_record_count"] == 1
+    assert record_chunks[1].metadata["jsonl_record_count"] == 2
+    assert record_chunks[1].metadata["end_char"] == len(jsonl_text)
 
 
 def test_verify_claim_keeps_default_overlap_mode_supportive_but_blocks_strict_contradictions() -> None:
@@ -627,13 +621,16 @@ def test_verify_claim_keeps_default_overlap_mode_supportive_but_blocks_strict_co
     assert strict_mode.diagnostics["numeric_mismatch"] is True
 
 
-def test_fetch_document_updated_ts_ignores_invalid_ids_and_invalid_dataset(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_fetch_document_updated_ts_skips_invalid_ids_and_rejects_invalid_scope(monkeypatch: pytest.MonkeyPatch) -> None:
     import app.infrastructure.database.connection as database_module
     import app.models.documents.records as document_module
     from app.services.documents.freshness import fetch_document_updated_ts
 
     valid_id = uuid4()
     other_id = uuid4()
+    dataset_id = uuid4()
+    opened = []
+    conditions = []
     rows = [
         (valid_id, None, datetime(2024, 1, 2, tzinfo=timezone.utc)),
         (other_id, datetime(2024, 1, 3, tzinfo=timezone.utc), None),
@@ -644,6 +641,7 @@ def test_fetch_document_updated_ts_ignores_invalid_ids_and_invalid_dataset(monke
             self.allowed_ids: set[object] | None = None
 
         def filter(self, condition):
+            conditions.append(condition)
             if isinstance(condition, tuple) and condition[:2] == ("in", "id"):
                 self.allowed_ids = set(condition[2])
             return self
@@ -670,17 +668,27 @@ def test_fetch_document_updated_ts_ignores_invalid_ids_and_invalid_dataset(monke
         tenant_id = _Field("tenant_id")
         dataset_id = _Field("dataset_id")
 
-    monkeypatch.setattr(database_module, "SessionLocal", lambda: _DB())
+    def _open_session():
+        db = _DB()
+        opened.append(db)
+        return db
+
+    monkeypatch.setattr(database_module, "SessionLocal", _open_session)
     monkeypatch.setattr(document_module, "Document", _DocumentModel)
 
+    with pytest.raises(ValueError, match="UUID"):
+        fetch_document_updated_ts([str(valid_id)], tenant_id=uuid4(), dataset_id="bad-dataset-id")
+    assert opened == []
+
     result = fetch_document_updated_ts(
-        [str(valid_id), "not-a-uuid", str(valid_id), str(other_id)],
+        ["not-a-uuid", str(valid_id), str(valid_id), str(other_id)],
         tenant_id=uuid4(),
-        dataset_id="bad-dataset-id",
+        dataset_id=dataset_id,
         max_docs=1,
     )
 
     assert result == {str(valid_id): datetime(2024, 1, 2, tzinfo=timezone.utc).timestamp()}
+    assert ("eq", "dataset_id", dataset_id) in conditions
 
 
 def test_embedding_adapter_embed_documents_mixes_hits_corrupt_entries_and_misses(
@@ -699,6 +707,12 @@ def test_embedding_adapter_embed_documents_mixes_hits_corrupt_entries_and_misses
     class _Pipe:
         def __init__(self) -> None:
             self.calls: list[tuple[str, bytes, int | None]] = []
+
+        def __enter__(self) -> "_Pipe":
+            return self
+
+        def __exit__(self, *_exc: object) -> None:
+            return None
 
         def set(self, key: str, payload: bytes, ex: int | None = None) -> None:
             self.calls.append((key, payload, ex))
@@ -806,6 +820,7 @@ def test_compute_dimensions_prefers_explicit_fusion_evals_and_tracks_abstain_tra
 
 def test_query_variant_stage_applies_latency_budget_to_slow_variants(monkeypatch: pytest.MonkeyPatch) -> None:
     from app.rag.retrieval.planning import variants as query_variants
+    from app.rag.retrieval.planning.contracts import QueryExpansionBudget
 
     monkeypatch.setattr(query_variants, "num_tokens_from_string", lambda text: len(text.split()))
 
@@ -823,10 +838,7 @@ def test_query_variant_stage_applies_latency_budget_to_slow_variants(monkeypatch
             sub_questions=["sub question"],
             hyde_used=True,
             hyde_text="hyde content",
-            query_expansion_max_queries_raw=None,
-            query_expansion_max_candidates_raw=None,
-            query_expansion_token_budget_raw=100,
-            query_expansion_latency_budget_ms_raw=10,
+            budget=QueryExpansionBudget(0, 0, 100, 10.0),
             query_expansion_elapsed_ms=25,
         )
     )

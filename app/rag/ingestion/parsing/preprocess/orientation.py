@@ -6,8 +6,6 @@ This implementation is best-effort and lightweight:
 - PDFs: normalize page rotation metadata when a dominant rotation is detected.
 """
 
-from __future__ import annotations
-
 import logging
 import time
 from contextlib import closing
@@ -26,7 +24,7 @@ def _elapsed_ms(started_at: float) -> int:
     return int(round((time.perf_counter() - started_at) * 1000))
 
 
-def _sample_pdf_rotations(*, doc: fitz.Document, sample_pages: int) -> tuple[int, list[int]]:
+def _sample_pdf_rotations(*, doc: "fitz.Document", sample_pages: int) -> tuple[int, list[int]]:
     page_count = doc.page_count
     sample_count = max(0, min(sample_pages, page_count))
     rotations: list[int] = []
@@ -43,7 +41,7 @@ def _count_rotations(rotations: list[int]) -> dict[int, int]:
     return counts
 
 
-def _normalize_pdf_pages(*, doc: fitz.Document, page_count: int, rotation: int) -> None:
+def _normalize_pdf_pages(*, doc: "fitz.Document", page_count: int, rotation: int) -> None:
     for index in range(page_count):
         page = doc.load_page(index)
         if page.rotation % 360 == rotation:

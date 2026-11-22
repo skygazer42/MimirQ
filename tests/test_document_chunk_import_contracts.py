@@ -13,7 +13,7 @@ import sys
 
 class BlockDocumentRouter(importlib.abc.MetaPathFinder):
     def find_spec(self, fullname, path=None, target=None):
-        if fullname == "app.api.v1.documents":
+        if fullname == "app.api.v1.documents.routes":
             raise AssertionError("chunk operations must not import the document router")
 
 sys.meta_path.insert(0, BlockDocumentRouter())
@@ -46,7 +46,7 @@ def test_chunk_operations_import_without_document_router(module_name: str) -> No
         import importlib
 
         importlib.import_module({module_name!r})
-        assert "app.api.v1.documents" not in sys.modules
+        assert "app.api.v1.documents.routes" not in sys.modules
         """
     )
 
@@ -59,11 +59,10 @@ def test_chunk_http_write_gates_and_contracts_work_without_document_router() -> 
         from fastapi import FastAPI, HTTPException
         from fastapi.testclient import TestClient
 
-        from app.api.dependencies.auth import get_current_account_id
-        from app.api.dependencies.tenant import get_tenant_id
-        from app.api.v1 import document_chunks_write
-        from app.core.database import get_db
-        from app.services import dataset_service
+        from app.api.dependencies import get_current_account_id, get_tenant_id
+        from app.api.v1.documents import chunks_write
+        from app.infrastructure.database.connection import get_db
+        from app.services.datasets import management as dataset_service
 
         tenant_id = uuid.uuid4()
         document_id = uuid.uuid4()
@@ -74,7 +73,7 @@ def test_chunk_http_write_gates_and_contracts_work_without_document_router() -> 
 
         dataset_service.ensure_member = deny_membership
         app = FastAPI()
-        app.include_router(document_chunks_write.router, prefix="/documents")
+        app.include_router(chunks_write.router, prefix="/documents")
         app.dependency_overrides[get_tenant_id] = lambda: tenant_id
         app.dependency_overrides[get_current_account_id] = lambda: "member"
         app.dependency_overrides[get_db] = lambda: object()
@@ -107,7 +106,7 @@ def test_chunk_http_write_gates_and_contracts_work_without_document_router() -> 
                 )
             else:
                 assert "content" not in success
-        assert "app.api.v1.documents" not in sys.modules
+        assert "app.api.v1.documents.routes" not in sys.modules
         """
     )
 

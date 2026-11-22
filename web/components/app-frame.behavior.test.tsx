@@ -29,7 +29,11 @@ function renderFrame(isMobile: boolean) {
 
   Object.defineProperty(window, 'matchMedia', {
     configurable: true,
-    value: vi.fn().mockReturnValue({ matches: isMobile }),
+    value: vi.fn().mockReturnValue({
+      matches: isMobile,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    }),
   })
 
   const container = document.createElement('div')

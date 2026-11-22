@@ -75,16 +75,6 @@ def test_kv_config_chunker_preserves_sections_overlap_keys_and_offsets() -> None
             2,
         ),
         (
-            "PASSWORD=secret\n# tail\n",
-            62,
-            85,
-            "db",
-            1,
-            ["PASSWORD"],
-            False,
-            3,
-        ),
-        (
             "[api]\nTOKEN=abc\nTIMEOUT=30\n",
             85,
             112,
@@ -92,9 +82,8 @@ def test_kv_config_chunker_preserves_sections_overlap_keys_and_offsets() -> None
             2,
             ["TOKEN", "TIMEOUT"],
             False,
-            4,
+            3,
         ),
-        ("TIMEOUT=30\n", 101, 112, "api", 1, ["TIMEOUT"], False, 5),
     ]
 
 

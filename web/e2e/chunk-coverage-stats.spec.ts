@@ -1,6 +1,6 @@
 import path from 'node:path'
 import { expect, test } from '@playwright/test'
-import { fixture, open, noOverflow } from './chunk-compare.helpers'
+import { changePreviewAppearance, fixture, open, noOverflow } from './chunk-compare.helpers'
 
 const evidence = path.resolve(__dirname, '../../artifacts/rebrand/chunk-coverage-stats-v1')
 
@@ -27,8 +27,7 @@ test('coverage statistics stay readable in a themed popover without moving the s
   await expect(panel).toBeHidden()
   await expect(trigger).toBeFocused()
 
-  await page.getByRole('button', { name: '切换主题', exact: true }).click()
-  await page.getByRole('menuitem', { name: /深色|暗色/ }).click()
+  await changePreviewAppearance(page, '深色')
   await trigger.click()
   await expect(panel).toBeVisible()
   await expect
@@ -43,8 +42,6 @@ test('coverage statistics stay readable in a themed popover without moving the s
   await page.keyboard.press('Escape')
 
   await page.setViewportSize({ width: 390, height: 844 })
-  const sidebarClose = page.getByRole('button', { name: '收起侧边栏', exact: true })
-  if (await sidebarClose.isVisible()) await sidebarClose.click()
   await page.getByRole('button', { name: '文档原文', exact: true }).click()
   await trigger.click()
   await expect(panel).toBeVisible()

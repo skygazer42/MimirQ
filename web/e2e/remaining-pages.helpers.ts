@@ -1,6 +1,7 @@
+import { randomUUID } from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
-import { expect, type Page, type Route } from '@playwright/test'
+import { expect, test, type Page, type Route } from '@playwright/test'
 import type { DatasetProfileSummary, DatasetProfileScanRunOut } from '../types'
 import { datasetPolicyFixture, policyDatasetId } from './dataset-policy.helpers'
 import { precheckSummary } from './precheck-workspace.helpers'
@@ -188,13 +189,35 @@ export async function remainingShot(page: Page, name: string) {
 
 export async function realDatasetFixture(page: Page) {
   await installRemainingRuntimeDiagnostics(page)
-  const state = JSON.parse(fs.readFileSync(path.join(remainingEvidence, 'real-api-state.json'), 'utf8')) as {
-    user_id: string
-    tenant_id: string
-    dataset_id: string
-    name: string
-    governance_profile_ref: string
-    governance_profile_key: string
+  const baseURL = test.info().project.use.baseURL
+  const api = (endpoint: string) => new URL(`/api/v1${endpoint}`, baseURL).href
+  const meta = await page.request.get(api('/meta'))
+  await expect(meta).toBeOK()
+  expect((await meta.json()).features.auth_mode).toBe('header')
+
+  const userId = 'playwright-ragvia'
+  const headers = { 'X-User-ID': userId }
+  await expect(await page.request.get(api('/datasets/'), { headers })).toBeOK()
+  const suffix = randomUUID().slice(0, 8)
+  const dataset = await page.request.post(api('/datasets/'), {
+    headers,
+    data: { name: `ui-redesign-verification-${suffix}` },
+  })
+  await expect(dataset).toBeOK()
+  const { id, tenant_id: tenantId, name } = await dataset.json()
+  const profile = await page.request.post(api('/pipeline/governance-profiles'), {
+    headers,
+    data: { key: `ui-profile-${suffix}`, name: `测试治理配置 ${suffix}`, payload: {} },
+  })
+  await expect(profile).toBeOK()
+  const { id: profileId, key: profileKey } = await profile.json()
+  const state = {
+    user_id: userId,
+    tenant_id: tenantId,
+    dataset_id: id,
+    name,
+    governance_profile_ref: profileId,
+    governance_profile_key: profileKey,
   }
   await page.addInitScript(() => {
     sessionStorage.clear()
