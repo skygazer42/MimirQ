@@ -3,8 +3,10 @@
 import { useRef } from 'react'
 import { AppFrame } from '@/components/app-frame'
 import { Button } from '@/components/ui/button'
+import { WorkspaceNotice, WorkspaceNoticeStack } from '@/components/ui/operational-workspace'
 import { PageTitleIcon } from '@/components/ui/page-title-icon'
 import { SearchInput } from '@/components/ui/search-input'
+import { SplitEmptyStudio } from '@/components/ui/split-empty-studio'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import {
   DropdownMenu,
@@ -15,9 +17,13 @@ import {
 } from '@/components/ui/dropdown-menu'
 import {
   ArrowLeft,
+  Calendar,
   ChevronLeft,
   ChevronRight,
   Copy,
+  Clock,
+  Hash,
+  Link2,
   Loader2,
   MoreHorizontal,
   Pencil,
@@ -36,17 +42,16 @@ import styles from './groups.module.css'
 
 function Notice({ error, label, retry }: { error: unknown; label: string; retry: () => unknown }) {
   return (
-    <div role="alert" className={styles.domainError}>
-      <span>{formatApiError(error, label)}</span>
-      <Button
-        variant="ghost"
-        onClick={() => {
-          void retry()
-        }}
-      >
-        重试
-      </Button>
-    </div>
+    <WorkspaceNotice
+      tone="warning"
+      title={label}
+      error={error}
+      fallbackMessage="请稍后重试"
+      retry={() => {
+        void retry()
+      }}
+      retryLabel="重试"
+    />
   )
 }
 function GroupDirectory({ controller: c }: { controller: GroupDirectoryController }) {
@@ -55,7 +60,6 @@ function GroupDirectory({ controller: c }: { controller: GroupDirectoryControlle
       <div className={styles.directoryHead}>
         <div className={styles.directoryTitle}>
           <h2>组目录</h2>
-          <span>当前租户</span>
         </div>
         <SearchInput
           aria-label="搜索组"
@@ -96,14 +100,22 @@ function GroupDirectory({ controller: c }: { controller: GroupDirectoryControlle
                 key={group.id}
                 className={cn(styles.directoryRow, c.selectedId === group.id && styles.selected)}
                 aria-label={`打开组 ${group.name}`}
+                title={group.name}
                 aria-current={c.selectedId === group.id ? 'true' : undefined}
                 disabled={Boolean(c.busy)}
                 onClick={() => c.selectGroup(group.id)}
               >
-                <Users />
-                <span>
+                <span className={styles.groupIcon} aria-hidden="true">
+                  <Users />
+                </span>
+                <span className={styles.directoryIdentity}>
                   <strong>{group.name}</strong>
-                  <small>{group.external_id || '未填写外部 ID'}</small>
+                  <small>
+                    <span title={group.external_id || undefined}>{group.external_id || '未填写外部 ID'}</span>
+                    {c.selectedId === group.id && c.membersQuery.data !== undefined ? (
+                      <span>{c.members.length} 名成员</span>
+                    ) : null}
+                  </small>
                 </span>
                 <ChevronRight />
               </button>
@@ -128,6 +140,31 @@ function GroupDetails({ controller: c }: { controller: GroupDirectoryController 
   const groupMenuRef = useRef<HTMLButtonElement>(null)
   const group = c.group
   const missing = extractHttpStatus(c.groupQuery.error) === 404
+  if (c.genuineEmpty)
+    return (
+      <section className={styles.emptyWorkspace} aria-label="组详情">
+        <SplitEmptyStudio
+          className={styles.groupStudio}
+          illustration={<Users />}
+          title="还没有组"
+          description="集中管理团队成员与外部身份标识。"
+          actions={
+            c.canManage ? (
+              <Button disabled={Boolean(c.busy)} onClick={(event) => c.openEditor('create', event.currentTarget)}>
+                <Plus />
+                创建第一个组
+              </Button>
+            ) : undefined
+          }
+          stepsHeading="从团队开始"
+          steps={[
+            { index: '01', title: '组织协作团队', description: '按项目或职责命名。' },
+            { index: '02', title: '映射外部身份组 ID', description: '外部标识不代表同步已完成。' },
+            { index: '03', title: '维护成员清单', description: '添加或移除当前租户成员。' },
+          ]}
+        />
+      </section>
+    )
   if (!c.selectedId)
     return (
       <section className={styles.emptyDetail} aria-label="组详情">
@@ -136,7 +173,7 @@ function GroupDetails({ controller: c }: { controller: GroupDirectoryController 
           {c.directoryQuery.isError ? '组目录暂不可用' : c.directoryQuery.isPending ? '正在读取组目录…' : '还没有组'}
         </h2>
         {!c.directoryQuery.isError && !c.directoryQuery.isPending ? (
-          <p>新建组后，可以把需要协作的成员添加进来。</p>
+          <p>新建组后添加成员。</p>
         ) : null}
       </section>
     )
@@ -177,308 +214,328 @@ function GroupDetails({ controller: c }: { controller: GroupDirectoryController 
     )
   return (
     <section className={styles.details} aria-label={`组详情 ${group.name}`}>
-      <Button variant="ghost" className={styles.returnToDirectory} onClick={() => c.updateScope({ view: 'directory' })}>
-        <ArrowLeft />
-        返回组目录
-      </Button>
-      <header className={styles.detailHeading}>
-        <Users />
-        <h2>{group.name}</h2>
-        <span className={styles.spacer} />
-        {c.canManage ? (
-          <>
-            <Button
-              variant="outline"
-              aria-label="编辑组信息"
-              disabled={Boolean(c.busy)}
-              data-groups-edit
-              onClick={(event) => c.openEditor('edit', event.currentTarget)}
-            >
-              <Pencil />
-              <span>编辑组信息</span>
-            </Button>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  ref={groupMenuRef}
-                  variant="ghost"
-                  size="icon"
-                  disabled={Boolean(c.busy)}
-                  aria-label={`组操作 ${group.name}`}
-                >
-                  <MoreHorizontal />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent
-                align="end"
-                onCloseAutoFocus={(event) => {
-                  if (c.deletion) event.preventDefault()
-                }}
-              >
-                <DropdownMenuItem
-                  onSelect={() => {
-                    void c.copyId(group.id)
-                  }}
-                >
-                  <Copy />
-                  复制组 ID
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  className="text-destructive"
-                  onSelect={() => {
-                    const trigger = groupMenuRef.current
-                    if (trigger !== null) c.openDeletion(trigger)
-                  }}
-                >
-                  <Trash2 />
-                  删除组
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </>
-        ) : (
-          <Button
-            variant="ghost"
-            aria-label="复制组 ID"
-            onClick={() => {
-              void c.copyId(group.id)
-            }}
-          >
-            <Copy />
-          </Button>
-        )}
-      </header>
-      {c.groupQuery.isError ? (
-        <Notice error={c.groupQuery.error} label="组信息更新失败，保留上次数据" retry={c.groupQuery.refetch} />
-      ) : null}
-      {!c.directoryPage.items.some((item) => item.id === group.id) && c.directoryQuery.data ? (
-        <div className={styles.contextNotice}>
-          当前组未显示在目录中。
-          <button onClick={c.revealGroup}>
-            {c.scope.query.trim() || c.scope.external !== 'all' ? '清除筛选并定位' : '定位组'}
-          </button>
-        </div>
-      ) : null}
-      <section aria-label="组基础信息">
-        <h3 className={styles.sectionTitle}>基础信息</h3>
-        <dl className={styles.groupFields}>
-          <div>
-            <dt>组 ID</dt>
-            <dd>
-              <button
-                aria-label="复制组 ID"
-                onClick={() => {
-                  void c.copyId(group.id)
-                }}
-              >
-                {group.id}
-                <Copy />
-              </button>
-            </dd>
-          </div>
-          <div>
-            <dt>外部组 ID</dt>
-            <dd>{group.external_id || <span className={styles.muted}>未填写</span>}</dd>
-          </div>
-          <div>
-            <dt>创建时间</dt>
-            <dd>{formatGroupDate(group.created_at)}</dd>
-          </div>
-          <div>
-            <dt>最近更新</dt>
-            <dd>{formatGroupDate(group.updated_at)}</dd>
-          </div>
-        </dl>
-      </section>
-      <section className={styles.membersSection} aria-label={`组成员 ${group.name}`}>
-        <div className={styles.membersHeading}>
-          <h3>组成员 {c.membersQuery.data ? <small>{c.members.length}</small> : null}</h3>
+      <div className={styles.detailContent}>
+        <Button
+          variant="ghost"
+          className={styles.returnToDirectory}
+          onClick={() => c.updateScope({ view: 'directory' })}
+        >
+          <ArrowLeft />
+          返回组目录
+        </Button>
+        <header className={styles.detailHeading}>
+          <Users />
+          <h2 title={group.name}>{group.name}</h2>
+          {group.external_id ? (
+            <span className={styles.externalPill} title={group.external_id}>
+              {group.external_id}
+            </span>
+          ) : null}
           <span className={styles.spacer} />
           {c.canManage ? (
-            <Button
-              variant="outline"
-              disabled={Boolean(c.busy) || c.membersQuery.data === undefined}
-              data-groups-add
-              onClick={(event) => c.openAddition(event.currentTarget)}
-            >
-              <UserPlus />
-              添加成员
-            </Button>
+            <>
+              <Button
+                variant="outline"
+                aria-label="编辑组信息"
+                disabled={Boolean(c.busy)}
+                data-groups-edit
+                onClick={(event) => c.openEditor('edit', event.currentTarget)}
+              >
+                <Pencil />
+                <span>编辑组信息</span>
+              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    ref={groupMenuRef}
+                    variant="ghost"
+                    size="icon"
+                    disabled={Boolean(c.busy)}
+                    aria-label={`组操作 ${group.name}`}
+                  >
+                    <MoreHorizontal />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent
+                  align="end"
+                  onCloseAutoFocus={(event) => {
+                    if (c.deletion) event.preventDefault()
+                  }}
+                >
+                  <DropdownMenuItem
+                    onSelect={() => {
+                      void c.copyId(group.id)
+                    }}
+                  >
+                    <Copy />
+                    复制组 ID
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    className="text-destructive"
+                    onSelect={() => {
+                      const trigger = groupMenuRef.current
+                      if (trigger !== null) c.openDeletion(trigger)
+                    }}
+                  >
+                    <Trash2 />
+                    删除组
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </>
           ) : null}
-        </div>
-        {c.membersQuery.isError ? (
-          <Notice error={c.membersQuery.error} label="组成员获取失败" retry={c.membersQuery.refetch} />
-        ) : null}
-        {c.identitiesQuery.isError ? (
-          <div className={styles.identityNotice}>
-            成员名称暂未取得，当前显示成员 ID。
-            <button
-              onClick={() => {
-                void c.identitiesQuery.refetch()
-              }}
-            >
-              重新读取名称
+        </header>
+        {!c.directoryPage.items.some((item) => item.id === group.id) && c.directoryQuery.data ? (
+          <div className={styles.contextNotice}>
+            当前组未显示在目录中。
+            <button onClick={c.revealGroup}>
+              {c.scope.query.trim() || c.scope.external !== 'all' ? '清除筛选并定位' : '定位组'}
             </button>
           </div>
         ) : null}
-        {c.members.length || c.scope.memberQuery ? (
-          <SearchInput
-            aria-label="搜索组成员"
-            value={c.scope.memberQuery}
-            onValueChange={(memberQuery) => c.updateScope({ memberQuery, memberPage: 1 })}
-            placeholder="搜索姓名、邮箱或成员 ID"
-            inputClassName={styles.memberSearch}
-            containerClassName={styles.memberSearchWrap}
-          />
-        ) : null}
-        {c.membersQuery.isPending ? (
-          <p className={styles.inlineState} role="status">
-            正在读取组成员…
-          </p>
-        ) : c.membersPage.items.length ? (
-          <div className={styles.tableWrap}>
-            <table className={styles.memberTable} aria-label={`${group.name} 的成员`}>
-              <thead>
-                <tr>
-                  <th scope="col">成员</th>
-                  <th scope="col" className={styles.idColumn}>
-                    成员 ID
-                  </th>
-                  <th scope="col">加入时间</th>
-                  <th scope="col">操作</th>
-                </tr>
-              </thead>
-              <tbody>
-                {c.membersPage.items.map((member) => {
-                  const who = memberIdentity(member.user_id, c.identitiesByUserId.get(member.user_id))
-                  const joinedAt = formatGroupDate(member.created_at)
-                  return (
-                    <tr key={member.user_id}>
-                      <th scope="row">
-                        <div className={styles.memberIdentity}>
-                          <span className={styles.avatar} aria-hidden="true">
-                            {Array.from(who.label)[0]}
-                          </span>
-                          <span>
-                            <strong>{who.label}</strong>
-                            {who.email && who.email !== who.label ? <small>{who.email}</small> : null}
-                          </span>
-                        </div>
-                      </th>
-                      <td className={styles.idColumn}>
-                        <button
-                          className={styles.idCopy}
-                          aria-label={`复制成员 ID ${member.user_id}`}
-                          onClick={() => {
-                            void c.copyId(member.user_id)
-                          }}
-                        >
-                          {member.user_id}
-                        </button>
-                      </td>
-                      <td className={styles.joined}>
-                        <time dateTime={member.created_at} title={joinedAt}>
-                          <span>{joinedAt}</span>
-                          <span>{formatGroupDate(member.created_at, true)}</span>
-                        </time>
-                      </td>
-                      <td>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              disabled={Boolean(c.busy)}
-                              data-group-member-action={member.user_id}
-                              aria-label={`成员操作 ${who.label}`}
-                            >
-                              <MoreHorizontal />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem
-                              onSelect={() => {
-                                void c.copyId(member.user_id)
-                              }}
-                            >
-                              <Copy />
-                              复制成员 ID
-                            </DropdownMenuItem>
-                            {c.canManage ? (
-                              <>
-                                <DropdownMenuSeparator />
-                                <DropdownMenuItem
-                                  onSelect={() => {
-                                    void c.removeMember(member.user_id)
-                                  }}
-                                  className="text-destructive"
-                                >
-                                  <Trash2 />
-                                  从组中移除
-                                </DropdownMenuItem>
-                              </>
-                            ) : null}
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
-        ) : !c.membersQuery.isError ? (
-          <div className={styles.inlineState}>
-            <p>{c.scope.memberQuery.trim() ? '没有匹配的成员。' : '该组还没有成员。'}</p>
-            {c.scope.memberQuery.trim() ? (
-              <Button variant="ghost" onClick={() => c.updateScope({ memberQuery: '', memberPage: 1 })}>
-                清除成员搜索
+        <section aria-label="组基础信息">
+          <dl className={styles.groupFields}>
+            <div>
+              <dt>
+                <Hash aria-hidden="true" />组 ID
+              </dt>
+              <dd>
+                <button
+                  aria-label="复制组 ID"
+                  onClick={() => {
+                    void c.copyId(group.id)
+                  }}
+                >
+                  {group.id}
+                  <Copy />
+                </button>
+              </dd>
+            </div>
+            <div>
+              <dt>
+                <Link2 aria-hidden="true" />
+                外部组 ID
+              </dt>
+              <dd className={styles.mono}>{group.external_id || <span className={styles.muted}>未填写</span>}</dd>
+            </div>
+            <div>
+              <dt>
+                <Calendar aria-hidden="true" />
+                创建时间
+              </dt>
+              <dd>{formatGroupDate(group.created_at)}</dd>
+            </div>
+            <div>
+              <dt>
+                <Clock aria-hidden="true" />
+                最近更新
+              </dt>
+              <dd>{formatGroupDate(group.updated_at)}</dd>
+            </div>
+          </dl>
+        </section>
+        <section className={styles.membersSection} aria-label={`组成员 ${group.name}`}>
+          <div className={styles.membersHeading}>
+            <h3>组成员 {c.membersQuery.data ? <small>{c.members.length}</small> : null}</h3>
+            <span className={styles.spacer} />
+            {c.members.length || c.scope.memberQuery ? (
+              <SearchInput
+                aria-label="搜索组成员"
+                value={c.scope.memberQuery}
+                onValueChange={(memberQuery) => c.updateScope({ memberQuery, memberPage: 1 })}
+                placeholder="搜索姓名、邮箱或成员 ID"
+                inputClassName={styles.memberSearch}
+                containerClassName={styles.memberSearchWrap}
+              />
+            ) : null}
+            {c.canManage ? (
+              <Button
+                variant="outline"
+                disabled={Boolean(c.busy) || c.membersQuery.data === undefined}
+                data-groups-add
+                onClick={(event) => c.openAddition(event.currentTarget)}
+              >
+                <UserPlus />
+                添加成员
               </Button>
             ) : null}
           </div>
-        ) : null}
-        {c.membersPage.pages > 1 ? (
-          <div className={styles.memberPager}>
-            <span>共 {c.membersPage.total} 名成员</span>
-            <span className={styles.spacer} />
-            <Button
-              variant="ghost"
-              size="icon"
-              aria-label="上一页成员"
-              disabled={c.membersPage.page <= 1}
-              onClick={() => c.updateScope({ memberPage: c.membersPage.page - 1 })}
-            >
-              <ChevronLeft />
-            </Button>
-            <span>
-              {c.membersPage.page} / {c.membersPage.pages}
-            </span>
-            <Button
-              variant="ghost"
-              size="icon"
-              aria-label="下一页成员"
-              disabled={c.membersPage.page >= c.membersPage.pages}
-              onClick={() => c.updateScope({ memberPage: c.membersPage.page + 1 })}
-            >
-              <ChevronRight />
-            </Button>
-          </div>
-        ) : null}
-      </section>
+          {c.identitiesQuery.isError ? (
+            <div className={styles.identityNotice}>
+              成员名称暂未取得，当前显示成员 ID。
+              <button
+                onClick={() => {
+                  void c.identitiesQuery.refetch()
+                }}
+              >
+                重新读取名称
+              </button>
+            </div>
+          ) : null}
+          {c.membersQuery.isPending ? (
+            <p className={styles.inlineState} role="status">
+              正在读取组成员…
+            </p>
+          ) : c.membersPage.items.length ? (
+            <div className={styles.tableWrap}>
+              <table className={styles.memberTable} aria-label={`${group.name} 的成员`}>
+                <thead>
+                  <tr>
+                    <th scope="col">成员</th>
+                    <th scope="col" className={styles.idColumn}>
+                      成员 ID
+                    </th>
+                    <th scope="col">加入时间</th>
+                    <th scope="col">操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {c.membersPage.items.map((member) => {
+                    const who = memberIdentity(member.user_id, c.identitiesByUserId.get(member.user_id))
+                    const joinedAt = formatGroupDate(member.created_at)
+                    return (
+                      <tr key={member.user_id}>
+                        <th scope="row">
+                          <div className={styles.memberIdentity}>
+                            <span className={styles.avatar} aria-hidden="true">
+                              {Array.from(who.label)[0]}
+                            </span>
+                            <span>
+                              <strong>{who.label}</strong>
+                              {who.email && who.email !== who.label ? <small>{who.email}</small> : null}
+                            </span>
+                          </div>
+                        </th>
+                        <td className={styles.idColumn}>
+                          <button
+                            className={styles.idCopy}
+                            aria-label={`复制成员 ID ${member.user_id}`}
+                            onClick={() => {
+                              void c.copyId(member.user_id)
+                            }}
+                          >
+                            {member.user_id}
+                          </button>
+                        </td>
+                        <td className={styles.joined}>
+                          <time dateTime={member.created_at} title={joinedAt}>
+                            <span>{joinedAt}</span>
+                            <span>{formatGroupDate(member.created_at, true)}</span>
+                          </time>
+                        </td>
+                        <td>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                disabled={Boolean(c.busy)}
+                                data-group-member-action={member.user_id}
+                                aria-label={`成员操作 ${who.label}`}
+                              >
+                                <MoreHorizontal />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem
+                                onSelect={() => {
+                                  void c.copyId(member.user_id)
+                                }}
+                              >
+                                <Copy />
+                                复制成员 ID
+                              </DropdownMenuItem>
+                              {c.canManage ? (
+                                <>
+                                  <DropdownMenuSeparator />
+                                  <DropdownMenuItem
+                                    onSelect={() => {
+                                      void c.removeMember(member.user_id)
+                                    }}
+                                    className="text-destructive"
+                                  >
+                                    <Trash2 />
+                                    从组中移除
+                                  </DropdownMenuItem>
+                                </>
+                              ) : null}
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          ) : !c.membersQuery.isError ? (
+            <div className={styles.inlineState}>
+              <p>{c.scope.memberQuery.trim() ? '没有匹配的成员。' : '该组还没有成员。'}</p>
+              {c.scope.memberQuery.trim() ? (
+                <Button variant="ghost" onClick={() => c.updateScope({ memberQuery: '', memberPage: 1 })}>
+                  清除成员搜索
+                </Button>
+              ) : null}
+            </div>
+          ) : null}
+          {c.membersPage.pages > 1 ? (
+            <div className={styles.memberPager}>
+              <span>共 {c.membersPage.total} 名成员</span>
+              <span className={styles.spacer} />
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label="上一页成员"
+                disabled={c.membersPage.page <= 1}
+                onClick={() => c.updateScope({ memberPage: c.membersPage.page - 1 })}
+              >
+                <ChevronLeft />
+              </Button>
+              <span>
+                {c.membersPage.page} / {c.membersPage.pages}
+              </span>
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label="下一页成员"
+                disabled={c.membersPage.page >= c.membersPage.pages}
+                onClick={() => c.updateScope({ memberPage: c.membersPage.page + 1 })}
+              >
+                <ChevronRight />
+              </Button>
+            </div>
+          ) : null}
+        </section>
+      </div>
     </section>
   )
 }
 
 export default function GroupWorkspace() {
   const c = useGroupDirectory()
+  const hasGroup = Boolean(c.selectedId && c.group)
+  const hasDetailFloatingNotice = hasGroup && (c.groupQuery.isError || c.membersQuery.isError)
   return (
     <AppFrame>
       <section className={styles.workspace} data-groups-directory data-view={c.scope.view}>
+        {hasDetailFloatingNotice ? (
+          <WorkspaceNoticeStack ariaLabel="组详情状态提示">
+            {c.groupQuery.isError ? (
+              <Notice error={c.groupQuery.error} label="组信息更新失败，保留上次数据" retry={c.groupQuery.refetch} />
+            ) : null}
+            {c.membersQuery.isError ? (
+              <Notice error={c.membersQuery.error} label="组成员获取失败" retry={c.membersQuery.refetch} />
+            ) : null}
+          </WorkspaceNoticeStack>
+        ) : null}
         <header className={styles.header}>
           <div className={styles.heading}>
             <PageTitleIcon name="group-management" />
             <h1>组管理</h1>
+            {c.directoryQuery.data !== undefined ? (
+              <span className={styles.totalCount}>共 {c.groups.length} 个组</span>
+            ) : null}
           </div>
           <div className={styles.headerActions}>
             <Button
@@ -494,7 +551,6 @@ export default function GroupWorkspace() {
             </Button>
             {c.canManage ? (
               <Button
-                className={styles.primary}
                 data-groups-create
                 disabled={Boolean(c.busy)}
                 onClick={(event) => c.openEditor('create', event.currentTarget)}

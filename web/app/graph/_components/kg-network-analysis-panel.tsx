@@ -10,13 +10,14 @@ import { Label } from '@/components/ui/label'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { OperationResultPanel } from '@/components/ops/operation-result-panel'
+import { buildTypeColorMap, EVENT_COLOR } from '@/components/graph/graph-colors'
 import { SettingsNumberInput } from '@/components/settings/settings-number-input'
 import { kgApi, type KGNetworkEdge, type KGNetworkRequest } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
 import type { GraphData } from '@/lib/graph-types'
 import { readNonEmptyString, toTrimmedPrimitiveString } from '@/lib/primitive-text'
 import { detachPromise } from '@/lib/utils'
-import { getGraphLinkEndpointId } from '../graph-page-utils'
+import { getGraphLinkEndpointId, getGraphNodeKind } from '../graph-page-utils'
 
 type KgNetworkAnalysisPanelProps = Readonly<{
   nodes: GraphData['nodes']
@@ -57,10 +58,14 @@ export function KgNetworkAnalysisPanel({ nodes, links, selectedNodeId }: KgNetwo
   const edges = useMemo(() => toNetworkEdges(links), [links])
   const selectedNode = useMemo(() => nodes.find((node) => node.id === selectedNodeId) ?? null, [nodes, selectedNodeId])
   const nodeTypeStats = useMemo(() => {
+    const typeColors = buildTypeColorMap(nodes)
     const countMap = new Map<string, { count: number; color: string }>()
     for (const node of nodes) {
       const label = getNodeType(node)
-      const color = node.color?.trim() || '#94a3b8'
+      const color =
+        node.color?.trim() ||
+        (getGraphNodeKind(node) === 'event' ? EVENT_COLOR : typeColors.get(label)) ||
+        'hsl(var(--muted-foreground))'
       const entry = countMap.get(label)
       countMap.set(label, {
         count: (entry?.count ?? 0) + 1,
@@ -235,9 +240,6 @@ export function KgNetworkAnalysisPanel({ nodes, links, selectedNodeId }: KgNetwo
                 <GitBranch className="h-4 w-4 text-info" />
                 KG Network API
               </div>
-              <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-                使用当前图谱画布的边作为输入，直接调用后端网络分析接口。
-              </p>
             </div>
 
             <div className="grid gap-2 sm:grid-cols-3">

@@ -26,7 +26,7 @@ import { readSseDataStrings } from '@/lib/sse-reader'
 import { citationListSchema } from '@/lib/citations'
 import { parseApiResponse } from '@/lib/openapi-request'
 import { matchesResourceId } from '@/lib/resource-id'
-import { chatMessageMetadataSchema } from '@/lib/chat-message-metadata'
+import { chatMessageMetadataSchema, ontologyActionProposalSchema } from '@/lib/chat-message-metadata'
 import { apiClient, type ApiRequestOptions } from '@/lib/api/core'
 import { dateTimeSchema, recordSchema } from '@/lib/response-schema'
 
@@ -53,6 +53,7 @@ const chatResponseSchema: z.ZodType<ChatResponse> = z.looseObject({
   confidence_score: z.number().nullable().optional(),
   followup_questions: z.array(z.string()).optional(),
   structured_data: z.unknown().optional(),
+  ontology_action: ontologyActionProposalSchema.nullish(),
 })
 
 const chatMessageSchema: z.ZodType<Message> = z.looseObject({
@@ -62,6 +63,7 @@ const chatMessageSchema: z.ZodType<Message> = z.looseObject({
   citations: citationListSchema.optional(),
   steps: z.array(z.string()).optional(),
   message_metadata: chatMessageMetadataSchema.nullable().optional(),
+  ontology_action: ontologyActionProposalSchema.nullish(),
   created_at: dateTimeSchema,
 })
 

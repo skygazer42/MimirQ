@@ -10,19 +10,14 @@
   background: hsl(var(--card));
   color: hsl(var(--foreground));
   font-family: var(--font-sans);
-  --audit-blue: color-mix(in srgb, hsl(var(--info)) 58%, hsl(var(--foreground)));
-  --audit-teal: color-mix(in srgb, hsl(var(--teal)) 58%, hsl(var(--foreground)));
-  --audit-violet: color-mix(in srgb, hsl(var(--indigo)) 58%, hsl(var(--foreground)));
-  --audit-amber: color-mix(in srgb, hsl(var(--warning)) 45%, hsl(var(--foreground)));
-  --audit-red: color-mix(in srgb, hsl(var(--destructive)) 76%, hsl(var(--foreground)));
 }
 .header {
   display: flex;
   align-items: center;
   gap: 16px;
-  min-height: 72px;
+  min-height: 52px;
   flex: none;
-  padding: 12px 28px;
+  padding: 0 20px;
   border-bottom: 1px solid hsl(var(--border));
   background: hsl(var(--background));
 }
@@ -31,6 +26,9 @@
   align-items: center;
   gap: 11px;
   min-width: 0;
+  flex: none;
+  padding-right: 16px;
+  border-right: 1px solid hsl(var(--border));
 }
 .heading > svg {
   width: 23px;
@@ -39,9 +37,9 @@
 }
 .heading h1 {
   margin: 0;
-  font-size: 20px;
+  font-size: var(--workspace-title-size);
   line-height: 28px;
-  font-weight: 650;
+  font-weight: var(--workspace-title-weight);
   white-space: nowrap;
 }
 .headerActions {
@@ -51,7 +49,7 @@
   margin-left: auto;
 }
 .headerActions button {
-  height: 34px;
+  height: 32px;
   font-size: 13px;
   padding: 0 11px;
   gap: 7px;
@@ -94,23 +92,19 @@
 .filters {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
-  gap: 9px 12px;
-  padding: 11px 28px;
-  min-height: 59px;
+  flex-wrap: nowrap;
+  gap: 8px;
+  padding: 7px 20px;
+  min-height: 48px;
   border-bottom: 1px solid hsl(var(--border));
   flex: none;
 }
-.filterLabel {
-  font-size: 13px;
-  color: hsl(var(--muted-foreground));
-  white-space: nowrap;
-}
 .filters > button {
-  height: 34px;
-  font-size: 13px;
+  height: 32px;
+  font-size: 12px;
   box-shadow: none;
   border-radius: 5px;
+  border-color: hsl(var(--border));
 }
 .filters > button svg {
   width: 14px;
@@ -119,8 +113,8 @@
 }
 .dateTrigger {
   gap: 9px;
-  min-width: 194px;
-  max-width: 254px;
+  min-width: 136px;
+  max-width: 220px;
   background: hsl(var(--card));
   padding: 0 10px;
 }
@@ -135,8 +129,8 @@
   color: hsl(var(--muted-foreground));
 }
 .filterTrigger {
-  min-width: 124px;
-  width: 141px;
+  min-width: 112px;
+  width: 128px;
   background: hsl(var(--card));
   gap: 8px;
   border-radius: 5px;
@@ -154,7 +148,7 @@
 .filterOptions [role='option'] {
   font-size: 13px;
   max-width: 390px;
-  min-height: 34px;
+  min-height: 36px;
 }
 .optionText {
   display: flex;
@@ -181,42 +175,68 @@
 }
 .moreFilters {
   color: hsl(var(--muted-foreground));
-  padding: 0 4px;
+  padding: 0 8px;
+  flex: none;
   gap: 7px;
+}
+.mobileFilterLabel {
+  display: none;
+}
+.desktopFilterLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.filterCount {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding-inline: 4px;
+  border-radius: 4px;
+  background: hsl(var(--muted));
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
 }
 .tenantLabel {
   font-size: 12px;
   color: hsl(var(--muted-foreground));
   white-space: nowrap;
+  margin-right: 8px;
 }
 .presets {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
-  gap: 7px 23px;
-  min-height: 43px;
-  padding: 7px 28px;
-  border-bottom: 1px solid hsl(var(--border));
+  flex-wrap: nowrap;
+  gap: 2px;
+  min-height: 34px;
+  padding: 2px;
+  border-radius: 7px;
+  background: hsl(var(--surface-2));
   flex: none;
 }
-.presets > span:first-child {
-  font-size: 12px;
-  color: hsl(var(--muted-foreground));
-}
 .presets > button {
-  border: 0;
+  border: 1px solid transparent;
   background: transparent;
   color: hsl(var(--muted-foreground));
   font-family: inherit;
-  font-size: 13px;
-  line-height: 25px;
-  padding: 2px 0;
+  font-size: 12px;
+  line-height: 24px;
+  min-height: 28px;
+  padding: 0 10px;
+  border-radius: 5px;
+  white-space: nowrap;
   cursor: pointer;
-  transition: color 140ms ease;
+  transition:
+    color 140ms ease,
+    background-color 140ms ease;
 }
 .presets > button[aria-pressed='true'] {
-  color: hsl(var(--primary));
-  font-weight: 600;
+  background: hsl(var(--card));
+  border-color: hsl(var(--border));
+  color: hsl(var(--foreground));
+  font-weight: 500;
 }
 .presets > button:focus-visible {
   outline: 2px solid hsl(var(--ring));
@@ -233,7 +253,9 @@
   flex-wrap: wrap;
   gap: 6px;
   margin-left: 3px;
-  max-width: 100%;
+  max-width: 180px;
+  min-width: 0;
+  flex-shrink: 1;
 }
 .applied > button {
   display: flex;
@@ -273,7 +295,7 @@
 .periodPresets button {
   font-size: 13px;
   line-height: 22px;
-  height: 33px;
+  height: 36px;
   padding: 0 9px;
   justify-content: flex-start;
   font-weight: 450;
@@ -323,7 +345,7 @@
 }
 .domainError button,
 .optionError button {
-  height: 30px;
+  height: 36px;
   font-size: 13px;
   padding: 0 4px;
   color: inherit;
@@ -331,25 +353,27 @@
   flex: none;
 }
 .tableToolbar {
-  min-height: 39px;
+  min-height: 32px;
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
-  gap: 8px 14px;
-  padding: 4px 28px;
-  border-bottom: 1px solid hsl(var(--border));
+  flex-wrap: nowrap;
+  gap: 8px;
+  padding: 0;
+  margin-left: auto;
   flex: none;
 }
 .tableToolbar h2 {
-  font-size: 14px;
+  font-size: 12px;
   line-height: 24px;
   font-weight: 550;
   margin: 0;
   outline: none;
+  white-space: nowrap;
+  color: hsl(var(--muted-foreground));
 }
 .tableToolbar button {
-  height: 30px;
-  font-size: 13px;
+  height: 32px;
+  font-size: 12px;
   padding: 0 4px;
   gap: 5px;
   box-shadow: none;
@@ -359,10 +383,16 @@
   height: 14px;
 }
 .selectionNote,
-.sortLabel {
+.sortLabel,
+.recordCount {
   font-size: 12px;
   line-height: 22px;
   color: hsl(var(--muted-foreground));
+  white-space: nowrap;
+}
+.sortLabel::before {
+  content: '·';
+  margin-right: 8px;
 }
 .deleteAction {
   color: color-mix(in srgb, hsl(var(--destructive)) 76%, hsl(var(--foreground)));
@@ -401,7 +431,7 @@
 }
 .table {
   width: 100%;
-  min-width: 950px;
+  min-width: 1152px;
   table-layout: fixed;
   border-collapse: separate;
   border-spacing: 0;
@@ -409,13 +439,13 @@
   font-size: 14px;
 }
 .table thead th {
-  height: 38px;
+  height: 36px;
   padding: 0 13px;
   font-size: 12px;
   font-weight: 500;
   line-height: 22px;
   color: hsl(var(--muted-foreground));
-  background: hsl(var(--background));
+  background: hsl(var(--surface-2));
   position: sticky;
   top: 0;
   z-index: 3;
@@ -423,7 +453,7 @@
   white-space: nowrap;
 }
 .table tbody td {
-  height: 58px;
+  height: 56px;
   padding: 6px 13px;
   font-size: 14px;
   line-height: 24px;
@@ -452,7 +482,7 @@
   z-index: 5;
 }
 .table .timeColumn {
-  width: 12%;
+  width: 164px;
   font-size: 13px;
   line-height: 23px;
   white-space: nowrap;
@@ -468,27 +498,57 @@
   color: hsl(var(--muted-foreground));
 }
 .actorColumn {
-  width: 12%;
+  width: 176px;
+  font-family: var(--font-mono);
 }
 .actorColumn > span {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 7px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.actorColumn > span > span:last-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 24px;
+  height: 24px;
+  border: 1px solid hsl(var(--icon-neutral) / 0.14);
+  border-radius: 7px;
+  background: hsl(var(--icon-neutral) / 0.08);
+  color: hsl(var(--icon-neutral));
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-weight: 600;
+}
 .eventColumn {
-  width: 27%;
+  width: 240px;
 }
 .eventTitle {
-  display: flex;
+  --tone: var(--icon-neutral);
+  display: inline-flex;
   align-items: center;
   gap: 7px;
   min-width: 0;
+  max-width: 100%;
+  padding: 0 6px;
+  border: 1px solid hsl(var(--tone) / 0.14);
+  border-radius: 5px;
+  background: hsl(var(--tone) / 0.08);
+  color: hsl(var(--tone));
 }
 .eventTitle strong {
-  font-size: 14px;
-  line-height: 24px;
-  font-weight: 550;
+  font-size: 12px;
+  line-height: 21px;
+  font-weight: 500;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -501,9 +561,10 @@
   flex: none;
 }
 .eventCode {
+  font-family: var(--font-mono);
   display: block;
-  margin-left: 12px;
-  font-size: 12px;
+  margin-left: 0;
+  font-size: 11px;
   line-height: 21px;
   color: hsl(var(--muted-foreground));
   white-space: nowrap;
@@ -511,7 +572,7 @@
   text-overflow: ellipsis;
 }
 .resourceColumn {
-  width: 20%;
+  width: auto;
 }
 .resourceColumn > strong {
   display: block;
@@ -523,6 +584,7 @@
   text-overflow: ellipsis;
 }
 .resourceColumn > small {
+  font-family: var(--font-mono);
   display: block;
   font-size: 12px;
   line-height: 20px;
@@ -530,9 +592,15 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  width: fit-content;
+  max-width: 100%;
+  padding: 0 5px;
+  border-radius: 4px;
+  background: hsl(var(--icon-neutral) / 0.06);
 }
 .requestColumn {
-  width: 15%;
+  width: 180px;
+  font-family: var(--font-mono);
   font-size: 12px;
   font-variant-numeric: tabular-nums;
 }
@@ -543,11 +611,16 @@
   overflow: hidden;
   text-overflow: ellipsis;
   color: hsl(var(--muted-foreground));
+  width: fit-content;
+  max-width: 100%;
+  padding: 0 5px;
+  border-radius: 4px;
+  background: hsl(var(--icon-neutral) / 0.06);
 }
 .table .actionsColumn {
-  width: 120px;
+  width: 108px;
   text-align: right;
-  padding-right: 18px;
+  padding-right: 12px;
 }
 .rowActions {
   display: flex;
@@ -556,7 +629,7 @@
   gap: 2px;
 }
 .rowActions button {
-  height: 30px;
+  height: 36px;
   font-size: 13px;
   line-height: 23px;
   padding: 0 3px;
@@ -573,33 +646,33 @@
   padding: 0;
 }
 .create {
-  color: color-mix(in srgb, hsl(var(--success)) 70%, hsl(var(--foreground)));
+  --tone: var(--icon-governance);
 }
 .update {
-  color: var(--audit-blue);
+  --tone: var(--icon-process);
 }
 .export {
-  color: var(--audit-violet);
+  --tone: var(--icon-analysis);
 }
 .audit {
-  color: var(--audit-teal);
+  --tone: var(--icon-neutral);
 }
 .permission,
 .warning {
-  color: var(--audit-amber);
+  --tone: var(--icon-code);
 }
 .delete {
-  color: var(--audit-red);
+  --tone: var(--icon-pdf);
 }
 .neutral {
-  color: hsl(var(--muted-foreground));
+  --tone: var(--icon-neutral);
 }
 .footer {
   display: flex;
   align-items: center;
   gap: 9px 16px;
   min-height: 42px;
-  padding: 5px 28px;
+  padding: 5px 20px;
   flex: none;
   border-top: 1px solid hsl(var(--border));
   background: hsl(var(--background));
@@ -609,7 +682,7 @@
   font-variant-numeric: tabular-nums;
 }
 .pageSize {
-  height: 29px;
+  height: 36px;
   width: 79px;
   border: 0;
   border-radius: 4px;
@@ -619,8 +692,8 @@
   padding: 0 5px;
 }
 .footer > button {
-  height: 30px;
-  width: 28px;
+  height: 36px;
+  width: 36px;
   padding: 0;
   box-shadow: none;
 }
@@ -1054,7 +1127,7 @@
   flex: none;
 }
 .filters > .filterTrigger {
-  min-width: 133px;
+  min-width: 112px;
 }
 .table .rowCheckbox {
   border-color: hsl(var(--muted-foreground) / 0.7);
@@ -1093,13 +1166,13 @@
     padding-left: 17px;
   }
   .actorColumn {
-    width: 14%;
+    width: 176px;
   }
   .eventColumn {
-    width: 25%;
+    width: 240px;
   }
   .requestColumn {
-    width: 15%;
+    width: 180px;
   }
   .rowActions button.rowMore {
     width: 24px;
@@ -1115,24 +1188,22 @@
   .header {
     padding-inline: 20px;
   }
-  .presets {
-    padding-inline: 20px;
-  }
-  .tableToolbar {
-    padding-inline: 20px;
-  }
   .footer {
     padding-inline: 20px;
   }
 }
 @container audit-workspace (max-width:600px) {
   .header {
-    padding: 10px 10px 10px 57px;
+    padding: 8px 10px 8px 57px;
     gap: 6px;
-    min-height: 72px;
+    flex-wrap: wrap;
+    min-height: 64px;
   }
   .heading {
     gap: 7px;
+    order: 0;
+    border-right: 0;
+    padding-right: 0;
   }
   .heading h1 {
     font-size: 18px;
@@ -1144,11 +1215,12 @@
   }
   .headerActions {
     gap: 0;
+    order: 1;
   }
   .headerActions button {
-    height: 40px;
-    width: 31px;
-    min-width: 31px;
+    height: 44px;
+    width: 44px;
+    min-width: 44px;
     padding: 0;
     border: 0;
     background: transparent;
@@ -1161,48 +1233,80 @@
     width: 16px;
   }
   .filters {
-    padding: 10px 16px;
-    gap: 8px;
-  }
-  .filterLabel {
-    display: none;
+    padding: 4px 16px 0;
+    gap: 0 8px;
+    min-height: 53px;
+    flex-wrap: wrap;
   }
   .dateTrigger {
     min-width: 0;
-    width: calc(50% - 4px);
+    flex: 1;
     max-width: none;
   }
-  .filterTrigger {
-    width: calc(50% - 4px);
-    min-width: 0;
+  .filters > .filterTrigger {
+    display: none;
   }
   .moreFilters {
     width: auto;
     font-size: 13px;
+    flex-shrink: 0;
+    padding-inline: 8px;
+    border: 1px solid hsl(var(--border));
   }
-  .filters > button {
-    height: 36px;
-  }
-  .presets {
-    padding: 6px 16px;
-    gap: 6px 16px;
-  }
-  .presets > span:first-child {
+  .desktopFilterLabel {
     display: none;
   }
+  .mobileFilterLabel {
+    display: inline;
+  }
+  .clearFilters {
+    flex-shrink: 0;
+    width: 44px;
+  }
+  .filters > button {
+    height: 44px;
+  }
+  .presets {
+    order: 2;
+    flex: 0 0 calc(100% + 41px);
+    max-width: calc(100% + 41px);
+    margin-left: -41px;
+    padding: 0;
+    gap: 0 8px;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: thin;
+    background: transparent;
+    border-radius: 0;
+  }
   .presets > button {
-    min-height: 35px;
+    min-height: 44px;
+    min-width: 44px;
+    flex-shrink: 0;
+    white-space: nowrap;
+    padding-inline: 4px;
+    font-size: 12px;
+  }
+  .applied {
+    display: none;
   }
   .tableToolbar {
-    padding: 5px 16px;
-    gap: 7px 10px;
-    min-height: 40px;
+    flex: 0 0 100%;
+    padding: 0;
+    gap: 8px;
+    min-height: 28px;
+    flex-wrap: wrap;
+    margin-left: 0;
+  }
+  .scrollHint {
+    padding-block: 3px;
   }
   .tableToolbar button {
-    min-height: 36px;
+    min-height: 44px;
   }
   .sortLabel {
     font-size: 12px;
+    margin-left: auto;
   }
   .table {
     min-width: 660px;
@@ -1249,8 +1353,8 @@
     z-index: 4;
   }
   .rowActions button {
-    min-height: 40px;
-    width: 41px;
+    min-height: 44px;
+    width: 44px;
     padding: 0;
     gap: 0;
   }
@@ -1272,13 +1376,14 @@
     min-height: 49px;
   }
   .footer > button {
-    width: 34px;
-    height: 36px;
+    width: 44px;
+    height: 44px;
   }
   .pageSizeLabel {
     display: none;
   }
   .pageSize {
+    height: 44px;
     width: 67px;
   }
   .pageNumber {
@@ -1293,7 +1398,7 @@
   .domainError button,
   .optionError button {
     margin-left: 0;
-    min-height: 36px;
+    min-height: 44px;
   }
   .empty {
     padding: 24px 18px;
@@ -1303,6 +1408,33 @@
   }
   .empty p {
     font-size: 13px;
+  }
+}
+@container audit-workspace (min-width:601px) and (max-width:1250px) {
+  .selectionNote {
+    display: none;
+  }
+  .tableToolbar h2 {
+    font-size: 12px;
+  }
+  .filters > .filterTrigger {
+    width: 128px;
+    min-width: 128px;
+  }
+  .filters {
+    gap: 6px;
+  }
+  .applied {
+    display: none;
+  }
+}
+@container audit-workspace (min-width:601px) and (max-width:1050px) {
+  .headerActions .actionLabel {
+    display: none;
+  }
+  .headerActions button {
+    width: 32px;
+    padding-inline: 0;
   }
 }
 @media (max-width: 600px) {
@@ -1324,7 +1456,7 @@
     flex-wrap: wrap;
   }
   .dialogFooter button {
-    min-height: 40px;
+    min-height: 44px;
     padding-inline: 10px;
   }
   .recordFields {
@@ -1343,7 +1475,7 @@
   }
   .filterFields input,
   .numberFields input {
-    height: 40px;
+    height: 44px;
   }
   .recordFields dd button {
     min-height: 28px;
@@ -1369,7 +1501,7 @@
     max-height: calc(100dvh - 32px);
   }
   .confirmDialog button {
-    min-height: 40px;
+    min-height: 44px;
   }
   .optionText strong,
   .optionText small {

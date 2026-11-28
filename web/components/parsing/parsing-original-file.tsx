@@ -64,11 +64,11 @@ function TextFilePreview({ file, onRetry }: Readonly<OriginalPreviewProps>) {
   }
 
   return (
-    <div className={styles.resourceBody}>
+    <div className={styles.sourceDocumentBody}>
       {current.text.length === 0 ? (
         <p className="p-4 text-sm text-muted-foreground">原文件没有可显示的文本。</p>
       ) : (
-        <pre tabIndex={0} aria-label="原文件文本" className={styles.raw}>
+        <pre tabIndex={0} aria-label="原文件文本" className={styles.sourcePaper}>
           {current.text}
         </pre>
       )}
@@ -103,14 +103,14 @@ function ImageFilePreview({ file, onRetry }: Readonly<OriginalPreviewProps>) {
   }
 
   return (
-    <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto p-6">
+    <div className={styles.sourceDocumentBody}>
       {/* A local Blob URL belongs to this preview, not Next image optimization. */}
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
         key={current.url}
         src={current.url}
         alt={file.name}
-        className="max-h-full max-w-full object-contain"
+        className={styles.sourceImage}
         onError={() => setSource((source) => (source === current ? { ...current, failed: true } : source))}
       />
     </div>
@@ -128,6 +128,14 @@ export function ParsingOriginalFile({ file }: Readonly<{ file: File }>) {
       <div className={styles.resultToolbar}>
         <FileText className="size-3.5 text-muted-foreground" />
         <span className="text-[13px]">原始文件</span>
+        <span className={styles.fileBadge}>
+          {file.name.split('.').at(-1)?.toUpperCase()} ·{' '}
+          {file.size < 1024
+            ? `${file.size} B`
+            : file.size < 1024 * 1024
+              ? `${(file.size / 1024).toFixed(1)} KB`
+              : `${(file.size / 1024 / 1024).toFixed(1)} MB`}
+        </span>
         <Button
           type="button"
           size="icon"

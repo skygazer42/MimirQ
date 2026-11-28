@@ -31,6 +31,8 @@ const chatMessages = {
     datasetScopeRequired: '请先选择数据集，或打开文档后提问。',
     composerScopeRequired: '请先选择数据集或打开文档',
     composerScopeEmpty: '还没有可用的数据集',
+    composerNoTextChunks: '此数据集暂无文本切块',
+    inspectDocuments: '查看文档',
     openDatasets: '前往数据集',
     currentDocumentScope: '当前文档范围',
     messageInput: '消息输入框',
@@ -48,28 +50,24 @@ const chatMessages = {
     starters: {
       label: '提问示例，选择后填入输入框',
       summary: {
-        tag: '溯源',
         title: '查找相关规定',
         description: '列出主要要求和原文出处。',
         prompt:
           '请基于当前资料检索关键业务规范，整理主要要求，并为每项结论附上原文引用。没有找到依据的部分请明确说明。',
       },
       compare: {
-        tag: '比对',
         title: '对比不同来源',
         description: '找出各来源说法一致和相互冲突的地方。',
         prompt:
           '请对比当前资料中涉及同一业务事项的不同规定，逐项列出一致点、差异和潜在冲突，并分别给出来源。若资料不足以比较，请说明缺少什么。',
       },
       relationships: {
-        tag: '流程',
         title: '梳理业务流程',
         description: '列出参与方、执行顺序和依赖关系。',
         prompt:
           '请从当前资料中梳理主要业务流程，列出参与方、执行顺序及相互依赖，并提供原文引用。无法从资料确认的关联请单独标明。',
       },
       citations: {
-        tag: '核查',
         title: '核查结论依据',
         description: '核对原文，标出缺少依据的结论。',
         prompt:
@@ -180,7 +178,7 @@ const chatMessages = {
       actionLabel: '前往知识库',
     },
     promptTemplatesAvailable: '{count} 个 Prompt 模板可用',
-    promptTemplatesAvailableDescription: '你可以在输入框上方切换模板，快速进入摘要、行动项或结构化输出模式。',
+    promptTemplatesAvailableDescription: '在输入框上方切换模板，按预设结构输出回答。',
     noPromptTemplateDescription: '当前没有启用额外模板，直接提问即可，后续也可以再细化策略。',
     firstUseAdviceTitle: '第一次使用建议',
     firstUseAdviceDescription: '先问一个具体问题，再用 / 快捷指令或 RAG 配置逐步缩小范围，会比一次性堆太多要求更稳。',
@@ -215,7 +213,7 @@ const chatMessages = {
     noConversationSelected: '选择一段对话',
     noConversationSelectedDescription: '从列表选一段对话，查看回答和引用。',
     startFirstConversation: '暂无问答记录',
-    startFirstConversationDescription: '提问后可在这里查看对话记录。',
+    startFirstConversationDescription: '向知识库提问后，所有对话、引用原文与检索追踪都会集中保存在这里。',
     startNewConversation: '新建对话',
     selectConversation: '选择对话',
     noMessage: '暂无消息',
@@ -278,6 +276,7 @@ const chatMessages = {
       feedback: '反馈质检',
       ragVisualization: 'RAG 可视化',
       knowledgeGraph: '知识图谱',
+      enterpriseOntology: '企业本体',
       graphSnapshots: '图谱快照',
       graphDiagnostics: '图谱检索评测',
       ragas: 'RAG评测',
@@ -319,7 +318,7 @@ const chatMessages = {
       badgePrefix: 'Deps：',
     },
     deps: {
-      openStatus: '查看后端依赖状态',
+      openStatus: '查看服务状态',
       summaryLabel: '服务状态',
       statusReady: '核心服务已就绪',
       statusDegraded: '核心就绪 · 缓存降级',
@@ -331,7 +330,7 @@ const chatMessages = {
       detailsFailed: '服务详情读取失败，请重试。',
       detailsRefreshFailed: '刷新失败，显示的是上次读取的服务状态。',
       ready: '依赖就绪',
-      unavailable: '未能获取依赖状态（后端未启动或网络不可达）。',
+      unavailable: '无法获取服务状态，请检查连接后重试。',
       diagnosticsLink: '诊断页',
       requestIdHint: '请求包含 X-Request-ID',
     },

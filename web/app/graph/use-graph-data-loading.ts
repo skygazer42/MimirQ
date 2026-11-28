@@ -186,6 +186,7 @@ export function useGraphDataLoading({
             documentIds: scopedDocumentIds?.length ? scopedDocumentIds : undefined,
             datasetId: scope.datasetId ?? undefined,
             pipelineHash: scope.pipelineHash ?? undefined,
+            preferOntology: scope.datasetId !== null && scope.pipelineHash === null ? true : undefined,
           },
           request.signal,
         )
@@ -195,9 +196,14 @@ export function useGraphDataLoading({
         setViewMode('2d')
         setDataSource('live')
         setTraceReplay(null)
-        setFileName(
-          scope.datasetId ? '知识库图谱' : scope.pipelineHash ? '批次图谱' : scopeParams ? '范围图谱' : '知识图谱',
-        )
+        const sourceLabel = scope.datasetId
+          ? '知识库图谱'
+          : scope.pipelineHash
+            ? '批次图谱'
+            : scopeParams
+              ? '范围图谱'
+              : '知识图谱'
+        setFileName(data.ontologyVersionId ? '本体图谱' : sourceLabel)
 
         resetGraphSurface()
       } catch (error) {
@@ -345,7 +351,7 @@ export function useGraphDataLoading({
       } catch (error) {
         if (!isCurrent()) return
         reportClientError('Failed to import manual KG', error)
-        toast.error(formatApiError(error, '导入 KG 失败，请检查文件格式或后端校验信息'))
+        toast.error(formatApiError(error, '图谱导入失败，请检查文件格式'))
       } finally {
         if (isCurrent()) setIsLoading(false)
       }

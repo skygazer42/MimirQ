@@ -1,4 +1,5 @@
 .workspace {
+  --graph-ink: var(--icon-source);
   container-type: inline-size;
   container-name: graph-workspace;
   display: flex;
@@ -15,11 +16,11 @@
   display: flex;
   align-items: center;
   gap: 16px;
-  min-height: 72px;
-  padding: 12px 28px;
+  min-height: 52px;
+  padding: 0 20px;
   flex: none;
   border-bottom: 1px solid hsl(var(--border));
-  background: hsl(var(--muted) / 0.22);
+  background: hsl(var(--background));
 }
 .heading {
   display: flex;
@@ -32,9 +33,9 @@
   height: 23px;
 }
 .heading h1 {
-  font-size: 20px;
+  font-size: var(--workspace-title-size);
   line-height: 28px;
-  font-weight: 650;
+  font-weight: var(--workspace-title-weight);
   margin: 0;
 }
 .scopeLabel {
@@ -55,8 +56,9 @@
   margin-left: auto;
   flex: none;
 }
-.headerActions button {
-  height: 36px;
+.headerActions button,
+.headerActions a {
+  height: 32px;
   font-size: 13px;
   box-shadow: none;
 }
@@ -65,8 +67,18 @@
   height: 15px;
 }
 .headerActions .iconOnly {
-  width: 36px;
+  width: 32px;
   padding: 0;
+}
+.scopeButton {
+  border-color: hsl(var(--border));
+  background: hsl(var(--card));
+  color: hsl(var(--foreground));
+}
+.scopeButton:hover {
+  border-color: hsl(var(--border));
+  background: hsl(var(--muted));
+  color: hsl(var(--foreground));
 }
 .columns {
   display: grid;
@@ -75,13 +87,52 @@
   min-width: 0;
   min-height: 0;
 }
+.emptyStage {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 24px 20px;
+  background-color: hsl(var(--surface-2) / 0.55);
+}
+.filteredEmpty {
+  margin: auto;
+  max-width: 420px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+.filteredEmpty h2 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 24px;
+  color: hsl(var(--foreground));
+}
+.filteredEmpty p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 21px;
+  color: hsl(var(--muted-foreground));
+}
+.filteredEmptyActions {
+  margin-top: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+}
 .directory {
   display: flex;
   flex-direction: column;
   min-width: 0;
   min-height: 0;
   border-right: 1px solid hsl(var(--border));
-  background: hsl(var(--background));
+  background: hsl(var(--surface-2));
 }
 .directoryHeader {
   flex: none;
@@ -99,17 +150,32 @@
 .directoryHeader h2 {
   font-size: 14px;
   line-height: 23px;
-  font-weight: 600;
+  font-weight: 500;
   margin: 0;
 }
 .directoryHeader span {
   color: hsl(var(--muted-foreground));
   font-variant-numeric: tabular-nums;
 }
+.directoryHeader > div:first-child > span,
+.directoryGroup summary > small,
+.countBadge {
+  display: inline-flex;
+  justify-content: center;
+  min-width: 22px;
+  padding: 0 5px;
+  border: 1px solid hsl(var(--border));
+  border-radius: 5px;
+  background: hsl(var(--card));
+  color: hsl(var(--muted-foreground));
+  font-size: 11px;
+  line-height: 19px;
+  font-variant-numeric: tabular-nums;
+}
 .search {
   height: 36px;
   font-size: 13px;
-  background: hsl(var(--muted) / 0.28);
+  background: hsl(var(--card));
   border-radius: 6px;
   box-shadow: none;
 }
@@ -187,8 +253,9 @@
   outline-offset: -2px;
 }
 .directoryGroup li > button[aria-pressed='true'] {
-  background: hsl(var(--foreground) / 0.09);
-  font-weight: 600;
+  background: hsl(var(--muted));
+  font-weight: 500;
+  box-shadow: inset 2px 0 hsl(var(--accent));
 }
 .directoryGroup li > button > i {
   width: 7px;
@@ -262,7 +329,7 @@
 }
 .toolbar button {
   font-size: 13px;
-  height: 34px;
+  height: 36px;
   box-shadow: none;
   gap: 6px;
 }
@@ -274,21 +341,23 @@
   display: inline-flex;
   align-items: center;
   gap: 3px;
-  border-radius: 6px;
+  border: 1px solid hsl(var(--border));
+  border-radius: 8px;
   padding: 3px;
-  background: hsl(var(--muted) / 0.6);
+  background: hsl(var(--surface-2));
 }
 .viewSwitch button {
   height: 28px;
-  border-radius: 4px;
+  border: 1px solid transparent;
+  border-radius: 5px;
   padding: 0 10px;
   font-size: 12px;
   color: hsl(var(--muted-foreground));
 }
 .viewSwitch button[aria-pressed='true'] {
-  background: hsl(var(--background));
+  border-color: hsl(var(--border));
+  background: hsl(var(--card));
   color: hsl(var(--foreground));
-  box-shadow: 0 1px 2px hsl(var(--foreground) / 0.07);
 }
 .toolbarEnd {
   display: flex;
@@ -296,9 +365,16 @@
   align-items: center;
   margin-left: auto;
 }
+.expandAction {
+  background: hsl(var(--accent));
+  color: hsl(var(--accent-foreground));
+}
+.expandAction:hover {
+  background: hsl(var(--accent) / 0.9);
+}
 .depthSelect {
   width: 112px;
-  height: 32px;
+  height: 36px;
   font-size: 13px;
   box-shadow: none;
 }
@@ -374,7 +450,7 @@
   flex: 1;
   font-size: 17px;
   line-height: 26px;
-  font-weight: 600;
+  font-weight: 500;
   margin: 0;
   overflow-wrap: anywhere;
   display: -webkit-box;
@@ -384,15 +460,15 @@
 }
 .selectionTitle > span {
   font-size: 12px;
-  color: hsl(var(--muted-foreground));
+  color: hsl(var(--graph-ink));
   max-width: 100px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .selectionTitle > button {
-  width: 28px;
-  height: 28px;
+  width: 32px;
+  height: 32px;
   flex: none;
   display: grid;
   place-items: center;
@@ -441,6 +517,11 @@
 }
 .selectionActions button:last-child {
   margin-left: auto;
+  border-color: hsl(var(--accent) / 0.3);
+  color: hsl(var(--accent));
+}
+.selectionActions button:first-child {
+  color: hsl(var(--accent));
 }
 .selectionActions svg {
   width: 13px;
@@ -485,7 +566,7 @@
   align-items: center;
   gap: 0;
   border: 1px solid hsl(var(--border));
-  border-radius: 6px;
+  border-radius: 8px;
   background: hsl(var(--popover));
   padding: 2px;
   box-shadow: 0 2px 8px hsl(var(--foreground) / 0.03);
@@ -541,6 +622,174 @@
   background: hsl(var(--border));
   margin: 7px 0;
 }
+.workspace [data-entity-type='能力'],
+.workspace [data-entity-type='ability'],
+.workspace [data-entity-type='概念'],
+.workspace [data-entity-type='concept'] {
+  --graph-ink: var(--icon-analysis);
+}
+.workspace [data-entity-type='角色'],
+.workspace [data-entity-type='role'],
+.workspace [data-entity-type='人物'],
+.workspace [data-entity-type='person'],
+.workspace [data-entity-type='事件'] {
+  --graph-ink: var(--icon-code);
+}
+.workspace [data-entity-type='行为'],
+.workspace [data-entity-type='practice'],
+.workspace [data-entity-type='组织'],
+.workspace [data-entity-type='organization'] {
+  --graph-ink: var(--icon-process);
+}
+.workspace [data-entity-type='目标'],
+.workspace [data-entity-type='outcome'],
+.workspace [data-entity-type='地点'],
+.workspace [data-entity-type='location'] {
+  --graph-ink: var(--icon-governance);
+}
+.workspace [data-entity-type='文档'],
+.workspace [data-entity-type='document'] {
+  --graph-ink: var(--icon-neutral);
+}
+.iconTray {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  flex: none;
+  border: 1px solid hsl(var(--graph-ink) / 0.14);
+  border-radius: 7px;
+  background: color-mix(in srgb, hsl(var(--graph-ink)) 8%, hsl(var(--card)));
+  color: hsl(var(--graph-ink));
+}
+.iconTray svg {
+  width: 16px;
+  height: 16px;
+}
+.typeBadge,
+.neutralBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+  padding: 0 6px;
+  border: 1px solid hsl(var(--graph-ink) / 0.14);
+  border-radius: 5px;
+  background: color-mix(in srgb, hsl(var(--graph-ink)) 8%, hsl(var(--card)));
+  color: hsl(var(--graph-ink));
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 21px;
+}
+.neutralBadge {
+  --graph-ink: var(--icon-neutral);
+}
+.typeBadge > i {
+  width: 6px;
+  height: 6px;
+  flex: none;
+  border-radius: 50%;
+}
+.selectionTitle > .typeBadge {
+  font-size: 11px;
+}
+.selectionSummary > p {
+  padding: 8px 10px;
+  border-left: 2px solid hsl(var(--graph-ink) / 0.45);
+  border-radius: 4px;
+  background: hsl(var(--surface-2));
+}
+.filterPanel {
+  font-family: var(--font-sans);
+}
+.filterGroup {
+  padding: 12px;
+  border: 1px solid hsl(var(--border));
+  border-radius: 7px;
+  background: hsl(var(--surface-2));
+}
+.nodeInspector {
+  --graph-ink: var(--icon-source);
+}
+.nodeInspector[data-kind='event'] {
+  --graph-ink: var(--icon-code);
+}
+.nodeInspector > div {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  max-height: inherit;
+}
+.inspectorCard {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  max-height: inherit;
+  overflow: hidden;
+  border: 1px solid hsl(var(--border));
+  border-radius: 9px;
+  background: hsl(var(--card));
+}
+.inspectorHeader {
+  flex: none;
+  border-bottom: 1px solid hsl(var(--border));
+  background: hsl(var(--surface-2));
+}
+.nodeInspector .inspectorHeader .iconTray {
+  margin-bottom: 8px;
+}
+.inspectorAction {
+  border-color: hsl(var(--border));
+  background: hsl(var(--card));
+  color: hsl(var(--foreground));
+}
+.inspectorAction:hover {
+  background: hsl(var(--surface-2));
+}
+.propertyCard {
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid hsl(var(--border));
+  border-radius: 6px;
+  background: hsl(var(--surface-2));
+}
+.evidenceCard {
+  padding: 10px;
+  border: 1px solid hsl(var(--border));
+  border-left: 2px solid hsl(var(--icon-source) / 0.45);
+  border-radius: 6px;
+  background: hsl(var(--surface-2));
+  color: hsl(var(--foreground));
+}
+.inspectorSectionLabel {
+  margin-bottom: 6px;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 20px;
+  color: hsl(var(--muted-foreground));
+}
+.evidenceQuote {
+  margin-top: 6px;
+  padding: 9px 10px;
+  border-left: 2px solid hsl(var(--icon-source) / 0.45);
+  border-radius: 4px;
+  background: hsl(var(--surface-2));
+  color: hsl(var(--foreground));
+  font-size: 12px;
+  line-height: 22px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.linkInspector {
+  --graph-ink: var(--icon-neutral);
+  font-variant-numeric: tabular-nums;
+}
+@container graph-workspace (min-width:1000px) {
+  .canvasRegion[data-detail-open='true'] .graphViewport {
+    margin-right: calc(20rem + 24px);
+  }
+}
 @container graph-workspace (max-width:1000px) {
   .header {
     padding: 12px 20px;
@@ -591,7 +840,8 @@
   .headerActions {
     gap: 5px;
   }
-  .headerActions button {
+  .headerActions button,
+  .headerActions a {
     height: 36px;
     padding: 0 9px;
   }
@@ -616,7 +866,7 @@
   .mobileTabs button[aria-pressed='true'] {
     border-bottom-color: hsl(var(--foreground));
     color: hsl(var(--foreground));
-    font-weight: 550;
+    font-weight: 500;
   }
   .columns {
     display: flex;
@@ -635,6 +885,13 @@
   .directoryHeader {
     padding: 14px 16px;
   }
+  .search {
+    height: 44px;
+    font-size: 16px;
+  }
+  .directoryGroup summary {
+    min-height: 44px;
+  }
   .directoryGroup li > button {
     min-height: 44px;
     font-size: 14px;
@@ -649,12 +906,18 @@
   }
   .toolbar button {
     font-size: 12px;
+    min-height: 44px;
   }
   .viewSwitch button {
     padding: 0 8px;
   }
   .toolbarEnd {
-    margin-left: auto;
+    width: 100%;
+    margin-left: 0;
+    justify-content: flex-end;
+  }
+  .toolbarEnd .secondaryLabel {
+    display: inline;
   }
   .depthSelect {
     width: 103px;
@@ -665,7 +928,7 @@
   .canvasRegion {
     display: flex;
     flex-direction: column;
-    gap: 0;
+    gap: 2px;
     padding-right: 0;
   }
   .canvasLabel {
@@ -700,7 +963,11 @@
     margin-top: 8px;
   }
   .selectionActions button {
-    min-height: 36px;
+    min-height: 44px;
+  }
+  .selectionTitle > button {
+    width: 44px;
+    height: 44px;
   }
   .selectionSummary > p {
     -webkit-line-clamp: 1;
@@ -711,8 +978,8 @@
     left: 12px;
   }
   .controls button {
-    width: 38px;
-    height: 38px;
+    width: 44px;
+    height: 44px;
   }
   .footer {
     padding: 8px 16px;
@@ -720,6 +987,26 @@
   }
   .footer > span:last-child {
     display: none;
+  }
+}
+@media (max-width: 767px) {
+  .header {
+    padding-left: 68px;
+  }
+  .heading > svg {
+    display: none;
+  }
+  .headerActions button,
+  .headerActions a {
+    min-width: 44px;
+    min-height: 44px;
+  }
+  .headerActions .iconOnly {
+    width: 44px;
+  }
+  .toolsMenu > button,
+  .toolsMenu > a {
+    min-height: 44px;
   }
 }
 @keyframes summary-in {

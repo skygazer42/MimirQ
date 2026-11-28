@@ -7,6 +7,7 @@ import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
+import { getTagDomainTone } from '@/lib/dataset-domain-tone'
 import { pipelineApi } from '@/lib/api/pipeline'
 import { reportClientWarning } from '@/lib/client-logging'
 import type { AutoAnnotationRequest, AutoDocumentTag } from '@/types/processing'
@@ -377,7 +378,11 @@ export function DataAnnotator({
               </option>
             ))}
           </select>
-          <Button disabled={isAutoTagging || !content.trim()} onClick={() => void handleAutoAnnotate()}>
+          <Button
+            className={styles.primaryAction}
+            disabled={isAutoTagging || !content.trim()}
+            onClick={() => void handleAutoAnnotate()}
+          >
             {isAutoTagging ? <Loader2 className={styles.spinner} /> : <Tag className="size-4" />}
             {isAutoTagging ? '正在标注…' : '自动标注'}
           </Button>
@@ -421,7 +426,7 @@ export function DataAnnotator({
             <Highlighter className="size-4" />
             {isSelecting ? '取消选取' : '选择正文文字'}
           </Button>
-          {isSelecting && !selection && <span className={styles.fieldHint}>在下方正文中选中需要标注的文字</span>}
+          {isSelecting && !selection && <span className={styles.fieldHint}>在正文中选中需要标注的文字</span>}
         </div>
         {selection && (
           <div className={styles.selection}>
@@ -442,11 +447,17 @@ export function DataAnnotator({
             {documentTagGroups.attributes.length > 0 && (
               <dl className={styles.annotationAttributes}>
                 {documentTagGroups.attributes.map((group) => (
-                  <div key={group.type}>
+                  <div key={group.type} data-type={group.type}>
                     <dt>{group.label}</dt>
                     <dd>
                       {group.tags.map((tag, index) => (
-                        <span key={tag.value + ':' + index}>{documentTagLabel(tag)}</span>
+                        <span
+                          key={tag.value + ':' + index}
+                          data-value={tag.value}
+                          data-domain-tone={getTagDomainTone(tag.value)}
+                        >
+                          {documentTagLabel(tag)}
+                        </span>
                       ))}
                     </dd>
                   </div>
@@ -458,7 +469,9 @@ export function DataAnnotator({
                 <h3>{group.label}</h3>
                 <ul aria-label={group.label}>
                   {group.tags.map((tag, index) => (
-                    <li key={tag.value + ':' + index}>{tag.value}</li>
+                    <li key={tag.value + ':' + index} data-domain-tone={getTagDomainTone(tag.value)}>
+                      {tag.value}
+                    </li>
                   ))}
                 </ul>
               </div>

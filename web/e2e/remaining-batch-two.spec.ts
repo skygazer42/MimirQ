@@ -5,7 +5,12 @@ import { policyDatasetId } from './dataset-policy.helpers'
 
 test('monitor filters and pages real-shaped tasks, with failure recovery in place', async ({ page }) => {
   const state = await batchTwoFixture(page)
-  await openRemaining(page, `/knowledge/ingestion?mode=execution-monitor&datasetId=${policyDatasetId}`, '入库执行监控')
+  await openRemaining(page, `/knowledge/ingestion?mode=execution-monitor&datasetId=${policyDatasetId}`, '入库管理')
+  await expect(
+    page
+      .getByRole('navigation', { name: '入库视图', exact: true })
+      .getByRole('link', { name: '执行监控', exact: true }),
+  ).toHaveAttribute('aria-current', 'page')
   const table = page.getByRole('table').first()
   await expect(table.getByRole('row')).toHaveCount(21)
   await page.getByRole('button', { name: '下一页任务' }).click()
@@ -16,6 +21,18 @@ test('monitor filters and pages real-shaped tasks, with failure recovery in plac
   await expect(page.getByRole('heading', { name: '没有匹配的任务' })).toBeVisible()
   await page.getByRole('button', { name: '清除筛选', exact: true }).click()
   await remainingShot(page, 'after-execution-monitor-filled')
+  await page.setViewportSize({ width: 390, height: 844 })
+  const taskState = table.getByRole('row').nth(1).getByRole('cell').first()
+  await expect(taskState.getByText('失败', { exact: true })).toBeVisible()
+  await expect(taskState.getByText('解析正文', { exact: true })).toBeVisible()
+  await expect(taskState.getByText('40%', { exact: true })).toBeVisible()
+  expect(await table.evaluate((element) => element.scrollWidth <= element.clientWidth + 1)).toBe(true)
+  await page.getByRole('combobox', { name: '任务状态', exact: true }).selectOption('failed')
+  await expect(table.getByRole('row')).toHaveCount(7)
+  await page.screenshot({ path: test.info().outputPath('monitor-phone-core-state.png'), animations: 'disabled' })
+  await page.getByRole('combobox', { name: '任务状态', exact: true }).selectOption('all')
+  await expect(table.getByRole('row')).toHaveCount(21)
+  await page.setViewportSize({ width: 1440, height: 900 })
   state.failDocuments = true
   await page.getByRole('button', { name: '重新读取', exact: true }).click()
   await expect(page.getByRole('alert').filter({ hasText: '任务目录暂不可用' })).toBeVisible({ timeout: 20000 })

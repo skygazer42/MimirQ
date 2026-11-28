@@ -8,6 +8,10 @@ test('A shows a broad record table and opens complete details without permanent 
   const state = await auditFixture(page)
   await openAudit(page)
   await waitAudit(page)
+  const header = page.locator('[data-audit-table] > header')
+  await expect(header.getByRole('button', { name: '访问审查', exact: true })).toBeVisible()
+  expect((await header.boundingBox())!.height).toBe(52)
+  expect((await page.locator('thead').boundingBox())!.y).toBeLessThanOrEqual(101)
   await expect(page.locator('tbody tr')).toHaveCount(20)
   await expect(page.getByRole('heading', { name: '全部记录', exact: true })).toBeVisible()
   await expect(page.getByRole('dialog')).toHaveCount(0)
@@ -59,6 +63,21 @@ test('filters are exact, survive reload and support custom identifiers beyond op
       (r) => r.params.request_id === 'req-audit-1001' && r.params.action === 'compliance.access_graph.export',
     ),
   ).toBe(true)
+  expect(state.errors).toEqual([])
+})
+
+test('the all quick view clears the action while preserving exact identifier filters', async ({ page }) => {
+  const state = await auditFixture(page)
+  await openAudit(page)
+  await waitAudit(page)
+  await page.getByRole('button', { name: '访问回溯', exact: true }).click()
+  await waitAudit(page)
+  await exactFilter(page, '请求 ID', 'req-audit-1001')
+  await page.getByRole('button', { name: '全部', exact: true }).click()
+  await waitAudit(page)
+  await expect(page).toHaveURL(/request_id=req-audit-1001/)
+  expect(new URL(page.url()).searchParams.has('action')).toBe(false)
+  await expect(page.locator('tbody tr')).toHaveCount(1)
   expect(state.errors).toEqual([])
 })
 

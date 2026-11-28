@@ -11,11 +11,12 @@ import {
   Loader2,
   MoreHorizontal,
   RefreshCw,
+  ShieldCheck,
   Trash2,
   Users,
-  X,
 } from '@/components/icons'
 import { Button } from '@/components/ui/button'
+import { WorkspaceNotice, WorkspaceNoticeStack } from '@/components/ui/operational-workspace'
 import { PageTitleIcon } from '@/components/ui/page-title-icon'
 import { SearchInput } from '@/components/ui/search-input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -26,7 +27,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { formatApiError } from '@/lib/api-errors'
 import type { TenantMember } from '@/lib/api/access'
 import {
   formatMemberDate,
@@ -112,8 +112,8 @@ function MembersTable({ c }: { c: MembersController }) {
               成员 ID
             </th>
             <th scope="col">角色</th>
-            <th scope="col" className={styles.dateColumn}>
-              最近更新
+            <th scope="col" className={styles.statusColumn}>
+              状态
             </th>
             <th scope="col">
               <span className="sr-only">操作</span>
@@ -139,7 +139,11 @@ function MembersTable({ c }: { c: MembersController }) {
               >
                 <th scope="row">
                   <div className={styles.identity}>
-                    <span className={styles.avatar} aria-hidden="true">
+                    <span
+                      className={styles.avatar}
+                      data-tone={MEMBER_ROLES.find((role) => role.key === member.role)?.tone}
+                      aria-hidden="true"
+                    >
                       {who.initial}
                     </span>
                     <div>
@@ -185,12 +189,11 @@ function MembersTable({ c }: { c: MembersController }) {
                 <td>
                   <RoleCell member={member} c={c} />
                 </td>
-                <td className={styles.dateColumn}>
-                  {member.updated_at ? (
-                    <time dateTime={member.updated_at}>{formatMemberDate(member.updated_at)}</time>
-                  ) : (
-                    <span>未记录</span>
-                  )}
+                <td className={styles.statusColumn}>
+                  <span className={styles.memberStatus} data-active={member.is_active}>
+                    <span aria-hidden="true" />
+                    {member.is_active ? '启用' : '已停用'}
+                  </span>
                 </td>
                 <td>
                   <DropdownMenu>
@@ -263,6 +266,92 @@ function MembersTable({ c }: { c: MembersController }) {
   )
 }
 
+function MembersInsights({ c }: { c: MembersController }) {
+  const current = c.members.find((member) => isCurrentAccount(member, c.accountId))
+  const inactiveCount = c.members.filter((member) => !member.is_active).length
+  return (
+    <aside className={styles.insights} aria-label="成员权限概览">
+      <section className={styles.roleDistribution} aria-labelledby="member-roles-title">
+        <div className={styles.insightHeading}>
+          <h2 id="member-roles-title">角色分布</h2>
+          <span>已加载成员</span>
+        </div>
+        {c.membersQuery.data !== undefined ? (
+          <div className={styles.roleList}>
+            {MEMBER_ROLES.map((role) => {
+              const count = c.members.filter((member) => member.role === role.key).length
+              return (
+                <button
+                  key={role.key}
+                  type="button"
+                  className={styles.roleSummary}
+                  data-tone={role.tone}
+                  data-member-role-filter={role.key}
+                  aria-pressed={c.role === role.key}
+                  aria-label={`筛选${role.label}，${count} 名成员`}
+                  disabled={Boolean(c.busy)}
+                  onClick={() => c.setRole(c.role === role.key ? 'all' : role.key)}
+                >
+                  <span className={styles.roleDot} data-tone={role.tone} aria-hidden="true" />
+                  <span>{role.label}</span>
+                  <strong>{count}</strong>
+                  <span className={styles.roleTrack} aria-hidden="true">
+                    <span style={{ width: `${c.members.length === 0 ? 0 : (count / c.members.length) * 100}%` }} />
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+        ) : (
+          <p className={styles.insightHint}>
+            {c.membersQuery.isError ? '成员列表未取得，暂无法统计。' : '正在读取角色分布…'}
+          </p>
+        )}
+      </section>
+      <section className={styles.securityOverview} aria-labelledby="member-security-title">
+        <div className={styles.insightHeading}>
+          <ShieldCheck aria-hidden="true" />
+          <h2 id="member-security-title">权限安全概览</h2>
+        </div>
+        <div className={styles.currentAccount}>
+          <span className={styles.eyebrow}>当前账号</span>
+          <strong>{current ? memberIdentity(current).name : (c.accountId ?? '账号信息未取得')}</strong>
+          {c.access.data ? <span>{roleLabel(c.access.data.role)}</span> : null}
+        </div>
+        {c.membersQuery.data !== undefined ? (
+          <>
+            <div className={styles.securityFact}>
+              <span>有效管理成员</span>
+              <strong>
+                {c.admins}
+                <small> 人</small>
+              </strong>
+            </div>
+            <p className={styles.protection}>
+              <span className={styles.protectionIcon} aria-hidden="true">
+                <ShieldCheck />
+              </span>
+              <span>
+                <strong>最后一名管理员保护</strong>至少保留一名有效管理员。
+              </span>
+            </p>
+            {inactiveCount > 0 ? (
+              <div className={styles.securityFact}>
+                <span>已停用成员</span>
+                <strong>
+                  {inactiveCount}
+                  <small> 人</small>
+                </strong>
+              </div>
+            ) : null}
+          </>
+        ) : null}
+        <p className={styles.insightHint}>内容访问需数据集和文档授权。</p>
+      </section>
+    </aside>
+  )
+}
+
 export default function MembersWorkspace() {
   const c = useMembers(),
     [helpOpen, setHelpOpen] = useState(false),
@@ -278,6 +367,10 @@ export default function MembersWorkspace() {
           <div className={styles.heading}>
             <PageTitleIcon name="members-rbac" />
             <h1>成员权限</h1>
+            {c.membersQuery.data !== undefined ? (
+              <span className={styles.totalCount}>共 {c.members.length} 名成员</span>
+            ) : null}
+            {!c.canManage && c.access.data ? <span className={styles.readOnly}>只读</span> : null}
           </div>
           <div className={styles.headerActions}>
             <Button variant="ghost" aria-label="角色说明" data-members-help onClick={() => setHelpOpen(true)}>
@@ -294,201 +387,225 @@ export default function MembersWorkspace() {
               <KeyRound />
               <span>身份接入</span>
             </Button>
-          </div>
-        </header>
-        <div className={styles.filters} aria-label="成员筛选">
-          <SearchInput
-            data-members-search
-            aria-label="搜索成员"
-            placeholder="搜索姓名、邮箱或成员 ID"
-            value={c.query}
-            onValueChange={c.setQuery}
-            containerClassName={styles.searchWrap}
-            inputClassName={styles.search}
-            disabled={Boolean(c.busy)}
-          />
-          <Select value={c.role} onValueChange={c.setRole} disabled={Boolean(c.busy)}>
-            <SelectTrigger className={styles.filter} aria-label="筛选角色">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">全部角色</SelectItem>
-              {MEMBER_ROLES.map((role) => (
-                <SelectItem key={role.key} value={role.key}>
-                  {role.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Select
-            value={c.scope}
-            onValueChange={(scope) => {
-              if (scope === 'all' || scope === 'current' || scope === 'others' || scope === 'unassigned')
-                c.setScope(scope)
-            }}
-            disabled={Boolean(c.busy)}
-          >
-            <SelectTrigger className={styles.filter} aria-label="筛选成员范围">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">全部成员</SelectItem>
-              <SelectItem value="current" disabled={!c.accountId}>
-                当前账号
-              </SelectItem>
-              <SelectItem value="others" disabled={!c.accountId}>
-                其他成员
-              </SelectItem>
-              <SelectItem value="unassigned">未分配角色</SelectItem>
-            </SelectContent>
-          </Select>
-          {hasFilters ? (
-            <Button variant="ghost" className={styles.clearFilters} disabled={Boolean(c.busy)} onClick={c.clearFilters}>
-              清除筛选
-            </Button>
-          ) : null}
-          <span className={styles.spacer} />
-          <Button
-            variant="ghost"
-            className={styles.refresh}
-            aria-label="刷新成员"
-            disabled={Boolean(c.busy) || refreshing}
-            aria-busy={refreshing}
-            onClick={() => {
-              void c.refresh()
-            }}
-          >
-            {refreshing ? <Loader2 className="animate-spin motion-reduce:animate-none" /> : <RefreshCw />}
-            <span>刷新</span>
-          </Button>
-        </div>
-        <div className={styles.listHeading}>
-          <h2>租户成员</h2>
-          {c.membersQuery.data ? <span>{c.members.length} 人</span> : null}
-          <span className={styles.spacer} />
-          {!c.canManage && c.access.data ? <span>只读</span> : null}
-        </div>
-        {c.access.isError ? (
-          <div className={styles.notice} role="alert">
-            <span>权限信息更新失败：{formatApiError(c.access.error, '无法读取权限')}</span>
-            <button
-              type="button"
-              disabled={c.access.isFetching}
-              onClick={() => {
-                void c.access.refetch()
-              }}
-            >
-              重新校验
-            </button>
-          </div>
-        ) : null}
-        {c.membersQuery.isError ? (
-          <div className={styles.notice} role="alert">
-            <span>
-              {c.membersQuery.data ? '成员列表更新失败，保留上次数据。' : '成员列表读取失败。'}
-              {formatApiError(c.membersQuery.error, '请稍后重试')}
-            </span>
-            <button
-              disabled={c.membersQuery.isFetching}
+            <Button
+              variant="ghost"
+              aria-label="刷新成员"
+              disabled={Boolean(c.busy) || refreshing}
+              aria-busy={refreshing}
               onClick={() => {
                 void c.refresh()
               }}
             >
-              重新读取
-            </button>
+              {refreshing ? <Loader2 className="animate-spin motion-reduce:animate-none" /> : <RefreshCw />}
+              <span>刷新</span>
+            </Button>
           </div>
-        ) : null}
-        {c.roleFailure ? (
-          <div className={styles.notice} role="alert">
-            <span>
-              {memberIdentity(c.roleFailure.member).name}改为{roleLabel(c.roleFailure.desired)}失败：
-              {c.roleFailure.message}。仍显示上次读取的角色。
-            </span>
-            <button
-              disabled={c.blocked || !c.canManage}
-              onClick={() => {
-                if (c.roleFailure) void c.saveRole(c.roleFailure)
-              }}
-            >
-              重试修改
-            </button>
-            <button aria-label="关闭角色错误" onClick={() => c.setRoleFailure(null)}>
-              <X />
-            </button>
-          </div>
-        ) : null}
-        {c.membersQuery.isPending ? (
-          <div className={styles.empty} role="status">
-            {waitingForNetwork ? null : <Loader2 className="animate-spin motion-reduce:animate-none" />}
-            <p>{waitingForNetwork ? '等待网络连接' : '正在读取成员…'}</p>
-          </div>
-        ) : c.paged.items.length ? (
-          <MembersTable c={c} />
-        ) : !c.membersQuery.isError ? (
-          <div className={styles.empty}>
-            <Users />
-            <h2>{hasFilters ? '没有匹配的成员' : '还没有成员'}</h2>
-            {hasFilters ? (
-              <Button variant="ghost" onClick={c.clearFilters}>
-                清除筛选
-              </Button>
+        </header>
+        <div className={styles.body}>
+          <div className={styles.mainPane}>
+            <div className={styles.filters} aria-label="成员筛选">
+              <SearchInput
+                data-members-search
+                aria-label="搜索成员"
+                placeholder="搜索姓名、邮箱或成员 ID"
+                value={c.query}
+                onValueChange={c.setQuery}
+                containerClassName={styles.searchWrap}
+                inputClassName={styles.search}
+                disabled={Boolean(c.busy)}
+              />
+              <Select value={c.role} onValueChange={c.setRole} disabled={Boolean(c.busy)}>
+                <SelectTrigger className={styles.filter} aria-label="筛选角色">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">全部角色</SelectItem>
+                  {MEMBER_ROLES.map((role) => (
+                    <SelectItem key={role.key} value={role.key}>
+                      {role.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select
+                value={c.scope}
+                onValueChange={(scope) => {
+                  if (
+                    scope === 'all' ||
+                    scope === 'active' ||
+                    scope === 'inactive' ||
+                    scope === 'current' ||
+                    scope === 'others' ||
+                    scope === 'unassigned'
+                  )
+                    c.setScope(scope)
+                }}
+                disabled={Boolean(c.busy)}
+              >
+                <SelectTrigger className={styles.filter} aria-label="筛选成员范围">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">全部状态 / 范围</SelectItem>
+                  <SelectItem value="active">启用成员</SelectItem>
+                  <SelectItem value="inactive">已停用成员</SelectItem>
+                  <SelectItem value="current" disabled={!c.accountId}>
+                    当前账号
+                  </SelectItem>
+                  <SelectItem value="others" disabled={!c.accountId}>
+                    其他成员
+                  </SelectItem>
+                  <SelectItem value="unassigned">未分配角色</SelectItem>
+                </SelectContent>
+              </Select>
+              {hasFilters ? (
+                <Button
+                  variant="ghost"
+                  className={styles.clearFilters}
+                  disabled={Boolean(c.busy)}
+                  onClick={c.clearFilters}
+                >
+                  清除筛选
+                </Button>
+              ) : null}
+            </div>
+            {c.membersQuery.isError && !c.membersQuery.data ? (
+              <div className="px-7 pt-3">
+                <WorkspaceNotice
+                  tone="error"
+                  title="成员列表读取失败"
+                  error={c.membersQuery.error}
+                  fallbackMessage="请稍后重试"
+                  retry={() => {
+                    void c.refresh()
+                  }}
+                  retryLabel="重新读取"
+                  pending={c.membersQuery.isFetching}
+                />
+              </div>
+            ) : null}
+            {c.access.isError || (c.membersQuery.isError && Boolean(c.membersQuery.data)) || Boolean(c.roleFailure) ? (
+              <WorkspaceNoticeStack>
+                {c.access.isError ? (
+                  <WorkspaceNotice
+                    tone="warning"
+                    title="权限信息更新失败"
+                    error={c.access.error}
+                    fallbackMessage="无法读取权限"
+                    retry={() => {
+                      void c.access.refetch()
+                    }}
+                    retryLabel="重新校验"
+                    pending={c.access.isFetching}
+                  />
+                ) : null}
+                {c.membersQuery.isError && c.membersQuery.data ? (
+                  <WorkspaceNotice
+                    tone="warning"
+                    title="成员列表更新失败，保留上次数据"
+                    error={c.membersQuery.error}
+                    fallbackMessage="请稍后重试"
+                    retry={() => {
+                      void c.refresh()
+                    }}
+                    retryLabel="重新读取"
+                    pending={c.membersQuery.isFetching}
+                  />
+                ) : null}
+                {c.roleFailure ? (
+                  <WorkspaceNotice
+                    tone="error"
+                    title={`${memberIdentity(c.roleFailure.member).name}改为${roleLabel(c.roleFailure.desired)}失败`}
+                    retry={() => {
+                      if (c.roleFailure) void c.saveRole(c.roleFailure)
+                    }}
+                    retryLabel="重试修改"
+                    retryDisabled={c.blocked || !c.canManage}
+                    onDismiss={() => c.setRoleFailure(null)}
+                    dismissLabel="关闭角色错误"
+                  >
+                    {`${c.roleFailure.message}。仍显示上次读取的角色。`}
+                  </WorkspaceNotice>
+                ) : null}
+              </WorkspaceNoticeStack>
+            ) : null}
+            {c.membersQuery.isPending ? (
+              <div className={styles.empty} role="status">
+                {waitingForNetwork ? null : <Loader2 className="animate-spin motion-reduce:animate-none" />}
+                <p>{waitingForNetwork ? '等待网络连接' : '正在读取成员…'}</p>
+              </div>
+            ) : c.paged.items.length ? (
+              <MembersTable c={c} />
+            ) : !c.membersQuery.isError ? (
+              <div className={styles.empty}>
+                <Users />
+                <h2>{hasFilters ? '没有匹配的成员' : '还没有成员'}</h2>
+                {hasFilters ? <p>请调整搜索内容或清除上方筛选条件。</p> : <p>暂无成员记录。</p>}
+              </div>
             ) : (
-              <p>成员注册或加入租户后会显示在这里。</p>
+              <div className={styles.remainingSpace} />
             )}
+            <footer className={styles.footer}>
+              <span aria-live="polite">
+                {c.membersQuery.data
+                  ? hasFilters
+                    ? `${c.paged.total} / ${c.members.length} 名成员`
+                    : `共 ${c.members.length} 名成员`
+                  : c.membersQuery.isError
+                    ? '未取得成员列表'
+                    : null}
+              </span>
+              <span className={styles.spacer} />
+              {c.paged.total > 0 ? (
+                <>
+                  <Select
+                    value={String(c.size)}
+                    onValueChange={(size) => c.setSize(Number(size))}
+                    disabled={Boolean(c.busy)}
+                  >
+                    <SelectTrigger className={styles.pageSize} aria-label="每页成员数">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {MEMBER_PAGE_SIZES.map((size) => (
+                        <SelectItem key={size} value={String(size)}>
+                          {size} 条 / 页
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {c.membersQuery.data !== undefined && (
+                    <span className={styles.pageRange}>
+                      {c.paged.start}–{c.paged.end}
+                    </span>
+                  )}
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    aria-label="上一页成员"
+                    disabled={c.paged.page <= 1 || Boolean(c.busy)}
+                    onClick={() => c.setPage(c.paged.page - 1)}
+                  >
+                    <ChevronLeft />
+                  </Button>
+                  <span>
+                    {c.paged.page} / {c.paged.pages}
+                  </span>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    aria-label="下一页成员"
+                    disabled={c.paged.page >= c.paged.pages || Boolean(c.busy)}
+                    onClick={() => c.setPage(c.paged.page + 1)}
+                  >
+                    <ChevronRight />
+                  </Button>
+                </>
+              ) : null}
+            </footer>
           </div>
-        ) : (
-          <div className={styles.remainingSpace} />
-        )}
-        <footer className={styles.footer}>
-          <span aria-live="polite">
-            {c.membersQuery.data
-              ? hasFilters
-                ? `${c.paged.total} / ${c.members.length} 名成员`
-                : `共 ${c.members.length} 名成员`
-              : c.membersQuery.isError
-                ? '未取得成员列表'
-                : null}
-          </span>
-          <span className={styles.spacer} />
-          <Select value={String(c.size)} onValueChange={(size) => c.setSize(Number(size))} disabled={Boolean(c.busy)}>
-            <SelectTrigger className={styles.pageSize} aria-label="每页成员数">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {MEMBER_PAGE_SIZES.map((size) => (
-                <SelectItem key={size} value={String(size)}>
-                  {size} 条 / 页
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          {c.membersQuery.data !== undefined && (
-            <span className={styles.pageRange}>
-              {c.paged.start}–{c.paged.end}
-            </span>
-          )}
-          <Button
-            variant="ghost"
-            size="icon"
-            aria-label="上一页成员"
-            disabled={c.paged.page <= 1 || Boolean(c.busy)}
-            onClick={() => c.setPage(c.paged.page - 1)}
-          >
-            <ChevronLeft />
-          </Button>
-          <span>
-            {c.paged.page} / {c.paged.pages}
-          </span>
-          <Button
-            variant="ghost"
-            size="icon"
-            aria-label="下一页成员"
-            disabled={c.paged.page >= c.paged.pages || Boolean(c.busy)}
-            onClick={() => c.setPage(c.paged.page + 1)}
-          >
-            <ChevronRight />
-          </Button>
-        </footer>
+          <MembersInsights c={c} />
+        </div>
         <RoleHelpDialog open={helpOpen} onOpenChange={setHelpOpen} />
         {identityOpen && tenantId !== undefined ? (
           <IdentityToolsDialog tenantId={tenantId} onClose={() => setIdentityOpen(false)} />

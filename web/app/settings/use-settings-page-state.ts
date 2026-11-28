@@ -496,8 +496,9 @@ export function useSettingsPageState() {
   }, [refreshSystemStatus, startSettingsRead])
 
   const reloadAfterSave = useCallback(
-    async (canPublish: () => boolean) => {
+    async (canPublish: () => boolean, submitted: Partial<SystemSettings>) => {
       if (!canPublish()) return
+      setSettings((current) => (current === null ? null : { ...current, ...submitted }))
       const load = startSettingsRead()
       const isCurrent = () => settingsLoadRef.current === load && canPublish()
       try {
@@ -537,7 +538,7 @@ export function useSettingsPageState() {
         const result = await settingsApi.update(submitted)
         if (!canPersist()) return
         if (!result.success) throw new Error(result.message)
-        await reloadAfterSave(canPublish)
+        await reloadAfterSave(canPublish, submitted)
         if (!canPersist()) return
 
         // A newer edit creates a new group object. Acknowledge only the groups
@@ -784,7 +785,7 @@ export function useSettingsPageState() {
         const result = await settingsApi.update(payload)
         if (!isCurrent()) return
         if (!result.success) throw new Error(result.message)
-        await reloadAfterSave(isCurrent)
+        await reloadAfterSave(isCurrent, payload)
         if (!isCurrent()) return
         setDialogOpen(false)
         void refreshSystemStatus(owner, sessionKey)
@@ -834,6 +835,7 @@ export function useSettingsPageState() {
     handleConfigure,
     handleSaveConfig,
     hasChanges,
+    hasLoadedSettings: settings !== null,
     isGovernanceEnabled,
     isPiiAnonymizeEnabled,
     isQuarantineOnDropEnabled,

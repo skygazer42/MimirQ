@@ -92,13 +92,11 @@ export function EvidenceOpsPanel() {
 
   return (
     <fieldset disabled={busy !== null} className="space-y-4">
-      <legend className="sr-only">Evidence 管理操作</legend>
+      <legend className="sr-only">证据管理</legend>
       <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
         <div>
-          <div className="text-sm font-semibold text-foreground">Evidence 管理操作</div>
-          <p className="mt-1 text-xs leading-5 text-muted-foreground">
-            围绕选中数据集完成证据漂移审计与训练集导出；suite/item/capsule 维护放在高级参数中。
-          </p>
+          <div className="text-sm font-medium text-foreground">证据管理</div>
+          <p className="mt-1 text-xs leading-5 text-muted-foreground">选择数据集，检查引用漂移或导出训练集。</p>
         </div>
       </div>
 
@@ -108,9 +106,9 @@ export function EvidenceOpsPanel() {
           icon={ShieldCheck}
           busy={busy === 'dataset-drift'}
           disabled={datasetId === ''}
-          label="数据集 Drift"
+          label="引用漂移审计"
           onClick={() =>
-            runAction('dataset-drift', '数据集 Drift Audit', () =>
+            runAction('dataset-drift', '数据集引用漂移审计', () =>
               evidenceApi.getDatasetDriftAudit(datasetId, { include_details: true, details_limit: 20 }),
             )
           }
@@ -140,29 +138,29 @@ export function EvidenceOpsPanel() {
         />
       </div>
 
-      {actionError?.scope === 'dataset' ? <WorkspaceNotice>{actionError.message}</WorkspaceNotice> : null}
+      {actionError?.scope === 'dataset' ? <WorkspaceNotice placement="floating">{actionError.message}</WorkspaceNotice> : null}
 
       <details className="mt-3 rounded-lg border border-border/60 bg-background/70 p-3">
-        <summary className="cursor-pointer text-xs font-semibold text-foreground">高级参数（可选）</summary>
+        <summary className="cursor-pointer text-xs font-medium text-foreground">高级参数（可选）</summary>
         <p className="mt-1 text-xs leading-5 text-muted-foreground">
-          仅在需要修复引用、Patch suite/item 或处理 Evidence Capsule 时填写。
+          需要修复引用、修改证据集或条目、保存证据快照时，再填写对应标识与 JSON。
         </p>
         <div className="mt-3 grid gap-2 md:grid-cols-3">
-          <Field label="Suite 标识">
+          <Field label="证据集标识">
             <Input
               value={suiteId}
               onChange={(event) => setSuiteId(event.target.value)}
               className="h-8 font-mono text-xs"
             />
           </Field>
-          <Field label="Item 标识">
+          <Field label="条目标识">
             <Input
               value={itemId}
               onChange={(event) => setItemId(event.target.value)}
               className="h-8 font-mono text-xs"
             />
           </Field>
-          <Field label="Capsule 标识">
+          <Field label="证据快照标识">
             <Input
               value={capsuleId}
               onChange={(event) => setCapsuleId(event.target.value)}
@@ -179,7 +177,7 @@ export function EvidenceOpsPanel() {
             onClick={() =>
               runAction(
                 'repair',
-                'Suite 引用修复',
+                '证据集引用修复',
                 () => evidenceApi.repairSuiteReferenceSources(suite, parsePayload(payloadJson)),
                 (report) => ({ payload: report, message: report.applied ? '已应用引用修复' : '引用修复预检完成' }),
               )
@@ -189,30 +187,26 @@ export function EvidenceOpsPanel() {
             icon={ShieldCheck}
             busy={busy === 'patch-suite'}
             disabled={suite === ''}
-            label="Patch Suite"
+            label="修改证据集"
             onClick={() =>
-              runAction('patch-suite', 'Patch Evidence Suite', () =>
-                evidenceApi.patchSuite(suite, parsePayload(payloadJson)),
-              )
+              runAction('patch-suite', '修改证据集', () => evidenceApi.patchSuite(suite, parsePayload(payloadJson)))
             }
           />
           <ActionButton
             icon={ShieldCheck}
             busy={busy === 'patch-item'}
             disabled={item === ''}
-            label="Patch Item"
+            label="修改证据条目"
             onClick={() =>
-              runAction('patch-item', 'Patch Evidence Item', () =>
-                evidenceApi.patchItem(item, parsePayload(payloadJson)),
-              )
+              runAction('patch-item', '修改证据条目', () => evidenceApi.patchItem(item, parsePayload(payloadJson)))
             }
           />
           <ActionButton
             icon={PackageCheck}
             busy={busy === 'persist'}
-            label="保存 Capsule"
+            label="保存证据快照"
             onClick={() =>
-              runAction('persist', '保存 Evidence Capsule', () =>
+              runAction('persist', '保存证据快照', () =>
                 evidenceApi.persistCapsule(capsulePayloadSchema.parse(JSON.parse(payloadJson))),
               )
             }
@@ -221,22 +215,22 @@ export function EvidenceOpsPanel() {
             icon={PackageCheck}
             busy={busy === 'get-capsule'}
             disabled={capsule === ''}
-            label="读取 Capsule"
-            onClick={() => runAction('get-capsule', '读取 Evidence Capsule', () => evidenceApi.getCapsule(capsule))}
+            label="读取证据快照"
+            onClick={() => runAction('get-capsule', '读取证据快照', () => evidenceApi.getCapsule(capsule))}
           />
           <ActionButton
             icon={PackageCheck}
             busy={busy === 'verify'}
-            label="校验 Capsule"
+            label="校验证据快照"
             onClick={() =>
               runAction(
                 'verify',
-                '校验 Evidence Capsule',
+                '校验证据快照',
                 () => evidenceApi.verifyCapsule(capsulePayloadSchema.parse(JSON.parse(payloadJson))),
                 (report) =>
                   report.valid
-                    ? { payload: report, message: 'Capsule 校验通过' }
-                    : { payload: report, message: `Capsule 校验未通过（${report.reason}）`, warning: true },
+                    ? { payload: report, message: '证据快照校验通过' }
+                    : { payload: report, message: `证据快照校验未通过（${report.reason}）`, warning: true },
               )
             }
           />
@@ -253,7 +247,7 @@ export function EvidenceOpsPanel() {
 
       <OperationResultPanel
         className="mt-3"
-        title="Evidence 操作结果"
+        title="证据操作结果"
         result={result}
         emptyMessage="选择上方操作后，这里展示执行摘要；原始响应默认收起。"
       />
@@ -287,11 +281,11 @@ function ActionButton({
     <LoadingButton
       loading={busy}
       variant="outline"
-      className="h-8 gap-1.5 rounded-lg px-3 text-xs font-semibold"
+      className="h-9 gap-2 px-3 text-[13px] font-medium max-sm:min-h-11"
       disabled={disabled}
       onClick={onClick}
     >
-      <Icon className="h-3.5 w-3.5" />
+      <Icon className="size-4" />
       {label}
     </LoadingButton>
   )

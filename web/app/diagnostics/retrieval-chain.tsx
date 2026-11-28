@@ -2,10 +2,11 @@
 
 import { useRef, useState } from 'react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
-import { ArrowRight, Search } from '@/components/icons'
+import { ArrowRight, Search, FileText, Clock, Layers, Hash, Filter, Sparkles } from '@/components/icons'
 import { buildChannels, record, rerankState, text, timestamp, type Channel, type Verdict } from './diagnostics-model'
 import { Reading, Status } from './diagnostics-controls'
 import { CitationOutput } from './citation-output'
+import { DiagnosticEmpty } from './diagnostic-empty'
 import type { DiagnosticsController } from './use-diagnostics'
 import { cn } from '@/lib/utils'
 import styles from './diagnostics.module.css'
@@ -53,6 +54,13 @@ export function RetrievalChain({ controller: c }: { controller: DiagnosticsContr
     detailOpener.current = opener
     setDetail(next)
   }
+  if (!c.preview.result && c.preview.status === 'idle' && c.preview.error === null) {
+    return (
+      <section className={styles.emptyResults} aria-label="检索链路">
+        <DiagnosticEmpty kind="retrieval" controller={c} />
+      </section>
+    )
+  }
   const r = c.preview.result,
     summary = c.summary,
     config = record(r?.configHash?.effective_config)
@@ -94,6 +102,13 @@ export function RetrievalChain({ controller: c }: { controller: DiagnosticsContr
   )
   const missingQuality = quality.filter((m) => m.raw === null).length
   const history = c.metrics.find((m) => m.key === 'history')!
+  const metricIcons = { citations: FileText, tokens: Hash, contexts: Layers, latency: Clock }
+  const metricDescriptions: Record<string, string> = {
+    citations: '本次返回的引用条数',
+    tokens: '预览提示词消耗',
+    contexts: '检索上下文消耗',
+    latency: '本次预览执行耗时',
+  }
   return (
     <>
       <section className={styles.previewResults} aria-label="检索链路" aria-busy={c.preview.status === 'running'}>
@@ -122,38 +137,54 @@ export function RetrievalChain({ controller: c }: { controller: DiagnosticsContr
         ) : null}
         {readings.length ? (
           <dl className={styles.metricStrip}>
-            {readings.map((metric) => (
-              <div key={metric.key}>
-                <dt>{metric.label}</dt>
-                <dd>
-                  <Reading metric={metric} />
-                </dd>
-              </div>
-            ))}
+            {readings.map((metric) => {
+              const Icon = metricIcons[metric.key as keyof typeof metricIcons]
+              return (
+                <div key={metric.key} data-metric={metric.key}>
+                  <dt>
+                    {metric.label}
+                    <span className={styles.metricIcon} aria-hidden="true">
+                      <Icon />
+                    </span>
+                  </dt>
+                  <dd>
+                    <Reading metric={metric} />
+                  </dd>
+                  <p className={styles.metricDescription}>{metricDescriptions[metric.key]}</p>
+                </div>
+              )
+            })}
           </dl>
         ) : null}
         <section className={styles.chainSection} aria-label="检索过程">
           <div className={styles.sectionHeading}>
             <h3>检索过程</h3>
-            <span className={styles.sectionSubtitle}>{r ? '基于本次返回字段' : '运行预览后查看检索证据'}</span>
           </div>
           <div className={styles.chainScroll}>
             <div className={styles.chainGrid}>
               <div className={styles.channelGroup}>
                 <h4>通道候选</h4>
-                {nodes.map((node) => (
-                  <button
-                    key={node.key}
-                    className={styles.channelReading}
-                    disabled={!r || c.preview.status === 'running'}
-                    data-kind={node.kind}
-                    onClick={(event) => openDetail({ label: node.label, data: node.evidence }, event.currentTarget)}
-                  >
-                    <Search />
-                    <span>{node.label}</span>
-                    <strong>{node.count === null ? unavailable : node.count}</strong>
-                  </button>
-                ))}
+                {nodes.map((node) => {
+                  const timing = summary.timings.find(
+                    (item) => item.label === `${node.key.replace(/_candidates$/, '')}_elapsed_sec`,
+                  )
+                  return (
+                    <button
+                      key={node.key}
+                      className={styles.channelReading}
+                      disabled={!r || c.preview.status === 'running'}
+                      data-kind={node.kind}
+                      onClick={(event) => openDetail({ label: node.label, data: node.evidence }, event.currentTarget)}
+                    >
+                      <span className={styles.iconTray} aria-hidden="true">
+                        <Search />
+                      </span>
+                      <span>{node.label}</span>
+                      <strong>{node.count === null ? unavailable : node.count}</strong>
+                      {timing ? <small className={styles.timingPill}>{timing.value}</small> : null}
+                    </button>
+                  )
+                })}
                 {channels.length > 3 ? (
                   <button
                     className={styles.quietAction}
@@ -167,10 +198,16 @@ export function RetrievalChain({ controller: c }: { controller: DiagnosticsContr
               <ArrowRight className={styles.connector} />
               <button
                 className={styles.chainNode}
+                data-stage="filter"
                 disabled={!r || c.preview.status === 'running'}
                 onClick={(event) => openDetail({ label: '过滤配置', data: summary.filtering }, event.currentTarget)}
               >
-                <span className={styles.chainNodeTitle}>过滤配置</span>
+                <span className={styles.chainNodeTitle}>
+                  <span className={styles.iconTray} aria-hidden="true">
+                    <Filter />
+                  </span>
+                  过滤配置
+                </span>
                 <span className={styles.chainNodeValue}>
                   {filtering ? `分数阈值 ≥ ${filtering.value}` : unavailable}
                 </span>
@@ -182,12 +219,18 @@ export function RetrievalChain({ controller: c }: { controller: DiagnosticsContr
                 data-kind="keyword"
                 onClick={(event) => openDetail({ label: '融合配置', data: summary.fusion }, event.currentTarget)}
               >
-                <span className={styles.chainNodeTitle}>融合配置</span>
+                <span className={styles.chainNodeTitle}>
+                  <span className={styles.iconTray} aria-hidden="true">
+                    <Layers />
+                  </span>
+                  融合配置
+                </span>
                 <span className={styles.chainNodeValue}>{fusion ? fusion.value.toUpperCase() : unavailable}</span>
               </button>
               <ArrowRight className={styles.connector} />
               <button
                 className={styles.chainNode}
+                data-stage="rerank"
                 disabled={!r || c.preview.status === 'running'}
                 onClick={(event) =>
                   openDetail(
@@ -199,7 +242,12 @@ export function RetrievalChain({ controller: c }: { controller: DiagnosticsContr
                   )
                 }
               >
-                <span className={styles.chainNodeTitle}>重排</span>
+                <span className={styles.chainNodeTitle}>
+                  <span className={styles.iconTray} aria-hidden="true">
+                    <Sparkles />
+                  </span>
+                  重排
+                </span>
                 <Status {...(r ? rerank : { label: '待执行', tone: 'neutral' })} />
               </button>
               <ArrowRight className={styles.connector} />
@@ -215,7 +263,12 @@ export function RetrievalChain({ controller: c }: { controller: DiagnosticsContr
                   )
                 }
               >
-                <span className={styles.chainNodeTitle}>引用输出</span>
+                <span className={styles.chainNodeTitle}>
+                  <span className={styles.iconTray} aria-hidden="true">
+                    <FileText />
+                  </span>
+                  引用输出
+                </span>
                 <strong>
                   <Reading metric={citations} />
                 </strong>

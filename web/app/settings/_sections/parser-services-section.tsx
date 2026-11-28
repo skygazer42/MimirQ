@@ -33,13 +33,14 @@ type ParserServicesSectionProps = {
   updateMagicPDF: (patch: Partial<MagicPDFConfig>) => void
 }
 
-const SECTION_TITLE = 'mb-2 flex items-center gap-2 text-[13px] font-semibold text-foreground'
+const SECTION_TITLE = 'mb-2 flex items-center gap-2 text-sm font-medium text-foreground'
 const CARD = 'space-y-5'
 const GRID = 'grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3'
-const FIELD_LABEL = 'block text-[13px] font-semibold text-muted-foreground'
+const FIELD_LABEL = 'block text-sm font-medium text-foreground'
 const FIELD_HINT = settingsTextTokens.helpText
-const DENSE_INPUT = 'h-11 sm:h-9 rounded-md border-input bg-background text-[13px]'
-const DENSE_SELECT = 'w-full rounded-md border border-input bg-background px-2.5 py-1.5 text-[13px]'
+const DENSE_INPUT = 'h-11 sm:h-9 rounded-md border-input bg-background text-base sm:text-sm'
+const DENSE_SELECT =
+  'h-11 w-full rounded-md border border-input bg-background px-2.5 py-1.5 text-base sm:h-9 sm:text-sm'
 
 export function ParserServicesSection({
   mineru,
@@ -613,7 +614,7 @@ export function ParserServicesSection({
                   placeholder="/opt/mimirq-model-cache/.../PDF-Extract-Kit-1.0/.../models"
                 />
               </label>
-              <div className={FIELD_HINT}>留空时后端会自动查找 Docker 挂载的 MinerU / PDF-Extract-Kit 模型缓存</div>
+              <div className={FIELD_HINT}>留空时自动查找模型缓存。</div>
             </div>
 
             <label className="block space-y-2">

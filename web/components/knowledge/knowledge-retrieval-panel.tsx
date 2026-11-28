@@ -166,7 +166,7 @@ export function KnowledgeRetrievalPanel({
 
       return {
         channel,
-        detail: legacyCount > 0 ? `${legacyCount} 个文档使用兼容推断状态（无持久化通道行）` : null,
+        detail: legacyCount > 0 ? `${legacyCount} 个文档的索引状态为估算值` : null,
         readinessLabel:
           state === 'warning'
             ? 'Error'
@@ -506,7 +506,7 @@ export function KnowledgeRetrievalPanel({
           </div>
         ) : (
           <div className="rounded-[13px] border border-border/60 bg-background px-3 py-2 text-[11px] text-muted-foreground/76">
-            后端未返回 `index_channels`，保持兼容展示。
+            暂无索引通道明细。
           </div>
         )}
       </div>
@@ -738,11 +738,11 @@ export function KnowledgeRetrievalPanel({
                 </div>
                 {indexAudit ? (
                   <div className="rounded-[13px] border border-info/15 bg-info/[0.04] px-3 py-2 text-[11px] leading-5 text-muted-foreground/76">
-                    当前明细来自后端索引一致性审计；如果发现缺失或孤儿向量，优先重新入库受影响文档。
+                    如果发现缺失或孤儿向量，可重新入库受影响的文档。
                   </div>
                 ) : (
                   <div className="rounded-[13px] border border-info/15 bg-info/[0.04] px-3 py-2 text-[11px] leading-5 text-muted-foreground/76">
-                    当前为全局聚合估算；选择单个数据集并运行审计后，可查看缺失向量、孤儿向量和后端一致性明细。
+                    当前为估算值。选择一个数据集并运行审计可查看缺失或孤儿向量。
                   </div>
                 )}
               </div>
@@ -856,7 +856,7 @@ export function KnowledgeRetrievalPanel({
                   className="rounded-full bg-primary/10 text-primary hover:bg-primary/20 border border-primary/20 shadow-none px-6 text-xs font-medium"
                 >
                   <Activity className="size-3.5 mr-2" />
-                  立即初始化审计
+                  初始化审计
                 </Button>
               ) : (
                 <div className="text-[10px] font-medium uppercase tracking-[0.15em] text-warning/60 bg-warning/5 px-3 py-1 rounded-full border border-warning/10">

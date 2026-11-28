@@ -17,7 +17,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { authApi } from '@/lib/api/auth'
 import { scimApi } from '@/lib/api/scim'
-import { formatApiError, toApiErrorInfo } from '@/lib/api-errors'
+import { toApiErrorInfo, type ApiErrorInfo } from '@/lib/api-errors'
 import { getAuthSessionKey } from '@/lib/auth-storage'
 import { downloadBlob } from '@/lib/download'
 import { MEMBER_ROLES, memberIdentity, roleLabel } from './members-model'
@@ -62,7 +62,7 @@ export function IdentityToolsDialog({ tenantId, onClose }: { tenantId: string; o
     [token, setToken] = useState(''),
     [provider, setProvider] = useState('')
   const [busy, setBusy] = useState<'scim' | 'saml' | null>(null),
-    [error, setError] = useState('')
+    [error, setError] = useState<ApiErrorInfo | null>(null)
   const requestRef = useRef<AbortController | null>(null)
   useLayoutEffect(() => () => requestRef.current?.abort(), [])
 
@@ -75,7 +75,7 @@ export function IdentityToolsDialog({ tenantId, onClose }: { tenantId: string; o
     const sessionKey = getAuthSessionKey()
     const isCurrent = () => !signal.aborted && getAuthSessionKey() === sessionKey
     setBusy(kind)
-    setError('')
+    setError(null)
     try {
       if (kind === 'scim') {
         await scimApi.getServiceProviderConfig({ tenantId: tenant, scimToken: token }, { signal })
@@ -95,8 +95,8 @@ export function IdentityToolsDialog({ tenantId, onClose }: { tenantId: string; o
       const info = toApiErrorInfo(cause, message)
       setError(
         kind === 'saml' && info.message.trim().toLowerCase() === 'saml not configured'
-          ? '尚未配置 SAML 身份源，暂时无法下载元数据。'
-          : formatApiError(cause, message),
+          ? { ...info, message: '尚未配置 SAML 身份源，暂时无法下载元数据。' }
+          : info,
       )
     } finally {
       requestRef.current = null
@@ -121,7 +121,7 @@ export function IdentityToolsDialog({ tenantId, onClose }: { tenantId: string; o
           <DialogTitle>身份接入</DialogTitle>
           <DialogDescription>测试 SCIM 服务配置，或下载 SAML 元数据。</DialogDescription>
         </DialogHeader>
-        <Tabs defaultValue="scim" className={styles.identityTabs} onValueChange={() => setError('')}>
+        <Tabs defaultValue="scim" className={styles.identityTabs} onValueChange={() => setError(null)}>
           <TabsList className={styles.identityTabList}>
             <TabsTrigger value="scim" disabled={Boolean(busy)}>
               SCIM
@@ -147,7 +147,7 @@ export function IdentityToolsDialog({ tenantId, onClose }: { tenantId: string; o
                     autoComplete="off"
                     onChange={(event) => {
                       setTenant(event.target.value)
-                      setError('')
+                      setError(null)
                     }}
                   />
                 </div>
@@ -162,26 +162,28 @@ export function IdentityToolsDialog({ tenantId, onClose }: { tenantId: string; o
                     disabled={Boolean(busy)}
                     onChange={(event) => {
                       setToken(event.target.value)
-                      setError('')
+                      setError(null)
                     }}
                   />
                 </div>
                 <p className={styles.hint}>凭据仅用于本次请求，关闭窗口后清除。测试不会同步或修改成员。</p>
                 {error ? (
-                  <p role="alert" className={styles.formError}>
-                    {error}
-                  </p>
+                  <div role="alert" className={styles.formError}>
+                    <p>{error.message}</p>
+                    {error.requestId ? (
+                      <details className="mt-1 text-xs text-muted-foreground">
+                        <summary className="cursor-pointer">错误详情</summary>
+                        <p className="mt-1 break-all font-mono">request_id={error.requestId}</p>
+                      </details>
+                    ) : null}
+                  </div>
                 ) : null}
               </div>
               <div className={styles.dialogFooter}>
                 <Button type="button" variant="ghost" disabled={Boolean(busy)} onClick={onClose}>
                   关闭
                 </Button>
-                <Button
-                  className={styles.primary}
-                  type="submit"
-                  disabled={Boolean(busy) || !tenant.trim() || !token.trim()}
-                >
+                <Button type="submit" disabled={Boolean(busy) || !tenant.trim() || !token.trim()}>
                   {busy === 'scim' ? <Loader2 className="animate-spin motion-reduce:animate-none" /> : null}
                   {busy === 'scim' ? '读取中' : '测试服务配置'}
                 </Button>
@@ -207,22 +209,28 @@ export function IdentityToolsDialog({ tenantId, onClose }: { tenantId: string; o
                     disabled={Boolean(busy)}
                     onChange={(event) => {
                       setProvider(event.target.value)
-                      setError('')
+                      setError(null)
                     }}
                   />
                 </div>
                 <p className={styles.hint}>下载当前服务的 XML 元数据，用于对接已有 SAML 身份源。</p>
                 {error ? (
-                  <p role="alert" className={styles.formError}>
-                    {error}
-                  </p>
+                  <div role="alert" className={styles.formError}>
+                    <p>{error.message}</p>
+                    {error.requestId ? (
+                      <details className="mt-1 text-xs text-muted-foreground">
+                        <summary className="cursor-pointer">错误详情</summary>
+                        <p className="mt-1 break-all font-mono">request_id={error.requestId}</p>
+                      </details>
+                    ) : null}
+                  </div>
                 ) : null}
               </div>
               <div className={styles.dialogFooter}>
                 <Button type="button" variant="ghost" disabled={Boolean(busy)} onClick={onClose}>
                   关闭
                 </Button>
-                <Button className={styles.primary} type="submit" disabled={Boolean(busy)}>
+                <Button type="submit" disabled={Boolean(busy)}>
                   {busy === 'saml' ? <Loader2 className="animate-spin motion-reduce:animate-none" /> : <Download />}
                   {busy === 'saml' ? '读取中' : '下载元数据'}
                 </Button>
@@ -322,7 +330,6 @@ export function MembersConfirmations({ c }: { c: MembersController }) {
               取消
             </Button>
             <Button
-              className={styles.primary}
               disabled={c.blocked || !c.canManage}
               onClick={() => {
                 if (c.demotion) void c.saveRole(c.demotion)

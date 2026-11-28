@@ -12,8 +12,7 @@ module.exports = [
   // Ignore generated/build artifacts.
   {
     ignores: [
-      '.next/**',
-      '.next_*/**',
+      '.next*/**',
       'out/**',
       'dist/**',
       'coverage/**',

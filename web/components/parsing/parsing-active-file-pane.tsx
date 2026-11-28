@@ -4,7 +4,6 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import dynamic from 'next/dynamic'
 import {
   AlertCircle,
-  ArrowRight,
   Blocks,
   Check,
   Code,
@@ -16,7 +15,6 @@ import {
   Image as ImageIcon,
   Loader2,
   MoreHorizontal,
-  Play,
   RotateCcw,
   Save,
 } from '@/components/icons'
@@ -38,6 +36,7 @@ import {
 import { ParsingOriginalFile } from './parsing-original-file'
 import styles from './parsing-compare.module.css'
 import { Skeleton } from '@/components/ui/skeleton'
+import { useResizeObserver } from '@/hooks/use-resize-observer'
 import { buildParsingLayoutEntries, getParsingLayoutMeta } from '@/lib/parsing-layout'
 import {
   formatParsingPages,
@@ -103,15 +102,12 @@ function getScrollBehavior(reduceMotion: boolean): ScrollBehavior {
   return reduceMotion ? 'auto' : 'smooth'
 }
 
-function buildParsedStatItems(stats: ParsingStatistics | undefined, durationSec: number | undefined) {
+function buildParsedStatItems(stats: ParsingStatistics | undefined) {
   if (stats === undefined) return []
-  const duration = durationSec !== undefined && Number.isFinite(durationSec) ? `${durationSec}s` : '未提供'
   return [
     { label: '字符', value: stats.charCount.toLocaleString() },
     { label: '标题', value: stats.headingCount.toLocaleString() },
-    { label: '表格', value: stats.tableCount === undefined ? '未提供' : stats.tableCount.toLocaleString() },
-    { label: '图片', value: stats.imageCount === undefined ? '未提供' : stats.imageCount.toLocaleString() },
-    { label: '耗时', value: duration },
+    ...(stats.tableCount === undefined ? [] : [{ label: '表格', value: stats.tableCount.toLocaleString() }]),
   ]
 }
 
@@ -144,7 +140,6 @@ type ParsingActiveFilePaneProps = {
   previewMode: 'raw' | 'rendered'
   rightPanelMode: 'blocks' | 'markdown'
   isEditing: boolean
-  isSubmittingGovernance: boolean
   editedContent: string
   copied: boolean
   activeBlockId: string | null
@@ -153,13 +148,13 @@ type ParsingActiveFilePaneProps = {
   onPreviewModeChange: (mode: 'raw' | 'rendered') => void
   onRightPanelModeChange: (mode: 'blocks' | 'markdown') => void
   onStartEdit: () => void
+  parserPicker: ReactNode
   onCancelEdit: () => void
   onSaveEdit: () => void | Promise<void>
   onCopyMarkdown: () => void
   onDownloadMarkdown: () => void
   onParseFile: (fileId: string, backend?: string) => void
   pdfPreviewResetToken: number
-  onSubmitToGovernance: () => Promise<void>
   onEditedContentChange: (value: string) => void
   onActiveBlockIdChange: (blockId: string | null) => void
   onHoveredBlockIdChange: (blockId: string | null) => void
@@ -180,7 +175,6 @@ export function ParsingActiveFilePane({
   previewMode,
   rightPanelMode,
   isEditing,
-  isSubmittingGovernance,
   editedContent,
   copied,
   activeBlockId,
@@ -189,13 +183,13 @@ export function ParsingActiveFilePane({
   onPreviewModeChange,
   onRightPanelModeChange,
   onStartEdit,
+  parserPicker,
   onCancelEdit,
   onSaveEdit,
   onCopyMarkdown,
   onDownloadMarkdown,
   onParseFile,
   pdfPreviewResetToken,
-  onSubmitToGovernance,
   onEditedContentChange,
   onActiveBlockIdChange,
   onHoveredBlockIdChange,
@@ -203,6 +197,9 @@ export function ParsingActiveFilePane({
   const [compareOpen, setCompareOpen] = useState(false)
   const [resourceView, setResourceView] = useState(false)
   const [narrowView, setNarrowView] = useState<'source' | 'result'>('result')
+  const workspaceRef = useRef<HTMLDivElement>(null)
+  const workspaceSize = useResizeObserver(workspaceRef)
+  const narrowLayout = workspaceSize.width > 0 && workspaceSize.width <= 900
   const [savePending, setSavePending] = useState(false)
   const [activePdfEditHint, setActivePdfEditHint] = useState<{
     blockId: string
@@ -509,12 +506,13 @@ export function ParsingActiveFilePane({
   const failureMessage = (activeFile.error ?? '未能完成解析，请重试。')
     .replace(/\s*[（(]?\brequest_id=[A-Za-z0-9._:-]+[）)]?/g, '')
     .trim()
-  const stats = buildParsedStatItems(
-    activeRun === null ? activeFile.stats : getParsingRunStatistics(activeRun),
-    activeRun === null ? activeFile.duration : activeRun.durationSec,
-  )
+  const stats = buildParsedStatItems(activeRun === null ? activeFile.stats : getParsingRunStatistics(activeRun))
+  const durationSec = activeRun === null ? activeFile.duration : activeRun.durationSec
   const resultTab = resourceView ? 'resources' : rightPanelMode
+  const runs = activeFile.runs ?? []
+  const hasMultipleRuns = runs.length > 1
   const selectResultTab = (tab: 'markdown' | 'blocks' | 'resources') => {
+    setNarrowView('result')
     setResourceView(tab === 'resources')
     if (tab !== 'blocks') {
       onActiveBlockIdChange(null)
@@ -536,26 +534,19 @@ export function ParsingActiveFilePane({
       <ParseCompareDialog
         open={compareOpen}
         onOpenChange={setCompareOpen}
-        runs={activeFile.runs ?? []}
+        runs={runs}
         defaultBaseRunId={activeFile.activeRunId ?? activeRun?.id ?? null}
         onUseRun={(runId) => {
           onSelectRun(runId)
           setCompareOpen(false)
         }}
       />
-      <div className={styles.mobileTabs} role="group" aria-label="核对视图">
-        <span
-          className={styles.mobileIndicator}
-          style={{ transform: narrowView === 'source' ? 'translateX(0)' : 'translateX(100%)' }}
-        />
-        <button type="button" aria-pressed={narrowView === 'source'} onClick={() => setNarrowView('source')}>
-          原文
-        </button>
-        <button type="button" aria-pressed={narrowView === 'result'} onClick={() => setNarrowView('result')}>
-          解析结果
-        </button>
-      </div>
-      <div className={styles.workspace} data-narrow-view={narrowView} data-testid="parsing-compare-workspace">
+      <div
+        ref={workspaceRef}
+        className={cn(styles.workspace, styles.unifiedWorkspace)}
+        data-narrow-view={narrowView}
+        data-testid="parsing-compare-workspace"
+      >
         <section className={styles.source} aria-label="原文">
           {isPdf ? (
             <PdfViewer
@@ -577,7 +568,15 @@ export function ParsingActiveFilePane({
 
         <section className={styles.result} aria-label="解析结果">
           <div className={styles.resultToolbar}>
-            <div className={styles.resultTabs} role="group" aria-label="结果视图">
+            <div className={styles.resultTabs} role="group" aria-label="核对视图">
+              <button
+                className={styles.sourceTab}
+                type="button"
+                aria-pressed={narrowView === 'source'}
+                onClick={() => setNarrowView('source')}
+              >
+                原文
+              </button>
               {(
                 [
                   { id: 'markdown', label: 'Markdown' },
@@ -588,36 +587,36 @@ export function ParsingActiveFilePane({
                 <button
                   key={tab.id}
                   type="button"
-                  disabled={!resultReady || isEditing}
-                  aria-pressed={resultTab === tab.id}
-                  onClick={() => selectResultTab(tab.id)}
+                  disabled={!resultReady || (isEditing && resultTab !== tab.id)}
+                  aria-pressed={(!narrowLayout || narrowView === 'result') && resultTab === tab.id}
+                  onClick={() => (isEditing ? setNarrowView('result') : selectResultTab(tab.id))}
                 >
-                  {tab.label}
+                  {tab.id === 'markdown' && narrowLayout ? '解析结果' : tab.label}
                   {tab.id === 'blocks' && layoutEntries.length ? <span>{layoutEntries.length}</span> : null}
                 </button>
               ))}
             </div>
-            {resultReady ? (
+            {!narrowLayout || narrowView === 'result' ? parserPicker : null}
+            {resultReady && (!narrowLayout || narrowView === 'result') ? (
               <div className={styles.resultActions}>
                 {!isEditing ? (
                   <>
-                    {resultTab === 'markdown' ? (
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="size-8"
-                        aria-label={previewMode === 'raw' ? '预览 Markdown' : '查看 Markdown 源码'}
-                        aria-pressed={previewMode === 'raw'}
-                        title={previewMode === 'raw' ? '预览' : '源码'}
-                        onClick={() => onPreviewModeChange(previewMode === 'raw' ? 'rendered' : 'raw')}
-                      >
-                        <Code className="size-4" />
-                      </Button>
-                    ) : null}
                     <Button
                       size="icon"
                       variant="ghost"
-                      className="size-8"
+                      aria-label={rightPanelMode === 'blocks' && activeBlockId ? '编辑选中内容块' : '编辑 Markdown'}
+                      title="编辑 Markdown"
+                      disabled={activeFile.librarySource === 'knowledge_base'}
+                      onClick={() => {
+                        setNarrowView('result')
+                        onStartEdit()
+                      }}
+                    >
+                      <Edit3 className="size-4" />
+                    </Button>
+                    <Button
+                      size="icon"
+                      variant="ghost"
                       aria-label={copied ? '已复制 Markdown' : '复制 Markdown'}
                       title="复制"
                       onClick={onCopyMarkdown}
@@ -627,7 +626,7 @@ export function ParsingActiveFilePane({
                     <Button
                       size="icon"
                       variant="ghost"
-                      className="size-8"
+                      className="hidden sm:inline-flex"
                       aria-label="下载 Markdown"
                       title="下载"
                       onClick={onDownloadMarkdown}
@@ -636,19 +635,24 @@ export function ParsingActiveFilePane({
                     </Button>
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
-                        <Button size="icon" variant="ghost" className="size-8" aria-label="更多结果操作">
+                        <Button size="icon" variant="ghost" aria-label="更多结果操作">
                           <MoreHorizontal className="size-4" />
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end" className="w-60">
-                        <DropdownMenuItem
-                          disabled={activeFile.librarySource === 'knowledge_base'}
-                          onSelect={onStartEdit}
-                        >
-                          <Edit3 className="mr-2 size-4" />
-                          {rightPanelMode === 'blocks' && activeBlockId ? '编辑选中内容块' : '编辑 Markdown'}
+                        {resultTab === 'markdown' ? (
+                          <DropdownMenuItem
+                            onSelect={() => onPreviewModeChange(previewMode === 'raw' ? 'rendered' : 'raw')}
+                          >
+                            <Code className="mr-2 size-4" />
+                            {previewMode === 'raw' ? '预览 Markdown' : '查看 Markdown 源码'}
+                          </DropdownMenuItem>
+                        ) : null}
+                        <DropdownMenuItem onSelect={onDownloadMarkdown}>
+                          <Download className="mr-2 size-4" />
+                          下载 Markdown
                         </DropdownMenuItem>
-                        {activeFile.runs && activeFile.runs.length > 1 ? (
+                        {hasMultipleRuns ? (
                           <>
                             <DropdownMenuSeparator />
                             <label className="block px-2 py-1.5 text-xs text-muted-foreground" htmlFor="parsing-run">
@@ -660,7 +664,7 @@ export function ParsingActiveFilePane({
                               value={activeRun?.id ?? activeFile.activeRunId}
                               onChange={(event) => onSelectRun(event.target.value)}
                             >
-                              {activeFile.runs.map((run) => (
+                              {runs.map((run) => (
                                 <option key={run.id} value={run.id}>
                                   {run.parserLabel}
                                   {' · ' + new Date(run.createdAt).toLocaleTimeString()}
@@ -683,351 +687,352 @@ export function ParsingActiveFilePane({
             ) : null}
           </div>
 
-          {contentFeedback}
-          {hasResult && (activeRun === null ? activeFile.contentEdited : activeRun.contentEdited) === true ? (
-            <p role="status" className="shrink-0 border-b border-border px-4 py-2 text-xs text-muted-foreground">
-              正文已编辑，原解析的内容块、提取资源和质量评价已失效。
-            </p>
-          ) : null}
-          {hasResult && activeFile.status === 'parsing' ? (
-            <p role="status" className="shrink-0 border-b border-border px-4 py-2 text-xs text-muted-foreground">
-              正在重新解析，当前显示上次保存的正文。
-            </p>
-          ) : null}
-          {activeFile.status === 'error' ? (
-            <div className={hasResult ? styles.failureNotice : styles.resultState} role="alert">
-              {!hasResult ? <AlertCircle className="size-7 text-destructive" /> : null}
-              <h2>解析失败</h2>
-              <p>{failureMessage}</p>
-              {hasResult ? <p>已保留上次保存的正文。</p> : null}
-              <Button className="gap-2" onClick={() => onParseFile(activeFile.id, activeFile.parserBackend)}>
-                <RotateCcw className="size-4" />
-                重试解析
-              </Button>
-              {failureRequestId ? (
-                <details className={styles.diagnostics}>
-                  <summary>请求详情</summary>
-                  <p className="font-mono">request_id={failureRequestId}</p>
-                </details>
-              ) : null}
-              {activeFile.parseDiagnostics?.suggested_backends?.length ? (
-                <div className={styles.recovery}>
-                  {activeFile.parseDiagnostics.suggested_backends.slice(0, 6).map((backend) => (
-                    <Button
-                      key={backend}
-                      size="sm"
-                      variant="outline"
-                      onClick={() => onParseFile(activeFile.id, backend)}
-                    >
-                      用 {getParserLabel(resolveParserBackendForFilename(activeFile.name, backend).backend)} 重试
-                    </Button>
-                  ))}
-                </div>
-              ) : null}
-              {activeFile.parseDiagnostics?.pdf_sample ? (
-                <details className={styles.diagnostics}>
-                  <summary>查看 PDF 诊断</summary>
-                  <p>
-                    {activeFile.parseDiagnostics.pdf_sample.page_count ?? '–'} 页
-                    {activeFile.parseDiagnostics.pdf_sample.is_scanned ? ' · 可能为扫描件' : ''}
-                  </p>
-                  {activeFile.parseDiagnostics.pdf_sample.samples?.slice(0, 3).map((sample) => (
-                    <p key={sample.page}>
-                      第 {sample.page} 页 · {sample.text_chars} 字符
-                      <br />
-                      {sample.excerpt.length === 0 ? '未检测到可选文字' : sample.excerpt}
-                    </p>
-                  ))}
-                </details>
-              ) : null}
-            </div>
-          ) : null}
-          {hasResult && !isEditing ? (
-            <div className={styles.resourceBody} hidden={!resourceView}>
-              {resourceView && selectedExtractEvidence ? (
-                <div className={styles.evidence}>
-                  <span>
-                    {selectedExtractEvidence.fieldName} ·{' '}
-                    {formatParsingPages(getParsingPages(selectedExtractEvidence.evidence))}
-                  </span>
-                  <span>{selectedExtractEvidence.evidence.text}</span>
-                  <Button size="sm" variant="ghost" onClick={() => setNarrowView('source')}>
-                    查看原文
-                  </Button>
-                </div>
-              ) : null}
-              {activeFile.librarySource === 'parsing_workspace' && resultReady ? (
-                isSavedRun && (activeMarkdown.length > 0 || activeElements.length > 0) ? (
-                  <ParsingExtractPanel
-                    key={JSON.stringify([activeFile.libraryId, activeRun.id])}
-                    documentId={activeFile.libraryId}
-                    activeElements={activeElements}
-                    onSelectEvidence={handleSelectExtractEvidence}
-                    className="bg-background"
-                  />
-                ) : resourceView ? (
-                  <p className={styles.evidence}>
-                    {isSavedRun ? '当前版本没有可提取的内容。' : '切换到服务器已保存的解析版本后可提取字段。'}
-                  </p>
-                ) : null
-              ) : null}
-              {resourceView ? (
-                <ParsingElementsPanel
-                  key={activeFile.id}
-                  elements={activeElements}
-                  onSelectElement={handleSelectElement}
-                />
-              ) : null}
-            </div>
-          ) : null}
-
-          {isRunUnavailable ? (
-            <div className={styles.resultState} role="alert">
-              <AlertCircle className="size-7 text-destructive" />
-              <h2>所选解析版本不可用</h2>
-              <p>请选择现有解析版本，或重新解析文档。</p>
-              {activeFile.runs !== undefined && activeFile.runs.length > 0 ? (
-                <label className="flex flex-col gap-2">
-                  切换解析版本
-                  <select
-                    className={styles.runSelect}
-                    value={activeFile.activeRunId}
-                    onChange={(event) => onSelectRun(event.target.value)}
-                  >
-                    <option value={activeFile.activeRunId} disabled>
-                      所选版本不可用
-                    </option>
-                    {activeFile.runs.map((run) => (
-                      <option key={run.id} value={run.id}>
-                        {run.parserLabel} · {new Date(run.createdAt).toLocaleTimeString()}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              ) : null}
-              <Button className="gap-2" onClick={() => onParseFile(activeFile.id, activeFile.parserBackend)}>
-                <RotateCcw className="size-4" />
-                重新解析
-              </Button>
-            </div>
-          ) : !hasResult ? (
-            activeFile.status === 'error' ? null : (
-              <div className={styles.resultState} role="status">
-                {activeFile.status === 'parsing' ? (
-                  <>
-                    <Loader2 className="size-7 animate-spin text-info motion-reduce:animate-none" />
-                    <h2>正在解析</h2>
-                    <p>
-                      {activeFile.parserLabel} · {Math.round(activeFile.progress || 0)}%
-                    </p>
-                    <div
-                      className={styles.progress}
-                      role="progressbar"
-                      aria-label="解析进度"
-                      aria-valuemin={0}
-                      aria-valuemax={100}
-                      aria-valuenow={Math.round(activeFile.progress || 0)}
-                    >
-                      <span style={{ width: Math.min(100, Math.max(0, activeFile.progress || 0)) + '%' }} />
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <FileText className="size-7 text-muted-foreground" />
-                    <h2>文档已就绪</h2>
-                    <p>选择解析器，开始提取文档内容。</p>
-                    <Button className="gap-2" onClick={() => onParseFile(activeFile.id, activeFile.parserBackend)}>
-                      <Play className="size-4" />
-                      开始解析
-                    </Button>
-                  </>
-                )}
-              </div>
-            )
-          ) : isEditing ? (
-            <div className={styles.editor}>
-              <textarea
-                ref={editorRef}
-                aria-label="编辑 Markdown"
-                value={editedContent}
-                disabled={savePending}
-                onChange={(event) => onEditedContentChange(event.target.value)}
-                spellCheck={false}
-              />
-            </div>
-          ) : resourceView ? null : rightPanelMode === 'blocks' ? (
-            <ParsingRightPanel className={styles.blockBody}>
-              {reviewEntries.length ? (
-                reviewEntries.map((reviewEntry) => {
-                  const id = reviewEntry.type === 'layout' ? reviewEntry.entry.id : reviewEntry.element.id
-                  const isActive =
-                    reviewEntry.type === 'layout'
-                      ? id === activeBlockId
-                      : selectedExtractEvidence?.origin === 'element' &&
-                        selectedExtractEvidence.evidence.element_id === id
-                  const meta =
-                    reviewEntry.type === 'layout'
-                      ? getParsingLayoutMeta(reviewEntry.entry.kind)
-                      : getParsingLayoutMeta('image')
-                  return (
-                    <div
-                      key={`${reviewEntry.type}:${id}`}
-                      ref={(node) => {
-                        if (node) layoutReviewCardRefs.current.set(id, node)
-                        else layoutReviewCardRefs.current.delete(id)
-                      }}
-                      data-layout-entry-id={id}
-                      data-active={isActive}
-                      className={styles.blockRow}
-                      onMouseEnter={() => onHoveredBlockIdChange(id)}
-                      onMouseLeave={() => onHoveredBlockIdChange(null)}
-                    >
-                      <button
-                        type="button"
-                        className={styles.blockMeta}
-                        aria-pressed={isActive}
-                        onClick={() =>
-                          reviewEntry.type === 'layout'
-                            ? handleSelectReviewBlock(id)
-                            : handleSelectElement(reviewEntry.element)
-                        }
-                      >
-                        <span className={cn('size-1.5 rounded-full', meta.dotClassName)} />
-                        <strong>{meta.label}</strong>
-                        <span>
-                          {reviewEntry.type === 'layout' && reviewEntry.entry.pageIndex != null
-                            ? '第 ' + (reviewEntry.entry.pageIndex + 1) + ' 页'
-                            : reviewEntry.type === 'image'
-                              ? (formatParsingPages(getParsingPages(reviewEntry.element)) ?? '无页码')
-                              : '无页码'}
-                        </span>
-                        <span className="ml-auto">
-                          {reviewEntry.type === 'layout'
-                            ? reviewEntry.entry.charCount + ' 字'
-                            : reviewEntry.element.bbox === undefined || reviewEntry.element.bbox === null
-                              ? '无坐标'
-                              : reviewEntry.pageIndex === null
-                                ? '缺少页码'
-                                : '可定位'}
-                        </span>
-                      </button>
-                      {reviewEntry.type === 'layout' ? (
-                        <div className={styles.markdown}>
-                          <MarkdownRenderer markdown={reviewEntry.entry.text} />
-                        </div>
-                      ) : (
-                        <div className={styles.imageEntry}>
-                          {reviewEntry.src !== null ? (
-                            <AuthImage
-                              src={reviewEntry.src}
-                              alt={reviewEntry.element.text ?? reviewEntry.element.id}
-                              width={280}
-                              height={200}
-                              unoptimized
-                              className="max-h-40 w-full object-contain"
-                            />
-                          ) : (
-                            <ImageIcon className="size-7 text-muted-foreground" />
-                          )}
-                          <span>{reviewEntry.element.text ?? `图片 ${reviewEntry.imageIndex + 1}`}</span>
-                        </div>
-                      )}
-                    </div>
-                  )
-                })
-              ) : (
-                <div className={styles.empty}>
-                  <Blocks className="size-6 text-muted-foreground" />
-                  <h2>没有可定位的内容块</h2>
-                  <p>可以切换到 Markdown 查看解析内容。</p>
-                </div>
-              )}
-            </ParsingRightPanel>
-          ) : activeMarkdown.length === 0 ? (
-            <div className={styles.resultState}>
-              <FileText className="size-7 text-muted-foreground" />
-              <h2>正文为空</h2>
-              <p>
-                {activeFile.librarySource === 'knowledge_base'
-                  ? '当前保存的解析正文没有内容。'
-                  : '当前保存的解析正文没有内容，可以编辑或重新解析。'}
+          <div className={styles.resultContent}>
+            {contentFeedback}
+            {hasResult && (activeRun === null ? activeFile.contentEdited : activeRun.contentEdited) === true ? (
+              <p role="status" className="shrink-0 border-b border-border px-4 py-2 text-xs text-muted-foreground">
+                正文已编辑，原解析的内容块、提取资源和质量评价已失效。
               </p>
-            </div>
-          ) : (
-            <ParsingRightPanel dragScroll className={cn(styles.markdownBody, 'parsing-md-scroll')}>
-              {previewMode === 'raw' ? (
-                <pre className={styles.raw}>{activeMarkdown}</pre>
-              ) : (
-                <article className={styles.markdown}>
-                  <MarkdownRenderer
-                    markdown={activeMarkdown}
-                    autoScrollToHash
-                    scrollContainerSelector=".parsing-md-scroll"
+            ) : null}
+            {hasResult && activeFile.status === 'parsing' ? (
+              <p role="status" className="shrink-0 border-b border-border px-4 py-2 text-xs text-muted-foreground">
+                正在重新解析，当前显示上次保存的正文。
+              </p>
+            ) : null}
+            {activeFile.status === 'error' ? (
+              <div className={hasResult ? styles.failureNotice : styles.resultState} role="alert">
+                {!hasResult ? <AlertCircle className="size-7 text-destructive" /> : null}
+                <h2>解析失败</h2>
+                <p>{failureMessage}</p>
+                {hasResult ? <p>已保留上次保存的正文。</p> : null}
+                <Button className="gap-2" onClick={() => onParseFile(activeFile.id, activeFile.parserBackend)}>
+                  <RotateCcw className="size-4" />
+                  重试解析
+                </Button>
+                {failureRequestId ? (
+                  <details className={styles.diagnostics}>
+                    <summary>请求详情</summary>
+                    <p className="font-mono">request_id={failureRequestId}</p>
+                  </details>
+                ) : null}
+                {activeFile.parseDiagnostics?.suggested_backends?.length ? (
+                  <div className={styles.recovery}>
+                    {activeFile.parseDiagnostics.suggested_backends.slice(0, 6).map((backend) => (
+                      <Button
+                        key={backend}
+                        size="sm"
+                        variant="outline"
+                        onClick={() => onParseFile(activeFile.id, backend)}
+                      >
+                        用 {getParserLabel(resolveParserBackendForFilename(activeFile.name, backend).backend)} 重试
+                      </Button>
+                    ))}
+                  </div>
+                ) : null}
+                {activeFile.parseDiagnostics?.pdf_sample ? (
+                  <details className={styles.diagnostics}>
+                    <summary>查看 PDF 诊断</summary>
+                    <p>
+                      {activeFile.parseDiagnostics.pdf_sample.page_count ?? '–'} 页
+                      {activeFile.parseDiagnostics.pdf_sample.is_scanned ? ' · 可能为扫描件' : ''}
+                    </p>
+                    {activeFile.parseDiagnostics.pdf_sample.samples?.slice(0, 3).map((sample) => (
+                      <p key={sample.page}>
+                        第 {sample.page} 页 · {sample.text_chars} 字符
+                        <br />
+                        {sample.excerpt.length === 0 ? '未检测到可选文字' : sample.excerpt}
+                      </p>
+                    ))}
+                  </details>
+                ) : null}
+              </div>
+            ) : null}
+            {hasResult && !isEditing ? (
+              <div className={styles.resourceBody} hidden={!resourceView}>
+                {resourceView && selectedExtractEvidence ? (
+                  <div className={styles.evidence}>
+                    <span>
+                      {selectedExtractEvidence.fieldName} ·{' '}
+                      {formatParsingPages(getParsingPages(selectedExtractEvidence.evidence))}
+                    </span>
+                    <span>{selectedExtractEvidence.evidence.text}</span>
+                    <Button size="sm" variant="ghost" onClick={() => setNarrowView('source')}>
+                      查看原文
+                    </Button>
+                  </div>
+                ) : null}
+                {activeFile.librarySource === 'parsing_workspace' && resultReady ? (
+                  isSavedRun && (activeMarkdown.length > 0 || activeElements.length > 0) ? (
+                    <ParsingExtractPanel
+                      key={JSON.stringify([activeFile.libraryId, activeRun.id])}
+                      documentId={activeFile.libraryId}
+                      activeElements={activeElements}
+                      onSelectEvidence={handleSelectExtractEvidence}
+                      className="bg-background"
+                    />
+                  ) : resourceView ? (
+                    <p className={styles.evidence}>
+                      {isSavedRun ? '当前版本没有可提取的内容。' : '切换到服务器已保存的解析版本后可提取字段。'}
+                    </p>
+                  ) : null
+                ) : null}
+                {resourceView ? (
+                  <ParsingElementsPanel
+                    key={activeFile.id}
+                    elements={activeElements}
+                    onSelectElement={handleSelectElement}
                   />
-                </article>
-              )}
-            </ParsingRightPanel>
-          )}
+                ) : null}
+              </div>
+            ) : null}
 
-          {resultReady && !isEditing ? (
-            <ParsingQualityNotice qualityGate={activeQualityGate} pdfQuality={activePdfQuality} />
-          ) : null}
+            {isRunUnavailable ? (
+              <div className={styles.resultState} role="alert">
+                <AlertCircle className="size-7 text-destructive" />
+                <h2>所选解析版本不可用</h2>
+                <p>请选择现有解析版本，或重新解析文档。</p>
+                {activeFile.runs !== undefined && activeFile.runs.length > 0 ? (
+                  <label className="flex flex-col gap-2">
+                    切换解析版本
+                    <select
+                      className={styles.runSelect}
+                      value={activeFile.activeRunId}
+                      onChange={(event) => onSelectRun(event.target.value)}
+                    >
+                      <option value={activeFile.activeRunId} disabled>
+                        所选版本不可用
+                      </option>
+                      {activeFile.runs.map((run) => (
+                        <option key={run.id} value={run.id}>
+                          {run.parserLabel} · {new Date(run.createdAt).toLocaleTimeString()}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ) : null}
+                <Button className="gap-2" onClick={() => onParseFile(activeFile.id, activeFile.parserBackend)}>
+                  <RotateCcw className="size-4" />
+                  重新解析
+                </Button>
+              </div>
+            ) : !hasResult ? (
+              activeFile.status === 'error' ? null : (
+                <div className={styles.resultState} role="status">
+                  {activeFile.status === 'parsing' ? (
+                    <>
+                      <Loader2 className="size-7 animate-spin text-info motion-reduce:animate-none" />
+                      <h2>正在解析</h2>
+                      <p>
+                        {activeFile.parserLabel} · {Math.round(activeFile.progress || 0)}%
+                      </p>
+                      <div
+                        className={styles.progress}
+                        role="progressbar"
+                        aria-label="解析进度"
+                        aria-valuemin={0}
+                        aria-valuemax={100}
+                        aria-valuenow={Math.round(activeFile.progress || 0)}
+                      >
+                        <span style={{ width: Math.min(100, Math.max(0, activeFile.progress || 0)) + '%' }} />
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <FileText className="size-7 text-muted-foreground" />
+                      <h2>文档已就绪</h2>
+                      <p>选择解析器，开始提取文档内容。</p>
+                    </>
+                  )}
+                </div>
+              )
+            ) : isEditing ? (
+              <div className={styles.editor}>
+                <textarea
+                  ref={editorRef}
+                  aria-label="编辑 Markdown"
+                  value={editedContent}
+                  disabled={savePending}
+                  onChange={(event) => onEditedContentChange(event.target.value)}
+                  spellCheck={false}
+                />
+              </div>
+            ) : resourceView ? null : rightPanelMode === 'blocks' ? (
+              <ParsingRightPanel className={styles.blockBody}>
+                {reviewEntries.length ? (
+                  reviewEntries.map((reviewEntry) => {
+                    const id = reviewEntry.type === 'layout' ? reviewEntry.entry.id : reviewEntry.element.id
+                    const isActive =
+                      reviewEntry.type === 'layout'
+                        ? id === activeBlockId
+                        : selectedExtractEvidence?.origin === 'element' &&
+                          selectedExtractEvidence.evidence.element_id === id
+                    const meta =
+                      reviewEntry.type === 'layout'
+                        ? getParsingLayoutMeta(reviewEntry.entry.kind)
+                        : getParsingLayoutMeta('image')
+                    return (
+                      <div
+                        key={`${reviewEntry.type}:${id}`}
+                        ref={(node) => {
+                          if (node) layoutReviewCardRefs.current.set(id, node)
+                          else layoutReviewCardRefs.current.delete(id)
+                        }}
+                        data-layout-entry-id={id}
+                        data-active={isActive}
+                        className={styles.blockRow}
+                        onMouseEnter={() => onHoveredBlockIdChange(id)}
+                        onMouseLeave={() => onHoveredBlockIdChange(null)}
+                      >
+                        <button
+                          type="button"
+                          className={styles.blockMeta}
+                          aria-pressed={isActive}
+                          onClick={() =>
+                            reviewEntry.type === 'layout'
+                              ? handleSelectReviewBlock(id)
+                              : handleSelectElement(reviewEntry.element)
+                          }
+                        >
+                          <span className={cn('size-1.5 rounded-full', meta.dotClassName)} />
+                          <strong>{meta.label}</strong>
+                          <span>
+                            {reviewEntry.type === 'layout' && reviewEntry.entry.pageIndex != null
+                              ? '第 ' + (reviewEntry.entry.pageIndex + 1) + ' 页'
+                              : reviewEntry.type === 'image'
+                                ? (formatParsingPages(getParsingPages(reviewEntry.element)) ?? '无页码')
+                                : '无页码'}
+                          </span>
+                          <span className="ml-auto">
+                            {reviewEntry.type === 'layout'
+                              ? reviewEntry.entry.charCount + ' 字'
+                              : reviewEntry.element.bbox === undefined || reviewEntry.element.bbox === null
+                                ? '无坐标'
+                                : reviewEntry.pageIndex === null
+                                  ? '缺少页码'
+                                  : '可定位'}
+                          </span>
+                        </button>
+                        {reviewEntry.type === 'layout' ? (
+                          <div className={styles.markdown}>
+                            <MarkdownRenderer markdown={reviewEntry.entry.text} />
+                          </div>
+                        ) : (
+                          <div className={styles.imageEntry}>
+                            {reviewEntry.src !== null ? (
+                              <AuthImage
+                                src={reviewEntry.src}
+                                alt={reviewEntry.element.text ?? reviewEntry.element.id}
+                                width={280}
+                                height={200}
+                                unoptimized
+                                className="max-h-40 w-full object-contain"
+                              />
+                            ) : (
+                              <ImageIcon className="size-7 text-muted-foreground" />
+                            )}
+                            <span>{reviewEntry.element.text ?? `图片 ${reviewEntry.imageIndex + 1}`}</span>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })
+                ) : (
+                  <div className={styles.empty}>
+                    <Blocks className="size-6 text-muted-foreground" />
+                    <h2>没有可定位的内容块</h2>
+                    <p>可以切换到 Markdown 查看解析内容。</p>
+                  </div>
+                )}
+              </ParsingRightPanel>
+            ) : activeMarkdown.length === 0 ? (
+              <div className={styles.resultState}>
+                <FileText className="size-7 text-muted-foreground" />
+                <h2>正文为空</h2>
+                <p>
+                  {activeFile.librarySource === 'knowledge_base'
+                    ? '当前保存的解析正文没有内容。'
+                    : '当前保存的解析正文没有内容，可以编辑或重新解析。'}
+                </p>
+              </div>
+            ) : (
+              <ParsingRightPanel dragScroll className={cn(styles.markdownBody, 'parsing-md-scroll')}>
+                {previewMode === 'raw' ? (
+                  <pre className={styles.raw}>{activeMarkdown}</pre>
+                ) : (
+                  <article className={styles.markdown}>
+                    <MarkdownRenderer
+                      markdown={activeMarkdown}
+                      autoScrollToHash
+                      scrollContainerSelector=".parsing-md-scroll"
+                    />
+                  </article>
+                )}
+              </ParsingRightPanel>
+            )}
+
+            {resultReady && !isEditing ? (
+              <ParsingQualityNotice qualityGate={activeQualityGate} pdfQuality={activePdfQuality} />
+            ) : null}
+          </div>
         </section>
       </div>
 
-      {resultReady || isEditing ? (
-        <footer className={styles.footer}>
-          <div className={styles.stats}>
-            {isEditing ? (
-              <span>正在编辑{rightPanelMode === 'blocks' && activeBlockId ? '内容块' : ' Markdown'}</span>
-            ) : resultReady ? (
-              <>
-                {layoutEntries.length > 0 ? (
-                  <span>
-                    <Blocks className="size-3.5" />
-                    <b>{layoutEntries.length}</b> 个内容块
-                  </span>
-                ) : null}
-                {stats.map(({ label, value }) => (
-                  <span key={label}>
-                    {label} <b>{value}</b>
-                  </span>
-                ))}
-              </>
-            ) : (
-              <span>{activeFile.parserLabel}</span>
-            )}
-          </div>
-          <div className={styles.footerActions}>
-            {isEditing ? (
-              <>
-                <Button variant="ghost" size="sm" disabled={savePending} onClick={onCancelEdit}>
-                  取消
+      <footer className={styles.footer}>
+        <div className={styles.stats}>
+          {isEditing ? (
+            <span>正在编辑{rightPanelMode === 'blocks' && activeBlockId ? '内容块' : ' Markdown'}</span>
+          ) : resultReady ? (
+            <>
+              {stats.map(({ label, value }) => (
+                <span key={label}>
+                  <b>{value}</b> {label}
+                </span>
+              ))}
+              <span>{activeRun?.parserLabel ?? activeFile.parserLabel}</span>
+              {durationSec !== undefined && Number.isFinite(durationSec) ? <span>{durationSec}s</span> : null}
+            </>
+          ) : (
+            <span>{activeFile.parserLabel}</span>
+          )}
+        </div>
+        <div className={styles.footerActions}>
+          {isEditing ? (
+            <>
+              <Button variant="ghost" size="sm" disabled={savePending} onClick={onCancelEdit}>
+                取消
+              </Button>
+              <Button
+                size="sm"
+                disabled={savePending}
+                className="gap-2 bg-accent text-accent-foreground hover:bg-accent/90"
+                onClick={() => void save()}
+              >
+                {savePending ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
+                {savePending ? '正在保存' : '保存修改'}
+              </Button>
+            </>
+          ) : resultReady || activeFile.status === 'error' ? (
+            <>
+              {hasMultipleRuns ? (
+                <Button variant="ghost" size="sm" className="gap-1.5" onClick={() => setCompareOpen(true)}>
+                  <FileStack className="size-3.5" />
+                  版本对比
                 </Button>
-                <Button size="sm" disabled={savePending} className="gap-2" onClick={() => void save()}>
-                  {savePending ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
-                  {savePending ? '正在保存' : '保存修改'}
-                </Button>
-              </>
-            ) : resultReady ? (
+              ) : null}
               <Button
                 variant="outline"
                 size="sm"
-                className="gap-2"
-                disabled={isSubmittingGovernance}
-                onClick={() => void onSubmitToGovernance()}
+                className="gap-1.5"
+                aria-label="重新解析"
+                onClick={() => onParseFile(activeFile.id, activeFile.parserBackend)}
               >
-                {isSubmittingGovernance ? (
-                  <Loader2 className="size-4 animate-spin" />
-                ) : (
-                  <ArrowRight className="size-4" />
-                )}
-                {isSubmittingGovernance ? '正在移交' : '继续数据治理'}
+                <RotateCcw className="size-3.5" />
+                重新解析
               </Button>
-            ) : null}
-          </div>
-        </footer>
-      ) : null}
+            </>
+          ) : null}
+        </div>
+      </footer>
     </>
   )
 }

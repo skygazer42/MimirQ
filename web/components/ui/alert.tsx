@@ -5,16 +5,15 @@ import { cn } from '@/lib/utils'
 import type { RadixRef } from '@/lib/radix-utils'
 
 const alertVariants = cva(
-  'relative w-full rounded-lg border border-l-4 p-4 [&>svg~*]:pl-7 [&>svg]:absolute [&>svg]:left-4 [&>svg]:top-4 [&>svg]:text-foreground/80',
+  'relative w-full rounded-lg border border-l-[3px] px-4 py-3 [&>svg~*]:pl-7 [&>svg]:absolute [&>svg]:left-3.5 [&>svg]:top-3.5 [&>svg]:text-foreground/80',
   {
     variants: {
       variant: {
         default: 'bg-card text-foreground border-border border-l-border',
-        success: 'bg-success/10 border-success/25 border-l-success text-foreground [&>svg]:text-success',
-        warning: 'bg-warning/10 border-warning/25 border-l-warning text-foreground [&>svg]:text-warning',
-        info: 'bg-info/10 border-info/25 border-l-info text-foreground [&>svg]:text-info',
-        destructive:
-          'bg-destructive/10 border-destructive/25 border-l-destructive text-foreground [&>svg]:text-destructive',
+        success: 'bg-card border-border border-l-success text-foreground [&>svg]:text-success',
+        warning: 'bg-card border-border border-l-accent text-foreground [&>svg]:text-accent',
+        info: 'bg-card border-border border-l-info text-foreground [&>svg]:text-info',
+        destructive: 'bg-card border-border border-l-destructive/75 text-foreground [&>svg]:text-destructive',
       },
     },
     defaultVariants: {

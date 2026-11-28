@@ -50,6 +50,7 @@ export const PAGE_TITLE_ICONS = {
   'kg-snapshot': GraphSnapshot,
   'knowledge-base': KnowledgeBase,
   'knowledge-graph': KnowledgeGraph,
+  ontology: KnowledgeGraph,
   'knowledge-management': KnowledgeBase,
   'members-rbac': Members,
   parsing: Parsing,

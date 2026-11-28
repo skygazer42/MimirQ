@@ -1,6 +1,19 @@
 import { expect, test } from '@playwright/test'
+import type { MetaResponse } from '../types/backend'
 
 test.beforeEach(async ({ page }) => {
+  await page.route('**/api/v1/meta', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        name: 'Ragvia API',
+        api_version: 'e2e',
+        build: { sha: 'e2e1234' },
+        features: { auth_mode: 'jwt' },
+      } satisfies MetaResponse),
+    })
+  })
   await page.route('**/api/v1/auth/policy', async (route) => {
     await route.fulfill({
       status: 200,
@@ -37,13 +50,6 @@ test('keeps authentication readable when reduced motion is enabled', async ({ pa
 
 test('clears login errors and keeps registration reachable at low viewport heights', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 640 })
-  await page.route('**/api/v1/meta', async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({ features: { auth_mode: 'jwt' } }),
-    })
-  })
   await page.route('**/api/v1/auth/login', async (route) => {
     await route.fulfill({
       status: 401,
@@ -76,3 +82,23 @@ test('clears login errors and keeps registration reachable at low viewport heigh
   await submitButton.scrollIntoViewIfNeeded()
   await expect(submitButton).toBeInViewport()
 })
+
+for (const browserLanguage of ['en-US', 'ar-EG']) {
+  test(
+    'document language follows the rendered interface with ' + browserLanguage + ' request headers',
+    async ({ page }) => {
+      const requestHeaders: Record<string, string> = { 'accept-language': browserLanguage }
+      if (browserLanguage === 'ar-EG') {
+        requestHeaders['x-app-lang'] = 'he'
+        requestHeaders['x-mimirq-lang'] = 'fa'
+      }
+      await page.setExtraHTTPHeaders(requestHeaders)
+      for (const route of ['/auth', '/zh-CN/auth']) {
+        await page.goto(route)
+        await expect(page.getByRole('heading', { name: '欢迎回来', exact: true })).toBeVisible()
+        await expect(page.locator('html')).toHaveAttribute('lang', 'zh-CN')
+        await expect(page.locator('html')).toHaveAttribute('dir', 'ltr')
+      }
+    },
+  )
+}

@@ -1,6 +1,6 @@
 'use client'
 
-import type { ChangeEventHandler, RefObject } from 'react'
+import type { ChangeEventHandler, ReactNode, RefObject } from 'react'
 import { FileCode, FileText, GitCompare, MoreHorizontal, Network, RefreshCw, Share2, Wrench } from '@/components/icons'
 import { Link } from '@/i18n/navigation'
 import { Button } from '@/components/ui/button'
@@ -17,10 +17,12 @@ type GraphPageHeaderProps = Readonly<{
   fileName: string | null
   dataSource: 'live' | 'file'
   graphNodeCount: number
+  isEmptyGraph?: boolean
   isLoading: boolean
   isExportingGraphML: boolean
   includeEntityLinks: boolean
   includeRelationLinks: boolean
+  isOntologyGraph: boolean
   minSharedEvents: number
   onToggleEntityLinks: () => void
   onToggleRelationLinks: () => void
@@ -34,16 +36,19 @@ type GraphPageHeaderProps = Readonly<{
   onTriggerManualKgUpload: () => void
   manualKgFileInputRef: RefObject<HTMLInputElement | null>
   onManualKgFileUpload: ChangeEventHandler<HTMLInputElement>
+  ontologyTool?: ReactNode
 }>
 
 export function GraphPageHeader({
   fileName,
   dataSource,
   graphNodeCount,
+  isEmptyGraph = false,
   isLoading,
   isExportingGraphML,
   includeEntityLinks,
   includeRelationLinks,
+  isOntologyGraph,
   minSharedEvents,
   onToggleEntityLinks,
   onToggleRelationLinks,
@@ -57,6 +62,7 @@ export function GraphPageHeader({
   onTriggerManualKgUpload,
   manualKgFileInputRef,
   onManualKgFileUpload,
+  ontologyTool,
 }: GraphPageHeaderProps) {
   const scopeLabel = dataSource === 'live' && fileName === '知识图谱' ? '全部数据' : (fileName ?? '尚未选择图谱')
   return (
@@ -65,14 +71,34 @@ export function GraphPageHeader({
         <PageTitleIcon name="knowledge-graph" />
         <h1>知识图谱</h1>
       </div>
-      <span className={styles.scopeLabel} title={scopeLabel}>
-        {scopeLabel}
-      </span>
+      {!isEmptyGraph ? (
+        <span className={styles.scopeLabel} title={scopeLabel}>
+          {scopeLabel}
+        </span>
+      ) : null}
       <div className={styles.headerActions}>
-        <Button variant="outline" onClick={onOpenGraphPicker}>
-          <Share2 />
-          <span>选择图谱</span>
-        </Button>
+        {isEmptyGraph ? (
+          <>
+            <Button variant="outline" className={styles.scopeButton} asChild>
+              <Link href="/graph/diagnostics">
+                <Wrench />
+                <span className={styles.buttonLabel}>图谱诊断</span>
+              </Link>
+            </Button>
+            <Button variant="outline" className={styles.scopeButton} asChild>
+              <Link href="/graph/snapshots">
+                <GitCompare />
+                <span className={styles.buttonLabel}>图谱快照</span>
+              </Link>
+            </Button>
+          </>
+        ) : (
+          <Button variant="outline" className={styles.scopeButton} onClick={onOpenGraphPicker}>
+            <Share2 />
+            <span>选择图谱</span>
+          </Button>
+        )}
+        {ontologyTool}
         {dataSource === 'live' && graphNodeCount > 0 ? (
           <Button
             variant="outline"
@@ -105,7 +131,7 @@ export function GraphPageHeader({
               {isLoading ? '正在加载…' : '重新加载图谱'}
             </button>
             <div className={styles.menuDivider} />
-            {dataSource === 'live' ? (
+            {dataSource === 'live' && !isOntologyGraph ? (
               <>
                 <label className={styles.toolSwitch}>
                   实体连线

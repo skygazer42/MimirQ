@@ -19,6 +19,7 @@ import { ChunkPresetPanel } from './components/chunk-preset-panel'
 import { Sidebar } from './components/workbench/sidebar-client'
 import { TopBar } from './components/workbench/top-bar'
 import { ChunkList } from './components/workbench/preview/chunk-list'
+import { CompareFooter } from './components/workbench/compare-controls'
 import { getPresetSeparator } from './utils/separators'
 
 const api = vi.hoisted(() => ({
@@ -88,8 +89,23 @@ vi.mock('@/components/ui/dialog', async () => {
 })
 vi.mock('@/components/ui/select', async () => {
   const React = await import('react')
-  function Container({ children }: { children?: React.ReactNode }) {
-    return React.createElement(React.Fragment, null, children)
+  function optionText(children: React.ReactNode): string {
+    return React.Children.toArray(children)
+      .map((child) =>
+        React.isValidElement<{ children?: React.ReactNode }>(child) ? optionText(child.props.children) : String(child),
+      )
+      .join('')
+  }
+  function Item({ children, value }: { children?: React.ReactNode; value: string }) {
+    return React.createElement('option', { value }, optionText(children))
+  }
+  function options(children: React.ReactNode): React.ReactElement[] {
+    return React.Children.toArray(children).flatMap((child) => {
+      if (!React.isValidElement<{ children?: React.ReactNode; value: string }>(child)) return []
+      return child.type === Item
+        ? [React.cloneElement(child, { key: child.props.value })]
+        : options(child.props.children)
+    })
   }
   return {
     Select: ({
@@ -104,11 +120,10 @@ vi.mock('@/components/ui/select', async () => {
       React.createElement(
         'select',
         { value, onChange: (event: React.ChangeEvent<HTMLSelectElement>) => onValueChange?.(event.target.value) },
-        children,
+        options(children),
       ),
-    SelectContent: Container,
-    SelectItem: ({ children, value }: { children?: React.ReactNode; value: string }) =>
-      React.createElement('option', { value }, children),
+    SelectContent: ({ children }: { children?: React.ReactNode }) => children,
+    SelectItem: Item,
     SelectTrigger: () => null,
     SelectValue: () => null,
   }
@@ -279,7 +294,7 @@ async function mount(
       <Probe />
     </Wrapper>
   )
-  act(() => root.render(options.strict ? <StrictMode>{content}</StrictMode> : content))
+  await act(async () => root.render(options.strict ? <StrictMode>{content}</StrictMode> : content))
   const hook = { result: result as { current: Value } }
   let mounted = true
   const unmount = () => {
@@ -378,6 +393,7 @@ async function prepareFile(hook: Awaited<ReturnType<typeof mount>>, name = 'firs
 }
 
 beforeEach(() => {
+  ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
   localStorage.clear()
   sessionStorage.clear()
   clearAuthSession()
@@ -1891,6 +1907,24 @@ describe('chunk preview workspace state and request lifetime', () => {
     expect(hook.result.current.chunkOverrides[0]).toBeUndefined()
   })
 
+  it('counts pending, reviewed and skipped chunks independently in the status footer', async () => {
+    const data = preview()
+    data.chunks[0] = { ...data.chunks[0], index: 4, metadata: { needs_review: true } }
+    api.documents.chunkPreview.mockResolvedValue(data)
+    const hook = await mount({ children: <CompareFooter onOpenDocuments={vi.fn()} /> })
+    await prepareFile(hook)
+    const footer = hook.container.querySelector('footer')!
+    expect(footer.textContent).toContain('1 项待复核')
+
+    act(() => hook.result.current.updateChunkOverride(4, { metadata: { review_status: 'approved' } }))
+    expect(footer.textContent).toContain('1 项已复核')
+    expect(footer.textContent).not.toContain('待复核')
+
+    act(() => hook.result.current.updateChunkOverride(4, { disabled: true }))
+    expect(footer.textContent).toContain('1 项已跳过')
+    expect(footer.textContent).not.toContain('已复核')
+  })
+
   it.each(['  😀\n\n', '', 'first\r\nsecond\rthird'])(
     'copies the selected edited body verbatim: %j',
     async (content) => {
@@ -2554,9 +2588,11 @@ describe('chunk preview workspace state and request lifetime', () => {
       file: (_: unknown, reject: (error: Error) => void) => reject(error),
     } as FileSystemFileEntry
 
-    await expect(
-      hook.result.current.handleDrop(drop([fileEntry(new File(['first'], 'first.md')), failed])),
-    ).rejects.toBe(error)
+    await act(async () => {
+      await expect(
+        hook.result.current.handleDrop(drop([fileEntry(new File(['first'], 'first.md')), failed])),
+      ).rejects.toBe(error)
+    })
 
     expect(hook.result.current.fileList).toEqual([])
   })
@@ -2766,7 +2802,7 @@ describe('chunk preview workspace state and request lifetime', () => {
     })
     const previousCalls = api.router.replace.mock.calls.length
 
-    act(() => hook.result.current.setDatasetId('dataset-b'))
+    await act(async () => hook.result.current.setDatasetId('dataset-b'))
 
     expect(hook.result.current.selectedChunkIndex).toBeNull()
     expect(api.router.replace.mock.calls.slice(previousCalls)).toEqual([['/chunk-preview?dataset_id=dataset-b']])

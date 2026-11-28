@@ -133,12 +133,12 @@ for (const width of [1440, 390]) {
       await dialog.locator('summary').filter({ hasText: '高级参数' }).click()
       const payload = dialog.getByRole('textbox', { name: '高级载荷（JSON）', exact: true })
       await payload.fill('')
-      await dialog.getByRole('button', { name: '保存 Capsule', exact: true }).click()
+      await dialog.getByRole('button', { name: '保存证据快照', exact: true }).click()
       await expect(dialog.getByRole('alert')).toBeVisible()
       expect(saves).toBe(0)
       const source = '{"capsule":{"schema":"mimirq.evidence_capsule.v1","claims":[]},"overwrite":false}'
       await payload.fill(source)
-      await dialog.getByRole('button', { name: '保存 Capsule', exact: true }).click()
+      await dialog.getByRole('button', { name: '保存证据快照', exact: true }).click()
       await expect(dialog.getByRole('alert')).toContainText('503')
       await expect(dialog.getByRole('alert')).toBeInViewport()
       await expect(payload).toHaveValue(source)
@@ -216,7 +216,7 @@ test('recovers clipboard failure in the real evidence dialog without changing so
   await page.getByRole('button', { name: '发送', exact: true }).click()
   await page.locator('summary').filter({ hasText: '来源与证据' }).click()
   await page.getByRole('button', { name: 'view-evidence', exact: true }).click()
-  const dialog = page.getByRole('dialog').filter({ has: page.getByRole('heading', { name: /Evidence.*P\.0/ }) })
+  const dialog = page.getByRole('dialog').filter({ has: page.getByRole('heading', { name: /证据.*P\.0/ }) })
   await expect(dialog).toBeVisible()
   expect(await dialog.locator('pre').textContent()).toBe(citation.chunk_content)
   await page.evaluate(() =>

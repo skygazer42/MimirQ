@@ -24,6 +24,7 @@ describe('navbar source', () => {
       'app/[locale]/diagnostics/page.tsx',
       'app/[locale]/evaluations/ablations/page.tsx',
       'app/[locale]/graph/page.tsx',
+      'app/[locale]/ontology/page.tsx',
       'app/[locale]/graph/diagnostics/page.tsx',
       'app/[locale]/graph/snapshots/page.tsx',
       'app/[locale]/knowledge/feedback/page.tsx',
@@ -84,9 +85,15 @@ describe('navbar source', () => {
     expect(src).not.toContain("{ icon: Grid3X3, labelKey: 'items.ragVisualization', href: '/knowledge/similarity' }")
     expect(src).toContain("'/knowledge/similarity': '/evaluations'")
     expect(src.indexOf("labelKey: 'items.knowledgeGraph'")).toBeLessThan(src.indexOf("labelKey: 'items.ragas'"))
+    expect(src.indexOf("labelKey: 'items.knowledgeGraph'")).toBeLessThan(
+      src.indexOf("labelKey: 'items.enterpriseOntology'"),
+    )
+    expect(src.indexOf("labelKey: 'items.enterpriseOntology'")).toBeLessThan(src.indexOf("labelKey: 'items.ragas'"))
+    expect(src).toContain("{ icon: Network, labelKey: 'items.enterpriseOntology', href: '/ontology' }")
 
     expect(chatMessages).toContain("datasets: '数据集'")
     expect(chatMessages).toContain("knowledgeBase: '知识库'")
     expect(chatMessages).toContain("ragas: 'RAG评测'")
+    expect(chatMessages).toContain("enterpriseOntology: '企业本体'")
   })
 })

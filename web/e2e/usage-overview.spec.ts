@@ -8,6 +8,15 @@ test('A renders the resource overview and dataset table with independent quotas'
   const table = page.getByRole('region', { name: '数据集用量归因', exact: true })
   await expect(table.locator('tbody tr')).toHaveCount(8)
   await expect(page.locator('dl[aria-label="累计用量"] dd').nth(1)).toHaveText('1,752,300')
+  const rail = page.getByRole('complementary', { name: '租户配额与限流', exact: true })
+  await expect(rail).toBeVisible()
+  expect((await rail.boundingBox())!.width).toBe(348)
+  const header = page.locator('[data-usage-overview] > header')
+  expect((await header.boundingBox())!.height).toBe(52)
+  await expect(header.getByRole('group', { name: '用量统计窗口' })).toBeVisible()
+  await expect(header.getByRole('button', { name: '查看原始配额' })).toHaveCount(0)
+  await expect(rail.getByRole('button', { name: '查看原始配额' })).toBeVisible()
+  await expect(rail.getByRole('button', { name: '复制配额' })).toBeVisible()
   await expect(page.getByRole('region', { name: '租户配额概览' }).getByRole('progressbar')).toHaveCount(4)
   await expect(page.getByRole('region', { name: '请求限流', exact: true }).getByRole('progressbar')).toHaveCount(0)
   await expect(page.getByRole('link', { name: '查看工程文档库知识库', exact: true })).toHaveAttribute(
@@ -22,6 +31,23 @@ test('A renders the resource overview and dataset table with independent quotas'
   await expect(page.getByRole('region', { name: '数据集链路资源' }).locator('tbody tr')).toHaveCount(8)
   await expect(page.locator('dl[aria-label="链路资源汇总"]')).toContainText('1,266,100')
   await expect(page.locator('dl[aria-label="链路资源汇总"]')).toContainText('40.6 s')
+  const overflowingHeaders = await page
+    .getByRole('region', { name: '数据集链路资源' })
+    .locator('thead th')
+    .evaluateAll((headers) =>
+      headers
+        .filter((header) => {
+          const range = document.createRange()
+          range.selectNodeContents(header)
+          const style = getComputedStyle(header)
+          return (
+            range.getBoundingClientRect().width >
+            header.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight)
+          )
+        })
+        .map((header) => header.textContent),
+    )
+  expect(overflowingHeaders).toEqual([])
   await expect(page.getByRole('tabpanel', { name: '链路资源', exact: true })).toHaveCSS('opacity', '1')
   await page.screenshot({ path: `${usageEvidence}/resources.png` })
   await page.getByRole('tab', { name: '配额状态', exact: true }).click()
@@ -44,10 +70,18 @@ test('empty usage and disabled quotas remain distinct from missing data', async 
   await expect(page.locator('dl[aria-label="累计用量"] dd').first()).toHaveText('0条')
   await expect(page.locator('dl[aria-label="累计用量"] dd').last()).toHaveText('—')
   const band = page.getByRole('region', { name: '租户配额概览', exact: true })
+  await expect(band.locator('details')).toHaveCount(0)
   await expect(band.getByText('未启用', { exact: true })).toHaveCount(5)
   await expect(band.getByRole('progressbar')).toHaveCount(0)
   await expect(page.locator('table')).toHaveCount(0)
+  await expect(page.getByRole('link', { name: '开始对话', exact: true })).toHaveAttribute('href', '/')
+  await expect(page.getByRole('link', { name: '查看知识库', exact: true })).toHaveAttribute('href', '/knowledge')
+  await expect(page.getByRole('complementary', { name: '用量监控维度' }).locator('li')).toHaveCount(3)
   await page.screenshot({ path: `${usageEvidence}/empty.png` })
+  await page.setViewportSize({ width: 390, height: 844 })
+  await expect(band.locator('details')).not.toHaveAttribute('open')
+  await band.locator('summary').click()
+  await expect(band.getByText('未启用', { exact: true })).toHaveCount(5)
 })
 
 test('partial failures preserve available resources and retry the affected source', async ({ page }) => {
@@ -63,6 +97,18 @@ test('partial failures preserve available resources and retry the affected sourc
   await expect(table).not.toContainText('不可见数据集')
   await expect(table.getByRole('link')).toHaveCount(0)
   await page.screenshot({ path: `${usageEvidence}/partial-failure.png` })
+  await page.setViewportSize({ width: 1440, height: 600 })
+  await page.mouse.move(0, 0)
+  const noticeOrb = page.getByRole('button', { name: '展开 3 条异常提示', exact: true })
+  await expect(noticeOrb).toBeVisible({ timeout: 10_000 })
+  await page
+    .locator('dl[aria-label="累计用量"]')
+    .locator('..')
+    .evaluate((element) => {
+      element.scrollTop = element.scrollHeight
+    })
+  await expect(noticeOrb).toBeInViewport({ ratio: 1 })
+  await noticeOrb.click()
   state.fail.clear()
   await page.getByRole('button', { name: '重试链路资源', exact: true }).click()
   await expect(page.locator('dl[aria-label="累计用量"] dd').nth(2)).toHaveText('84,600')
@@ -157,6 +203,25 @@ test('phone and laptop keep the table inside its scroll region and follow dark a
     const windowOverflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)
     expect(windowOverflow).toBe(false)
     await expect(page.getByRole('heading', { name: '用量／配额', exact: true })).toBeVisible()
+    if (width === 390) {
+      await expect(
+        page.getByRole('region', { name: '数据集用量归因', exact: true }).locator('tbody th').first(),
+      ).toBeInViewport({ ratio: 1 })
+      const quotas = page.getByRole('group', { name: '配额概览，可横向滚动', exact: true })
+      await quotas.focus()
+      await quotas.press('ArrowRight')
+      await expect.poll(() => quotas.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0)
+      await page.getByRole('tab', { name: '链路资源', exact: true }).click()
+      const resources = page.locator('dl[aria-label="链路资源汇总"]')
+      const resourceBox = await resources.boundingBox()
+      const totalBox = await page.locator('dl[aria-label="累计用量"]').boundingBox()
+      expect(totalBox!.y + totalBox!.height).toBeLessThanOrEqual(resourceBox!.y)
+      for (const value of await resources.locator('dd').all()) {
+        await value.scrollIntoViewIfNeeded()
+        await expect(value).toBeInViewport({ ratio: 1 })
+      }
+      await page.getByRole('tab', { name: '用量归因', exact: true }).click()
+    }
     const scroll = page.getByRole('region', { name: '数据集用量表，可横向滚动', exact: true })
     await scroll.scrollIntoViewIfNeeded()
     const first = scroll.locator('tbody th').first()

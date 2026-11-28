@@ -165,7 +165,7 @@ export function EchartsHeatmap({
   return (
     <div className="flex h-full min-h-[320px] w-full flex-col gap-2">
       {onCellSelect !== undefined && xLabels.length > 0 && yLabels.length > 0 && (
-        <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-end">
+        <div className="grid min-w-0 grid-cols-2 gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-end">
           <label className="grid min-w-0 gap-1 text-sm">
             纵轴项目
             <select
@@ -197,6 +197,7 @@ export function EchartsHeatmap({
           <Button
             type="button"
             variant="outline"
+            className="col-span-2 sm:col-span-1"
             disabled={!canInspectCell}
             onClick={() => onCellSelect({ rowIndex, colIndex })}
           >
@@ -209,8 +210,10 @@ export function EchartsHeatmap({
           )}
         </div>
       )}
-      <div className="min-h-0 flex-1">
-        <EChart option={option} onEvents={onEvents} />
+      <div className="min-h-0 flex-1 overflow-x-auto" tabIndex={0} role="region" aria-label="相似度矩阵图形">
+        <div className="h-full min-h-[260px]" style={{ minWidth: Math.max(320, xLabels.length * 48 + 100) }}>
+          <EChart option={option} onEvents={onEvents} />
+        </div>
       </div>
     </div>
   )

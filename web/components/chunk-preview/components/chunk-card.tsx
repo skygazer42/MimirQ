@@ -69,6 +69,7 @@ type ChunkCardProps = {
   onMouseEnter: () => void
   onMouseLeave: () => void
   onToggleSelect: () => void
+  onCopySelected: () => void
   onEdit: () => void
   onToggleDisabled: () => void
   onToggleReviewed: () => void
@@ -93,6 +94,7 @@ export function ChunkCard({
   onMouseEnter,
   onMouseLeave,
   onToggleSelect,
+  onCopySelected,
   onEdit,
   onToggleDisabled,
   onToggleReviewed,
@@ -179,7 +181,15 @@ export function ChunkCard({
         <h3 className={styles.chunkTitle} title={sectionLabel?.full}>
           {heading}
         </h3>
-        {reviewed ? (
+        <span className={styles.chunkMetric} title={chunkMetricTitle}>
+          {chunkMetricLabel}
+        </span>
+        {isDisabled ? (
+          <span className={cn(styles.chunkReview, styles.chunkSkipped)}>
+            <EyeOff />
+            已跳过
+          </span>
+        ) : reviewed ? (
           <span className={cn(styles.chunkReview, styles.chunkReviewed)}>
             <CheckCircle2 />
             已复核
@@ -253,7 +263,6 @@ export function ChunkCard({
         </DropdownMenu>
       </div>
       <div className={styles.chunkMeta} title={chunkMetricTitle}>
-        <span>{chunkMetricLabel}</span>
         {chunk.page_number != null && <span>第 {chunk.page_number} 页</span>}
         {chunkRole && <span>{chunkRole === 'parent' ? '父块' : chunkRole === 'child' ? '子块' : chunkRole}</span>}
         {isGap && (
@@ -265,7 +274,6 @@ export function ChunkCard({
         {isShort && <span>内容偏短</span>}
         {isDuplicate && <span>疑似重复</span>}
         {isEdited && <span>已编辑</span>}
-        {isDisabled && <span>已跳过</span>}
         {isSelected && <span>位置 {rangeLabel}</span>}
       </div>
       {isSelected && (
@@ -278,7 +286,30 @@ export function ChunkCard({
             {reviewed ? <RotateCcw /> : <CheckCircle2 />}
             {reviewed ? '撤销复核' : '标记已复核'}
           </Button>
-          <span className={styles.metadata}>第 {position + 1} 块</span>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className={cn(styles.chunkMenu, styles.desktopListAction)}
+            onClick={onCopySelected}
+            aria-label={t('chunkList.actions.copySelected')}
+            title={t('chunkList.actions.copySelected')}
+          >
+            <Copy />
+            <span className="sr-only">{t('chunkList.actions.copySelected')}</span>
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className={cn(styles.chunkMenu, styles.desktopListAction)}
+            onClick={onToggleSelect}
+            aria-label={t('chunkList.actions.clearSelection')}
+            title={t('chunkList.actions.clearSelection')}
+          >
+            <PinOff />
+            <span className="sr-only">{t('chunkList.actions.clearSelection')}</span>
+          </Button>
         </div>
       )}
       <div className={styles.chunkContent}>

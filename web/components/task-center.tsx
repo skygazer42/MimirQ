@@ -24,6 +24,7 @@ const IDLE_TASK_DISCOVERY_POLL_MS = 60000
 
 export function TaskCenter() {
   const panelId = useId()
+  const dockRef = useRef<HTMLDivElement>(null)
   const panelRef = useRef<HTMLDivElement>(null)
   const triggerRef = useRef<HTMLButtonElement>(null)
   const [isOpen, setIsOpen] = useState(false)
@@ -81,6 +82,48 @@ export function TaskCenter() {
   const totalActive = visibleTasks?.active.total ?? 0
   const totalFailed = (visibleTasks?.failed.total ?? 0) + (visibleTasks?.quarantined.total ?? 0)
   const totalCount = totalActive + totalFailed
+  const hasTasks = totalCount > 0
+
+  useLayoutEffect(() => {
+    if (!hasTasks) return
+    const dock = dockRef.current!
+    let anchors: HTMLElement[] = []
+    const positionDock = () => {
+      let bottom = 16
+      for (const anchor of anchors) {
+        const rect = anchor.getBoundingClientRect()
+        if (
+          rect.width > 0 &&
+          rect.bottom > window.innerHeight - 80 &&
+          rect.top < window.innerHeight &&
+          rect.right > window.innerWidth - 80
+        ) {
+          bottom = Math.max(bottom, window.innerHeight - rect.top + 16)
+        }
+      }
+      dock.style.setProperty('--task-center-bottom', `${bottom}px`)
+    }
+    const resize = new ResizeObserver(positionDock)
+    const observeAnchors = () => {
+      resize.disconnect()
+      anchors = Array.from(document.querySelectorAll<HTMLElement>('[data-task-center-dock], [data-workspace-notice-stack], footer, #chat-composer'))
+        .filter((element) => !element.closest('[role="dialog"]'))
+        .map((element) => (element.id === 'chat-composer' ? element.parentElement! : element))
+      for (const anchor of anchors) resize.observe(anchor)
+      positionDock()
+    }
+    const mutations = new MutationObserver(observeAnchors)
+    mutations.observe(document.body, { childList: true, subtree: true })
+    observeAnchors()
+    window.addEventListener('resize', positionDock)
+    document.addEventListener('scroll', positionDock, true)
+    return () => {
+      resize.disconnect()
+      mutations.disconnect()
+      window.removeEventListener('resize', positionDock)
+      document.removeEventListener('scroll', positionDock, true)
+    }
+  }, [hasTasks, pathname])
 
   useLayoutEffect(() => {
     if (isOpen) panelRef.current?.focus()
@@ -146,7 +189,7 @@ export function TaskCenter() {
   }
 
   return (
-    <div className={styles.root}>
+    <div ref={dockRef} className={styles.root}>
       {isOpen && (
         <div
           id={panelId}
@@ -166,7 +209,7 @@ export function TaskCenter() {
             'mb-2 overflow-hidden rounded-lg border border-foreground/15 bg-background text-foreground animate-in slide-in-from-bottom-5 fade-in motion-reduce:animate-none motion-reduce:transition-none',
           )}
         >
-          <div className="flex items-center justify-between border-b border-foreground/10 bg-background px-4 py-3">
+          <div className="flex shrink-0 items-center justify-between border-b border-foreground/10 bg-background px-4 py-3">
             <div className="min-w-0">
               <h4 id={`${panelId}-title`} className="text-sm font-semibold leading-none text-balance">
                 {t('title')}
@@ -209,7 +252,7 @@ export function TaskCenter() {
               </Button>
             </div>
           </div>
-          <ScrollArea className="max-h-80">
+          <ScrollArea className="min-h-0 max-h-80 flex-1">
             <div className="p-3 space-y-4">
               {totalActive > 0 && (
                 <div className="space-y-2">

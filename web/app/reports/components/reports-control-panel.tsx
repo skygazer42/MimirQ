@@ -49,9 +49,10 @@ export function ReportsControlPanel(
   }>,
 ) {
   const isExporting = props.exporting !== null
+  const hasReportDocuments = props.report !== undefined && props.report.profile.total_documents > 0
   const isExportDisabled =
     props.datasetId.length === 0 ||
-    props.report === undefined ||
+    !hasReportDocuments ||
     props.showingPrevious ||
     props.isFetchingReport ||
     isExporting
@@ -84,13 +85,14 @@ export function ReportsControlPanel(
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <LoadingButton
-                className={styles.primary}
+                variant={hasReportDocuments ? 'default' : 'outline'}
+                className={hasReportDocuments ? styles.primary : undefined}
                 loading={isExporting}
                 disabled={isExportDisabled}
                 aria-label="导出报告"
               >
                 <Download />
-                <span>导出报告</span>
+                <span className={styles.actionLabel}>导出报告</span>
                 <ChevronDown />
               </LoadingButton>
             </DropdownMenuTrigger>
@@ -103,7 +105,7 @@ export function ReportsControlPanel(
                 }}
                 aria-label="导出 HTML"
               >
-                <FileText />
+                <FileText className={styles.exportIcon} data-format="html" />
                 HTML 阅读版
               </DropdownMenuItem>
               <DropdownMenuItem
@@ -113,7 +115,7 @@ export function ReportsControlPanel(
                 }}
                 aria-label="导出 RAG 审计报告"
               >
-                <ShieldCheck />
+                <ShieldCheck className={styles.exportIcon} data-format="audit" />
                 RAG 审计报告
               </DropdownMenuItem>
               <DropdownMenuItem
@@ -123,7 +125,7 @@ export function ReportsControlPanel(
                 }}
                 aria-label="导出数据包 ZIP"
               >
-                <Archive />
+                <Archive className={styles.exportIcon} data-format="zip" />
                 Bundle ZIP 归档
               </DropdownMenuItem>
               <DropdownMenuSeparator />
@@ -144,7 +146,7 @@ export function ReportsControlPanel(
                 }}
                 aria-label="导出 JSON"
               >
-                <Download />
+                <Download className={styles.exportIcon} data-format="json" />
                 标准 JSON 报告
               </DropdownMenuItem>
               <DropdownMenuItem
@@ -152,7 +154,7 @@ export function ReportsControlPanel(
                 onSelect={props.onExportCompleteJson}
                 aria-label="导出完整 JSON"
               >
-                <Archive />
+                <Archive className={styles.exportIcon} data-format="json" />
                 完整 JSON 快照
               </DropdownMenuItem>
               <DropdownMenuItem
@@ -160,7 +162,7 @@ export function ReportsControlPanel(
                 onSelect={props.onExportChartsJson}
                 aria-label="导出 RAG 统计"
               >
-                <BarChart3 />
+                <BarChart3 className={styles.exportIcon} data-format="chart" />
                 RAG 统计数据
               </DropdownMenuItem>
             </DropdownMenuContent>
@@ -175,8 +177,18 @@ export function ReportsControlPanel(
             onValueChange={props.onDatasetChange}
             disabled={props.isFetchingDatasets && props.datasets === undefined}
           >
-            <SelectTrigger aria-label="数据集" className={styles.datasetSelect}>
-              <SelectValue placeholder={props.isFetchingDatasets ? '加载中…' : '选择数据集'} />
+            <SelectTrigger
+              aria-label="数据集"
+              className={styles.datasetSelect}
+              title={selectedDataset === undefined ? props.datasetId : `${selectedDataset.name} · ${props.datasetId}`}
+            >
+              <SelectValue placeholder={props.isFetchingDatasets ? '加载中…' : '选择数据集'}>
+                <span>
+                  {selectedDataset === undefined
+                    ? `当前选择 · ${props.datasetId}`
+                    : formatReportText(selectedDataset.name).replace(/\s+\[[\da-f]{8}\]$/i, '')}
+                </span>
+              </SelectValue>
             </SelectTrigger>
             <SelectContent>
               {props.datasetId.length > 0 && selectedDataset === undefined ? (

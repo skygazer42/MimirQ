@@ -78,7 +78,7 @@ describe('diagnostic evidence semantics', () => {
       '无可比样本',
     )
     expect(driftVerdict({ ok: false, error: 'unsupported_vector_backend', vector_backend: 'memory' }).label).toBe(
-      '后端不支持',
+      '当前索引不支持',
     )
     expect(driftVerdict({ ok: true, drift: { n: 100 }, above_threshold: { count: 12, ratio: 0.12 } }).ratio).toBe(0.12)
   })

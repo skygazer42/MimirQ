@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useRef } from 'react'
 import { toast } from 'sonner'
+import { stripRequestIdFromMessage } from '@/lib/api-errors'
 
 export const FEEDBACK_DURATION = 4000
 
@@ -21,8 +22,8 @@ export function FeedbackToast({
   const previous = useRef<string | null>(null)
 
   useEffect(() => {
-    const current = message?.trim()
-    if (current === undefined || current === '') {
+    const current = message ? stripRequestIdFromMessage(message) : ''
+    if (current === '') {
       previous.current = null
       return
     }

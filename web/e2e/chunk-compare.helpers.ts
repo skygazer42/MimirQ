@@ -1,5 +1,5 @@
 import { expect, type Page, type Route } from '@playwright/test'
-import type { ChunkPreviewResponse } from '../types'
+import type { ChunkPresetListResponse, ChunkPreviewResponse } from '../types'
 import { installCommonApiMocks } from './enterprise-quality-telemetry.helpers'
 
 const sections = [
@@ -67,15 +67,11 @@ export async function fixture(page: Page, options: { empty?: boolean; long?: boo
     if (!localStorage.getItem('theme')) localStorage.setItem('theme', 'light')
     if (!localStorage.getItem('mimirq.surfaceTheme')) localStorage.setItem('mimirq.surfaceTheme', 'ocean')
     localStorage.setItem('mimirq.themeColor', '#20262e')
-    document.addEventListener(
-      'DOMContentLoaded',
-      () => {
-        const style = document.createElement('style')
-        style.textContent = 'nextjs-portal{display:none!important}'
-        document.head.appendChild(style)
-      },
-      { once: true },
-    )
+  })
+  await page.route('**/api/v1/chunk-presets**', (route) => {
+    if (route.request().method() !== 'GET' || new URL(route.request().url()).pathname !== '/api/v1/chunk-presets')
+      return route.fallback()
+    return json(route, { items: [] } satisfies ChunkPresetListResponse)
   })
   await page.route('**/api/v1/parsing/documents**', async (route) => {
     const url = new URL(route.request().url())
@@ -94,14 +90,17 @@ export async function fixture(page: Page, options: { empty?: boolean; long?: boo
   })
   await page.route('**/api/v1/pipeline/capabilities', (route) =>
     json(route, {
-      default_pdf_backend: 'auto',
+      default_parser_backend: 'auto',
       default_chunk_strategy: 'langchain_recursive',
       chunk_strategies: ['langchain_recursive', 'langchain_token', 'separator'].map((name) => ({
         name,
         available: true,
         requires: [],
       })),
-      pdf_backends: [{ name: 'markdown', available: true }],
+      pdf_backends: [
+        { name: 'auto', available: true },
+        { name: 'basic', available: true },
+      ],
     }),
   )
   await page.route('**/api/v1/documents/chunk-preview**', async (route) => {

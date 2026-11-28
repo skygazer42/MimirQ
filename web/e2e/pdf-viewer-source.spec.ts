@@ -75,6 +75,17 @@ test('keeps reading deep pages after an earlier chunk was selected and new page 
   await expect(pdf.locator('[data-page-index="8"]')).toHaveAttribute('data-page-rendered', 'true')
   await expect.poll(() => pdf.evaluate((element) => element.scrollTop)).toBeGreaterThan(1000)
   await expect.poll(() => pdf.locator('[data-page-rendered="true"]').count()).toBeLessThanOrEqual(6)
+  await expect
+    .poll(() => pdf.evaluate((element) => element.scrollHeight - element.clientHeight - element.scrollTop))
+    .toBeLessThanOrEqual(1)
+  await pdf.press('Home')
+  await expect.poll(() => pdf.evaluate((element) => element.scrollTop)).toBe(0)
+  await expect(pdf.locator('[data-page-index="0"]')).toHaveAttribute('data-page-rendered', 'true')
+  await pdf.press('End')
+  await expect(pdf.locator('[data-page-index="8"]')).toHaveAttribute('data-page-rendered', 'true')
+  await expect
+    .poll(() => pdf.evaluate((element) => element.scrollHeight - element.clientHeight - element.scrollTop))
+    .toBeLessThanOrEqual(1)
   await page.screenshot({ path: testInfo.outputPath('deep-reading.png') })
 })
 

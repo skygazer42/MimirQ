@@ -33,9 +33,7 @@ export function normalizePrecheckEmbeddingAdvisories(
     }
 
     const title =
-      code === 'zh_or_mixed_corpus_uses_generic_embedding'
-        ? '检测到中文或混合语料仍在使用通用向量模型'
-        : `Embedding advisory: ${code}`
+      code === 'zh_or_mixed_corpus_uses_generic_embedding' ? '检测到中文或混合语料仍在使用通用向量模型' : '向量模型建议'
 
     const description = recommendedAction ?? '这是预检阶段给出的建议，不代表系统已经自动切换向量模型。'
 

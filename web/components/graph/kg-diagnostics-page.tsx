@@ -5,7 +5,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useSearchParams } from 'next/navigation'
 import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
-import { Download, Loader2 } from '@/components/icons'
+import { ChevronDown, Download, Loader2 } from '@/components/icons'
 import { AppFrame } from '@/components/app-frame'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -16,6 +16,7 @@ import {
   OperationalWorkspace,
   WorkspaceMetrics,
   WorkspaceNotice,
+  WorkspaceNoticeStack,
   WorkspaceTableScroll,
   workspaceStyles as ws,
 } from '@/components/ui/operational-workspace'
@@ -116,11 +117,13 @@ function downloadJson(value: unknown, filename: string): void {
   downloadBlob(filename, new Blob([JSON.stringify(value, null, 2)], { type: 'application/json;charset=utf-8' }))
 }
 
+const metricNumber = new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 4 })
+
 function formatMetricValue(value: unknown): string {
   if (value === null || value === undefined) return '-'
-  if (typeof value === 'number' || typeof value === 'string' || typeof value === 'boolean') {
-    return String(value)
-  }
+  if (typeof value === 'number') return metricNumber.format(value)
+  if (typeof value === 'boolean') return value ? '是' : '否'
+  if (typeof value === 'string') return value
   return JSON.stringify(value, null, 2)
 }
 
@@ -237,7 +240,8 @@ function buildKgDiagnosticsDiff(
 }
 
 const selectClass =
-  'h-10 w-full min-w-0 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
+  'h-11 w-full min-w-0 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:h-9'
+const primaryActionClass = 'bg-accent px-3 text-accent-foreground hover:bg-accent/90'
 
 function NumberSetting({
   label,
@@ -259,6 +263,7 @@ function NumberSetting({
       {label}
       <Input
         type="number"
+        className="h-11 sm:h-9"
         min={min}
         max={max}
         step={step}
@@ -271,7 +276,7 @@ function NumberSetting({
 
 function RawResult({ label, value }: { label: string; value: unknown }) {
   return (
-    <details className="mt-5 border-t border-border py-4">
+    <details className="mt-5 py-4">
       <summary className="cursor-pointer text-[13px] font-medium">{label}</summary>
       <pre tabIndex={0} className="mt-3 max-h-96 overflow-auto bg-muted/30 p-4 text-xs leading-6">
         {JSON.stringify(value, null, 2)}
@@ -560,8 +565,14 @@ function KGDiagnosticsWorkspace({ sessionKey }: Readonly<{ sessionKey: string }>
           <label htmlFor="kg-persist-run">保存运行记录</label>
           <Switch id="kg-persist-run" checked={persistRun} onCheckedChange={setPersistRun} />
         </div>
-        <details className="border-t border-border pt-4">
-          <summary className="cursor-pointer text-sm font-medium">抽取与难例参数</summary>
+        <details className="group pt-4">
+          <summary className="flex cursor-pointer list-none items-center gap-2 text-sm font-medium [&::-webkit-details-marker]:hidden">
+            <ChevronDown
+              className="size-3.5 shrink-0 text-muted-foreground transition-transform group-open:rotate-180"
+              aria-hidden="true"
+            />
+            抽取与难例参数
+          </summary>
           <div className="mt-4 space-y-5">
             <label className="block space-y-2 text-[13px]">
               技能抽取
@@ -638,32 +649,94 @@ function KGDiagnosticsWorkspace({ sessionKey }: Readonly<{ sessionKey: string }>
         }
         actions={
           <>
-            <Button variant="ghost" disabled={!runResp} aria-label="导出本次评测" onClick={exportDiagnostics}>
+            <Button
+              variant="ghost"
+              className="w-11 px-0 sm:w-auto sm:px-3"
+              disabled={!runResp}
+              aria-label="导出本次评测"
+              onClick={exportDiagnostics}
+            >
               <Download className="size-4" />
               <span className="hidden sm:inline">导出</span>
             </Button>
             <Button
+              className={cn(primaryActionClass, 'min-w-20')}
+              aria-label={running ? '正在评测…' : '开始评测'}
+              aria-busy={running}
               disabled={!datasetId || running}
               onClick={() => {
                 void runDiagnostics()
               }}
             >
-              {running ? <Loader2 className="size-4 animate-spin motion-reduce:animate-none" /> : null}
-              {running ? '正在评测…' : '开始评测'}
+              {running ? <Loader2 className="hidden size-4 animate-spin motion-reduce:animate-none sm:inline" /> : null}
+              {running ? '评测中…' : '开始评测'}
             </Button>
           </>
         }
       >
-        {datasetsQuery.isError ? (
-          <div className="px-4">
-            <WorkspaceNotice
-              retry={() => {
-                void datasetsQuery.refetch()
-              }}
-            >
-              {formatApiError(datasetsQuery.error, '数据集读取失败')}
-            </WorkspaceNotice>
-          </div>
+        {datasetsQuery.isError ||
+        runError ||
+        (runResp && unconfirmedPersistence) ||
+        qualityError ||
+        runsError ||
+        detailErrors.a !== null ||
+        detailErrors.b !== null ? (
+          <WorkspaceNoticeStack ariaLabel="图谱诊断状态提示">
+            {datasetsQuery.isError ? (
+              <WorkspaceNotice
+                tone="warning"
+                title="数据集读取失败"
+                error={datasetsQuery.error}
+                fallbackMessage="数据集读取失败"
+                retry={() => {
+                  void datasetsQuery.refetch()
+                }}
+              />
+            ) : null}
+            {runError ? (
+              <WorkspaceNotice
+                retry={() => {
+                  void runDiagnostics()
+                }}
+                retryLabel="重新评测"
+                pending={running}
+              >
+                {runError}
+              </WorkspaceNotice>
+            ) : null}
+            {runResp && unconfirmedPersistence ? (
+              <WorkspaceNotice tone="warning">
+                本次诊断已返回，但没有取得保存身份；请先读取运行记录确认。
+              </WorkspaceNotice>
+            ) : null}
+            {qualityError ? (
+              <WorkspaceNotice
+                tone="warning"
+                retry={() => {
+                  void loadQualityReport()
+                }}
+              >
+                {qualityError}
+              </WorkspaceNotice>
+            ) : null}
+            {runsError ? (
+              <WorkspaceNotice
+                tone="warning"
+                retry={() => {
+                  void refreshRuns()
+                }}
+              >
+                {runsError}
+              </WorkspaceNotice>
+            ) : null}
+            {(['a', 'b'] as const).map((which) =>
+              detailErrors[which] === null ? null : (
+                <WorkspaceNotice key={which} tone="warning">
+                  运行 {which.toUpperCase()}：{detailErrors[which]}
+                </WorkspaceNotice>
+              ),
+            )}
+          </WorkspaceNoticeStack>
         ) : null}
         <DirectoryWorkspace
           pane={pane}
@@ -685,27 +758,13 @@ function KGDiagnosticsWorkspace({ sessionKey }: Readonly<{ sessionKey: string }>
               <TabsTrigger value="compare">运行历史与比较</TabsTrigger>
             </TabsList>
             <TabsContent value="run" className={ws.tabContent}>
-              {runError ? (
-                <WorkspaceNotice
-                  retry={() => {
-                    void runDiagnostics()
-                  }}
-                  retryLabel="重新评测"
-                  pending={running}
-                >
-                  {runError}
-                </WorkspaceNotice>
-              ) : null}
               {running ? (
                 <p role="status" className="py-12 text-sm text-muted-foreground">
-                  当前数据集有评测请求进行中，保留上次已返回的报告…
+                  {runResp ? '正在评测，当前显示上次报告。' : '正在评测…'}
                 </p>
               ) : null}
               {runResp ? (
                 <>
-                  {unconfirmedPersistence ? (
-                    <WorkspaceNotice>本次诊断已返回，但没有取得保存身份；请先读取运行记录确认。</WorkspaceNotice>
-                  ) : null}
                   <WorkspaceMetrics
                     items={[
                       'baseline_hit_rate',
@@ -714,14 +773,22 @@ function KGDiagnosticsWorkspace({ sessionKey }: Readonly<{ sessionKey: string }>
                       'baseline_ndcg',
                       'baseline_map',
                       'baseline_valid_searches',
-                      'baseline_search_errors',
-                      'hardcases_generated',
                     ].map((key) => ({
                       label: formatDiagnosticsMetricLabel(key),
                       value: formatMetricValue(summary?.[key]),
                     }))}
                   />
-                  <section className={ws.section}>
+                  <dl className="flex flex-wrap gap-x-6 gap-y-2 py-3 text-xs text-muted-foreground">
+                    {['baseline_search_errors', 'hardcases_generated'].map((key) => (
+                      <div key={key} className="inline-flex items-center gap-2">
+                        <dt>{formatDiagnosticsMetricLabel(key)}</dt>
+                        <dd className="font-medium text-foreground tabular-nums">
+                          {formatMetricValue(summary?.[key])}
+                        </dd>
+                      </div>
+                    ))}
+                  </dl>
+                  <section className="min-w-0 py-5">
                     <div className={ws.sectionHeading}>
                       <h2 className={ws.sectionTitle}>样本结果</h2>
                       <div role="group" aria-label="样本结果视图" className="flex gap-2">
@@ -846,6 +913,7 @@ function KGDiagnosticsWorkspace({ sessionKey }: Readonly<{ sessionKey: string }>
                   />
                 </label>
                 <Button
+                  className={primaryActionClass}
                   disabled={!datasetId || qualityLoading}
                   onClick={() => {
                     void loadQualityReport()
@@ -854,15 +922,6 @@ function KGDiagnosticsWorkspace({ sessionKey }: Readonly<{ sessionKey: string }>
                   {qualityLoading ? '正在读取…' : '读取质量报告'}
                 </Button>
               </div>
-              {qualityError ? (
-                <WorkspaceNotice
-                  retry={() => {
-                    void loadQualityReport()
-                  }}
-                >
-                  {qualityError}
-                </WorkspaceNotice>
-              ) : null}
               {qualityReport ? (
                 <>
                   {qualityResult !== null ? (
@@ -888,12 +947,32 @@ function KGDiagnosticsWorkspace({ sessionKey }: Readonly<{ sessionKey: string }>
                           }[group]
                         }
                       </h2>
-                      <WorkspaceMetrics
-                        items={Object.entries(qualityReport[group]).map(([key, value]) => ({
-                          label: formatDiagnosticsMetricLabel(key),
-                          value: formatMetricValue(value),
-                        }))}
-                      />
+                      {group === 'scope' || group === 'truncation' ? (
+                        <dl className={ws.formRows}>
+                          {Object.entries(qualityReport[group]).map(([key, value]) => (
+                            <div key={key} className={ws.formRow}>
+                              <dt className="shrink-0 text-muted-foreground">{formatDiagnosticsMetricLabel(key)}</dt>
+                              <dd className="min-w-0 text-right font-mono text-xs leading-5 break-all">
+                                {formatMetricValue(value)}
+                              </dd>
+                            </div>
+                          ))}
+                        </dl>
+                      ) : (
+                        <WorkspaceMetrics
+                          items={Object.entries(qualityReport[group]).map(([key, value]) => ({
+                            label: formatDiagnosticsMetricLabel(key),
+                            value:
+                              typeof value === 'number' ? (
+                                formatMetricValue(value)
+                              ) : (
+                                <span className="block break-all text-sm leading-6 font-normal">
+                                  {formatMetricValue(value)}
+                                </span>
+                              ),
+                          }))}
+                        />
+                      )}
                     </section>
                   ))}
                   <RawResult label="完整质量报告" value={qualityReport} />
@@ -918,15 +997,6 @@ function KGDiagnosticsWorkspace({ sessionKey }: Readonly<{ sessionKey: string }>
                   {runsLoading ? '正在读取…' : '重新读取运行记录'}
                 </Button>
               </div>
-              {runsError ? (
-                <WorkspaceNotice
-                  retry={() => {
-                    void refreshRuns()
-                  }}
-                >
-                  {runsError}
-                </WorkspaceNotice>
-              ) : null}
               {runsLoading ? (
                 <p role="status" className="py-4 text-sm text-muted-foreground">
                   正在读取运行历史，保留已加载页…
@@ -964,7 +1034,7 @@ function KGDiagnosticsWorkspace({ sessionKey }: Readonly<{ sessionKey: string }>
                   </table>
                 </WorkspaceTableScroll>
               ) : null}
-              {runsResult !== null ? (
+              {runsResult !== null && runsResult.response.total > 0 ? (
                 <div className="my-4 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
                   <span>
                     已加载 {runsResult.skip + 1} 起的 {runs.length} 条，共 {runsResult.response.total} 条运行。
@@ -1061,13 +1131,6 @@ function KGDiagnosticsWorkspace({ sessionKey }: Readonly<{ sessionKey: string }>
                       )
                     })}
                   </div>
-                  {(['a', 'b'] as const).map((which) =>
-                    detailErrors[which] === null ? null : (
-                      <WorkspaceNotice key={which}>
-                        运行 {which.toUpperCase()}：{detailErrors[which]}
-                      </WorkspaceNotice>
-                    ),
-                  )}
                   {diff ? (
                     <>
                       <p className="my-3 break-all text-xs text-muted-foreground">

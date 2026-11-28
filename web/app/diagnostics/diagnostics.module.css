@@ -10,16 +10,16 @@
   color: hsl(var(--foreground));
   background: hsl(var(--card));
   font-family: var(--font-sans);
-  --diag-vector: color-mix(in srgb, hsl(var(--chart-1)) 58%, hsl(var(--foreground)));
-  --diag-keyword: color-mix(in srgb, hsl(var(--teal)) 58%, hsl(var(--foreground)));
-  --diag-graph: color-mix(in srgb, hsl(var(--indigo)) 60%, hsl(var(--foreground)));
+  --diag-vector: var(--icon-source);
+  --diag-keyword: var(--icon-process);
+  --diag-graph: var(--icon-analysis);
 }
 .header {
   display: flex;
   align-items: center;
-  gap: 18px;
-  min-height: 72px;
-  padding: 12px 28px;
+  gap: 14px;
+  min-height: 52px;
+  padding: 0 20px;
   flex: none;
   border-bottom: 1px solid hsl(var(--border));
   background: hsl(var(--background));
@@ -29,15 +29,17 @@
   align-items: center;
   gap: 11px;
   flex: none;
+  padding-right: 16px;
+  border-right: 1px solid hsl(var(--border));
 }
 .heading > svg {
   width: 23px;
   height: 23px;
 }
 .heading h1 {
-  font-size: 20px;
+  font-size: var(--workspace-title-size);
   line-height: 28px;
-  font-weight: 650;
+  font-weight: var(--workspace-title-weight);
   margin: 0;
 }
 .headerActions {
@@ -47,15 +49,17 @@
   margin-left: auto;
 }
 .headerActions button {
-  height: 34px;
+  height: 32px;
   font-size: 13px;
   padding: 0 11px;
   border-radius: 6px;
   gap: 7px;
   box-shadow: none;
 }
-.headerActions button:first-child,
-.headerActions button:nth-child(2) {
+.headerActions button[aria-label='查看原始响应'],
+.headerActions button[aria-label='复制诊断摘要'] {
+  width: 32px;
+  padding: 0;
   color: hsl(var(--muted-foreground));
 }
 .headerActions svg {
@@ -66,52 +70,26 @@
 .spacer {
   flex: 1;
 }
-.primary {
-  background: hsl(var(--foreground));
-  color: hsl(var(--background));
-  box-shadow: none;
+.headerActions .healthTrigger {
+  gap: 10px;
+  border: 1px solid hsl(var(--border));
+  border-radius: 16px;
+  background: hsl(var(--card));
+  padding-inline: 11px;
 }
-.primary:hover {
-  background: hsl(var(--foreground) / 0.88);
-}
-.primary:disabled {
-  opacity: 0.45;
-}
-.healthBar {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 7px 20px;
-  min-height: 44px;
-  padding: 8px 28px;
-  border-bottom: 1px solid hsl(var(--border));
-  background: hsl(var(--background));
-  font-size: 12px;
+.vectorLabel {
+  border-left: 1px solid hsl(var(--border));
+  padding-left: 10px;
   color: hsl(var(--muted-foreground));
-  flex: none;
+  font-size: 12px;
 }
-.healthBar button {
-  border: 0;
-  padding: 0;
-  background: transparent;
-  border-radius: 3px;
-  line-height: 22px;
-  cursor: pointer;
-}
-.healthBar button:hover {
-  text-decoration: underline;
-  text-underline-offset: 3px;
-}
-.healthBar strong {
+.vectorLabel strong {
+  font-family: var(--font-mono);
+  font-weight: 450;
   color: hsl(var(--foreground));
-  font-size: 12px;
-  font-weight: 500;
-}
-.healthBar time {
-  font-variant-numeric: tabular-nums;
-  font-size: 12px;
 }
 .status {
+  --tone: var(--icon-neutral);
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -119,6 +97,10 @@
   line-height: 22px;
   white-space: nowrap;
   font-weight: 450;
+  padding: 0 6px;
+  border: 1px solid hsl(var(--tone) / 0.14);
+  border-radius: 5px;
+  background: color-mix(in srgb, hsl(var(--tone)) 8%, hsl(var(--card)));
 }
 .status > i {
   width: 5px;
@@ -128,19 +110,24 @@
   border-radius: 50%;
 }
 .neutral {
-  color: hsl(var(--muted-foreground));
+  --tone: var(--icon-neutral);
+  color: hsl(var(--tone));
 }
 .success {
-  color: hsl(var(--success));
+  --tone: var(--icon-governance);
+  color: hsl(var(--tone));
 }
 .info {
-  color: color-mix(in srgb, hsl(var(--info)) 65%, hsl(var(--foreground)));
+  --tone: var(--icon-process);
+  color: hsl(var(--tone));
 }
 .warning {
-  color: color-mix(in srgb, hsl(var(--warning)) 45%, hsl(var(--foreground)));
+  --tone: var(--icon-code);
+  color: hsl(var(--tone));
 }
 .danger {
-  color: color-mix(in srgb, hsl(var(--destructive)) 76%, hsl(var(--foreground)));
+  --tone: var(--icon-pdf);
+  color: hsl(var(--tone));
 }
 .tabsRoot {
   flex: 1;
@@ -154,13 +141,13 @@
   justify-content: flex-start;
   align-items: center;
   flex: none;
-  gap: 29px;
-  width: 100%;
-  height: 49px;
-  padding: 0 28px;
-  background: transparent;
-  border-radius: 0;
-  border-bottom: 1px solid hsl(var(--border));
+  gap: 2px;
+  width: auto;
+  min-width: 0;
+  height: 34px;
+  padding: 2px;
+  background: hsl(var(--surface-2));
+  border-radius: 7px;
   overflow-x: auto;
   overflow-y: hidden;
   scrollbar-width: none;
@@ -168,12 +155,12 @@
 .tab {
   display: flex;
   align-items: center;
-  gap: 8px;
-  height: 48px;
-  padding: 0;
-  border-radius: 0;
-  border-bottom: 2px solid transparent;
-  font-size: 14px;
+  gap: 6px;
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 5px;
+  border: 1px solid transparent;
+  font-size: 12px;
   color: hsl(var(--muted-foreground));
   background: transparent;
   box-shadow: none;
@@ -182,19 +169,32 @@
     border-color 140ms ease;
 }
 .tab svg {
-  width: 16px;
-  height: 16px;
+  width: 14px;
+  height: 14px;
 }
-.tab .status {
-  margin-left: 6px;
+.tabSignal {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: hsl(var(--muted-foreground));
+}
+.tabSignal[data-tone='info'] {
+  background: hsl(var(--info));
+}
+.tabSignal[data-tone='success'] {
+  background: hsl(var(--success));
+}
+.tabSignal[data-tone='warning'] {
+  background: hsl(var(--warning));
+}
+.tabSignal[data-tone='danger'] {
+  background: hsl(var(--destructive));
 }
 .headerActions button:focus-visible,
-.primary:focus-visible,
 .tab:focus-visible,
 .scopeField > button:focus-visible,
 .queryActions button:focus-visible,
 .sectionHeading > button:focus-visible,
-.probeShortcuts button:focus-visible,
 .probeForm input:focus-visible,
 .probeForm > button:focus-visible,
 .dialogFooter button:focus-visible {
@@ -202,18 +202,19 @@
   outline-offset: 2px;
 }
 .tab[data-state='active'] {
-  background: transparent;
-  border-color: hsl(var(--foreground));
+  background: hsl(var(--card));
+  border-color: hsl(var(--border));
   color: hsl(var(--foreground));
-  font-weight: 600;
-  box-shadow: none;
+  font-weight: 500;
+  box-shadow: 0 1px 3px hsl(var(--foreground) / 0.08);
 }
 .tabBody {
+  display: flex;
   margin: 0;
   flex: 1;
   min-height: 0;
   min-width: 0;
-  overflow-y: auto;
+  overflow: hidden;
   overscroll-behavior: contain;
   scrollbar-width: thin;
 }
@@ -221,23 +222,29 @@
 .workbench[data-state='inactive'] {
   display: none;
 }
-.workbench {
+.workbench,
+.probeWorkbench {
   display: grid;
-  grid-template-columns: 326px minmax(0, 1fr);
+  grid-template-columns: 348px minmax(0, 1fr);
   flex: 1;
   min-height: 0;
   min-width: 0;
   margin: 0;
 }
 .configuration {
-  padding: 18px 22px;
-  background: hsl(var(--background));
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  background: hsl(var(--surface-2));
   border-right: 1px solid hsl(var(--border));
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-width: thin;
   min-width: 0;
   min-height: 0;
+}
+.configuration > * {
+  flex-shrink: 0;
 }
 .sidebarHeading {
   font-size: 14px;
@@ -257,6 +264,8 @@
   scrollbar-width: thin;
 }
 .retrievalBody {
+  display: flex;
+  flex-direction: column;
   flex: 1 0 auto;
   min-width: 0;
   animation: diag-enter 160ms ease-out;
@@ -288,7 +297,7 @@
   border-left: 1px solid hsl(var(--border));
 }
 .scopeField > button {
-  height: 33px;
+  height: 32px;
   background: transparent;
   border: 0;
   box-shadow: none;
@@ -353,8 +362,8 @@
   width: 100%;
   max-width: none;
   min-width: 0;
-  height: 36px;
-  border: 1px solid hsl(var(--input));
+  height: 32px;
+  border: 1px solid hsl(var(--border));
   background: hsl(var(--card));
   padding: 0 10px;
   border-radius: 6px;
@@ -418,7 +427,7 @@
   margin-bottom: 6px;
 }
 .queryInput {
-  border: 1px solid hsl(var(--input));
+  border: 1px solid hsl(var(--border));
   border-radius: 6px;
   background: hsl(var(--card));
   padding: 8px 10px;
@@ -459,7 +468,7 @@
   border-radius: 6px;
   box-shadow: none;
 }
-.queryActions .primary {
+.queryActions button[type='submit'] {
   flex: 1;
 }
 .queryActions svg {
@@ -471,6 +480,35 @@
   border-top: 1px solid hsl(var(--border));
   padding-top: 16px;
   margin-top: 16px;
+}
+.serviceSection {
+  margin-top: auto;
+  padding-top: 20px;
+}
+.metricControls {
+  margin-bottom: 24px;
+}
+.environmentFacts {
+  margin: 12px 0 0;
+}
+.environmentFacts > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 34px;
+  font-size: 12px;
+  line-height: 22px;
+}
+.environmentFacts dt {
+  color: hsl(var(--muted-foreground));
+}
+.environmentFacts dd {
+  margin: 0;
+  text-align: right;
+}
+.backendValue {
+  font-family: var(--font-mono);
 }
 .sectionHeading {
   display: flex;
@@ -493,8 +531,14 @@
   color: hsl(var(--muted-foreground));
   overflow-wrap: anywhere;
 }
-.metricControls .sectionSubtitle {
-  margin-left: auto;
+.metricControls > summary {
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 24px;
+  font-weight: 500;
+}
+.metricControls[open] > summary {
+  margin-bottom: 10px;
 }
 .sectionHeading > button {
   margin-left: auto;
@@ -522,7 +566,10 @@
 .metricChoices label > span {
   overflow-wrap: anywhere;
 }
-.dependencies > div,
+.serviceSection .sectionHeading {
+  margin-bottom: 0;
+  gap: 6px;
+}
 .serviceDetails > div {
   display: flex;
   align-items: center;
@@ -531,18 +578,13 @@
   font-size: 13px;
   border-bottom: 1px solid hsl(var(--border) / 0.6);
 }
-.dependencies svg {
-  width: 15px;
-  height: 15px;
-  flex: none;
-  color: hsl(var(--muted-foreground));
-}
-.dependencies .status,
 .serviceDetails .status {
   margin-left: auto;
 }
 .previewResults {
-  padding: 19px 26px 24px;
+  padding: 20px;
+  min-width: 0;
+  width: 100%;
 }
 .resultsHeading {
   display: flex;
@@ -569,32 +611,69 @@
 }
 .metricStrip {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
   margin: 0;
-  padding: 0 0 20px;
-  border-bottom: 1px solid hsl(var(--border));
+  padding: 0;
 }
 .metricStrip > div {
+  --tone: var(--icon-knowledge);
   min-width: 0;
-  padding: 0 25px;
+  padding: 14px 16px;
+  border: 1px solid hsl(var(--border));
+  border-radius: 8px;
+  background: hsl(var(--card));
+  box-shadow:
+    inset 0 2px 0 hsl(var(--tone) / 0.24),
+    0 2px 5px hsl(var(--foreground) / 0.025);
 }
-.metricStrip > div:first-child {
-  padding-left: 0;
+.metricStrip > div[data-metric='citations'] {
+  --tone: var(--icon-governance);
 }
-.metricStrip > div + div {
-  border-left: 1px solid hsl(var(--border));
+.metricStrip > div[data-metric='contexts'] {
+  --tone: var(--icon-analysis);
+}
+.metricStrip > div[data-metric='latency'] {
+  --tone: var(--icon-process);
 }
 .metricStrip dt {
-  font-size: 13px;
-  line-height: 23px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12.5px;
+  line-height: 20px;
+  color: hsl(var(--muted-foreground));
+}
+.metricIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border: 1px solid hsl(var(--tone) / 0.14);
+  border-radius: 8px;
+  background: hsl(var(--tone) / 0.08);
+  color: hsl(var(--tone));
+}
+.metricIcon svg {
+  width: 15px;
+  height: 15px;
+}
+.metricDescription {
+  margin: 5px 0 0;
+  font-size: 11.5px;
+  line-height: 18px;
   color: hsl(var(--muted-foreground));
 }
 .metricStrip dd {
   font-size: 28px;
-  line-height: 40px;
+  line-height: 34px;
   font-weight: 600;
-  margin: 4px 0 0;
+  margin: 6px 0 0;
   font-variant-numeric: tabular-nums;
+  letter-spacing: -0.5px;
 }
 .reading {
   font-variant-numeric: tabular-nums;
@@ -623,27 +702,30 @@
 .chainGrid {
   display: grid;
   grid-template-columns:
-    minmax(138px, 1.4fr) 14px minmax(80px, 1fr) 14px minmax(68px, 1fr) 14px minmax(62px, 0.9fr)
-    14px minmax(68px, 1fr);
+    minmax(170px, 1.5fr) 14px minmax(104px, 1fr) 14px minmax(104px, 1fr) 14px minmax(88px, 0.9fr)
+    14px minmax(104px, 1fr);
   align-items: start;
   gap: 8px;
-  padding: 16px 0;
-  border-top: 1px solid hsl(var(--border));
-  border-bottom: 1px solid hsl(var(--border));
+  padding: 16px;
+  border: 1px solid hsl(var(--border));
+  border-radius: 8px;
+  background: hsl(var(--surface-2));
 }
 .chainNode {
+  --tone: var(--icon-knowledge);
   display: flex;
   flex-direction: column;
   align-items: stretch;
   gap: 6px;
   min-width: 0;
   width: 100%;
-  padding: 0;
+  padding: 9px;
   text-align: left;
   color: hsl(var(--foreground));
-  border: 0;
-  border-radius: 3px;
-  background: transparent;
+  border: 1px solid hsl(var(--border));
+  border-radius: 7px;
+  background: hsl(var(--card));
+  box-shadow: 0 1px 3px hsl(var(--foreground) / 0.035);
   cursor: pointer;
   transition: color 140ms ease;
 }
@@ -663,6 +745,26 @@
   line-height: 23px;
   margin: 0;
   overflow-wrap: anywhere;
+}
+.chainNodeTitle {
+  flex-wrap: wrap;
+  color: hsl(var(--foreground));
+}
+.iconTray {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 24px;
+  height: 24px;
+  border: 1px solid hsl(var(--tone) / 0.14);
+  border-radius: 6px;
+  background: hsl(var(--tone) / 0.08);
+  color: hsl(var(--tone));
+}
+.iconTray svg {
+  width: 14px;
+  height: 14px;
 }
 .chainNode strong {
   font-size: 14px;
@@ -689,13 +791,19 @@
   outline-offset: 4px;
 }
 .chainNode[data-kind='keyword'] {
-  color: var(--diag-keyword);
+  --tone: var(--diag-keyword);
+}
+.chainNode[data-stage='rerank'] {
+  --tone: var(--icon-analysis);
 }
 .outputNode[data-returned] {
-  color: hsl(var(--success));
+  --tone: var(--icon-governance);
 }
 .outputNode[data-empty] {
-  color: color-mix(in srgb, hsl(var(--warning)) 48%, hsl(var(--foreground)));
+  --tone: var(--icon-code);
+}
+.outputNode > strong {
+  color: hsl(var(--tone));
 }
 .nodeHint {
   font-size: 12px;
@@ -709,37 +817,53 @@
   margin-bottom: 6px;
 }
 .channelReading {
-  display: flex;
-  align-items: baseline;
+  --tone: var(--icon-neutral);
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) auto;
+  align-items: center;
   gap: 5px;
   width: 100%;
   min-width: 0;
-  border: 0;
-  border-radius: 3px;
-  background: transparent;
-  padding: 0;
+  border: 1px solid hsl(var(--border));
+  border-radius: 7px;
+  background: hsl(var(--card));
+  padding: 6px;
+  margin-top: 5px;
   text-align: left;
   font-size: 13px;
   line-height: 24px;
   color: hsl(var(--foreground));
   cursor: pointer;
 }
-.channelReading > svg {
-  display: none;
-}
 .channelReading > strong {
   font-size: 13px;
   font-weight: 500;
   font-variant-numeric: tabular-nums;
+  padding-inline: 5px;
+  border-radius: 4px;
+  background: hsl(var(--tone) / 0.08);
+  color: hsl(var(--tone));
 }
 .channelReading[data-kind='vector'] {
-  color: var(--diag-vector);
+  --tone: var(--diag-vector);
 }
 .channelReading[data-kind='keyword'] {
-  color: var(--diag-keyword);
+  --tone: var(--diag-keyword);
 }
 .channelReading[data-kind='graph'] {
-  color: var(--diag-graph);
+  --tone: var(--diag-graph);
+}
+.timingPill {
+  grid-column: 2 / -1;
+  justify-self: start;
+  padding: 0 5px;
+  border: 1px solid hsl(var(--tone) / 0.14);
+  border-radius: 4px;
+  background: hsl(var(--tone) / 0.08);
+  color: hsl(var(--tone));
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 17px;
 }
 .connector {
   width: 14px;
@@ -795,13 +919,13 @@
   overflow-wrap: anywhere;
 }
 .hashButton {
-  background: none;
-  border: 0;
+  background: hsl(var(--icon-source) / 0.08);
+  border: 1px solid hsl(var(--icon-source) / 0.14);
   border-radius: 3px;
-  padding: 0;
-  font-family: inherit;
+  padding: 0 5px;
+  font-family: var(--font-mono);
   text-align: left;
-  text-decoration: underline;
+  color: hsl(var(--icon-source));
   text-underline-offset: 3px;
   cursor: pointer;
 }
@@ -878,11 +1002,12 @@
   width: 22%;
 }
 .qualityTable thead {
-  background: hsl(var(--background));
+  background: hsl(var(--surface-2));
   font-size: 12px;
   color: hsl(var(--muted-foreground));
 }
 .qualityTable td:last-child {
+  font-family: var(--font-mono);
   color: hsl(var(--muted-foreground));
   font-size: 12px;
 }
@@ -938,44 +1063,41 @@
   color: inherit;
   margin-left: 8px;
 }
-.probeShortcuts {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 4px 18px;
-  flex: none;
-  padding: 8px 26px;
-  border-top: 1px solid hsl(var(--border));
-  font-size: 12px;
-  line-height: 22px;
-  color: hsl(var(--muted-foreground));
-}
-.probeShortcuts button {
-  height: 34px;
-  gap: 7px;
-  padding: 0;
-  font-size: 13px;
-  box-shadow: none;
-  color: hsl(var(--muted-foreground));
-}
-.probeShortcuts svg {
-  width: 15px;
-  height: 15px;
-}
 .probeSection {
-  padding: 22px 28px;
+  padding: 20px;
   animation: diag-enter 160ms ease-out;
 }
-.probeForm {
+.probeCanvas {
   display: flex;
-  align-items: flex-start;
-  gap: 18px;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+.probeCanvas > .sectionHeading,
+.probeCanvas > .domainError,
+.probeCanvas > .probeEmpty {
+  margin: 20px;
+}
+.emptyResults {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+.emptyStudio {
+  min-height: 100%;
+}
+.probeForm {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+  gap: 16px 12px;
   margin: 20px 0 0;
   padding: 0 0 17px;
   border-bottom: 1px solid hsl(var(--border));
 }
 .probeForm > div {
-  width: 190px;
+  width: auto;
   min-width: 0;
   display: flex;
   flex-direction: column;
@@ -994,8 +1116,9 @@
   background: hsl(var(--card));
 }
 .probeForm > button {
-  margin-top: 30px;
-  height: 36px;
+  grid-column: 1 / -1;
+  margin-top: 0;
+  height: 32px;
   min-width: 145px;
   font-size: 13px;
   gap: 7px;
@@ -1022,6 +1145,7 @@
 .probeEmpty {
   padding: 42px 0;
 }
+.probeEmpty h2,
 .probeEmpty h3 {
   font-size: 15px;
   font-weight: 550;
@@ -1038,20 +1162,29 @@
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   margin: 0 0 23px;
-  padding: 18px 0;
-  border-top: 1px solid hsl(var(--border));
-  border-bottom: 1px solid hsl(var(--border));
+  padding: 0;
+  gap: 12px;
 }
 .probeMetrics > div {
-  padding: 0 25px;
+  --tone: var(--icon-process);
+  padding: 14px 16px;
+  border: 1px solid hsl(var(--border));
+  border-radius: 8px;
 }
-.probeMetrics > div:first-child {
-  padding-left: 0;
+.probeMetrics > div:nth-child(2) {
+  --tone: var(--icon-governance);
 }
-.probeMetrics > div + div {
-  border-left: 1px solid hsl(var(--border));
+.probeMetrics > div:nth-child(3) {
+  --tone: var(--icon-knowledge);
+}
+.probeMetrics > div:nth-child(4) {
+  --tone: var(--icon-analysis);
 }
 .probeMetrics dt {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
   font-size: 13px;
   line-height: 23px;
   color: hsl(var(--muted-foreground));
@@ -1148,9 +1281,9 @@
   display: flex;
   align-items: center;
   gap: 20px;
-  min-height: 42px;
+  min-height: 36px;
   flex: none;
-  padding: 7px 28px;
+  padding: 6px 20px;
   border-top: 1px solid hsl(var(--border));
   background: hsl(var(--background));
   font-size: 12px;
@@ -1296,27 +1429,16 @@
     transform: none;
   }
 }
-@container diagnostics-workspace (max-width:1100px) {
-  .workbench {
-    grid-template-columns: 296px minmax(0, 1fr);
-  }
-  .configuration {
-    padding: 18px;
-  }
-  .previewResults {
-    padding: 19px 22px 24px;
-  }
-  .metricStrip > div {
-    padding: 0 16px;
-  }
-  .onlineBadge {
+@container diagnostics-workspace (max-width:1150px) {
+  .vectorLabel {
     display: none;
   }
 }
 @container diagnostics-results (max-width:620px) {
   .chainGrid {
     grid-template-columns: 1fr;
-    gap: 6px;
+    gap: 0;
+    padding: 12px;
   }
   .channelGroup {
     display: flex;
@@ -1333,33 +1455,68 @@
     min-height: 28px;
   }
   .chainNode {
-    min-height: 55px;
-    justify-content: center;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 2px 12px;
+    min-height: 48px;
+  }
+  .nodeHint {
+    grid-column: 1 / -1;
   }
   .connector {
     transform: rotate(90deg);
     margin: 0 0 0 3px;
+    width: 12px;
+    height: 12px;
   }
   .configRows {
     grid-template-columns: 1fr;
   }
-  .metricStrip {
+  .metricStrip,
+  .probeMetrics {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    row-gap: 14px;
-  }
-  .metricStrip > div:nth-child(odd) {
-    border-left: 0;
-    padding-left: 0;
   }
 }
-@container diagnostics-workspace (max-width:900px) {
-  .returnToQuery {
-    display: inline-flex;
-    align-items: center;
-    min-height: 44px;
-    padding: 0 4px;
+@container diagnostics-workspace (max-width:1023px) {
+  .header {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 6px 12px;
+    min-height: 108px;
+    padding: 8px 20px;
   }
-  .workbench {
+  .heading {
+    padding-right: 0;
+    border-right: 0;
+  }
+  .headerActions {
+    grid-column: 2;
+    grid-row: 1;
+  }
+  .headerActions button {
+    min-width: 44px;
+    height: 44px;
+  }
+  .headerActions button[aria-label='查看原始响应'],
+  .headerActions button[aria-label='复制诊断摘要'] {
+    width: 44px;
+  }
+  .tabs {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    justify-self: start;
+    width: auto;
+    max-width: 100%;
+    height: 44px;
+    padding: 0;
+  }
+  .tab {
+    height: 44px;
+    padding-inline: 12px;
+  }
+  .workbench,
+  .probeWorkbench {
     display: block;
     overflow-y: auto;
     overscroll-behavior: contain;
@@ -1373,101 +1530,39 @@
   .workbenchResults {
     overflow: visible;
   }
+  .emptyResults,
+  .probeCanvas {
+    min-height: 440px;
+  }
   .scopeStack {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .scopeStack .scopeField {
+    width: 100%;
+  }
+  .scopeStack .scopeField > button {
+    min-height: 44px;
   }
   .metricChoices {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
-  .serviceSection .dependencies {
+  .serviceSection {
+    margin-top: 20px;
+  }
+  .environmentFacts {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 0 24px;
+    gap: 0 20px;
   }
-}
-@container diagnostics-workspace (max-width:760px) {
-  .header {
-    padding: 12px 18px;
-    min-height: 66px;
-  }
-  .headerActions {
-    gap: 3px;
-  }
-  .headerActions button {
-    width: 36px;
-    padding: 0;
-  }
-  .headerActions span {
-    display: none;
-  }
-  .healthBar {
-    padding: 8px 18px;
-    gap: 5px 15px;
-  }
-  .healthBar > span:nth-child(2),
-  .healthBar time {
-    display: none;
-  }
-  .scopeBar {
-    padding: 8px 18px;
-    gap: 7px 16px;
-  }
-  .scopeField + div {
-    border-left: 0;
-    padding-left: 0;
-  }
-  .scopeStack {
-    padding: 0;
-    gap: 14px;
-  }
-  .scopeCount {
-    display: none;
-  }
-  .scopeStack .scopeField > button {
-    min-height: 40px;
-  }
-  .tabs {
-    padding: 0 18px;
-    gap: 24px;
-  }
-  .tab .status {
-    display: none;
-  }
-  .previewResults {
-    padding: 18px;
-  }
-  .probeShortcuts {
-    padding: 8px 18px;
-  }
-  .probeShortcuts > span:last-child {
-    display: none;
-  }
-  .probeSection {
-    padding: 18px;
+  .returnToQuery {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    padding: 0 4px;
   }
   .probeForm {
-    gap: 14px;
-    flex-wrap: wrap;
-  }
-  .probeForm > div {
-    width: calc(50% - 7px);
-  }
-  .probeForm > button {
-    margin-top: 0;
-    margin-left: auto;
-  }
-  .probeMetrics {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 18px 0;
-  }
-  .probeMetrics > div:nth-child(odd) {
-    border-left: 0;
-    padding-left: 0;
-  }
-  .probeMetrics dd {
-    font-size: 22px;
-    line-height: 31px;
+    max-width: 480px;
   }
   .performanceTable {
     min-width: 700px;
@@ -1483,22 +1578,13 @@
     width: 136px;
   }
   .performanceTable thead th:first-child {
-    background: hsl(var(--muted));
-  }
-  .footer {
-    padding: 7px 18px;
-    gap: 5px 12px;
-  }
-  .footer > span:nth-last-child(2) {
-    margin-left: auto;
-  }
-  .footer > .spacer {
-    display: none;
+    background: hsl(var(--surface-2));
   }
 }
-@media (max-width: 767px) {
+@container diagnostics-workspace (max-width:600px) {
   .header {
-    padding-left: 64px;
+    gap: 4px 8px;
+    padding: 8px 12px 6px 64px;
   }
   .heading > svg {
     display: none;
@@ -1506,29 +1592,130 @@
   .heading h1 {
     font-size: 19px;
   }
+  .headerActions {
+    gap: 0;
+  }
   .headerActions button {
     width: 44px;
-    height: 44px;
+    padding: 0;
   }
+  .headerActions .healthTrigger {
+    width: 44px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+  }
+  .healthTrigger .status {
+    font-size: 0;
+    gap: 0;
+  }
+  .healthTrigger .status > i {
+    width: 7px;
+    height: 7px;
+  }
+  .refreshLabel {
+    display: none;
+  }
+  .tabs {
+    margin-left: -50px;
+    width: calc(100% + 50px);
+    max-width: calc(100% + 50px);
+    justify-self: stretch;
+    justify-content: space-between;
+  }
+  .tab {
+    flex: 1;
+    padding-inline: 8px;
+    font-size: 12px;
+    gap: 5px;
+  }
+  .configuration,
+  .previewResults,
+  .probeSection {
+    padding: 18px 14px;
+  }
+  .scopeStack {
+    gap: 12px;
+  }
+  .environmentFacts {
+    gap: 0 14px;
+  }
+  .metricControls {
+    margin-bottom: 0;
+  }
+  .serviceSection {
+    margin-top: 12px;
+    padding-top: 12px;
+  }
+  .environmentFacts > div {
+    flex-wrap: wrap;
+    gap: 0 8px;
+    padding-block: 3px;
+  }
+  .metricChoices {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .metricStrip,
+  .probeMetrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+  .metricStrip > div,
+  .probeMetrics > div {
+    padding: 12px;
+  }
+  .metricStrip dd {
+    font-size: 23px;
+  }
+  .qualityTable th,
+  .qualityTable td {
+    padding: 8px;
+  }
+  .qualityTable th:first-child {
+    width: 38%;
+  }
+  .qualityTable th:nth-child(2) {
+    width: 25%;
+  }
+  .footer {
+    padding: 6px 14px;
+    gap: 4px 10px;
+  }
+  .footer > span:nth-last-child(2) {
+    display: none;
+  }
+  .footer time:last-child {
+    margin-left: auto;
+  }
+  .probeCanvas > .sectionHeading,
+  .probeCanvas > .domainError,
+  .probeCanvas > .probeEmpty {
+    margin: 18px 14px;
+  }
+}
+@media (max-width: 767px) {
   .queryInput textarea,
   .documentPopover input,
   .probeForm input {
     font-size: 16px;
   }
   .queryActions button,
-  .probeShortcuts button,
+  .probeForm input,
+  .probeForm > button,
   .documentOption,
-  .metricChoices label {
+  .metricChoices label,
+  .dialogFooter button {
     min-height: 44px;
-  }
-  .metricChoices {
-    gap: 4px 8px;
   }
   .serviceSection .sectionHeading button {
     min-height: 44px;
   }
+  .metricControls > summary {
+    min-height: 44px;
+    align-content: center;
+  }
   .chainNode {
-    min-height: 56px;
+    min-height: 48px;
   }
   .channelReading {
     min-height: 44px;
@@ -1556,81 +1743,6 @@
     font-size: 13px;
     line-height: 24px;
     padding: 13px;
-  }
-}
-@container diagnostics-workspace (max-width:430px) {
-  .header {
-    gap: 8px;
-    padding-right: 10px;
-  }
-  .heading {
-    gap: 8px;
-  }
-  .headerActions {
-    gap: 0;
-  }
-  .healthBar {
-    padding: 7px 14px;
-    gap: 5px 14px;
-  }
-  .scopeBar {
-    padding: 8px 14px;
-    gap: 8px;
-  }
-  .scopeField {
-    width: 100%;
-    justify-content: space-between;
-  }
-  .scopeField > button {
-    width: 220px;
-  }
-  .scopeStack {
-    display: flex;
-    padding: 0;
-    gap: 14px;
-  }
-  .configuration {
-    padding: 18px 14px;
-  }
-  .metricChoices {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-  .serviceSection .dependencies {
-    display: block;
-  }
-  .tabs {
-    padding: 0 14px;
-    gap: 22px;
-  }
-  .tab {
-    font-size: 13px;
-  }
-  .previewResults {
-    padding: 18px 14px;
-  }
-  .metricStrip dd {
-    font-size: 25px;
-  }
-  .qualityTable th,
-  .qualityTable td {
-    padding: 8px;
-  }
-  .qualityTable th:first-child {
-    width: 38%;
-  }
-  .qualityTable th:nth-child(2) {
-    width: 25%;
-  }
-  .probeSection {
-    padding: 17px 14px;
-  }
-  .footer {
-    padding: 7px 14px;
-    font-size: 12px;
-    gap: 5px 10px;
-  }
-  .scopeHint {
-    width: 100%;
   }
 }
 @media (prefers-reduced-motion: reduce) {

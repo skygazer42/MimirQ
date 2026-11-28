@@ -7,7 +7,6 @@ import { PARSER_BACKEND_OPTIONS, getParserOption, type ParserBackendOption } fro
 import { buildChunkStrategyCatalog, getChunkStrategyOption, type ChunkStrategyOption } from '@/lib/chunk-strategies'
 import { normalizeParserBackendName } from '@/lib/parser-compat'
 import {
-  Sparkles,
   FileText,
   Cpu,
   LayoutGrid,
@@ -15,7 +14,6 @@ import {
   ScanLine,
   ScanText,
   FileCode,
-  Wand2,
   Layers,
   Hash,
   AlignLeft,
@@ -35,7 +33,7 @@ type FrontendPreferencesSectionProps = {
 }
 
 const PARSER_ICONS: Record<ParserBackendOption['icon'], PlatformIcon> = {
-  auto: Sparkles,
+  auto: FileText,
   basic: FileText,
   docling: Cpu,
   layout: LayoutGrid,
@@ -43,7 +41,7 @@ const PARSER_ICONS: Record<ParserBackendOption['icon'], PlatformIcon> = {
   deepdoc: ScanLine,
   deepseekocr: ScanText,
   markitdown: FileCode,
-  magicpdf: Wand2,
+  magicpdf: LayoutGrid,
 }
 const CHUNK_ICONS: Record<ChunkStrategyOption['icon'], PlatformIcon> = {
   recursive: Layers,
@@ -80,8 +78,10 @@ function PipelineChoiceList({
   onChange: (value: string) => void
 }>) {
   const name = useId()
-  const firstChoices = choices.slice(0, 6)
-  const additionalChoices = choices.slice(6)
+  const availableChoices = choices.filter((choice) => !choice.unavailable)
+  const firstChoices = availableChoices.slice(0, 6)
+  const unavailableChoices = choices.filter((choice) => choice.unavailable)
+  const additionalChoices = [...availableChoices.slice(6), ...unavailableChoices]
   const [expanded, setExpanded] = useState<boolean>()
   const showAdditionalChoices = expanded ?? additionalChoices.some((choice) => choice.value === value)
   const renderChoice = (choice: PipelineChoice) => {
@@ -114,6 +114,9 @@ function PipelineChoiceList({
             ) : null}
           </span>
           <span className={cn(styles.choiceDescription, 'block')}>{choice.description}</span>
+          {choice.unavailable ? (
+            <span className={cn(styles.choiceDescription, 'block')}>{choice.unavailable.reason}</span>
+          ) : null}
         </span>
         {choice.unavailable ? (
           <span className={styles.availability}>{choice.unavailable.label}</span>
@@ -134,10 +137,14 @@ function PipelineChoiceList({
         >
           <summary className={cn(styles.moreSummary, 'focus-ring')}>
             <span>
-              更多{label}（{additionalChoices.length}）
+              {unavailableChoices.length > 0 ? '更多与暂不可用的' : '更多'}
+              {label}（{additionalChoices.length}）
             </span>
             <ChevronRight className={cn(styles.advancedChevron, 'size-3.5')} />
           </summary>
+          {label === '解析方式' && unavailableChoices.length > 0 ? (
+            <p className={styles.moreHint}>可在「解析服务」中启用解析器；待确认的选项需先读取可用状态。</p>
+          ) : null}
           {additionalChoices.map(renderChoice)}
         </details>
       ) : null}
@@ -179,7 +186,7 @@ export function FrontendPreferencesSection({
       ?.notes?.trim()
     return {
       ...choice,
-      unavailable: { label: '不可用', reason: notes ? notes : '后端报告此解析器不可用' },
+      unavailable: { label: '不可用', reason: notes ? notes : '此解析器暂不可用' },
     }
   })
   const chunkChoices: PipelineChoice[] = catalog.map((option) => ({

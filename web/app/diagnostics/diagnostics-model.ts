@@ -229,7 +229,7 @@ export function driftVerdict(payload: unknown): Verdict & {
   if (p.ok === false)
     return {
       ...base,
-      label: error === 'unsupported_vector_backend' ? '后端不支持' : '检查失败',
+      label: error === 'unsupported_vector_backend' ? '当前索引不支持' : '检查失败',
       tone: error === 'unsupported_vector_backend' ? 'neutral' : 'danger',
     }
   if (samples === 0) return { ...base, label: '无可比样本', tone: 'neutral' }

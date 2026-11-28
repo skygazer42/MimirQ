@@ -98,6 +98,8 @@ export async function remainingFixture(page: Page, theme: 'light' | 'dark' = 'li
   await page.route('**/api/v1/**', async (route) => {
     const url = new URL(route.request().url()),
       p = url.pathname.replace(/\/$/, '')
+    if (p === '/api/v1/dataset-categories' && route.request().method() === 'GET')
+      return json(route, { items: [] })
     if (p === `/api/v1/datasets/${policyDatasetId}/profile/summary`)
       return state.failProfile ? json(route, { detail: '画像读取暂不可用' }, 503) : json(route, state.profile)
     if (p === `/api/v1/datasets/${policyDatasetId}/profile/scan-runs`)

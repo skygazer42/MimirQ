@@ -200,7 +200,7 @@ test('preserves the existing citation action while retrying a nested image and o
   await expect(preview.locator('button, a')).toHaveCount(0)
   await preview.focus()
   await preview.press('Enter')
-  const dialog = page.getByRole('dialog').filter({ hasText: 'Image Evidence' })
+  const dialog = page.getByRole('dialog').filter({ hasText: '图片证据' })
   await expect(dialog).toBeVisible()
   const image = dialog.getByRole('img', { name: 'evidence image', exact: true })
   await expect.poll(() => image.evaluate((node: HTMLImageElement) => node.naturalWidth)).toBe(64)

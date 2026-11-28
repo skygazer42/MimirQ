@@ -23,6 +23,13 @@ export default function PromptsPage() {
 }
 function PromptsPageContent({ sessionKey }: Readonly<{ sessionKey: string }>) {
   const controller = usePromptTemplates(sessionKey)
+  const hasFilters =
+    controller.filters.query.trim() !== '' ||
+    controller.filters.scenario !== 'all' ||
+    controller.filters.status !== 'all' ||
+    controller.filters.source !== 'all' ||
+    controller.filters.category !== null
+  const quietEmpty = controller.query.isSuccess && controller.templates.length === 0 && !hasFilters
   return (
     <AppFrame>
       <section className={styles.workspace} data-prompts-workbench>
@@ -38,16 +45,18 @@ function PromptsPageContent({ sessionKey }: Readonly<{ sessionKey: string }>) {
                   <Link2 />
                   场景绑定
                 </Button>
-                <Button
-                  variant="ghost"
-                  disabled={Boolean(controller.busy) || controller.query.isLoading}
-                  onClick={() => {
-                    void controller.syncBuiltins()
-                  }}
-                >
-                  {controller.busy === 'sync' ? <Loader2 className="animate-spin" /> : <RefreshCw />}
-                  {controller.busy === 'sync' ? '同步中' : '同步内置模板'}
-                </Button>
+                {!quietEmpty ? (
+                  <Button
+                    variant="ghost"
+                    disabled={Boolean(controller.busy) || controller.query.isLoading}
+                    onClick={() => {
+                      void controller.syncBuiltins()
+                    }}
+                  >
+                    {controller.busy === 'sync' ? <Loader2 className="animate-spin" /> : <RefreshCw />}
+                    {controller.busy === 'sync' ? '同步中' : '同步内置模板'}
+                  </Button>
+                ) : null}
               </div>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -74,7 +83,8 @@ function PromptsPageContent({ sessionKey }: Readonly<{ sessionKey: string }>) {
                 </DropdownMenuContent>
               </DropdownMenu>
               <Button
-                className={styles.primary}
+                variant={quietEmpty ? 'outline' : 'default'}
+                className={quietEmpty ? undefined : styles.primary}
                 data-prompt-create
                 disabled={Boolean(controller.busy)}
                 onClick={() => controller.openEditor()}
@@ -85,7 +95,7 @@ function PromptsPageContent({ sessionKey }: Readonly<{ sessionKey: string }>) {
             </div>
           ) : null}
         </header>
-        <PromptTable controller={controller} />
+        <PromptTable controller={controller} hasFilters={hasFilters} quietEmpty={quietEmpty} />
         <PromptDialogs controller={controller} />
       </section>
     </AppFrame>

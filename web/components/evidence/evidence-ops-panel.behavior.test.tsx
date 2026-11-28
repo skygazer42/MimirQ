@@ -76,7 +76,7 @@ describe('evidence operation payload and lifecycle', () => {
     'rejects capsule payload %j before HTTP and retains the draft',
     async (raw) => {
       changePayload(raw)
-      await act(async () => button('保存 Capsule').click())
+      await act(async () => button('保存证据快照').click())
       expect(controlled.persist).not.toHaveBeenCalled()
       expect(document.querySelector('[role="alert"]')).not.toBeNull()
       expect(document.querySelector('textarea')?.value).toBe(raw)
@@ -91,7 +91,7 @@ describe('evidence operation payload and lifecycle', () => {
         complete = resolve
       }),
     )
-    act(() => button('保存 Capsule').click())
+    act(() => button('保存证据快照').click())
     act(() => root.unmount())
     mounted = false
     await act(async () => complete({ capsule_id: 'saved' }))
@@ -100,10 +100,10 @@ describe('evidence operation payload and lifecycle', () => {
 
   it('keeps a negative capsule validation report as a negative report', async () => {
     controlled.verify.mockResolvedValue({ valid: false, reason: '引用缺失' })
-    await act(async () => button('校验 Capsule').click())
+    await act(async () => button('校验证据快照').click())
     expect(document.querySelector('pre')?.textContent).toContain('"valid": false')
     expect(document.querySelector('pre')?.textContent).toContain('引用缺失')
-    expect(controlled.toast.warning).toHaveBeenCalledWith('Capsule 校验未通过（引用缺失）')
+    expect(controlled.toast.warning).toHaveBeenCalledWith('证据快照校验未通过（引用缺失）')
     expect(controlled.toast.success).not.toHaveBeenCalled()
   })
 })

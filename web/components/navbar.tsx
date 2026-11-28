@@ -22,6 +22,7 @@ import {
   Ingestion,
   KnowledgeBase,
   KnowledgeGraph,
+  Network,
   Members,
   Parsing,
   Prompts,
@@ -121,6 +122,7 @@ const menuSections: MenuSection[] = [
     titleKey: 'sections.analysis',
     items: [
       { icon: KnowledgeGraph, labelKey: 'items.knowledgeGraph', href: '/graph', visibilityKey: 'knowledgeGraph' },
+      { icon: Network, labelKey: 'items.enterpriseOntology', href: '/ontology' },
       { icon: Evaluation, labelKey: 'items.ragas', href: '/evaluations', visibilityKey: 'ragas' },
       { icon: Reports, labelKey: 'items.reports', href: '/reports', visibilityKey: 'reports' },
       { icon: Prompts, labelKey: 'items.prompts', href: '/prompts', visibilityKey: 'prompts' },
@@ -369,10 +371,14 @@ export function Navbar({
 
   useEffect(() => {
     const activeSection = visibleMenuSections.find((section) => sectionHasActiveRoute(activeHref, section.items))
-    if (!activeSection) return
+    if (!activeSection || activeSection.id === 'core') return
 
     setOpenSections((current) => {
-      if (current[activeSection.id]) return current
+      if (
+        current[activeSection.id] &&
+        Object.entries(current).every(([id, open]) => id === 'core' || id === activeSection.id || !open)
+      )
+        return current
       return {
         ...createInitialOpenSections(),
         [activeSection.id]: true,
@@ -523,19 +529,19 @@ export function Navbar({
           'peer flex-shrink-0 border-r border-sidebar-border/60 bg-sidebar text-sidebar-foreground flex flex-col transition-transform duration-200 ease-out motion-reduce:transition-none z-50',
           'fixed inset-y-0 left-0 md:relative', // Mobile: fixed, Desktop: relative
           isSidebarOpen
-            ? 'w-[264px] translate-x-0'
-            : 'w-[264px] -translate-x-full md:w-0 md:translate-x-0 md:overflow-hidden',
+            ? 'w-[208px] translate-x-0'
+            : 'w-[208px] -translate-x-full md:w-0 md:translate-x-0 md:overflow-hidden',
         )}
       >
         {/* Logo 区域 */}
-        <div className="flex h-16 shrink-0 items-center gap-3 px-5">
+        <div className="flex h-13 shrink-0 items-center gap-3 px-4">
           <Link
             href="/"
             prefetch={false}
             aria-label={BRAND_NAME}
             className="rounded-md transition-opacity hover:opacity-75 focus-ring motion-reduce:transition-none"
           >
-            <BrandLogo className="w-[132px]" decorative priority />
+            <BrandLogo className="w-28" decorative priority />
           </Link>
           {isSidebarOpen ? (
             <Button
@@ -555,12 +561,12 @@ export function Navbar({
         </div>
 
         {/* 新对话按钮 */}
-        <div className="px-3 pb-2 pt-4">
+        <div className="px-3 pb-2 pt-2">
           <Button
             ref={firstActionRef}
             variant="ghost"
             className={cn(
-              'h-10 w-full justify-start gap-2.5 rounded-md border border-sidebar-border/80 bg-card px-3 text-body font-medium text-sidebar-foreground transition-colors duration-150 shadow-none sm:h-10',
+              'h-8.5 max-md:h-11 w-full justify-start gap-2.5 rounded-md border border-sidebar-border/80 bg-card px-3 text-[13px] font-normal text-sidebar-foreground transition-colors duration-150 shadow-none',
               'hover:border-sidebar-border hover:bg-muted',
               'active:scale-[0.98]',
             )}
@@ -577,7 +583,7 @@ export function Navbar({
         <div className="px-3 pb-2">
           <button
             type="button"
-            className="group flex h-10 w-full items-center justify-between gap-2.5 rounded-md bg-transparent px-3 text-left text-sidebar-foreground/80 shadow-none transition-colors duration-150 hover:bg-muted hover:text-foreground focus-ring"
+            className="group flex h-8.5 max-md:h-11 w-full items-center justify-between gap-2.5 rounded-md bg-transparent px-3 text-left text-sidebar-foreground/80 shadow-none transition-colors duration-150 hover:bg-muted hover:text-foreground focus-ring"
             onClick={() => {
               setCommandMenuOpen(true)
               closeSidebarOnMobile()
@@ -591,7 +597,7 @@ export function Navbar({
             <div className="flex min-w-0 items-center gap-3">
               <Search className="size-4 shrink-0" />
               <div className="min-w-0">
-                <p className="truncate text-body font-medium">{t('command.triggerLabel')}</p>
+                <p className="truncate text-[13px] font-normal">{t('command.triggerLabel')}</p>
               </div>
             </div>
             <kbd className="shrink-0 text-micro font-normal tabular-nums text-muted-foreground">{commandShortcut}</kbd>
@@ -627,7 +633,7 @@ export function Navbar({
                       aria-controls={`sidebar-section-${section.id}`}
                     >
                       <div className="min-w-0">
-                        <p className="text-xs font-medium">{t(section.titleKey)}</p>
+                        <p className="text-[13px] font-normal">{t(section.titleKey)}</p>
                       </div>
                       <div className="flex items-center gap-2">
                         <ToggleIcon className="size-3.5 shrink-0" />
@@ -637,6 +643,7 @@ export function Navbar({
                     <div
                       id={`sidebar-section-${section.id}`}
                       inert={!isOpen}
+                      aria-hidden={!isOpen}
                       className={cn(
                         'grid overflow-hidden transition-[grid-template-rows,opacity] duration-300 ease-out',
                         isOpen ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0',
@@ -656,11 +663,10 @@ export function Navbar({
                                   onClick={closeSidebarOnMobile}
                                   aria-current={isActive ? 'page' : undefined}
                                   className={cn(
-                                    'relative flex items-center gap-3 px-3 py-2.5 rounded-md transition-colors duration-150 group focus-ring',
-                                    'before:pointer-events-none before:absolute before:left-1 before:top-2 before:bottom-2 before:w-[3px] before:rounded-full before:transition-all before:duration-200',
+                                    'relative flex h-8.5 max-md:h-11 items-center gap-2.5 border-l-2 border-transparent px-2.5 py-1.5 rounded-md transition-colors duration-150 group focus-ring',
                                     isActive
-                                      ? 'text-sidebar-foreground font-medium bg-ring/10 shadow-none before:bg-ring'
-                                      : 'font-normal text-sidebar-foreground/80 hover:bg-muted hover:text-sidebar-foreground before:bg-transparent',
+                                      ? 'border-l-accent text-sidebar-foreground font-medium bg-secondary shadow-none'
+                                      : 'font-normal text-sidebar-foreground/80 hover:bg-muted hover:text-sidebar-foreground',
                                   )}
                                 >
                                   <Icon
@@ -671,7 +677,7 @@ export function Navbar({
                                         : 'text-muted-foreground group-hover:text-sidebar-foreground',
                                     )}
                                   />
-                                  <span className="text-sm">{t(item.labelKey)}</span>
+                                  <span className="text-[13px]">{t(item.labelKey)}</span>
                                 </Link>
                               </div>
                             )

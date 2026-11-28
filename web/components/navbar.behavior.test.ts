@@ -63,6 +63,7 @@ const messages: Record<string, string | ((values?: Record<string, unknown>) => s
   'items.datasets': chatMessages.Navbar.items.datasets,
   'items.ragVisualization': 'items.ragVisualization',
   'items.knowledgeBase': chatMessages.Navbar.items.knowledgeBase,
+  'items.enterpriseOntology': chatMessages.Navbar.items.enterpriseOntology,
   'sections.analysis': 'sections.analysis',
   'sections.core': 'sections.core',
   'sections.current': 'sections.current',
@@ -196,6 +197,22 @@ function renderComponent(element: React.ReactElement) {
 }
 
 describe('Navbar behavior', () => {
+  it.each(['admin', 'viewer'])('keeps ontology beside graph in analysis for a local %s session', (role) => {
+    routerMocks.pathname = '/ontology'
+    tenantAccessMock.current = { data: { ...adminTenantAccess, role, permissions: [] } }
+    const view = renderComponent(React.createElement(Navbar))
+    const section = view.container.querySelector('#sidebar-section-analysis')!
+    const links = Array.from(section.querySelectorAll('a')).map((node) => node.getAttribute('href'))
+    expect(links.indexOf('/ontology')).toBe(links.indexOf('/graph') + 1)
+    expect(links.indexOf('/ontology')).toBeLessThan(links.indexOf('/evaluations'))
+    expect(section.querySelector('a[href="/ontology"]')?.textContent).toContain('企业本体')
+    expect(section.querySelector('a[href="/ontology"]')?.getAttribute('aria-current')).toBe('page')
+    expect(
+      view.container.querySelector('button[aria-controls="sidebar-section-analysis"]')?.getAttribute('aria-expanded'),
+    ).toBe('true')
+    view.unmount()
+  })
+
   beforeEach(() => {
     vi.clearAllMocks()
     backendReadyState.data = null
@@ -335,6 +352,24 @@ describe('Navbar behavior', () => {
     view.rerender(React.createElement<NavbarProps>(Navbar, { variant: 'rail' }))
     expect(datasetLink()?.querySelector('[role="status"]')).toBeNull()
 
+    view.unmount()
+  })
+
+  it('opens only the current task when old saved navigation has several expanded groups', () => {
+    localStorage.setItem(
+      'mimirq_navbar_open_sections_v3',
+      JSON.stringify({ knowledge: true, analysis: true, system: true }),
+    )
+    routerMocks.pathname = '/datasets'
+    const view = renderComponent(React.createElement(Navbar))
+    const expanded = () =>
+      Array.from(
+        view.container.querySelectorAll('button[aria-controls^="sidebar-section-"][aria-expanded="true"]'),
+      ).map((button) => button.getAttribute('aria-controls'))
+    expect(expanded()).toEqual(['sidebar-section-knowledge'])
+    routerMocks.pathname = '/parsing'
+    view.rerender(React.createElement(Navbar))
+    expect(expanded()).toEqual(['sidebar-section-ingestion'])
     view.unmount()
   })
 

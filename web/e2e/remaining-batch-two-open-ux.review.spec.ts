@@ -71,7 +71,11 @@ test('independent chosen task first actions', async ({ browser }) => {
     await page.setViewportSize(viewport)
     await page.goto('/knowledge/ingestion?mode=execution-monitor', { waitUntil: 'domcontentloaded', timeout: 90_000 })
     await expect(page.getByRole('heading', { name: '入库执行监控', exact: true })).toBeVisible({ timeout: 90_000 })
-    await page.getByRole('button', { name: '失败 6', exact: true }).click()
+    if (device === 'mobile') {
+      await page.getByRole('combobox', { name: '任务状态', exact: true }).selectOption('failed')
+    } else {
+      await page.getByRole('button', { name: '失败 6', exact: true }).click()
+    }
     await snapshot(page, `task-${device}-failed-filter`)
     await page
       .getByRole('button', { name: /^查看任务 / })

@@ -18,10 +18,6 @@ vi.mock('@/components/ui/app-background', () => ({
   AppBackground: () => null,
 }))
 
-vi.mock('@/store/document-view', () => ({
-  useDocumentView: () => ({ isOpen: false }),
-}))
-
 import { AppFrame } from './app-frame'
 
 function renderFrame(isMobile: boolean) {

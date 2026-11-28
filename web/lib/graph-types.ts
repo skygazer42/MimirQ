@@ -39,4 +39,5 @@ export type GraphLink = {
 export type GraphData = {
   nodes: GraphNode[]
   links: GraphLink[]
+  ontologyVersionId?: string
 }

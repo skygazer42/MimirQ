@@ -165,7 +165,7 @@ const knowledgeMessages = {
       deleting: '删除中…',
       confirmDelete: '确认删除',
       clearFilters: '清空筛选',
-      uploadNow: '立即上传文档',
+      uploadNow: '上传文档',
       clearSelection: '清除选择',
       reingest: '重新入库',
       reingesting: '重新入库中…',
@@ -370,7 +370,7 @@ const knowledgeMessages = {
       dialogs: {
         cancel: {
           title: '取消导入任务？',
-          description: '将标记任务为 cancelled（best-effort）。仅影响后端后续处理，不会删除已产出的文档。run_id：',
+          description: '取消后会尝试停止导入，已导入的文档会保留。任务 ID：',
           back: '返回',
           confirm: '取消任务',
         },

@@ -7,7 +7,7 @@ import { groupApi, rbacApi } from '@/lib/api/access'
 import { useTenantAccess } from '@/hooks/use-tenant-access'
 import { TENANT_PERMISSIONS, tenantAccessAllows } from '@/lib/tenant-permissions'
 import { queryKeys } from '@/lib/query-keys'
-import { formatApiError } from '@/lib/api-errors'
+import { formatApiError, toApiErrorInfo, type ApiErrorInfo } from '@/lib/api-errors'
 import { getAuthSessionKey } from '@/lib/auth-storage'
 import type { TenantGroupOut, TenantGroupMemberOut } from '@/types/backend'
 import { paginateDirectory, readDirectoryPages } from '@/lib/directory-pagination'
@@ -29,7 +29,7 @@ type Editor = {
   name: string
   external: string
   errors: { name?: string; external?: string }
-  error: string
+  error: ApiErrorInfo | null
 } & ({ mode: 'create'; group: null } | { mode: 'edit'; group: TenantGroupOut })
 type Addition = { group: TenantGroupOut; query: string; selected: string[]; raw: string; error: string; limit: number }
 
@@ -186,10 +186,10 @@ export function useGroupDirectory() {
     if (!canManage || lock.current) return
     const draft: Editor | null =
       mode === 'create'
-        ? { mode, group: null, name: '', external: '', errors: {}, error: '' }
+        ? { mode, group: null, name: '', external: '', errors: {}, error: null }
         : group === null
           ? null
-          : { mode, group, name: group.name, external: group.external_id ?? '', errors: {}, error: '' }
+          : { mode, group, name: group.name, external: group.external_id ?? '', errors: {}, error: null }
     if (draft === null) return
     opener.current = element
     setEditor(draft)
@@ -229,7 +229,7 @@ export function useGroupDirectory() {
     const captured = editor,
       { errors, payload } = groupDraft(captured.name, captured.external)
     if (Object.keys(errors).length) {
-      setEditor((previous) => (previous ? { ...previous, errors, error: '' } : null))
+      setEditor((previous) => (previous ? { ...previous, errors, error: null } : null))
       document.getElementById(errors.name ? 'group-edit-name' : 'group-edit-external')?.focus()
       return
     }
@@ -244,7 +244,7 @@ export function useGroupDirectory() {
     const canUpdateCache = () =>
       getAuthSessionKey() === sessionKey && client.getQueryCache().find({ queryKey: key, exact: true }) === origin
     const canPublish = () => mounted.current && lock.current === operation && canUpdateCache()
-    setEditor((previous) => (previous ? { ...previous, error: '', errors: {} } : null))
+    setEditor((previous) => (previous ? { ...previous, error: null, errors: {} } : null))
     try {
       const saved =
         captured.mode === 'create'
@@ -280,7 +280,7 @@ export function useGroupDirectory() {
     } catch (error) {
       if (canPublish())
         setEditor((previous) =>
-          previous ? { ...previous, error: formatApiError(error, '组信息保存失败，请重试。') } : null,
+          previous ? { ...previous, error: toApiErrorInfo(error, '组信息保存失败，请重试。') } : null,
         )
     } finally {
       finish(operation)

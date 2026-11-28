@@ -48,7 +48,7 @@ export function GroupDialogs({ controller: c }: { controller: GroupDirectoryCont
               <DialogHeader>
                 <DialogTitle>{edit.mode === 'create' ? '新建组' : '编辑组信息'}</DialogTitle>
                 <DialogDescription>
-                  {edit.mode === 'create' ? '创建后可以添加当前租户的已有成员。' : '修改当前组的名称或外部标识。'}
+                  {edit.mode === 'create' ? '创建后可添加当前租户已有成员。' : '修改名称或外部标识。'}
                 </DialogDescription>
               </DialogHeader>
               <form
@@ -91,7 +91,7 @@ export function GroupDialogs({ controller: c }: { controller: GroupDirectoryCont
                       aria-describedby={edit.errors.external ? 'group-external-error' : 'group-external-hint'}
                     />
                     <p id="group-external-hint" className={styles.fieldHint}>
-                      用于关联外部组标识，填写后不代表已完成同步。
+                      外部标识不代表同步已完成。
                     </p>
                     {edit.errors.external ? (
                       <p role="alert" id="group-external-error" className={styles.fieldError}>
@@ -100,16 +100,22 @@ export function GroupDialogs({ controller: c }: { controller: GroupDirectoryCont
                     ) : null}
                   </div>
                   {edit.error ? (
-                    <p role="alert" className={styles.domainError}>
-                      {edit.error}
-                    </p>
+                    <div role="alert" className={styles.domainError}>
+                      <span>{edit.error.message}</span>
+                      {edit.error.requestId ? (
+                        <details className="basis-full text-xs text-muted-foreground">
+                          <summary className="cursor-pointer">错误详情</summary>
+                          <p className="mt-1 break-all font-mono">request_id={edit.error.requestId}</p>
+                        </details>
+                      ) : null}
+                    </div>
                   ) : null}
                 </div>
                 <div className={styles.dialogFooter}>
                   <Button type="button" variant="outline" disabled={Boolean(c.busy)} onClick={c.closeEditor}>
                     取消
                   </Button>
-                  <Button type="submit" className={styles.primary} disabled={disabled}>
+                  <Button type="submit" disabled={disabled}>
                     {c.busy ? <Loader2 className="animate-spin motion-reduce:animate-none" /> : null}
                     {c.busy
                       ? edit.mode === 'create'
@@ -240,7 +246,7 @@ export function GroupDialogs({ controller: c }: { controller: GroupDirectoryCont
                     disabled={disabled}
                     placeholder="每行一个，或使用逗号分隔"
                   />
-                  <p className={styles.fieldHint}>一次最多200名，只能添加当前租户已有的成员。</p>
+                  <p className={styles.fieldHint}>每次最多 200 名当前租户已有成员。</p>
                 </details>
                 {add.error ? (
                   <p role="alert" className={styles.domainError}>
@@ -253,7 +259,7 @@ export function GroupDialogs({ controller: c }: { controller: GroupDirectoryCont
                 <Button type="button" variant="outline" disabled={Boolean(c.busy)} onClick={c.closeAddition}>
                   取消
                 </Button>
-                <Button type="submit" className={styles.primary} disabled={disabled}>
+                <Button type="submit" disabled={disabled}>
                   {c.busy ? <Loader2 className="animate-spin motion-reduce:animate-none" /> : null}
                   {c.busy ? '添加中' : '添加成员'}
                 </Button>

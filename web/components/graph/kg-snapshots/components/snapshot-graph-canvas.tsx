@@ -1,10 +1,11 @@
 'use client'
 
 import { Network, RefreshCcw } from '@/components/icons'
-import { useMemo, useRef } from 'react'
+import { useMemo, useRef, type CSSProperties } from 'react'
 
 import { useResizeObserver } from '@/hooks/use-resize-observer'
 import { cn } from '@/lib/utils'
+import { buildTypeColorMap } from '@/components/graph/graph-colors'
 
 import {
   getGraphNodeSizeClass,
@@ -15,7 +16,6 @@ import {
   graphLoadingDescription,
   graphLoadingTitle,
   layoutSnapshotCanvas,
-  snapshotToneClassName,
 } from '../snapshot-graph'
 import type { SnapshotStudioLink, SnapshotStudioNode } from '../types'
 
@@ -53,6 +53,7 @@ export function SnapshotGraphCanvas({
   const viewportWidth = measurements.width === 0 ? canvasLayout.width : measurements.width
   const viewportHeight = measurements.height === 0 ? canvasLayout.height : measurements.height
   const displayNodes = canvasLayout.nodes
+  const typeColors = useMemo(() => buildTypeColorMap(displayNodes), [displayNodes])
   const nodeById = useMemo(() => new Map(displayNodes.map((node) => [node.id, node])), [displayNodes])
   const filteredNodeIds = useMemo(() => {
     const ids = new Set<string>()
@@ -124,22 +125,7 @@ export function SnapshotGraphCanvas({
     })
     return new Set(sorted.slice(0, getProminentNodeLimit(isDenseGraph, mediumGraph)).map((node) => node.id))
   }, [displayNodes, isDenseGraph, mediumGraph])
-  const legendRows = useMemo(() => {
-    const colorByTone: Record<SnapshotStudioNode['tone'], string> = {
-      blue: 'bg-primary',
-      green: 'bg-success',
-      orange: 'bg-warning',
-      purple: 'bg-accent',
-      rose: 'bg-destructive',
-      amber: 'bg-warning',
-      teal: 'bg-success',
-    }
-    const seen = new Map<string, string>()
-    for (const node of displayNodes) {
-      if (!seen.has(node.type)) seen.set(node.type, colorByTone[node.tone])
-    }
-    return Array.from(seen.entries()).slice(0, 8)
-  }, [displayNodes])
+  const legendRows = Array.from(typeColors.entries()).slice(0, 8)
 
   return (
     <div
@@ -180,9 +166,11 @@ export function SnapshotGraphCanvas({
               </div>
             </div>
             <div className="mt-4 text-[15px] font-semibold text-foreground">{graphLoadingTitle(isLoading)}</div>
-            <div className="mt-1.5 text-[13px] leading-6 text-muted-foreground">
-              {graphLoadingDescription(isLoading, emptyMessage)}
-            </div>
+            {!isLoading ? (
+              <div className="mt-1.5 text-[13px] leading-6 text-muted-foreground">
+                {graphLoadingDescription(isLoading, emptyMessage)}
+              </div>
+            ) : null}
           </div>
         </div>
       ) : null}
@@ -250,15 +238,21 @@ export function SnapshotGraphCanvas({
               isDenseGraph ? 'gap-1' : 'gap-1.5',
               muted ? 'scale-95 opacity-25' : 'opacity-100 hover:scale-105',
             )}
-            style={{ left: `${node.x}%`, top: `${node.y}%` }}
+            style={
+              {
+                left: `${node.x}%`,
+                top: `${node.y}%`,
+                '--snapshot-node-color': typeColors.get(node.type),
+              } as CSSProperties
+            }
             onClick={(event) => onSelectNode(node.id, event.currentTarget)}
             aria-label={`选择节点 ${node.label}`}
           >
             <span
               className={cn(
-                'flex items-center justify-center rounded-full',
+                'flex items-center justify-center rounded-full bg-[color-mix(in_srgb,var(--snapshot-node-color)_15%,transparent)] text-foreground [--tw-ring-color:var(--snapshot-node-color)]',
                 getGraphNodeSizeClass(isDenseGraph, mediumGraph),
-                snapshotToneClassName(node.tone, selected),
+                selected ? 'ring-4 ring-offset-4 ring-offset-background' : 'ring-1',
               )}
             >
               {node.icon}
@@ -282,7 +276,7 @@ export function SnapshotGraphCanvas({
         {legendRows.length ? (
           legendRows.map(([label, color]) => (
             <span key={label} className="inline-flex items-center gap-1.5">
-              <span className={cn('h-2 w-2 rounded-full', color)} aria-hidden />
+              <span className="size-2 rounded-full" style={{ backgroundColor: color }} aria-hidden />
               {label}
             </span>
           ))

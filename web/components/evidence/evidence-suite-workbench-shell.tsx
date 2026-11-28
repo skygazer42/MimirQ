@@ -186,10 +186,9 @@ export function EvidenceSuiteWorkbenchShell({
             <div className="space-y-1">
               <div className="text-sm font-semibold text-foreground">导入待处理反馈</div>
               <div className="text-xs text-muted-foreground text-pretty">
-                当前链接携带了一个待处理的 <span className="font-mono">feedback_id</span>。确认目标 suite
-                后，可直接导入为 draft EvidenceItem。
+                当前链接关联一条待处理反馈。选择目标证据集后，可将它导入为草稿。
               </div>
-              <div className="text-[11px] font-mono text-foreground/80">feedback_id={pendingFeedbackId}</div>
+              <div className="text-[11px] font-mono text-foreground/80">反馈标识：{pendingFeedbackId}</div>
               {pendingFeedbackError !== undefined ? (
                 <p role="alert" className="break-words text-sm text-destructive">
                   {pendingFeedbackError}
@@ -223,7 +222,12 @@ export function EvidenceSuiteWorkbenchShell({
       ) : null}
 
       {datasetError !== null ? (
-        <WorkspaceNotice pending={datasetLoading} retry={() => detachPromise(loadDataset())}>
+        <WorkspaceNotice
+          placement="floating"
+          tone="warning"
+          pending={datasetLoading}
+          retry={() => detachPromise(loadDataset())}
+        >
           {datasetError}
         </WorkspaceNotice>
       ) : null}
@@ -431,7 +435,7 @@ export function EvidenceSuiteWorkbenchShell({
                   id="suite-desc"
                   value={suiteDesc}
                   onChange={(event) => setSuiteDesc(event.target.value)}
-                  placeholder="该 Suite 的范围 / 目标 / 约定…"
+                  placeholder="该证据集的范围、目标或约定…"
                   rows={3}
                 />
               </div>

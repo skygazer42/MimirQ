@@ -29,7 +29,12 @@ import {
 import { Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, Tooltip, XAxis, YAxis } from 'recharts'
 
 import { AppFrame } from '@/components/app-frame'
-import { OperationalWorkspace, WorkspaceNotice, workspaceStyles as ws } from '@/components/ui/operational-workspace'
+import {
+  OperationalWorkspace,
+  WorkspaceNotice,
+  WorkspaceNoticeStack,
+  workspaceStyles as ws,
+} from '@/components/ui/operational-workspace'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Panel } from '@/components/ui/panel'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -177,10 +182,33 @@ function ProfileChart({
   return rows.some((row) => row.value > 0) ? (
     <SafeResponsiveChart {...profileChartProps}>{children}</SafeResponsiveChart>
   ) : (
-    <div className={styles.chartEmpty}>
-      <BarChart3 className="size-6" aria-hidden="true" />
-      <p>暂无可展示的分布数据</p>
-    </div>
+    <p className={styles.chartEmpty}>暂无可展示的分布数据</p>
+  )
+}
+
+function ProfileDistribution({
+  categories,
+  hasData,
+  description,
+  children,
+}: Readonly<{
+  categories: readonly string[]
+  hasData: boolean
+  description: ReactNode
+  children: ReactNode
+}>) {
+  return hasData ? (
+    <div className={styles.charts}>{children}</div>
+  ) : (
+    <section className={styles.distributionEmpty}>
+      <h2>当前分类暂无分布统计</h2>
+      {description}
+      <ul aria-label="分布项目">
+        {categories.map((category) => (
+          <li key={category}>{category}</li>
+        ))}
+      </ul>
+    </section>
   )
 }
 
@@ -663,6 +691,14 @@ function DatasetProfileWorkspace({ datasetId, sessionKey }: Readonly<{ datasetId
   const uploadHref = `/knowledge/ingestion?datasetId=${encodeURIComponent(datasetId)}`
   const canExport = hasDocuments && latestValidScan !== undefined
   const completedAtLabel = latestValidScan?.finished_at ? formatDate(latestValidScan.finished_at) : '完成时间未记录'
+  const distributionEmptyDescription =
+    summary === null ? null : (
+      <>
+        <p>当前画像记录 {summary.total_documents.toLocaleString()} 篇文档，本分类的分布计数均为空或 0。</p>
+        {effectiveScanRun !== null && <p>最近扫描：{formatProfileRunStatus(effectiveScanRun.status)}</p>}
+        <p>{scanBusy ? '扫描结果保存后可重新读取分布统计。' : '可使用顶部“深度扫描”重新采集统计。'}</p>
+      </>
+    )
 
   let profileGate: ReactNode = null
   if (!hasDocuments) {
@@ -774,7 +810,7 @@ function DatasetProfileWorkspace({ datasetId, sessionKey }: Readonly<{ datasetId
         pending={summaryQuery.isFetching || scanRunsQuery.isFetching}
       >
         {scanSubmission.message}
-        {scanSubmission.status === 'unconfirmed' ? ' 后端可能已创建扫描，请先核对记录；重新提交会创建新扫描。' : null}
+        {scanSubmission.status === 'unconfirmed' ? ' 重新提交会新建扫描，请先核对记录。' : null}
       </WorkspaceNotice>
     ) : null
 
@@ -853,7 +889,50 @@ function DatasetProfileWorkspace({ datasetId, sessionKey }: Readonly<{ datasetId
         }
       >
         <div className={styles.content}>
-          {datasetQuery.isError || summaryQuery.isError ? (
+          {((datasetQuery.isError || summaryQuery.isError) && summary !== null) ||
+          (!scanConfigOpen && scanSubmissionNotice !== null) ||
+          (scanPollError !== null && scanRunning) ||
+          (scanRunsQuery.isError && latestValidScan !== undefined) ? (
+            <WorkspaceNoticeStack ariaLabel="数据画像状态提示">
+              {(datasetQuery.isError || summaryQuery.isError) && summary !== null ? (
+                <WorkspaceNotice
+                  tone="warning"
+                  title="画像读取失败"
+                  error={datasetQuery.error ?? summaryQuery.error}
+                  fallbackMessage="画像读取失败"
+                  retry={() => {
+                    void datasetQuery.refetch()
+                    void summaryQuery.refetch()
+                  }}
+                  retryLabel="重新读取画像"
+                  pending={datasetQuery.isFetching || summaryQuery.isFetching}
+                />
+              ) : null}
+              {scanConfigOpen ? null : scanSubmissionNotice}
+              {scanPollError !== null && scanRunning ? (
+                <WorkspaceNotice
+                  tone="warning"
+                  title="扫描状态读取异常"
+                  retry={() => setScanPollFailure(null)}
+                  retryLabel="继续读取扫描状态"
+                >
+                  {scanPollError}。后台任务可能仍在运行。
+                </WorkspaceNotice>
+              ) : null}
+              {scanRunsQuery.isError && latestValidScan !== undefined ? (
+                <WorkspaceNotice
+                  tone="warning"
+                  title="扫描记录更新失败，保留上次有效结果"
+                  error={scanRunsQuery.error}
+                  fallbackMessage="扫描记录读取失败"
+                  retry={() => void scanRunsQuery.refetch()}
+                  retryLabel="重新读取扫描历史"
+                  pending={scanRunsQuery.isFetching}
+                />
+              ) : null}
+            </WorkspaceNoticeStack>
+          ) : null}
+          {(datasetQuery.isError || summaryQuery.isError) && summary === null ? (
             <WorkspaceNotice
               retry={() => {
                 void datasetQuery.refetch()
@@ -863,21 +942,6 @@ function DatasetProfileWorkspace({ datasetId, sessionKey }: Readonly<{ datasetId
               pending={datasetQuery.isFetching || summaryQuery.isFetching}
             >
               {formatApiError(datasetQuery.error ?? summaryQuery.error, '画像读取失败')}
-            </WorkspaceNotice>
-          ) : null}
-          {scanConfigOpen ? null : scanSubmissionNotice}
-          {scanPollError !== null && scanRunning ? (
-            <WorkspaceNotice retry={() => setScanPollFailure(null)} retryLabel="继续读取扫描状态">
-              {scanPollError}。后台任务可能仍在运行。
-            </WorkspaceNotice>
-          ) : null}
-          {scanRunsQuery.isError && latestValidScan !== undefined && view !== 'history' ? (
-            <WorkspaceNotice
-              retry={() => void scanRunsQuery.refetch()}
-              retryLabel="重新读取扫描历史"
-              pending={scanRunsQuery.isFetching}
-            >
-              扫描记录更新失败，保留上次有效结果。{formatApiError(scanRunsQuery.error, '扫描记录读取失败')}
             </WorkspaceNotice>
           ) : null}
           {summary === null || charts === undefined ? (
@@ -1020,7 +1084,29 @@ function DatasetProfileWorkspace({ datasetId, sessionKey }: Readonly<{ datasetId
                         <TabsTrigger value="risk">解析与风险</TabsTrigger>
                       </TabsList>
                       <TabsContent value="documents" className={ws.tabContent}>
-                        <div className={styles.charts}>
+                        <ProfileDistribution
+                          categories={[
+                            '格式分布',
+                            '状态分布',
+                            '长度分布',
+                            'PDF 扫描占比',
+                            '文件大小分布',
+                            '页数分布',
+                            '语言分布',
+                            '目录分布',
+                          ]}
+                          hasData={[
+                            charts.fileTypes,
+                            charts.statuses,
+                            charts.lengths,
+                            charts.pdfScans,
+                            charts.fileSizes,
+                            charts.pageCounts,
+                            charts.languages,
+                            charts.directories,
+                          ].some((rows) => rows.some((row) => row.value > 0))}
+                          description={distributionEmptyDescription}
+                        >
                           <Panel variant="seamless" className={profilePanelClass}>
                             <ProfileCardHeader title="格式分布" caption="文件类型占比" />
                             <ProfileChart rows={charts.fileTypes}>
@@ -1230,10 +1316,18 @@ function DatasetProfileWorkspace({ datasetId, sessionKey }: Readonly<{ datasetId
                               </BarChart>
                             </ProfileChart>
                           </Panel>
-                        </div>
+                        </ProfileDistribution>
                       </TabsContent>
                       <TabsContent value="chunks" className={ws.tabContent}>
-                        <div className={styles.charts}>
+                        <ProfileDistribution
+                          categories={['切片数量分布', '平均切片长度', '切片长度分布', '切块目标检查']}
+                          hasData={
+                            [charts.chunkCounts, charts.averageChunkChars, charts.chunkLengths].some((rows) =>
+                              rows.some((row) => row.value > 0),
+                            ) || charts.chunkTargets.length > 0
+                          }
+                          description={distributionEmptyDescription}
+                        >
                           <Panel variant="seamless" className={profilePanelClass}>
                             <ProfileCardHeader title="切片数量分布" caption="每个文档生成的切片数量" />
                             <ProfileChart rows={charts.chunkCounts}>
@@ -1384,10 +1478,31 @@ function DatasetProfileWorkspace({ datasetId, sessionKey }: Readonly<{ datasetId
                               </div>
                             )}
                           </Panel>
-                        </div>
+                        </ProfileDistribution>
                       </TabsContent>
                       <TabsContent value="risk" className={ws.tabContent}>
-                        <div className={styles.charts}>
+                        <ProfileDistribution
+                          categories={['解析质量分布', '解析路由', '质量桶分布', 'PII 命中', '密钥 / Token 命中']}
+                          hasData={
+                            [
+                              charts.parseQuality,
+                              charts.parsingBackends,
+                              charts.qualityBuckets,
+                              charts.pii,
+                              charts.secrets,
+                            ].some((rows) => rows.some((row) => row.value > 0)) ||
+                            summary.parsing_provenance.docs_with_provenance > 0 ||
+                            summary.parsing_provenance.fallback_docs > 0 ||
+                            [
+                              summary.parsing_provenance.elapsed_ms_percentiles.p25,
+                              summary.parsing_provenance.elapsed_ms_percentiles.p50,
+                              summary.parsing_provenance.elapsed_ms_percentiles.p75,
+                              summary.parsing_provenance.elapsed_ms_percentiles.p90,
+                              summary.parsing_provenance.elapsed_ms_percentiles.p99,
+                            ].some((value) => value > 0)
+                          }
+                          description={distributionEmptyDescription}
+                        >
                           <Panel variant="seamless" className={profilePanelClass}>
                             <ProfileCardHeader
                               title="解析质量分布"
@@ -1428,7 +1543,7 @@ function DatasetProfileWorkspace({ datasetId, sessionKey }: Readonly<{ datasetId
                             </ProfileChart>
                           </Panel>
                           <Panel variant="seamless" className={profilePanelClass}>
-                            <ProfileCardHeader title="解析路由" caption="解析后端、耗时和后备路径概览" />
+                            <ProfileCardHeader title="解析路由" />
 
                             <ProfileChart rows={charts.parsingBackends}>
                               <BarChart data={charts.parsingBackends}>
@@ -1568,7 +1683,7 @@ function DatasetProfileWorkspace({ datasetId, sessionKey }: Readonly<{ datasetId
                               </BarChart>
                             </ProfileChart>
                           </Panel>
-                        </div>
+                        </ProfileDistribution>
                       </TabsContent>
                     </Tabs>
                   </TabsContent>
@@ -1586,7 +1701,7 @@ function DatasetProfileWorkspace({ datasetId, sessionKey }: Readonly<{ datasetId
                     重新读取扫描历史
                   </Button>
                 </div>
-                {scanRunsQuery.isError ? (
+                {scanRunsQuery.isError && latestValidScan === undefined ? (
                   <WorkspaceNotice
                     retry={() => {
                       void scanRunsQuery.refetch()

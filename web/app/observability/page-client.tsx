@@ -2,6 +2,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
+import { ChevronDown } from '@/components/icons'
 import { AppFrame } from '@/components/app-frame'
 import {
   OperationalWorkspace,
@@ -12,6 +13,7 @@ import {
 } from '@/components/ui/operational-workspace'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { SafeResponsiveChart } from '@/components/ui/safe-responsive-chart'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { observabilityApi } from '@/lib/api/observability'
@@ -178,42 +180,49 @@ export default function ObservabilityPage() {
         }
         toolbar={
           <>
-            <label className="flex items-center gap-2 text-[13px]">
-              时间范围
-              <select
-                aria-label="观测时间范围"
-                value={windowMinutes}
-                onChange={(event) => {
+            <div className="flex items-center gap-2 text-[13px]">
+              <span>时间范围</span>
+              <Select
+                value={String(windowMinutes)}
+                onValueChange={(value) => {
                   setSelectedQuery(null)
-                  setWindowMinutes(Number(event.target.value))
+                  setWindowMinutes(Number(value))
                 }}
-                className="h-10 rounded-md border border-input bg-background px-3"
               >
-                {WINDOW_PRESETS.map((item) => (
-                  <option key={item.value} value={item.value}>
-                    {item.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            {tab === 'query_analytics' ? (
-              <label className="flex items-center gap-2 text-[13px]">
-                慢查询阈值
-                <select
-                  value={slowThresholdSec}
-                  onChange={(event) => {
-                    setSelectedQuery(null)
-                    setSlowThresholdSec(Number(event.target.value))
-                  }}
-                  className="h-10 rounded-md border border-input bg-background px-3"
-                >
-                  {SLOW_PRESETS.map((item) => (
-                    <option key={item.value} value={item.value}>
+                <SelectTrigger aria-label="观测时间范围" className="w-32">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {WINDOW_PRESETS.map((item) => (
+                    <SelectItem key={item.value} value={String(item.value)}>
                       {item.label}
-                    </option>
+                    </SelectItem>
                   ))}
-                </select>
-              </label>
+                </SelectContent>
+              </Select>
+            </div>
+            {tab === 'query_analytics' ? (
+              <div className="flex items-center gap-2 text-[13px]">
+                <span>慢查询阈值</span>
+                <Select
+                  value={String(slowThresholdSec)}
+                  onValueChange={(value) => {
+                    setSelectedQuery(null)
+                    setSlowThresholdSec(Number(value))
+                  }}
+                >
+                  <SelectTrigger aria-label="慢查询阈值" className="w-28">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {SLOW_PRESETS.map((item) => (
+                      <SelectItem key={item.value} value={String(item.value)}>
+                        {item.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             ) : null}
           </>
         }
@@ -232,13 +241,16 @@ export default function ObservabilityPage() {
           </TabsList>
           {currentQuery.isError ? (
             <WorkspaceNotice
+              placement={currentQuery.data !== undefined ? 'floating' : 'inline'}
+              tone={currentQuery.data !== undefined ? 'warning' : 'error'}
+              title="观测数据读取失败"
+              error={currentQuery.error}
+              fallbackMessage="观测数据读取失败"
               retry={() => {
                 void currentQuery.refetch()
               }}
               pending={loading}
-            >
-              {formatApiError(currentQuery.error, '观测数据读取失败')}
-            </WorkspaceNotice>
+            />
           ) : null}
           {currentQuery.isPending ? (
             <p role="status" className="py-12 text-sm text-muted-foreground">
@@ -248,7 +260,14 @@ export default function ObservabilityPage() {
           <TabsContent value="summary" className={ws.tabContent}>
             {summary ? (
               <>
-                {!summary.enabled ? (
+                {!summary.enabled && summary.record_count > 0 ? (
+                  <p role="status" className="border-b border-border py-3 text-[13px] text-muted-foreground">
+                    指标记录未开启，以下展示当前范围内的历史记录。
+                    <Link href="/settings" className="underline underline-offset-4">
+                      前往设置
+                    </Link>
+                  </p>
+                ) : !summary.enabled ? (
                   <div className={ws.empty}>
                     <h2>指标记录未开启</h2>
                     <p>当前接口未启用指标记录，可在设置中配置观测选项。</p>
@@ -262,27 +281,36 @@ export default function ObservabilityPage() {
                     当前数据已截断；可缩短时间范围查看更完整的记录。
                   </p>
                 ) : null}
-                <WorkspaceMetrics
-                  items={[
-                    { label: '检索请求', value: summary.rag_trace_count },
-                    {
-                      label: '检索平均耗时',
-                      value: formatSeconds(summary.retrieval_avg_elapsed_sec),
-                      detail: `P95 ${formatSeconds(summary.retrieval_p95_elapsed_sec)}`,
-                    },
-                    {
-                      label: '重排平均耗时',
-                      value: formatSeconds(summary.rerank_avg_elapsed_sec),
-                      detail: `${summary.reranker_api_count} 次调用`,
-                    },
-                    { label: '平均引用数', value: summary.citations_avg_count?.toFixed(2) ?? '—' },
-                  ]}
-                />
+                {summary.enabled || summary.record_count > 0 ? (
+                  <WorkspaceMetrics
+                    items={[
+                      { label: '检索请求', value: summary.rag_trace_count },
+                      {
+                        label: '检索平均耗时',
+                        value: formatSeconds(summary.retrieval_avg_elapsed_sec),
+                        detail: `P95 ${formatSeconds(summary.retrieval_p95_elapsed_sec)}`,
+                      },
+                      {
+                        label: '重排平均耗时',
+                        value: formatSeconds(summary.rerank_avg_elapsed_sec),
+                        detail:
+                          summary.rerank_avg_elapsed_sec == null
+                            ? summary.reranker_api_count === 0
+                              ? '暂无调用'
+                              : `${summary.reranker_api_count} 次调用 · 暂未上报耗时`
+                            : `${summary.reranker_api_count} 次调用`,
+                      },
+                      { label: '平均引用数', value: summary.citations_avg_count?.toFixed(2) ?? '—' },
+                    ]}
+                  />
+                ) : null}
                 {summary.record_count === 0 ? (
-                  <div className={ws.empty}>
-                    <h2>当前时间范围暂无观测记录</h2>
-                    <p>有检索请求后，可在这里查看耗时、引用和异常。</p>
-                  </div>
+                  summary.enabled ? (
+                    <div className={ws.empty}>
+                      <h2>当前时间范围暂无观测记录</h2>
+                      <p>有检索请求后，可在这里查看耗时、引用和异常。</p>
+                    </div>
+                  ) : null
                 ) : (
                   <>
                     {chartData.length > 0 ? (
@@ -350,8 +378,14 @@ export default function ObservabilityPage() {
                     </div>
                   </>
                 )}
-                <details className="py-5 text-[13px]">
-                  <summary className="cursor-pointer font-medium">完整指标数据</summary>
+                <details className="group py-5 text-[13px]">
+                  <summary className="flex cursor-pointer list-none items-center gap-2 font-medium [&::-webkit-details-marker]:hidden">
+                    <ChevronDown
+                      className="size-3.5 shrink-0 text-muted-foreground transition-transform group-open:rotate-180"
+                      aria-hidden="true"
+                    />
+                    完整指标数据
+                  </summary>
                   <pre tabIndex={0} className="mt-4 max-h-96 overflow-auto bg-muted/30 p-4 text-xs leading-6">
                     {JSON.stringify(summary, null, 2)}
                   </pre>
@@ -362,122 +396,147 @@ export default function ObservabilityPage() {
           <TabsContent value="query_analytics" className={ws.tabContent}>
             {analytics ? (
               <>
-                {!analytics.enabled ? (
-                  <p className="border-b border-border py-4 text-sm text-muted-foreground">查询指标记录未开启</p>
-                ) : null}
-                {analytics.truncated ? (
-                  <p role="status" className="py-3 text-[13px] text-muted-foreground">
-                    当前查询分析已截断，可缩短时间范围。
+                {!analytics.enabled && analytics.record_count > 0 ? (
+                  <p role="status" className="border-b border-border py-3 text-[13px] text-muted-foreground">
+                    查询指标记录未开启，以下展示当前范围内的历史记录。
+                    <Link href="/settings" className="underline underline-offset-4">
+                      前往设置
+                    </Link>
                   </p>
-                ) : null}
-                <WorkspaceMetrics
-                  items={[
-                    { label: '检索请求', value: analytics.rag_trace_count },
-                    { label: '查询标识', value: analytics.unique_query_hashes },
-                    {
-                      label: '零命中率',
-                      value: formatPercent(analytics.zero_hit_rate),
-                      detail: `${analytics.zero_hit_count} 次`,
-                    },
-                    {
-                      label: '慢查询比例',
-                      value: formatPercent(analytics.slow_rate),
-                      detail: `${analytics.slow_count} 次`,
-                    },
-                    {
-                      label: 'P50 / P95 / P99',
-                      value: formatSeconds(analytics.retrieval_p50_elapsed_sec),
-                      detail: `${formatSeconds(analytics.retrieval_p95_elapsed_sec)} / ${formatSeconds(analytics.retrieval_p99_elapsed_sec)}`,
-                    },
-                  ]}
-                />
-                <section className={ws.section}>
-                  <h2 className={cn(ws.sectionTitle, 'mb-5')}>需要检查的查询</h2>
-                  {queryRows.length ? (
-                    <WorkspaceTableScroll label="查询分析表格" stickyActions>
-                      <table className={cn(ws.table, 'min-w-[620px]')} aria-label="查询分析">
-                        <thead>
-                          <tr>
-                            <th>查询标识</th>
-                            <th>记录类型</th>
-                            <th>次数</th>
-                            <th>最长耗时</th>
-                            <th>操作</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {queryRows.map((row) => (
-                            <tr key={`${row.kind}:${row.queryHash}`}>
-                              <td className="max-w-[340px] truncate font-mono text-xs" title={row.queryHash}>
-                                {row.queryHash}
-                              </td>
-                              <td className="whitespace-nowrap">{row.kind}</td>
-                              <td className="tabular-nums">{row.count}</td>
-                              <td className="tabular-nums">{formatSeconds(row.maxElapsedSec)}</td>
-                              <td>
-                                <Button
-                                  variant="ghost"
-                                  aria-label={`查看统计 ${row.queryHash}`}
-                                  onClick={() => setSelectedQuery(row)}
-                                >
-                                  查看统计
-                                </Button>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </WorkspaceTableScroll>
-                  ) : (
-                    <p className="py-8 text-sm text-muted-foreground">当前窗口未返回零命中或慢查询记录</p>
-                  )}
-                </section>
-                {analyticsChartData.length ? (
-                  <div className="grid gap-x-10 lg:grid-cols-2">
-                    <section className={ws.section}>
-                      <h2 className={ws.sectionTitle}>请求与异常趋势</h2>
-                      <SafeResponsiveChart className="mt-5 h-[260px]" minHeight={260}>
-                        <LineChart data={analyticsChartData}>
-                          <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
-                          <XAxis dataKey="time" tick={{ fontSize: 12 }} />
-                          <YAxis tick={{ fontSize: 12 }} allowDecimals={false} />
-                          <Tooltip />
-                          <Line name="请求" dataKey="requests" stroke="hsl(var(--primary))" dot={false} />
-                          <Line name="零命中" dataKey="zero_hit" stroke="hsl(var(--warning))" dot={false} />
-                          <Line name="慢查询" dataKey="slow" stroke="hsl(var(--muted-foreground))" dot={false} />
-                          <Line name="错误" dataKey="errors" stroke="hsl(var(--destructive))" dot={false} />
-                        </LineChart>
-                      </SafeResponsiveChart>
-                    </section>
-                    <section className={ws.section}>
-                      <h2 className={ws.sectionTitle}>零命中与慢查询比例</h2>
-                      <SafeResponsiveChart className="mt-5 h-[260px]" minHeight={260}>
-                        <LineChart data={analyticsChartData}>
-                          <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
-                          <XAxis dataKey="time" tick={{ fontSize: 12 }} />
-                          <YAxis tickFormatter={(value: number) => formatPercent(value, 0)} tick={{ fontSize: 12 }} />
-                          <Tooltip />
-                          <Line name="零命中比例" dataKey="zero_hit_rate" stroke="hsl(var(--warning))" dot={false} />
-                          <Line name="慢查询比例" dataKey="slow_rate" stroke="hsl(var(--primary))" dot={false} />
-                        </LineChart>
-                      </SafeResponsiveChart>
-                    </section>
+                ) : !analytics.enabled ? (
+                  <div className={ws.empty}>
+                    <h2>查询指标记录未开启</h2>
+                    <p>可在设置中启用指标记录，以查看查询命中、耗时和异常。</p>
+                    <Button asChild variant="outline">
+                      <Link href="/settings">前往设置</Link>
+                    </Button>
                   </div>
                 ) : null}
-                <section className={ws.section}>
-                  <h2 className={ws.sectionTitle}>错误类型</h2>
-                  <dl className="mt-4 divide-y divide-border">
-                    {topErrorKinds.map(([name, count]) => (
-                      <div key={name} className="flex justify-between gap-4 py-3 text-[13px]">
-                        <dt>{name}</dt>
-                        <dd>{count}</dd>
+                {analytics.enabled || analytics.record_count > 0 ? (
+                  <>
+                    {analytics.truncated ? (
+                      <p role="status" className="py-3 text-[13px] text-muted-foreground">
+                        当前查询分析已截断，可缩短时间范围。
+                      </p>
+                    ) : null}
+                    <WorkspaceMetrics
+                      items={[
+                        { label: '检索请求', value: analytics.rag_trace_count },
+                        { label: '查询标识', value: analytics.unique_query_hashes },
+                        {
+                          label: '零命中率',
+                          value: formatPercent(analytics.zero_hit_rate),
+                          detail: `${analytics.zero_hit_count} 次`,
+                        },
+                        {
+                          label: '慢查询比例',
+                          value: formatPercent(analytics.slow_rate),
+                          detail: `${analytics.slow_count} 次`,
+                        },
+                        {
+                          label: 'P50 / P95 / P99',
+                          value: formatSeconds(analytics.retrieval_p50_elapsed_sec),
+                          detail: `${formatSeconds(analytics.retrieval_p95_elapsed_sec)} / ${formatSeconds(analytics.retrieval_p99_elapsed_sec)}`,
+                        },
+                      ]}
+                    />
+                    <section className={ws.section}>
+                      <h2 className={cn(ws.sectionTitle, 'mb-5')}>需要检查的查询</h2>
+                      {queryRows.length ? (
+                        <WorkspaceTableScroll label="查询分析表格" stickyActions>
+                          <table className={cn(ws.table, 'min-w-[620px]')} aria-label="查询分析">
+                            <thead>
+                              <tr>
+                                <th>查询标识</th>
+                                <th>记录类型</th>
+                                <th>次数</th>
+                                <th>最长耗时</th>
+                                <th>操作</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {queryRows.map((row) => (
+                                <tr key={`${row.kind}:${row.queryHash}`}>
+                                  <td className="max-w-[340px] truncate font-mono text-xs" title={row.queryHash}>
+                                    {row.queryHash}
+                                  </td>
+                                  <td className="whitespace-nowrap">{row.kind}</td>
+                                  <td className="tabular-nums">{row.count}</td>
+                                  <td className="tabular-nums">{formatSeconds(row.maxElapsedSec)}</td>
+                                  <td>
+                                    <Button
+                                      variant="ghost"
+                                      aria-label={`查看统计 ${row.queryHash}`}
+                                      onClick={() => setSelectedQuery(row)}
+                                    >
+                                      查看统计
+                                    </Button>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </WorkspaceTableScroll>
+                      ) : (
+                        <p className="py-8 text-sm text-muted-foreground">当前窗口未返回零命中或慢查询记录</p>
+                      )}
+                    </section>
+                    {analyticsChartData.length ? (
+                      <div className="grid gap-x-10 lg:grid-cols-2">
+                        <section className={ws.section}>
+                          <h2 className={ws.sectionTitle}>请求与异常趋势</h2>
+                          <SafeResponsiveChart className="mt-5 h-[260px]" minHeight={260}>
+                            <LineChart data={analyticsChartData}>
+                              <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
+                              <XAxis dataKey="time" tick={{ fontSize: 12 }} />
+                              <YAxis tick={{ fontSize: 12 }} allowDecimals={false} />
+                              <Tooltip />
+                              <Line name="请求" dataKey="requests" stroke="hsl(var(--primary))" dot={false} />
+                              <Line name="零命中" dataKey="zero_hit" stroke="hsl(var(--warning))" dot={false} />
+                              <Line name="慢查询" dataKey="slow" stroke="hsl(var(--muted-foreground))" dot={false} />
+                              <Line name="错误" dataKey="errors" stroke="hsl(var(--destructive))" dot={false} />
+                            </LineChart>
+                          </SafeResponsiveChart>
+                        </section>
+                        <section className={ws.section}>
+                          <h2 className={ws.sectionTitle}>零命中与慢查询比例</h2>
+                          <SafeResponsiveChart className="mt-5 h-[260px]" minHeight={260}>
+                            <LineChart data={analyticsChartData}>
+                              <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
+                              <XAxis dataKey="time" tick={{ fontSize: 12 }} />
+                              <YAxis
+                                tickFormatter={(value: number) => formatPercent(value, 0)}
+                                tick={{ fontSize: 12 }}
+                              />
+                              <Tooltip />
+                              <Line
+                                name="零命中比例"
+                                dataKey="zero_hit_rate"
+                                stroke="hsl(var(--warning))"
+                                dot={false}
+                              />
+                              <Line name="慢查询比例" dataKey="slow_rate" stroke="hsl(var(--primary))" dot={false} />
+                            </LineChart>
+                          </SafeResponsiveChart>
+                        </section>
                       </div>
-                    ))}
-                  </dl>
-                  {!topErrorKinds.length ? (
-                    <p className="py-5 text-sm text-muted-foreground">当前窗口未记录错误类型</p>
-                  ) : null}
-                </section>
+                    ) : null}
+                    <section className={ws.section}>
+                      <h2 className={ws.sectionTitle}>错误类型</h2>
+                      <dl className="mt-4 divide-y divide-border">
+                        {topErrorKinds.map(([name, count]) => (
+                          <div key={name} className="flex justify-between gap-4 py-3 text-[13px]">
+                            <dt>{name}</dt>
+                            <dd>{count}</dd>
+                          </div>
+                        ))}
+                      </dl>
+                      {!topErrorKinds.length ? (
+                        <p className="py-5 text-sm text-muted-foreground">当前窗口未记录错误类型</p>
+                      ) : null}
+                    </section>
+                  </>
+                ) : null}
                 <details className="py-5 text-[13px]">
                   <summary className="cursor-pointer font-medium">完整查询分析数据</summary>
                   <pre tabIndex={0} className="mt-4 max-h-96 overflow-auto bg-muted/30 p-4 text-xs leading-6">

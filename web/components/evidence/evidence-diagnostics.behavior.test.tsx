@@ -103,7 +103,7 @@ describe('evidence diagnostic presentation through actual dialogs', () => {
     const render = mount(<SuiteDashboardDialog {...props} />)
     expect(dialog().textContent).toContain('p50 未提供')
     expect(dialog().textContent).toContain('p90 0s')
-    expect(dialog().textContent).toContain('mean 0.25s')
+    expect(dialog().textContent).toContain('均值 0.25s')
     const table = dialog().querySelector('table')
     expect(table?.querySelector('td')?.textContent).toBe('0')
     expect(table?.querySelector('th[scope="row"]')?.textContent).toBe('zh')
@@ -137,11 +137,11 @@ describe('evidence diagnostic presentation through actual dialogs', () => {
       onConvertFeedback: vi.fn(),
     }
     const render = mount(<HardcaseCandidatesDialog {...props} />)
-    expect(dialog().textContent).toContain('cites 0')
-    expect(dialog().textContent).toContain('cluster 0')
-    expect(dialog().textContent).not.toContain('version 0')
+    expect(dialog().textContent).toContain('引用 0')
+    expect(dialog().textContent).toContain('同组反馈 0')
+    expect(dialog().textContent).not.toContain('版本 0')
     render(<HardcaseCandidatesDialog {...props} snapshot={hardcaseSnapshot(0)} />)
-    expect(dialog().textContent).toContain('version 0')
+    expect(dialog().textContent).toContain('版本 0')
     expect(dialog().querySelector('label[for="evidence-hardcase-tags"]')).not.toBeNull()
     expect(dialog().querySelector('input#evidence-hardcase-tags')).not.toBeNull()
   })
@@ -211,15 +211,15 @@ describe('evidence diagnostic presentation through actual dialogs', () => {
         input.dispatchEvent(new Event('input', { bubbles: true }))
       })
     const button = Array.from(dialog().querySelectorAll<HTMLButtonElement>('button')).find(
-      (element) => element.textContent === '转为 draft',
+      (element) => element.textContent === '转为草稿',
     )!
     type('x'.repeat(65))
     act(() => button.click())
     expect(convert).not.toHaveBeenCalled()
     expect(input.value).toBe('x'.repeat(65))
     type('')
-    act(() => dialog().querySelector<HTMLButtonElement>('button[aria-label="复制 feedback_id"]')!.click())
-    expect(copy).toHaveBeenCalledExactlyOnceWith('feedback_id', 'feedback')
+    act(() => dialog().querySelector<HTMLButtonElement>('button[aria-label="复制反馈标识"]')!.click())
+    expect(copy).toHaveBeenCalledExactlyOnceWith('反馈标识', 'feedback')
     expect(convert).not.toHaveBeenCalled()
     act(() => button.click())
     expect(convert).toHaveBeenCalledExactlyOnceWith('feedback', 'hash')

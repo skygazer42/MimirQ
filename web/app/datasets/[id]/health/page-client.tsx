@@ -4,7 +4,7 @@ import { useEffect, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useParams } from 'next/navigation'
 import { toast } from 'sonner'
-import { Activity, BarChart3, Download, MoreHorizontal } from '@/components/icons'
+import { Activity, BarChart3, ChevronDown, Download, MoreHorizontal } from '@/components/icons'
 import { Bar, BarChart, CartesianGrid, Pie, PieChart, Tooltip, XAxis, YAxis } from 'recharts'
 
 import { AppFrame } from '@/components/app-frame'
@@ -29,7 +29,8 @@ import { downloadBlob } from '@/lib/download'
 import { queryKeys } from '@/lib/query-keys'
 import { sanitizeFilename } from '@/lib/sanitize'
 import { formatDate, formatFileSize } from '@/lib/utils'
-import { useRouter } from '@/i18n/navigation'
+import { Link, useRouter } from '@/i18n/navigation'
+import styles from './health.module.css'
 
 const PIE_COLORS = [
   'hsl(var(--chart-5))',
@@ -90,6 +91,7 @@ export default function DatasetHealthPage() {
     model === undefined || profile === undefined ? '未取得' : `${profile.pdf_scan.scanned}/${model.pdfCount}`
   const piiLabel = model === undefined ? '未取得' : model.piiRecorded ? model.piiCount : '无命中记录'
   const secretsLabel = model === undefined ? '未取得' : model.secretsRecorded ? model.secretsCount : '无命中记录'
+  const hasUnrecordedHits = model !== undefined && (!model.piiRecorded || !model.secretsRecorded)
   const generatedAtLabel = health === null ? '未取得' : formatDate(health.generated_at)
 
   const exportHealth = (format: 'json' | 'markdown') => {
@@ -163,32 +165,66 @@ export default function DatasetHealthPage() {
         }
       >
         {loadError ? (
-          <WorkspaceNotice retry={refreshHealth} retryLabel="重新读取健康概览" pending={isLoading}>
-            {health ? '更新失败，保留上次快照。' : null}
-            {formatApiError(loadError, '健康概览读取失败')}
-          </WorkspaceNotice>
+          <WorkspaceNotice
+            placement={health ? 'floating' : 'inline'}
+            tone={health ? 'warning' : 'error'}
+            title={health ? '更新失败，保留上次快照' : '健康概览读取失败'}
+            error={loadError}
+            fallbackMessage="健康概览读取失败"
+            retry={refreshHealth}
+            retryLabel="重新读取健康概览"
+            pending={isLoading}
+          />
         ) : null}
         {health !== null && model !== undefined ? (
           <>
             <WorkspaceMetrics
+              className={hasUnrecordedHits ? styles.metricsWithNotes : undefined}
               items={[
                 { label: '文档总数', value: <span data-health-document-count>{health.profile.total_documents}</span> },
                 { label: '总大小', value: totalSizeLabel },
                 {
                   label: '处理失败',
-                  value: health.ingestion.failed,
+                  value: (
+                    <Link
+                      href={
+                        '/knowledge?' + new URLSearchParams({ dataset: datasetId, status: 'failed', lifecycle: 'all' })
+                      }
+                      aria-label="查看处理失败文档"
+                      className="inline-flex min-h-11 min-w-11 items-center underline decoration-dotted underline-offset-4 sm:min-h-0 sm:min-w-0"
+                    >
+                      {health.ingestion.failed}
+                    </Link>
+                  ),
                   tone: health.ingestion.failed > 0 ? 'danger' : undefined,
                 },
                 {
                   label: '隔离文档',
-                  value: health.ingestion.quarantined,
+                  value: (
+                    <Link
+                      href={
+                        '/knowledge?' +
+                        new URLSearchParams({ dataset: datasetId, status: 'quarantined', lifecycle: 'all' })
+                      }
+                      aria-label="查看隔离文档"
+                      className="inline-flex min-h-11 min-w-11 items-center underline decoration-dotted underline-offset-4 sm:min-h-0 sm:min-w-0"
+                    >
+                      {health.ingestion.quarantined}
+                    </Link>
+                  ),
                   tone: health.ingestion.quarantined > 0 ? 'warning' : undefined,
                 },
                 { label: '扫描版 PDF', value: scannedPdfLabel },
-                { label: '个人信息命中', value: piiLabel },
-                { label: '密钥命中', value: secretsLabel },
+                ...(model.piiRecorded ? [{ label: '个人信息命中', value: piiLabel }] : []),
+                ...(model.secretsRecorded ? [{ label: '密钥命中', value: secretsLabel }] : []),
               ]}
             />
+            {hasUnrecordedHits ? (
+              <p className={styles.metricNotes} aria-label="命中记录说明">
+                {!model.piiRecorded ? <span>个人信息命中：{piiLabel}</span> : null}
+                {!model.secretsRecorded ? <span>密钥命中：{secretsLabel}</span> : null}
+              </p>
+            ) : null}
             <section className={ws.section}>
               <div className={ws.sectionHeading}>
                 <h2 className={ws.sectionTitle}>异常清单</h2>
@@ -234,8 +270,14 @@ export default function DatasetHealthPage() {
                 <p className={ws.muted}>当前报告没有命中的问题条目。</p>
               )}
             </section>
-            <details className={ws.section}>
-              <summary className="cursor-pointer text-[15px] font-semibold">状态与格式分布</summary>{' '}
+            <details className={`group ${ws.section}`}>
+              <summary className="flex cursor-pointer list-none items-center gap-2 text-[15px] font-semibold [&::-webkit-details-marker]:hidden">
+                <ChevronDown
+                  className="size-3.5 shrink-0 text-muted-foreground transition-transform group-open:rotate-180"
+                  aria-hidden="true"
+                />
+                状态与格式分布
+              </summary>
               <div className={ws.charts}>
                 <Panel variant="seamless" className={ws.section}>
                   <div className="flex items-center justify-between mb-4">
@@ -267,10 +309,14 @@ export default function DatasetHealthPage() {
                           />
                         </BarChart>
                       </SafeResponsiveChart>
-                      <div className="mt-3 flex flex-wrap gap-2">
+                      <div role="list" aria-label="入库状态图例" className="mt-3 flex flex-wrap gap-2">
                         {model.statuses.map((item) => (
-                          <span key={item.name} className="inline-flex items-center gap-2 text-xs">
-                            <span className="size-2 rounded-full bg-info" />
+                          <span key={item.name} role="listitem" className="inline-flex items-center gap-2 text-xs">
+                            <span
+                              aria-hidden="true"
+                              className="size-2 rounded-full"
+                              style={{ backgroundColor: item.fill }}
+                            />
                             <span className="font-medium">{item.name}</span>
                             <span className="font-mono text-muted-foreground">{item.value}</span>
                           </span>
@@ -281,7 +327,6 @@ export default function DatasetHealthPage() {
                     <EmptyState
                       icon={Activity}
                       title="暂无状态数据"
-                      description="后端未返回可用的状态分布。"
                       className="min-h-[160px]"
                     />
                   )}
@@ -304,7 +349,6 @@ export default function DatasetHealthPage() {
                             dataKey="value"
                             nameKey="name"
                             outerRadius={70}
-                            label
                           />
                           <Tooltip
                             contentStyle={{
@@ -316,10 +360,14 @@ export default function DatasetHealthPage() {
                           />
                         </PieChart>
                       </SafeResponsiveChart>
-                      <div className="mt-3 flex flex-wrap gap-2">
+                      <div role="list" aria-label="格式分布图例" className="mt-3 flex flex-wrap gap-2">
                         {model.fileTypes.map((item) => (
-                          <span key={item.name} className="inline-flex items-center gap-2 text-xs">
-                            <span className="size-2 rounded-full bg-info" />
+                          <span key={item.name} role="listitem" className="inline-flex items-center gap-2 text-xs">
+                            <span
+                              aria-hidden="true"
+                              className="size-2 rounded-full"
+                              style={{ backgroundColor: item.fill }}
+                            />
                             <span className="font-medium">{item.name}</span>
                             <span className="font-mono text-muted-foreground">{item.value}</span>
                           </span>

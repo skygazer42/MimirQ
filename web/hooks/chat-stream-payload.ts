@@ -1,6 +1,6 @@
 import type { ChatMessageMetadata, ChatRequest, Message } from '@/types/chat'
 import type { Citation } from '@/types/processing'
-import { chatMessageMetadataSchema } from '@/lib/chat-message-metadata'
+import { chatMessageMetadataSchema, ontologyActionProposalSchema } from '@/lib/chat-message-metadata'
 import { readNonEmptyString } from '@/lib/primitive-text'
 
 export type ChatRagConfig = NonNullable<ChatRequest['rag_config']>
@@ -188,6 +188,9 @@ export function buildDoneAssistantMessage({
     citations,
     steps,
     message_metadata: buildMessageMetadata(doneData, metrics, requestId),
+    ...(doneData.ontology_action !== undefined && {
+      ontology_action: ontologyActionProposalSchema.parse(doneData.ontology_action),
+    }),
     created_at: new Date().toISOString(),
   }
 }

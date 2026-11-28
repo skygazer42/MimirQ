@@ -40,7 +40,7 @@ type ApplyThemeAppearanceOptions = {
 const SURFACE_THEME_PRESETS = {
   ocean: {
     key: 'ocean',
-    previewSurface: '#faf9f7',
+    previewSurface: '#ffffff',
     defaultPrimary: '#20262e',
   },
   neutral: {

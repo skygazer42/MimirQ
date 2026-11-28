@@ -18,7 +18,6 @@ type GraphNodeDirectoryProps = {
   hasLoadError: boolean
   onQueryChange: (value: string) => void
   onSelect: (node: GraphNode) => void
-  onOpenScope: () => void
 }
 
 export function GraphNodeDirectory({
@@ -31,7 +30,6 @@ export function GraphNodeDirectory({
   hasLoadError,
   onQueryChange,
   onSelect,
-  onOpenScope,
 }: Readonly<GraphNodeDirectoryProps>) {
   const deferredQuery = useDeferredValue(query)
   const hasSearch = deferredQuery.trim() !== ''
@@ -61,17 +59,22 @@ export function GraphNodeDirectory({
           </div>
         ) : groups.length === 0 && hasLoadError ? null : filtered.length === 0 ? (
           <div className={styles.directoryState}>
-            <p>{hasSearch ? '没有匹配的实体' : '当前范围没有节点'}</p>
-            <Button variant="ghost" onClick={hasSearch ? () => onQueryChange('') : onOpenScope}>
-              {hasSearch ? '清除搜索' : '选择图谱'}
-            </Button>
+            <p>{hasSearch ? '没有匹配的实体' : '当前范围暂无节点'}</p>
+            {hasSearch && (
+              <Button variant="ghost" onClick={() => onQueryChange('')}>
+                清除搜索
+              </Button>
+            )}
           </div>
         ) : (
           filtered.map((group) => (
-            <details open key={group.key} className={styles.directoryGroup}>
+            <details open key={group.key} className={styles.directoryGroup} data-entity-type={group.label}>
               <summary>
                 <ChevronDown />
-                <span>{group.label}</span>
+                <span className={styles.typeBadge}>
+                  <i style={{ backgroundColor: group.color }} aria-hidden="true" />
+                  {group.label}
+                </span>
                 <small>{group.nodes.length}</small>
               </summary>
               <ul>

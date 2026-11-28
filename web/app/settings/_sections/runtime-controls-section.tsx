@@ -31,7 +31,7 @@ function RuntimeGroup({
 }: Readonly<{
   icon: PlatformIcon
   title: string
-  description: string
+  description?: string
   action?: ReactNode
   children?: ReactNode
 }>) {
@@ -42,7 +42,7 @@ function RuntimeGroup({
           <Icon className={settingsTextTokens.panelTitleIcon} />
           {title}
         </h3>
-        <p className={cn(settingsTextTokens.helpText, 'mt-1')}>{description}</p>
+        {description ? <p className={cn(settingsTextTokens.helpText, 'mt-1')}>{description}</p> : null}
       </div>
       <div className="min-w-0 space-y-4">
         {action ? <div className="flex justify-end">{action}</div> : null}
@@ -139,7 +139,7 @@ export function RuntimeControlsSection({
           </div>
         </RuntimeGroup>
 
-        <RuntimeGroup icon={Database} title="性能与缓存" description="去重与缓存为尽力而为，Redis 不可用时放行主流程">
+        <RuntimeGroup icon={Database} title="性能与缓存">
           <div className="divide-y divide-border/60">
             <OptionRow
               title="上传去重"
@@ -221,7 +221,6 @@ export function RuntimeControlsSection({
         <RuntimeGroup
           icon={Network}
           title="子图编排"
-          description="将检索和生成拆成子图节点，便于后续扩展编排"
           action={
             <SettingsSwitch
               checked={langgraph.use_subgraphs}

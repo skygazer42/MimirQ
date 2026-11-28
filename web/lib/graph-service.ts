@@ -14,6 +14,7 @@ type GraphRequestOptions = {
   documentIds?: string[]
   datasetId?: string
   pipelineHash?: string
+  preferOntology?: boolean
 }
 
 async function isKgEnabled(signal?: AbortSignal): Promise<boolean> {
@@ -31,6 +32,7 @@ function buildGraphParams(options: GraphRequestOptions) {
     document_ids: options.documentIds,
     dataset_id: options.datasetId,
     pipeline_hash: options.pipelineHash,
+    prefer_ontology: options.preferOntology,
     include_entity_links: options.includeEntityLinks,
     include_relation_links: options.includeRelationLinks,
     min_shared_events: options.minSharedEvents,
@@ -43,8 +45,17 @@ export async function fetchInitialGraph(options: GraphRequestOptions = {}, signa
     return { nodes: [], links: [] }
   }
 
-  const data = await kgApi.getGraph(buildGraphParams(options), { signal })
-  return structuredClone({ nodes: data.nodes, links: data.links })
+  const { nodes, links, stats } = await kgApi.getGraph(buildGraphParams(options), { signal })
+  const ontologyVersionId = stats?.ontology_version_id
+  return structuredClone(
+    typeof ontologyVersionId === 'string'
+      ? {
+          nodes,
+          links: links.map((link) => ({ ...link, id: typeof link.meta?.id === 'string' ? link.meta.id : undefined })),
+          ontologyVersionId,
+        }
+      : { nodes, links },
+  )
 }
 
 export async function expandGraphNode(

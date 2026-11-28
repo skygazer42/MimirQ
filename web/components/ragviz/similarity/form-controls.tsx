@@ -16,11 +16,11 @@ export type CollectionSelection = {
 }
 
 const similaritySelectClass =
-  'h-10 w-full appearance-none rounded-md border border-input bg-background px-3 pr-9 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring'
+  'h-9 w-full max-sm:h-11 appearance-none rounded-md border border-input bg-background px-3 pr-9 text-[13px] text-foreground outline-none max-sm:text-base focus-visible:ring-2 focus-visible:ring-ring'
 export const similarityFieldClass =
-  'h-10 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring'
+  'h-9 w-full max-sm:h-11 rounded-md border border-input bg-background px-3 text-[13px] text-foreground outline-none max-sm:text-base focus-visible:ring-2 focus-visible:ring-ring'
 const similarityIconControlClass =
-  'size-10 shrink-0 rounded-md border-border bg-background text-muted-foreground hover:text-foreground'
+  'size-9 shrink-0 max-sm:size-11 rounded-md border-border bg-background text-muted-foreground hover:text-foreground'
 
 export function isEmptyCollectionOption(option: SelectOption) {
   return typeof option.count === 'number' && option.count <= 0
@@ -47,9 +47,7 @@ export function CollectionSelectorBlock({
 }>) {
   return (
     <div className="space-y-1.5">
-      {showLabel ? (
-        <div className="text-[11px] font-medium uppercase tracking-[0.08em] text-foreground/72">{label}</div>
-      ) : null}
+      {showLabel ? <div className="text-[13px] font-medium text-foreground">{label}</div> : null}
       <div className="space-y-1.5">
         {selections.map(({ collectionId, rowId }, index) => (
           <div key={rowId} className="flex items-center gap-1.5">

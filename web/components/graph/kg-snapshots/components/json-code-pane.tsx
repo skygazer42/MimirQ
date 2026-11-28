@@ -93,21 +93,25 @@ export function JsonCodePane({
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-card">
-      <div className="flex shrink-0 items-center justify-between border-b border-border/70 bg-[linear-gradient(180deg,hsl(var(--background)),hsl(var(--muted)/0.15))] px-4 py-2.5">
+      <div className="flex shrink-0 items-center justify-between border-b border-border px-4 py-3 md:px-6">
         <div className="min-w-0">
-          <div className="inline-flex items-center gap-1.5 rounded-md border border-border/70 bg-card px-2 py-0.5 text-[10.5px] font-semibold tracking-[0.08em] text-muted-foreground">
-            <FileJson className="h-3 w-3 text-primary/70" aria-hidden="true" />
-            {label}
+          <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+            <FileJson className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+            <span className="truncate">{title}</span>
+            <span className="shrink-0 text-xs font-normal text-muted-foreground">{label}</span>
           </div>
-          <div className="mt-1 truncate text-[13px] font-semibold text-foreground">{title}</div>
-          {subtitle ? <div className="mt-0.5 truncate text-[11px] text-muted-foreground">{subtitle}</div> : null}
+          {subtitle ? (
+            <div title={subtitle} className="mt-0.5 truncate text-xs text-muted-foreground">
+              {subtitle}
+            </div>
+          ) : null}
         </div>
-        <div className="ml-4 flex shrink-0 items-center gap-1 rounded-md border border-border/70 bg-card p-0.5">
+        <div className="ml-4 flex shrink-0 items-center gap-1">
           <Button
             type="button"
             variant="ghost"
             size="icon"
-            className="h-8 w-8 rounded-lg"
+            className="size-11 rounded-md sm:size-9"
             title="复制 JSON"
             aria-label="复制 JSON"
             onClick={onCopy}
@@ -119,7 +123,7 @@ export function JsonCodePane({
             type="button"
             variant="ghost"
             size="icon"
-            className="h-8 w-8 rounded-lg"
+            className="size-11 rounded-md sm:size-9"
             title="导出 JSON"
             aria-label="导出 JSON"
             onClick={onDownload}

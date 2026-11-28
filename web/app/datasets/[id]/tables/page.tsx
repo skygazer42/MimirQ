@@ -23,9 +23,9 @@ import { getAuthSessionKey, subscribeAuthSession } from '@/lib/auth-storage'
 import { datasetApi } from '@/lib/api'
 import { reportClientError } from '@/lib/client-logging'
 import { queryKeys } from '@/lib/query-keys'
-import { cn } from '@/lib/utils'
 
 import type { DatasetTableAsset, TableQueryResponse } from '@/types'
+import styles from './tables.module.css'
 
 function getTableLabel(table: DatasetTableAsset): string {
   const sheetName = table.sheet_name?.trim()
@@ -44,43 +44,17 @@ function TableAssetsEmptyState({ datasetId }: Readonly<{ datasetId: string }>) {
   return (
     <section className="flex min-h-0 flex-1 items-center justify-center overflow-y-auto px-5 py-10 text-center">
       <div className="my-auto w-full max-w-lg">
-        <div
-          aria-hidden="true"
-          className="mx-auto mb-6 w-48 rounded-xl border border-border/70 bg-card p-3 shadow-subtle"
-        >
-          <div className="mb-2 flex items-center gap-2">
-            <Table2 className="size-4 text-ring" />
-            <span className="h-2 w-20 rounded bg-muted" />
-          </div>
-          <div className="grid grid-cols-3 gap-1.5 border-t border-border/60 pt-2">
-            {Array.from({ length: 9 }, (_, index) => (
-              <span key={index} className={cn('h-2 rounded', index < 3 ? 'bg-muted-foreground/25' : 'bg-muted')} />
-            ))}
-          </div>
-        </div>
-        <h2 className="text-lg font-semibold">当前数据集尚无结构化表格资产</h2>
+        <Table2 aria-hidden="true" className="mx-auto mb-4 size-7 text-muted-foreground" />
+        <h2 className="text-lg font-medium">暂无表格资产</h2>
         <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-muted-foreground">
-          包含表格的文档完成解析入库后，可在这里查看表头、预览数据，并进行表格查询。
+          含表格的文档解析入库后，可在这里预览数据并进行只读查询。
         </p>
-        <ul
-          aria-label="表格资产能力"
-          className="mt-4 flex flex-wrap justify-center gap-2 text-xs text-muted-foreground"
-        >
-          {['结构预览', '只读 SQL', '自然语言问表'].map((label) => (
-            <li key={label} className="rounded-full bg-muted/60 px-2.5 py-1">
-              {label}
-            </li>
-          ))}
-        </ul>
         <div className="mt-6 flex flex-wrap justify-center gap-2.5">
           <Button asChild className="gap-2 bg-accent text-accent-foreground hover:bg-accent/90">
             <Link href={`/knowledge/ingestion?datasetId=${encodeURIComponent(datasetId)}`}>
               <Cloud className="size-4" />
               前往入库操作
             </Link>
-          </Button>
-          <Button asChild variant="outline">
-            <Link href={`/datasets/${encodeURIComponent(datasetId)}/ingestion`}>配置入库策略</Link>
           </Button>
         </div>
       </div>
@@ -191,18 +165,19 @@ function DatasetTablesWorkspace({ datasetId }: Readonly<{ datasetId: string }>) 
       }
     >
       {loadError ? (
-        <div className="px-5">
-          <WorkspaceNotice
-            retry={() => {
-              if (datasetQuery.isError) void datasetQuery.refetch()
-              if (tablesQuery.isFetchNextPageError) void fetchNextPage({ cancelRefetch: false })
-              else if (tablesQuery.isError) void tablesQuery.refetch()
-            }}
-            pending={isLoading}
-          >
-            {formatApiError(loadError, '表格读取失败')}
-          </WorkspaceNotice>
-        </div>
+        <WorkspaceNotice
+          placement="floating"
+          tone="warning"
+          title="表格读取失败"
+          error={loadError}
+          fallbackMessage="表格读取失败"
+          retry={() => {
+            if (datasetQuery.isError) void datasetQuery.refetch()
+            if (tablesQuery.isFetchNextPageError) void fetchNextPage({ cancelRefetch: false })
+            else if (tablesQuery.isError) void tablesQuery.refetch()
+          }}
+          pending={isLoading}
+        />
       ) : null}
       {showEmptyStage ? (
         <TableAssetsEmptyState datasetId={datasetId} />
@@ -230,8 +205,9 @@ function DatasetTablesWorkspace({ datasetId }: Readonly<{ datasetId: string }>) 
                   <button
                     key={item.table_id}
                     type="button"
-                    className={ws.directoryRow}
+                    className={`${ws.directoryRow} ${styles.tableRow}`}
                     data-selected={selectedTable?.table_id === item.table_id}
+                    aria-current={selectedTable?.table_id === item.table_id ? 'true' : undefined}
                     aria-label={`选择表 ${tableLabel}`}
                     onClick={() => {
                       setSelectedTableId(item.table_id)
@@ -353,13 +329,16 @@ function TableDetails({
       </div>
       {detailQuery.isError ? (
         <WorkspaceNotice
+          placement="floating"
+          tone="warning"
+          title="表格详情读取失败"
+          error={detailQuery.error}
+          fallbackMessage="表格详情读取失败"
           retry={() => {
             void detailQuery.refetch()
           }}
           pending={detailQuery.isFetching}
-        >
-          {formatApiError(detailQuery.error, '表格详情读取失败')}
-        </WorkspaceNotice>
+        />
       ) : null}
       <TabsList className={ws.tabList} aria-label="表格工具">
         <TabsTrigger value="data">数据预览</TabsTrigger>
@@ -437,7 +416,11 @@ function TableDetails({
           {sqlRun.isError && (
             <WorkspaceNotice>{formatApiError(sqlRun.error, '查询失败，只支持只读 SQL。')}</WorkspaceNotice>
           )}
-          {sqlRun.data && <TableResult result={sqlRun.data} />}
+          {sqlRun.data && (
+            <div className="mt-5">
+              <TableResult result={sqlRun.data} />
+            </div>
+          )}
         </section>
       </TabsContent>
       <TabsContent value="ask" className={ws.tabContent}>

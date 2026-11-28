@@ -37,7 +37,6 @@ describe('SnapshotNodeDetailsRail', () => {
             description: 'source node',
             x: 0,
             y: 0,
-            tone: 'blue',
             icon: <span>A</span>,
             occurrences: 1,
             status: '一致',

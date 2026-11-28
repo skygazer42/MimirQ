@@ -2,13 +2,13 @@ import type { PromptTemplate } from '@/lib/api/prompts'
 
 const SCENARIOS = {
   all: { key: 'all', label: '全部', tone: 'neutral' },
-  rag_answer: { key: 'rag_answer', label: '问答', tone: 'blue' },
-  rag_query_rewrite: { key: 'rag_query_rewrite', label: '查询改写', tone: 'teal' },
-  rag_post_retrieval: { key: 'rag_post_retrieval', label: '后处理', tone: 'violet' },
+  rag_answer: { key: 'rag_answer', label: '问答', tone: 'rust' },
+  rag_query_rewrite: { key: 'rag_query_rewrite', label: '查询改写', tone: 'indigo' },
+  rag_post_retrieval: { key: 'rag_post_retrieval', label: '后处理', tone: 'amber' },
   kg: { key: 'kg', label: '知识图谱', tone: 'violet' },
-  chunk_meta: { key: 'chunk_meta', label: '切块元数据', tone: 'blue' },
-  evaluation: { key: 'evaluation', label: '评测', tone: 'green' },
-  vertical: { key: 'vertical', label: '行业', tone: 'amber' },
+  chunk_meta: { key: 'chunk_meta', label: '切块元数据', tone: 'green' },
+  evaluation: { key: 'evaluation', label: '评测', tone: 'teal' },
+  vertical: { key: 'vertical', label: '行业', tone: 'neutral' },
   other: { key: 'other', label: '其他', tone: 'neutral' },
 } as const
 export const PROMPT_SCENARIOS = Object.values(SCENARIOS)

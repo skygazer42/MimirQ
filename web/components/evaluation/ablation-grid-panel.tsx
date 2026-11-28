@@ -64,7 +64,7 @@ export function AblationGridPanel({
             笛卡尔网格批量
           </h3>
           <p className="mt-1 text-xs leading-5 text-muted-foreground">
-            按参数数组组合提交一个批次，由后端接受并调度运行；本次最多 {MAX_GRID_COMBINATIONS} 组。
+            每批最多 {MAX_GRID_COMBINATIONS} 组。
           </p>
           <p className="mt-1 text-[11px] leading-5 text-muted-foreground">支持字段：{ABLATION_GRID_KEYS.join(' / ')}</p>
         </div>

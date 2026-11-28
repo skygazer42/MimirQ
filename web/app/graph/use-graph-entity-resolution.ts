@@ -55,7 +55,10 @@ export function useGraphEntityResolution({
   const resolutionViewRef = useRef<object | null>(null)
 
   const selectedEntityId =
-    dataSource === 'live' && selectedNode !== null && getGraphNodeKind(selectedNode) === 'entity'
+    dataSource === 'live' &&
+    selectedNode !== null &&
+    !selectedNode.meta?.ontology_entity_id &&
+    getGraphNodeKind(selectedNode) === 'entity'
       ? selectedNode.id
       : null
   const activeEntityId = isDetailOpen ? selectedEntityId : null

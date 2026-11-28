@@ -364,7 +364,7 @@ export function useEvidenceSuiteWorkbenchState(datasetId: string, options?: { in
     } catch (error: unknown) {
       if (!isCurrent()) return false
 
-      setSuitesError(formatApiError(error, '加载 Evidence Suites 失败'))
+      setSuitesError(formatApiError(error, '读取证据集失败'))
       return false
     } finally {
       if (isCurrent()) {
@@ -402,7 +402,7 @@ export function useEvidenceSuiteWorkbenchState(datasetId: string, options?: { in
     } catch (error: unknown) {
       if (!isCurrent()) return false
 
-      setItemsError(formatApiError(error, '加载 Evidence Items 失败'))
+      setItemsError(formatApiError(error, '读取证据条目失败'))
       return false
     } finally {
       if (isCurrent()) {
@@ -616,7 +616,7 @@ export function useEvidenceSuiteWorkbenchState(datasetId: string, options?: { in
       })
       if (!isCurrent()) return
 
-      toast.success('已创建 Evidence Suite')
+      toast.success('已创建证据集')
       setCreateSuiteOpen(false)
       setSuites((prev) => [suite, ...prev])
       if (sameSuiteSelection()) setSelectedSuiteId(suite.id)
@@ -906,7 +906,8 @@ export function useEvidenceSuiteWorkbenchState(datasetId: string, options?: { in
         const updated = await request(itemId)
         if (!isCurrent()) return
         setItems((previous) => previous.map((item) => (item.id === itemId ? updated : item)))
-        if (sameItemSelection()) toast.success({ review: '已提交复核', approve: '已通过', archive: '已归档' }[action])
+        if (sameItemSelection())
+          toast.success({ review: '已标记为已复核', approve: '已通过', archive: '已归档' }[action])
         detachPromise(currentLoaders.current.suites())
         detachPromise(currentLoaders.current.items())
       } finally {
@@ -930,7 +931,7 @@ export function useEvidenceSuiteWorkbenchState(datasetId: string, options?: { in
       try {
         await updateItemStatus(itemId, 'review')
       } catch (error: unknown) {
-        if (sameItemSelection()) toast.error(formatApiError(error, '提交复核失败'))
+        if (sameItemSelection()) toast.error(formatApiError(error, '标记复核失败'))
       }
     },
     [updateItemStatus, itemOwner],
@@ -1141,7 +1142,7 @@ export function useEvidenceSuiteWorkbenchState(datasetId: string, options?: { in
       citations: whyMissedCitations,
       report: whyMissedReport,
     })
-    toast.success('已导出 Why-missed 报告')
+    toast.success('已导出漏召排查报告')
   }, [
     datasetId,
     selectedItem?.id,

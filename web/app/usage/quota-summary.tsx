@@ -3,6 +3,7 @@
 import { BarChart3, Database, FileText, Gauge, TextCursorInput } from '@/components/icons'
 import { cn } from '@/lib/utils'
 import { Skeleton } from '@/components/ui/skeleton'
+import { useMediaQuery } from '@/hooks/use-media-query'
 import { formatCount, formatWindow, quotaMode, quotaStatus, quotaValue, type QuotaReading } from './usage-model'
 import styles from './usage.module.css'
 
@@ -31,23 +32,35 @@ function QuotaProgress({ quota }: Readonly<{ quota: QuotaReading }>) {
 }
 
 export function QuotaSummary({ quotas, pending }: Readonly<{ quotas: readonly QuotaReading[]; pending: Pending }>) {
-  return (
-    <section className={styles.quotaBand} aria-label="租户配额概览">
+  const desktop = useMediaQuery('(min-width: 1200px)')
+  const allDisabled = quotas.length === 5 && quotas.every((quota) => quota.enabled === false)
+  const readings = (
+    <div
+      className={styles.quotaBand}
+      tabIndex={desktop ? undefined : 0}
+      role="group"
+      aria-label={desktop ? '配额概览' : '配额概览，可横向滚动'}
+    >
       {quotas.map((quota) => {
         const Icon = quotaIcons[quota.key]
         const busy = isQuotaPending(quota, pending)
         return (
-          <section key={quota.key} aria-label={quota.title} className={styles.quotaItem} aria-busy={busy}>
+          <section
+            key={quota.key}
+            aria-label={quota.title}
+            className={cn(styles.quotaItem, quota.enabled !== true && styles.inactiveQuota)}
+            aria-busy={busy}
+          >
             <h2>
               <Icon />
               <span>{quota.title}</span>
-              {quota.exceeded ? <span className={styles.limitState}>已达上限</span> : null}
             </h2>
-            <strong className={cn(quota.enabled !== true && styles.inactiveValue)}>
+            <strong className={cn(styles.quotaValue, quota.enabled !== true && styles.inactiveValue)}>
               {quota.enabled ? (
                 <>
                   {quotaValue(quota.used, quota)}
-                  {quota.key === 'qps' ? <small> 请求 / 秒</small> : null}
+                  <small>{quota.key === 'qps' ? ' 请求/秒 · 突发 ' : ' / '}</small>
+                  {quotaValue(quota.limit, quota)}
                 </>
               ) : busy ? (
                 <Skeleton className="h-6 w-24" />
@@ -55,15 +68,14 @@ export function QuotaSummary({ quotas, pending }: Readonly<{ quotas: readonly Qu
                 quotaStatus(quota)
               )}
             </strong>
-            {quota.enabled ? (
-              <span className={styles.quotaLimit}>
-                {quota.key === 'qps'
-                  ? `突发 ${quotaValue(quota.limit, quota)}`
-                  : `上限 ${quotaValue(quota.limit, quota)}`}
-              </span>
-            ) : null}
             <QuotaProgress quota={quota} />
             <span className={styles.quotaScope}>
+              {quota.enabled ? (
+                <span className={cn(styles.status, styles[quota.tone])}>
+                  <i aria-hidden="true" />
+                  {quota.exceeded ? '已达上限' : quota.tone === 'warning' ? '接近上限' : quotaStatus(quota)}
+                </span>
+              ) : null}
               {quota.key === 'qps' && quota.scopes !== undefined && quota.scopes.length > 0
                 ? quota.scopes.join(' / ')
                 : quota.scope}
@@ -73,6 +85,20 @@ export function QuotaSummary({ quotas, pending }: Readonly<{ quotas: readonly Qu
           </section>
         )
       })}
+    </div>
+  )
+  return (
+    <section aria-label="租户配额概览">
+      {allDisabled && !desktop ? (
+        <details className={styles.quotaDisclosure}>
+          <summary>
+            配额未启用（5 项）<span>展开明细</span>
+          </summary>
+          {readings}
+        </details>
+      ) : (
+        readings
+      )}
     </section>
   )
 }
@@ -82,7 +108,7 @@ export function QuotaDetails({ quotas, pending }: Readonly<{ quotas: readonly Qu
     <section className={styles.quotaDetails} aria-label="完整配额状态">
       <div className={styles.sectionHeading}>
         <h2>租户资源配额</h2>
-        <span>所有数据集共享，独立于上方累计用量</span>
+        <span>所有数据集共享，独立于窗口累计用量</span>
       </div>
       {quotas.map((quota) => {
         const Icon = quotaIcons[quota.key]

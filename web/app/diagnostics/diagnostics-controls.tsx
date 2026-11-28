@@ -6,7 +6,7 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { SearchInput } from '@/components/ui/search-input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import { Activity, ChevronDown, Database, FileArchive, Loader2, Play, SearchCode, Server } from '@/components/icons'
+import { ChevronDown, Loader2, Play } from '@/components/icons'
 import { ALL_DATASETS, type DiagnosticsController } from './use-diagnostics'
 import type { Metric, Verdict } from './diagnostics-model'
 import { cn } from '@/lib/utils'
@@ -38,7 +38,7 @@ export function ScopeControls({
   const [search, setSearch] = useState('')
   if (c.tab === 'performance')
     return (
-      <div className={styles.scopeBar}>
+      <div className={cn(styles.scopeBar, stacked && styles.scopeStack)}>
         <span className={styles.scopeLabel}>检查范围</span>
         <strong>全局 API</strong>
         <span className={styles.scopeHint}>health、ready 与 meta 接口</span>
@@ -209,13 +209,13 @@ export function QueryControl({ controller: c }: { controller: DiagnosticsControl
         />
       </div>
       <div className={styles.queryActions}>
-        <Button type="submit" className={styles.primary} disabled={!c.canRunPreview || c.preview.status === 'running'}>
+        <Button type="submit" disabled={!c.canRunPreview || c.preview.status === 'running'}>
           {c.preview.status === 'running' ? <Loader2 className="animate-spin motion-reduce:animate-none" /> : <Play />}
           {c.preview.status === 'running' ? '预览中' : '运行预览'}
         </Button>
         <Button
           type="button"
-          variant="ghost"
+          variant="outline"
           aria-label="清空查询和结果"
           disabled={!c.query || c.preview.status === 'running'}
           onClick={c.clearPreview}
@@ -229,11 +229,10 @@ export function QueryControl({ controller: c }: { controller: DiagnosticsControl
 
 export function MetricControls({ controller: c }: { controller: DiagnosticsController }) {
   return (
-    <section className={styles.metricControls} aria-label="显示指标">
-      <div className={styles.sectionHeading}>
-        <h2>显示指标</h2>
-        <span className={styles.sectionSubtitle}>{c.visibleMetrics.length} 项</span>
-      </div>
+    <details className={styles.metricControls}>
+      <summary>
+        显示指标（已选 {c.visibleMetrics.length} / {c.metrics.length} 项）
+      </summary>
       <div className={styles.metricChoices}>
         {c.metrics.map((metric) => (
           <label key={metric.key}>
@@ -245,32 +244,48 @@ export function MetricControls({ controller: c }: { controller: DiagnosticsContr
           </label>
         ))}
       </div>
-    </section>
+    </details>
   )
 }
 
 export function ServiceDependencies({ controller: c }: { controller: DiagnosticsController }) {
-  const icons = { api: Server, postgres: Database, vector: SearchCode, redis: Activity, minio: FileArchive }
+  const readiness = c.ready.isError
+    ? '状态未取得'
+    : c.ready.data === undefined
+      ? '检查中'
+      : c.ready.data.ok
+        ? '已就绪'
+        : '未就绪'
   return (
     <section className={styles.serviceSection} aria-label="服务依赖">
       <div className={styles.sectionHeading}>
-        <h2>服务依赖</h2>
+        <h2>服务与运行环境</h2>
         <Button variant="ghost" aria-label="查看服务检查详情" onClick={(event) => c.openServices(event.currentTarget)}>
           详情
         </Button>
       </div>
-      <div className={styles.dependencies}>
-        {c.services.map((service) => {
-          const Icon = icons[service.key as keyof typeof icons]
-          return (
-            <div key={service.key}>
-              <Icon />
-              <span>{service.name}</span>
-              <Status label={service.label} tone={service.tone} />
-            </div>
-          )
-        })}
-      </div>
+      <dl className={styles.environmentFacts}>
+        <div>
+          <dt>必需依赖</dt>
+          <dd>{readiness}</dd>
+        </div>
+        <div>
+          <dt>向量后端</dt>
+          <dd className={styles.backendValue}>{c.vectorBackend ?? '未知'}</dd>
+        </div>
+        <div>
+          <dt>在线评估</dt>
+          <dd>
+            {c.online.isError ? '未取得' : c.online.isPending ? '检查中' : c.online.data?.enabled ? '已启用' : '未启用'}
+          </dd>
+        </div>
+        <div>
+          <dt>{c.services.length} 项服务依赖</dt>
+          <dd>
+            <Status {...c.systemState} />
+          </dd>
+        </div>
+      </dl>
     </section>
   )
 }

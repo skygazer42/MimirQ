@@ -33,3 +33,5 @@ export * from './evaluation'
 
 // ==================== Settings ====================
 export * from './settings'
+
+export * from './enterprise-ontology'

@@ -14,6 +14,7 @@ import {
   OperationalWorkspace,
   WorkspaceTableScroll,
   WorkspaceNotice,
+  WorkspaceNoticeStack,
   workspaceStyles as ws,
 } from '@/components/ui/operational-workspace'
 import {
@@ -341,8 +342,10 @@ function IndustryRulesWorkspace({ sessionKey }: Readonly<{ sessionKey: string }>
         </>
       }
       toolbar={
-        <>
-          <Label htmlFor="industry-rules-ruleset">规则集</Label>
+        <div className="flex w-full min-w-0 items-center gap-2 sm:w-auto">
+          <Label htmlFor="industry-rules-ruleset" className="shrink-0">
+            规则集
+          </Label>
           <Select
             value={selectedRuleset}
             disabled={loadingMeta || busy || editor !== null}
@@ -354,7 +357,7 @@ function IndustryRulesWorkspace({ sessionKey }: Readonly<{ sessionKey: string }>
               setOperationError(null)
             }}
           >
-            <SelectTrigger id="industry-rules-ruleset" className="w-64 max-w-full">
+            <SelectTrigger id="industry-rules-ruleset" className="min-w-0 flex-1 sm:w-64 sm:flex-none">
               <SelectValue placeholder="选择规则集" />
             </SelectTrigger>
             <SelectContent>
@@ -365,26 +368,45 @@ function IndustryRulesWorkspace({ sessionKey }: Readonly<{ sessionKey: string }>
               ))}
             </SelectContent>
           </Select>
-          <Button variant="ghost" aria-label="重新读取规则目录" disabled={loadingMeta || busy} onClick={refreshMeta}>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="shrink-0"
+            aria-label="重新读取规则目录"
+            disabled={loadingMeta || busy}
+            onClick={refreshMeta}
+          >
             <RefreshCw />
           </Button>
-        </>
+        </div>
       }
     >
-      {metaError ? (
-        <WorkspaceNotice retry={refreshMeta}>{formatApiError(metaError, '加载规则集或数据集失败')}</WorkspaceNotice>
+      {metaError || rulesetDetailQuery.isError || operationError ? (
+        <WorkspaceNoticeStack ariaLabel="行业规则状态提示">
+          {metaError ? (
+            <WorkspaceNotice
+              tone="warning"
+              title="加载规则集或数据集失败"
+              error={metaError}
+              fallbackMessage="加载规则集或数据集失败"
+              retry={refreshMeta}
+            />
+          ) : null}
+          {rulesetDetailQuery.isError ? (
+            <WorkspaceNotice
+              tone="warning"
+              title="加载规则详情失败"
+              error={rulesetDetailQuery.error}
+              fallbackMessage="加载规则详情失败"
+              pending={busy || rulesetDetailQuery.isFetching}
+              retry={() => {
+                void rulesetDetailQuery.refetch()
+              }}
+            />
+          ) : null}
+          {operationError ? <WorkspaceNotice>{operationError}</WorkspaceNotice> : null}
+        </WorkspaceNoticeStack>
       ) : null}
-      {rulesetDetailQuery.isError ? (
-        <WorkspaceNotice
-          pending={busy || rulesetDetailQuery.isFetching}
-          retry={() => {
-            void rulesetDetailQuery.refetch()
-          }}
-        >
-          {formatApiError(rulesetDetailQuery.error, '加载规则详情失败')}
-        </WorkspaceNotice>
-      ) : null}
-      {operationError ? <WorkspaceNotice>{operationError}</WorkspaceNotice> : null}
       <Tabs
         value={activeTab}
         onValueChange={(value) => {
@@ -396,26 +418,33 @@ function IndustryRulesWorkspace({ sessionKey }: Readonly<{ sessionKey: string }>
           <TabsTrigger value="patterns">问题模式 {currentRows?.patterns.length}</TabsTrigger>
           <TabsTrigger value="intents">意图分类 {currentRows?.intents.length}</TabsTrigger>
         </TabsList>
-        <div className="my-5 flex flex-wrap items-center justify-between gap-3">
+        <div className="my-3 flex items-center justify-between gap-2 sm:my-5 sm:flex-wrap sm:gap-3">
           <Input
-            className="w-72 max-w-full"
+            className="min-w-0 flex-1 sm:w-72 sm:flex-none"
             aria-label="搜索行业规则"
             placeholder="搜索规则内容"
             value={searchValue}
             onChange={(event) => setSearchValue(event.currentTarget.value)}
           />
-          <div className="flex gap-2">
+          <div className="flex shrink-0 gap-2">
             <Button
+              className="max-sm:size-11 max-sm:p-0"
+              title={RULE_LABELS[activeTab].add}
               variant="outline"
               onClick={() => openEditor(activeTab)}
               disabled={currentRows === undefined || busy}
             >
               <Plus />
-              {RULE_LABELS[activeTab].add}
+              <span className="max-sm:sr-only">{RULE_LABELS[activeTab].add}</span>
             </Button>
-            <Button disabled={currentRows === undefined || busy} onClick={() => void saveCurrent()}>
+            <Button
+              className="max-sm:size-11 max-sm:p-0"
+              title={RULE_LABELS[activeTab].save}
+              disabled={currentRows === undefined || busy}
+              onClick={() => void saveCurrent()}
+            >
               {busy ? <Loader2 className="animate-spin motion-reduce:animate-none" /> : <Save />}
-              {RULE_LABELS[activeTab].save}
+              <span className="max-sm:sr-only">{RULE_LABELS[activeTab].save}</span>
             </Button>
           </div>
         </div>

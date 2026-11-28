@@ -4,6 +4,7 @@ import { formatReportPercent, formatReportText, formatRetrievalAuditMetric } fro
 
 const STATUS_LABELS: Readonly<Record<string, string>> = {
   pending: '待处理',
+  parsing: '解析中',
   processing: '处理中',
   completed: '已完成',
   failed: '失败',
@@ -73,12 +74,12 @@ export function buildReportOverview(report: DatasetReport) {
   const piiHits = sumCounts(report.compliance.pii_hits_total)
   const secretHits = sumCounts(report.compliance.secrets_hits_total)
   const documentRecords: ReportRecordRow[] = [
-    { label: '状态分组计数', count: sumCounts(profile.by_status), total: profile.total_documents },
-    { label: '文件类型分组计数', count: sumCounts(profile.by_file_type), total: profile.total_documents },
-    { label: '目录分组计数', count: sumCounts(profile.by_directory), total: profile.total_documents },
-    { label: '解析来源记录', count: profile.parsing_provenance.docs_with_provenance, total: profile.total_documents },
+    { label: '处理状态', count: sumCounts(profile.by_status), total: profile.total_documents },
+    { label: '文件类型', count: sumCounts(profile.by_file_type), total: profile.total_documents },
+    { label: '文档目录', count: sumCounts(profile.by_directory), total: profile.total_documents },
+    { label: '解析来源', count: profile.parsing_provenance.docs_with_provenance, total: profile.total_documents },
     {
-      label: '有切块的文档',
+      label: '包含切块',
       count: profile.chunk_count_histogram.reduce((total, bin) => total + bin.count, 0),
       total: profile.total_documents,
     },

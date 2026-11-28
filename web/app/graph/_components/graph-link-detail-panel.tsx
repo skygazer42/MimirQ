@@ -1,6 +1,8 @@
 'use client'
 
-import { ChevronDown, ChevronUp, FileText, X } from '@/components/icons'
+import { Button } from '@/components/ui/button'
+
+import { ChevronDown, ChevronUp, FileText, GitBranch, X } from '@/components/icons'
 
 import { toTrimmedPrimitiveString } from '@/lib/primitive-text'
 import { cn } from '@/lib/utils'
@@ -13,6 +15,7 @@ import {
   getGraphLinkPredicate,
   type GraphLinkLike,
 } from '../graph-page-utils'
+import styles from './graph-workspace.module.css'
 
 type GraphLinkDetailPanelProps = Readonly<{
   open: boolean
@@ -20,6 +23,7 @@ type GraphLinkDetailPanelProps = Readonly<{
   graphLinks: GraphLinkLike[]
   selfLoopGroupExpanded: boolean
   onToggleSelfLoopGroup: () => void
+  onOntologyEdit?: () => void
   onClose: () => void
 }>
 
@@ -55,6 +59,7 @@ export function GraphLinkDetailPanel({
   graphLinks,
   selfLoopGroupExpanded,
   onToggleSelfLoopGroup,
+  onOntologyEdit,
   onClose,
 }: GraphLinkDetailPanelProps) {
   let detailContent: React.ReactNode = null
@@ -76,6 +81,7 @@ export function GraphLinkDetailPanel({
     const eventId = toTrimmedPrimitiveString(metadata?.event_id)
     const page = toTrimmedPrimitiveString(metadata?.page ?? metadata?.page_number)
     const sharedEvents = toTrimmedPrimitiveString(metadata?.shared_events)
+    const fact = toTrimmedPrimitiveString(metadata?.fact ?? metadata?.quote ?? metadata?.text)
     const selfLoopLinks = isSelfLoop
       ? graphLinks.filter((link) => {
           const sourceId = getGraphLinkEndpointId(link.source)
@@ -155,7 +161,7 @@ export function GraphLinkDetailPanel({
       }
 
       selfLoopGroupSection = (
-        <div className="bg-muted rounded-xl p-3 border border-border">
+        <div className={styles.propertyCard}>
           <button
             type="button"
             onClick={onToggleSelfLoopGroup}
@@ -190,25 +196,25 @@ export function GraphLinkDetailPanel({
           </h3>
           <div className="space-y-3">
             {docId ? (
-              <div className="bg-muted rounded-xl p-3 border border-border">
+              <div className={styles.propertyCard}>
                 <span className="block text-[11px] font-medium text-muted-foreground mb-1">Document</span>
                 <span className="block text-xs font-mono text-foreground break-all">{docId}</span>
               </div>
             ) : null}
             {eventId ? (
-              <div className="bg-muted rounded-xl p-3 border border-border">
+              <div className={styles.propertyCard}>
                 <span className="block text-[11px] font-medium text-muted-foreground mb-1">Event</span>
                 <span className="block text-xs font-mono text-foreground break-all">{eventId}</span>
               </div>
             ) : null}
             {chunkId ? (
-              <div className="bg-muted rounded-xl p-3 border border-border">
+              <div className={styles.propertyCard}>
                 <span className="block text-[11px] font-medium text-muted-foreground mb-1">Chunk</span>
                 <span className="block text-xs font-mono text-foreground break-all">{chunkId}</span>
               </div>
             ) : null}
             {page ? (
-              <div className="bg-muted rounded-xl p-3 border border-border">
+              <div className={styles.propertyCard}>
                 <span className="block text-[11px] font-medium text-muted-foreground mb-1">Page</span>
                 <span className="block text-sm text-foreground">{page}</span>
               </div>
@@ -220,9 +226,14 @@ export function GraphLinkDetailPanel({
 
     detailContent = (
       <>
-        <div className="p-5 border-b border-border flex items-start justify-between bg-card">
+        <div className={cn(styles.inspectorHeader, 'p-5 flex items-start justify-between')}>
           <div className="flex-1 min-w-0">
-            <h2 className="font-bold text-sm text-foreground mb-2">Relationship</h2>
+            <h2 className="flex items-center gap-2 font-medium text-sm text-foreground mb-2">
+              <i className={styles.iconTray} aria-hidden="true">
+                <GitBranch />
+              </i>
+              Relationship
+            </h2>
             <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted rounded-lg p-2.5 border border-border">
               <span className="truncate font-medium text-foreground" title={srcLabel}>
                 {srcLabel}
@@ -248,23 +259,28 @@ export function GraphLinkDetailPanel({
         </div>
 
         <div className="flex-1 overflow-y-auto overscroll-contain no-scrollbar p-5 space-y-4">
+          {onOntologyEdit && (
+            <Button type="button" variant="outline" size="sm" onClick={onOntologyEdit}>
+              查看与修正关系
+            </Button>
+          )}
           <div className="space-y-3">
             {selfLoopGroupSection}
 
-            <div className="bg-muted rounded-xl p-3 border border-border">
+            <div className={styles.propertyCard}>
               <span className="block text-[11px] font-medium text-muted-foreground mb-1">Type</span>
-              <span className="block text-sm text-foreground">{kindLabel}</span>
+              <span className={styles.typeBadge}>{kindLabel}</span>
             </div>
 
             {predicate ? (
-              <div className="bg-muted rounded-xl p-3 border border-border">
+              <div className={styles.propertyCard}>
                 <span className="block text-[11px] font-medium text-muted-foreground mb-1">Predicate</span>
                 <span className="block text-sm text-foreground">{predicate}</span>
               </div>
             ) : null}
 
             {confidence !== null ? (
-              <div className="bg-muted rounded-xl p-3 border border-border">
+              <div className={styles.propertyCard}>
                 <span className="block text-[11px] font-medium text-muted-foreground mb-1">Confidence</span>
                 <div className="flex items-center gap-2">
                   <div className="flex-1 h-1.5 bg-border rounded-full overflow-hidden" aria-hidden="true">
@@ -279,13 +295,14 @@ export function GraphLinkDetailPanel({
             ) : null}
 
             {sharedEvents !== '' ? (
-              <div className="bg-muted rounded-xl p-3 border border-border">
+              <div className={styles.propertyCard}>
                 <span className="block text-[11px] font-medium text-muted-foreground mb-1">Shared Events</span>
                 <span className="block text-sm text-foreground">{sharedEvents}</span>
               </div>
             ) : null}
           </div>
 
+          {fact ? <blockquote className={styles.evidenceQuote}>{fact}</blockquote> : null}
           {provenanceSection}
         </div>
       </>
@@ -295,6 +312,7 @@ export function GraphLinkDetailPanel({
   return (
     <div
       className={cn(
+        styles.linkInspector,
         'absolute top-4 right-4 bottom-24 z-20 flex w-80 flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-none transition-transform duration-200 ease-out',
         open && selectedLink ? 'translate-x-0' : 'translate-x-[120%]',
       )}

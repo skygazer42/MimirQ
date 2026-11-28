@@ -186,6 +186,7 @@ describe('feedback inbox', () => {
       ),
     )
     expect(container.querySelector('[role="dialog"]')).toBeNull()
+    expect(container.querySelector('[data-feedback-reader] [title="1"]')?.textContent).toBe('用户反馈')
     await click(button(container, '下一条反馈'))
     await act(async () =>
       vi.waitFor(() =>
@@ -256,6 +257,26 @@ describe('feedback inbox', () => {
     await click(button(container, '重试'))
     await act(async () => vi.waitFor(() => expect(container.textContent).toContain('暂无反馈')))
     expect(container.querySelectorAll('[data-feedback-item]')).toHaveLength(0)
+    expect(container.querySelector('[data-feedback-queue]')).toBeNull()
+    expect(container.querySelector('[data-feedback-reader]')).toBeNull()
+    expect(container.querySelector('h2')?.textContent).toBe('暂无反馈记录')
+    expect(container.querySelector('a[href="/"]')?.textContent).toContain('前往知识问答')
+  })
+
+  it('keeps the ruleset identifier in secondary candidate metadata', async () => {
+    api.loopCandidates.mockResolvedValue({
+      hard_negative_records: [],
+      training_triples: [],
+      rules_suggestions: { glossary_suggestions: [], pattern_suggestions: [], intent_suggestions: [] },
+    })
+    const container = renderPage()
+    await ready(container)
+    await click(button(container, '反哺候选'))
+    const dialog = document.querySelector('[role="dialog"]')!
+    const description = document.getElementById(dialog.getAttribute('aria-describedby')!)!
+    expect(description.textContent).toContain('不高于 2 分，最多 200 条反馈')
+    expect(description.textContent).not.toContain('industrial_control')
+    expect(dialog.querySelector('small')?.textContent).toContain('规则集标识：industrial_control')
   })
 
   it('loads later API pages so feedback outside the first response can still be found', async () => {

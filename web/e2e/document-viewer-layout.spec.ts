@@ -45,6 +45,17 @@ async function openViewer(page: Page) {
   await expect(page.getByRole('button', { name: '原始解析', exact: true })).toBeVisible()
 }
 
+async function expectMainMarginMatchesViewer(page: Page) {
+  await expect
+    .poll(() =>
+      page.locator('#main-content').evaluate((element) => {
+        const viewer = document.querySelector('[data-document-viewer-resize-handle]')!.parentElement!
+        return Number.parseFloat(getComputedStyle(element).marginRight) - viewer.getBoundingClientRect().width
+      }),
+    )
+    .toBeCloseTo(0, 0)
+}
+
 test('restores expansion, text mode and keyboard width, and copies a real zero-offset link', async ({ page }) => {
   await page.setViewportSize({ width: 2560, height: 1440 })
   await openViewer(page)
@@ -53,6 +64,7 @@ test('restores expansion, text mode and keyboard width, and copies a real zero-o
   await expect(page.getByRole('button', { name: '原始解析', exact: true })).toHaveAttribute('aria-pressed', 'true')
   await page.reload()
   await expect(page.getByRole('button', { name: '收起', exact: true })).toBeVisible()
+  await expectMainMarginMatchesViewer(page)
   await expect(page.getByRole('button', { name: '原始解析', exact: true })).toHaveAttribute('aria-pressed', 'true')
   await page.getByRole('button', { name: '收起', exact: true }).click()
   const resize = page.getByRole('separator', { name: '拖动调整文档查看器宽度', exact: true })
@@ -68,6 +80,7 @@ test('restores expansion, text mode and keyboard width, and copies a real zero-o
   await expect(resize).toHaveAttribute('aria-valuenow', String(savedWidth))
   await page.reload()
   await expect(resize).toHaveAttribute('aria-valuenow', String(savedWidth))
+  await expectMainMarginMatchesViewer(page)
   await expect(page.getByRole('button', { name: '原始解析', exact: true })).toHaveAttribute('aria-pressed', 'true')
   await resize.hover()
   await page.mouse.down()
@@ -77,6 +90,7 @@ test('restores expansion, text mode and keyboard width, and copies a real zero-o
   await expect(resize).toHaveAttribute('aria-valuemax', '1800')
   await page.reload()
   await expect(resize).toHaveAttribute('aria-valuenow', '1800')
+  await expectMainMarginMatchesViewer(page)
   await page.setViewportSize({ width: 1280, height: 720 })
   await expect(resize).toHaveAttribute('aria-valuenow', '1100')
   await expect(resize).toHaveAttribute('aria-valuemax', '1100')
@@ -85,6 +99,7 @@ test('restores expansion, text mode and keyboard width, and copies a real zero-o
   })
   const displayedWidth = await panel.evaluate((element) => element.getBoundingClientRect().width)
   expect(displayedWidth).toBeLessThanOrEqual(1280 * 0.86)
+  await expectMainMarginMatchesViewer(page)
   await page.screenshot({
     path: '../.frontend-structure/20261112-full-frontend-guidelines/viewer-layout/saved-layout.png',
     fullPage: true,
@@ -109,6 +124,18 @@ test('keeps the initial panel inside its real minimum at a narrow desktop width'
   const panel = resize.locator('..')
   const displayedWidth = await panel.evaluate((element) => element.getBoundingClientRect().width)
   expect(displayedWidth).toBe(360)
+  await expect(resize).toHaveAttribute('aria-valuenow', '360')
+  for (const [width, panelWidth] of [
+    [800, 360],
+    [1024, 500],
+    [1280, 512],
+    [1440, 576],
+  ]) {
+    await page.setViewportSize({ width, height: 800 })
+    await expect(panel).toHaveCSS('width', `${panelWidth}px`)
+    await expectMainMarginMatchesViewer(page)
+  }
+  await page.setViewportSize({ width: 800, height: 800 })
   await expect(resize).toHaveAttribute('aria-valuenow', '360')
   await resize.focus()
   await page.keyboard.press('ArrowRight')

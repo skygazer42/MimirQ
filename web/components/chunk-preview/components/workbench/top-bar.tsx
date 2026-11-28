@@ -10,7 +10,6 @@ import {
   Download,
   ExternalLink,
   ChevronDown,
-  ChevronRight,
   FolderOpen,
   GitCompareArrows,
   HelpCircle,
@@ -348,12 +347,35 @@ export function TopBar({ onOpenDocuments }: Readonly<{ onOpenDocuments: () => vo
       <header className={styles.header} aria-label={workbenchTitle}>
         <div className={styles.title}>
           <PageTitleIcon name="chunk-preview" />
-          <div>
-            <h1>切块预览</h1>
-            <p>检查切分结果与原文位置</p>
-          </div>
+          <h1>切块预览</h1>
+        </div>
+        <div className={styles.fileSelect} data-current-file-summary>
+          <Select
+            value={String(currentFileIndex)}
+            onValueChange={(value) => setCurrentFileIndex(Number(value))}
+            disabled={isSubmitting}
+          >
+            <SelectTrigger aria-label="选择预览文档" title={`${visibleFileName} · ${formatFileSize(visibleFileSize)}`}>
+              <FileTypeIcon type={visibleFileType} filename={visibleFileName} className="size-4 shrink-0" />
+              <SelectValue className={styles.fileName} />
+              <span className="sr-only">当前文档</span>
+            </SelectTrigger>
+            <SelectContent>
+              {fileList.map((item, index) => (
+                <SelectItem value={String(index)} key={item.id}>
+                  <span data-file-name title={item.displayName}>
+                    {item.displayName || item.file.name}
+                  </span>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
         <div className={styles.headerActions}>
+          <Button variant="ghost" disabled={isSubmitting} onClick={onOpenDocuments} aria-label="管理文档">
+            <FolderOpen />
+            管理文档
+          </Button>
           <Button
             variant="ghost"
             size="icon"
@@ -603,6 +625,7 @@ export function TopBar({ onOpenDocuments }: Readonly<{ onOpenDocuments: () => vo
           )}
           <Button
             className={styles.ingest}
+            aria-label={ingestLabel}
             onClick={submitChunks}
             disabled={!previewData || isLoading || isSubmitting || submitSuccess || isPreviewDirty}
             title={isPreviewDirty ? '请先更新当前预览' : undefined}
@@ -612,44 +635,6 @@ export function TopBar({ onOpenDocuments }: Readonly<{ onOpenDocuments: () => vo
           </Button>
         </div>
       </header>
-      <div className={styles.docbar} data-current-file-summary>
-        <span className={styles.sourceLabel}>
-          <FolderOpen />
-          {datasetId ? currentFileItem.datasetName || '数据集文档' : '解析工作区'}
-          <ChevronRight />
-        </span>
-        <div className={styles.fileSelect}>
-          <Select
-            value={String(currentFileIndex)}
-            onValueChange={(value) => setCurrentFileIndex(Number(value))}
-            disabled={isSubmitting}
-          >
-            <SelectTrigger aria-label="选择预览文档">
-              <FileTypeIcon type={visibleFileType} filename={visibleFileName} className="size-4 shrink-0" />
-              <SelectValue />
-              <span className="sr-only">当前文档</span>
-            </SelectTrigger>
-            <SelectContent>
-              {fileList.map((item, index) => (
-                <SelectItem value={String(index)} key={item.id}>
-                  <span data-file-name title={item.displayName}>
-                    {item.displayName || item.file.name}
-                  </span>
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <span className={styles.docmeta} title={formatFileSize(visibleFileSize)}>
-          {previewData ? `${previewData.total_characters.toLocaleString()} 字符` : formatFileSize(visibleFileSize)}
-        </span>
-        <div className={styles.docActions}>
-          <Button variant="ghost" disabled={isSubmitting} onClick={onOpenDocuments}>
-            <FolderOpen />
-            管理文档
-          </Button>
-        </div>
-      </div>
       <FeedbackToast
         type="error"
         id="chunk-preview-error"

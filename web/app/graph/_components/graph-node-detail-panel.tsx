@@ -38,6 +38,7 @@ import type {
 import { cn } from '@/lib/utils'
 
 import type { GraphNodeLike } from '../graph-page-utils'
+import styles from './graph-workspace.module.css'
 
 const OMITTED_NODE_KEYS = new Set([
   'id',
@@ -62,13 +63,6 @@ const OMITTED_NODE_KEYS = new Set([
   'val',
 ])
 
-const DETAIL_TONE_CLASSES = [
-  'border-info/30 bg-info/10',
-  'border-success/30 bg-success/10',
-  'border-warning/30 bg-warning/10',
-  'border-primary/30 bg-primary/15',
-]
-
 const PANEL_MIN_TOP = 16
 const PANEL_SIDE_MARGIN = 16
 const PANEL_TOP_OFFSET = 104
@@ -89,20 +83,6 @@ function clampPanelPosition(args: {
       Math.max(PANEL_SIDE_MARGIN, containerWidth - panelWidth - PANEL_SIDE_MARGIN),
     ),
     y: Math.min(Math.max(PANEL_MIN_TOP, y), Math.max(PANEL_MIN_TOP, containerHeight - panelHeight - PANEL_SIDE_MARGIN)),
-  }
-}
-
-function getKindBadgeClasses(kind: string): string {
-  switch (kind) {
-    case 'event':
-      return 'border-warning/30 bg-warning/15 text-warning'
-    case 'entity':
-      return 'border-info/30 bg-info/15 text-info'
-    case 'trace':
-    case 'step':
-      return 'border-primary/30 bg-primary/15 text-primary'
-    default:
-      return 'border-border/70 bg-muted/60 text-muted-foreground'
   }
 }
 
@@ -203,8 +183,11 @@ function GraphNodeKgDetail({
   if ('event' in kgNodeDetail) {
     const eventDetail = kgNodeDetail
     return (
-      <div className="rounded-lg border border-success/30 bg-success/10 p-2.5">
-        <div className="mb-1.5 text-[11px] font-medium uppercase tracking-[0.08em] text-success/70">Entities</div>
+      <div className={styles.evidenceCard}>
+        {eventDetail.event.content ? (
+          <blockquote className={styles.evidenceQuote}>{eventDetail.event.content}</blockquote>
+        ) : null}
+        <div className={styles.inspectorSectionLabel}>Entities</div>
         <div className="space-y-1.5">
           {eventDetail.entities.slice(0, 12).map((row) => (
             <div key={row.entity.id} className="flex items-center justify-between gap-2 text-[11px]">
@@ -294,19 +277,22 @@ function GraphNodeKgDetail({
 
   return (
     <div className="space-y-2.5">
-      <div className="rounded-lg border border-info/30 bg-info/10 p-2.5">
-        <div className="mb-1.5 text-[11px] font-medium uppercase tracking-[0.08em] text-info/70">Recent Events</div>
+      <div className={styles.evidenceCard}>
+        <div className={styles.inspectorSectionLabel}>Recent Events</div>
         <div className="space-y-1.5">
           {entityDetail.events.slice(0, 6).map((ev) => (
-            <div key={ev.id} className="truncate text-[11px] text-foreground" title={ev.title}>
-              {ev.title}
+            <div key={ev.id}>
+              <div className="truncate text-[11px] text-foreground" title={ev.title}>
+                {ev.title}
+              </div>
+              {ev.content ? <blockquote className={styles.evidenceQuote}>{ev.content}</blockquote> : null}
             </div>
           ))}
         </div>
       </div>
 
-      <div className="rounded-lg border border-success/30 bg-success/10 p-2.5">
-        <div className="mb-1.5 text-[11px] font-medium uppercase tracking-[0.08em] text-success/70">Top Neighbors</div>
+      <div className={styles.propertyCard}>
+        <div className={styles.inspectorSectionLabel}>Top Neighbors</div>
         <div className="space-y-1.5">
           {entityDetail.neighbors.slice(0, 8).map((neighbor) => (
             <div key={neighbor.entity_id} className="flex items-center justify-between gap-2 text-[11px]">
@@ -321,8 +307,8 @@ function GraphNodeKgDetail({
         </div>
       </div>
 
-      <div className="rounded-lg border border-warning/30 bg-warning/10 p-2.5">
-        <div className="mb-1.5 text-[11px] font-medium uppercase tracking-[0.08em] text-warning/75">Aliases</div>
+      <div className={styles.propertyCard}>
+        <div className={styles.inspectorSectionLabel}>Aliases</div>
         {aliasContent}
 
         <div className="mt-2.5 flex items-center gap-2">
@@ -344,8 +330,8 @@ function GraphNodeKgDetail({
         </div>
       </div>
 
-      <div className="rounded-lg border border-primary/30 bg-primary/10 p-2.5">
-        <div className="mb-1.5 text-[11px] font-medium uppercase tracking-[0.08em] text-primary/70">Suggestions</div>
+      <div className={styles.propertyCard}>
+        <div className={styles.inspectorSectionLabel}>Suggestions</div>
         {aliasSuggestionsContent}
       </div>
     </div>
@@ -389,17 +375,15 @@ export function GraphNodeDetailPanel({
   const nodeKind = getGraphNodeKind(selectedNode)
   const nodeType = getGraphNodeType(selectedNode)
   const summaryBadges = [
-    selectedNode === null
-      ? null
-      : { label: 'ID', value: selectedNode.id, className: 'border-info/30 bg-info/15 text-info' },
-    nodeKind ? { label: '类别', value: getKindLabel(nodeKind), className: getKindBadgeClasses(nodeKind) } : null,
-    nodeType ? { label: '类型', value: nodeType, className: 'border-primary/30 bg-primary/15 text-primary' } : null,
+    selectedNode === null ? null : { label: 'ID', value: selectedNode.id, className: styles.neutralBadge },
+    nodeKind ? { label: '类别', value: getKindLabel(nodeKind), className: styles.typeBadge } : null,
+    nodeType ? { label: '类型', value: nodeType, className: styles.typeBadge } : null,
     selectedNode?.group == null
       ? null
-      : { label: '组', value: String(selectedNode.group), className: 'border-success/30 bg-success/15 text-success' },
+      : { label: '组', value: String(selectedNode.group), className: styles.neutralBadge },
     selectedNode?.val == null
       ? null
-      : { label: '权重', value: String(selectedNode.val), className: 'border-warning/30 bg-warning/15 text-warning' },
+      : { label: '权重', value: String(selectedNode.val), className: styles.neutralBadge },
   ].filter((badge) => badge !== null)
 
   const detailEntries = selectedNode
@@ -411,8 +395,7 @@ export function GraphNodeDetailPanel({
       })
     : []
 
-  const quickActionBaseClass =
-    'h-8 w-full rounded-lg px-2 text-[11px] text-foreground/85 shadow-none hover:text-foreground'
+  const quickActionBaseClass = cn(styles.inspectorAction, 'h-8 w-full rounded-lg px-2 text-[11px] shadow-none')
   const panelRef = useRef<HTMLDivElement>(null)
   const dragStateRef = useRef<{
     pointerId: number
@@ -593,10 +576,11 @@ export function GraphNodeDetailPanel({
 
     detailContent = (
       <div className="relative transition-transform duration-300 ease-out" style={innerCardStyle}>
-        <div className="overflow-hidden rounded-2xl border border-border/70 bg-card shadow-none transition-transform duration-300 ease-out">
+        <div className={cn(styles.inspectorCard, 'transition-transform duration-300 ease-out')}>
           <div
             className={cn(
-              'border-b border-border/55 bg-muted/20 px-3.5 py-3 select-none',
+              styles.inspectorHeader,
+              'px-3.5 py-3 select-none',
               isDragging ? 'cursor-grabbing' : 'cursor-grab',
             )}
             onPointerDown={handleDragStart}
@@ -606,17 +590,17 @@ export function GraphNodeDetailPanel({
           >
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
+                <i className={styles.iconTray} aria-hidden="true">
+                  <Network />
+                </i>
                 <div className="mb-1.5 flex flex-wrap gap-1.5">
                   {summaryBadges.map((badge) => (
                     <span
                       key={`${badge.label}:${badge.value}`}
-                      className={cn(
-                        'inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium tracking-[0.02em]',
-                        badge.className,
-                      )}
+                      className={cn('inline-flex items-center gap-1 text-[11px] font-medium', badge.className)}
                     >
                       {badge.label === 'ID' ? <Database className="size-3" /> : null}
-                      <span className="opacity-70">{badge.label}</span>
+                      <span>{badge.label}</span>
                       <span className="max-w-[7rem] truncate" title={badge.value}>
                         {badge.value}
                       </span>
@@ -641,27 +625,15 @@ export function GraphNodeDetailPanel({
 
           <div ref={detailScrollRef} className="flex-1 space-y-3 overflow-y-auto overscroll-contain p-3.5 no-scrollbar">
             <div className="grid grid-cols-4 gap-1.5">
-              <Button
-                variant="outline"
-                onClick={onChat}
-                className={cn(quickActionBaseClass, 'border-info/30 bg-info/10 hover:bg-info/15')}
-              >
+              <Button variant="outline" onClick={onChat} className={quickActionBaseClass}>
                 <MessageSquare className="w-3.5 h-3.5 mr-1" />
                 对话
               </Button>
-              <Button
-                variant="outline"
-                onClick={onViewSource}
-                className={cn(quickActionBaseClass, 'border-primary/30 bg-primary/15 hover:bg-primary/15')}
-              >
+              <Button variant="outline" onClick={onViewSource} className={quickActionBaseClass}>
                 <FileText className="w-3.5 h-3.5 mr-1" />
                 来源
               </Button>
-              <Button
-                variant="outline"
-                onClick={onStartConnectMode}
-                className={cn(quickActionBaseClass, 'border-success/30 bg-success/10 hover:bg-success/15')}
-              >
+              <Button variant="outline" onClick={onStartConnectMode} className={quickActionBaseClass}>
                 <LinkIcon className="w-3.5 h-3.5 mr-1" />
                 连接
               </Button>
@@ -679,7 +651,7 @@ export function GraphNodeDetailPanel({
               variant="outline"
               onClick={onExpandNode}
               disabled={isLoading}
-              className="h-8 w-full justify-start rounded-lg border-info/30 bg-info/10 px-3 text-[11px] text-foreground/85 shadow-none hover:bg-info/15 hover:text-foreground"
+              className={cn(quickActionBaseClass, 'justify-start px-3')}
             >
               <Network className="w-3 h-3 mr-1.5" />
               {isLoading ? '展开中...' : '展开邻居节点'}
@@ -690,7 +662,7 @@ export function GraphNodeDetailPanel({
                 <Button
                   variant="outline"
                   onClick={onOpenMerge}
-                  className="h-7.5 w-full justify-start rounded-lg border-warning/30 bg-warning/10 px-2.5 text-[11px] text-foreground/85 shadow-none hover:bg-warning/15 hover:text-foreground"
+                  className={cn(quickActionBaseClass, 'justify-start px-2.5')}
                 >
                   <BoxSelect className="w-3 h-3 mr-1.5" />
                   合并
@@ -699,7 +671,7 @@ export function GraphNodeDetailPanel({
                   variant="outline"
                   onClick={onOpenSplit}
                   disabled={onOpenSplit === undefined}
-                  className="h-7.5 w-full justify-start rounded-lg border-primary/30 bg-primary/15 px-2.5 text-[11px] text-foreground/85 shadow-none hover:bg-primary/15 hover:text-foreground"
+                  className={cn(quickActionBaseClass, 'justify-start px-2.5')}
                 >
                   <Box className="w-3 h-3 mr-1.5" />
                   拆分
@@ -725,14 +697,8 @@ export function GraphNodeDetailPanel({
                 属性详情
               </div>
               <div className="grid grid-cols-2 gap-1.5">
-                {detailEntries.map(([key, value], index) => (
-                  <div
-                    key={key}
-                    className={cn(
-                      'rounded-lg border px-2.5 py-2',
-                      DETAIL_TONE_CLASSES[index % DETAIL_TONE_CLASSES.length],
-                    )}
-                  >
+                {detailEntries.map(([key, value]) => (
+                  <div key={key} className={styles.propertyCard}>
                     <div className="mb-1 text-[11px] font-medium uppercase tracking-[0.06em] text-foreground/85 capitalize">
                       {key}
                     </div>
@@ -745,15 +711,10 @@ export function GraphNodeDetailPanel({
                   <button
                     type="button"
                     onClick={onViewSource}
-                    className={cn(
-                      'col-span-2 rounded-lg border px-2.5 py-2 text-left transition-colors hover:brightness-[0.98] focus-ring',
-                      DETAIL_TONE_CLASSES[0],
-                    )}
+                    className={cn(styles.evidenceCard, 'col-span-2 text-left focus-ring')}
                   >
-                    <div className="mb-1 text-[11px] font-medium uppercase tracking-[0.08em] text-info/70">
-                      文档来源
-                    </div>
-                    <div className="text-[11px] leading-4.5 text-info underline underline-offset-4">
+                    <div className={styles.inspectorSectionLabel}>文档来源</div>
+                    <div className="text-[11px] leading-4.5 underline underline-offset-4">
                       {selectedNodeSourceLabel}
                     </div>
                   </button>
@@ -773,7 +734,10 @@ export function GraphNodeDetailPanel({
       ref={panelRef}
       aria-label="图谱节点详情"
       tabIndex={-1}
+      data-kind={nodeKind}
+      data-entity-type={nodeType}
       className={cn(
+        styles.nodeInspector,
         'group absolute z-20 flex w-[18.25rem] max-h-[min(31rem,calc(100vh-5.5rem))] transform flex-col overflow-visible rounded-2xl transition-transform duration-200 ease-out',
         open && selectedNode ? 'translate-x-0' : 'translate-x-[120%]',
       )}

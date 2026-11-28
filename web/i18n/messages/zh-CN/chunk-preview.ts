@@ -9,7 +9,7 @@ const chunkPreviewMessages = {
       idleTitle: '点击或拖拽上传文档',
       uploadHint: '支持 PDF / Markdown / TXT，支持多文件上传',
       exampleTitle: '试用示例文档',
-      exampleDescription: '无需上传，一键体验切块预览流程',
+      exampleDescription: '加载示例文档预览切块效果',
       previewTitle: '预览与定位',
       previewDescription: '悬停/选中切片，高亮原文对应区间',
       tipsTitle: '参数建议',
@@ -100,7 +100,7 @@ const chunkPreviewMessages = {
         maxChunks: '预览切块上限',
         maxChunksAria: '预览切块上限',
         parseCache: {
-          title: '后端解析缓存',
+          title: '解析缓存',
           description: '文件和解析器相同时，复用已有解析结果。',
         },
         maxChunksGuidance: '0 表示不限制。手动入库前需要完整切块；数量过大可能导致浏览器卡顿。',
@@ -153,7 +153,7 @@ const chunkPreviewMessages = {
         },
       },
       ingestionPreview: {
-        trigger: '按入库策略智能推荐',
+        trigger: '按入库策略推荐',
         selectDatasetFirst: '请先选择目标数据集',
         generatedSuccess: '已生成入库策略预览（可应用推荐）',
         requestFailed: '入库策略预览失败',
@@ -173,7 +173,7 @@ const chunkPreviewMessages = {
           preprocessUnchanged: 'no change',
           preprocessWarnings: ' · warnings {count}',
           applyRecommendation: '应用推荐',
-          previewNow: '立即预览',
+          previewNow: '生成预览',
           applyRecommendationSuccess: '已应用推荐的解析器与切块策略',
         },
       },
@@ -240,7 +240,7 @@ const chunkPreviewMessages = {
         customLabel: '自定义分隔符',
         customPlaceholder: String.raw`例如：\n\n / --- / ##  / END_OF_SECTION`,
         customAria: '自定义分隔符',
-        customHelp: String.raw`支持转义：\n \r \t \uXXXX（会在发送到后端前解析）`,
+        customHelp: String.raw`支持转义：\n \r \t \uXXXX`,
         keepSeparator: {
           title: '保留分隔符',
           description: '将分隔符附在前一块末尾',
@@ -295,7 +295,7 @@ const chunkPreviewMessages = {
         loading: '正在扫描已注册插件...',
         empty: '暂无本地测试通过并发布的插件',
         loadError: '加载管线插件失败',
-        currentImportPath: '当前兼容配置（兼容路径需后端 allowlist）',
+        currentImportPath: '仅允许导入已授权的路径',
         unreadyCount: '{count} 个插件未测试或已过期，重新运行本地测试后才能选择',
         registryErrorCount: '{count} 个插件注册失败：{path}',
         auditTitle: '本地测试指纹',
@@ -380,7 +380,7 @@ const chunkPreviewMessages = {
       },
       recommendations: {
         title: 'RECOMMENDATIONS',
-        applyAll: '一键应用',
+        applyAll: '全部应用',
         applyAllSuccess: '已应用全部 recommendations（best-effort）',
         applyAllPipelineError: '应用推荐的入库管线 patch 失败',
         apply: '应用',
@@ -515,11 +515,11 @@ const chunkPreviewMessages = {
       titlePdf: 'PDF 原页',
       charCount: '{count} 字符',
       source: {
-        server: '后端原文',
+        server: '已保存的原文',
         local: '本地原文',
       },
       badges: {
-        originalTooLargeTitle: '原文超过 {limit} 字符，后端已省略返回',
+        originalTooLargeTitle: '原文超过 {limit} 字符，无法在此预览',
         originalMissingTitle: '原文未返回',
         originalTooLarge: '原文过大，已省略',
         originalMissing: '原文未返回',
@@ -580,7 +580,7 @@ const chunkPreviewMessages = {
       embeddingLabel: '向量文本（仅用于入库向量）',
       contentHelper: '主编辑区：修正文案、标题或表格，不影响原文定位。',
       contentStats: '{chars} 字符 · {lines} 行',
-      sidePanelLabel: '辅助信息',
+      sidePanelLabel: '详情信息',
       sidePanelHelper: '元数据和向量文本用于校验入库效果，默认不占用主编辑区。',
       metadataTab: '元数据',
       embeddingTab: '向量预览',
@@ -893,7 +893,7 @@ const chunkPreviewMessages = {
       saveAs: '另存新预设',
       copySuffix: '副本',
       dialogTitle: '保存为切块预设',
-      dialogDescription: '保存当前预览参数，方便团队复用。',
+      dialogDescription: '保存当前预览参数以供复用。',
       name: '名称',
       namePlaceholder: '例如：通用-长文档',
       description: '描述（可选）',
@@ -902,7 +902,7 @@ const chunkPreviewMessages = {
     },
     help: {
       title: '切块指南',
-      description: '快速理解“怎么切、怎么调、怎么验”。',
+      description: '切块策略、参数与校验说明。',
       workflow: {
         title: '推荐工作流',
         steps: {
@@ -1042,7 +1042,7 @@ const chunkPreviewMessages = {
       },
       explain: {
         title: 'Explain（可追溯/可导出）',
-        missingData: '后端未返回 explain 字段',
+        missingData: '暂无解释',
         exportJson: '导出 JSON',
         exportSuccess: '已导出 explain 快照',
         description:

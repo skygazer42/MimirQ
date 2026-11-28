@@ -12,6 +12,7 @@ import {
   WorkspaceTableScroll,
   DirectoryWorkspace,
   WorkspaceNotice,
+  WorkspaceNoticeStack,
   workspaceStyles as ws,
 } from '@/components/ui/operational-workspace'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
@@ -294,7 +295,7 @@ export function GovernanceCommonLinesPage() {
             stage: 'post_governance',
             content,
             enabled: false,
-            description: '导入的处理脚本草案，仅用于治理配置审核，不会在入库链路中自动执行。',
+            description: '待审核的脚本草案',
             created_at: new Date().toISOString(),
           })
         }
@@ -530,8 +531,10 @@ export function GovernanceCommonLinesPage() {
         </>
       }
       toolbar={
-        <>
-          <Label htmlFor="common-lines-dataset">数据集</Label>
+        <div className="flex w-full min-w-0 items-center gap-2 sm:w-auto">
+          <Label htmlFor="common-lines-dataset" className="shrink-0">
+            数据集
+          </Label>
           <Select
             value={datasetId}
             onValueChange={(value) => {
@@ -542,7 +545,7 @@ export function GovernanceCommonLinesPage() {
             }}
             disabled={loading || importingScript}
           >
-            <SelectTrigger id="common-lines-dataset" className="w-64 max-w-full">
+            <SelectTrigger id="common-lines-dataset" className="min-w-0 flex-1 sm:w-64 sm:flex-none">
               <SelectValue placeholder="选择数据集" />
             </SelectTrigger>
             <SelectContent>
@@ -553,10 +556,17 @@ export function GovernanceCommonLinesPage() {
               ))}
             </SelectContent>
           </Select>
-          <Button variant="ghost" aria-label="重新读取目录" disabled={loadingMeta} onClick={refreshMeta}>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="shrink-0"
+            aria-label="重新读取目录"
+            disabled={loadingMeta}
+            onClick={refreshMeta}
+          >
             <RefreshCw />
           </Button>
-        </>
+        </div>
       }
     >
       <input
@@ -571,13 +581,30 @@ export function GovernanceCommonLinesPage() {
           detachPromise(importProcessingScripts(files))
         }}
       />
-      {metaError ? (
-        <WorkspaceNotice retry={refreshMeta}>{formatApiError(metaError, '加载数据集或治理配置失败')}</WorkspaceNotice>
-      ) : null}
-      {operationError ? (
-        <div className="px-4">
-          <WorkspaceNotice>{operationError}</WorkspaceNotice>
-        </div>
+      {metaError || (!templateLibraryOpen && operationError) || profileDetail.isError ? (
+        <WorkspaceNoticeStack ariaLabel="重复行治理状态提示">
+          {metaError ? (
+            <WorkspaceNotice
+              tone="warning"
+              title="加载数据集或治理配置失败"
+              error={metaError}
+              fallbackMessage="加载数据集或治理配置失败"
+              retry={refreshMeta}
+            />
+          ) : null}
+          {!templateLibraryOpen && operationError ? <WorkspaceNotice>{operationError}</WorkspaceNotice> : null}
+          {profileDetail.isError ? (
+            <WorkspaceNotice
+              tone="warning"
+              title="规则读取失败"
+              error={profileDetail.error}
+              fallbackMessage="规则读取失败"
+              retry={() => {
+                void profileDetail.refetch()
+              }}
+            />
+          ) : null}
+        </WorkspaceNoticeStack>
       ) : null}
       <DirectoryWorkspace
         pane={pane}
@@ -769,16 +796,10 @@ export function GovernanceCommonLinesPage() {
             </section>
           </TabsContent>
           <TabsContent value="saved" className={ws.tabContent}>
-            {profileDetail.isError ? (
-              <WorkspaceNotice
-                retry={() => {
-                  void profileDetail.refetch()
-                }}
-              >
-                {formatApiError(profileDetail.error, '规则读取失败')}
-              </WorkspaceNotice>
-            ) : profileDetail.isLoading ? (
+            {profileDetail.isLoading ? (
               <p className={ws.empty}>正在读取规则…</p>
+            ) : profileDetail.isError ? (
+              <p className={ws.empty}>规则暂不可用，请重试。</p>
             ) : (
               <section className={ws.section}>
                 <h2 className={ws.sectionTitle}>已保存的正则规则</h2>
@@ -908,8 +929,7 @@ export function GovernanceCommonLinesPage() {
           <DialogHeader className={ws.dialogHeader}>
             <DialogTitle>从内置模板库选择处理脚本</DialogTitle>
             <DialogDescription>
-              选中的脚本会被添加到当前治理配置的 processing_scripts
-              中,用于审计与版本管理;入库管道不会自动执行模板代码,可在自定义服务中复用。
+              脚本会保存到当前治理配置，需在自定义服务中执行。
             </DialogDescription>
           </DialogHeader>
 

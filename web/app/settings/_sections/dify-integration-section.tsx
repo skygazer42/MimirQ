@@ -167,7 +167,7 @@ export function DifyIntegrationSection({
 
   const inputClassName = cn(
     settingsLayoutTokens.input,
-    'border-transparent bg-[var(--settings-value)] placeholder:text-muted-foreground focus-visible:border-input',
+    'border-input bg-background placeholder:text-muted-foreground focus-visible:border-input',
   )
 
   return (

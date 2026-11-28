@@ -21,6 +21,8 @@ describe('history page empty state', () => {
     expect(src).toContain('data-history-empty-archive="true"')
     expect(src).toContain('data-history-empty-inline="true"')
     expect(src).toContain('data-history-main-empty="true"')
+    expect(src).toContain('<SplitEmptyStudio')
+    expect(src).not.toContain('WorkspaceEmptyCard')
     expect(src).not.toContain("t('historyEmptyKicker')")
     expect(src).toContain("t('historyEmptyDescription')")
     expect(src.match(/<ConversationHistory /g)).toHaveLength(2)

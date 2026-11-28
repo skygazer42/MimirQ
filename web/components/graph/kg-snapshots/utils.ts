@@ -76,7 +76,7 @@ export function getSnapshotScopeSubtitle(
 ): string {
   if (documentCount > 0) return `${documentCount} 个文档范围`
   if (datasetId) return `${datasetLabel} · 数据集范围`
-  return '后端全局范围'
+  return '全部数据集'
 }
 
 export function getSelectedDatasetLabel(selectedDataset: Dataset | null, selectedDatasetId: string): string {

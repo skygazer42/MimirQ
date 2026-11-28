@@ -1,18 +1,22 @@
 'use client'
 
-import { useState, type ReactElement } from 'react'
-import { FileText, Paperclip, Play } from '@/components/icons'
+import { useEffect, useState, type ReactElement, type ReactNode } from 'react'
+import { Check, Copy, Download, Edit3, FileText, MoreHorizontal, Paperclip, Play, RotateCcw } from '@/components/icons'
 import { FileTypeIcon } from '@/components/ui/file-type-icon'
 import styles from './parsing-compare.module.css'
 import { useTranslations } from 'next-intl'
 
 import { MarkdownRenderer } from '@/components/markdown/markdown-renderer'
-import { ParserDropdown } from '@/components/business/parser-dropdown'
 import { ParsingRightPanel } from '@/components/parsing/parsing-right-panel'
 import { ParsingQualityNotice } from './parsing-quality-notice'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { toast } from 'sonner'
+import { formatApiError } from '@/lib/api-errors'
+import { downloadBlob } from '@/lib/download'
 import { resolveParserBackendForFilename } from '@/lib/parser-compat'
+import { cn } from '@/lib/utils'
 import type { ParsedFileData } from '@/store/use-parsed-files-store'
 
 type ParsingLibraryPreviewPaneProps = {
@@ -27,7 +31,7 @@ type ParsingLibraryPreviewPaneProps = {
   sourceFeedback: ReactElement | null
   isSourceChecking: boolean
   defaultParserBackend: string
-  onUpdateParser: (backend: string) => void
+  parserPicker: ReactNode
   onReprocessKnowledgeFile: (backend: string) => void
   onRestoreSource: (autoParse: boolean) => void
   onRequestRebind: (autoParse: boolean) => void
@@ -51,13 +55,29 @@ export function ParsingLibraryPreviewPane({
   sourceFeedback,
   isSourceChecking,
   defaultParserBackend,
-  onUpdateParser,
+  parserPicker,
   onReprocessKnowledgeFile,
   onRestoreSource,
   onRequestRebind,
 }: Readonly<ParsingLibraryPreviewPaneProps>) {
   const t = useTranslations('ParsingWorkbench')
   const [narrowView, setNarrowView] = useState<'source' | 'result'>('result')
+  const [copied, setCopied] = useState(false)
+  useEffect(() => {
+    if (!copied) return
+    const timer = setTimeout(() => setCopied(false), 2000)
+    return () => clearTimeout(timer)
+  }, [copied])
+  const copyMarkdown = async () => {
+    try {
+      await navigator.clipboard.writeText(activeMarkdown)
+      setCopied(true)
+    } catch (error) {
+      toast.error(formatApiError(error, '复制 Markdown 失败'))
+    }
+  }
+  const downloadMarkdown = () =>
+    downloadBlob(file.filename.replace(/\.[^/.]+$/, '') + '.md', new Blob([activeMarkdown], { type: 'text/markdown' }))
   const parserValue = resolveParserBackendForFilename(file.filename, file.parserBackend ?? defaultParserBackend).backend
   const isKnowledgeBaseFile = file.source === 'knowledge_base'
   const canOpenSource =
@@ -153,6 +173,7 @@ export function ParsingLibraryPreviewPane({
           <div className={styles.resultToolbar}>
             <FileText className="size-3.5 text-muted-foreground" />
             <span className="text-[13px]">原始文件</span>
+            <span className={styles.fileBadge}>{file.fileType.toUpperCase()}</span>
           </div>
           {sourceStatus === 'unknown' && isSourceChecking && sourceFeedback === null ? (
             <div className={styles.resourceBody} aria-busy="true">
@@ -161,40 +182,89 @@ export function ParsingLibraryPreviewPane({
               </p>
             </div>
           ) : (
-            <div className={styles.empty}>
-              <FileTypeIcon filename={file.filename} className="size-10" />
-              <h2>{sourceTitle}</h2>
-              <p>{sourceDescription}</p>
-              {sourceFeedback}
-              {sourceAction !== null ? (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={sourceAction.onClick}
-                  title={sourceAction.title}
-                  className="gap-2"
-                >
-                  <Paperclip className="size-4" />
-                  {sourceAction.label}
-                </Button>
-              ) : null}
-              {canOpenSource ? (
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  title={t('libraryPreview.associateSourceTitle')}
-                  onClick={() => onRequestRebind(false)}
-                >
-                  {t('libraryPreview.associateSource')}
-                </Button>
-              ) : null}
+            <div className={styles.sourcePlaceholder}>
+              <div className={styles.sourceSheet}>
+                <FileTypeIcon filename={file.filename} className="size-10" />
+                <h2>{sourceTitle}</h2>
+                <p>{sourceDescription}</p>
+                {sourceFeedback}
+                {sourceAction !== null ? (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={sourceAction.onClick}
+                    title={sourceAction.title}
+                    className="gap-2"
+                  >
+                    <Paperclip className="size-4" />
+                    {sourceAction.label}
+                  </Button>
+                ) : null}
+                {canOpenSource ? (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    title={t('libraryPreview.associateSourceTitle')}
+                    onClick={() => onRequestRebind(false)}
+                  >
+                    {t('libraryPreview.associateSource')}
+                  </Button>
+                ) : null}
+              </div>
             </div>
           )}
         </section>
         <section className={styles.result} aria-label="解析结果">
           <div className={styles.resultToolbar}>
-            <span className="text-[13px]">Markdown</span>
-            <span className="ml-auto text-xs text-muted-foreground">{file.parser}</span>
+            <div className={styles.resultTabs} aria-label="结果视图">
+              <span className={styles.resultStaticTab}>Markdown</span>
+            </div>
+            {parserPicker}
+            {hasPreview ? (
+              <div className={styles.resultActions}>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  aria-label="编辑 Markdown"
+                  disabled
+                  title={isKnowledgeBaseFile ? '知识库文档只读' : '打开原文件后可编辑'}
+                >
+                  <Edit3 className="size-4" />
+                </Button>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  aria-label={copied ? '已复制 Markdown' : '复制 Markdown'}
+                  title="复制"
+                  onClick={() => void copyMarkdown()}
+                >
+                  {copied ? <Check className="size-4 text-success" /> : <Copy className="size-4" />}
+                </Button>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="hidden sm:inline-flex"
+                  aria-label="下载 Markdown"
+                  title="下载"
+                  onClick={downloadMarkdown}
+                >
+                  <Download className="size-4" />
+                </Button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button size="icon" variant="ghost" aria-label="更多结果操作">
+                      <MoreHorizontal className="size-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onSelect={downloadMarkdown}>
+                      <Download className="mr-2 size-4" />
+                      下载 Markdown
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+            ) : null}
           </div>
           {file.status === 'parsing' && hasPreview ? (
             <p role="status" className="shrink-0 border-b border-border px-4 py-2 text-xs text-muted-foreground">
@@ -202,10 +272,7 @@ export function ParsingLibraryPreviewPane({
             </p>
           ) : null}
           {file.status === 'error' && hasPreview ? (
-            <div
-              role="alert"
-              className="shrink-0 break-words border-b border-border px-4 py-2 text-xs text-destructive"
-            >
+            <div role="alert" className={styles.failureNotice}>
               <p>{file.error ?? '解析失败，请重试。'}</p>
               {pendingParseAction ? (
                 <Button size="sm" variant="ghost" onClick={pendingParseAction.onClick}>
@@ -214,7 +281,7 @@ export function ParsingLibraryPreviewPane({
               ) : null}
             </div>
           ) : null}
-          {contentFeedback}
+          {activeMarkdown.length > 0 || hasPreview ? contentFeedback : null}
           {file.status === 'parsed' && hasPreview ? (
             <ParsingQualityNotice qualityGate={qualityGate} pdfQuality={pdfQuality} />
           ) : null}
@@ -240,7 +307,9 @@ export function ParsingLibraryPreviewPane({
                 <Skeleton className="h-4 w-4/5" />
               </div>
             </ParsingRightPanel>
-          ) : contentFeedback !== null ? null : (
+          ) : contentFeedback !== null ? (
+            <div className={styles.empty}>{contentFeedback}</div>
+          ) : (
             <div className={styles.resultState}>
               {file.status === 'parsing' ? (
                 <>
@@ -252,15 +321,10 @@ export function ParsingLibraryPreviewPane({
                   <FileText className="size-7 text-muted-foreground" />
                   <h2>{file.status === 'error' ? '解析失败' : '文档待解析'}</h2>
                   {file.status === 'error' && file.error ? <p>{file.error}</p> : null}
-                  {canRunLibraryParse ? (
-                    <div className={styles.startParser}>
-                      <ParserDropdown value={parserValue} filename={file.filename} onChange={onUpdateParser} />
-                    </div>
-                  ) : null}
-                  {pendingParseAction ? (
+                  {pendingParseAction && file.status === 'error' ? (
                     <Button
                       size="sm"
-                      className="gap-2"
+                      className="gap-2 bg-accent text-accent-foreground hover:bg-accent/90"
                       onClick={pendingParseAction.onClick}
                       title={pendingParseAction.title}
                     >
@@ -275,19 +339,44 @@ export function ParsingLibraryPreviewPane({
         </section>
       </div>
       <footer className={styles.footer}>
-        <span>{resultStatusLabel}</span>
-        {sourceAction !== null ? (
-          <Button
-            size="sm"
-            variant="outline"
-            className="gap-2"
-            onClick={sourceAction.onClick}
-            title={sourceAction.title}
-          >
-            <Paperclip className="size-4" />
-            {sourceAction.label}
-          </Button>
-        ) : null}
+        <div className={styles.stats}>
+          <span>{resultStatusLabel}</span>
+          {hasPreview ? <span>{file.parser}</span> : null}
+          {hasPreview && file.durationSec !== undefined ? <span>{file.durationSec}s</span> : null}
+        </div>
+        <div className={styles.footerActions}>
+          {file.status === 'parsed' ? (
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5"
+              aria-label="重新解析"
+              onClick={() =>
+                isKnowledgeBaseFile
+                  ? onReprocessKnowledgeFile(parserValue)
+                  : canOpenSource
+                    ? onRestoreSource(true)
+                    : onRequestRebind(true)
+              }
+            >
+              <RotateCcw className="size-3.5" />
+              重新解析
+            </Button>
+          ) : null}
+          {sourceAction !== null ? (
+            <Button
+              size="sm"
+              variant="outline"
+              className={cn('gap-2', styles.sourceFooterAction)}
+              data-source-view={narrowView}
+              onClick={sourceAction.onClick}
+              title={sourceAction.title}
+            >
+              <Paperclip className="size-4" />
+              {sourceAction.label}
+            </Button>
+          ) : null}
+        </div>
       </footer>
     </>
   )

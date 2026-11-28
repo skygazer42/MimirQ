@@ -29,7 +29,7 @@ export function IngestionViewSwitch({ className }: Readonly<{ className?: string
   }
 
   return (
-    <nav className={cn('inline-flex self-stretch gap-6', className)} aria-label="入库视图">
+    <nav className={cn('inline-flex self-stretch gap-5', className)} aria-label="入库视图">
       {VIEW_OPTIONS.map((option) => {
         const selected = activeView === option.value
         return (
@@ -39,9 +39,9 @@ export function IngestionViewSwitch({ className }: Readonly<{ className?: string
             aria-current={selected ? 'page' : undefined}
             replace
             className={cn(
-              'inline-flex h-full min-h-12 items-center border-b-2 text-[13px] font-medium transition-colors',
+              'inline-flex h-full min-h-11 items-center border-b-2 text-[13px] transition-colors',
               selected
-                ? 'border-primary text-foreground'
+                ? 'border-accent font-medium text-foreground'
                 : 'border-transparent text-muted-foreground hover:text-foreground',
             )}
           >

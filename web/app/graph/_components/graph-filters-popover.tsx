@@ -7,8 +7,10 @@ import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { cn } from '@/lib/utils'
 
 import { GRAPH_CONFIDENCE_THRESHOLDS, type GraphConfBucket } from '../graph-page-utils'
+import styles from './graph-workspace.module.css'
 
 type GraphFilterOption = Readonly<{
   value: string
@@ -39,13 +41,13 @@ function GraphFilterOptions({
   onReset: () => void
 }>) {
   return (
-    <section aria-label={label}>
+    <section aria-label={label} className={styles.filterGroup}>
       <div className="flex items-center justify-between">
-        <h3 className="text-[11px] font-semibold text-muted-foreground">{label}</h3>
+        <h3 className="text-[11px] font-medium text-muted-foreground">{label}</h3>
         {selected.length === 0 ? (
           <span className="text-[11px] text-muted-foreground">不限</span>
         ) : (
-          <button type="button" className="text-[11px] text-primary hover:underline" onClick={onReset}>
+          <button type="button" className="text-[11px] text-foreground hover:underline" onClick={onReset}>
             清除{label}筛选
           </button>
         )}
@@ -55,20 +57,23 @@ function GraphFilterOptions({
         value={query}
         onChange={(event) => onQueryChange(event.currentTarget.value)}
         placeholder={`搜索${label}…`}
-        className="mt-2 h-8 text-xs"
+        className="mt-2 h-11 text-base sm:h-9 sm:text-sm"
       />
-      <div className="mt-2 max-h-36 space-y-1 overflow-y-auto pr-1 no-scrollbar">
+      <div className="mt-2 max-h-36 space-y-1 overflow-y-auto pr-1 custom-scrollbar">
         {options.length === 0 ? (
           <p className="text-xs text-muted-foreground">没有匹配的{label}</p>
         ) : (
           options.map((option) => (
-            <label key={option.value} className="flex items-center gap-2 rounded-md px-2 py-1 hover:bg-muted/60">
+            <label
+              key={option.value}
+              className="flex min-h-10 items-center gap-2 rounded-md px-2 py-1 hover:bg-muted/60 sm:min-h-0"
+            >
               <Checkbox
                 checked={selected.includes(option.value)}
                 onCheckedChange={(checked) => onCheckedChange(option.value, checked === true)}
               />
               <span className="min-w-0 flex-1 truncate text-xs text-foreground">{option.value}</span>
-              <span className="font-mono text-[11px] text-muted-foreground">{option.count}</span>
+              <span className={styles.countBadge}>{option.count}</span>
             </label>
           ))
         )}
@@ -132,7 +137,7 @@ export function GraphFiltersPopover({
           size="sm"
           className={
             activeGraphFilterCount > 0
-              ? 'bg-primary/10 text-primary hover:text-primary'
+              ? 'bg-muted text-foreground hover:bg-muted'
               : 'text-muted-foreground hover:text-foreground hover:bg-muted/60'
           }
           title="筛选实体类型、关系谓词和置信度"
@@ -149,13 +154,16 @@ export function GraphFiltersPopover({
       <PopoverContent
         align="end"
         aria-label="图谱筛选"
-        className="max-h-[var(--radix-popover-content-available-height)] w-[420px] max-w-[var(--radix-popover-content-available-width)] overflow-y-auto p-4"
+        className={cn(
+          styles.filterPanel,
+          'max-h-[var(--radix-popover-content-available-height)] w-[420px] max-w-[var(--radix-popover-content-available-width)] overflow-y-auto p-4',
+        )}
       >
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
               <SlidersHorizontal className="w-4 h-4 text-muted-foreground" />
-              <h2 className="text-sm font-semibold text-foreground">图谱筛选</h2>
+              <h2 className="text-sm font-medium text-foreground">图谱筛选</h2>
               <div className="text-[11px] text-muted-foreground font-mono">
                 {graphNodeCount} 个节点 · {graphLinkCount} 条连线
               </div>
@@ -170,7 +178,7 @@ export function GraphFiltersPopover({
               type="button"
               variant="ghost"
               size="sm"
-              className="h-7 px-2 text-xs"
+              className="h-11 px-2 text-sm sm:h-9 sm:text-xs"
               onClick={onResetGraphFilters}
               disabled={activeGraphFilterCount === 0 && !entityTypeQuery && !predicateQuery}
             >
@@ -199,13 +207,13 @@ export function GraphFiltersPopover({
             onReset={onResetPredicateFilters}
           />
           <section aria-label="置信度">
-            <h3 className="text-[11px] font-semibold text-muted-foreground">置信度</h3>
+            <h3 className="text-[11px] font-medium text-muted-foreground">置信度</h3>
             <div className="mt-2 flex flex-wrap gap-2">
               <Button
                 type="button"
                 size="sm"
-                variant={confidenceBucketFilters.length === 0 ? 'info' : 'outline'}
-                className="h-7 px-2 text-xs"
+                variant={confidenceBucketFilters.length === 0 ? 'secondary' : 'outline'}
+                className="h-11 px-2 text-sm sm:h-9 sm:text-xs"
                 aria-pressed={confidenceBucketFilters.length === 0}
                 onClick={onResetConfidenceBuckets}
               >
@@ -218,8 +226,8 @@ export function GraphFiltersPopover({
                     key={bucket}
                     type="button"
                     size="sm"
-                    variant={pressed ? 'info' : 'outline'}
-                    className="h-7 px-2 text-xs"
+                    variant={pressed ? 'secondary' : 'outline'}
+                    className="h-11 px-2 text-sm sm:h-9 sm:text-xs"
                     aria-pressed={pressed}
                     onClick={() => onToggleConfidenceBucket(bucket)}
                   >

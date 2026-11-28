@@ -19,6 +19,7 @@ import {
 } from '@/components/icons'
 import { AppFrame } from '@/components/app-frame'
 import { Button } from '@/components/ui/button'
+import { WorkspaceNotice, WorkspaceNoticeStack } from '@/components/ui/operational-workspace'
 import { PageTitleIcon } from '@/components/ui/page-title-icon'
 import {
   DropdownMenu,
@@ -29,7 +30,6 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Switch } from '@/components/ui/switch'
 import { useRouter } from '@/i18n/navigation'
-import { formatApiError } from '@/lib/api-errors'
 import { getParserLabel } from '@/lib/parser-options'
 import { useIngestionPolicy, type IngestionPolicyController } from './use-ingestion-policy'
 import { PolicyRuleEditor, PolicyTemplateDialog } from './policy-dialogs'
@@ -314,47 +314,35 @@ export default function PolicyWorkspace({ datasetId }: { datasetId: string }) {
             <span>新增规则</span>
           </Button>
         </div>
-        {policyController.datasetQuery.isError ? (
-          <div role="alert" className={styles.notice}>
-            <span>{formatApiError(policyController.datasetQuery.error, '数据集读取失败')}</span>
-            <button
-              onClick={() => {
-                void policyController.datasetQuery.refetch()
-              }}
+        <WorkspaceNoticeStack ariaLabel="入库策略状态提示">
+          {policyController.datasetQuery.isError ? (
+            <WorkspaceNotice
+              error={policyController.datasetQuery.error}
+              fallbackMessage="数据集读取失败"
+              retry={() => void policyController.datasetQuery.refetch()}
+              retryLabel="重新读取数据集"
+            />
+          ) : null}
+          {policyController.policyQuery.isError ? (
+            <WorkspaceNotice
+              title={policyController.policy ? '策略更新失败，保留上次数据' : '策略读取失败'}
+              error={policyController.policyQuery.error}
+              fallbackMessage="无法读取入库策略"
+              retry={() => void policyController.policyQuery.refetch()}
+              retryLabel="重新读取策略"
+              pending={policyController.policyQuery.isFetching}
+            />
+          ) : null}
+          {policyController.saveError ? (
+            <WorkspaceNotice
+              retry={() => void policyController.save()}
+              retryLabel="重试保存"
+              retryDisabled={policyController.blocked}
             >
-              重新读取数据集
-            </button>
-          </div>
-        ) : null}
-        {policyController.policyQuery.isError ? (
-          <div role="alert" className={styles.notice}>
-            <span>
-              {policyController.policy ? '策略更新失败，保留上次数据。' : '策略读取失败。'}
-              {formatApiError(policyController.policyQuery.error, '无法读取入库策略')}
-            </span>
-            <button
-              disabled={policyController.policyQuery.isFetching}
-              onClick={() => {
-                void policyController.policyQuery.refetch()
-              }}
-            >
-              重新读取策略
-            </button>
-          </div>
-        ) : null}
-        {policyController.saveError ? (
-          <div role="alert" className={styles.notice}>
-            <span>{policyController.saveError}，修改已保留。</span>
-            <button
-              disabled={policyController.blocked}
-              onClick={() => {
-                void policyController.save()
-              }}
-            >
-              重试保存
-            </button>
-          </div>
-        ) : null}
+              {policyController.saveError}，修改已保留。
+            </WorkspaceNotice>
+          ) : null}
+        </WorkspaceNoticeStack>
         {policyController.policyQuery.isPending ? (
           <div className={styles.empty} role="status">
             <Loader2 className="animate-spin motion-reduce:animate-none" />

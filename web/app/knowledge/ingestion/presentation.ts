@@ -78,7 +78,7 @@ export function formatPdfPageAverageLabel({
     const estimatedSuffix = hasEstimatedPdfPages ? '估算' : ''
     return `${Math.round(avgPdfPages)} 页${estimatedSuffix}`
   }
-  if (hasPdfProfiles) return '后端未回传'
+  if (hasPdfProfiles) return '暂无页数'
   return '无 PDF'
 }
 

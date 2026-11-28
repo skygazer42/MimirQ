@@ -1,4 +1,5 @@
 .workspace {
+  --prompt-gutter: max(28px, calc((100% - 1440px) / 2 + 28px));
   container-name: prompts-workspace;
   container-type: inline-size;
   display: flex;
@@ -10,19 +11,13 @@
   font-family: var(--font-sans);
   color: hsl(var(--foreground));
   background: hsl(var(--card));
-  --prompt-blue: color-mix(in srgb, hsl(var(--info)) 64%, hsl(var(--foreground)));
-  --prompt-teal: color-mix(in srgb, hsl(var(--teal)) 64%, hsl(var(--foreground)));
-  --prompt-violet: color-mix(in srgb, hsl(var(--indigo)) 64%, hsl(var(--foreground)));
-  --prompt-green: hsl(var(--success));
-  --prompt-amber: color-mix(in srgb, hsl(var(--warning)) 43%, hsl(var(--foreground)));
-  --prompt-danger: color-mix(in srgb, hsl(var(--destructive)) 76%, hsl(var(--foreground)));
 }
 .header {
   display: flex;
   align-items: center;
   gap: 18px;
-  min-height: 72px;
-  padding: 12px 28px;
+  min-height: 52px;
+  padding: 0 20px;
   border-bottom: 1px solid hsl(var(--border));
   background: hsl(var(--background));
   flex: none;
@@ -38,8 +33,8 @@
   height: 23px;
 }
 .heading h1 {
-  font-size: 20px;
-  font-weight: 650;
+  font-size: var(--workspace-title-size);
+  font-weight: var(--workspace-title-weight);
   line-height: 28px;
   margin: 0;
 }
@@ -55,7 +50,7 @@
   gap: 4px;
 }
 .headerActions button {
-  height: 34px;
+  height: 32px;
   font-size: 13px;
   gap: 7px;
   border-radius: 6px;
@@ -73,12 +68,12 @@
   min-width: 132px;
 }
 .primary {
-  background: hsl(var(--foreground));
-  color: hsl(var(--background));
+  background: hsl(var(--accent));
+  color: hsl(var(--accent-foreground));
   box-shadow: none;
 }
 .primary:hover {
-  background: hsl(var(--foreground) / 0.88);
+  background: hsl(var(--accent) / 0.9);
 }
 .primary:disabled {
   opacity: 0.45;
@@ -96,7 +91,7 @@
   gap: 25px;
   width: 100%;
   height: 48px;
-  padding: 0 28px;
+  padding: 0 var(--prompt-gutter);
   border-bottom: 1px solid hsl(var(--border));
   border-radius: 0;
   background: transparent;
@@ -118,24 +113,38 @@
     border-color 140ms ease;
 }
 .tab > span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 20px;
+  padding: 0 5px;
+  border: 1px solid hsl(var(--border));
+  border-radius: 5px;
+  background: hsl(var(--surface-2));
   font-size: 12px;
   font-weight: 450;
   color: hsl(var(--muted-foreground));
   font-variant-numeric: tabular-nums;
 }
 .tab[data-state='active'] {
-  border-color: hsl(var(--foreground));
+  border-color: hsl(var(--accent));
   background: transparent;
   color: hsl(var(--foreground));
-  font-weight: 600;
+  font-weight: 500;
   box-shadow: none;
+}
+.tab[data-state='active'] > span {
+  color: hsl(var(--icon-knowledge));
+  border-color: hsl(var(--icon-knowledge) / 0.14);
+  background: color-mix(in srgb, hsl(var(--icon-knowledge)) 8%, hsl(var(--card)));
 }
 .toolbar {
   display: flex;
   align-items: center;
   gap: 14px;
   min-height: 60px;
-  padding: 12px 28px;
+  padding: 12px var(--prompt-gutter);
   border-bottom: 1px solid hsl(var(--border));
   flex: none;
 }
@@ -145,7 +154,7 @@
   flex: none;
 }
 .searchInput {
-  height: 34px;
+  height: 36px;
   font-size: 13px;
   border-radius: 6px;
   background: hsl(var(--card));
@@ -160,7 +169,7 @@
   flex-wrap: wrap;
 }
 .filterSelect {
-  height: 34px;
+  height: 36px;
   width: 102px;
   gap: 9px;
   border: 0;
@@ -171,8 +180,8 @@
   border-radius: 4px;
 }
 .filterButton {
-  height: 32px;
-  width: 32px;
+  height: 36px;
+  width: 36px;
   color: hsl(var(--muted-foreground));
   border-radius: 4px;
 }
@@ -232,7 +241,7 @@
   align-items: center;
   gap: 12px;
   min-height: 45px;
-  padding: 6px 28px;
+  padding: 6px var(--prompt-gutter);
   flex: none;
   background: hsl(var(--muted) / 0.4);
   border-bottom: 1px solid hsl(var(--border));
@@ -267,31 +276,6 @@
 .dangerText {
   color: color-mix(in srgb, hsl(var(--destructive)) 76%, hsl(var(--foreground)));
 }
-.errorBar {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 8px 28px;
-  font-size: 13px;
-  line-height: 23px;
-  background: hsl(var(--destructive) / 0.06);
-  color: var(--prompt-danger);
-  flex: none;
-  border-bottom: 1px solid hsl(var(--border));
-}
-.errorBar > span {
-  overflow-wrap: anywhere;
-}
-.errorBar button {
-  margin-left: auto;
-  font-size: 13px;
-  height: 30px;
-  flex: none;
-}
-.errorBar button > svg {
-  height: 14px;
-  width: 14px;
-}
 .tableScroll {
   flex: 1;
   min-height: 0;
@@ -299,11 +283,17 @@
   overflow: auto;
   overscroll-behavior: contain;
   scrollbar-width: thin;
-  padding: 0 14px;
+  margin: 12px var(--prompt-gutter);
+}
+.tableFrame {
+  min-width: 1150px;
+  border: 1px solid hsl(var(--border));
+  border-radius: 10px;
+  overflow: clip;
+  background: hsl(var(--card));
 }
 .table {
   width: 100%;
-  min-width: 1150px;
   border-collapse: separate;
   border-spacing: 0;
   table-layout: fixed;
@@ -338,7 +328,7 @@
   height: 40px;
   padding: 0 13px;
   border-bottom: 1px solid hsl(var(--border));
-  background: hsl(var(--background));
+  background: hsl(var(--surface-2));
   font-size: 12px;
   font-weight: 500;
   color: hsl(var(--muted-foreground));
@@ -354,6 +344,9 @@
   vertical-align: middle;
   line-height: 23px;
   background: hsl(var(--card));
+}
+.table tbody tr:last-child td {
+  border-bottom: 0;
 }
 .table th.checkColumn,
 .table td.checkColumn {
@@ -399,17 +392,21 @@
   flex: 1;
 }
 .objectIcon {
-  display: grid;
-  place-items: center;
+  --tone: var(--icon-neutral);
+  display: inline-flex;
+  align-items: center;
   flex: none;
-  width: 32px;
-  height: 32px;
-  border-radius: 6px;
-  background: color-mix(in srgb, currentColor 9%, hsl(var(--card)));
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: 1px solid hsl(var(--tone) / 0.14);
+  border-radius: 7px;
+  background: color-mix(in srgb, hsl(var(--tone)) 8%, hsl(var(--card)));
+  color: hsl(var(--tone));
 }
 .objectIcon > svg {
-  width: 19px;
-  height: 19px;
+  width: 15px;
+  height: 15px;
 }
 .nameButton {
   display: block;
@@ -420,7 +417,7 @@
   text-overflow: ellipsis;
   text-align: left;
   font-size: 14px;
-  font-weight: 550;
+  font-weight: 500;
   line-height: 23px;
   background: transparent;
   border: 0;
@@ -449,45 +446,61 @@
   color: hsl(var(--muted-foreground));
 }
 .sceneLabel {
+  --tone: var(--icon-neutral);
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  line-height: 22px;
+  padding: 0 5px;
+  border: 1px solid hsl(var(--tone) / 0.14);
+  border-radius: 5px;
+  background: color-mix(in srgb, hsl(var(--tone)) 8%, hsl(var(--card)));
+  color: hsl(var(--tone));
+  font-size: 11px;
+  line-height: 21px;
   white-space: nowrap;
 }
 .sceneLabel i {
-  height: 5px;
-  width: 5px;
-  border-radius: 2px;
-  background: currentColor;
-  flex: none;
+  display: none;
 }
-.blue {
-  color: var(--prompt-blue);
+.rust {
+  --tone: var(--icon-knowledge);
 }
 .teal {
-  color: var(--prompt-teal);
+  --tone: var(--icon-source);
 }
 .violet {
-  color: var(--prompt-violet);
+  --tone: var(--icon-media);
+}
+.indigo {
+  --tone: var(--icon-analysis);
 }
 .green {
-  color: var(--prompt-green);
+  --tone: var(--icon-governance);
 }
 .amber {
-  color: var(--prompt-amber);
+  --tone: var(--icon-code);
 }
 .neutral {
-  color: hsl(var(--muted-foreground));
+  --tone: var(--icon-neutral);
 }
 .muted {
   color: hsl(var(--muted-foreground));
   font-size: 12px;
 }
+.builtinSource,
 .customSource {
-  color: var(--prompt-blue);
-  font-size: 12px;
+  --tone: var(--icon-neutral);
+  display: inline-flex;
+  padding: 0 5px;
+  border: 1px solid hsl(var(--tone) / 0.14);
+  border-radius: 5px;
+  background: color-mix(in srgb, hsl(var(--tone)) 8%, hsl(var(--card)));
+  color: hsl(var(--tone));
+  font-size: 11px;
+  line-height: 21px;
+  white-space: nowrap;
+}
+.customSource {
+  --tone: var(--icon-source);
 }
 .variables {
   display: inline-flex;
@@ -498,32 +511,46 @@
   max-width: 100%;
 }
 .variable {
-  font-family: var(--font-sans);
+  font-family: var(--font-mono);
   display: inline-block;
   vertical-align: middle;
   max-width: 170px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 12px;
-  line-height: 22px;
-  padding: 0 4px;
-  border-radius: 3px;
-  background: color-mix(in srgb, hsl(var(--indigo)) 9%, hsl(var(--card)));
-  color: color-mix(in srgb, hsl(var(--indigo)) 64%, hsl(var(--foreground)));
+  font-size: 11px;
+  line-height: 21px;
+  padding: 0 5px;
+  border: 1px solid hsl(var(--border));
+  border-radius: 4px;
+  background: hsl(var(--surface-2));
+  color: hsl(var(--muted-foreground));
 }
 .moreVariables {
+  display: inline-flex;
+  padding: 0 5px;
+  border: 1px solid hsl(var(--border));
+  border-radius: 4px;
+  background: hsl(var(--surface-2));
   color: hsl(var(--muted-foreground));
-  font-size: 12px;
+  font-size: 11px;
+  line-height: 21px;
+  font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 .status {
+  --tone: var(--icon-governance);
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  font-size: 12px;
+  gap: 4px;
+  padding: 0 5px;
+  border: 1px solid hsl(var(--tone) / 0.14);
+  border-radius: 5px;
+  background: color-mix(in srgb, hsl(var(--tone)) 8%, hsl(var(--card)));
+  color: hsl(var(--tone));
+  font-size: 11px;
   white-space: nowrap;
-  line-height: 22px;
+  line-height: 21px;
 }
 .status i {
   height: 5px;
@@ -533,10 +560,10 @@
   flex: none;
 }
 .enabled {
-  color: hsl(var(--success));
+  --tone: var(--icon-governance);
 }
 .disabled {
-  color: hsl(var(--muted-foreground));
+  --tone: var(--icon-code);
 }
 .rowActions {
   display: flex;
@@ -626,11 +653,6 @@
   width: 15px;
   height: 15px;
 }
-.emptyIcon {
-  height: 34px;
-  width: 34px;
-  margin-bottom: 3px;
-}
 .footer {
   display: flex;
   align-items: center;
@@ -638,7 +660,7 @@
   min-height: 44px;
   flex: none;
   border-top: 1px solid hsl(var(--border));
-  padding: 5px 28px;
+  padding: 5px var(--prompt-gutter);
   background: hsl(var(--background));
   font-size: 12px;
   color: hsl(var(--muted-foreground));
@@ -724,15 +746,16 @@
   overflow: hidden;
 }
 .dialogHeader {
+  background: hsl(var(--surface-2));
   padding: 22px 26px 17px;
   border-bottom: 1px solid hsl(var(--border));
   flex: none;
   min-width: 0;
 }
 .dialogHeader h2 {
-  font-size: 18px;
+  font-size: 16px;
   line-height: 28px;
-  font-weight: 600;
+  font-weight: 500;
   overflow-wrap: anywhere;
   padding-right: 20px;
 }
@@ -756,12 +779,12 @@
   gap: 8px;
   padding: 14px 26px;
   border-top: 1px solid hsl(var(--border));
-  background: hsl(var(--muted) / 0.15);
+  background: hsl(var(--surface-2));
   flex: none;
   flex-wrap: wrap;
 }
 .dialogFooter button {
-  height: 35px;
+  height: 36px;
   font-size: 13px;
   gap: 7px;
   margin: 0;
@@ -845,8 +868,10 @@
   grid-template-columns: 1.4fr 1fr 1fr 1fr;
   gap: 20px;
   margin: 0 0 20px;
-  padding-bottom: 18px;
-  border-bottom: 1px solid hsl(var(--border));
+  padding: 12px 14px;
+  border: 1px solid hsl(var(--border));
+  border-radius: 7px;
+  background: hsl(var(--surface-2));
 }
 .previewFacts > div {
   min-width: 0;
@@ -929,11 +954,12 @@
   line-height: 22px;
 }
 .previewContent {
-  font-family: var(--font-sans);
+  font-family: var(--font-mono);
   font-size: 14px;
   line-height: 26px;
   padding: 18px 20px;
-  background: hsl(var(--muted) / 0.35);
+  background: hsl(var(--surface-2));
+  border: 1px solid hsl(var(--border));
   border-radius: 5px;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -1001,7 +1027,7 @@
 }
 .bindingTabList button[data-state='active'] {
   background: transparent;
-  border-color: hsl(var(--foreground));
+  border-color: hsl(var(--accent));
 }
 .bindingBody {
   padding: 20px 26px;
@@ -1042,7 +1068,7 @@
   .dateColumn {
     display: none;
   }
-  .table {
+  .tableFrame {
     min-width: 985px;
   }
   .variablesColumn {
@@ -1071,7 +1097,7 @@
   .variablesColumn {
     width: 170px;
   }
-  .table {
+  .tableFrame {
     min-width: 850px;
   }
   .sourceColumn {
@@ -1110,14 +1136,14 @@
     gap: 12px;
   }
   .tableScroll {
-    padding: 0 10px;
+    margin: 10px 16px;
   }
   .variablesColumn,
   .sourceColumn,
   .sceneColumn {
     display: none;
   }
-  .table {
+  .tableFrame {
     min-width: 0;
   }
   .nameColumn {
@@ -1130,7 +1156,7 @@
     width: 65px;
   }
   .actionsColumn {
-    width: 92px;
+    width: 104px;
   }
   .table th.checkColumn,
   .table td.checkColumn {
@@ -1142,12 +1168,11 @@
     padding-right: 8px;
   }
   .objectIcon {
-    width: 28px;
-    height: 28px;
+    width: 26px;
   }
   .objectIcon > svg {
-    width: 17px;
-    height: 17px;
+    width: 15px;
+    height: 15px;
   }
   .templateIdentity {
     gap: 8px;
@@ -1216,7 +1241,7 @@
     flex-direction: row;
   }
   .dialogFooter button {
-    height: 38px;
+    height: 44px;
   }
   .twoFields {
     grid-template-columns: 1fr;
@@ -1239,6 +1264,15 @@
   }
   .contentInput {
     min-height: 190px;
+    font-size: 16px;
+  }
+  .field input {
+    height: 44px;
+    font-size: 16px;
+  }
+  .filterPopover button {
+    min-height: 44px;
+    font-size: 16px;
   }
   .formFields {
     gap: 16px;
@@ -1246,6 +1280,7 @@
 }
 @container prompts-workspace (max-width:430px) {
   .header {
+    gap: 12px;
     padding: 10px 14px;
     min-height: 64px;
   }
@@ -1277,7 +1312,7 @@
     padding: 9px 14px;
   }
   .tableScroll {
-    padding: 0 6px;
+    margin-inline: 16px;
   }
   .checkColumn {
     width: 26px;
@@ -1285,14 +1320,22 @@
   .statusColumn {
     width: 52px;
   }
+  .status {
+    padding: 0 3px;
+    gap: 3px;
+  }
+  .status i {
+    width: 3px;
+    height: 3px;
+  }
   .actionsColumn {
-    width: 76px;
+    width: 104px;
   }
   .rowActions {
     gap: 0;
   }
   .moreButton {
-    width: 26px;
+    width: 44px;
   }
   .rowActions .previewButton {
     font-size: 12px;
@@ -1301,7 +1344,7 @@
     display: none;
   }
   .nameButton {
-    font-size: 13px;
+    font-size: 14px;
   }
   .table td {
     height: 63px;
@@ -1334,6 +1377,30 @@
   }
 }
 @media (max-width: 767px) {
+  .headerActions button,
+  .headerActions .mobileActions,
+  .filterButton,
+  .filterSelect,
+  .rowActions button,
+  .pagination > button,
+  .pagination button.pageSize,
+  .selectionBar button {
+    min-height: 44px;
+  }
+  .headerActions .mobileActions,
+  .filterButton,
+  .rowActions .previewButton,
+  .rowActions .moreButton,
+  .pagination > button {
+    min-width: 44px;
+  }
+  .searchInput {
+    height: 44px;
+    font-size: 16px;
+  }
+  .filterSelect {
+    font-size: 14px;
+  }
   .header {
     padding-left: 64px;
   }

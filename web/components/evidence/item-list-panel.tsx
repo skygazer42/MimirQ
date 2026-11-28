@@ -1,14 +1,16 @@
 'use client'
 
+import { useId } from 'react'
 import { Plus, RefreshCw } from '@/components/icons'
 
 import type { EvidenceItem } from '@/types'
 import { Button } from '@/components/ui/button'
-import { WorkspaceNotice, workspaceStyles as ws } from '@/components/ui/operational-workspace'
+import { WorkspaceNotice, WorkspaceTableScroll, workspaceStyles as ws } from '@/components/ui/operational-workspace'
 import { LoadingButton } from '@/components/ui/loading-button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { SearchInput } from '@/components/ui/search-input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import styles from './evidence-workbench.module.css'
 
 type ItemListPanelProps = {
   selectedSuiteId: string
@@ -39,20 +41,24 @@ export function ItemListPanel({
   onCreateItem,
   onSelectItem,
 }: Readonly<ItemListPanelProps>) {
+  const headingId = useId()
   const labels: Record<string, string> = { draft: '草稿', reviewed: '已复核', approved: '已通过', archived: '已归档' }
   return (
-    <section data-evidence-item-list>
-      <div className={ws.sectionHeading}>
-        <h2 className={ws.sectionTitle}>证据条目</h2>
-        <Button onClick={onCreateItem} disabled={!selectedSuiteId}>
-          <Plus />
-          新建条目
-        </Button>
+    <section data-evidence-item-list aria-labelledby={headingId}>
+      <div className={`${ws.sectionHeading} max-sm:sr-only`}>
+        <h2 id={headingId} className={ws.sectionTitle}>
+          证据条目
+        </h2>
       </div>
-      <div className="mb-4 flex flex-wrap items-center gap-3">
-        <SearchInput value={itemQuery} onValueChange={onItemQueryChange} placeholder="搜索问题或说明" />
+      <div className={styles.itemToolbar}>
+        <SearchInput
+          value={itemQuery}
+          onValueChange={onItemQueryChange}
+          placeholder="搜索问题或说明"
+          containerClassName={styles.itemSearch}
+        />
         <Select value={statusFilter} onValueChange={onStatusFilterChange} disabled={!selectedSuiteId}>
-          <SelectTrigger className="w-40" aria-label="条目状态">
+          <SelectTrigger className={styles.itemStatus} aria-label="条目状态">
             <SelectValue placeholder="全部状态" />
           </SelectTrigger>
           <SelectContent>
@@ -68,15 +74,25 @@ export function ItemListPanel({
           loading={itemsLoading}
           variant="ghost"
           size="icon"
+          className={styles.itemRefresh}
           aria-label="重新读取证据条目"
           disabled={!selectedSuiteId || itemsLoading}
           onClick={onRefresh}
         >
           <RefreshCw />
         </LoadingButton>
+        <Button className={styles.itemCreate} onClick={onCreateItem} disabled={!selectedSuiteId}>
+          <Plus />
+          新建条目
+        </Button>
       </div>
       {itemsError !== null ? (
-        <WorkspaceNotice retry={onRefresh} pending={itemsLoading}>
+        <WorkspaceNotice
+          placement={filteredItems.length > 0 ? 'floating' : 'inline'}
+          tone={filteredItems.length > 0 ? 'warning' : 'error'}
+          retry={onRefresh}
+          pending={itemsLoading}
+        >
           {itemsError}
         </WorkspaceNotice>
       ) : null}
@@ -88,37 +104,45 @@ export function ItemListPanel({
           <Skeleton className="h-14 w-full" />
         </div>
       ) : filteredItems.length ? (
-        <div className={ws.tableScroll} aria-busy={itemsLoading}>
-          <table className={ws.table} aria-label="证据条目列表">
-            <thead>
-              <tr>
-                <th>问题与说明</th>
-                <th>状态</th>
-                <th>引用数</th>
-                <th>更新时间</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredItems.map((item) => (
-                <tr key={item.id} data-selected={selectedItemId === item.id}>
-                  <td>
-                    <button
-                      className="text-left text-sm font-medium underline-offset-4 hover:underline"
-                      onClick={() => onSelectItem(item.id)}
-                    >
-                      {item.query}
-                    </button>
-                    {item.notes ? <p>{item.notes}</p> : null}
-                  </td>
-                  <td>{labels[item.status] ?? item.status}</td>
-                  <td className="tabular-nums">{item.reference_sources?.length ?? '—'}</td>
-                  <td className="whitespace-nowrap text-xs tabular-nums">
-                    {item.updated_at.slice(0, 19).replaceAll('T', ' ')}
-                  </td>
+        <div aria-busy={itemsLoading}>
+          <WorkspaceTableScroll label="证据条目表格">
+            <table className={`${ws.table} ${styles.itemTable}`} aria-label="证据条目列表">
+              <colgroup>
+                <col className={styles.questionColumn} />
+                <col className={styles.statusColumn} />
+                <col className={styles.citationsColumn} />
+                <col />
+              </colgroup>
+              <thead>
+                <tr>
+                  <th>问题与说明</th>
+                  <th>状态</th>
+                  <th>引用数</th>
+                  <th>更新时间</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {filteredItems.map((item) => (
+                  <tr key={item.id} data-selected={selectedItemId === item.id}>
+                    <td>
+                      <button
+                        className="text-left text-sm font-medium underline-offset-4 hover:underline"
+                        onClick={() => onSelectItem(item.id)}
+                      >
+                        {item.query}
+                      </button>
+                      {item.notes ? <p>{item.notes}</p> : null}
+                    </td>
+                    <td className="whitespace-nowrap">{labels[item.status] ?? item.status}</td>
+                    <td className="tabular-nums">{item.reference_sources?.length ?? '—'}</td>
+                    <td className="whitespace-nowrap text-xs tabular-nums">
+                      {item.updated_at.slice(0, 19).replaceAll('T', ' ')}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </WorkspaceTableScroll>
         </div>
       ) : itemsError === null ? (
         <p className={ws.muted}>

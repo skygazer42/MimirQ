@@ -13,7 +13,7 @@ import styles from '../settings.module.css'
 
 const inputClass = cn(
   settingsLayoutTokens.input,
-  'border-transparent bg-[var(--settings-value)] placeholder:text-muted-foreground focus-visible:border-input',
+  'border-input bg-background placeholder:text-muted-foreground focus-visible:border-input',
 )
 type TextField = 'term' | 'words' | 'followup' | 'name' | 'route'
 type RuleField = { key: TextField; label: string; placeholder: string }

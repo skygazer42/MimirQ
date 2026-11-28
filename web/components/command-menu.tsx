@@ -8,6 +8,7 @@ import {
   Dataset as DatasetIcon,
   Diagnostics,
   KnowledgeGraph,
+  Network,
   Parsing,
   Reports,
   Upload,
@@ -112,7 +113,8 @@ type ShortcutDocItem = {
   description: string
 }
 
-type ModuleWorkbenchId = 'knowledge' | 'graph' | 'slices' | 'parsing' | 'reports' | 'observability' | 'governance'
+type ModuleWorkbenchId =
+  'knowledge' | 'graph' | 'ontology' | 'slices' | 'parsing' | 'reports' | 'observability' | 'governance'
 
 type ModuleWorkbenchItem = {
   id: ModuleWorkbenchId
@@ -645,6 +647,7 @@ export function CommandMenu() {
         [
           { id: 'knowledge', icon: Database, visibilityKey: undefined, run: () => router.push('/knowledge') },
           { id: 'graph', icon: KnowledgeGraph, visibilityKey: 'knowledgeGraph', run: () => router.push('/graph') },
+          { id: 'ontology', icon: Network, visibilityKey: undefined, run: () => router.push('/ontology') },
           { id: 'slices', icon: Chunking, visibilityKey: undefined, run: () => router.push('/chunk-preview') },
           { id: 'parsing', icon: Parsing, visibilityKey: undefined, run: () => router.push('/parsing') },
           { id: 'reports', icon: Reports, visibilityKey: 'reports', run: () => router.push('/reports') },

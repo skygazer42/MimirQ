@@ -1,12 +1,11 @@
-import fs from 'node:fs'
 import { expect, test } from '@playwright/test'
-import { choose, evidence, openPrompts, promptFixture, reloadPrompts } from './prompts-table.helpers'
+import { choose, openPrompts, promptFixture, reloadPrompts } from './prompts-table.helpers'
 
 test('A keeps filters and bulk selection scoped to the visible template collection', async ({ page }) => {
   const state = await promptFixture(page)
   await openPrompts(page)
-  fs.mkdirSync(evidence, { recursive: true })
-  await page.screenshot({ path: `${evidence}/desktop.png` })
+  await expect(page.getByRole('button', { name: '企业本体', exact: true })).toHaveCount(0)
+  await page.screenshot({ path: test.info().outputPath('desktop.png') })
   const table = page.getByRole('table', { name: '提示词模板', exact: true })
   await expect(table).toBeVisible({ timeout: 10000 })
   await expect(table.locator('tbody tr')).toHaveCount(20)
@@ -40,7 +39,7 @@ test('built-ins remain read-only and a copied custom template persists after rel
   await expect(dialog.locator('pre')).toHaveText(builtin.content)
   await expect(dialog.getByText('{format_instructions}', { exact: true })).toBeVisible()
   await expect(dialog.getByRole('button', { name: '编辑模板', exact: true })).toHaveCount(0)
-  await page.screenshot({ path: `${evidence}/preview.png` })
+  await page.screenshot({ path: test.info().outputPath('preview.png') })
   await dialog.getByRole('button', { name: '复制为自定义模板', exact: true }).click()
   await expect.poll(() => state.items.length).toBe(35)
   await dialog.getByRole('button', { name: '关闭', exact: true }).click()
@@ -173,8 +172,8 @@ test('load failures retry and an empty collection keeps its starting actions', a
   state.items = []
   await reloadPrompts(page)
   await expect(page.getByRole('heading', { name: '还没有提示词模板', exact: true })).toBeVisible()
-  await page.screenshot({ path: `${evidence}/empty.png` })
-  await expect(page.getByRole('button', { name: '创建模板', exact: true })).toBeEnabled()
+  await page.screenshot({ path: test.info().outputPath('empty.png') })
+  await expect(page.locator('header').getByRole('button', { name: '创建模板', exact: true })).toBeEnabled()
   expect(state.writes).toEqual([])
 })
 
@@ -189,19 +188,24 @@ test('phone dark layout keeps actions, keyboard tabs and readable preview availa
   await all.focus()
   await all.press('ArrowRight')
   await expect(page.getByRole('tab', { name: /^问答/ })).toHaveAttribute('aria-selected', 'true')
-  await page.screenshot({ path: `${evidence}/phone-dark.png` })
+  await page.screenshot({ path: test.info().outputPath('phone-dark.png') })
   const name = state.items[0].name
   await page.getByRole('button', { name: `预览 ${name}`, exact: true }).click()
   const dialog = page.getByRole('dialog', { name, exact: true })
   await expect(dialog.locator('pre')).toContainText('<instructions>')
   await expect(dialog.getByRole('button', { name: '关闭', exact: true })).toBeVisible()
-  await page.screenshot({ path: `${evidence}/phone-preview.png` })
+  await page.screenshot({ path: test.info().outputPath('phone-preview.png') })
   await page.keyboard.press('Escape')
   await expect(dialog).toBeHidden()
   await page.getByRole('button', { name: '模板管理操作', exact: true }).click()
   await page.getByRole('menuitem', { name: '场景绑定', exact: true }).click()
   await expect(page.getByRole('dialog', { name: '场景绑定', exact: true })).toBeVisible()
   await expect(page.getByRole('tab', { name: '关系词表', exact: true })).toBeVisible()
+  await page.screenshot({ path: test.info().outputPath('phone-bindings.png'), animations: 'disabled' })
+  await page.getByRole('tab', { name: '关系词表', exact: true }).click()
+  await expect(page.getByText('加载关系词表…', { exact: true })).toBeHidden({ timeout: 60000 })
+  await expect(page.getByText('belongs_to', { exact: true })).toBeVisible()
+  await page.screenshot({ path: test.info().outputPath('phone-predicates.png'), animations: 'disabled' })
   await page.keyboard.press('Escape')
   await expect(page.getByRole('button', { name: '模板管理操作', exact: true })).toBeFocused()
   await page.getByRole('button', { name: '创建模板', exact: true }).click()
@@ -211,7 +215,15 @@ test('phone dark layout keeps actions, keyboard tabs and readable preview availa
   expect(box!.y).toBeGreaterThanOrEqual(8)
   expect(box!.y + box!.height).toBeLessThanOrEqual(836)
   await expect(form.getByRole('button', { name: '保存模板', exact: true })).toBeVisible()
-  await page.screenshot({ path: `${evidence}/phone-editor.png`, animations: 'disabled' })
+  await page.screenshot({ path: test.info().outputPath('phone-editor.png'), animations: 'disabled' })
+  await page.setViewportSize({ width: 390, height: 620 })
+  await expect
+    .poll(async () => {
+      const saveBounds = await form.getByRole('button', { name: '保存模板', exact: true }).boundingBox()
+      return saveBounds!.y + saveBounds!.height
+    })
+    .toBeLessThanOrEqual(620)
+  await page.screenshot({ path: test.info().outputPath('phone-editor-short.png'), animations: 'disabled' })
   expect(state.writes).toEqual([])
   expect(state.errors).toEqual([])
 })
@@ -287,4 +299,69 @@ test('overlapping API pages fail visibly instead of silently hiding a template',
   await page.getByRole('button', { name: '重新加载', exact: true }).click()
   await expect(page.getByRole('tab', { name: /^全部/ })).toContainText('139')
   expect(state.writes).toEqual([])
+})
+
+for (const view of [
+  { width: 1440, height: 900, theme: 'light' as const },
+  { width: 390, height: 844, theme: 'dark' as const },
+]) {
+  test(`empty prompts has one primary starter and restores filters after sync at ${view.width}`, async ({ page }) => {
+    const state = await promptFixture(page, view.theme)
+    const builtins = state.items
+    state.items = []
+    await page.setViewportSize({ width: view.width, height: view.height })
+    await openPrompts(page)
+    const card = page.getByRole('heading', { name: '还没有提示词模板', exact: true }).locator('..')
+    await expect(card).toBeVisible()
+    await expect(page.getByRole('searchbox', { name: '搜索模板', exact: true })).toHaveCount(0)
+    await expect(page.getByRole('combobox', { name: '模板状态', exact: true })).toHaveCount(0)
+    await expect(page.getByRole('combobox', { name: '模板来源', exact: true })).toHaveCount(0)
+    await expect(page.getByRole('tablist', { name: '提示词场景', exact: true })).toHaveCount(0)
+    await card.getByRole('button', { name: '创建模板', exact: true }).click()
+    await expect(page.getByRole('dialog', { name: '创建模板', exact: true })).toBeVisible()
+    await page.keyboard.press('Escape')
+    await expect(page.locator('[data-prompt-create]')).toBeFocused()
+    const sync = card.getByRole('button', { name: '同步内置模板', exact: true })
+    const primary = await sync.evaluate((element) => getComputedStyle(element).backgroundColor)
+    expect(await page.locator('[data-prompt-create]').evaluate((el) => getComputedStyle(el).backgroundColor)).not.toBe(
+      primary,
+    )
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(1)
+    await page.screenshot({ path: test.info().outputPath('wave-d-prompts-empty.png'), animations: 'disabled' })
+    let release!: () => void
+    state.saveGate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    try {
+      await sync.click()
+      await expect(card.getByRole('button', { name: '同步中', exact: true })).toBeDisabled()
+      await expect(card.getByRole('button', { name: '创建模板', exact: true })).toBeDisabled()
+      await expect.poll(() => state.writes.length).toBe(1)
+      state.items = builtins
+    } finally {
+      release()
+      state.saveGate = null
+    }
+    await expect(page.getByRole('table', { name: '提示词模板', exact: true }).locator('tbody tr')).toHaveCount(20)
+    await expect(page.getByRole('searchbox', { name: '搜索模板', exact: true })).toBeVisible()
+    await expect(page.getByRole('combobox', { name: '模板状态', exact: true })).toBeVisible()
+    expect(state.writes[0]).toMatchObject({ method: 'POST', path: '/api/v1/prompt-templates/builtins/sync' })
+    expect(state.errors).toEqual([])
+  })
+}
+
+test('active filters remain available when the underlying prompt collection becomes empty', async ({ page }) => {
+  const state = await promptFixture(page)
+  await openPrompts(page)
+  await page.getByRole('searchbox', { name: '搜索模板', exact: true }).fill('不存在的模板')
+  state.items = []
+  await page.locator('header').getByRole('button', { name: '同步内置模板', exact: true }).click()
+  await expect.poll(() => state.reads.length).toBeGreaterThan(1)
+  await expect(page.getByRole('heading', { name: '没有匹配的模板', exact: true })).toBeVisible()
+  await expect(page.getByRole('searchbox', { name: '搜索模板', exact: true })).toHaveValue('不存在的模板')
+  await expect(page.getByRole('combobox', { name: '模板来源', exact: true })).toBeVisible()
+  await page.getByRole('button', { name: '清除筛选', exact: true }).click()
+  await expect(page.getByRole('heading', { name: '还没有提示词模板', exact: true })).toBeVisible()
+  await expect(page.getByRole('searchbox', { name: '搜索模板', exact: true })).toHaveCount(0)
+  expect(state.writes).toEqual([{ method: 'POST', path: '/api/v1/prompt-templates/builtins/sync', body: null }])
 })

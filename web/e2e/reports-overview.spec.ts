@@ -1,11 +1,8 @@
-import fs from 'node:fs'
-import path from 'node:path'
 import { expect, test, type Page, type Route } from '@playwright/test'
 import type { DatasetReport } from '../lib/report-schema'
 import { installCommonApiMocks } from './enterprise-quality-telemetry.helpers'
 import { profileSummary } from './remaining-pages.helpers'
 
-const evidence = path.resolve(__dirname, '../../artifacts/rebrand/reports-overview-v1/tests')
 async function json(route: Route, value: unknown, status = 200) {
   await route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(value) })
 }
@@ -120,14 +117,15 @@ function report(datasetId = 'dataset-a', hash = ''): DatasetReport {
   }
 }
 async function fixture(page: Page, theme: 'light' | 'dark' = 'light') {
-  await page.setViewportSize({ width: 1600, height: 1000 })
+  await page.setViewportSize({ width: 1440, height: 900 })
   await installCommonApiMocks(page, { uploaded: false })
   await page.addInitScript((mode) => {
     localStorage.setItem('theme', mode)
     localStorage.setItem('mimirq.surfaceTheme', 'ocean')
-    localStorage.setItem('mimirq.themeColor', '#20262e')
+    localStorage.removeItem('mimirq.themeColor')
   }, theme)
   const state = {
+    datasetName: '工程文档库',
     failReport: false,
     failExport: false,
     reads: [] as string[],
@@ -144,7 +142,7 @@ async function fixture(page: Page, theme: 'light' | 'dark' = 'light') {
       return json(route, {
         total: 2,
         items: [
-          { id: 'dataset-a', name: '工程文档库', document_count: 128 },
+          { id: 'dataset-a', name: state.datasetName, document_count: 128 },
           { id: 'dataset-b', name: '空数据集', document_count: 0 },
         ],
       })
@@ -189,15 +187,27 @@ test('A renders live report values, filters anomalies and exposes all report sec
   await expect(page.getByRole('table', { name: '质量规则命中' })).not.toContainText('扫描范围完整')
   await expect(page.getByRole('table', { name: '质量规则命中' })).not.toContainText('零命中规则')
   await expect(page.getByText('密钥命中', { exact: true }).locator('..')).toContainText('待评估')
+  await page.screenshot({ path: test.info().outputPath('quality.png'), animations: 'disabled' })
+  await page.getByRole('button', { name: '查看目录字段缺失 · missing_directory', exact: true }).click()
+  await expect(page.getByRole('dialog', { name: '目录字段缺失', exact: true })).toContainText('工程文档库')
+  await page.screenshot({ path: test.info().outputPath('rule-details.png'), animations: 'disabled' })
+  await page.keyboard.press('Escape')
   await page.getByRole('tab', { name: '召回审计', exact: true }).click()
   await expect(page.getByText('hit_at_1 < 0.90', { exact: true })).toBeVisible()
   await page.getByRole('tab', { name: '结构与风险', exact: true }).click()
   await expect(page.getByRole('table', { name: '运行记录' })).toContainText('上游连接超时')
+  await page.screenshot({ path: test.info().outputPath('structure.png'), animations: 'disabled' })
   await page.getByRole('tab', { name: '报告总览', exact: true }).click()
   await expect(page.getByRole('tab', { name: '报告总览', exact: true })).toHaveAttribute('aria-selected', 'true')
   await expect(page.getByRole('region', { name: '报告摘要' }).locator('..')).toHaveCSS('opacity', '1')
-  fs.mkdirSync(evidence, { recursive: true })
-  await page.screenshot({ path: `${evidence}/desktop-a.png` })
+  await page.screenshot({ path: test.info().outputPath('desktop-a.png') })
+  await page.setViewportSize({ width: 1024, height: 768 })
+  await page.screenshot({ path: test.info().outputPath('narrow-desktop.png'), animations: 'disabled' })
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(1)
+  await page.getByRole('button', { name: '查看报告信息', exact: true }).click()
+  await expect(page.getByRole('heading', { name: '报告信息', exact: true })).toBeVisible()
+  await page.screenshot({ path: test.info().outputPath('report-information.png'), animations: 'disabled' })
+  await page.keyboard.press('Escape')
   expect(state.errors).toEqual([])
   expect(state.writes).toEqual([])
 })
@@ -286,22 +296,29 @@ test('phone and dark appearance keep scope, tabs and report content reachable', 
   await expect(page.getByText('hit_at_1 < 0.90', { exact: true })).toBeVisible()
   await page.getByRole('tab', { name: '数据质量', exact: true }).click()
   const table = page.getByRole('table', { name: '质量规则命中' }),
-    wrap = table.locator('..')
-  await wrap.evaluate((element) => {
-    element.scrollLeft = element.scrollWidth
+    rule = table.locator('tbody tr').first()
+  await expect(rule.locator('td').nth(0)).toBeVisible()
+  await expect(rule.locator('td').nth(1)).toHaveText('6')
+  await expect(rule.locator('td').nth(2)).toHaveText('有 6 个文档未记录目录字段。')
+  const context = await rule.evaluate((element) => {
+    const row = element.getBoundingClientRect()
+    return Array.from(element.children).map((cell) => {
+      const box = cell.getBoundingClientRect()
+      return (
+        box.left >= row.left &&
+        box.right <= row.right &&
+        cell.scrollWidth <= cell.clientWidth &&
+        cell.scrollHeight <= cell.clientHeight
+      )
+    })
   })
-  const nameBox = await table.locator('tbody tr').first().locator('th').boundingBox(),
-    wrapBox = await wrap.boundingBox()
-  expect(nameBox!.x).toBeGreaterThanOrEqual(wrapBox!.x - 1)
-  expect(nameBox!.x).toBeLessThanOrEqual(wrapBox!.x + 2)
-  fs.mkdirSync(evidence, { recursive: true })
-  await page.screenshot({ path: `${evidence}/phone-rule-context.png` })
+  expect(context.every(Boolean)).toBe(true)
+  await page.screenshot({ path: test.info().outputPath('phone-rule-context.png') })
   await page.getByRole('tab', { name: '报告总览', exact: true }).click()
   await expect(page.getByRole('tab', { name: '报告总览', exact: true })).toHaveAttribute('aria-selected', 'true')
   await expect(page.getByRole('region', { name: '报告摘要' }).locator('..')).toHaveCSS('opacity', '1')
   expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(1)
-  fs.mkdirSync(evidence, { recursive: true })
-  await page.screenshot({ path: `${evidence}/phone-dark.png` })
+  await page.screenshot({ path: test.info().outputPath('phone-dark.png') })
 })
 test('MRR and non-summary gates remain visible in audit details', async ({ page }) => {
   await fixture(page)
@@ -333,4 +350,65 @@ test('MRR and non-summary gates remain visible in audit details', async ({ page 
   await page.getByText('排序门禁', { exact: true }).click()
   await page.getByText('原始门禁指标', { exact: true }).click()
   await expect(page.locator('pre')).toContainText('"probe_errors": 2')
+})
+
+for (const view of [
+  { width: 1440, height: 900, theme: 'light' as const },
+  { width: 390, height: 844, theme: 'dark' as const },
+]) {
+  test(`zero-document report uses a quiet export and actionable starter at ${view.width}`, async ({ page }) => {
+    const state = await fixture(page, view.theme)
+    await page.setViewportSize({ width: view.width, height: view.height })
+    await open(page)
+    await page.getByRole('combobox', { name: '数据集', exact: true }).click()
+    await page.getByRole('option', { name: '空数据集', exact: true }).click()
+    const card = page.getByRole('heading', { name: '当前报告范围没有文档', exact: true }).locator('..')
+    await expect(card).toBeVisible()
+    await expect(card.getByRole('link', { name: '前往知识库', exact: true })).toHaveAttribute('href', '/knowledge')
+    await expect(card.getByRole('button', { name: '刷新报告', exact: true })).toBeInViewport({ ratio: 1 })
+    const exportButton = page.getByRole('button', { name: '导出报告', exact: true })
+    await expect(exportButton).toBeDisabled()
+    await expect(exportButton).toHaveCSS('border-top-width', '1px')
+    const primary = await card
+      .getByRole('link', { name: '前往知识库', exact: true })
+      .evaluate((el) => getComputedStyle(el).backgroundColor)
+    expect(await exportButton.evaluate((el) => getComputedStyle(el).backgroundColor)).not.toBe(primary)
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(1)
+    await page.screenshot({ path: test.info().outputPath('wave-d-reports-empty.png'), animations: 'disabled' })
+    const reads = state.reads.length
+    await card.getByRole('button', { name: '刷新报告', exact: true }).click()
+    await expect.poll(() => state.reads.length).toBeGreaterThan(reads)
+    await expect(card).toBeVisible()
+    await page.getByRole('combobox', { name: '数据集', exact: true }).click()
+    await page.getByRole('option', { name: '工程文档库', exact: true }).click()
+    await expect(exportButton).toBeEnabled()
+    await expect(page.getByRole('region', { name: '报告摘要', exact: true })).toContainText('128')
+    expect(state.exports).toEqual([])
+    expect(state.writes).toEqual([])
+    expect(state.errors).toEqual([])
+  })
+}
+
+test('unloaded reports disable export and shortened dataset display preserves full identity', async ({ page }) => {
+  const state = await fixture(page)
+  state.datasetName = 'Parsing Workspace [9482a571]'
+  let release!: () => void
+  const gate = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  await page.route('**/api/v1/reports/datasets/dataset-a?*', async (route) => {
+    await gate
+    await route.fallback()
+  })
+  try {
+    await page.goto('/reports', { waitUntil: 'domcontentloaded' })
+    await expect(page.getByRole('button', { name: '导出报告', exact: true })).toBeDisabled()
+    const dataset = page.getByRole('combobox', { name: '数据集', exact: true })
+    await expect(dataset).toHaveText('Parsing Workspace')
+    await expect(dataset).toHaveAttribute('title', `${state.datasetName} · dataset-a`)
+  } finally {
+    release()
+  }
+  await expect(page.getByRole('button', { name: '导出报告', exact: true })).toBeEnabled()
+  expect(state.exports).toEqual([])
 })

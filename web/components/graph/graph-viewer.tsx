@@ -1502,6 +1502,11 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(function
                   ctx.arc(state.nx, state.ny, 2.4 / scale, 0, 2 * Math.PI)
                   ctx.fillStyle = state.isSelected ? '#ffffff' : state.color
                   ctx.fill()
+                  ctx.globalAlpha = 1
+                  if (!shouldShowNodeLabel(state, viewportLodTier, isLargeGraph)) {
+                    ctx.restore()
+                    return
+                  }
                   ctx.font = `${state.isSelected ? 600 : 450} ${(state.isSelected ? 14 : 13) / scale}px "Ragvia Manrope", "Ragvia Sans SC", sans-serif`
                   ctx.textAlign = 'center'
                   ctx.textBaseline = 'top'
@@ -1509,7 +1514,7 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(function
                   ctx.lineWidth = 4 / scale
                   ctx.strokeStyle = canvasColors.labelStroke
                   ctx.strokeText(state.label, state.nx, state.ny + radius + 7 / scale)
-                  ctx.fillStyle = canvasColors.labelFill
+                  ctx.fillStyle = state.isDimmed ? canvasColors.labelDim : canvasColors.labelFill
                   ctx.fillText(state.label, state.nx, state.ny + radius + 7 / scale)
                   ctx.restore()
                   return

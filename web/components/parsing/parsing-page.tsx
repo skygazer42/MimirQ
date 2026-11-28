@@ -225,6 +225,7 @@ export default function ParsingPage() {
       handleDeleteFolder={queueActions.handleDeleteFolder}
       handleFileDragStart={queueActions.handleFileDragStart}
       handleFileSelect={handleFileSelect}
+      addFiles={addFiles}
       handleFolderDrop={queueActions.handleFolderDrop}
       handleRebindFileSelect={handleRebindFileSelect}
       handleSaveEdit={editorActions.handleSaveEdit}

@@ -80,6 +80,27 @@ export function reasonLabel(reason: string): string {
   }
 }
 
+export type QuarantineReasonTone = 'danger' | 'analysis' | 'process' | 'neutral'
+
+export function getReasonTone(reason: string): QuarantineReasonTone {
+  switch (reason) {
+    case 'pii_exceeded':
+    case 'secrets_exceeded':
+      return 'danger'
+    case 'parsing_failed':
+    case 'embedding_failed':
+    case 'vector_write_failed':
+    case 'index_failed':
+      return 'process'
+    case 'outline_only':
+    case 'low_density':
+    case 'empty_document':
+      return 'analysis'
+    default:
+      return 'neutral'
+  }
+}
+
 export function buildReviewAdvice(doc: Document): string[] {
   const reasons = new Set(getDropReasons(doc))
   const advice: string[] = []

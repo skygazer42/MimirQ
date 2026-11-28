@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react'
 
 import { AuthImage } from '@/components/auth-image'
+import { Blocks } from '@/components/icons'
 import type { ParsingElement } from '@/lib/api/parsing'
 import { cn } from '@/lib/utils'
 import {
@@ -12,6 +13,7 @@ import {
   getParsingPages,
 } from '@/lib/parsing-elements'
 import { getParsingLayoutMeta } from '@/lib/parsing-layout'
+import styles from './parsing-compare.module.css'
 
 type ParsingElementsPanelProps = {
   elements: ParsingElement[]
@@ -182,8 +184,9 @@ export function ParsingElementsPanel({ elements, onSelectElement, className }: R
                   </div>
                 ) : null}
                 <div className="flex flex-wrap items-center gap-2">
+                  <span className={styles.resultIcon} aria-hidden="true"><Blocks className="size-3.5" /></span>
                   <span className="text-[11px] font-medium text-foreground">{kindLabel(element.kind)}</span>
-                  {pageLabel ? <span className="font-mono text-[11px] text-muted-foreground">{pageLabel}</span> : null}
+                  {pageLabel ? <span className={styles.countBadge}>{pageLabel}</span> : null}
                   <span className="font-mono text-[11px] text-muted-foreground">{element.id}</span>
                   {typeof attributes?.source_content_type === 'string' ? (
                     <span className="rounded-full border border-border/60 px-1.5 py-0.5 text-[11px] text-muted-foreground">

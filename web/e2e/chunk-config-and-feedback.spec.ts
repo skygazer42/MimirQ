@@ -121,8 +121,15 @@ test('B keeps its footer and input state reachable on phone and follows the glob
   await dialog.getByRole('spinbutton', { name: '目标长度（字符）', exact: true }).fill('700')
   const message = notifications(page, 'warning').filter({ hasText: '更新预览后可确认入库。' })
   await expect(message).toBeVisible()
-  const titleRect = await dialog.getByRole('heading', { name: '高级切块配置', exact: true }).boundingBox()
-  await expect.poll(async () => (await message.boundingBox())?.y || 0).toBeGreaterThan(titleRect!.y + titleRect!.height)
+  await expect(message).toBeInViewport()
+  await expect
+    .poll(async () => {
+      const toastBox = await message.boundingBox()
+      const titleBox = await dialog.getByRole('heading', { name: '高级切块配置', exact: true }).boundingBox()
+      return toastBox !== null && titleBox !== null && toastBox.y + toastBox.height <= titleBox.y
+    })
+    .toBe(true)
+  await expect(dialog.getByRole('button', { name: '生成预览', exact: true })).toBeInViewport()
   await dialog.getByRole('button', { name: '上次预览', exact: true }).click()
   await expect(dialog.locator('[data-config-results]')).toBeVisible()
   await expect(dialog.locator('[data-config-editor]')).toBeHidden()
@@ -145,6 +152,7 @@ test('B keeps its footer and input state reachable on phone and follows the glob
 
 test('a second application page uses the same centered, finite success and error feedback', async ({ page }) => {
   await fixture(page)
+  await page.route('**/api/v1/dataset-categories**', (route) => json(route, { items: [], total: 0 }))
   const state = { fail: true, items: [] as Array<Record<string, unknown>> }
   await page.route('**/api/v1/datasets**', async (route) => {
     if (route.request().method() === 'POST') {

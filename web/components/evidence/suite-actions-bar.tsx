@@ -9,10 +9,12 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { workspaceStyles as ws } from '@/components/ui/operational-workspace'
+import styles from './evidence-workbench.module.css'
 
 type SuiteActionsBarProps = {
   selectedSuite: EvidenceSuite | null
@@ -43,20 +45,28 @@ export function SuiteActionsBar({
   onExportSuite,
   onSyncSuite,
 }: Readonly<SuiteActionsBarProps>) {
+  const countSummary = suiteCounts
+    ? [
+        `共 ${suiteCounts.total ?? '未提供'} 条`,
+        `草稿 ${suiteCounts.draft ?? '未提供'}`,
+        `已复核 ${suiteCounts.reviewed ?? '未提供'}`,
+        `已通过 ${suiteCounts.approved ?? '未提供'}`,
+        `已归档 ${suiteCounts.archived ?? '未提供'}`,
+      ].join(' · ')
+    : null
   return (
-    <section className="mb-5 border-b border-border pb-4">
-      <div className={ws.sectionHeading}>
-        <div>
-          <h2 className={ws.sectionTitle}>{selectedSuite?.name ?? '选择证据集'}</h2>
+    <section className={styles.suiteBar}>
+      <div className={styles.suiteHeader}>
+        <div className={styles.suiteIdentity}>
+          <h2 className={`${ws.sectionTitle} ${styles.suiteName}`}>{selectedSuite?.name ?? '选择证据集'}</h2>
           {suiteCounts ? (
-            <p className={ws.muted}>
-              共 {suiteCounts.total ?? '未提供'} 条 · 草稿 {suiteCounts.draft ?? '未提供'} · 已复核{' '}
-              {suiteCounts.reviewed ?? '未提供'} · 已通过 {suiteCounts.approved ?? '未提供'} · 已归档{' '}
-              {suiteCounts.archived ?? '未提供'}
-            </p>
+            <>
+              <p className={`${ws.muted} ${styles.suiteStats}`}>{countSummary}</p>
+              <p className={styles.suiteTotal}>共 {suiteCounts.total ?? '未提供'} 条</p>
+            </>
           ) : null}
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className={styles.suiteActions}>
           <ConfirmDialog
             title="同步到回归用例库？"
             description={`将「${selectedSuite?.name}」中已通过的条目同步到回归用例。已有绑定的用例会更新。`}
@@ -64,18 +74,32 @@ export function SuiteActionsBar({
             confirmVariant="default"
             onConfirm={onSyncSuite}
           >
-            <Button variant="outline" disabled={selectedSuite === null || syncingSuite}>
-              同步到回归用例
+            <Button
+              variant="outline"
+              className={styles.syncButton}
+              aria-label="同步到回归用例"
+              disabled={selectedSuite === null || syncingSuite}
+            >
+              <span className={styles.syncLabel}>同步到回归用例</span>
+              <span className={styles.syncShortLabel}>同步用例</span>
             </Button>
           </ConfirmDialog>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="outline" disabled={selectedSuite === null} aria-label="证据集操作">
+              <Button
+                variant="outline"
+                className={styles.suiteMenuTrigger}
+                disabled={selectedSuite === null}
+                aria-label="证据集操作"
+              >
                 <MoreHorizontal />
-                证据集操作
+                <span className={styles.menuLabel}>证据集操作</span>
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
+            <DropdownMenuContent align="end" className={styles.suiteMenu}>
+              {countSummary !== null ? (
+                <DropdownMenuLabel className={styles.menuStats}>{countSummary}</DropdownMenuLabel>
+              ) : null}
               <DropdownMenuItem disabled={importingQAFaq} onSelect={() => qaFaqInputRef.current?.click()}>
                 {importingQAFaq ? '正在导入 QA／FAQ…' : '导入 QA／FAQ'}
               </DropdownMenuItem>

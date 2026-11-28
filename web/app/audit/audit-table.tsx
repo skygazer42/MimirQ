@@ -174,12 +174,15 @@ function AuditRow({ row, audit }: Readonly<{ row: AuditLogItem; audit: AuditStat
       </td>
       <td className={styles.actorColumn}>
         <span title={row.actor_id === null ? '未记录操作者' : row.actor_id}>
-          {row.actor_id === null ? '未记录操作者' : abbreviateAuditIdentifier(row.actor_id)}
+          <span className={styles.avatar} aria-hidden="true">
+            {row.actor_id ? Array.from(row.actor_id)[0].toUpperCase() : '—'}
+          </span>
+          <span>{row.actor_id === null ? '未记录操作者' : abbreviateAuditIdentifier(row.actor_id)}</span>
         </span>
       </td>
       <td className={styles.eventColumn}>
-        <div className={styles.eventTitle}>
-          <i className={styles[getAuditActionTone(row.action)]} aria-hidden="true" />
+        <div className={cn(styles.eventTitle, styles[getAuditActionTone(row.action)])}>
+          <i aria-hidden="true" />
           <strong title={row.action}>{getAuditActionLabel(row.action)}</strong>
         </div>
         <small className={styles.eventCode} title={row.action}>

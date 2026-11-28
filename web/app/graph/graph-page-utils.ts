@@ -36,6 +36,36 @@ export type GraphLinkLike = Omit<GraphLink, 'source' | 'target'> & {
   weight?: unknown
 }
 
+export type OntologyGraphItem =
+  { entityId: string } | { subjectId: string; objectId: string; predicate: string; startChar: number; endChar: number }
+
+export type OntologyGraphTarget = {
+  versionId: string
+  documentId: string
+  chunkId: string
+  item: OntologyGraphItem
+}
+
+export function ontologyGraphTarget(meta: GraphRecord | undefined): OntologyGraphTarget | null {
+  const { ontology_version_id: versionId, document_id: documentId, chunk_id: chunkId } = meta ?? {}
+  if (typeof versionId !== 'string' || typeof documentId !== 'string' || typeof chunkId !== 'string' || !meta)
+    return null
+  const entityId = meta.ontology_entity_id
+  if (typeof entityId === 'string') return { versionId, documentId, chunkId, item: { entityId } }
+
+  const { ontology_subject_id: subjectId, ontology_object_id: objectId, predicate, evidence } = meta
+  const span = z.object({ start_char: z.number(), end_char: z.number() }).safeParse(evidence)
+  if (typeof subjectId !== 'string' || typeof objectId !== 'string' || typeof predicate !== 'string' || !span.success) {
+    return null
+  }
+  return {
+    versionId,
+    documentId,
+    chunkId,
+    item: { subjectId, objectId, predicate, startChar: span.data.start_char, endChar: span.data.end_char },
+  }
+}
+
 export type GraphContextMenuTarget =
   { type: 'node'; node: GraphNodeLike } | { type: 'link'; link: GraphLinkLike } | { type: 'background' }
 

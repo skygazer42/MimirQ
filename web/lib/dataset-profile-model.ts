@@ -2,6 +2,16 @@ import type { DatasetProfileHistogramBin, DatasetProfileSummary } from '@/lib/da
 
 type ProfileChartRow = Readonly<{ key: string | null; name: string; value: number }>
 
+const DOCUMENT_STATUS_PRESENTATION = new Map<string, { name: string; fill: string }>([
+  ['pending', { name: '等待', fill: 'hsl(var(--info))' }],
+  ['processing', { name: '处理中', fill: 'hsl(var(--warning))' }],
+  ['completed', { name: '已完成', fill: 'hsl(var(--success))' }],
+  ['failed', { name: '失败', fill: 'hsl(var(--destructive))' }],
+  ['quarantined', { name: '已隔离', fill: 'hsl(var(--warning))' }],
+  ['cancelled', { name: '已取消', fill: 'hsl(var(--muted-foreground))' }],
+  ['deleting', { name: '删除中', fill: 'hsl(var(--warning))' }],
+])
+
 const QUALITY_LABELS: Readonly<Record<string, string>> = {
   high_density: '高密度',
   mid_density: '中密度',
@@ -42,7 +52,10 @@ export function buildDatasetProfileModel(summary: DatasetProfileSummary, palette
   }
   return {
     fileTypes: colored(largestRows(summary.by_file_type, { limit: 10, includeRemainder: true })),
-    statuses: colored(countRows(summary.by_status)),
+    statuses: countRows(summary.by_status).map((row) => ({
+      ...row,
+      ...(DOCUMENT_STATUS_PRESENTATION.get(row.key) ?? { fill: 'hsl(var(--muted-foreground))' }),
+    })),
     lengths: histogramRows(summary.length_histogram),
     fileSizes: histogramRows(summary.file_size_histogram),
     pageCounts: histogramRows(summary.page_number_histogram),

@@ -59,7 +59,7 @@ export function DatasetScopePicker({
         <Button
           type="button"
           variant="ghost"
-          className="h-11 max-w-full gap-1.5 rounded-lg border border-border/60 bg-muted/30 px-2 text-xs font-medium shadow-none hover:bg-muted/60 data-[state=open]:bg-ring/10 @min-[30rem]:h-8"
+          className="h-11 max-w-full gap-1.5 rounded-lg px-2 text-xs font-normal shadow-none hover:bg-muted data-[state=open]:bg-muted @min-[30rem]:h-8"
           aria-controls={panelId}
           aria-label={label}
           title={label}
@@ -77,10 +77,10 @@ export function DatasetScopePicker({
             </span>
           ) : (
             <>
-              <Database className="size-4 shrink-0 text-ring" aria-hidden="true" />
-              <span className="min-w-0 truncate font-sans font-medium">{datasetLabel.title}</span>
+              <Database className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+              <span className="min-w-0 truncate font-sans">{datasetLabel.title}</span>
               {datasetLabel.hash !== null && (
-                <span className="hidden max-w-20 shrink-0 truncate rounded bg-muted px-1.5 py-0.5 font-mono text-[10px] font-normal text-muted-foreground @min-[30rem]:inline">
+                <span className="hidden max-w-20 shrink-0 truncate rounded bg-muted px-1.5 py-0.5 font-mono text-[11px] font-normal text-muted-foreground @min-[30rem]:inline">
                   {datasetLabel.hash}
                 </span>
               )}
@@ -114,7 +114,7 @@ export function DatasetScopePicker({
             onChange={(event) => setSearch(event.target.value)}
             aria-label={t('filterDatasets')}
             placeholder={t('filterDatasets')}
-            className="h-11 border-transparent bg-muted/50 pl-9 text-sm shadow-none"
+            className="h-11 border-transparent bg-muted/50 pl-9 text-base shadow-none sm:text-sm"
           />
         </div>
         {documentScoped && <p className="px-2 py-2 text-xs leading-5 text-muted-foreground">{t('datasetScopeHint')}</p>}
@@ -150,20 +150,20 @@ export function DatasetScopePicker({
                   }}
                   className={cn(
                     'flex w-full items-start gap-2 rounded-lg px-2.5 py-2.5 text-left transition-colors hover:bg-muted focus-ring',
-                    selectedId === dataset.id && 'bg-ring/10',
+                    selectedId === dataset.id && 'bg-muted',
                   )}
                 >
                   <span className="min-w-0 flex-1">
                     <span className="block break-words font-sans text-sm font-medium leading-5">
                       {datasetName.title}
                       {datasetName.hash !== null && (
-                        <span className="ml-1.5 break-all rounded bg-muted px-1.5 font-mono text-[10px] font-normal text-muted-foreground">
+                        <span className="ml-1.5 break-all rounded bg-muted px-1.5 font-mono text-[11px] font-normal text-muted-foreground">
                           {datasetName.hash}
                         </span>
                       )}
                     </span>
                     {description?.trim() && (
-                      <span className="mt-1 block break-words text-xs leading-5 text-muted-foreground">
+                      <span className="mt-1 block truncate text-xs leading-5 text-muted-foreground" title={description}>
                         {description}
                       </span>
                     )}
@@ -176,7 +176,9 @@ export function DatasetScopePicker({
                       </span>
                     </span>
                   </span>
-                  {selectedId === dataset.id && <Check className="mt-1 size-4 shrink-0 text-ring" aria-hidden="true" />}
+                  {selectedId === dataset.id && (
+                    <Check className="mt-1 size-4 shrink-0 text-foreground" aria-hidden="true" />
+                  )}
                 </button>
               )
             })

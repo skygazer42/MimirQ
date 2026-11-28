@@ -16,15 +16,15 @@
     --font-code: 'Fira Code Variable', 'Fira Code', var(--font-mono);
 
     /* Surface choices do not override brand or semantic status tokens. */
-    --background: 40 23.1% 97.5%;
-    --foreground: 214.3 17.9% 15.3%;
+    --background: 0 0% 100%;
+    --foreground: 240 5.9% 10%;
 
     /* Cards - White with subtle elevation */
     --card: 0 0% 100%;
-    --card-foreground: 214.3 17.9% 15.3%;
+    --card-foreground: 240 5.9% 10%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 214.3 17.9% 15.3%;
+    --popover-foreground: 240 5.9% 10%;
 
     /* Primary - ink for actions; rust stays on focus and brand details. */
     --primary: 214.3 17.9% 15.3%;
@@ -43,11 +43,11 @@
     --primary-900: 214 20% 10%;
 
     /* Secondary - neutral gray for controls. */
-    --secondary: 210 13.3% 94.1%;
-    --secondary-foreground: 214.3 17.9% 15.3%;
+    --secondary: 200 9.09% 93.53%;
+    --secondary-foreground: 240 5.9% 10%;
 
-    --muted: 210 15.8% 92.5%;
-    --muted-foreground: 211.4 9.9% 41.8%;
+    --muted: 180 6.67% 97.06%;
+    --muted-foreground: 201.43 6.67% 41.18%;
 
     /* Accent - approved rust; operational status colors stay separate. */
     --accent: 13.5 62.8% 44.3%;
@@ -86,8 +86,8 @@
     --chart-8: 262 66% 74%; /* violet-light (gradient step) */
 
     /* Neutral structure with a rust keyboard-focus cue. */
-    --border: 213.3 11.7% 84.9%;
-    --input: 210 13.5% 79.6%;
+    --border: 214 14% 90.5%;
+    --input: 200 9.68% 87.84%;
     --ring: 13.5 62.8% 44.3%;
 
     /* Radius - Consistent Curves */
@@ -100,9 +100,9 @@
     --code-background: 204 15.2% 93.5%;
 
     /* Sidebar - one neutral step below the canvas. */
-    --sidebar-background: 40 14% 94.5%;
-    --sidebar-foreground: 214.3 17.9% 15.3%;
-    --sidebar-border: 213.3 11.7% 84.9%;
+    --sidebar-background: 210 20% 98%;
+    --sidebar-foreground: 240 5.9% 10%;
+    --sidebar-border: 214 14% 90.5%;
 
     /* Custom Shadows for depth */
     --shadow-subtle: 0 1px 3px rgba(0, 0, 0, 0.03);
@@ -112,7 +112,7 @@
     /* Surface hierarchy: 0=base, 1=card, 2=overlay, 3=popover */
     --surface-0: var(--background);
     --surface-1: var(--card);
-    --surface-2: 204 16.1% 93.9%;
+    --surface-2: 210 20% 97.4%;
     --surface-3: var(--popover);
 
     /* Global app backdrop stays uniform; hierarchy comes from ruled surfaces. */
@@ -121,6 +121,9 @@
     --app-orb-secondary: var(--info);
     --app-orb-primary-opacity: 0;
     --app-orb-secondary-opacity: 0;
+    --workspace-title-size: 15px;
+    --workspace-title-weight: 600;
+    --workspace-max-width: 1440px;
   }
 
   html:not(.dark)[data-surface-theme='neutral'] {
@@ -422,8 +425,8 @@
       'rlig' 1,
       'calt' 1,
       'ss01' 1;
-    font-weight: 450;
-    line-height: 1.55;
+    font-weight: 400;
+    line-height: 1.5;
     background-image: none;
     background-attachment: fixed;
   }

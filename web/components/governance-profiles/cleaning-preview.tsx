@@ -87,6 +87,7 @@ function DocumentPicker({
           onValueChange={setSearch}
           placeholder="搜索文档名称"
           aria-label="搜索已解析文档"
+          containerClassName={styles.searchControl}
           inputClassName={styles.search}
         />
         <div className={styles.documentList} aria-busy={list.isFetching}>
@@ -166,9 +167,10 @@ type Props = {
   payload: GovernanceProfilePayload
   source: PreviewSource
   onSourceChange: Dispatch<SetStateAction<PreviewSource>>
+  inModal?: boolean
 }
 
-export function CleaningPreview({ payload, source, onSourceChange }: Readonly<Props>) {
+export function CleaningPreview({ payload, source, onSourceChange, inModal = false }: Readonly<Props>) {
   const [result, setResult] = useState<CleanPreviewResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [running, setRunning] = useState(false)
@@ -231,78 +233,155 @@ export function CleaningPreview({ payload, source, onSourceChange }: Readonly<Pr
 
   return (
     <section
-      className={styles.preview}
-      aria-labelledby="profile-preview-heading"
+      className={inModal ? styles.previewInModal : styles.preview}
+      aria-labelledby={inModal ? undefined : 'profile-preview-heading'}
+      aria-label={inModal ? '清洗前后对照工作区' : undefined}
       data-document-source={Boolean(document)}
     >
-      <div className={styles.sectionHeading}>
-        <h3 id="profile-preview-heading">清洗前后对照</h3>
-        <div className={styles.previewActions}>
-          {document ? (
-            <span className={styles.note}>Markdown</span>
-          ) : (
-            <select
-              aria-label="预览输入格式"
-              value={format}
-              onChange={(event) => {
+      {inModal ? (
+        <div className={styles.previewModalToolbar}>
+          <div className={styles.previewSource}>
+            <DocumentPicker
+              source={source}
+              onSelect={(document) => {
                 clearResult()
-                onSourceChange((previous) => ({
-                  ...previous,
-                  manualFormat: event.target.value === 'html' ? 'html' : 'markdown',
-                }))
+                onSourceChange((previous) => ({ ...previous, document }))
               }}
+            />
+            {document && (
+              <>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label="重新读取文档"
+                  disabled={reading}
+                  onClick={() => void content.refetch()}
+                >
+                  <RefreshCw className={reading ? 'animate-spin motion-reduce:animate-none' : undefined} />
+                </Button>
+                <Button
+                  variant="ghost"
+                  onClick={() => {
+                    clearResult()
+                    onSourceChange((previous) => ({ ...previous, document: null }))
+                  }}
+                >
+                  手动输入
+                </Button>
+              </>
+            )}
+            <p className={styles.sourceHint}>
+              {document ? '按当前配置预览，不修改已保存文档' : '使用解析结果，或在下方粘贴文本'}
+            </p>
+          </div>
+          <div className={styles.previewActions}>
+            {document ? (
+              <span className={styles.format} data-format="markdown">
+                Markdown
+              </span>
+            ) : (
+              <select
+                aria-label="预览输入格式"
+                value={format}
+                onChange={(event) => {
+                  clearResult()
+                  onSourceChange((previous) => ({
+                    ...previous,
+                    manualFormat: event.target.value === 'html' ? 'html' : 'markdown',
+                  }))
+                }}
+              >
+                {formats.map((value) => (
+                  <option key={value} value={value}>
+                    {value === 'html' ? 'HTML' : 'Markdown'}
+                  </option>
+                ))}
+              </select>
+            )}
+            <Button
+              className={styles.primaryAction}
+              onClick={() => void run()}
+              disabled={running || input.trim() === '' || disabled || reading || loading}
             >
-              {formats.map((value) => (
-                <option key={value} value={value}>
-                  {value === 'html' ? 'HTML' : 'Markdown'}
-                </option>
-              ))}
-            </select>
-          )}
-          <Button
-            variant="outline"
-            onClick={() => void run()}
-            disabled={running || input.trim() === '' || disabled || reading || loading}
-          >
-            {running ? <Loader2 className="animate-spin motion-reduce:animate-none" /> : <Play />}
-            {running ? '正在预览…' : document ? '重新预览' : '运行预览'}
-          </Button>
+              {running ? <Loader2 className="animate-spin motion-reduce:animate-none" /> : <Play />}
+              {running ? '正在预览…' : document ? '重新预览' : '运行预览'}
+            </Button>
+          </div>
         </div>
-      </div>
-      <div className={styles.previewSource}>
-        <DocumentPicker
-          source={source}
-          onSelect={(document) => {
-            clearResult()
-            onSourceChange((previous) => ({ ...previous, document }))
-          }}
-        />
-        {document && (
-          <>
-            <Button
-              variant="ghost"
-              size="icon"
-              aria-label="重新读取文档"
-              disabled={reading}
-              onClick={() => void content.refetch()}
-            >
-              <RefreshCw className={reading ? 'animate-spin motion-reduce:animate-none' : undefined} />
-            </Button>
-            <Button
-              variant="ghost"
-              onClick={() => {
+      ) : (
+        <>
+          <div className={styles.sectionHeading}>
+            <h3 id="profile-preview-heading">清洗前后对照</h3>
+            <div className={styles.previewActions}>
+              {document ? (
+                <span className={styles.format} data-format="markdown">
+                  Markdown
+                </span>
+              ) : (
+                <select
+                  aria-label="预览输入格式"
+                  value={format}
+                  onChange={(event) => {
+                    clearResult()
+                    onSourceChange((previous) => ({
+                      ...previous,
+                      manualFormat: event.target.value === 'html' ? 'html' : 'markdown',
+                    }))
+                  }}
+                >
+                  {formats.map((value) => (
+                    <option key={value} value={value}>
+                      {value === 'html' ? 'HTML' : 'Markdown'}
+                    </option>
+                  ))}
+                </select>
+              )}
+              <Button
+                className={styles.primaryAction}
+                onClick={() => void run()}
+                disabled={running || input.trim() === '' || disabled || reading || loading}
+              >
+                {running ? <Loader2 className="animate-spin motion-reduce:animate-none" /> : <Play />}
+                {running ? '正在预览…' : document ? '重新预览' : '运行预览'}
+              </Button>
+            </div>
+          </div>
+          <div className={styles.previewSource}>
+            <DocumentPicker
+              source={source}
+              onSelect={(document) => {
                 clearResult()
-                onSourceChange((previous) => ({ ...previous, document: null }))
+                onSourceChange((previous) => ({ ...previous, document }))
               }}
-            >
-              手动输入
-            </Button>
-          </>
-        )}
-        <p className={styles.sourceHint}>
-          {document ? '按当前配置预览，不修改已保存文档' : '使用解析结果，或在下方粘贴文本'}
-        </p>
-      </div>
+            />
+            {document && (
+              <>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label="重新读取文档"
+                  disabled={reading}
+                  onClick={() => void content.refetch()}
+                >
+                  <RefreshCw className={reading ? 'animate-spin motion-reduce:animate-none' : undefined} />
+                </Button>
+                <Button
+                  variant="ghost"
+                  onClick={() => {
+                    clearResult()
+                    onSourceChange((previous) => ({ ...previous, document: null }))
+                  }}
+                >
+                  手动输入
+                </Button>
+              </>
+            )}
+            <p className={styles.sourceHint}>
+              {document ? '按当前配置预览，不修改已保存文档' : '使用解析结果，或在下方粘贴文本'}
+            </p>
+          </div>
+        </>
+      )}
       {document && (
         <p className={styles.sourceProvenance} data-preview-source>
           {loading
@@ -339,6 +418,41 @@ export function CleaningPreview({ payload, source, onSourceChange }: Readonly<Pr
           文档被当前规则过滤：{result.drop_reason ?? '未达到内容质量要求'}
         </p>
       )}
+      {result && (
+        <dl className={styles.statStrip} aria-label="预览统计">
+          <div>
+            <dt>原文字符</dt>
+            <dd>{input.length.toLocaleString()}</dd>
+          </div>
+          <div>
+            <dt>清洗后字符</dt>
+            <dd>{result.markdown.length.toLocaleString()}</dd>
+          </div>
+          <div>
+            <dt>应用规则</dt>
+            <dd>{result.applied_rules ?? '—'}</dd>
+          </div>
+        </dl>
+      )}
+      {result && (
+        <div className={styles.previewSignals}>
+          {result.rule_stats && (
+            <span className={styles.domainPill} data-tone="governance">
+              规则命中 {result.rule_stats.reduce((total, rule) => total + rule.hits, 0)} 次
+            </span>
+          )}
+          {result.added_lines != null && (
+            <span className={styles.diffPill} data-kind="added">
+              新增 {result.added_lines} 行
+            </span>
+          )}
+          {result.removed_lines != null && (
+            <span className={styles.diffPill} data-kind="removed">
+              移除 {result.removed_lines} 行
+            </span>
+          )}
+        </div>
+      )}
       <div className={styles.previewPair}>
         <div className={styles.previewColumn}>
           <label htmlFor="profile-preview-input">
@@ -351,7 +465,7 @@ export function CleaningPreview({ payload, source, onSourceChange }: Readonly<Pr
             readOnly={Boolean(document)}
             aria-busy={loading}
             placeholder={
-              document ? (loading ? '正在读取文档…' : '文档内容将显示在这里') : '粘贴一段文档，检查当前规则的清洗效果'
+              document ? (loading ? '正在读取文档…' : '文档原文') : '粘贴一段文档，检查当前规则的清洗效果'
             }
             onChange={(event) => {
               clearResult()
@@ -362,7 +476,7 @@ export function CleaningPreview({ payload, source, onSourceChange }: Readonly<Pr
         <div className={styles.previewColumn}>
           <div className={styles.outputLabel}>
             清洗后
-            <span>
+            <span className={styles.previewState} data-changed={result?.changed}>
               {result ? (result.changed ? '内容已调整 · 预览' : '内容无变化 · 预览') : document ? '当前配置预览' : ''}
             </span>
           </div>

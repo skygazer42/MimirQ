@@ -2,19 +2,7 @@
 
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import {
-  Sparkles,
-  FileText,
-  Cpu,
-  LayoutGrid,
-  Cloud,
-  ScanLine,
-  ScanText,
-  FileCode,
-  Wand2,
-  ChevronDown,
-  Check,
-} from '@/components/icons'
+import { FileText, Cpu, LayoutGrid, Cloud, ScanLine, ScanText, FileCode, ChevronDown, Check } from '@/components/icons'
 import { cn, detachPromise } from '@/lib/utils'
 import { PARSER_BACKEND_OPTIONS, getParserOption } from '@/lib/parser-options'
 import { usePipelineCapabilities } from '@/contexts/pipeline-capabilities-context'
@@ -25,7 +13,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { pipelinePickerTokens } from '@/components/ui/system-page-tokens'
 
 const ICON_MAP = {
-  auto: Sparkles,
+  auto: FileText,
   basic: FileText,
   docling: Cpu,
   layout: LayoutGrid,
@@ -33,7 +21,7 @@ const ICON_MAP = {
   deepdoc: ScanLine,
   deepseekocr: ScanText,
   markitdown: FileCode,
-  magicpdf: Wand2,
+  magicpdf: LayoutGrid,
 }
 
 type ParserDropdownProps = {
@@ -86,8 +74,8 @@ export function ParserDropdown({
         <button
           type="button"
           className={cn(
-            'w-full flex items-center border transition-colors duration-150 motion-reduce:transition-none focus-ring',
-            compact ? 'gap-2 px-2.5 py-1.5 rounded-full' : 'h-[60px] gap-2.5 rounded-lg px-3 py-2',
+            'w-full flex cursor-pointer items-center border transition-colors duration-150 motion-reduce:transition-none focus-ring',
+            compact ? 'h-11 gap-2 rounded-md px-2.5 py-1.5 sm:h-9' : 'h-[60px] gap-2.5 rounded-lg px-3 py-2',
             pipelinePickerTokens.trigger,
             isOpen ? 'border-input ring-2 ring-foreground/10' : 'hover:border-border',
           )}
@@ -103,9 +91,7 @@ export function ParserDropdown({
           </span>
           <span className="min-w-0 flex-1 text-left">
             <span className="flex items-center gap-2">
-              <span className={cn('font-medium text-foreground truncate', compact ? 'text-xs' : 'text-[13px]')}>
-                {selectedOption.label}
-              </span>
+              <span className={cn('font-medium text-foreground truncate', 'text-[13px]')}>{selectedOption.label}</span>
               {selectedOption.value === 'paddle_vl' && paddleVlVersionBadge ? (
                 <span className="rounded bg-success/10 px-1.5 py-px text-[9px] font-medium leading-4 text-success">
                   {paddleVlVersionBadge}
@@ -153,7 +139,7 @@ export function ParserDropdown({
           >
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0">
-                {loading ? '正在加载后端解析器能力…' : '无法获取后端解析器能力，部分选项可能不可用'}
+                {loading ? '正在加载解析器…' : '无法读取解析器状态，部分选项可能不可用'}
               </div>
               {error ? (
                 <button
@@ -190,7 +176,7 @@ export function ParserDropdown({
             const notes = parserNotesByName.get(normalizeParserBackendName(option.value))
             const disabledTitle = isDisabledByFile
               ? '该文件类型不支持此解析器'
-              : (notes ?? '后端未启用该解析器（可到“设置”开启/配置）')
+              : (notes ?? '请在设置中启用此解析器')
             const disabledLabel = isDisabledByFile ? '不适用' : '未启用'
 
             return (

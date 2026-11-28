@@ -1,7 +1,7 @@
 'use client'
 
 import { useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type FormEvent } from 'react'
-import { ChevronDown, ChevronUp, WandSparkles } from '@/components/icons'
+import { ChevronDown, ChevronUp, FileSearch, WandSparkles } from '@/components/icons'
 
 import { parsingApi } from '@/lib/api/parsing'
 import type {
@@ -19,6 +19,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { LoadingButton } from '@/components/ui/loading-button'
 import { Textarea } from '@/components/ui/textarea'
+import styles from './parsing-compare.module.css'
 
 export type ParsingEvidenceSelection = Readonly<{
   fieldName: string
@@ -437,8 +438,9 @@ function ParsingExtractForm({
             ) : (
               <div className="mt-2 space-y-2">
                 {Object.entries(result.response.result).map(([fieldName, field]) => (
-                  <div key={fieldName} className="rounded-lg border border-border/60 bg-muted/10 p-2.5">
+                  <div key={fieldName} className={styles.extractionField}>
                     <div className="flex flex-wrap items-center gap-2">
+                      <span className={styles.resultIcon} aria-hidden="true"><FileSearch className="size-3.5" /></span>
                       <span className="text-[11px] font-medium text-foreground">{fieldName}</span>
                       {field.strategy ? (
                         <span className="rounded-full border border-border/60 px-2 py-0.5 text-[11px] text-muted-foreground">
@@ -446,7 +448,7 @@ function ParsingExtractForm({
                         </span>
                       ) : null}
                       {typeof field.confidence === 'number' ? (
-                        <span className="font-mono text-[11px] text-muted-foreground">
+                        <span className={styles.countBadge}>
                           {field.confidence.toFixed(2)}
                         </span>
                       ) : null}

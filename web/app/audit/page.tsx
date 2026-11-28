@@ -6,13 +6,13 @@ import { TenantPermissionGate } from '@/components/auth/tenant-permission-gate'
 import { AppFrame } from '@/components/app-frame'
 import { Button } from '@/components/ui/button'
 import { LoadingButton } from '@/components/ui/loading-button'
+import { WorkspaceNotice, WorkspaceNoticeStack } from '@/components/ui/operational-workspace'
 import { PageLoading } from '@/components/ui/page-loading'
 import { PageTitleIcon } from '@/components/ui/page-title-icon'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
-import { formatApiError } from '@/lib/api-errors'
 import { getAuthSessionKey, subscribeAuthSession } from '@/lib/auth-storage'
 import { TENANT_PERMISSIONS } from '@/lib/tenant-permissions'
-import { AuditFiltersBar, AuditFilterSnapshot } from './audit-filters'
+import { AuditFiltersBar, AuditFilterSnapshot, AuditPresets } from './audit-filters'
 import { AuditDialogs } from './audit-dialogs'
 import { AuditTools } from './audit-tools'
 import { AuditTable, AuditPagination } from './audit-table'
@@ -43,7 +43,9 @@ function AuditWorkspace({ sessionKey }: Readonly<{ sessionKey: string }>) {
             <PageTitleIcon name="audit-log" />
             <h1>审计日志</h1>
           </div>
+          <AuditPresets audit={audit} />
           <div className={styles.headerActions}>
+            <span className={styles.tenantLabel}>当前租户</span>
             {audit.canManage ? (
               <Button
                 variant="ghost"
@@ -96,61 +98,7 @@ function AuditWorkspace({ sessionKey }: Readonly<{ sessionKey: string }>) {
             </DropdownMenu>
           </div>
         </header>
-        <AuditFiltersBar audit={audit} />
-        {audit.filterError !== undefined ? (
-          <div className={styles.domainError} role="alert">
-            {audit.filterError}
-          </div>
-        ) : null}
-        {audit.logs.isError ? (
-          <div className={styles.domainError} role="alert">
-            <span>
-              {formatApiError(audit.logs.error, '读取审计日志失败')}
-              {audit.snapshot === undefined ? '' : '，保留已取得的结果'}
-            </span>
-            <Button
-              variant="ghost"
-              disabled={audit.logs.isFetching || audit.filterError !== undefined}
-              onClick={() => {
-                void audit.logs.refetch({ cancelRefetch: false })
-              }}
-            >
-              重试读取
-            </Button>
-          </div>
-        ) : null}
-        {audit.suggestionQuery.isError ? (
-          <div className={styles.optionError} role="alert">
-            <span>{formatApiError(audit.suggestionQuery.error, '近期筛选建议读取失败')}，仍可使用精确筛选。</span>
-            <Button
-              variant="ghost"
-              disabled={audit.suggestionQuery.isFetching}
-              onClick={() => {
-                void audit.suggestionQuery.refetch({ cancelRefetch: false })
-              }}
-            >
-              重试建议
-            </Button>
-          </div>
-        ) : null}
-        {audit.showingPrevious && audit.snapshot !== undefined && (
-          <section className={styles.snapshotNotice} aria-label="当前已显示范围">
-            <p role="status">
-              新条件尚未取得结果。当前显示已读取的第 {audit.snapshot.scope.page} 页，每页 {audit.snapshot.scope.limit}{' '}
-              条。
-            </p>
-            <AuditFilterSnapshot applied={audit.snapshot.params} />
-            <Button type="button" variant="ghost" onClick={audit.restoreSnapshotScope}>
-              使用已显示范围
-            </Button>
-          </section>
-        )}
-        {audit.countChangedDuringRead && (
-          <p className={styles.snapshotNotice} role="status">
-            统计总数与本页记录暂不一致，本页记录已保留，可刷新核对。
-          </p>
-        )}
-        <div className={styles.tableToolbar}>
+        <AuditFiltersBar audit={audit}>
           <h2 ref={recordsHeading} data-audit-records-heading tabIndex={-1}>
             {audit.selected.length > 0
               ? `已选 ${audit.selected.length} 条`
@@ -176,8 +124,11 @@ function AuditWorkspace({ sessionKey }: Readonly<{ sessionKey: string }>) {
                 删除已选
               </Button>
             </>
-          ) : null}
-          <span className={styles.spacer} />
+          ) : (
+            <span className={styles.recordCount}>
+              {audit.total === undefined ? '记录数未取得' : `共 ${audit.total.toLocaleString('zh-CN')} 条`}
+            </span>
+          )}
           <span className={styles.sortLabel}>
             {audit.logs.fetchStatus === 'paused'
               ? '读取已暂停 · '
@@ -186,7 +137,76 @@ function AuditWorkspace({ sessionKey }: Readonly<{ sessionKey: string }>) {
                 : ''}
             按时间倒序
           </span>
-        </div>
+        </AuditFiltersBar>
+        {audit.filterError !== undefined ? (
+          <div className="px-7">
+            <WorkspaceNotice tone="error">{audit.filterError}</WorkspaceNotice>
+          </div>
+        ) : null}
+        {audit.logs.isError && audit.snapshot === undefined ? (
+          <div className="px-7">
+            <WorkspaceNotice
+              tone="error"
+              title="读取审计日志失败"
+              error={audit.logs.error}
+              fallbackMessage="请稍后重试"
+              retry={() => {
+                void audit.logs.refetch({ cancelRefetch: false })
+              }}
+              retryLabel="重试读取"
+              retryDisabled={audit.filterError !== undefined}
+              pending={audit.logs.isFetching}
+            />
+          </div>
+        ) : null}
+        {(audit.logs.isError && audit.snapshot !== undefined) || audit.suggestionQuery.isError ? (
+          <WorkspaceNoticeStack>
+            {audit.logs.isError && audit.snapshot !== undefined ? (
+              <WorkspaceNotice
+                tone="warning"
+                title="读取审计日志失败，保留已取得的结果"
+                error={audit.logs.error}
+                fallbackMessage="请稍后重试"
+                retry={() => {
+                  void audit.logs.refetch({ cancelRefetch: false })
+                }}
+                retryLabel="重试读取"
+                retryDisabled={audit.filterError !== undefined}
+                pending={audit.logs.isFetching}
+              />
+            ) : null}
+            {audit.suggestionQuery.isError ? (
+              <WorkspaceNotice
+                tone="warning"
+                title="近期筛选建议读取失败，仍可使用精确筛选"
+                error={audit.suggestionQuery.error}
+                fallbackMessage="请稍后重试"
+                retry={() => {
+                  void audit.suggestionQuery.refetch({ cancelRefetch: false })
+                }}
+                retryLabel="重试建议"
+                pending={audit.suggestionQuery.isFetching}
+              />
+            ) : null}
+          </WorkspaceNoticeStack>
+        ) : null}
+        {audit.showingPrevious && audit.snapshot !== undefined && (
+          <section className={styles.snapshotNotice} aria-label="当前已显示范围">
+            <p role="status">
+              新条件尚未取得结果。当前显示已读取的第 {audit.snapshot.scope.page} 页，每页 {audit.snapshot.scope.limit}{' '}
+              条。
+            </p>
+            <AuditFilterSnapshot applied={audit.snapshot.params} />
+            <Button type="button" variant="ghost" onClick={audit.restoreSnapshotScope}>
+              使用已显示范围
+            </Button>
+          </section>
+        )}
+        {audit.countChangedDuringRead && (
+          <p className={styles.snapshotNotice} role="status">
+            统计总数与本页记录暂不一致，本页记录已保留，可刷新核对。
+          </p>
+        )}
         <AuditTable audit={audit} />
         <AuditPagination audit={audit} />
         <AuditDialogs audit={audit} />

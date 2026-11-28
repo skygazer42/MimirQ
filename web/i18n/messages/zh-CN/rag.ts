@@ -2,7 +2,7 @@ const ragMessages = {
   SimilarityDiagnosticsGraph: {
     loadingMessage: '正在重建向量邻域...',
     loadingSrMessage: 'Loading embedding diagnostics graph',
-    loadingHint: '基于当前相似度矩阵派生诊断，不额外请求后端坐标。',
+    loadingHint: '正在分析相似度。',
     noGraphData: '当前筛选结果没有足够的高相似连线，暂时无法生成 3D 投影预览。',
     graphTooLargeTitle: '当前诊断图过大，已暂停 3D 渲染。',
     graphTooLargeHint: '请缩小筛选范围或提高阈值后再试。',
@@ -99,7 +99,7 @@ const ragMessages = {
         description: '选择阶段查看详细指标与引用。',
         recordedShare: '占已记录耗时 {share}',
         metricsUnavailable: '该阶段暂无其他指标。下方可查看检索通道和引用。',
-        quickEvidence: '快速证据',
+        quickEvidence: '命中证据',
         documentLevelEvidence: '文档级证据',
         unavailable: '暂无流水线步骤',
       },
@@ -158,7 +158,7 @@ const ragMessages = {
       states: {
         notEnabledTitle: 'RAG Trace 未启用',
         notEnabledDescription:
-          '后端未开启 metrics JSONL（ENABLE_METRICS_LOG=false），或当前环境未配置 METRICS_LOG_PATH。',
+          '检索记录尚未启用。',
         emptyTitle: '暂无 RAG Trace',
         emptyHint: '执行检索时才会生成记录。',
         emptyFollowup: '在这段对话中提问后刷新。',
@@ -206,7 +206,7 @@ const ragMessages = {
     },
     errors: {
       loadDatasetsFailed: '加载数据集失败',
-      retrieveFailed: '检索失败，请检查后端服务状态',
+      retrieveFailed: '检索失败，请检查服务状态后重试',
     },
     results: {
       summary: {

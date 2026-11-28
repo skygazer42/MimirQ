@@ -109,7 +109,7 @@ function HistoryList({
             </button>
           ))
         ) : (
-          <p className={styles.historyEmpty}>检索后，问题会显示在这里。</p>
+          <p className={styles.historyEmpty}>暂无检索记录。</p>
         )}
       </div>
       <footer className={styles.historyFooter}>

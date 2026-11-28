@@ -4,6 +4,7 @@ import { policyDatasetId } from './dataset-policy.helpers'
 
 test('table tools use tabs, retain failed queries and keep results bound to their table', async ({ page }) => {
   const state = await remainingFixture(page)
+  await page.setViewportSize({ width: 1440, height: 900 })
   let release!: () => void
   const gate = new Promise<void>((resolve) => {
     release = resolve
@@ -66,6 +67,7 @@ test('table tools use tabs, retain failed queries and keep results bound to thei
   })
   await openRemaining(page, datasetRoute('tables'), '表格资产')
   await page.getByRole('button', { name: '选择表 一季度销售', exact: true }).click()
+  await page.screenshot({ path: test.info().outputPath('tables-data.png'), animations: 'disabled' })
   await page.getByRole('tab', { name: 'SQL 查询', exact: true }).click()
   const sql = page.getByRole('textbox', { name: 'SQL 查询语句', exact: true })
   const execute = page.getByRole('button', { name: '执行查询', exact: true })
@@ -88,5 +90,28 @@ test('table tools use tabs, retain failed queries and keep results bound to thei
   await execute.click()
   await expect(page.getByRole('cell', { name: '当前表结果', exact: true })).toBeVisible()
   await expect(page.getByText('旧表结果', { exact: true })).toHaveCount(0)
+  await page.screenshot({ path: test.info().outputPath('tables-query.png'), animations: 'disabled' })
   expect(state.base.blocked).toEqual([])
+})
+
+test('empty table assets retain the dataset ingestion scope without illustrative data', async ({ page }) => {
+  await remainingFixture(page)
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.route(`**/api/v1/datasets/${policyDatasetId}/tables**`, (route) =>
+    route.fulfill({ json: { total: 0, items: [], next_skip: null } }),
+  )
+  await openRemaining(page, datasetRoute('tables'), '表格资产')
+  await expect(page.getByRole('heading', { name: '暂无表格资产', exact: true })).toBeVisible()
+  await expect(page.getByRole('table')).toHaveCount(0)
+  await expect(page.getByRole('link', { name: '前往入库操作', exact: true })).toHaveAttribute(
+    'href',
+    `/knowledge/ingestion?datasetId=${policyDatasetId}`,
+  )
+  await expect(page.getByRole('link', { name: '入库策略', exact: true })).toHaveAttribute(
+    'href',
+    `/datasets/${policyDatasetId}/ingestion`,
+  )
+  await expect(page.getByRole('link', { name: '配置入库策略', exact: true })).toHaveCount(0)
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true)
+  await page.screenshot({ path: test.info().outputPath('tables-empty-phone.png'), animations: 'disabled' })
 })

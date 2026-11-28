@@ -416,10 +416,10 @@ function GenerationContent({
       <div className="border-b border-border p-6 pr-12">
         <DialogTitle className="flex items-center gap-3 text-lg font-semibold text-foreground">
           <Sparkles className="size-5 text-primary" />
-          AI 生成评测问题
+          生成评测问题
         </DialogTitle>
         <DialogDescription className="mt-1 text-xs text-muted-foreground">
-          {step === 'select_source' ? '选择生成来源' : step === 'configure' ? '配置本轮参数' : '查看真实生成与保存结果'}
+          {step === 'select_source' ? '选择生成来源' : step === 'configure' ? '配置本轮参数' : '查看生成与保存结果'}
         </DialogDescription>
       </div>
       {pending ? (

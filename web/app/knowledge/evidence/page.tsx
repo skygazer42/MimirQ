@@ -10,7 +10,7 @@ const EvidenceWorkbench = dynamic(
   () => import('@/components/ragviz/evidence-workbench').then((mod) => mod.EvidenceWorkbench),
   {
     ssr: false,
-    loading: () => <PageLoading message="正在加载 Evidence Workbench..." srMessage="Loading evidence workbench" />,
+    loading: () => <PageLoading message="正在加载证据调试…" srMessage="正在加载证据调试" />,
   },
 )
 

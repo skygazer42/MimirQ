@@ -12,6 +12,11 @@ test('phone fixed columns leave the resource label and identifier exposed at the
     element.scrollLeft = element.scrollWidth
   })
   const row = scroll.locator('tbody tr').first()
+  expect((await row.boundingBox())?.y).toBeLessThanOrEqual(270)
+  await expect(page.getByRole('combobox', { name: '动作', exact: true })).not.toBeVisible()
+  await page.getByRole('button', { name: '更多审计筛选', exact: true }).click()
+  await expect(page.getByRole('dialog', { name: '精确筛选', exact: true })).toBeVisible()
+  await page.keyboard.press('Escape')
   const geometry = await row.evaluate((element) => {
     const cells = Array.from(element.querySelectorAll('td')).filter((cell) => getComputedStyle(cell).display !== 'none')
     const timeRight = cells[1].getBoundingClientRect().right,

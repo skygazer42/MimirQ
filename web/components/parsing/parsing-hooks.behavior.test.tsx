@@ -2072,6 +2072,27 @@ describe('knowledge parsing request ownership', () => {
 })
 
 describe('parsing editor handoff and feedback', () => {
+  it('hands off one saved library document without requiring its original binary or changing batch selection', async () => {
+    const saved = libraryFile({
+      source: undefined,
+      markdownContent: 'Saved body',
+      originalMarkdownContent: 'Saved original',
+    })
+    const view = mount({ library: [saved] })
+    act(() => view.current().setSelectedGovernanceFileIds(new Set(['another-document'])))
+    await act(async () => {
+      await view.current().editor.handleSubmitToGovernance(saved)
+    })
+    expect(view.current().files).toHaveLength(0)
+    expect(view.current().libraryFiles[0]).toMatchObject({
+      markdownContent: 'Saved body',
+      originalMarkdownContent: 'Saved original',
+      governanceStatus: 'submitted',
+    })
+    expect(view.current().selectedGovernanceFileIds).toEqual(new Set(['another-document']))
+    expect(ports.push).toHaveBeenCalledWith('/data-governance')
+  })
+
   it('keeps the editor draft and saved body when an in-flight parse rejects saving with 409', async () => {
     ports.parsing.updateContent.mockRejectedValue({
       response: { status: 409, data: { detail: 'Finish document parsing before editing its content' } },

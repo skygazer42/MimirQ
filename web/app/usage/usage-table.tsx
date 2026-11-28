@@ -3,6 +3,7 @@
 import { ArrowUpRight, ChevronLeft, ChevronRight, Database } from '@/components/icons'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
+import { SplitEmptyStudio } from '@/components/ui/split-empty-studio'
 import { Link } from '@/i18n/navigation'
 import { cn } from '@/lib/utils'
 import { averageRetrievalMs, formatCount, formatDuration, shortDatasetId, type UsageRow } from './usage-model'
@@ -22,22 +23,41 @@ type Props = {
 export function UsageTable({ rows, mode, page, onPageChange, pending, failed, windowDays }: Readonly<Props>) {
   const { items, page: currentPage, pageCount } = paginateUsageRows(rows, page)
   const resourceMode = mode === 'resources'
+  if (rows.length === 0 && !pending && !failed)
+    return (
+      <SplitEmptyStudio
+        className={styles.emptyStudio}
+        ariaLabel={resourceMode ? '链路资源状态' : '用量归因状态'}
+        illustration={<Database className={styles.emptyIcon} />}
+        title={resourceMode ? '暂无链路资源记录' : '暂无用量记录'}
+        description={`近 ${windowDays} 天内没有${resourceMode ? '模型或检索资源' : '助手消息'}记录。`}
+        actions={
+          <>
+            <Button asChild>
+              <Link href="/">
+                开始对话
+                <ArrowUpRight />
+              </Link>
+            </Button>
+            <Button variant="outline" asChild>
+              <Link href="/knowledge">查看知识库</Link>
+            </Button>
+          </>
+        }
+        stepsHeading="用量监控维度"
+        steps={[
+          { index: '01', title: '按数据集归因', description: '对照消息量与助手 Token，查看各数据集的使用情况。' },
+          { index: '02', title: '检索与重排开销', description: '查看向量查询消耗、检索耗时与重排耗时。' },
+          { index: '03', title: '独立配额保护', description: '租户配额按各自窗口统计，独立于当前用量窗口。' },
+        ]}
+      />
+    )
   if (rows.length === 0 && !pending)
     return (
       <section className={styles.empty} aria-label={resourceMode ? '链路资源状态' : '用量归因状态'} aria-busy={pending}>
         <Database />
-        <h2>{failed ? '未取得完整用量数据' : resourceMode ? '暂无链路资源记录' : '暂无用量记录'}</h2>
-        <p>
-          {failed
-            ? '请在页面上方重试，统计窗口会保留。'
-            : `近 ${windowDays} 天内没有${resourceMode ? '模型或检索资源' : '助手消息'}记录。`}
-        </p>
-        {!failed ? (
-          <Link href="/" className={styles.emptyLink}>
-            开始对话
-            <ArrowUpRight />
-          </Link>
-        ) : null}
+        <h2>未取得完整用量数据</h2>
+        <p>请在页面上方重试，统计窗口会保留。</p>
       </section>
     )
 
@@ -65,7 +85,9 @@ export function UsageTable({ rows, mode, page, onPageChange, pending, failed, wi
                   <th scope="col">LLM token</th>
                   <th scope="col">向量 token</th>
                   <th scope="col">向量字符</th>
-                  <th scope="col">每条助手消息平均检索</th>
+                  <th scope="col" title="每条助手消息平均检索耗时">
+                    平均检索耗时
+                  </th>
                   <th scope="col">重排总耗时</th>
                 </>
               ) : (
@@ -74,7 +96,9 @@ export function UsageTable({ rows, mode, page, onPageChange, pending, failed, wi
                   <th scope="col">助手 token</th>
                   <th scope="col">占比</th>
                   <th scope="col">向量 token</th>
-                  <th scope="col">每条助手消息平均检索</th>
+                  <th scope="col" title="每条助手消息平均检索耗时">
+                    平均检索耗时
+                  </th>
                 </>
               )}
               <th scope="col" className={styles.actionColumn}>
@@ -104,11 +128,16 @@ export function UsageTable({ rows, mode, page, onPageChange, pending, failed, wi
                           <Database />
                         </span>
                         <div>
-                          <strong title={row.datasetId === null ? row.name : `${row.name} · ${row.datasetId}`}>
+                          <strong
+                            data-visibility={row.visibility}
+                            title={row.datasetId === null ? row.name : `${row.name} · ${row.datasetId}`}
+                          >
                             {row.name}
                           </strong>
                           {row.visibility === 'hidden' ? (
-                            <small className={styles.hiddenLabel}>{shortDatasetId(row.datasetId)}</small>
+                            <small className={styles.hiddenLabel}>
+                              <code>{shortDatasetId(row.datasetId)}</code>
+                            </small>
                           ) : row.visibility === 'unresolved' ? (
                             <small>名称未取得</small>
                           ) : null}

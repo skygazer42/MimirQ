@@ -8,7 +8,7 @@ import { FileText, Loader2, AlertCircle } from '@/components/icons'
 import { useTranslations } from 'next-intl'
 import { Button } from '@/components/ui/button'
 import { useChunkPreview } from '@/components/chunk-preview/context'
-import { getChunkParentRange, getChunkRole } from '@/components/chunk-preview/utils/metadata'
+import { getChunkParentRange } from '@/components/chunk-preview/utils/metadata'
 import { MarkdownRenderer } from '@/components/markdown/markdown-renderer'
 import { MarkdownToc } from '@/components/markdown/markdown-toc'
 import { extractMarkdownHeadings, type MarkdownHeading } from '@/lib/markdown'
@@ -134,7 +134,6 @@ export function OriginalPreview() {
       label: `#${activeChunkIndex + 1}`,
       range: `${chunk.start_index}-${chunk.end_index}`,
       page: chunk.page_number,
-      role: getChunkRole(chunk),
     }
   }, [activeChunkIndex, previewData?.chunks])
 
@@ -327,10 +326,22 @@ export function OriginalPreview() {
 
   return (
     <div className={styles.pane}>
-      <div data-original-preview-header className={styles.paneHead}>
+      <div data-original-preview-header data-original-preview-health-strip className={styles.paneHead}>
         <FileText />
-        <span>{previewMode === 'pdf' ? t('originalPreview.titlePdf') : '文档原文'}</span>
+        <span
+          title={
+            activeChunkMeta
+              ? `${activeChunkMeta.label} · 位置 ${activeChunkMeta.range}${activeChunkMeta.page == null ? '' : ` · 第 ${activeChunkMeta.page} 页`}`
+              : originalTextSource === 'local'
+                ? '本地文档原文'
+                : '解析原文'
+          }
+        >
+          {previewMode === 'pdf' ? t('originalPreview.titlePdf') : '文档原文'}
+        </span>
         {previewData && <span className={styles.metadata}>{previewData.total_characters.toLocaleString()} 字符</span>}
+        {activeChunkMeta && <span className={styles.metadata}>位置 {activeChunkMeta.range}</span>}
+        {previewData && <CoverageStats stats={previewData.stats} />}
         <div className={styles.sourceModes} role="group" aria-label="原文显示方式">
           <Button
             variant="ghost"
@@ -370,15 +381,7 @@ export function OriginalPreview() {
         </div>
       </div>
       {previewData && (
-        <div className={styles.locationMeta} data-original-preview-health-strip>
-          {activeChunkMeta ? (
-            <span>
-              {activeChunkMeta.label} · 位置 {activeChunkMeta.range}
-              {activeChunkMeta.page == null ? '' : ` · 第 ${activeChunkMeta.page} 页`}
-            </span>
-          ) : (
-            <span>{originalTextSource === 'local' ? '本地文档原文' : '解析原文'}</span>
-          )}
+        <div className={styles.locationMeta}>
           {previewData.original_text_truncated && (
             <span
               className="text-warning"
@@ -394,7 +397,6 @@ export function OriginalPreview() {
           {effectiveOriginalText !== null && serverTextInfo.indexMapper === null && previewData.chunks.length > 0 ? (
             <span className="text-warning">当前原文缺少可核对的解析位置</span>
           ) : null}
-          <CoverageStats stats={previewData.stats} />
           {tocHeadings.length > 0 && (
             <details>
               <summary className="cursor-pointer">章节目录</summary>

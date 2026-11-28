@@ -104,24 +104,17 @@ export function GovernanceProfileSelector({
     }
   }
 
-  const triggerCls = compact
-    ? 'h-8 rounded-[0.9rem] border-border/45 bg-card/74 text-[11px] font-medium text-foreground/80 shadow-none'
-    : 'h-9 rounded-[0.95rem] border-border/45 bg-card/78 text-sm font-medium text-foreground/80 shadow-none'
-  const primaryActionClass =
-    'h-7 gap-1.5 rounded-full border-primary/24 bg-primary/[0.09] px-2.5 text-[11px] font-semibold text-primary shadow-none hover:border-primary/34 hover:bg-primary/[0.16] hover:text-primary'
-  const secondaryActionClass =
-    'h-7 gap-1.5 rounded-full border-border/38 bg-background/36 px-2.5 text-[11px] font-medium text-muted-foreground/78 shadow-none hover:border-border/50 hover:bg-background/58 hover:text-foreground'
-  const actionRailClass =
-    'flex flex-wrap items-center justify-end gap-1 rounded-[0.95rem] border border-border/28 bg-muted/[0.10] px-1.5 py-1'
-
   const inheritanceText = selectedResolved?.chain.map((profile) => profile.name).join(' → ')
 
   return (
-    <div className={cn('space-y-1.5', className)}>
-      <div className="flex items-center gap-1.5">
+    <div className={cn(compact ? 'space-y-2' : 'space-y-3', className)}>
+      <div className="flex items-center gap-2">
         <div className="min-w-0 flex-1">
           <Select value={selectedRef} onValueChange={setSelectedRef} disabled={profilesQuery.isLoading}>
-            <SelectTrigger aria-label="治理预设" className={cn('w-full', triggerCls)}>
+            <SelectTrigger
+              aria-label="治理预设"
+              className="h-9 w-full rounded-md border-border bg-card text-[13px] font-normal text-foreground shadow-none"
+            >
               <SelectValue placeholder="选择治理预设" />
             </SelectTrigger>
             <SelectContent>
@@ -139,15 +132,50 @@ export function GovernanceProfileSelector({
         </div>
         <Button
           variant="outline"
-          size={compact ? 'sm' : 'default'}
+          size="icon"
           onClick={refreshProfiles}
           disabled={profilesQuery.isFetching || selectedResolvedQuery.isFetching || isImporting}
           aria-label="刷新治理预设"
           title="刷新治理预设"
-          className="h-8 rounded-[0.9rem] border-border/42 bg-background/46 px-2.5 text-muted-foreground shadow-none hover:bg-background/68 hover:text-foreground"
+          className="h-9 w-9 shrink-0 rounded-md border-border bg-card text-muted-foreground shadow-none hover:text-foreground"
         >
           <RefreshCw className="w-4 h-4" />
         </Button>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+        <Button
+          onClick={handleApply}
+          size="sm"
+          variant="outline"
+          className="h-8 gap-1.5 rounded-md border-border bg-card px-3 text-xs font-medium shadow-none sm:h-8"
+          disabled={!canApply}
+        >
+          <Sparkles className="w-4 h-4" />
+          应用到当前配置
+        </Button>
+        <div className="ml-auto flex shrink-0 items-center gap-1">
+          <LoadingButton
+            variant="ghost"
+            loading={isImporting}
+            onClick={() => fileInputRef.current?.click()}
+            size="sm"
+            className="h-8 gap-1.5 rounded-md px-2.5 text-xs text-muted-foreground hover:text-foreground sm:h-8"
+          >
+            <FileUp className="w-4 h-4" />
+            导入脚本
+          </LoadingButton>
+          <Button
+            variant="ghost"
+            onClick={handleExport}
+            size="sm"
+            className="h-8 gap-1.5 rounded-md px-2.5 text-xs text-muted-foreground hover:text-foreground sm:h-8"
+            disabled={selectedRef === SELECT_NONE}
+          >
+            <Download className="w-4 h-4" />
+            导出
+          </Button>
+        </div>
       </div>
 
       {profilesQuery.isError && (
@@ -159,55 +187,18 @@ export function GovernanceProfileSelector({
         </WorkspaceNotice>
       )}
       {selectedResolvedQuery.isPaused && (
-        <p role="status" className="text-xs text-muted-foreground">
+        <p role="status" className="text-xs leading-5 text-muted-foreground">
           网络恢复后将重新读取治理预设详情。
         </p>
       )}
 
       {selectedSummary?.description && (
-        <div className={cn('text-muted-foreground/80', compact ? 'text-[10.5px]' : 'text-xs')}>
-          {selectedSummary.description}
-        </div>
+        <div className="text-xs leading-5 text-muted-foreground">{selectedSummary.description}</div>
       )}
 
       {inheritanceText ? (
-        <div className={cn('text-muted-foreground/75', compact ? 'text-[10.5px]' : 'text-xs')}>
-          继承链：{inheritanceText}
-        </div>
+        <div className="text-xs leading-5 text-muted-foreground">继承链：{inheritanceText}</div>
       ) : null}
-
-      <div className={actionRailClass}>
-        <Button
-          onClick={handleApply}
-          size={compact ? 'sm' : 'default'}
-          variant="outline"
-          className={primaryActionClass}
-          disabled={!canApply}
-        >
-          <Sparkles className="w-4 h-4" />
-          应用到当前配置
-        </Button>
-        <LoadingButton
-          variant="outline"
-          loading={isImporting}
-          onClick={() => fileInputRef.current?.click()}
-          size={compact ? 'sm' : 'default'}
-          className={secondaryActionClass}
-        >
-          <FileUp className="w-4 h-4" />
-          导入脚本
-        </LoadingButton>
-        <Button
-          variant="outline"
-          onClick={handleExport}
-          size={compact ? 'sm' : 'default'}
-          className={secondaryActionClass}
-          disabled={selectedRef === SELECT_NONE}
-        >
-          <Download className="w-4 h-4" />
-          导出
-        </Button>
-      </div>
 
       <input
         ref={fileInputRef}

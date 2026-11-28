@@ -20,7 +20,6 @@ type DesignTemplate = {
 const facts = JSON.parse(fs.readFileSync(path.resolve(__dirname, 'fixtures/prompts-table.json'), 'utf8')) as {
   templates: DesignTemplate[]
 }
-export const evidence = path.resolve(__dirname, '../../artifacts/rebrand/prompts-table-v1/tests')
 export function templates(): PromptTemplate[] {
   return facts.templates.map((t, i) => ({
     id: `prompt-${i}`,
@@ -49,12 +48,12 @@ async function json(route: Route, value: unknown, status = 200) {
 }
 
 export async function promptFixture(page: Page, theme: 'light' | 'dark' = 'light') {
-  await page.setViewportSize({ width: 1600, height: 1000 })
+  await page.setViewportSize({ width: 1440, height: 900 })
   await installCommonApiMocks(page, { uploaded: false })
   await page.addInitScript((mode) => {
     localStorage.setItem('theme', mode)
     localStorage.setItem('mimirq.surfaceTheme', 'ocean')
-    localStorage.setItem('mimirq.themeColor', '#20262e')
+    localStorage.removeItem('mimirq.themeColor')
   }, theme)
   const state = {
     items: templates(),
@@ -130,7 +129,26 @@ export async function promptFixture(page: Page, theme: 'light' | 'dark' = 'light
   })
   // Never let an unhandled browser mutation reach the real local API.
   await page.route('**/api/v1/**', async (route) => {
-    if (new URL(route.request().url()).pathname === '/api/v1/rbac/me')
+    const pathname = new URL(route.request().url()).pathname
+    if (pathname === '/api/v1/settings' && route.request().method() === 'GET')
+      return json(route, {
+        feature_flags: { kg_enabled: true },
+        rag: { retrieval_top_k: 5, similarity_threshold: 0.7 },
+      })
+    if (pathname === '/api/v1/kg/ontology/predicates' && route.request().method() === 'GET')
+      return json(route, {
+        predicates: [
+          {
+            id: 'predicate-fixture',
+            tenant_id: 'tenant-fixture',
+            predicate: 'belongs_to',
+            display_name: '归属于',
+            description: '对象所属的组织或分类',
+            is_enabled: true,
+          },
+        ],
+      })
+    if (pathname === '/api/v1/rbac/me')
       return json(route, {
         tenant_id: 'tenant-fixture',
         account_id: 'fixture-user',

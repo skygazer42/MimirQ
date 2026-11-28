@@ -1,6 +1,20 @@
 import { z } from 'zod'
 
 import type { ChatMessageMetadata } from '@/types/chat'
+import type { OntologyActionProposal } from '@/types/enterprise-ontology'
+
+export const ontologyActionProposalSchema: z.ZodType<OntologyActionProposal> = z.object({
+  ontology_id: z.uuid(),
+  version_id: z.uuid(),
+  action_id: z.string(),
+  label: z.string(),
+  target: z.string(),
+  approval_required: z.boolean(),
+  key_fields: z.record(z.string(), z.string()),
+  parameter_fields: z.record(z.string(), z.object({ label: z.string(), required: z.boolean() })),
+  key: z.record(z.string(), z.string()),
+  parameters: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])),
+})
 
 const claimEvidenceReferenceSchema = z.object({
   document_id: z.string().nullable(),

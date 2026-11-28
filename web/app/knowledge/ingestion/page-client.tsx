@@ -3,7 +3,7 @@
 import { useCallback, useMemo, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { skipToken, useQuery } from '@tanstack/react-query'
-import { RefreshCcw } from '@/components/icons'
+import { Activity, Clock, RefreshCcw } from '@/components/icons'
 import type { EChartsOption } from 'echarts'
 import { datasetApi } from '@/lib/api/datasets'
 import { documentApi } from '@/lib/api/documents'
@@ -20,11 +20,14 @@ import type {
 import { formatFileSize } from '@/lib/utils'
 import { useDatasets } from '@/hooks/use-datasets'
 import { usePathname, useRouter } from '@/i18n/navigation'
-import { OperationalWorkspace, WorkspaceNotice } from '@/components/ui/operational-workspace'
+import { WorkspaceNotice, WorkspaceNoticeStack } from '@/components/ui/operational-workspace'
 import { PageLoading } from '@/components/ui/page-loading'
+import { PageTitleIcon } from '@/components/ui/page-title-icon'
 import { Button } from '@/components/ui/button'
 import { ExecutionMonitorPanel } from '@/components/knowledge/ingestion/execution-monitor-panel'
+import monitorStyles from '@/components/knowledge/ingestion/execution-monitor.module.css'
 import { IngestionDetailDialog } from '@/components/ingestion/ingestion-detail-dialog'
+import { IngestionViewSwitch } from './view-switch'
 import {
   buildDocumentThroughputAreaRows,
   buildSalesAuditProfile,
@@ -90,6 +93,7 @@ export default function KnowledgeIngestionPageClient() {
   const [datasetScope, setDatasetScope] = useState(searchParams.get('datasetId') || DATASET_ALL)
 
   const [activeDetailId, setActiveDetailId] = useState<string | null>(null)
+  const [monitorDetail, setMonitorDetail] = useState<'analysis' | 'logs' | null>(null)
 
   const selectedDatasetId = datasetScope === DATASET_ALL ? null : datasetScope
 
@@ -207,18 +211,8 @@ export default function KnowledgeIngestionPageClient() {
 
   const salesAuditNearDup = precheckNearDupQuery.data ?? null
 
-  const selectedDatasetLabel = useMemo(() => {
-    if (selectedDatasetId === null) return '全部项目'
-    const selectedDataset = datasets.find((dataset) => dataset.id === selectedDatasetId)
-    return selectedDataset === undefined || selectedDataset.name === '' ? selectedDatasetId : selectedDataset.name
-  }, [datasets, selectedDatasetId])
-
-  const datasetNotice =
-    datasetsError !== null ? (
-      <WorkspaceNotice retry={() => void refreshDatasets()} retryLabel="重新读取数据集目录" pending={datasetsFetching}>
-        {formatApiError(datasetsError, '数据集目录读取失败，监控范围已保留')}
-      </WorkspaceNotice>
-    ) : datasetsFetching && !datasetsLoading ? (
+  const datasetFetchingNotice =
+    datasetsError === null && datasetsFetching && !datasetsLoading ? (
       <p role="status" className="text-sm text-muted-foreground">
         正在更新数据集目录，保留当前范围。
       </p>
@@ -681,7 +675,7 @@ export default function KnowledgeIngestionPageClient() {
     return {
       complexity: salesAuditProfile?.complexity ?? fallbackComplexity,
       sampleTarget,
-      sourceLabel: salesAuditSummary ? '来自最新预检扫描' : '来自后端文档统计',
+      sourceLabel: salesAuditSummary ? '最新预检扫描' : '文档统计',
       totalFiles,
       pricingMode: salesAuditProfile?.pricingMode ?? (fallbackComplexity === '高' ? 'POC优先' : '阶梯报价'),
       distributionBars: [
@@ -701,7 +695,7 @@ export default function KnowledgeIngestionPageClient() {
         },
         {
           color: '#f97316',
-          detail: '优先使用后端 page_count，缺失时才按字数/体量估算',
+          detail: '部分页数为估算值',
           label: 'PDF 平均页数',
           score: clampScore((avgPdfPages / 80) * 100),
           value: formatPdfPageAverageLabel({
@@ -834,31 +828,43 @@ export default function KnowledgeIngestionPageClient() {
     router.replace(query ? `${pathname}?${query}` : pathname)
   }, [pathname, router, searchParams])
 
+  const handleRefreshAll = useCallback(() => {
+    void documentsQuery.refetch()
+    void summaryQuery.refetch()
+    void taskQueueQuery.refetch()
+  }, [documentsQuery, summaryQuery, taskQueueQuery])
+
   return (
-    <OperationalWorkspace
-      title="入库执行监控"
-      icon="ingestion-monitor"
-      context={selectedDatasetLabel}
-      actions={
-        <>
+    <div data-ingestion-monitor-root="true" className={monitorStyles.page}>
+      <header className={monitorStyles.header}>
+        <div className={monitorStyles.title}>
+          <PageTitleIcon name="ingestion-operation" className={monitorStyles.titleIcon} />
+          <h1>入库管理</h1>
+        </div>
+        <IngestionViewSwitch className={monitorStyles.viewSwitch} />
+        <div className={monitorStyles.headerActions}>
           <Button
-            variant="outline"
-            onClick={() => {
-              void documentsQuery.refetch()
-              void summaryQuery.refetch()
-              void taskQueueQuery.refetch()
-            }}
-            disabled={documentsQuery.isFetching}
+            variant="ghost"
+            className={monitorStyles.quietButton}
+            onClick={() => setMonitorDetail('logs')}
           >
-            <RefreshCcw />
-            重新读取
+            <Clock className="size-3.5" aria-hidden="true" />
+            最近事件
           </Button>
-          <Button onClick={handleOpenIngestionOperation}>入库操作</Button>
-        </>
-      }
-      toolbar={
-        <>
-          <label htmlFor="execution-dataset" className="text-sm text-muted-foreground">
+          <span className={monitorStyles.headerDivider} aria-hidden="true" />
+          <Button
+            variant="ghost"
+            className={monitorStyles.quietButton}
+            onClick={() => setMonitorDetail('analysis')}
+          >
+            <Activity className="size-3.5" aria-hidden="true" />
+            阶段与统计
+          </Button>
+        </div>
+      </header>
+      <div className={monitorStyles.toolbar}>
+        <div className={monitorStyles.scopeGroup}>
+          <label htmlFor="execution-dataset" className={monitorStyles.scopeLabel}>
             数据集
           </label>
           <select
@@ -866,7 +872,7 @@ export default function KnowledgeIngestionPageClient() {
             value={datasetScope}
             disabled={datasetsLoading}
             onChange={(event) => handleDatasetScopeChange(event.target.value)}
-            className="h-10 max-w-full rounded-md border border-border bg-background px-3 text-sm"
+            className={monitorStyles.scopeSelect}
           >
             <option value={DATASET_ALL}>全部数据集</option>
             {selectedDatasetId !== null && !datasets.some((dataset) => dataset.id === selectedDatasetId) ? (
@@ -880,58 +886,93 @@ export default function KnowledgeIngestionPageClient() {
               </option>
             ))}
           </select>
-          <span className="text-sm text-muted-foreground">最近载入的任务 · 每 25 秒更新</span>
-        </>
-      }
-    >
-      {datasetNotice}
-      {documentsQuery.isError ? (
-        <WorkspaceNotice
-          retry={() => {
-            void documentsQuery.refetch()
-          }}
+          <span className={monitorStyles.pollingHint}>每 25 秒自动更新</span>
+        </div>
+        <Button
+          variant="outline"
+          className={monitorStyles.refreshButton}
+          onClick={handleRefreshAll}
+          disabled={documentsQuery.isFetching}
         >
-          {formatApiError(documentsQuery.error, '任务读取失败')}
-        </WorkspaceNotice>
-      ) : documentsQuery.isLoading ? (
-        <PageLoading message="正在读取执行任务…" className="min-h-48" />
-      ) : (
-        <ExecutionMonitorPanel
-          batchProfileBarOption={batchProfileBarOption}
-          executionBatchAnalysis={executionBatchAnalysis}
-          executionPipelineCards={executionPipelineCards}
-          executionPipelineEstimateLabel={executionPipelineState.estimateLabel}
-          executionPipelineWarning={
-            taskQueueSnapshot?.enabled && !taskQueueSnapshot.broker_up ? taskQueueSnapshot.error || 'Broker 异常' : null
-          }
-          executionRecentLogs={executionRecentLogs}
-          executionTaskRows={executionTaskRows}
-          predictionOption={predictionOption}
-          radarOption={radarOption}
-          selectedDatasetId={selectedDatasetId}
-          onOpenAuditSnapshot={handleOpenAuditSnapshot}
-          onOpenIngestionOperation={handleOpenIngestionOperation}
-          onScopeAllProjects={() => handleDatasetScopeChange(DATASET_ALL)}
-        />
-      )}
-      {summaryQuery.isError ? (
-        <WorkspaceNotice
-          retry={() => {
-            void summaryQuery.refetch()
-          }}
-        >
-          {formatApiError(summaryQuery.error, '运行统计暂不可用')}
-        </WorkspaceNotice>
+          <RefreshCcw className="size-3.5" aria-hidden="true" />
+          重新读取
+        </Button>
+      </div>
+      {datasetFetchingNotice ? <div className={monitorStyles.notices}>{datasetFetchingNotice}</div> : null}
+      {datasetsError !== null || summaryQuery.isError || taskQueueQuery.isError ? (
+        <WorkspaceNoticeStack ariaLabel="入库监控状态提示">
+          {datasetsError !== null ? (
+            <WorkspaceNotice
+              tone="warning"
+              title="数据集目录读取失败，监控范围已保留"
+              error={datasetsError}
+              fallbackMessage="数据集目录读取失败，监控范围已保留"
+              retry={() => void refreshDatasets()}
+              retryLabel="重新读取数据集目录"
+              pending={datasetsFetching}
+            />
+          ) : null}
+          {summaryQuery.isError ? (
+            <WorkspaceNotice
+              tone="warning"
+              title="运行统计暂不可用"
+              error={summaryQuery.error}
+              fallbackMessage="运行统计暂不可用"
+              retry={() => {
+                void summaryQuery.refetch()
+              }}
+            />
+          ) : null}
+          {taskQueueQuery.isError ? (
+            <WorkspaceNotice
+              tone="warning"
+              title="任务队列状态暂不可用"
+              error={taskQueueQuery.error}
+              fallbackMessage="任务队列状态暂不可用"
+              retry={() => {
+                void taskQueueQuery.refetch()
+              }}
+            />
+          ) : null}
+        </WorkspaceNoticeStack>
       ) : null}
-      {taskQueueQuery.isError ? (
-        <WorkspaceNotice
-          retry={() => {
-            void taskQueueQuery.refetch()
-          }}
-        >
-          {formatApiError(taskQueueQuery.error, '任务队列状态暂不可用')}
-        </WorkspaceNotice>
-      ) : null}
+      <div className={monitorStyles.workspace}>
+        {documentsQuery.isError ? (
+          <div className={monitorStyles.activeBody}>
+            <WorkspaceNotice
+              retry={() => {
+                void documentsQuery.refetch()
+              }}
+            >
+              {formatApiError(documentsQuery.error, '任务读取失败')}
+            </WorkspaceNotice>
+          </div>
+        ) : documentsQuery.isLoading ? (
+          <PageLoading message="正在读取执行任务…" className="min-h-48" />
+        ) : (
+          <ExecutionMonitorPanel
+            batchProfileBarOption={batchProfileBarOption}
+            detail={monitorDetail}
+            executionBatchAnalysis={executionBatchAnalysis}
+            executionPipelineCards={executionPipelineCards}
+            executionPipelineEstimateLabel={executionPipelineState.estimateLabel}
+            executionPipelineWarning={
+              taskQueueSnapshot?.enabled && !taskQueueSnapshot.broker_up ? taskQueueSnapshot.error || 'Broker 异常' : null
+            }
+            executionRecentLogs={executionRecentLogs}
+            executionTaskRows={executionTaskRows}
+            isRefreshing={documentsQuery.isFetching}
+            predictionOption={predictionOption}
+            radarOption={radarOption}
+            selectedDatasetId={selectedDatasetId}
+            onDetailChange={setMonitorDetail}
+            onOpenAuditSnapshot={handleOpenAuditSnapshot}
+            onOpenIngestionOperation={handleOpenIngestionOperation}
+            onRefresh={handleRefreshAll}
+            onScopeAllProjects={() => handleDatasetScopeChange(DATASET_ALL)}
+          />
+        )}
+      </div>
       <IngestionDetailDialog
         open={activeDetailId !== null}
         documentId={activeDetailId}
@@ -939,6 +980,6 @@ export default function KnowledgeIngestionPageClient() {
           if (!open) setActiveDetailId(null)
         }}
       />
-    </OperationalWorkspace>
+    </div>
   )
 }

@@ -74,7 +74,7 @@ describe('theme surface appearance', () => {
       expect(chroma.valid(theme.previewSurface)).toBe(true)
       expect(chroma.valid(theme.defaultPrimary)).toBe(true)
     }
-    expect(getSurfaceThemeMeta('ocean').previewSurface).toBe('#faf9f7')
+    expect(getSurfaceThemeMeta('ocean').previewSurface).toBe('#ffffff')
     expect(getSurfaceThemeMeta('classic').previewSurface).toBe('#f6f7f8')
   })
 

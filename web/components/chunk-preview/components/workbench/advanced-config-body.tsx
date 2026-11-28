@@ -281,7 +281,7 @@ export function AdvancedConfigBody({
               </details>
             </>
           ) : (
-            <p className={styles.noPreview}>生成预览后，这里会显示当前文档的切分统计。</p>
+            <p className={styles.noPreview}>生成预览以查看切分统计。</p>
           )}
           <details className={styles.disclosure}>
             <summary>

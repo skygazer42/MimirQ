@@ -92,3 +92,34 @@ test('graph extraction shows queue acceptance for both document and bulk actions
   await dialog.getByRole('button', { name: '抽取选中文档', exact: true }).click()
   await expect(dialog.getByText('已提交', { exact: true })).toBeVisible()
 })
+
+test('scoped KG phone extraction inputs remain readable with the current document scope', async ({ page }) => {
+  await remainingFixture(page, 'dark')
+  await page.setViewportSize({ width: 390, height: 844 })
+  const documentId = '7dd88ec6-fb81-4ad1-a6ec-f47fef562111'
+  const filename = '产品说明与运维记录.pdf'
+  await page.route('**/api/v1/meta/details', (route) => route.fulfill({ json: { features: { kg_enabled: true } } }))
+  await page.route('**/api/v1/documents?**', (route) =>
+    route.fulfill({ json: { total: 1, items: [{ id: documentId, filename, status: 'completed', file_type: 'pdf' }] } }),
+  )
+  await openRemaining(page, datasetRoute('kg'), '数据集图谱')
+  await page.getByRole('checkbox', { name: '选择文档 ' + filename, exact: true }).check()
+  await page.getByRole('button', { name: '抽取配置', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: '抽取配置', exact: true })
+  await expect(dialog).toContainText('当前范围 1 份文档')
+  await page.screenshot({ path: test.info().outputPath('kg-extraction-phone.png'), animations: 'disabled' })
+  for (const label of ['流程版本', '最大抽取文档数', '并发数']) {
+    const input = dialog.getByRole('textbox', { name: label, exact: true })
+    expect(await input.evaluate((element) => parseFloat(getComputedStyle(element).fontSize))).toBeGreaterThanOrEqual(16)
+    expect((await input.boundingBox())!.height).toBeGreaterThanOrEqual(44)
+  }
+  await page.setViewportSize({ width: 390, height: 620 })
+  await expect
+    .poll(async () => {
+      const bounds = await dialog.boundingBox()
+      return bounds!.y >= 0 && bounds!.y + bounds!.height <= 620
+    })
+    .toBe(true)
+  await page.screenshot({ path: test.info().outputPath('kg-extraction-short.png'), animations: 'disabled' })
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true)
+})

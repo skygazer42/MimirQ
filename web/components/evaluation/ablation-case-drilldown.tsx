@@ -141,13 +141,15 @@ export function AblationCaseDrilldown({
 
       {detailsQuery.error !== null ? (
         <WorkspaceNotice
+          placement={detailsQuery.data !== undefined ? 'floating' : 'inline'}
+          tone={detailsQuery.data !== undefined ? 'warning' : 'error'}
+          title={detailsQuery.data === undefined ? '样本比较明细读取失败' : '更新失败，保留上次同一组运行的明细'}
+          error={detailsQuery.error}
+          fallbackMessage="样本比较明细读取失败"
           retry={() => void detailsQuery.refetch({ cancelRefetch: false })}
           retryLabel="重新读取样本明细"
           pending={loading}
-        >
-          {detailsQuery.data === undefined ? null : '更新失败，保留上次同一组运行的明细。'}
-          {formatApiError(detailsQuery.error, '样本比较明细读取失败')}
-        </WorkspaceNotice>
+        />
       ) : null}
       {rows.length > 0 ? (
         <div className="mt-3 overflow-hidden rounded-xl border border-border">

@@ -339,7 +339,7 @@ export function useGraphPageActions({
 
   const handleExportGraphML = useCallback(async () => {
     if (dataSource !== 'live') {
-      toast.info('仅支持导出后端 KG 实时图谱')
+      toast.info('请选择实时图谱后再导出')
       return
     }
 
@@ -355,6 +355,7 @@ export function useGraphPageActions({
           document_ids: scopeParams?.document_ids,
           dataset_id: scopeParams?.dataset_id,
           pipeline_hash: scopeParams?.pipeline_hash,
+          prefer_ontology: scopeParams?.dataset_id && !scopeParams.pipeline_hash ? true : undefined,
           include_entity_links: includeEntityLinks,
           include_relation_links: includeRelationLinks,
           min_shared_events: minSharedEvents,

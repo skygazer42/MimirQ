@@ -63,7 +63,7 @@ describe('evidence viewer real clipboard and source contracts', () => {
     render(fromServer)
     expect(document.querySelector('[role="dialog"] h2')?.textContent).not.toContain('P.null')
     expect(document.querySelector('[role="dialog"]')?.textContent).not.toContain('null..null')
-    expect(document.querySelector('[role="dialog"]')?.textContent).not.toContain('rerank_score')
+    expect(document.querySelector('[role="dialog"]')?.textContent).not.toContain('重排得分')
     act(() => button('打开文档').click())
     expect(controlled.openDocument).toHaveBeenCalledWith('doc-id', undefined, undefined, expect.any(Object))
   })

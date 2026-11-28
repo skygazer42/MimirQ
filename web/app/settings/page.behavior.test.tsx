@@ -4,7 +4,12 @@ import React, { act, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 
-const boundary = vi.hoisted(() => ({ admin: true, state: {} as Record<string, unknown>, retry: vi.fn() }))
+const boundary = vi.hoisted(() => ({
+  admin: true,
+  state: {} as Record<string, unknown>,
+  retry: vi.fn(),
+  reload: vi.fn(),
+}))
 vi.mock('./use-settings-page-state', () => ({ useSettingsPageState: () => boundary.state }))
 vi.mock('@/hooks/use-tenant-access', () => ({
   useTenantAccess: () => ({ data: { is_active: true, role: boundary.admin ? 'owner' : 'member', permissions: [] } }),
@@ -79,6 +84,7 @@ beforeEach(() => {
   boundary.admin = true
   boundary.state = {
     loading: false,
+    hasLoadedSettings: true,
     loadError: null,
     saving: false,
     saveError: null,
@@ -89,6 +95,7 @@ beforeEach(() => {
     ragMerged: { bm25_index_enabled: false },
     getFeatureValue: () => false,
     retrySave: boundary.retry,
+    loadSettings: boundary.reload,
   }
 })
 afterEach(() => {
@@ -172,4 +179,46 @@ it('keeps save feedback local, retains the mounted editor and retries the failed
   act(() => retry.click())
   expect(boundary.retry).toHaveBeenCalledOnce()
   expect([...view.container.querySelectorAll('button')].some((item) => item.textContent === '保存配置')).toBe(false)
+})
+
+it('retains the editor when reading saved settings fails and while retrying the read', () => {
+  const view = mount()
+  const field = view.container.querySelector<HTMLInputElement>('[aria-label="处理草稿"]')!
+  const scroll = view.container.querySelector<HTMLElement>('[data-page-scroll-container]')!
+  const scrollTo = vi.fn()
+  scroll.scrollTo = scrollTo
+  act(() => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(field, 'retained draft')
+    field.dispatchEvent(new Event('input', { bubbles: true }))
+  })
+  boundary.state = {
+    ...boundary.state,
+    loadError: '配置已保存，读取最新配置失败。服务暂不可用 (request_id=read-failed)',
+  }
+  view.render()
+  expect(view.container.querySelector('[aria-label="处理草稿"]')).toBe(field)
+  expect(field.value).toBe('retained draft')
+  const alert = view.container.querySelector('[role="alert"]')!
+  expect(alert.querySelector('h5')?.textContent).toBe('设置同步异常')
+  expect(alert.textContent).toContain('配置已保存，读取最新配置失败。服务暂不可用')
+  expect(alert.querySelector('details')?.textContent).toContain('request_id=read-failed')
+  const retry = [...view.container.querySelectorAll('button')].find((button) => button.textContent === '重新读取设置')!
+  act(() => retry.click())
+  expect(boundary.reload).toHaveBeenCalledOnce()
+  boundary.state = { ...boundary.state, loading: true, loadError: null }
+  view.render()
+  expect(view.container.querySelector('[aria-label="处理草稿"]')).toBe(field)
+  expect(field.value).toBe('retained draft')
+  expect(scrollTo).not.toHaveBeenCalled()
+})
+
+it('keeps the blocking error for an initial settings read failure', () => {
+  boundary.state = { ...boundary.state, hasLoadedSettings: false, loadError: '无法读取设置' }
+  const view = mount()
+  expect(view.container.querySelector('[aria-label="处理草稿"]')).toBeNull()
+  expect(view.container.querySelector('[role="alert"] h5')?.textContent).toBe('首次读取设置失败')
+  expect(view.container.textContent).toContain('无法读取设置')
+  const retry = [...view.container.querySelectorAll('button')].find((button) => button.textContent === '重新读取设置')!
+  act(() => retry.click())
+  expect(boundary.reload).toHaveBeenCalledOnce()
 })

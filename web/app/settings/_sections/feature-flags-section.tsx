@@ -87,7 +87,7 @@ const FEATURE_FLAGS_CONFIG: FeatureFlagDescriptor[] = [
   {
     key: 'magicpdf_enabled',
     name: 'MagicPDF 本地解析',
-    description: '启用 magic-pdf 本地高级解析后端（可在解析器下拉中选择）',
+    description: '开启后可选择 magic-pdf 解析器。',
     icon: Wand2,
     dependencies: ['magic-pdf'],
   },

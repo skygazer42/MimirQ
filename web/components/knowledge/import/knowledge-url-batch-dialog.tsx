@@ -11,7 +11,14 @@ import { PipelineOptionsPanel } from '@/components/pipeline-options-panel'
 import { GroupChipsInput } from '@/components/groups/group-chips-input'
 import { Button } from '@/components/ui/button'
 import { ChunkStrategyDropdown } from '@/components/business/chunk-strategy-dropdown'
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { ParserDropdown } from '@/components/business/parser-dropdown'
@@ -165,154 +172,158 @@ export function KnowledgeUrlBatchDialog({
     >
       <DialogContent
         showCloseButton={!submitting}
-        className="max-h-[calc(100dvh-2rem)] max-w-2xl overflow-y-auto overscroll-contain"
+        className="flex max-h-[min(88dvh,820px)] w-[calc(100%_-_2rem)] max-w-2xl flex-col gap-0 overflow-hidden rounded-xl p-0"
       >
-        <DialogHeader>
+        <DialogHeader className="shrink-0 border-b border-border/75 bg-popover px-6 pt-6 pb-4 text-left">
           <DialogTitle>URL 批量导入（Connector）</DialogTitle>
           <DialogDescription>
-            一次导入多个 URL，并生成导入运行记录（需要后端开启 URL_INGEST_ENABLED）。
+            每行填写一个 URL。
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4">
-          <form id={formId} onSubmit={handleSubmit} className="space-y-4">
+        <div
+          data-knowledge-dialog-body="true"
+          className="min-h-0 flex-1 overflow-y-auto overscroll-contain custom-scrollbar px-6 py-5"
+        >
+          <fieldset disabled={submitting} className="m-0 min-w-0 border-0 p-0 space-y-5">
+            <form id={formId} onSubmit={handleSubmit} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor={`${formId}-urls`} className="text-foreground/80">
+                  URLs（每行一个，最多 {URL_BATCH_LIMIT}）
+                </Label>
+                <Textarea
+                  id={`${formId}-urls`}
+                  value={urls}
+                  disabled={submitting}
+                  onChange={(e) => setUrls(e.target.value)}
+                  placeholder={'https://example.com/doc1.pdf\nhttps://example.com/doc2.html'}
+                  className="font-mono min-h-[140px]"
+                  aria-describedby={urlCountId}
+                  aria-invalid={overLimit}
+                />
+                {overLimit ? (
+                  <p id={urlCountId} role="alert" className="text-xs text-destructive">
+                    每批最多导入 {URL_BATCH_LIMIT} 个 URL。
+                  </p>
+                ) : (
+                  <p id={urlCountId} className="text-xs text-muted-foreground">
+                    已识别 {parsedUrls.length} 个 URL（仅统计 http/https）。
+                  </p>
+                )}
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor={`${formId}-filename`} className="text-foreground/80">
+                    文件名（可选）
+                  </Label>
+                  <Input
+                    id={`${formId}-filename`}
+                    value={filename}
+                    disabled={submitting}
+                    onChange={(e) => setFilename(e.target.value)}
+                    placeholder="例如：产品手册.pdf"
+                  />
+                  <div className="text-xs text-muted-foreground">用于显示名/扩展名推断（对所有 URL 生效）。</div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor={`${formId}-dataset`} className="text-foreground/80">
+                    目标数据集
+                  </Label>
+                  <Select value={datasetId} onValueChange={setDatasetId} disabled={submitting}>
+                    <SelectTrigger id={`${formId}-dataset`} className="h-10 bg-background">
+                      <SelectValue placeholder="选择数据集" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={datasetDefaultValue}>默认（自动选择可写数据集）</SelectItem>
+                      {datasets.map((ds) => (
+                        <SelectItem key={ds.id} value={ds.id}>
+                          {ds.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {datasetsLoading ? <div className="text-xs text-muted-foreground">正在加载数据集...</div> : null}
+                </div>
+              </div>
+            </form>
+
             <div className="space-y-2">
-              <Label htmlFor={`${formId}-urls`} className="text-foreground/80">
-                URLs（每行一个，最多 {URL_BATCH_LIMIT}）
+              <Label htmlFor={`${formId}-access`} className="text-foreground/80">
+                文档访问控制（可选）
               </Label>
-              <Textarea
-                id={`${formId}-urls`}
-                value={urls}
+              <Select
+                value={accessMode}
                 disabled={submitting}
-                onChange={(e) => setUrls(e.target.value)}
-                placeholder={'https://example.com/doc1.pdf\nhttps://example.com/doc2.html'}
-                className="font-mono min-h-[140px]"
-                aria-describedby={urlCountId}
-                aria-invalid={overLimit}
-              />
-              {overLimit ? (
-                <p id={urlCountId} role="alert" className="text-xs text-destructive">
-                  每批最多导入 {URL_BATCH_LIMIT} 个 URL。
-                </p>
-              ) : (
-                <p id={urlCountId} className="text-xs text-muted-foreground">
-                  已识别 {parsedUrls.length} 个 URL（仅统计 http/https）。
-                </p>
-              )}
+                onValueChange={(value) => {
+                  const result = documentAccessModeSchema.safeParse(value)
+                  if (result.success) setAccessMode(result.data)
+                }}
+              >
+                <SelectTrigger id={`${formId}-access`} className="h-10 bg-background">
+                  <SelectValue placeholder="选择访问模式" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="inherit">继承数据集</SelectItem>
+                  <SelectItem value="only_me">仅我可见</SelectItem>
+                  <SelectItem value="partial_members">指定成员/组</SelectItem>
+                  <SelectItem value="all_team_members">团队成员</SelectItem>
+                </SelectContent>
+              </Select>
+              {accessMode === 'partial_members' ? (
+                <div className="space-y-4 pt-2">
+                  <div className="space-y-2">
+                    <div className="text-sm font-medium text-foreground/80">允许组（可选）</div>
+                    <GroupChipsInput
+                      value={accessGroupIds}
+                      disabled={submitting}
+                      onChange={setAccessGroupIds}
+                      placeholder="选择组（组内成员将自动获得访问权限）"
+                    />
+                    <div className="text-xs text-muted-foreground">最多 200 个；仅支持当前租户已存在的组。</div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor={`${formId}-members`} className="text-foreground/80">
+                      允许成员（每行一个 user_id）
+                    </Label>
+                    <Textarea
+                      id={`${formId}-members`}
+                      value={accessMembers}
+                      disabled={submitting}
+                      onChange={(e) => setAccessMembers(e.target.value)}
+                      placeholder={'alice\nbob\ncharlie'}
+                      className="font-mono min-h-[110px]"
+                    />
+                    <div className="text-xs text-muted-foreground">最多 200 个；仅支持当前租户已存在的成员。</div>
+                  </div>
+                </div>
+              ) : null}
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor={`${formId}-filename`} className="text-foreground/80">
-                  文件名（可选）
-                </Label>
-                <Input
-                  id={`${formId}-filename`}
-                  value={filename}
-                  disabled={submitting}
-                  onChange={(e) => setFilename(e.target.value)}
-                  placeholder="例如：产品手册.pdf"
-                />
-                <div className="text-xs text-muted-foreground">用于显示名/扩展名推断（对所有 URL 生效）。</div>
+                <div className="text-sm font-medium text-foreground/80">解析方式</div>
+                <ParserDropdown value={parserBackend} onChange={setParserBackend} />
               </div>
               <div className="space-y-2">
-                <Label htmlFor={`${formId}-dataset`} className="text-foreground/80">
-                  目标数据集
-                </Label>
-                <Select value={datasetId} onValueChange={setDatasetId} disabled={submitting}>
-                  <SelectTrigger id={`${formId}-dataset`} className="h-10 bg-background">
-                    <SelectValue placeholder="选择数据集" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={datasetDefaultValue}>默认（自动选择可写数据集）</SelectItem>
-                    {datasets.map((ds) => (
-                      <SelectItem key={ds.id} value={ds.id}>
-                        {ds.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {datasetsLoading ? <div className="text-xs text-muted-foreground">正在加载数据集...</div> : null}
+                <div className="text-sm font-medium text-foreground/80">切块策略</div>
+                <ChunkStrategyDropdown value={chunkStrategy} onChange={setChunkStrategy} />
               </div>
             </div>
-          </form>
 
-          <div className="space-y-2">
-            <Label htmlFor={`${formId}-access`} className="text-foreground/80">
-              文档访问控制（可选）
-            </Label>
-            <Select
-              value={accessMode}
-              disabled={submitting}
-              onValueChange={(value) => {
-                const result = documentAccessModeSchema.safeParse(value)
-                if (result.success) setAccessMode(result.data)
-              }}
-            >
-              <SelectTrigger id={`${formId}-access`} className="h-10 bg-background">
-                <SelectValue placeholder="选择访问模式" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="inherit">继承数据集</SelectItem>
-                <SelectItem value="only_me">仅我可见</SelectItem>
-                <SelectItem value="partial_members">指定成员/组</SelectItem>
-                <SelectItem value="all_team_members">团队成员</SelectItem>
-              </SelectContent>
-            </Select>
-            {accessMode === 'partial_members' ? (
-              <div className="space-y-4 pt-2">
-                <div className="space-y-2">
-                  <div className="text-sm font-medium text-foreground/80">允许组（可选）</div>
-                  <GroupChipsInput
-                    value={accessGroupIds}
-                    disabled={submitting}
-                    onChange={setAccessGroupIds}
-                    placeholder="选择组（组内成员将自动获得访问权限）"
-                  />
-                  <div className="text-xs text-muted-foreground">最多 200 个；仅支持当前租户已存在的组。</div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor={`${formId}-members`} className="text-foreground/80">
-                    允许成员（每行一个 user_id）
-                  </Label>
-                  <Textarea
-                    id={`${formId}-members`}
-                    value={accessMembers}
-                    disabled={submitting}
-                    onChange={(e) => setAccessMembers(e.target.value)}
-                    placeholder={'alice\nbob\ncharlie'}
-                    className="font-mono min-h-[110px]"
-                  />
-                  <div className="text-xs text-muted-foreground">最多 200 个；仅支持当前租户已存在的成员。</div>
-                </div>
-              </div>
-            ) : null}
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <div className="text-sm font-medium text-foreground/80">解析方式</div>
-              <ParserDropdown value={parserBackend} onChange={setParserBackend} />
-            </div>
-            <div className="space-y-2">
-              <div className="text-sm font-medium text-foreground/80">切块策略</div>
-              <ChunkStrategyDropdown value={chunkStrategy} onChange={setChunkStrategy} />
-            </div>
-          </div>
-
-          <PipelineOptionsPanel />
-
-          <div className="flex items-center justify-end gap-2 pt-2">
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={submitting}>
-              取消
-            </Button>
-            <Button type="submit" form={formId} disabled={submitting || overLimit} className="gap-2">
-              {submitting ? <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" aria-hidden /> : null}
-              开始导入
-            </Button>
-          </div>
+            <PipelineOptionsPanel />
+          </fieldset>
         </div>
+        <DialogFooter className="shrink-0 gap-2 border-t border-border/75 bg-popover px-6 py-4 sm:space-x-0">
+          <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={submitting}>
+            取消
+          </Button>
+          <Button type="submit" form={formId} disabled={submitting || overLimit} className="gap-2">
+            {submitting ? <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" aria-hidden /> : null}
+            开始导入
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   )

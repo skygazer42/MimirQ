@@ -1,6 +1,6 @@
 'use client'
 
-import { Trash2 } from '@/components/icons'
+import { SlidersHorizontal, Trash2 } from '@/components/icons'
 import { useEffect, useMemo, useState, useCallback, useLayoutEffect, useRef } from 'react'
 
 import { useSearchParams } from 'next/navigation'
@@ -10,7 +10,12 @@ import { toast } from 'sonner'
 import { AppFrame } from '@/components/app-frame'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { OperationalWorkspace, WorkspaceNotice, workspaceStyles as ws } from '@/components/ui/operational-workspace'
+import {
+  OperationalWorkspace,
+  WorkspaceNotice,
+  WorkspaceNoticeStack,
+  workspaceStyles as ws,
+} from '@/components/ui/operational-workspace'
 import {
   Dialog,
   DialogContent,
@@ -39,7 +44,7 @@ import { SnapshotDiffView } from './components/snapshot-diff-view'
 import { SnapshotGraphCanvas } from './components/snapshot-graph-canvas'
 import { SnapshotNodeDetailsRail } from './components/snapshot-node-details-rail'
 import { DiffEmptyState } from './components/shared'
-import { DIFF_KEYS } from './constants'
+import { DIFF_KEYS, SNAPSHOT_COUNT_LABELS } from './constants'
 import { buildSnapshotStudioGraphFromKgGraph } from './snapshot-graph'
 import type {
   PipelineCandidate,
@@ -468,7 +473,7 @@ export function KGSnapshotsPage() {
           value={selectedDatasetId}
           disabled={datasetsLoading || isRunning}
           onChange={(event) => changeDataset(event.target.value)}
-          className="h-10 w-full rounded-md border border-border bg-background px-3 text-sm"
+          className="h-11 w-full rounded-md border border-border bg-background px-3 text-sm sm:h-10"
         >
           <option value="">全部数据集</option>
           {selectedDatasetId !== '' && !datasets?.some((item) => item.id === selectedDatasetId) ? (
@@ -494,7 +499,7 @@ export function KGSnapshotsPage() {
                 if (which === 'a') setPipelineHashA(event.target.value)
                 else setPipelineHashB(event.target.value)
               }}
-              className="h-10 w-full rounded-md border border-border bg-background px-3 text-sm"
+              className="h-11 w-full rounded-md border border-border bg-background px-3 text-sm sm:h-10"
             >
               <option value="">{pipelineCandidatesLoading ? '正在读取版本…' : '选择版本'}</option>
               {value && !pipelineCandidates.some((item) => item.hash === value) ? (
@@ -520,29 +525,25 @@ export function KGSnapshotsPage() {
         mode="canvas"
         actions={
           <>
-            <Button variant="outline" onClick={() => setScopeSettingsOpen(true)} disabled={isRunning}>
-              版本与范围
+            <Button
+              variant="outline"
+              className="w-11 px-0 sm:w-auto sm:px-3"
+              aria-label="版本与范围"
+              onClick={() => setScopeSettingsOpen(true)}
+              disabled={isRunning}
+            >
+              <SlidersHorizontal className="size-4" />
+              <span className="hidden sm:inline">版本与范围</span>
             </Button>
             <Button
+              className="min-w-20 bg-accent px-3 text-accent-foreground hover:bg-accent/90"
+              aria-label={isRunning ? '正在对比…' : '开始对比'}
               disabled={isRunning || !hashAValue || !hashBValue || hashAValue === hashBValue}
               onClick={() => {
                 void runCompare()
               }}
             >
-              {isRunning ? '正在对比…' : '开始对比'}
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              aria-label="清空快照对比"
-              disabled={isRunning}
-              onClick={() => {
-                clearComparison()
-                setActiveView('diff')
-                setStudioCanvasView('table')
-              }}
-            >
-              <Trash2 />
+              {isRunning ? '对比中' : '开始对比'}
             </Button>
           </>
         }
@@ -550,39 +551,40 @@ export function KGSnapshotsPage() {
           inlineScope ? (
             scopeFields
           ) : (
-            <>
-              <span className="min-w-0 flex-1 text-sm text-muted-foreground">
+            <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1 text-[13px] text-muted-foreground">
+              <span className="min-w-0 break-all">
                 A {hashAValue ? compactHashLabel(hashAValue) : '未选择'} → B{' '}
                 {hashBValue ? compactHashLabel(hashBValue) : '未选择'}
               </span>
-              <Button variant="ghost" onClick={() => setScopeSettingsOpen(true)}>
-                选择版本
-              </Button>
-            </>
+              {documentIds.length ? <span>{documentIds.length} 份指定文档</span> : null}
+            </div>
           )
         }
       >
-        {datasetsQuery.isError ? (
-          <div className="px-5">
-            <WorkspaceNotice retry={() => void datasetsQuery.refetch()} pending={datasetsLoading}>
-              {formatApiError(datasetsQuery.error, '数据集目录读取失败')}
-            </WorkspaceNotice>
-          </div>
-        ) : null}
-        {pipelineCandidatesError ? (
-          <div className="px-5">
-            <WorkspaceNotice retry={() => setReloadVersion((value) => value + 1)}>
-              {pipelineCandidatesError}
-            </WorkspaceNotice>
-          </div>
-        ) : null}
-        {operationError ? (
-          <div className="px-5">
-            <WorkspaceNotice>{operationError}</WorkspaceNotice>
-          </div>
-        ) : null}
-        {latencyMs !== null ? (
-          <p className="px-6 pt-2 text-right text-xs text-muted-foreground">对比耗时 {latencyMs} ms</p>
+        {datasetsQuery.isError || pipelineCandidatesError || operationError || liveGraphError ? (
+          <WorkspaceNoticeStack ariaLabel="图谱快照状态提示">
+            {datasetsQuery.isError ? (
+              <WorkspaceNotice
+                tone="warning"
+                title="数据集目录读取失败"
+                error={datasetsQuery.error}
+                fallbackMessage="数据集目录读取失败"
+                retry={() => void datasetsQuery.refetch()}
+                pending={datasetsLoading}
+              />
+            ) : null}
+            {pipelineCandidatesError ? (
+              <WorkspaceNotice tone="warning" retry={() => setReloadVersion((value) => value + 1)}>
+                {pipelineCandidatesError}
+              </WorkspaceNotice>
+            ) : null}
+            {operationError ? <WorkspaceNotice>{operationError}</WorkspaceNotice> : null}
+            {liveGraphError ? (
+              <WorkspaceNotice tone="warning" retry={() => setReloadVersion((value) => value + 1)}>
+                {liveGraphError}
+              </WorkspaceNotice>
+            ) : null}
+          </WorkspaceNoticeStack>
         ) : null}
         <Tabs
           value={view}
@@ -607,23 +609,34 @@ export function KGSnapshotsPage() {
           </div>
           <TabsContent value="diff" className={cn(ws.tabContent, 'flex min-h-0 flex-1 flex-col')}>
             <SnapshotDiffView
-              titleA={`Snapshot A · ${hashATitle}`}
-              titleB={`Snapshot B · ${hashBTitle}`}
+              titleA={`快照 A · ${hashATitle}`}
+              titleB={`快照 B · ${hashBTitle}`}
               subtitleA={snapshotScopeSubtitle}
               subtitleB={snapshotScopeSubtitle}
               leftCode={snapAJson}
               rightCode={snapBJson}
               diff={diff}
               pending={isRunning}
+              latencyMs={latencyMs}
               onLoadDetails={() => {
                 void runCompare()
               }}
               isEmpty={!diff}
               emptyState={
                 <DiffEmptyState
-                  title="还没有对比结果"
-                  description="填写左侧的快照 A / 快照 B，可以选择文档范围，然后点击「开始对比」生成左右差异与节点/边精确变更。"
-                  hint={hasHashA && hasHashB ? '已就绪：直接点击「开始对比」' : '提示：A / B Hash 二者皆需填写'}
+                  title={operationError ? '对比未完成' : '还没有对比结果'}
+                  description={
+                    operationError
+                      ? '当前选择已保留，可重试或调整版本与范围。'
+                      : '选择两个版本，开始对比后查看节点和关系的变化。'
+                  }
+                  hint={
+                    operationError
+                      ? undefined
+                      : hasHashA && hasHashB
+                        ? '版本已就绪，可开始对比'
+                        : '在“版本与范围”中选择快照 A 和 B'
+                  }
                 />
               }
               onCopy={() => detachPromise(copyToClipboard(diffJson, 'diff JSON'))}
@@ -681,7 +694,7 @@ export function KGSnapshotsPage() {
           <TabsContent value="graph" className={cn(ws.tabContent, 'flex min-h-0 flex-1 flex-col')}>
             <div className="flex shrink-0 flex-wrap items-center gap-3 border-b border-border px-4 py-3 md:px-6">
               <Input
-                className="w-52 max-w-full"
+                className="w-full sm:w-52"
                 aria-label="搜索快照节点或关系"
                 value={studioSearch}
                 onChange={(event) => setStudioSearch(event.target.value)}
@@ -691,7 +704,7 @@ export function KGSnapshotsPage() {
                 aria-label="节点类型"
                 value={nodeType}
                 onChange={(event) => setStudioNodeType(event.target.value)}
-                className="h-10 rounded-md border border-border bg-background px-3 text-sm"
+                className="h-11 min-w-0 flex-1 rounded-md border border-border bg-background px-3 text-sm sm:h-9 sm:flex-none"
               >
                 <option value="all">全部节点类型</option>
                 {nodeTypes.map((type) => (
@@ -702,7 +715,7 @@ export function KGSnapshotsPage() {
                 aria-label="关系类型"
                 value={relationType}
                 onChange={(event) => setStudioRelationType(event.target.value)}
-                className="h-10 rounded-md border border-border bg-background px-3 text-sm"
+                className="h-11 min-w-0 flex-1 rounded-md border border-border bg-background px-3 text-sm sm:h-9 sm:flex-none"
               >
                 <option value="all">全部关系类型</option>
                 {relationTypes.map((type) => (
@@ -713,7 +726,7 @@ export function KGSnapshotsPage() {
                 aria-label="图谱布局"
                 value={studioLayout}
                 onChange={(event) => setStudioLayout(event.target.value)}
-                className="h-10 rounded-md border border-border bg-background px-3 text-sm"
+                className="h-11 min-w-0 flex-1 rounded-md border border-border bg-background px-3 text-sm sm:h-9 sm:flex-none"
               >
                 <option value="force">力导向</option>
                 <option value="radial">径向</option>
@@ -728,11 +741,6 @@ export function KGSnapshotsPage() {
                 重新读取图谱
               </Button>
             </div>
-            {liveGraphError ? (
-              <div className="px-6">
-                <WorkspaceNotice retry={() => setReloadVersion((value) => value + 1)}>{liveGraphError}</WorkspaceNotice>
-              </div>
-            ) : null}
             <div className="flex min-h-0 flex-1">
               <div className="min-h-0 min-w-0 flex-1 overflow-auto">
                 <div className="h-full min-h-[420px] min-w-[640px]">
@@ -752,8 +760,8 @@ export function KGSnapshotsPage() {
                         studioSearch.trim() || nodeType !== 'all' || relationType !== 'all'
                           ? '当前筛选下没有匹配节点，可调整搜索或类型。'
                           : selectedDatasetId
-                            ? '当前数据集没有返回 KG 节点，请确认文档已完成入库且已开启 KG 抽取。'
-                            : '当前后端 KG 图谱接口没有返回节点。'
+                            ? '请确认文档已入库并完成图谱抽取。'
+                            : '请选择有图谱数据的数据集。'
                       }
                       onSelectNode={(id, trigger) => {
                         nodeTriggerRef.current = trigger
@@ -816,17 +824,7 @@ export function KGSnapshotsPage() {
                             const value = typeof change === 'number' && Number.isFinite(change) ? change : null
                             return (
                               <tr key={key}>
-                                <td>
-                                  {
-                                    {
-                                      docs: '文档',
-                                      events: '事件',
-                                      entities: '实体',
-                                      links: '关联',
-                                      relations: '关系',
-                                    }[key]
-                                  }
-                                </td>
+                                <td>{SNAPSHOT_COUNT_LABELS[key]}</td>
                                 <td>{snapshotTotal(snapA, key) ?? '未取得'}</td>
                                 <td>{snapshotTotal(snapB, key) ?? '未取得'}</td>
                                 <td>{value === null ? '未取得' : value > 0 ? `+${value}` : value}</td>
@@ -947,9 +945,23 @@ export function KGSnapshotsPage() {
                 >
                   仅比较摘要
                 </Button>
+                <Button
+                  variant="ghost"
+                  aria-label="清空快照对比"
+                  disabled={isRunning}
+                  onClick={() => {
+                    clearComparison()
+                    setActiveView('diff')
+                    setStudioCanvasView('table')
+                    setScopeSettingsOpen(false)
+                  }}
+                >
+                  <Trash2 className="size-4" />
+                  清空对比
+                </Button>
               </div>
             </div>
-            <DialogFooter className={ws.dialogFooter}>
+            <DialogFooter className={cn(ws.dialogFooter, 'flex-row')}>
               <Button variant="outline" onClick={() => setScopeSettingsOpen(false)}>
                 完成
               </Button>

@@ -1,5 +1,4 @@
 'use client'
-import { FeedbackToast } from '@/components/feedback-toast'
 
 import {
   type ReactNode,
@@ -17,17 +16,14 @@ import {
   Archive,
   ArrowRight,
   ChevronDown,
+  ChevronRight,
   Cloud,
-  Database,
   Dataset as DatasetIcon,
-  Parsing,
-  FileUp,
   Folder,
   Link as LinkIcon,
   Loader2,
   Plus,
-  ShieldCheck,
-  Settings2,
+  Search,
   Trash2,
   UploadCloud,
   X,
@@ -39,11 +35,13 @@ import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { PageTitleIcon } from '@/components/ui/page-title-icon'
+import { WorkspaceNotice } from '@/components/ui/operational-workspace'
 import { getFileTypeMeta } from '@/components/knowledge/file-type'
 import { Select, SelectContent, SelectItem, SelectTrigger } from '@/components/ui/select'
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
 import { Textarea } from '@/components/ui/textarea'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { connectorApi } from '@/lib/api/connectors'
 import { datasetApi } from '@/lib/api/datasets'
 import {
@@ -54,6 +52,7 @@ import {
 } from '@/lib/api/document-helpers'
 import { documentApi } from '@/lib/api/documents'
 import { settingsApi } from '@/lib/api/settings'
+import { useDocumentView } from '@/store/document-view'
 import { formatApiError } from '@/lib/api-errors'
 import { getAuthSessionRevision, subscribeAuthSession } from '@/lib/auth-storage'
 import { readClientStorage } from '@/lib/client-storage'
@@ -65,6 +64,7 @@ import { cn, detachPromise, formatFileSize } from '@/lib/utils'
 import type { Dataset, Document, DocumentFolderNode, DocumentPipelineOptions } from '@/types'
 
 import { IngestionViewSwitch } from './view-switch'
+import { isExecutionMonitorDocument } from './document-signals'
 import styles from './operation.module.css'
 
 const DRAFT_KEY = 'mimirq.knowledge.ingestion.operation.draft'
@@ -137,17 +137,6 @@ const SOURCE_OPTIONS: Array<{
   { value: 'api', label: 'API导入', icon: Archive, description: '通过接口推送数据' },
 ]
 
-const OPERATION_STAGES: Array<{
-  label: string
-  description: string
-  icon: PlatformIcon
-}> = [
-  { label: '登记', description: '校验来源与文件', icon: FileUp },
-  { label: '解析', description: '提取正文与结构', icon: Parsing },
-  { label: '治理', description: '清洗、去重、切块', icon: ShieldCheck },
-  { label: '建索引', description: '向量与关键词索引', icon: Database },
-]
-
 const ACCEPTED_EXTENSIONS = [
   '.pdf',
   '.md',
@@ -170,21 +159,18 @@ const SELECT_OPTION_CLASS = styles.menuOption
 const EXECUTION_MODE_OPTIONS: Array<SelectOption<IngestExecutionMode>> = [
   {
     value: 'upload_only',
-    title: '仅登记',
-    description: '保存源文件，暂不解析',
-    badge: '默认',
+    title: '仅传原件',
+    description: '保存文件，暂不解析',
   },
   {
     value: 'parse_only',
-    title: '入库并解析',
-    description: '提取正文，暂不建立索引',
-    badge: '监控',
+    title: '仅解析',
+    description: '提取正文，暂不索引',
   },
   {
     value: 'full_index',
-    title: '解析 + 索引',
-    description: '解析内容并加入知识库检索',
-    badge: '完整',
+    title: '完整入库',
+    description: '解析并建立检索索引',
   },
 ]
 const DEDUP_OPTIONS: Array<SelectOption<string>> = [
@@ -232,11 +218,6 @@ function fileRelativeFolder(file: File) {
   return path.split('/').slice(0, -1).join('/').trim()
 }
 
-function formatFileType(file: File) {
-  const ext = file.name.split('.').pop()
-  return ext ? ext.toUpperCase() : 'FILE'
-}
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
@@ -274,6 +255,75 @@ function DatasetOptionBody({ dataset }: Readonly<DatasetOptionBodyProps>) {
       <strong>{dataset.name}</strong>
       <small>{dataset.id.slice(0, 18).toUpperCase()}</small>
     </span>
+  )
+}
+
+const DOCUMENT_STATUS_FILTERS = [
+  { value: 'all', label: '全部状态' },
+  { value: 'registered', label: '已登记' },
+  { value: 'processing', label: '解析中' },
+  { value: 'completed', label: '已入库' },
+  { value: 'failed', label: '失败' },
+]
+
+function getIngestionDocumentStatus(document: Document) {
+  if (!isExecutionMonitorDocument(document)) return { value: 'registered', label: '已登记' }
+  const labels: Record<Document['status'], string> = {
+    pending: '待处理',
+    processing: '解析中',
+    completed: '已入库',
+    failed: '失败',
+    quarantined: '已隔离',
+    cancelled: '已取消',
+    deleting: '删除中',
+  }
+  return { value: document.status, label: labels[document.status] }
+}
+
+function FormatPill({ filename, fileType }: Readonly<{ filename: string; fileType?: string }>) {
+  const meta = getFileTypeMeta({ filename, file_type: fileType })
+  return <span className={cn(styles.formatPill, meta.color, meta.bg)}>{meta.label}</span>
+}
+
+function DatasetSelector({
+  datasetId,
+  datasets,
+  selectedDataset,
+  loading,
+  locked,
+  onChange,
+  className,
+  ariaLabel = '目标数据集',
+  id,
+}: Readonly<{
+  datasetId: string
+  datasets: Dataset[]
+  selectedDataset: Dataset | null
+  loading: boolean
+  locked: boolean
+  onChange: (value: string) => void
+  className?: string
+  ariaLabel?: string
+  id?: string
+}>) {
+  return (
+    <Select value={datasetId} onValueChange={onChange} disabled={locked || loading || datasets.length === 0}>
+      <SelectTrigger id={id} aria-label={ariaLabel} className={cn(SOFT_CONTROL_CLASS, className)}>
+        <span className={styles.controlText}>
+          <DatasetIcon aria-hidden="true" />
+          <span>
+            {selectedDataset?.name ?? (loading ? '正在加载数据集' : datasets.length ? '选择目标数据集' : '暂无数据集')}
+          </span>
+        </span>
+      </SelectTrigger>
+      <SelectContent className={SELECT_MENU_CLASS}>
+        {datasets.map((dataset) => (
+          <SelectItem key={dataset.id} value={dataset.id} textValue={dataset.name} className={SELECT_OPTION_CLASS}>
+            <DatasetOptionBody dataset={dataset} />
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
   )
 }
 
@@ -335,10 +385,6 @@ function collectCollectionOptions(
   })
 }
 
-function getFileIcon(file: File) {
-  return getFileTypeMeta({ filename: file.name }).icon
-}
-
 function shouldBuildIndexes(draft: DraftState) {
   return draft.executionMode === 'full_index'
 }
@@ -396,12 +442,15 @@ function apiPayloadFileType(filename: string) {
 
 export default function KnowledgeIngestionOperationPage({ active = true }: Readonly<{ active?: boolean }>) {
   const router = useRouter()
+  const openDocument = useDocumentView((state) => state.openDocument)
   const queryClient = useQueryClient()
   const authRevision = useSyncExternalStore(subscribeAuthSession, getAuthSessionRevision, getAuthSessionRevision)
   const searchParams = useSearchParams()
   const routeDatasetId = searchParams.get('datasetId')
   const activeRef = useRef(active)
   const inputRef = useRef<HTMLInputElement | null>(null)
+  const sourceNavRef = useRef<HTMLElement | null>(null)
+  const defaultModeRef = useRef<HTMLDivElement | null>(null)
   const folderInputRef = useRef<HTMLInputElement | null>(null)
   const observedRouteDatasetIdRef = useRef(routeDatasetId)
   const appliedRouteDatasetIdRef = useRef<string | null>(null)
@@ -425,7 +474,18 @@ export default function KnowledgeIngestionOperationPage({ active = true }: Reado
     uploadReceipt?.authRevision === authRevision && uploadReceipt.datasetId === draft.datasetId ? uploadReceipt : null
   const uploadResponse = currentReceipt?.response
   const [submissionError, setSubmissionError] = useState<string | null>(null)
-  const [configurationOpen, setConfigurationOpen] = useState(false)
+  const [importOpen, setImportOpen] = useState(false)
+  useEffect(() => {
+    if (active && importOpen) {
+      sourceNavRef.current?.querySelector<HTMLElement>('[aria-pressed="true"]')?.scrollIntoView({
+        inline: 'nearest',
+        block: 'nearest',
+      })
+    }
+  }, [active, importOpen, source])
+  const [documentSearch, setDocumentSearch] = useState('')
+  const [documentStatus, setDocumentStatus] = useState('all')
+  const [documentPage, setDocumentPage] = useState(1)
 
   useLayoutEffect(() => {
     activeRef.current = active
@@ -577,15 +637,7 @@ export default function KnowledgeIngestionOperationPage({ active = true }: Reado
 
   const totalDocuments = ingestionStats?.total_documents ?? documents.length
 
-  const fileRows = useMemo(
-    () =>
-      files.map((file) => {
-        const Icon = getFileIcon(file)
-        return { file, Icon, key: fileKey(file) }
-      }),
-    [files],
-  )
-  const activeSource = SOURCE_OPTIONS.find((item) => item.value === source) ?? SOURCE_OPTIONS[0]
+  const fileRows = useMemo(() => files.map((file) => ({ file, key: fileKey(file) })), [files])
 
   const updateDraft = useCallback(
     <K extends keyof DraftState>(key: K, value: DraftState[K]) => {
@@ -764,11 +816,11 @@ export default function KnowledgeIngestionOperationPage({ active = true }: Reado
         return
       }
       if (mode === 'upload_only' && (source === 'url' || source === 'object')) {
-        toast.error('URL/对象存储不能使用仅登记模式，请先下载为本地文件或选择解析入库')
+        toast.error('URL/对象存储不能使用仅传原件，请先下载为本地文件或选择仅解析或完整入库')
         return
       }
       if (mode === 'upload_only' && source === 'api') {
-        toast.error('API 导入没有原始文件可登记，请选择“解析入库”')
+        toast.error('API 导入没有原始文件可上传，请选择仅解析或完整入库')
         return
       }
       if (source === 'url' || source === 'object') {
@@ -931,8 +983,6 @@ export default function KnowledgeIngestionOperationPage({ active = true }: Reado
     setApiContent,
   }
 
-  const activeStageCount =
-    draft.executionMode === 'upload_only' ? 1 : draft.executionMode === 'parse_only' ? 2 : OPERATION_STAGES.length
   const sourceExecutionBlocked =
     draft.executionMode === 'upload_only' && (source === 'url' || source === 'object' || source === 'api')
   const isFileSource = source === 'local' || source === 'folder'
@@ -940,33 +990,75 @@ export default function KnowledgeIngestionOperationPage({ active = true }: Reado
   const operationReady = canStartIngest && !sourceExecutionBlocked && !exceedsBatchLimit
   const actionLabel =
     draft.executionMode === 'upload_only'
-      ? '登记文件'
+      ? '上传原件'
       : draft.executionMode === 'full_index'
-        ? '解析并建索引'
-        : '登记并解析'
-  const emptySourceMessage =
-    source === 'local' || source === 'folder'
-      ? '请添加待入库文件'
-      : source === 'url'
-        ? '请填写至少一个有效 URL'
-        : source === 'object'
-          ? '请配置对象存储范围'
-          : '请填写 API 导入内容'
+        ? '开始完整入库'
+        : '上传并解析'
+  const emptySourceMessage = isFileSource
+    ? '请添加待入库文件'
+    : source === 'url'
+      ? '请填写至少一个有效 URL'
+      : source === 'object'
+        ? '请配置对象存储范围'
+        : '请填写 API 导入内容'
   let preflightMessage = emptySourceMessage
   if (selectedDataset === null) preflightMessage = '请选择可用的数据集'
   else if (connectorSourceBlocked) preflightMessage = '当前环境未启用 URL/对象存储导入'
-  else if (sourceExecutionBlocked) preflightMessage = '当前来源不支持“仅登记”'
+  else if (sourceExecutionBlocked) preflightMessage = '当前来源不支持“仅传原件”，请选择仅解析或完整入库'
   else if (exceedsBatchLimit) preflightMessage = `一次最多提交 ${DOCUMENT_UPLOAD_BATCH_LIMIT} 个文件，请分批提交`
   const submissionSummary = uploadResponse
     ? `上次提交：成功 ${uploadResponse.successful_count} · 失败 ${uploadResponse.failed_count}`
-    : pendingSourceCount === 0
-      ? emptySourceMessage
-      : `将 ${pendingSourceCount} 项内容写入 ${selectedDataset?.name ?? '目标数据集'}，按“${getSelectOptionTitle(EXECUTION_MODE_OPTIONS, draft.executionMode)}”处理`
-
+    : null
   const isSubmitting = status === 'uploading'
-  const executionPath = OPERATION_STAGES.slice(0, activeStageCount)
-    .map((stage) => stage.label)
-    .join(' → ')
+
+  useEffect(() => {
+    if (!active || isSubmitting) return
+    const onDragOver = (event: DragEvent) => {
+      if (!event.dataTransfer?.types.includes('Files')) return
+      event.preventDefault()
+      setSource('local')
+      setImportOpen(true)
+      setDragging(true)
+    }
+    const onDrop = (event: DragEvent) => {
+      if (!event.dataTransfer?.files.length) return
+      event.preventDefault()
+      setSource('local')
+      setImportOpen(true)
+      setDragging(false)
+      addFiles(Array.from(event.dataTransfer.files))
+    }
+    const onDragEnd = () => setDragging(false)
+    window.addEventListener('dragover', onDragOver)
+    window.addEventListener('drop', onDrop)
+    window.addEventListener('dragend', onDragEnd)
+    return () => {
+      window.removeEventListener('dragover', onDragOver)
+      window.removeEventListener('drop', onDrop)
+      window.removeEventListener('dragend', onDragEnd)
+    }
+  }, [active, addFiles, isSubmitting])
+
+  const filteredDocuments = documents.filter(
+    (document) =>
+      document.filename.toLocaleLowerCase().includes(documentSearch.trim().toLocaleLowerCase()) &&
+      (documentStatus === 'all' || getIngestionDocumentStatus(document).value === documentStatus),
+  )
+  const pageSize = 20
+  const pageCount = Math.max(1, Math.ceil(filteredDocuments.length / pageSize))
+  const currentPage = Math.min(documentPage, pageCount)
+  const visibleDocuments = filteredDocuments.slice((currentPage - 1) * pageSize, currentPage * pageSize)
+  const datasetSelectorProps = {
+    datasetId: draft.datasetId,
+    datasets,
+    selectedDataset,
+    loading: datasetsQuery.isLoading,
+    locked: isSubmitting,
+    onChange: (value: string) => {
+      updateDraft('datasetId', value)
+      setDocumentPage(1)
+    },
+  }
   const configurationProps = {
     draft,
     updateDraft,
@@ -981,6 +1073,17 @@ export default function KnowledgeIngestionOperationPage({ active = true }: Reado
     tagOptions,
     collectionOptions,
   }
+  const openImport = () => {
+    setDragging(false)
+    setImportOpen(true)
+  }
+  const openImportWithSource = (nextSource: UploadSource) => {
+    setSource(nextSource)
+    setDragging(false)
+    setImportOpen(true)
+  }
+  const activeExecutionModeOption =
+    EXECUTION_MODE_OPTIONS.find((option) => option.value === draft.executionMode) ?? EXECUTION_MODE_OPTIONS[0]
 
   return (
     <div data-ingestion-operation-root="true" className={styles.page} aria-busy={isSubmitting}>
@@ -994,149 +1097,479 @@ export default function KnowledgeIngestionOperationPage({ active = true }: Reado
           <Button variant="ghost" className={styles.quietButton} onClick={() => router.push('/knowledge')}>
             查看文档
           </Button>
-          <Sheet open={active && configurationOpen} onOpenChange={setConfigurationOpen}>
-            <SheetTrigger asChild>
-              <Button variant="ghost" className={cn(styles.quietButton, styles.configTrigger)}>
-                <Settings2 className="size-4" />
-                入库配置
-              </Button>
-            </SheetTrigger>
-            <SheetContent className={styles.configSheet}>
-              <SheetHeader className={styles.sheetHeader}>
-                <SheetTitle>入库配置</SheetTitle>
-                <SheetDescription className="sr-only">选择目标数据集与本次导入的处理方式。</SheetDescription>
-              </SheetHeader>
-              <div className={styles.sheetBody}>
-                <IngestionConfiguration {...configurationProps} idPrefix="mobile-ingestion" />
-              </div>
-            </SheetContent>
-          </Sheet>
         </div>
       </header>
-
-      <div data-ingestion-operation-workspace="true" className={styles.workspace}>
-        <section className={styles.filesPane} aria-label="导入内容">
-          <nav className={styles.sourceNav} aria-label="文件来源">
-            {SOURCE_OPTIONS.map((option) => {
-              const Icon = option.icon
-              return (
-                <button
-                  key={option.value}
-                  type="button"
-                  className={styles.sourceTab}
-                  aria-pressed={source === option.value}
-                  onClick={() => setSource(option.value)}
-                  disabled={isSubmitting}
-                >
-                  <Icon aria-hidden="true" />
-                  {option.label}
-                </button>
-              )
-            })}
-          </nav>
-
-          <fieldset disabled={isSubmitting} className={styles.sourceContent} data-ingestion-file-stage="true">
-            {source === 'local' ? (
-              <UploadDropArea
-                dragging={dragging}
-                onDragState={setDragging}
-                onClick={() => inputRef.current?.click()}
-                onFiles={addFiles}
-                disabled={isSubmitting}
-              />
-            ) : null}
-            {source === 'folder' ? <SourceConfiguration source="folder" {...sourceConfigurationProps} /> : null}
-            {source === 'url' ? <SourceConfiguration source="url" {...sourceConfigurationProps} /> : null}
-            {source === 'object' ? <SourceConfiguration source="object" {...sourceConfigurationProps} /> : null}
-            {source === 'api' ? <SourceConfiguration source="api" {...sourceConfigurationProps} /> : null}
-            <input
-              ref={inputRef}
-              type="file"
-              multiple
-              className="sr-only"
-              aria-label="选择待入库文件"
-              tabIndex={-1}
-              accept={ACCEPTED_EXTENSIONS.join(',')}
-              disabled={isSubmitting}
+      <div className={styles.toolbar}>
+        <div className={styles.datasetScope}>
+          <DatasetSelector {...datasetSelectorProps} className={styles.scopeSelect} ariaLabel="当前数据集" />
+          <span className={styles.documentCount}>共 {totalDocuments.toLocaleString()} 条文档</span>
+          <Button
+            variant="ghost"
+            className={styles.quietButton}
+            onClick={() => router.push('/datasets')}
+            disabled={isSubmitting}
+          >
+            <Plus className="size-3.5" />
+            新建
+          </Button>
+        </div>
+        <div className={styles.filters}>
+          <label className={styles.search}>
+            <Search aria-hidden="true" className="size-4" />
+            <Input
+              placeholder="搜索文档名称"
+              aria-label="搜索文档名称"
+              value={documentSearch}
               onChange={(event) => {
-                addFiles(Array.from(event.target.files ?? []))
-                event.target.value = ''
+                setDocumentSearch(event.target.value)
+                setDocumentPage(1)
               }}
             />
-          </fieldset>
-
-          {isFileSource ? (
-            <SelectedFilesTable
-              rows={fileRows}
-              totalBytes={selectedTotalBytes}
-              sourceName={activeSource.label}
-              dragging={dragging}
-              onDragState={setDragging}
-              onFiles={addFiles}
-              onClear={clearFiles}
-              onRemove={removeFile}
-              disabled={isSubmitting}
-              receipt={currentReceipt}
-            />
-          ) : (
-            <div className={styles.emptyQueue}>
-              <activeSource.icon aria-hidden="true" />
-              <strong>
-                {source === 'url' ? '从文件地址导入' : source === 'object' ? '从对象存储导入' : '将内容导入知识库'}
-              </strong>
-              <p>
-                {source === 'url'
-                  ? '填写文件链接，选好处理方式后提交。'
-                  : source === 'object'
-                    ? '按上方的前缀和扩展名选择待导入对象。'
-                    : '提交后会在目标数据集中创建一份文档。'}
-              </p>
-            </div>
-          )}
-        </section>
-
-        <aside data-ingestion-context-panel="true" className={styles.settingsPane} aria-label="入库配置">
-          <IngestionConfiguration {...configurationProps} />
-        </aside>
-      </div>
-
-      <FeedbackToast
-        type="error"
-        message={submissionError ? `${submissionError}。文件和配置已保留，可再次提交。` : null}
-        id="ingestion-submit-feedback"
-      />
-
-      <footer data-ingestion-action-bar="true" data-task-center-dock="true" className={styles.submitBar}>
-        <div className={styles.submitSummary} aria-live="polite">
-          <strong>
-            {uploadResponse
-              ? submissionSummary
-              : pendingSourceCount > 0
-                ? isFileSource
-                  ? pendingSourceCount + ' 个文件 · ' + formatFileSize(selectedTotalBytes)
-                  : pendingSourceCount + ' 项内容'
-                : '尚未添加内容'}
-          </strong>
-          <span>
-            {!operationReady && !isSubmitting
-              ? preflightMessage
-              : '目标：' + (selectedDataset?.name ?? '未选择') + ' · ' + executionPath}
-          </span>
+          </label>
+          <Select
+            value={documentStatus}
+            onValueChange={(value) => {
+              setDocumentStatus(value)
+              setDocumentPage(1)
+            }}
+          >
+            <SelectTrigger className={cn(styles.control, styles.statusSelect)} aria-label="处理状态筛选">
+              {DOCUMENT_STATUS_FILTERS.find((option) => option.value === documentStatus)?.label}
+            </SelectTrigger>
+            <SelectContent className={styles.menu}>
+              {DOCUMENT_STATUS_FILTERS.map((option) => (
+                <SelectItem key={option.value} value={option.value}>
+                  {option.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Button className={styles.submitButton} onClick={openImport} data-ingestion-import-trigger="true">
+            <Plus className="size-4" />
+            导入文档
+          </Button>
         </div>
-        <Button
-          data-ingestion-submit="true"
-          className={styles.submitButton}
-          onClick={() => detachPromise(uploadFiles(draft.executionMode === 'upload_only' ? 'upload_only' : 'ingest'))}
-          disabled={!operationReady}
-        >
-          {isSubmitting ? <Loader2 className="size-4 animate-spin" /> : <ArrowRight className="size-4" />}
-          {isSubmitting ? '正在提交' : status === 'completed' ? '再次提交' : actionLabel}
-        </Button>
+      </div>
+      {datasetsQuery.isError ? (
+        <WorkspaceNotice
+          placement="floating"
+          title="数据集加载失败"
+          error={datasetsQuery.error}
+          fallbackMessage="数据集加载失败"
+          retry={() => detachPromise(handleSyncDatasets())}
+          retryLabel="重试"
+        />
+      ) : null}
+      <div data-ingestion-operation-workspace="true" className={styles.workspace}>
+        {documentsQuery.isError ? (
+          <div className={styles.emptyQueue} role="alert">
+            <strong>文档加载失败</strong>
+            <p>请重试以获取当前数据集的文档。</p>
+            <Button variant="outline" onClick={() => detachPromise(documentsQuery.refetch())}>
+              重试
+            </Button>
+          </div>
+        ) : datasetsQuery.isLoading || (draft.datasetId && documentsQuery.isLoading) ? (
+          <div className={styles.emptyQueue} role="status">
+            <Loader2 className="size-5 animate-spin" />
+            正在加载文档
+          </div>
+        ) : filteredDocuments.length === 0 ? (
+          documentSearch || documentStatus !== 'all' ? (
+            <div className={styles.emptyQueue} data-ingestion-document-empty="true">
+              <UploadCloud aria-hidden="true" />
+              <strong>没有匹配的文档</strong>
+              <p>试试其他名称或处理状态。</p>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setDocumentSearch('')
+                  setDocumentStatus('all')
+                  setDocumentPage(1)
+                }}
+              >
+                清除筛选
+              </Button>
+            </div>
+          ) : (
+            <div className={styles.emptySplitStudio} data-ingestion-document-empty="true">
+              <section className={styles.emptyIntakeStage} aria-label="本地文档导入">
+                <div className={styles.emptyDocIllust} aria-hidden="true">
+                  <svg viewBox="0 0 184 134" fill="none">
+                    <ellipse cx="92" cy="116" rx="68" ry="10" fill="hsl(var(--surface-2))" />
+                    <rect
+                      x="38"
+                      y="26"
+                      width="60"
+                      height="76"
+                      rx="7"
+                      transform="rotate(-7 38 26)"
+                      fill="hsl(var(--surface-2))"
+                      stroke="currentColor"
+                      strokeOpacity="0.14"
+                      strokeWidth="1.2"
+                    />
+                    <rect
+                      x="58"
+                      y="18"
+                      width="66"
+                      height="84"
+                      rx="7"
+                      fill="hsl(var(--surface-2))"
+                      stroke="currentColor"
+                      strokeOpacity="0.15"
+                      strokeWidth="1.2"
+                    />
+                    <rect
+                      x="68"
+                      y="24"
+                      width="68"
+                      height="86"
+                      rx="7"
+                      fill="hsl(var(--card))"
+                      stroke="currentColor"
+                      strokeOpacity="0.2"
+                      strokeWidth="1.2"
+                    />
+                    <path d="M116 24V42H136" stroke="currentColor" strokeOpacity="0.2" strokeWidth="1.2" />
+                    <rect x="82" y="44" width="26" height="4" rx="2" fill="currentColor" fillOpacity="0.18" />
+                    <rect x="82" y="54" width="38" height="4" rx="2" fill="currentColor" fillOpacity="0.14" />
+                    <path
+                      d="M93 90.5H89.5C86.46 90.5 84 88.04 84 85C84 82.22 86.06 79.93 88.74 79.56C89.58 75.8 92.93 73 96.95 73C101.6 73 105.38 76.78 105.38 81.43C105.38 81.7 105.36 81.97 105.33 82.23C107.42 82.82 108.95 84.74 108.95 87.02C108.95 89.77 106.72 92 103.97 92H101.5"
+                      stroke="hsl(var(--accent))"
+                      strokeWidth="1.6"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                    <path
+                      d="M96.5 92V81.5M96.5 81.5L92.5 85.5M96.5 81.5L100.5 85.5"
+                      stroke="hsl(var(--accent))"
+                      strokeWidth="1.6"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                </div>
+                <h2>开始导入你的文档</h2>
+                <p>选择文件或文件夹上传，系统将根据所选处理模式完成解析、切块与索引。</p>
+                <div className={styles.emptyFormatRow} aria-label="支持的文件格式">
+                  {['PDF', 'DOCX', 'XLSX', 'MD', 'ZIP'].map((format) => (
+                    <span key={format}>{format}</span>
+                  ))}
+                </div>
+                <div className={styles.emptyStageActions}>
+                  <Button
+                    className={styles.submitButton}
+                    onClick={() => openImportWithSource('local')}
+                    disabled={isSubmitting}
+                  >
+                    <UploadCloud className="size-4" />
+                    选择文件
+                  </Button>
+                  <Button variant="outline" onClick={() => openImportWithSource('folder')} disabled={isSubmitting}>
+                    <Folder className="size-4" />
+                    选择文件夹
+                  </Button>
+                </div>
+                <button
+                  type="button"
+                  className={styles.currentMode}
+                  disabled={isSubmitting}
+                  onClick={() =>
+                    defaultModeRef.current?.querySelector<HTMLButtonElement>('[aria-pressed="true"]')?.focus()
+                  }
+                >
+                  当前模式：{activeExecutionModeOption.title}
+                  <span>切换</span>
+                </button>
+              </section>
+              <aside className={styles.emptyOptionsStage} aria-label="处理模式与其他导入方式">
+                <div className={styles.emptyOptionsGroup}>
+                  <h3>处理模式</h3>
+                  <div ref={defaultModeRef} className={styles.emptyModeSegment} role="group" aria-label="默认处理模式">
+                    {EXECUTION_MODE_OPTIONS.map((option) => (
+                      <button
+                        key={option.value}
+                        type="button"
+                        aria-pressed={draft.executionMode === option.value}
+                        disabled={isSubmitting}
+                        onClick={() => updateDraft('executionMode', option.value)}
+                      >
+                        {option.title}
+                      </button>
+                    ))}
+                  </div>
+                  <p className={styles.emptyModeHint}>{activeExecutionModeOption.description}</p>
+                </div>
+                <div className={styles.emptyOptionsGroup}>
+                  <h3>其他导入方式</h3>
+                  <div className={styles.emptySourceList}>
+                    {[
+                      { source: 'folder' as const, label: '文件夹批量导入', icon: Folder },
+                      { source: 'url' as const, label: 'URL 列表', icon: LinkIcon },
+                      { source: 'object' as const, label: '对象存储（S3 / OSS）', icon: Cloud },
+                      { source: 'api' as const, label: 'API 推送', icon: Archive },
+                    ].map((item) => {
+                      const SourceIcon = item.icon
+                      return (
+                        <button
+                          key={item.source}
+                          type="button"
+                          className={styles.emptySourceRow}
+                          disabled={isSubmitting}
+                          onClick={() => openImportWithSource(item.source)}
+                        >
+                          <SourceIcon className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                          <span>{item.label}</span>
+                          <ChevronRight className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              </aside>
+            </div>
+          )
+        ) : (
+          <div className={styles.documentTableWrap}>
+            <table className={styles.documentTable} aria-label="数据集文档">
+              <colgroup>
+                <col className={styles.indexCol} />
+                <col />
+                <col className={styles.sizeCol} />
+                <col className={styles.statusCol} />
+                <col className={styles.dateCol} />
+                <col className={styles.documentActionsCol} />
+              </colgroup>
+              <thead>
+                <tr>
+                  <th scope="col">#</th>
+                  <th scope="col">文档名称</th>
+                  <th scope="col" className={styles.numeric}>
+                    大小
+                  </th>
+                  <th scope="col">处理状态</th>
+                  <th scope="col">入库时间</th>
+                  <th scope="col">
+                    <span className="sr-only">操作</span>
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {visibleDocuments.map((document, index) => {
+                  const state = getIngestionDocumentStatus(document)
+                  return (
+                    <tr key={document.id}>
+                      <td className={styles.rowIndex}>{(currentPage - 1) * pageSize + index + 1}</td>
+                      <td>
+                        <div className={styles.fileName}>
+                          <FormatPill filename={document.filename} fileType={document.file_type} />
+                          <strong title={document.filename}>{document.filename}</strong>
+                        </div>
+                      </td>
+                      <td className={styles.numeric}>{formatFileSize(document.file_size)}</td>
+                      <td>
+                        <span className={styles.fileState} data-state={state.value}>
+                          {state.label}
+                        </span>
+                      </td>
+                      <td className={styles.documentDate}>
+                        {new Date(document.created_at).toLocaleString('zh-CN', {
+                          year: 'numeric',
+                          month: '2-digit',
+                          day: '2-digit',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                          hour12: false,
+                        })}
+                      </td>
+                      <td>
+                        <Button
+                          variant="ghost"
+                          className={styles.quietButton}
+                          onClick={() => openDocument(document.id)}
+                        >
+                          查看文档
+                        </Button>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+      <footer className={styles.pagination} data-task-center-dock="true">
+        <span>
+          {filteredDocuments.length} 条
+          {totalDocuments > documents.length
+            ? ` · 已加载 ${documents.length} / 共 ${totalDocuments} 条，搜索与筛选仅作用于已加载文档`
+            : ''}
+        </span>
+        {totalDocuments > documents.length ? (
+          <Button
+            variant="ghost"
+            className={styles.quietButton}
+            onClick={() => router.push(`/knowledge?dataset=${encodeURIComponent(draft.datasetId)}`)}
+          >
+            查看全部文档
+          </Button>
+        ) : null}
+        {pageCount > 1 ? (
+          <div className={styles.pageControls}>
+            <Button variant="outline" disabled={currentPage === 1} onClick={() => setDocumentPage(currentPage - 1)}>
+              上一页
+            </Button>
+            <span aria-live="polite">
+              {currentPage} / {pageCount}
+            </span>
+            <Button
+              variant="outline"
+              disabled={currentPage === pageCount}
+              onClick={() => setDocumentPage(currentPage + 1)}
+            >
+              下一页
+            </Button>
+          </div>
+        ) : null}
       </footer>
+
+      <Dialog
+        open={active && importOpen}
+        onOpenChange={(open) => {
+          if (!isSubmitting) {
+            setImportOpen(open)
+            setDragging(false)
+          }
+        }}
+      >
+        <DialogContent className={cn('max-w-[900px]', styles.importDialog)} showCloseButton={false}>
+          <DialogHeader className={styles.dialogHeader}>
+            <DialogTitle>导入文档</DialogTitle>
+            <DialogDescription className="sr-only">添加导入内容，选择目标数据集和处理方式后提交。</DialogDescription>
+            <Button
+              variant="ghost"
+              className={styles.dialogClose}
+              aria-label="关闭导入文档"
+              onClick={() => setImportOpen(false)}
+              disabled={isSubmitting}
+            >
+              <X className="size-4" />
+            </Button>
+          </DialogHeader>
+          <div className={styles.sourceNavFrame}>
+            <nav ref={sourceNavRef} className={styles.sourceNav} aria-label="文件来源">
+              {SOURCE_OPTIONS.map((option) => {
+                const Icon = option.icon
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    className={styles.sourceTab}
+                    aria-pressed={source === option.value}
+                    onFocus={(event) => event.currentTarget.scrollIntoView({ inline: 'nearest', block: 'nearest' })}
+                    onClick={() => setSource(option.value)}
+                    disabled={isSubmitting}
+                  >
+                    <Icon aria-hidden="true" />
+                    {option.label}
+                  </button>
+                )
+              })}
+            </nav>
+          </div>
+          <div className={styles.dialogBody} data-ingestion-dialog-body="true">
+            <section className={styles.filesPane} aria-label="导入内容">
+              <h2 className={styles.sectionTitle}>导入内容</h2>
+              <fieldset disabled={isSubmitting} className={styles.sourceContent} data-ingestion-file-stage="true">
+                {source === 'local' ? (
+                  <UploadDropArea
+                    dragging={dragging}
+                    onDragState={setDragging}
+                    onClick={() => inputRef.current?.click()}
+                    onFiles={addFiles}
+                    disabled={isSubmitting}
+                  />
+                ) : null}
+                {source === 'folder' ? <SourceConfiguration source="folder" {...sourceConfigurationProps} /> : null}
+                {source === 'url' ? <SourceConfiguration source="url" {...sourceConfigurationProps} /> : null}
+                {source === 'object' ? <SourceConfiguration source="object" {...sourceConfigurationProps} /> : null}
+                {source === 'api' ? <SourceConfiguration source="api" {...sourceConfigurationProps} /> : null}
+                <input
+                  ref={inputRef}
+                  type="file"
+                  multiple
+                  className="sr-only"
+                  aria-label="选择待入库文件"
+                  tabIndex={-1}
+                  accept={ACCEPTED_EXTENSIONS.join(',')}
+                  disabled={isSubmitting}
+                  onChange={(event) => {
+                    addFiles(Array.from(event.target.files ?? []))
+                    event.target.value = ''
+                  }}
+                />
+              </fieldset>
+              {isFileSource && files.length > 0 ? (
+                <SelectedFilesTable
+                  rows={fileRows}
+                  onClear={clearFiles}
+                  onRemove={removeFile}
+                  disabled={isSubmitting}
+                  receipt={currentReceipt}
+                />
+              ) : null}
+            </section>
+            <aside data-ingestion-context-panel="true" className={styles.settingsPane} aria-label="入库配置">
+              <IngestionConfiguration {...configurationProps} />
+              {submissionError ? (
+                <p role="alert" className={styles.submissionError}>
+                  {submissionError}。文件和配置已保留，可再次提交。
+                </p>
+              ) : null}
+              {submissionSummary ? (
+                <p role="status" className={styles.receipt}>
+                  {submissionSummary}
+                </p>
+              ) : null}
+            </aside>
+          </div>
+          <footer data-ingestion-action-bar="true" className={styles.submitBar}>
+            <div className={styles.submitSummary} aria-live="polite">
+              <strong>
+                {pendingSourceCount === 0
+                  ? isFileSource
+                    ? '尚未添加文件'
+                    : '尚未添加内容'
+                  : isFileSource
+                    ? `已选择 ${files.length} 个文件 · ${formatFileSize(selectedTotalBytes)}`
+                    : `已配置 ${pendingSourceCount} ${source === 'url' ? '个 URL' : source === 'api' ? '份 API 内容' : '个对象（上限）'}`}
+              </strong>
+              {!operationReady && !isSubmitting ? <span>{preflightMessage}</span> : null}
+            </div>
+            <div className={styles.footerActions}>
+              <Button variant="outline" onClick={() => setImportOpen(false)} disabled={isSubmitting}>
+                取消
+              </Button>
+              <Button
+                data-ingestion-submit="true"
+                className={styles.submitButton}
+                onClick={() =>
+                  detachPromise(uploadFiles(draft.executionMode === 'upload_only' ? 'upload_only' : 'ingest'))
+                }
+                disabled={!operationReady}
+              >
+                {isSubmitting ? <Loader2 className="size-4 animate-spin" /> : <ArrowRight className="size-4" />}
+                {isSubmitting ? '正在提交' : actionLabel}
+              </Button>
+            </div>
+          </footer>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
-
 type FieldBlockProps = {
   label: string
   required?: boolean
@@ -1173,31 +1606,37 @@ function UploadDropArea({
       type="button"
       className={styles.dropArea}
       data-dragging={dragging}
+      data-ingestion-empty-file-drop="true"
       disabled={disabled}
       onClick={onClick}
-      onDragEnter={(event) => {
-        event.preventDefault()
-        if (!disabled) onDragState(true)
-      }}
       onDragOver={(event) => {
         event.preventDefault()
+        event.stopPropagation()
         if (!disabled) onDragState(true)
       }}
       onDragLeave={() => onDragState(false)}
       onDrop={(event) => {
         event.preventDefault()
+        event.stopPropagation()
         onDragState(false)
         if (!disabled) onFiles(Array.from(event.dataTransfer.files))
       }}
     >
-      <UploadCloud aria-hidden="true" />
+      <span className={styles.uploadBadge} aria-hidden="true">
+        <UploadCloud />
+      </span>
       <span className={styles.dropCopy}>
-        <strong>添加文件到本次任务</strong>
-        <span>拖入或选择 PDF、Word、表格等文件，单文件 ≤ 2 GB</span>
+        <strong>拖入或选择文件，添加到本次导入</strong>
+        <span>支持批量上传，单文件 ≤ 2 GB</span>
+      </span>
+      <span className={styles.formatChips} aria-label="支持的文件格式">
+        {['PDF', 'DOCX', 'XLSX', 'Markdown', 'HTML', 'ZIP'].map((format) => (
+          <span key={format}>{format}</span>
+        ))}
       </span>
       <span className={styles.addFiles}>
         <Plus aria-hidden="true" />
-        添加文件
+        选择文件
       </span>
     </button>
   )
@@ -1292,7 +1731,7 @@ function SourceConfiguration({
             className={cn('min-h-32', CONFIG_INPUT_CLASS)}
             value={urlList}
             onChange={(event) => setUrlList(event.target.value)}
-            placeholder="https://example.com/manual.pdf&#10;https://example.com/guide.md"
+            placeholder={'https://example.com/manual.pdf\nhttps://example.com/guide.md'}
           />
           <p>
             {urlIngestEnabled
@@ -1381,12 +1820,7 @@ function SourceConfiguration({
 }
 
 type SelectedFilesTableProps = {
-  rows: Array<{ file: File; Icon: PlatformIcon; key: string }>
-  totalBytes: number
-  sourceName: string
-  dragging: boolean
-  onDragState: (dragging: boolean) => void
-  onFiles: (files: File[]) => void
+  rows: Array<{ file: File; key: string }>
   onClear: () => void
   onRemove: (key: string) => void
   disabled: boolean
@@ -1401,22 +1835,10 @@ const FILE_SUBMISSION_LABELS = {
   unconfirmed: '结果未确认',
 }
 
-function SelectedFilesTable({
-  rows,
-  totalBytes,
-  sourceName,
-  dragging,
-  onDragState,
-  onFiles,
-  onClear,
-  onRemove,
-  disabled,
-  receipt,
-}: Readonly<SelectedFilesTableProps>) {
+function SelectedFilesTable({ rows, onClear, onRemove, disabled, receipt }: Readonly<SelectedFilesTableProps>) {
   const statesByFile = useMemo(() => {
     const states = new Map<File, keyof typeof FILE_SUBMISSION_LABELS>()
     if (receipt === null) return states
-
     const { files, response } = receipt
     const matches = matchUploadReceipts(files, [...response.successful, ...response.failed])
     for (const file of files) states.set(file, 'unconfirmed')
@@ -1432,123 +1854,76 @@ function SelectedFilesTable({
   }, [receipt])
 
   return (
-    <div data-ingestion-file-staging-workspace="true" data-selected-files-table="stable" className={styles.fileStaging}>
+    <div data-ingestion-file-staging-workspace="true" className={styles.fileStaging}>
       <div className={styles.queueHeading}>
-        <h2>本次任务文件</h2>
-        <span className={styles.queueCount}>{rows.length}</span>
-        {rows.length > 0 ? <span className={styles.queueSize}>共 {formatFileSize(totalBytes)}</span> : null}
-        {rows.length > 0 ? (
-          <Button variant="ghost" className={styles.quietButton} onClick={onClear} disabled={disabled}>
-            <Trash2 className="size-3.5" />
-            清空
-          </Button>
-        ) : null}
+        <h2>已添加的文件 ({rows.length})</h2>
+        <Button variant="ghost" className={styles.quietButton} onClick={onClear} disabled={disabled}>
+          <Trash2 className="size-3.5" />
+          清空
+        </Button>
       </div>
-      {rows.length > 0 ? (
-        <div className={styles.tableWrap}>
-          <table className={styles.fileTable} aria-label="本次待入库文件">
-            <colgroup>
-              <col className={styles.indexCol} />
-              <col />
-              <col className={styles.typeCol} />
-              <col className={styles.sizeCol} />
-              <col className={styles.statusCol} />
-              <col className={styles.actionCol} />
-            </colgroup>
-            <thead>
-              <tr>
-                <th className={styles.rowIndex} scope="col">
-                  #
-                </th>
-                <th scope="col">文件名称</th>
-                <th className={styles.fileFormat} scope="col">
-                  格式
-                </th>
-                <th className={styles.numeric} scope="col">
-                  大小
-                </th>
-                <th scope="col">状态</th>
-                <th scope="col">
-                  <span className="sr-only">移除</span>
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map(({ file, Icon, key }, index) => {
-                const uploadName = getUploadFilename(file)
-                const state = statesByFile.get(file) ?? (disabled ? 'uploading' : 'pending')
-                return (
-                  <tr key={key}>
-                    <td className={styles.rowIndex}>{String(index + 1).padStart(2, '0')}</td>
-                    <td>
-                      <div className={styles.fileName}>
-                        <Icon appearance="color" aria-hidden="true" />
-                        <div>
-                          <strong title={sourceName + ' · ' + uploadName}>{file.name}</strong>
-                          <span className={styles.fileMobileMeta}>
-                            {formatFileSize(file.size)} · {formatFileType(file)}
-                          </span>
-                        </div>
-                      </div>
-                    </td>
-                    <td className={styles.fileFormat}>{formatFileType(file)}</td>
-                    <td className={styles.numeric}>{formatFileSize(file.size)}</td>
-                    <td>
-                      <span className={styles.fileState} data-state={state}>
-                        {FILE_SUBMISSION_LABELS[state]}
-                      </span>
-                    </td>
-                    <td>
-                      <Button
-                        variant="ghost"
-                        className={styles.removeFile}
-                        aria-label={'移除文件 ' + file.name}
-                        title={'移除文件 ' + file.name}
-                        disabled={disabled}
-                        onClick={() => onRemove(key)}
-                      >
-                        <X aria-hidden="true" />
-                      </Button>
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
-      ) : (
-        <div
-          data-ingestion-empty-file-drop="true"
-          className={styles.emptyQueue}
-          data-dragging={dragging}
-          onDragOver={(event) => {
-            event.preventDefault()
-            if (!disabled) onDragState(true)
-          }}
-          onDragLeave={() => onDragState(false)}
-          onDrop={(event) => {
-            event.preventDefault()
-            onDragState(false)
-            if (!disabled) onFiles(Array.from(event.dataTransfer.files))
-          }}
-        >
-          <UploadCloud aria-hidden="true" />
-          <strong>将文件拖到这里</strong>
-          <p>支持 PDF、Word、Markdown、表格、文本与压缩包</p>
-        </div>
-      )}
-      {receipt !== null && receipt.response.failed.length > 0 && (
-        <details className="px-4 py-2 text-sm text-muted-foreground">
-          <summary className="cursor-pointer">查看失败文件</summary>
-          <ol className="max-h-36 list-decimal overflow-y-auto pl-5">
+      <div className={styles.stagedFilesScroll}>
+        <table className={styles.fileTable} aria-label="本次待入库文件">
+          <colgroup>
+            <col />
+            <col className={styles.stagedSizeCol} />
+            <col className={styles.stagedStateCol} />
+            <col className={styles.actionCol} />
+          </colgroup>
+          <thead className="sr-only">
+            <tr>
+              <th scope="col">文件名称</th>
+              <th scope="col">大小</th>
+              <th scope="col">状态</th>
+              <th scope="col">移除</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map(({ file, key }) => {
+              const state = statesByFile.get(file) ?? (disabled ? 'uploading' : 'pending')
+              return (
+                <tr key={key}>
+                  <td>
+                    <div className={styles.fileName}>
+                      <FormatPill filename={file.name} />
+                      <strong title={getUploadFilename(file)}>{file.name}</strong>
+                    </div>
+                  </td>
+                  <td className={styles.numeric}>{formatFileSize(file.size)}</td>
+                  <td>
+                    <span className={styles.fileState} data-state={state}>
+                      {FILE_SUBMISSION_LABELS[state]}
+                    </span>
+                  </td>
+                  <td>
+                    <Button
+                      variant="ghost"
+                      className={styles.removeFile}
+                      aria-label={'移除文件 ' + file.name}
+                      disabled={disabled}
+                      onClick={() => onRemove(key)}
+                    >
+                      <X aria-hidden="true" />
+                    </Button>
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+      {receipt !== null && receipt.response.failed.length > 0 ? (
+        <details className={styles.failedFiles}>
+          <summary>查看失败文件</summary>
+          <ol>
             {receipt.response.failed.map((failure, index) => (
-              <li key={index} className="wrap-anywhere">
+              <li key={index}>
                 {getUploadReceiptKey(failure)} · {failure.error}
               </li>
             ))}
           </ol>
         </details>
-      )}
+      ) : null}
     </div>
   )
 }
@@ -1593,6 +1968,8 @@ function IngestionConfiguration({
   const parserId = instanceId + '-parser'
   const dedupId = instanceId + '-dedup'
   const parsing = draft.executionMode !== 'upload_only'
+  const activeModeOption =
+    EXECUTION_MODE_OPTIONS.find((option) => option.value === draft.executionMode) ?? EXECUTION_MODE_OPTIONS[0]
 
   return (
     <div className={styles.configuration}>
@@ -1606,33 +1983,15 @@ function IngestionConfiguration({
               新建
             </Button>
           </div>
-          <Select
-            value={draft.datasetId}
-            onValueChange={(value) => updateDraft('datasetId', value)}
-            disabled={locked || loading || datasets.length === 0}
-          >
-            <SelectTrigger id={datasetId} className={SOFT_CONTROL_CLASS}>
-              <span className={styles.controlText}>
-                <DatasetIcon aria-hidden="true" />
-                <span>
-                  {selectedDataset?.name ??
-                    (loading ? '正在加载数据集' : datasets.length ? '选择目标数据集' : '暂无数据集')}
-                </span>
-              </span>
-            </SelectTrigger>
-            <SelectContent className={SELECT_MENU_CLASS}>
-              {datasets.map((dataset) => (
-                <SelectItem
-                  key={dataset.id}
-                  value={dataset.id}
-                  textValue={dataset.name}
-                  className={SELECT_OPTION_CLASS}
-                >
-                  <DatasetOptionBody dataset={dataset} />
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <DatasetSelector
+            id={datasetId}
+            datasetId={draft.datasetId}
+            datasets={datasets}
+            selectedDataset={selectedDataset}
+            loading={loading}
+            locked={locked}
+            onChange={(value) => updateDraft('datasetId', value)}
+          />
           {loadError ? (
             <p role="alert" className={styles.datasetError}>
               数据集加载失败。
@@ -1649,26 +2008,31 @@ function IngestionConfiguration({
 
         <fieldset className={styles.modeGroup} disabled={locked}>
           <legend>处理方式</legend>
-          <div className={styles.modeList}>
-            {EXECUTION_MODE_OPTIONS.map((option) => {
-              const selected = draft.executionMode === option.value
-              return (
-                <label key={option.value} className={styles.modeOption} data-selected={selected}>
-                  <input
-                    type="radio"
-                    name={idPrefix + '-execution-mode'}
-                    value={option.value}
-                    checked={selected}
-                    onChange={() => updateDraft('executionMode', option.value)}
-                  />
-                  <span>
-                    <strong>{option.title}</strong>
-                    <small>{option.description}</small>
-                  </span>
-                </label>
-              )
-            })}
-          </div>
+          <TooltipProvider delayDuration={150}>
+            <div className={styles.modeList}>
+              {EXECUTION_MODE_OPTIONS.map((option) => {
+                const selected = draft.executionMode === option.value
+                return (
+                  <Tooltip key={option.value}>
+                    <TooltipTrigger asChild>
+                      <label className={styles.modeOption} data-selected={selected} title={option.description}>
+                        <input
+                          type="radio"
+                          name={idPrefix + '-execution-mode'}
+                          value={option.value}
+                          checked={selected}
+                          onChange={() => updateDraft('executionMode', option.value)}
+                        />
+                        <strong>{option.title}</strong>
+                      </label>
+                    </TooltipTrigger>
+                    <TooltipContent side="top">{option.description}</TooltipContent>
+                  </Tooltip>
+                )
+              })}
+            </div>
+          </TooltipProvider>
+          <p className={styles.modeHint}>{activeModeOption.description}</p>
         </fieldset>
 
         <div className={styles.processFields}>
@@ -1682,7 +2046,7 @@ function IngestionConfiguration({
               <SelectTrigger
                 id={parserId}
                 className={SOFT_CONTROL_CLASS}
-                title={!parsing ? '仅登记时不使用解析器' : getParserOption(draft.parserBackend).label}
+                title={!parsing ? '仅传原件时不使用解析器' : getParserOption(draft.parserBackend).label}
               >
                 <span className="truncate">{getParserOption(draft.parserBackend).label}</span>
               </SelectTrigger>
@@ -1705,7 +2069,7 @@ function IngestionConfiguration({
             <Select
               value={draft.dedupStrategy}
               onValueChange={(value) => updateDraft('dedupStrategy', value)}
-              disabled={locked}
+              disabled={locked || !parsing}
             >
               <SelectTrigger id={dedupId} className={SOFT_CONTROL_CLASS}>
                 <span className="truncate">{getSelectOptionTitle(DEDUP_OPTIONS, draft.dedupStrategy)}</span>

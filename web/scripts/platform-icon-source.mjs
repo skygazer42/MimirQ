@@ -692,6 +692,7 @@ export const pageIcons = {
   'kg-snapshot': 'GraphSnapshot',
   'knowledge-base': 'KnowledgeBase',
   'knowledge-graph': 'KnowledgeGraph',
+  ontology: 'KnowledgeGraph',
   'knowledge-management': 'KnowledgeBase',
   'members-rbac': 'Members',
   parsing: 'Parsing',

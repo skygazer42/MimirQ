@@ -4,10 +4,10 @@ import { useState } from 'react'
 import type { DatasetReport, DatasetReportPipelineVersion } from '@/lib/report-schema'
 import type { CategoryMetricDatum } from '../types'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { LoadingButton } from '@/components/ui/loading-button'
+import { WorkspaceNotice } from '@/components/ui/operational-workspace'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Link } from '@/i18n/navigation'
-import { ChevronRight, FileText } from '@/components/icons'
+import { AlertCircle, CheckCircle2, ChevronRight, Database, FileText, GitBranch, Layers } from '@/components/icons'
 import { cn, formatDate, formatFileSize } from '@/lib/utils'
 import {
   formatGovernanceCount,
@@ -157,26 +157,46 @@ export function ReportsDashboard(props: ReportsDashboardProps) {
             <div className={styles.overview}>
               <section className={styles.metrics} aria-label="报告摘要">
                 <dl>
-                  <div>
-                    <dt>文档总数</dt>
+                  <div data-tone="source">
+                    <dt>
+                      <span className={styles.iconTray} aria-hidden="true">
+                        <FileText />
+                      </span>
+                      文档总数
+                    </dt>
                     <dd>
                       {report.profile.total_documents}
                       <small>{pipelineFilterLabel}</small>
                     </dd>
                   </div>
-                  <div>
-                    <dt>已完成</dt>
+                  <div data-tone="success">
+                    <dt>
+                      <span className={styles.iconTray} aria-hidden="true">
+                        <CheckCircle2 />
+                      </span>
+                      已完成
+                    </dt>
                     <dd>
                       {overview.completedDocuments}
                       <small>{formatReportPercent(overview.completionPercent)}</small>
                     </dd>
                   </div>
-                  <div>
-                    <dt>数据体积</dt>
+                  <div data-tone="analysis">
+                    <dt>
+                      <span className={styles.iconTray} aria-hidden="true">
+                        <Database />
+                      </span>
+                      数据体积
+                    </dt>
                     <dd>{formatFileSize(report.profile.total_size_bytes)}</dd>
                   </div>
-                  <div>
-                    <dt>解析失败</dt>
+                  <div data-tone="danger">
+                    <dt>
+                      <span className={styles.iconTray} aria-hidden="true">
+                        <AlertCircle />
+                      </span>
+                      解析失败
+                    </dt>
                     <dd>
                       {overview.failedDocuments}
                       <small>{formatReportPercent(overview.failurePercent)}</small>
@@ -201,7 +221,7 @@ export function ReportsDashboard(props: ReportsDashboardProps) {
                     </div>
                     <div className={styles.statusLegend}>
                       {statusRows.map((row) => (
-                        <span key={row.key}>
+                        <span key={row.key} className={cn(styles.semanticPill, styles[row.tone])}>
                           <i className={styles[row.tone]} />
                           {row.label}
                           <strong>{row.value}</strong>
@@ -216,7 +236,12 @@ export function ReportsDashboard(props: ReportsDashboardProps) {
               <div className={styles.analysisColumns}>
                 <section>
                   <div className={styles.sectionHeading}>
-                    <h2>文档分组与来源</h2>
+                    <h2>
+                      <span className={styles.iconTray} data-tone="source" aria-hidden="true">
+                        <Layers />
+                      </span>
+                      文档分组与来源
+                    </h2>
                     <small>记录数 / 当前 {report.profile.total_documents} 个文档</small>
                   </div>
                   <ReportRecordRows rows={overview.documentRecords} />
@@ -227,7 +252,12 @@ export function ReportsDashboard(props: ReportsDashboardProps) {
               <div className={styles.structureSummary}>
                 <section>
                   <div className={styles.sectionHeading}>
-                    <h2>处理版本</h2>
+                    <h2>
+                      <span className={styles.iconTray} data-tone="analysis" aria-hidden="true">
+                        <GitBranch />
+                      </span>
+                      处理版本
+                    </h2>
                     {report.pipeline_versions.length > 2 && (
                       <button type="button" onClick={() => setSection('structure')}>
                         查看全部 {report.pipeline_versions.length} 个版本
@@ -238,7 +268,12 @@ export function ReportsDashboard(props: ReportsDashboardProps) {
                 </section>
                 <section>
                   <div className={styles.sectionHeading}>
-                    <h2>文件构成</h2>
+                    <h2>
+                      <span className={styles.iconTray} data-tone="source" aria-hidden="true">
+                        <FileText />
+                      </span>
+                      文件构成
+                    </h2>
                     {files.length > 4 && (
                       <button type="button" onClick={() => setSection('structure')}>
                         查看全部
@@ -366,19 +401,16 @@ export function ReportsDashboard(props: ReportsDashboardProps) {
                   </small>
                 </div>
                 {props.categoryErrorMessage !== undefined ? (
-                  <div className={styles.loadNotice} role="alert">
-                    <span>
-                      {props.categoryErrorMessage}
-                      {props.categoryBarData === undefined ? null : '；显示上次读取结果'}
-                    </span>
-                    <LoadingButton
-                      loading={props.isRefreshingCategories}
-                      onClick={props.onRetryCategories}
-                      variant="ghost"
-                    >
-                      重试分类
-                    </LoadingButton>
-                  </div>
+                  <WorkspaceNotice
+                    placement="floating"
+                    tone="warning"
+                    pending={props.isRefreshingCategories}
+                    retry={props.onRetryCategories}
+                    retryLabel="重试分类"
+                  >
+                    {props.categoryErrorMessage}
+                    {props.categoryBarData === undefined ? null : '；显示上次读取结果'}
+                  </WorkspaceNotice>
                 ) : null}
                 {props.categoryBarData === undefined ? (
                   props.categoryPaused ? (
@@ -419,7 +451,12 @@ export function ReportsDashboard(props: ReportsDashboardProps) {
                       <tr key={run.id}>
                         <th scope="row">{run.connector_id}</th>
                         <td>
-                          <span className={cn(styles.level, isFailedRun(run) ? styles.error : styles.info)}>
+                          <span
+                            className={cn(
+                              styles.level,
+                              isFailedRun(run) ? styles.error : run.status === 'completed' ? styles.green : styles.info,
+                            )}
+                          >
                             {isFailedRun(run) ? '失败' : run.status === 'completed' ? '已完成' : run.status}
                           </span>
                         </td>

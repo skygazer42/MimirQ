@@ -78,6 +78,7 @@ export function useGraphNodeOperations({
   const nodeId = selectedNode?.id
   const canReadDetail =
     dataSource === 'live' &&
+    !selectedNode?.meta?.ontology_entity_id &&
     isDetailOpen &&
     nodeId !== undefined &&
     nodeId !== '' &&
@@ -138,6 +139,7 @@ export function useGraphNodeOperations({
         if (signal.aborted) return
 
         setGraphData((prev) => {
+          if (prev.ontologyVersionId) return prev
           const existingNodeIds = new Set(prev.nodes.map((node) => node.id))
           const uniqueNewNodes = newData.nodes.filter((node) => {
             if (existingNodeIds.has(node.id)) return false
@@ -172,7 +174,7 @@ export function useGraphNodeOperations({
   )
 
   const handleExpandNode = useCallback(() => {
-    if (!selectedNode) return
+    if (!selectedNode || selectedNode.meta?.ontology_entity_id) return
     detachPromise(expandNodeById(selectedNode.id))
   }, [expandNodeById, selectedNode])
 
@@ -186,7 +188,7 @@ export function useGraphNodeOperations({
   const handleDeleteNode = useCallback(
     (node?: GraphNodeLike) => {
       const target = node ?? selectedNode
-      if (!target) return
+      if (!target || target.meta?.ontology_entity_id) return
       setDeleteNodeTarget({
         id: target.id,
         label: target.label === '' ? target.id : target.label,

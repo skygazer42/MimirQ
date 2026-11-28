@@ -29,9 +29,9 @@
   flex-shrink: 0;
 }
 .heading h1 {
-  font-size: 20px;
+  font-size: var(--workspace-title-size);
   line-height: 28px;
-  font-weight: 650;
+  font-weight: var(--workspace-title-weight);
 }
 .datasetContext {
   min-width: 0;
@@ -262,6 +262,15 @@
 }
 .findings td:last-child {
   text-align: right;
+}
+.findingIdentity {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+}
+.mobileFindingSeverity {
+  display: none;
 }
 .findingName {
   font-weight: 550;
@@ -556,9 +565,9 @@
 }
 @media (max-width: 640px) {
   .header {
-    padding: 14px 16px 14px 56px;
+    padding: 10px 16px 10px 56px;
     gap: 4px;
-    min-height: 80px;
+    min-height: 72px;
   }
   .heading h1 {
     font-size: 18px;
@@ -582,8 +591,8 @@
     display: inline;
   }
   .toolbar {
-    padding: 12px 16px;
-    gap: 10px;
+    padding: 8px 16px;
+    gap: 6px;
   }
   .history {
     flex: 1 1 calc(100% - 88px);
@@ -601,10 +610,11 @@
     margin-left: 0;
   }
   .runMeta {
-    padding: 12px 16px;
-    gap: 8px 16px;
+    padding: 8px 16px;
+    gap: 4px 12px;
   }
   .reportTabList {
+    height: 48px;
     padding-inline: 16px;
     gap: 20px;
   }
@@ -616,11 +626,25 @@
   }
   .metrics {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 18px 12px;
-    padding: 20px 0;
+    gap: 10px 12px;
+    padding: 14px 0;
+  }
+  .metrics dt {
+    line-height: 20px;
   }
   .metrics dd {
-    font-size: 24px;
+    margin-top: 2px;
+    font-size: 22px;
+    line-height: 28px;
+  }
+  .metrics > div:last-child {
+    display: flex;
+    grid-column: 1 / -1;
+    align-items: baseline;
+    gap: 12px;
+  }
+  .mobileFindingSeverity {
+    display: inline-flex;
   }
   .charts {
     grid-template-columns: minmax(0, 1fr);

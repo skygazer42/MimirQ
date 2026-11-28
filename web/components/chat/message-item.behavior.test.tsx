@@ -144,6 +144,18 @@ afterEach(() => {
 })
 
 describe('message rendering contracts', () => {
+  it('keeps past processing events out of the completed summary without losing the log', () => {
+    const step = '找到 0 条相关参考，正在整理回答...'
+    const { container } = mount(assistant({ steps: [step] }))
+    const toggle = container.querySelector<HTMLButtonElement>('button[aria-expanded]')!
+
+    expect(toggle.textContent).not.toContain(step)
+    expect(toggle.textContent).toContain('处理记录')
+    act(() => toggle.click())
+    expect(container.textContent).toContain(step)
+    expect(container.querySelector('.motion-safe\\:animate-pulse')).toBeNull()
+  })
+
   it.each(['default', 'minimal'] as const)(
     'opens and prefetches backend inline citations in the %s view',
     (variant) => {
@@ -322,7 +334,7 @@ describe('message rendering contracts', () => {
     expect(links[0].getAttribute('href')).toBe('https://example.com/doc')
     expect(links[0].getAttribute('rel')).toBe('noopener noreferrer')
     expect(view.container.querySelector('script')).toBeNull()
-    expect(view.container.querySelector('img')).toBeNull()
+    expect(view.container.querySelector('.prose img')).toBeNull()
     expect(Array.from(view.container.querySelectorAll('button')).some((item) => item.textContent === '无效引用')).toBe(
       false,
     )
@@ -346,7 +358,7 @@ describe('message rendering contracts', () => {
     const view = mount(assistant({ citations: [citation({ hit_type: 'table' })] }))
 
     act(() => button(view.container, 'view-evidence').click())
-    expect(document.querySelector('[role="dialog"]')?.textContent).toContain('Table Evidence')
+    expect(document.querySelector('[role="dialog"]')?.textContent).toContain('表格证据')
     expect(document.querySelector('[role="dialog"]')?.textContent).toContain('证据内容')
     act(() => button(document, '打开文档').click())
 

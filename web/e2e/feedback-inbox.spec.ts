@@ -254,14 +254,16 @@ test('feedback inbox handles empty and error states, long content, phone navigat
   state.records = []
   await page.getByRole('button', { name: '重试', exact: true }).click()
   await expect(page.locator('[data-feedback-item]')).toHaveCount(0)
-  await expect(page.getByRole('heading', { name: '暂无反馈', exact: true })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '暂无反馈记录', exact: true })).toBeVisible()
+  await expect(page.locator('[data-feedback-queue]')).toHaveCount(0)
   await page.screenshot({ path: path.join(evidence, 'empty.png') })
   await page.emulateMedia({ colorScheme: 'dark' })
   await page.evaluate(() => {
     localStorage.setItem('theme', 'dark')
   })
   await page.reload()
+  await expect(page.getByRole('heading', { name: '反馈质检', exact: true })).toBeVisible({ timeout: 60_000 })
   await expect(page.locator('html')).toHaveClass(/dark/)
-  await expect(page.getByRole('heading', { name: '暂无反馈', exact: true })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '暂无反馈记录', exact: true })).toBeVisible()
   await page.screenshot({ path: path.join(evidence, 'dark-empty.png') })
 })

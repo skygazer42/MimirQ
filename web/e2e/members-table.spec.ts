@@ -179,8 +179,18 @@ test('role help and isolated identity tools are on demand, with honest failures 
   await expect(dialog.getByLabel('租户 ID', { exact: true })).toHaveValue('tenant-fixture')
   await dialog.getByLabel('SCIM Token', { exact: true }).fill('fixture-token-no-network')
   state.failScim = true
+  const failedScim = page.waitForRequest(
+    (request) => new URL(request.url()).pathname === '/api/v1/scim/v2/ServiceProviderConfig',
+  )
   await dialog.getByRole('button', { name: '测试服务配置', exact: true }).click()
   await expect(dialog.getByRole('alert')).toContainText('SCIM 凭据无效')
+  const requestId = (await failedScim).headers()['x-request-id']
+  expect(requestId).toBeTruthy()
+  const requestDetails = dialog.locator('details')
+  await expect(requestDetails.locator('p')).not.toBeVisible()
+  await requestDetails.locator('summary').click()
+  await expect(requestDetails.locator('p')).toHaveText('request_id=' + requestId)
+  await expect(requestDetails.locator('p')).toBeVisible()
   await expect(dialog.getByLabel('SCIM Token', { exact: true })).toHaveValue('fixture-token-no-network')
   state.failScim = false
   await dialog.getByRole('button', { name: '测试服务配置', exact: true }).click()

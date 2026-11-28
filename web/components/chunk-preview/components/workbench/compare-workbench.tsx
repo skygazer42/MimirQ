@@ -2,7 +2,16 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
-import { Chunking, FolderOpen, HelpCircle, Loader2, Play, Settings2, Upload, X } from '@/components/icons'
+import {
+  Check,
+  ChevronRight,
+  FolderOpen,
+  Loader2,
+  Play,
+  Settings2,
+  Upload,
+  X,
+} from '@/components/icons'
 import { Button } from '@/components/ui/button'
 import { PageTitleIcon } from '@/components/ui/page-title-icon'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
@@ -20,10 +29,38 @@ import { CompareFooter, CompareParameters } from './compare-controls'
 import styles from './compare.module.css'
 import configStyles from './config-dialog.module.css'
 
+const QUICK_CHUNKING_PRESETS = [
+  {
+    id: 'recursive',
+    label: '通用递归切分 · 1000 / 200 字符',
+    strategy: 'langchain_recursive',
+    chunkSize: 1000,
+    chunkOverlap: 200,
+  },
+  {
+    id: 'outline',
+    label: '标题层级切分 · 1200 / 150 字符',
+    strategy: 'outline',
+    chunkSize: 1200,
+    chunkOverlap: 150,
+  },
+  {
+    id: 'token',
+    label: '精准 Token 切分 · 500 / 100 Token',
+    strategy: 'langchain_token',
+    chunkSize: 500,
+    chunkOverlap: 100,
+  },
+] as const
+
 export function Workbench() {
   const {
     currentFile,
     currentFileItem,
+    chunkStrategy,
+    chunkSize,
+    chunkOverlap,
+    updateSettings,
     showOriginalPanel,
     showSettingsPanel,
     toggleSettingsPanel,
@@ -73,13 +110,10 @@ export function Workbench() {
         <header className={styles.header}>
           <div className={styles.title}>
             <PageTitleIcon name="chunk-preview" />
-            <div>
-              <h1>切块预览</h1>
-              <p>检查切分结果与原文位置</p>
-            </div>
+            <h1>切块预览</h1>
           </div>
           <div className={styles.headerActions}>
-            <Button variant="outline" onClick={openDocuments}>
+            <Button variant="outline" onClick={openDocuments} aria-label="管理文档">
               <FolderOpen />
               管理文档
             </Button>
@@ -126,20 +160,157 @@ export function Workbench() {
             void handleDrop(event).catch((error) => toast.error(formatApiError(error, '无法读取拖入的文件')))
           }}
         >
-          <Chunking appearance="color" className="icon-ink-process" />
-          <h2>{isDragging ? '松开鼠标上传文档' : '预览文档切片'}</h2>
-          <div className={styles.emptyActions}>
-            <Button onClick={openDocuments}>
-              <FolderOpen />
-              选择已有文档
-            </Button>
-            <Button variant="outline" onClick={() => fileInputRef.current?.click()}>
-              <Upload />
-              上传文件
-            </Button>
-            <Button variant="ghost" onClick={loadExample}>
-              打开示例文档
-            </Button>
+          <div className={styles.emptySplitStudio} data-chunk-empty-studio="true">
+            <section className={styles.emptyIntakeStage} aria-label="文档切片导入">
+              <div className={styles.emptyChunkIllust} aria-hidden="true">
+                <svg viewBox="0 0 132 146" fill="none">
+                  <path
+                    d="M18 10C18 6.686 20.686 4 24 4H92L114 26V136C114 139.314 111.314 142 108 142H24C20.686 142 18 139.314 18 136V10Z"
+                    fill="hsl(var(--card))"
+                    stroke="currentColor"
+                    strokeOpacity="0.34"
+                    strokeWidth="1.25"
+                  />
+                  <path d="M92 4V26H114" stroke="currentColor" strokeOpacity="0.28" strokeWidth="1.25" />
+
+                  <rect
+                    x="30"
+                    y="24"
+                    width="72"
+                    height="26"
+                    rx="4"
+                    fill="hsl(var(--surface-2) / 0.7)"
+                    stroke="currentColor"
+                    strokeOpacity="0.24"
+                    strokeWidth="1"
+                  />
+                  <rect x="38" y="32" width="48" height="3" rx="1.5" fill="currentColor" fillOpacity="0.28" />
+                  <rect x="38" y="40" width="34" height="3" rx="1.5" fill="currentColor" fillOpacity="0.2" />
+
+                  <line
+                    x1="24"
+                    y1="57"
+                    x2="108"
+                    y2="57"
+                    stroke="hsl(var(--accent))"
+                    strokeWidth="1.4"
+                    strokeDasharray="4 4"
+                    strokeLinecap="round"
+                  />
+
+                  <rect
+                    x="30"
+                    y="64"
+                    width="72"
+                    height="26"
+                    rx="4"
+                    fill="hsl(var(--surface-2) / 0.7)"
+                    stroke="currentColor"
+                    strokeOpacity="0.24"
+                    strokeWidth="1"
+                  />
+                  <rect x="38" y="72" width="52" height="3" rx="1.5" fill="currentColor" fillOpacity="0.28" />
+                  <rect x="38" y="80" width="38" height="3" rx="1.5" fill="currentColor" fillOpacity="0.2" />
+
+                  <line
+                    x1="24"
+                    y1="97"
+                    x2="108"
+                    y2="97"
+                    stroke="hsl(var(--accent))"
+                    strokeWidth="1.4"
+                    strokeDasharray="4 4"
+                    strokeLinecap="round"
+                  />
+
+                  <rect
+                    x="30"
+                    y="104"
+                    width="72"
+                    height="26"
+                    rx="4"
+                    fill="hsl(var(--surface-2) / 0.7)"
+                    stroke="currentColor"
+                    strokeOpacity="0.24"
+                    strokeWidth="1"
+                  />
+                  <rect x="38" y="112" width="42" height="3" rx="1.5" fill="currentColor" fillOpacity="0.28" />
+                  <rect x="38" y="120" width="50" height="3" rx="1.5" fill="currentColor" fillOpacity="0.2" />
+                </svg>
+              </div>
+              <h2>{isDragging ? '松开鼠标上传文档' : '预览文档切片'}</h2>
+              <p>调整切分策略与重叠长度，实时对比分块边界、覆盖率与字符分布。</p>
+              <div className={styles.emptyStageActions}>
+                <Button className={styles.emptyPrimaryBtn} onClick={openDocuments}>
+                  <FolderOpen className="size-4" />
+                  选择已有文档
+                </Button>
+                <Button variant="outline" onClick={() => fileInputRef.current?.click()}>
+                  <Upload className="size-4" />
+                  上传文件
+                </Button>
+              </div>
+            </section>
+            <aside className={styles.emptyGuideStage} aria-label="切分预设与示例">
+              <div className={styles.emptyGuideGroup}>
+                <h3>推荐切分预设</h3>
+                <div className={styles.emptyRowList} role="group" aria-label="快捷切分预设">
+                  {QUICK_CHUNKING_PRESETS.map((preset) => {
+                    const active =
+                      chunkStrategy === preset.strategy &&
+                      chunkSize === preset.chunkSize &&
+                      chunkOverlap === preset.chunkOverlap
+                    return (
+                      <button
+                        key={preset.id}
+                        type="button"
+                        className={styles.emptyRowButton}
+                        aria-pressed={active}
+                        disabled={isLoading || isSubmitting}
+                        onClick={() =>
+                          updateSettings({
+                            strategy: preset.strategy,
+                            chunkSize: preset.chunkSize,
+                            chunkOverlap: preset.chunkOverlap,
+                          })
+                        }
+                      >
+                        <span className={styles.emptyPresetLabel}>{preset.label}</span>
+                        {active ? <Check className={styles.emptyPresetCheck} aria-hidden="true" /> : null}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+              <div className={styles.emptyGuideGroup}>
+                <h3>示例与帮助</h3>
+                <div className={styles.emptyRowList}>
+                  <button
+                    type="button"
+                    className={styles.emptyRowButton}
+                    aria-label="打开示例文档"
+                    onClick={loadExample}
+                  >
+                    <span className={styles.emptyActionCopy}>
+                      <strong>打开示例文档</strong>
+                      <small>载入示例文本预览切块</small>
+                    </span>
+                    <ChevronRight className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.emptyRowButton}
+                    onClick={() => setHelpOpen(true)}
+                  >
+                    <span className={styles.emptyActionCopy}>
+                      <strong>切块指南</strong>
+                      <small>查看策略选型与重叠参数建议</small>
+                    </span>
+                    <ChevronRight className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                  </button>
+                </div>
+              </div>
+            </aside>
           </div>
           <input
             id="chunk-empty-file-input"
@@ -155,10 +326,6 @@ export function Workbench() {
               input.value = ''
             }}
           />
-          <button type="button" className={styles.emptyHelp} onClick={() => setHelpOpen(true)}>
-            <HelpCircle />
-            切块指南
-          </button>
         </div>
       )}
       <CompareFooter onOpenDocuments={openDocuments} />

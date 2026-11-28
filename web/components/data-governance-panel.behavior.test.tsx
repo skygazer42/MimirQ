@@ -191,12 +191,12 @@ async function mount(files = [localFile()]) {
       </QueryClientProvider>,
     )
   })
-  return { container, client, unmount }
+  return { container: document.body, client, unmount }
 }
 
 function button(container: ParentNode, text: string) {
   const labels: Record<string, string> = {
-    'DataGovernancePanel.actions.reset': '重置文档修改',
+    'DataGovernancePanel.actions.reset': '恢复原文',
     'DataGovernancePanel.actions.save': '保存',
     'DataGovernancePanel.canvas.viewModes.edit': '编辑',
     'DataGovernancePanel.emptyUpload.cancelParsing': '取消解析',
@@ -223,6 +223,12 @@ function button(container: ParentNode, text: string) {
 }
 
 async function click(container: ParentNode, text: string) {
+  if (
+    (text.startsWith('DataGovernancePanel.a11y.openFile ') || text === '批量选择切块文档') &&
+    !container.querySelector('[data-governance-queue]')
+  ) {
+    await act(async () => button(container, '选择文档').click())
+  }
   await act(async () => button(container, text).click())
   if (text === 'DataGovernancePanel.actions.reset') await act(async () => button(document.body, '重置').click())
 }
@@ -286,6 +292,78 @@ afterEach(() => {
 })
 
 describe('parent reset intent', () => {
+  it('keeps document selection available when empty and closes the directory after choosing a file', async () => {
+    const view = await mount([])
+    expect(button(view.container, '选择文档').disabled).toBe(false)
+    await click(view.container, '选择文档')
+    expect(view.container.querySelector('[role="dialog"]')?.textContent).toContain('文档目录')
+    expect(view.container.querySelector('[data-governance-queue]')?.textContent).toContain('当前范围没有文档')
+    await act(async () => useParsedFiles.setState({ files: [localFile('first'), localFile('second')] }))
+    await click(view.container, 'DataGovernancePanel.a11y.openFile {"filename":"second.md"}')
+    expect(view.container.querySelector('[role="dialog"]')).toBeNull()
+    await act(async () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())))
+    expect(document.activeElement).toBe(button(view.container, '选择文档'))
+    expect(button(view.container, '选择文档').textContent).toContain('second.md')
+    await click(view.container, '上一份文档')
+    expect(button(view.container, '选择文档').textContent).toContain('first.md')
+    await click(view.container, '下一份文档')
+    expect(button(view.container, '选择文档').textContent).toContain('second.md')
+  })
+
+  it('ignores an issue through its inline action and saves the changed review', async () => {
+    boundary.search = 'tab=quality'
+    const view = await mount([
+      localFile('file-a', {
+        governanceReview: {
+          qualityScore: 95,
+          issues: [{ id: 'review-me', type: 'warning', message: '待复核内容' }],
+          annotations: [],
+          category: null,
+          tags: [],
+        },
+      }),
+    ])
+    await click(view.container, '忽略此项')
+    expect(view.container.querySelector('[aria-label="检测问题"]')).toBeNull()
+    expect(view.container.querySelector('footer [role="status"]')?.textContent).toBe('修改尚未保存')
+    await click(view.container, '保存')
+    expect(useParsedFiles.getState().files[0].governanceReview?.issues).toEqual([])
+  })
+
+  it('runs the footer recheck through the same scan and disables it until completion', async () => {
+    boundary.search = 'tab=quality'
+    const pending = deferred<GovernanceAnalyzeResponse>()
+    boundary.governanceAnalyze.mockReturnValue(pending.promise)
+    const view = await mount([
+      localFile('file-a', {
+        governanceReview: { qualityScore: 95, issues: [], annotations: [], category: null, tags: [] },
+      }),
+    ])
+    await click(view.container, '重新检测当前文档')
+    expect(boundary.governanceAnalyze).toHaveBeenCalledOnce()
+    expect(button(view.container, '重新检测当前文档').disabled).toBe(true)
+    await act(async () => pending.resolve({ issues: [] }))
+    expect(button(view.container, '重新检测当前文档').disabled).toBe(false)
+  })
+
+  it('keeps the current document identity and save state together through edits and saving', async () => {
+    const view = await mount([localFile('file-a', { filename: '当前维护记录与操作说明.md' })])
+    const identity = view.container.querySelector('[aria-label="选择文档"]')!
+    const status = view.container.querySelector('footer [role="status"]')!
+    expect(identity.textContent).toContain('当前维护记录与操作说明.md')
+    expect(status.textContent).toBe('等待检查文档')
+
+    await markMetadataModified(view.container)
+    expect(identity.textContent).toContain('当前维护记录与操作说明.md')
+    expect(status.textContent).toBe('修改尚未保存')
+
+    await click(view.container, '保存')
+    expect(identity.textContent).toContain('当前维护记录与操作说明.md')
+    expect(status.textContent).toBe('治理结果已保存')
+    await click(view.container, '选择文档')
+    expect(view.container.querySelector('[data-governance-queue]')?.textContent).toContain('1 / 1 份')
+  })
+
   it('shows a failed local restoration, retains the current document and retries through the visible control', async () => {
     const view = await mount()
     const key = 'mimirq_parsed_files:tenant-a:user-a'
@@ -404,6 +482,7 @@ describe('library synchronization', () => {
     await waitForAssertion(() =>
       expect(useParsedFiles.getState().files.some((file) => file.id === 'page-two')).toBe(true),
     )
+    await click(view.container, '选择文档')
     expect(button(view.container, 'DataGovernancePanel.a11y.openFile {"filename":"page-two.md"}')).toBeDefined()
     expect(request.mock.calls.map(([params]) => params.skip)).toEqual([0, 200])
   })
@@ -454,6 +533,7 @@ describe('library synchronization', () => {
     await waitForAssertion(() =>
       expect(useParsedFiles.getState().files.some((file) => file.id === 'available')).toBe(true),
     )
+    await click(view.container, '选择文档')
     expect(button(view.container, 'DataGovernancePanel.a11y.openFile {"filename":"available.md"}')).toBeDefined()
     expect(view.container.querySelector('[role="alert"]')?.textContent).toContain('队列加载失败')
     expect(button(view.container, '重试')).toBeDefined()
@@ -746,6 +826,7 @@ describe('edit and save workflow', () => {
 
   it('filters the file list through the visible filename search', async () => {
     const view = await mount([localFile('alpha'), localFile('beta')])
+    await click(view.container, '选择文档')
     await type(view.container.querySelector<HTMLInputElement>('input[type="search"]')!, 'BETA')
 
     expect(view.container.querySelector('[data-governance-file="alpha"]')).toBeNull()

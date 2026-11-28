@@ -54,6 +54,7 @@ test('distinguishes loading, read failure and a saved empty parsing result', asy
   try {
     await expect(result.getByRole('status')).toHaveText('正在读取解析正文')
     await expect(result.getByText('文档待解析', { exact: true })).toHaveCount(0)
+    await page.screenshot({ path: test.info().outputPath('parsing-loading.png'), animations: 'disabled' })
   } finally {
     releaseRead()
   }
@@ -112,19 +113,17 @@ test('keeps an empty parsed result editable after clearing and saving its body',
   await page.getByRole('button', { name: '开始解析', exact: true }).click()
   const result = page.getByRole('region', { name: '解析结果', exact: true })
   await expect(result.getByRole('heading', { name: '正文为空', exact: true })).toBeVisible()
-  await result.getByRole('button', { name: '更多结果操作', exact: true }).click()
-  await page.getByRole('menuitem', { name: '编辑 Markdown', exact: true }).click()
+  await page.getByRole('button', { name: '编辑 Markdown', exact: true }).click()
   const editor = page.getByLabel('编辑 Markdown', { exact: true })
   await expect(editor).toHaveValue('')
   await editor.fill('Temporary body')
   await page.getByRole('button', { name: '保存修改', exact: true }).click()
   await expect(result).toContainText('Temporary body')
-  await result.getByRole('button', { name: '更多结果操作', exact: true }).click()
-  await page.getByRole('menuitem', { name: '编辑 Markdown', exact: true }).click()
+  await page.getByRole('button', { name: '编辑 Markdown', exact: true }).click()
   await editor.fill('')
   await page.getByRole('button', { name: '保存修改', exact: true }).click()
   await expect(result.getByRole('heading', { name: '正文为空', exact: true })).toBeVisible()
-  await expect(result.getByRole('button', { name: '更多结果操作', exact: true })).toBeEnabled()
+  await expect(page.getByRole('button', { name: '编辑 Markdown', exact: true })).toBeEnabled()
 })
 
 test('shows a failed knowledge task with its saved body and a retry action', async ({ page }) => {
@@ -200,15 +199,13 @@ test('shows a failed knowledge task with its saved body and a retry action', asy
     .getByRole('region', { name: '原文', exact: true })
     .getByRole('button', { name: '恢复源文件', exact: true })
     .click()
-  await result.getByRole('button', { name: '更多结果操作', exact: true }).click()
-  await expect(page.getByRole('menuitem', { name: '编辑 Markdown', exact: true })).toBeDisabled()
-  await page.keyboard.press('Escape')
+  await expect(page.getByRole('button', { name: '编辑 Markdown', exact: true })).toBeDisabled()
   await page.getByRole('button', { name: '重新解析', exact: true }).click()
   await expect(result.getByRole('alert')).toContainText('Knowledge state unavailable')
   processing = false
   readUnavailable = false
   await result.getByRole('button', { name: '重试读取正文', exact: true }).click()
-  await expect(result.getByRole('button', { name: '更多结果操作', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: '编辑 Markdown', exact: true })).toBeDisabled()
   await expect(result.getByRole('alert')).toHaveCount(0)
   failed = true
   await page.reload()

@@ -17,6 +17,7 @@ import { BboxOverlay, type BboxOverlayItem } from '@/components/parsing/bbox-ove
 import { reportClientWarning } from '@/lib/client-logging'
 import { selectPdfPagesToReleaseForPool, selectPdfPagesToRender } from './pdf-render-canvas-pool'
 import { getPdfSource, loadPdfJsModule, readPdfSourceData, type PdfSource } from '@/lib/pdf-source'
+import styles from './parsing-compare.module.css'
 
 type Box = BboxOverlayItem
 type PageBaseSize = { width: number; height: number }
@@ -192,10 +193,8 @@ export function PdfViewer({ file, fileUrl, ...pageProps }: Readonly<PdfViewerPro
   if (currentLoadResult.status === 'error') {
     return (
       <div className="flex h-full items-center justify-center px-6">
-        <div className="max-w-md rounded-2xl border border-border/60 bg-card p-5 text-center shadow-sm">
-          <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-destructive/10 text-destructive">
-            <AlertCircle className="h-5 w-5" />
-          </div>
+        <div className="max-w-md py-5 text-center">
+          <AlertCircle className="mx-auto mb-3 size-5 text-destructive" aria-hidden="true" />
           <div role="alert">
             <div className="text-sm font-semibold text-foreground">PDF 加载失败</div>
             <div className="mt-1 text-xs text-muted-foreground">{currentLoadResult.message}</div>
@@ -223,7 +222,7 @@ function PdfViewerLoading({ showToolbar }: Readonly<{ showToolbar: boolean }>) {
   return (
     <div role="status" aria-label="正在加载 PDF" className="flex h-full min-h-0 flex-col">
       {showToolbar ? (
-        <div className="flex h-12 shrink-0 items-center gap-2 border-b border-border bg-background/60 px-5 text-[13px]">
+        <div className={styles.resultToolbar}>
           <FileText className="size-3.5 text-muted-foreground" />
           <span>原文 PDF</span>
           <span className="ml-auto text-xs text-muted-foreground">正在读取…</span>
@@ -345,6 +344,7 @@ function PdfPages({
   const pageStatesRef = useRef(pageStates)
   const containerRef = useRef<HTMLDivElement | null>(null)
   const contentRef = useRef<HTMLDivElement | null>(null)
+  const preserveScrollEndRef = useRef(false)
   const canvasRefs = useRef(new Map<number, HTMLCanvasElement>())
   const pageRefs = useRef(new Map<number, HTMLDivElement>())
   const renderQueueRef = useRef<number[]>([])
@@ -504,6 +504,11 @@ function PdfPages({
   }
 
   function rememberPageSize(pageIndex: number, width: number, height: number) {
+    const container = containerRef.current
+    preserveScrollEndRef.current =
+      container !== null &&
+      container.scrollHeight > container.clientHeight &&
+      container.scrollHeight - container.clientHeight - container.scrollTop <= 1
     setPageSizes((previous) => {
       const current = previous.get(pageIndex)
       if (current?.width === width && current.height === height) return previous
@@ -716,6 +721,12 @@ function PdfPages({
     callbacksRef.current.reset()
   }, [fitWidth, zoom])
   useLayoutEffect(() => {
+    if (!preserveScrollEndRef.current) return
+    preserveScrollEndRef.current = false
+    const container = containerRef.current
+    if (container !== null) container.scrollTo({ top: container.scrollHeight, behavior: 'instant' })
+  }, [pageSizes])
+  useLayoutEffect(() => {
     callbacksRef.current.requestViewport()
   }, [navigationTarget?.key, navigationPageSize])
   useLayoutEffect(() => {
@@ -758,10 +769,10 @@ function PdfPages({
   return (
     <div className="flex h-full min-h-0 flex-col">
       {showToolbar ? (
-        <div className="flex h-12 shrink-0 items-center gap-2 border-b border-border bg-background/60 px-5 text-[13px]">
+        <div className={styles.resultToolbar}>
           <FileText className="size-3.5 text-muted-foreground" />
           <span>原文 PDF</span>
-          <div className="ml-auto flex items-center gap-2 text-xs tabular-nums text-muted-foreground">
+          <div className={styles.pdfControls}>
             <Button
               type="button"
               variant="ghost"
@@ -809,6 +820,16 @@ function PdfPages({
         role="region"
         aria-label="PDF 页面"
         tabIndex={0}
+        onKeyDown={(event) => {
+          if (event.target === event.currentTarget && (event.key === 'Home' || event.key === 'End')) {
+            event.preventDefault()
+            preserveScrollEndRef.current = false
+            event.currentTarget.scrollTo({
+              top: event.key === 'Home' ? 0 : event.currentTarget.scrollHeight,
+              behavior: 'instant',
+            })
+          }
+        }}
         className="min-h-0 flex-1 overflow-auto overscroll-contain no-scrollbar px-5 py-7"
       >
         <div ref={contentRef} className="flex min-w-full flex-col gap-6">

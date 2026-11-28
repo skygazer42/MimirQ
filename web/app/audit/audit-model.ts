@@ -239,11 +239,11 @@ export function getAuditResourceLabel(row: Pick<AuditLogItem, 'resource_type' | 
 }
 
 export function getAuditActionTone(action: string) {
-  if (/rbac|permission|access_review/.test(action)) return 'permission'
-  if (/delete|purge|remove|destroy|revoke|retention/.test(action)) return 'delete'
+  if (/delete|purge|remove|destroy|revoke|retention|disable/.test(action)) return 'delete'
+  if (/rbac|permission|role|security|access_review/.test(action)) return 'permission'
   if (/quarantine|block|deny|fail|drift|stale|violation/.test(action)) return 'warning'
   if (/create|add|import|upload|restore|approve|publish/.test(action)) return 'create'
-  if (/export|download|snapshot|backup/.test(action)) return 'export'
+  if (/export|download|snapshot|backup|login|logout|auth/.test(action)) return 'export'
   if (/audit|review/.test(action)) return 'audit'
   if (/update|set|change/.test(action)) return 'update'
   return 'neutral'

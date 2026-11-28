@@ -33,6 +33,7 @@ import {
   Route,
   Search,
   ArrowLeft,
+  Pencil,
 } from '@/components/icons'
 import { AppFrame } from '@/components/app-frame'
 import { ChatMessageItem } from '@/components/chat/message-item'
@@ -43,9 +44,18 @@ import { RagTraceDialog } from '@/components/rag-trace/rag-trace-dialog'
 import { Button } from '@/components/ui/button'
 import { IconButton } from '@/components/ui/icon-button'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { PageLoading } from '@/components/ui/page-loading'
 import { PageScaffold } from '@/components/ui/page-scaffold'
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { SplitEmptyStudio } from '@/components/ui/split-empty-studio'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -59,6 +69,7 @@ import { queryKeys } from '@/lib/query-keys'
 import { normalizeResourceId } from '@/lib/resource-id'
 import { cn } from '@/lib/utils'
 import { formatApiError } from '@/lib/api-errors'
+import { WorkspaceNotice } from '@/components/ui/operational-workspace'
 import { reportClientError } from '@/lib/client-logging'
 import { AUTH_SCOPE_CHANGED_EVENT, getAuthCacheScope, getAuthSessionRevision } from '@/lib/auth-storage'
 import { toast } from 'sonner'
@@ -91,7 +102,7 @@ const LOAD_MORE_STEP = 40
 
 type MessagePageParams = { limit: number; before?: string }
 const FIRST_MESSAGE_PAGE: MessagePageParams = { limit: DEFAULT_VISIBLE_MESSAGES }
-type ConversationDeletion = {
+type ConversationOperation = {
   owner: { active: boolean }
   authRevision: number
   authScope: string
@@ -130,9 +141,14 @@ function HistoryPageContent() {
   const historyView = recentConversationCutoff === null ? 'all' : 'recent'
   const [deletingConversationIds, setDeletingConversationIds] = useState<ReadonlySet<string>>(new Set())
   const [removedConversationIds, setRemovedConversationIds] = useState<ReadonlySet<string>>(new Set())
+  const [renameConversation, setRenameConversation] = useState<Pick<Conversation, 'id' | 'title'> | null>(null)
+  const [renameTitle, setRenameTitle] = useState('')
+  const [renameError, setRenameError] = useState<string | null>(null)
+  const [isRenaming, setIsRenaming] = useState(false)
 
   const historyOwnerRef = useRef({ active: true })
-  const deletionsRef = useRef(new Map<string, ConversationDeletion>())
+  const deletionsRef = useRef(new Map<string, ConversationOperation>())
+  const renameOperationRef = useRef<ConversationOperation | null>(null)
   const selectedConversationIdRef = useRef(selectedConversationId)
   const messagesContainerRef = useRef<HTMLDivElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -195,6 +211,7 @@ function HistoryPageContent() {
   const isLoadingMoreConversations = conversationsQuery.isFetchingNextPage
   const showEmptyHistory =
     !isSearchPending &&
+    historyView === 'all' &&
     conversationSearchTerm.length === 0 &&
     conversationsQuery.isSuccess &&
     !isReadingConversations &&
@@ -251,12 +268,12 @@ function HistoryPageContent() {
 
   useLayoutEffect(() => {
     selectedConversationIdRef.current = selectedConversationId
-    if (selectedConversationId !== null) setShowConversationDetail(true)
+    if (requestedConversationId !== null) setShowConversationDetail(true)
     shouldScrollToEndRef.current = selectedConversationId !== null
     pendingPrependScrollRef.current = null
     setIsTraceOpen(false)
     setIsOpsOpen(false)
-  }, [selectedConversationId])
+  }, [requestedConversationId, selectedConversationId])
 
   useLayoutEffect(() => {
     historyOwnerRef.current = { active: true }
@@ -271,6 +288,10 @@ function HistoryPageContent() {
       setShowDeleteConfirm(null)
       setIsTraceOpen(false)
       setIsOpsOpen(false)
+      setRenameConversation(null)
+      setRenameError(null)
+      setIsRenaming(false)
+      renameOperationRef.current = null
       pendingPrependScrollRef.current = null
     }
     globalThis.window.addEventListener(AUTH_SCOPE_CHANGED_EVENT, resetHistoryOperations)
@@ -295,7 +316,6 @@ function HistoryPageContent() {
     const latestConversation = conversations[0]
     if (latestConversation === undefined) return
     setSelectedConversationSnapshot(latestConversation)
-    setShowConversationDetail(true)
   }, [
     selectedConversationId,
     conversations,
@@ -388,7 +408,7 @@ function HistoryPageContent() {
   const handleDeleteConversation = async (conversation: Conversation) => {
     const conversationId = conversation.id
     if (deletionsRef.current.has(conversationId)) return
-    const operation: ConversationDeletion = {
+    const operation: ConversationOperation = {
       owner: historyOwnerRef.current,
       authRevision: getAuthSessionRevision(),
       authScope: getAuthCacheScope(),
@@ -433,6 +453,53 @@ function HistoryPageContent() {
       if (deletionsRef.current.get(conversationId) === operation) {
         deletionsRef.current.delete(conversationId)
         if (operation.owner.active) setDeletingConversationIds(new Set(deletionsRef.current.keys()))
+      }
+    }
+  }
+
+  async function handleRenameConversation() {
+    const title = renameTitle.trim()
+    if (renameConversation === null || title === '' || renameOperationRef.current !== null) return
+    const operation: ConversationOperation = {
+      owner: historyOwnerRef.current,
+      authRevision: getAuthSessionRevision(),
+      authScope: getAuthCacheScope(),
+    }
+    const isCurrentSession = () =>
+      operation.owner.active &&
+      operation.authRevision === getAuthSessionRevision() &&
+      operation.authScope === getAuthCacheScope()
+    renameOperationRef.current = operation
+    setIsRenaming(true)
+    setRenameError(null)
+    let renamed = false
+    try {
+      const updated = await chatApi.updateConversation(renameConversation.id, { title })
+      renamed = true
+      if (!isCurrentSession()) return
+      await Promise.all(
+        [queryKeys.chat.conversationPagesAll, queryKeys.chat.conversationsAll].map((queryKey) =>
+          queryClient.invalidateQueries({ queryKey }, { throwOnError: true }),
+        ),
+      )
+      if (!isCurrentSession()) return
+      setSelectedConversationSnapshot((current) =>
+        selectedConversationIdRef.current === updated.id ? updated : current,
+      )
+      setRenameConversation(null)
+    } catch (error) {
+      if (isCurrentSession()) {
+        reportClientError('Failed to rename conversation', error)
+        setRenameError(
+          renamed
+            ? `名称已保存，历史列表刷新失败：${formatApiError(error, '读取失败')}`
+            : formatApiError(error, '重命名失败'),
+        )
+      }
+    } finally {
+      if (renameOperationRef.current === operation) {
+        renameOperationRef.current = null
+        if (isCurrentSession()) setIsRenaming(false)
       }
     }
   }
@@ -543,7 +610,7 @@ function HistoryPageContent() {
                     <ArrowLeft className="size-5" />
                   </IconButton>
                 )}
-                <Button asChild className="h-11 gap-2 bg-accent px-3 text-accent-foreground hover:bg-accent/90 sm:h-9">
+                <Button asChild variant="outline" className="h-11 gap-2 px-3 sm:h-9">
                   <Link href="/">
                     <Plus className="size-4" />
                     <span className="hidden sm:inline">{t('newConversation')}</span>
@@ -559,7 +626,7 @@ function HistoryPageContent() {
                 id="history-conversations"
                 className={cn(
                   styles.queue,
-                  'relative z-10 min-w-0 w-full shrink-0 flex-col overflow-hidden border-border @min-[44rem]:w-80 @min-[44rem]:border-r',
+                  'relative z-10 min-w-0 w-full shrink-0 flex-col overflow-hidden border-border @min-[44rem]:w-[284px] @min-[44rem]:border-r',
                   showEmptyHistory ? 'hidden' : showConversationDetail ? 'hidden @min-[44rem]:flex' : 'flex',
                 )}
               >
@@ -675,6 +742,7 @@ function HistoryPageContent() {
                               <div key={group} className={styles.dateGroup}>
                                 <div className={styles.groupHeading}>
                                   <span suppressHydrationWarning>{group}</span>
+                                  <span className={styles.groupCount}>{convs.length}</span>
                                 </div>
                                 <div className="space-y-1">
                                   {convs.map((conversation) => (
@@ -750,7 +818,10 @@ function HistoryPageContent() {
                               <div className={cn(styles.detailMeta, 'tabular-nums')}>
                                 {selectedConversation && (
                                   <>
-                                    <span>{t('messageCount', { count: selectedConversation.message_count })}</span>
+                                    <span>
+                                      <MessageSquare aria-hidden="true" />
+                                      {t('messageCount', { count: selectedConversation.message_count })}
+                                    </span>
                                     <span suppressHydrationWarning>
                                       {formatDate(selectedConversation.created_at, locale)}
                                     </span>
@@ -784,6 +855,19 @@ function HistoryPageContent() {
                                   </IconButton>
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent align="end" className={styles.menu}>
+                                  <DropdownMenuItem
+                                    onSelect={() => {
+                                      setRenameConversation({
+                                        id: selectedConversationId,
+                                        title: selectedConversation?.title,
+                                      })
+                                      setRenameTitle(selectedConversation?.title ?? '')
+                                      setRenameError(null)
+                                    }}
+                                  >
+                                    <Pencil className="size-4" />
+                                    重命名
+                                  </DropdownMenuItem>
                                   <DropdownMenuItem onSelect={handleEvaluateConversation} aria-label="进行对话分析评测">
                                     <BarChart3 className="size-4" />
                                     分析评测
@@ -806,15 +890,13 @@ function HistoryPageContent() {
                     </div>
 
                     {messagesQuery.isError && !isReadingMessages && (
-                      <div
-                        role="alert"
-                        className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3 text-sm text-destructive"
-                      >
-                        <p>{formatApiError(messagesQuery.error, t('loadConversationMessagesFailed'))}</p>
-                        <Button variant="outline" onClick={retryMessages}>
-                          重试
-                        </Button>
-                      </div>
+                      <WorkspaceNotice
+                        placement="floating"
+                        error={messagesQuery.error}
+                        fallbackMessage={t('loadConversationMessagesFailed')}
+                        retry={retryMessages}
+                        retryLabel="重试"
+                      />
                     )}
                     {messagesQuery.isPaused ||
                     isNavigating ||
@@ -933,6 +1015,55 @@ function HistoryPageContent() {
             </div>
           </section>
         </div>
+        <Dialog
+          open={renameConversation !== null}
+          onOpenChange={(open) => {
+            if (!open && !isRenaming) setRenameConversation(null)
+          }}
+        >
+          <DialogContent
+            showCloseButton={!isRenaming}
+            className="max-h-[calc(100dvh-2rem)] gap-0 overflow-hidden p-0 sm:max-w-md"
+          >
+            <DialogHeader className="shrink-0 border-b border-border px-6 py-5">
+              <DialogTitle className="text-base font-medium">重命名对话</DialogTitle>
+              <DialogDescription className="sr-only">修改当前对话在历史记录中的标题。</DialogDescription>
+            </DialogHeader>
+            <form
+              id="history-rename-form"
+              className="min-h-0 overflow-y-auto px-6 py-5"
+              onSubmit={(event) => {
+                event.preventDefault()
+                void handleRenameConversation()
+              }}
+            >
+              <fieldset disabled={isRenaming} className="space-y-2">
+                <Label htmlFor="history-conversation-title">对话标题</Label>
+                <Input
+                  id="history-conversation-title"
+                  value={renameTitle}
+                  onChange={(event) => setRenameTitle(event.target.value)}
+                  required
+                  aria-invalid={renameError !== null}
+                  aria-describedby={renameError === null ? undefined : 'history-rename-error'}
+                />
+                {renameError !== null && (
+                  <p id="history-rename-error" role="alert" className="text-sm leading-6 text-destructive">
+                    {renameError}
+                  </p>
+                )}
+              </fieldset>
+            </form>
+            <DialogFooter className="shrink-0 gap-2 border-t border-border px-6 py-4">
+              <Button type="button" variant="outline" disabled={isRenaming} onClick={() => setRenameConversation(null)}>
+                取消
+              </Button>
+              <Button type="submit" form="history-rename-form" disabled={isRenaming || renameTitle.trim() === ''}>
+                {isRenaming ? '保存中…' : '保存'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
         <Dialog open={isOpsOpen} onOpenChange={setIsOpsOpen}>
           <DialogContent className="max-h-[85dvh] overflow-y-auto sm:max-w-xl">
             <DialogHeader>
@@ -972,24 +1103,31 @@ function HistoryMainEmptyState({
     : t('noConversationSelectedDescription').replace('\n', ' ')
 
   return (
-    <section
-      data-history-main-empty="true"
-      className="flex min-h-0 flex-1 items-center justify-center px-6 py-12 text-center"
-    >
-      <div className="mx-auto flex max-w-sm -translate-y-6 flex-col items-center">
-        <ConversationHistory className="mb-5 size-10 text-muted-foreground" />
-        <h2 className="text-xl font-medium leading-7 text-foreground">{title}</h2>
-        <p className="mt-2 text-sm leading-6 text-muted-foreground">{description}</p>
-
-        <div className="mt-6">
-          <Button asChild className="bg-accent text-accent-foreground hover:bg-accent/90">
-            <Link href="/">
-              <Plus className="size-4" />
-              {t('startNewConversation')}
-            </Link>
-          </Button>
-        </div>
-      </div>
+    <section data-history-main-empty="true" className={styles.emptyStage}>
+      <SplitEmptyStudio
+        illustration={<ConversationHistory className="size-10" />}
+        title={title}
+        description={description}
+        actions={
+          <>
+            <Button asChild className="bg-accent text-accent-foreground hover:bg-accent/90">
+              <Link href="/">
+                <Plus className="size-4" />
+                {t('startNewConversation')}
+              </Link>
+            </Button>
+            <Button asChild variant="outline">
+              <Link href="/knowledge">前往知识库</Link>
+            </Button>
+          </>
+        }
+        stepsHeading="问答记录与引用"
+        steps={[
+          { index: '01', title: '回看多轮对话', description: '按时间浏览记录，继续已有问答。' },
+          { index: '02', title: '核对回答引用', description: '从回答下方打开原文，核对来源。' },
+          { index: '03', title: '按需查看追踪', description: '在对话操作菜单中查看检索与生成链路。' },
+        ]}
+      />
     </section>
   )
 }
@@ -1068,7 +1206,7 @@ function ConversationItem({
   const t = useTranslations('History')
 
   return (
-    <div aria-busy={isDeleting} className="group relative">
+    <div aria-busy={isDeleting} className={cn('group relative', showDeleteConfirm && styles.confirmationRow)}>
       <motion.button
         type="button"
         onClick={onSelect}
@@ -1076,13 +1214,11 @@ function ConversationItem({
         className={cn(
           styles.conversationButton,
           'text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset',
-          showDeleteConfirm && 'pr-24',
         )}
       >
         <span title={conversation.title ?? t('untitledConversation')} className={styles.conversationTitle}>
           {conversation.title ?? t('untitledConversation')}
         </span>
-        <p className={styles.conversationPreview}>{conversation.last_message ?? t('noMessage')}</p>
         <div className={styles.conversationMeta}>
           <time
             suppressHydrationWarning
@@ -1101,6 +1237,7 @@ function ConversationItem({
       <div
         className={cn(
           styles.rowActions,
+          showDeleteConfirm && styles.confirmationActions,
           'transition-opacity motion-reduce:transition-none',
           showDeleteConfirm
             ? 'opacity-100'
@@ -1109,11 +1246,11 @@ function ConversationItem({
       >
         {showDeleteConfirm ? (
           <div className="flex items-center gap-1">
-            <IconButton
-              label={t('confirmDeleteConversation')}
+            <Button
+              aria-label={t('confirmDeleteConversation')}
               disabled={isDeleting}
               variant="ghost"
-              className="size-11 text-destructive hover:bg-destructive/10 hover:text-destructive md:size-8"
+              className="h-11 px-3 text-destructive hover:bg-destructive/10 hover:text-destructive md:h-8 md:px-2"
               onClick={(e) => {
                 e.stopPropagation()
                 onConfirmDelete()
@@ -1124,19 +1261,21 @@ function ConversationItem({
               ) : (
                 <Trash2 className="size-4" />
               )}
-            </IconButton>
-            <IconButton
-              label={t('cancelDelete')}
+              {t('confirmDeleteConversation')}
+            </Button>
+            <Button
+              aria-label={t('cancelDelete')}
               disabled={isDeleting}
               variant="ghost"
-              className="size-11 text-muted-foreground md:size-8"
+              className="h-11 px-3 text-muted-foreground md:h-8 md:px-2"
               onClick={(e) => {
                 e.stopPropagation()
                 onCancelDelete()
               }}
             >
               <X className="size-4" />
-            </IconButton>
+              {t('cancelDelete')}
+            </Button>
           </div>
         ) : (
           <div className="flex items-center gap-1">

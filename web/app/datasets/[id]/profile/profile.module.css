@@ -24,15 +24,14 @@
 .metrics {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 12px;
+  gap: 0;
   margin: 20px 0 4px;
+  border-block: 1px solid hsl(var(--border));
+  padding: 16px 0;
 }
 .metrics > div {
   min-width: 0;
-  border: 1px solid hsl(var(--border));
-  border-radius: 10px;
-  padding: 14px;
-  background: hsl(var(--card));
+  padding: 0 18px;
 }
 .metrics dt {
   color: hsl(var(--muted-foreground));
@@ -45,7 +44,7 @@
   gap: 5px;
   margin-top: 8px;
   font-size: 24px;
-  font-weight: 600;
+  font-weight: 550;
   font-variant-numeric: tabular-nums;
   line-height: 32px;
   white-space: nowrap;
@@ -60,26 +59,29 @@
   width: fit-content;
   max-width: 100%;
   height: auto;
-  gap: 4px;
+  gap: 24px;
   margin: 20px 0;
   overflow-x: auto;
-  border: 1px solid hsl(var(--border));
-  border-radius: 9px;
-  padding: 4px;
-  background: hsl(var(--muted) / 0.5);
+  border-bottom: 1px solid hsl(var(--border));
+  border-radius: 0;
+  padding: 0;
+  background: transparent;
 }
 .segmentedTabs > button {
-  min-height: 32px;
+  min-height: 36px;
   flex-shrink: 0;
-  border-radius: 6px;
-  padding: 0 14px;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  padding: 0;
   color: hsl(var(--muted-foreground));
   font-size: 13px;
 }
 .segmentedTabs > button[data-state='active'] {
-  background: hsl(var(--card));
+  border-bottom-color: hsl(var(--foreground));
+  background: transparent;
   color: hsl(var(--foreground));
-  box-shadow: 0 1px 3px hsl(var(--foreground) / 0.06);
+  font-weight: 500;
+  box-shadow: none;
 }
 .charts {
   display: grid;
@@ -89,26 +91,42 @@
 }
 .chartPanel {
   min-width: 0;
-  border: 1px solid hsl(var(--border));
-  border-radius: 12px;
+  border-bottom: 1px solid hsl(var(--border));
+  border-radius: 0;
   padding: 18px;
-  background: hsl(var(--card));
+  background: transparent;
   box-shadow: none;
 }
 .chartEmpty {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-  min-height: 220px;
-  height: 220px;
-  border: 0;
-  border-radius: 8px;
-  padding: 16px;
-  background: hsl(var(--background));
+  padding: 12px 0;
   color: hsl(var(--muted-foreground));
   font-size: 13px;
+  line-height: 22px;
+}
+.distributionEmpty {
+  border-bottom: 1px solid hsl(var(--border));
+  padding: 18px;
+}
+.distributionEmpty h2 {
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 24px;
+}
+.distributionEmpty p {
+  margin-top: 8px;
+  color: hsl(var(--muted-foreground));
+  font-size: 13px;
+  line-height: 22px;
+}
+.distributionEmpty ul {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 8px 20px;
+  margin-top: 20px;
+  border-top: 1px solid hsl(var(--border));
+  padding-top: 16px;
+  font-size: 13px;
+  line-height: 22px;
 }
 .historyActions {
   display: flex;
@@ -123,18 +141,16 @@
   box-shadow: none;
 }
 .scanTable {
-  border: 1px solid hsl(var(--border));
-  border-radius: 10px;
+  border: 0;
+  border-radius: 0;
 }
 .scanTable > table {
   min-width: 680px;
 }
 .historyComparison {
   margin-top: 24px;
-  border: 1px solid hsl(var(--border));
-  border-radius: 12px;
-  padding: 18px;
-  background: hsl(var(--card));
+  border-top: 1px solid hsl(var(--border));
+  padding: 18px 0;
 }
 @media (max-width: 1180px) {
   .metrics {

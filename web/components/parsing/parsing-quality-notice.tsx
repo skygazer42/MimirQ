@@ -17,7 +17,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
-function getQualityGateGrade(value: unknown): 'pass' | 'warn' | 'fail' | null {
+export function getQualityGateGrade(value: unknown): 'pass' | 'warn' | 'fail' | null {
   if (!isRecord(value)) return null
   const grade = value.grade
   return grade === 'pass' || grade === 'warn' || grade === 'fail' ? grade : null
@@ -108,7 +108,7 @@ export function ParsingQualityNotice({
   return (
     <details className={cn(styles.quality, qualityGrade === 'fail' && styles.qualityFail)}>
       <summary>
-        <AlertCircle className="size-3.5 shrink-0" />
+        <span className={styles.qualityIcon} aria-hidden="true"><AlertCircle className="size-3.5" /></span>
         <span>
           {qualityGrade === 'fail'
             ? '解析质量未通过检查'

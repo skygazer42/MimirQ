@@ -91,7 +91,7 @@ test('已完成但尚未保存有效结果时仍禁止导出，刷新后可进�
   await expect(page.getByRole('heading', { name: '最近有效扫描', exact: true })).toBeVisible()
 })
 
-test('保留更早有效扫描，零命中不等于全部通过，空图使用一致占位', async ({ page }, testInfo) => {
+test('保留更早有效扫描，零命中不等于全部通过，分布空态集中说明', async ({ page }, testInfo) => {
   const state = await emptyProfile(page)
   state.profile.total_documents = 1
   state.profile.findings = Array.from({ length: 14 }, (_, index) => ({
@@ -133,9 +133,35 @@ test('保留更早有效扫描，零命中不等于全部通过，空图使用�
   await page.screenshot({ path: testInfo.outputPath('ready-overview.png'), animations: 'disabled' })
   await page.getByRole('tab', { name: '分布分析', exact: true }).click()
   await expect(page.getByRole('tablist', { name: '分布分析分类' })).toBeVisible()
-  await expect(page.getByText('暂无可展示的分布数据', { exact: true })).toHaveCount(8)
+  for (const [category, count] of [
+    ['文档分布', 8],
+    ['切片质量', 4],
+    ['解析与风险', 5],
+  ] as const) {
+    await page.getByRole('tab', { name: category, exact: true }).click()
+    await expect(page.getByRole('heading', { name: '当前分类暂无分布统计', exact: true })).toHaveCount(1)
+    await expect(page.getByText('当前画像记录 1 篇文档，本分类的分布计数均为空或 0。', { exact: true })).toBeVisible()
+    await expect(page.getByText('最近扫描：失败', { exact: true })).toBeVisible()
+    await expect(page.getByRole('list', { name: '分布项目', exact: true }).getByRole('listitem')).toHaveCount(count)
+    await expect(page.getByText('暂无可展示的分布数据', { exact: true })).toHaveCount(0)
+  }
+  await page.getByRole('tab', { name: '文档分布', exact: true }).click()
   await expect(page.locator('.recharts-cartesian-axis')).toHaveCount(0)
   await page.screenshot({ path: testInfo.outputPath('ready-distribution.png'), animations: 'disabled' })
+})
+
+test('部分分布已有计数时保留真实图表和其他分类', async ({ page }, testInfo) => {
+  const state = await emptyProfile(page)
+  state.profile.total_documents = 1
+  state.profile.by_status = { completed: 1 }
+  state.scanRuns = [makeProfileScan(state.profile)]
+  await openProfile(page)
+  await page.getByRole('tab', { name: '分布分析', exact: true }).click()
+  await expect(page.getByRole('heading', { name: '当前分类暂无分布统计', exact: true })).toHaveCount(0)
+  await expect(page.getByText('状态分布', { exact: true })).toBeVisible()
+  await expect(page.getByText('格式分布', { exact: true })).toBeVisible()
+  await expect(page.locator('.recharts-wrapper')).toHaveCount(1)
+  await page.screenshot({ path: testInfo.outputPath('partial-distribution.png'), animations: 'disabled' })
 })
 
 test('导出入口统一，HTML 保持脱敏且不冒充固定历史快照', async ({ page }) => {

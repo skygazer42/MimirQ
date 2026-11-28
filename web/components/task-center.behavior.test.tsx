@@ -139,6 +139,57 @@ describe('TaskCenter auth and polling gates', () => {
     vi.useRealTimers()
     document.body.innerHTML = ''
     vi.clearAllMocks()
+    vi.unstubAllGlobals()
+  })
+
+  it.each(['composer', 'footer', 'notice'])('docks above a mounted %s and follows its height', async (surface) => {
+    routeState.pathname = '/'
+    documentApiMock.list.mockResolvedValue({
+      items: [{ id: 'active-task', filename: 'active.pdf', status: 'processing' }],
+    })
+    let reposition!: () => void
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        constructor(callback: ResizeObserverCallback) {
+          reposition = () => callback([], this)
+        }
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+      },
+    )
+    const anchor = document.createElement(surface === 'footer' ? 'footer' : 'div')
+    if (surface === 'notice') anchor.setAttribute('data-workspace-notice-stack', '')
+    if (surface === 'composer') {
+      const textarea = document.createElement('textarea')
+      textarea.id = 'chat-composer'
+      anchor.appendChild(textarea)
+    }
+    let top = window.innerHeight - 200
+    const bounds = vi
+      .spyOn(anchor, 'getBoundingClientRect')
+      .mockImplementation(() => new DOMRect(0, top, window.innerWidth, window.innerHeight - top - 16))
+    if (surface !== 'composer') document.body.appendChild(anchor)
+    const { container, root } = renderTaskCenter()
+    await act(async () => {
+      await vi.waitFor(() => expect(container.querySelector('[aria-label="title"]')).not.toBeNull())
+    })
+    const dock = container.firstElementChild as HTMLElement
+    if (surface === 'composer') document.body.appendChild(anchor)
+    try {
+      await vi.waitFor(() => expect(dock.style.getPropertyValue('--task-center-bottom')).toBe('216px'))
+      top -= 60
+      act(() => reposition())
+      expect(dock.style.getPropertyValue('--task-center-bottom')).toBe('276px')
+      bounds.mockReturnValue(new DOMRect())
+      act(() => reposition())
+      expect(dock.style.getPropertyValue('--task-center-bottom')).toBe('16px')
+    } finally {
+      act(() => root.unmount())
+      bounds.mockRestore()
+      anchor.remove()
+    }
   })
 
   it('does not request tasks for jwt mode without a token', async () => {

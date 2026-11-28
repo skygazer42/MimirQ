@@ -1,19 +1,16 @@
 .root {
   position: fixed;
   right: calc(1rem + env(safe-area-inset-right, 0px));
-  bottom: calc(1rem + env(safe-area-inset-bottom, 0px));
+  bottom: calc(var(--task-center-bottom, 1rem) + env(safe-area-inset-bottom, 0px));
   z-index: 40;
   display: flex;
   flex-direction: column;
   align-items: flex-end;
 }
 
-/* Occupied only while task controls are mounted; keep footer actions beside them. */
-:global(body):has(.root) :global([data-task-center-dock]) {
-  min-height: max(var(--task-center-dock-min-height, 0px), calc(4.5rem + env(safe-area-inset-bottom, 0px)));
-  padding-inline-end: calc(5rem + env(safe-area-inset-right, 0px));
-}
-
 .panel {
+  display: flex;
+  flex-direction: column;
   width: min(26rem, calc(100vw - 2rem - env(safe-area-inset-right, 0px)));
+  max-height: calc(100dvh - var(--task-center-bottom, 1rem) - env(safe-area-inset-bottom, 0px) - 5rem);
 }

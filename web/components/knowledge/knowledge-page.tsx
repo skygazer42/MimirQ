@@ -22,7 +22,12 @@ import {
   KnowledgeBase,
   Loader2,
   MoreHorizontal,
+  PanelLeftClose,
+  PanelLeftOpen,
+  PanelRightClose,
+  PanelRightOpen,
   RefreshCw,
+  Search,
   X,
 } from '@/components/icons'
 import { AppFrame } from '@/components/app-frame'
@@ -46,18 +51,19 @@ import { RetrievePreviewPanel } from '@/components/rag/retrieve-preview-panel'
 import { Button } from '@/components/ui/button'
 import { IconButton } from '@/components/ui/icon-button'
 import { SearchInput } from '@/components/ui/search-input'
-import { WorkspaceNotice } from '@/components/ui/operational-workspace'
+import { WorkspaceNotice, WorkspaceNoticeStack } from '@/components/ui/operational-workspace'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { useConnectorRuns } from '@/hooks/use-connector-runs'
 import { useDatasets } from '@/hooks/use-datasets'
 import { useDocuments } from '@/hooks/use-documents'
-import { useIsMobile } from '@/hooks/use-media-query'
+import { useIsMobile, useMediaQuery } from '@/hooks/use-media-query'
 import { getUploadReceiptKey } from '@/lib/api/document-helpers'
 import { documentApi } from '@/lib/api/documents'
 import { formatApiError } from '@/lib/api-errors'
 import { getAuthSessionKey, subscribeAuthSession } from '@/lib/auth-storage'
 import { queryKeys } from '@/lib/query-keys'
+import { getDatasetDomainTone } from '@/lib/dataset-domain-tone'
 import { cn, detachPromise } from '@/lib/utils'
 import { useDocumentView } from '@/store/document-view'
 import type { DocumentBatchUploadFailure } from '@/types/backend'
@@ -89,12 +95,26 @@ export default function KnowledgePage() {
   const searchParams = useSearchParams()
   const router = useRouter()
   const isMobile = useIsMobile()
+  const hasScopeRailSpace = useMediaQuery('(min-width: 1080px)')
   const queryClient = useQueryClient()
   const sessionKey = useSyncExternalStore(subscribeAuthSession, getAuthSessionKey, getAuthSessionKey)
   const [uploadNotice, setUploadNotice] = useState<UploadNotice | null>(null)
   const latestUpload = useRef<symbol | null>(null)
   const importActionsRef = useRef<KnowledgeWorkbenchActionsHandle>(null)
-  const { openDocument } = useDocumentView()
+  const { openDocument, isOpen: documentViewerOpen } = useDocumentView()
+  const [scopeRailOpen, setScopeRailOpen] = useState(true)
+  const hasInspectorSpace = useMediaQuery('(min-width: 1280px)')
+  const [inspectorRailOpen, setInspectorRailOpen] = useState(true)
+  const [inspectorSheetOpen, setInspectorSheetOpen] = useState(false)
+  useEffect(() => {
+    setInspectorRailOpen(localStorage.getItem('ragvia.knowledge.inspectorOpen') !== 'false')
+  }, [])
+  const changeInspectorRail = (open: boolean) => {
+    setInspectorRailOpen(open)
+    localStorage.setItem('ragvia.knowledge.inspectorOpen', String(open))
+  }
+  const canShowScopeRail = hasScopeRailSpace && !documentViewerOpen
+  const showScopeRail = canShowScopeRail && scopeRailOpen
   const queryString = searchParams.toString()
   const [query, setQuery] = useState(() => parseKnowledgeQueryState(new URLSearchParams(queryString)))
   const queryRef = useRef(query)
@@ -221,6 +241,9 @@ export default function KnowledgePage() {
   const totalChunks = !folderPath && statusFilter === 'all' ? stats?.total_chunks : undefined
   const documentCount = documentFolder === undefined ? stats?.total : isPlaceholderData ? undefined : total
   const pageCount = Math.max(1, Math.ceil(total / pageSize))
+  const inspectorRailVisible =
+    hasInspectorSpace && isDocumentsTab && !documentViewerOpen && documents.length > 0 && inspectorRailOpen
+  const rightInspectorVisible = inspectorRailVisible || (!hasInspectorSpace && inspectorSheetOpen)
 
   useEffect(() => {
     if (isLoading || isPlaceholderData || error !== null) return
@@ -257,15 +280,11 @@ export default function KnowledgePage() {
     [updateQuery],
   )
 
-  const handleFileUpload = useCallback(
-    async (event: ReactChangeEvent<HTMLInputElement>) => {
-      const input = event.currentTarget
-      if (input.files === null || input.files.length === 0) return
-      const files = Array.from(input.files)
+  const handleFilesUpload = useCallback(
+    async (files: File[]) => {
       const uploadSessionKey = getAuthSessionKey()
       const upload = Symbol()
       latestUpload.current = upload
-      input.value = ''
       setUploadNotice(null)
 
       try {
@@ -300,6 +319,14 @@ export default function KnowledgePage() {
     },
     [queryClient, t, uploadDocuments],
   )
+
+  const handleFileUpload = (event: ReactChangeEvent<HTMLInputElement>) => {
+    const input = event.currentTarget
+    if (input.files === null || input.files.length === 0) return
+    const files = Array.from(input.files)
+    input.value = ''
+    detachPromise(handleFilesUpload(files))
+  }
 
   const selectedSet = useMemo(() => new Set(selectedDocIds), [selectedDocIds])
   const selectedDocuments = documents.filter((doc) => selectedSet.has(doc.id))
@@ -440,7 +467,9 @@ export default function KnowledgePage() {
   }
   const hasAdvancedFilters = lifecycleFilter !== 'active' || Boolean(folderPath)
   const hasActiveFilters = hasAdvancedFilters || statusFilter !== 'all' || searchTerm !== ''
-  const showImportIntro = activeTab === 'documents' && !isLoading && !error && total === 0 && !hasActiveFilters
+  const showImportIntro =
+    isDocumentsTab && !isLoading && !isPlaceholderData && !error && total === 0 && !hasActiveFilters
+  const showDatasetScope = !showImportIntro || datasets.length > 0 || selectedDatasetId !== undefined
   const clearFilters = () =>
     updateQuery({ docFilter: '', statusFilter: 'all', lifecycleFilter: 'active', folderPath: null })
 
@@ -466,36 +495,67 @@ export default function KnowledgePage() {
 
   return (
     <AppFrame
+      mainClassName="min-w-0"
       navigationVariant={activeTab === 'retrieval' && !isMobile ? 'rail' : 'default'}
       rightPanel={<DocumentViewerPanel />}
       withDocumentViewerPadding={activeTab !== 'retrieval'}
     >
-      <div data-knowledge-page-root="true" data-knowledge-table-shell="true" className={styles.shell}>
-        <header className={styles.pageHeader} data-testid="knowledge-page-toolbar">
+      <div
+        data-knowledge-page-root="true"
+        data-knowledge-table-shell="true"
+        data-viewer-open={documentViewerOpen}
+        className={styles.shell}
+      >
+        <header className={styles.pageHeader} data-testid="knowledge-page-toolbar" data-import-intro={showImportIntro}>
           <div className={styles.pageHeading} data-knowledge-title-mark="true">
-            <KnowledgeBase appearance="color" className="size-6" aria-hidden="true" />
-            <h1>{t('header.title')}</h1>
-          </div>
-          <div className={styles.tabs} role="tablist" aria-label="知识库视图" onKeyDown={handleTabsKeyDown}>
-            {TABS.map((tab) => (
-              <button
-                key={tab}
-                id={'knowledge-tab-' + tab}
-                type="button"
-                role="tab"
-                aria-selected={activeTab === tab}
-                aria-controls={'knowledge-panel-' + tab}
-                tabIndex={activeTab === tab ? 0 : -1}
-                className={styles.tab}
-                onClick={() => updateQuery({ activeTab: tab })}
+            {showImportIntro && showDatasetScope && !showScopeRail ? (
+              <Button
+                variant="ghost"
+                size="icon"
+                className={cn(styles.scopeRailCollapse, styles.headerDirectoryToggle)}
+                aria-label="目录"
+                title="展开数据集与目录"
+                aria-expanded={canShowScopeRail ? showScopeRail : scopeOpen}
+                onClick={() => (canShowScopeRail ? setScopeRailOpen(true) : setScopeOpen(true))}
               >
-                {t('tabs.' + tab + '.label')}
-                {tab === 'documents' && typeof documentCount === 'number' && !showImportIntro ? (
-                  <span className={styles.tabCount}>{documentCount}</span>
-                ) : null}
-              </button>
-            ))}
+                <PanelLeftOpen className="size-4" />
+              </Button>
+            ) : null}
+            <KnowledgeBase className="size-4.5" aria-hidden="true" />
+            <h1>{t('header.title')}</h1>
+            {showDatasetScope ? (
+              <>
+                <span className={styles.breadcrumbSeparator} aria-hidden="true">
+                  /
+                </span>
+                <span className={styles.currentDataset} title={selectedDatasetLabel ?? scopeT('dataset.all')} aria-current="true">
+                  {selectedDatasetLabel ?? scopeT('dataset.all')}
+                </span>
+              </>
+            ) : null}
           </div>
+          {!showImportIntro ? (
+            <div className={styles.tabs} role="tablist" aria-label="知识库视图" onKeyDown={handleTabsKeyDown}>
+              {TABS.map((tab) => (
+                <button
+                  key={tab}
+                  id={'knowledge-tab-' + tab}
+                  type="button"
+                  role="tab"
+                  aria-selected={activeTab === tab}
+                  aria-controls={'knowledge-panel-' + tab}
+                  tabIndex={activeTab === tab ? 0 : -1}
+                  className={styles.tab}
+                  onClick={() => updateQuery({ activeTab: tab })}
+                >
+                  {t('tabs.' + tab + '.label')}
+                  {tab === 'documents' && typeof documentCount === 'number' ? (
+                    <span className={styles.tabCount}>{documentCount}</span>
+                  ) : null}
+                </button>
+              ))}
+            </div>
+          ) : null}
           <div className={styles.headerActions}>
             <Button
               variant="ghost"
@@ -503,17 +563,29 @@ export default function KnowledgePage() {
               onClick={() => setTasksOpen(true)}
               aria-label="任务历史"
               title="任务历史"
+              aria-expanded={tasksOpen}
             >
               {activeTasksCount ? (
                 <Loader2 className="size-4 animate-spin motion-reduce:animate-none" />
               ) : (
                 <History className="size-4" />
               )}
-              {activeTasksCount ? <span>{activeTasksCount}</span> : <span className={styles.taskLabel}>任务</span>}
+              {activeTasksCount ? <span>{activeTasksCount}</span> : <span>任务</span>}
             </Button>
+            {showImportIntro ? (
+              <Button
+                variant="outline"
+                className={styles.retrievalHeaderButton}
+                onClick={() => updateQuery({ activeTab: 'retrieval' })}
+              >
+                <Search className="size-3.5" aria-hidden="true" />
+                <span>{t('tabs.retrieval.label')}</span>
+              </Button>
+            ) : null}
             <KnowledgeWorkbenchActions
               actionsRef={importActionsRef}
               className={styles.importButton}
+              hideTrigger={showImportIntro}
               open={importOpen}
               onOpenChange={setImportOpen}
               datasets={datasets}
@@ -539,115 +611,140 @@ export default function KnowledgePage() {
           </div>
         </header>
 
-        {uploadNotice?.sessionKey === sessionKey && (
-          <WorkspaceNotice>
-            <div className="flex items-start justify-between gap-3">
-              <p>{uploadNotice.message}</p>
-              <IconButton label={t('toasts.dismissUploadResult')} variant="ghost" onClick={() => setUploadNotice(null)}>
-                <X className="size-4" aria-hidden="true" />
-              </IconButton>
-            </div>
-            {uploadNotice.interruption !== undefined && <p className="wrap-anywhere">{uploadNotice.interruption}</p>}
-            {uploadNotice.failures.length > 0 && (
-              <details>
-                <summary className="cursor-pointer">{t('toasts.uploadFailureDetails')}</summary>
-                <ol className="max-h-48 list-decimal overflow-y-auto pl-5">
-                  {uploadNotice.failures.map((failure, index) => (
-                    <li key={index} className="wrap-anywhere">
-                      {getUploadReceiptKey(failure)} · {failure.error}
-                    </li>
-                  ))}
-                </ol>
-              </details>
-            )}
-          </WorkspaceNotice>
-        )}
-        {datasetsError !== null ? (
-          <WorkspaceNotice
-            retry={() => void refreshDatasets()}
-            retryLabel="重新读取数据集目录"
-            pending={datasetsFetching}
-          >
-            {formatApiError(datasetsError, '数据集目录读取失败，当前选择已保留')}
-          </WorkspaceNotice>
+        {uploadNotice?.sessionKey === sessionKey || datasetsError !== null ? (
+          <WorkspaceNoticeStack ariaLabel="知识库状态提示">
+            {uploadNotice?.sessionKey === sessionKey ? (
+              <WorkspaceNotice tone="warning">
+                <div className="flex items-start justify-between gap-3">
+                  <p>{uploadNotice.message}</p>
+                  <IconButton label={t('toasts.dismissUploadResult')} variant="ghost" onClick={() => setUploadNotice(null)}>
+                    <X className="size-4" aria-hidden="true" />
+                  </IconButton>
+                </div>
+                {uploadNotice.interruption !== undefined && <p className="wrap-anywhere">{uploadNotice.interruption}</p>}
+                {uploadNotice.failures.length > 0 && (
+                  <details>
+                    <summary className="cursor-pointer">{t('toasts.uploadFailureDetails')}</summary>
+                    <ol className="max-h-48 list-decimal overflow-y-auto pl-5">
+                      {uploadNotice.failures.map((failure, index) => (
+                        <li key={index} className="wrap-anywhere">
+                          {getUploadReceiptKey(failure)} · {failure.error}
+                        </li>
+                      ))}
+                    </ol>
+                  </details>
+                )}
+              </WorkspaceNotice>
+            ) : null}
+            {datasetsError !== null ? (
+              <WorkspaceNotice
+                tone="warning"
+                title="数据集目录读取失败，当前选择已保留"
+                error={datasetsError}
+                fallbackMessage="数据集目录读取失败，当前选择已保留"
+                retry={() => void refreshDatasets()}
+                retryLabel="重新读取数据集目录"
+                pending={datasetsFetching}
+              />
+            ) : null}
+          </WorkspaceNoticeStack>
         ) : null}
         {datasetsFetching && !datasetsLoading ? (
           <p role="status" className="text-sm text-muted-foreground">
             正在更新数据集目录，保留当前选择。
           </p>
         ) : null}
-        <div
-          className={cn(styles.toolbar, (showImportIntro || activeTab === 'retrieval') && styles.introToolbar)}
-          aria-label="文档筛选与排序"
-        >
-          {datasetSelect}
-          {activeTab === 'retrieval' && stats ? (
-            <p className={styles.scopeSummary}>
-              {stats.total} 份文档<span>·</span>
-              {stats.total_chunks} 个分片
-            </p>
-          ) : null}
-          {activeTab === 'documents' && !showImportIntro ? (
-            <div className={styles.filters} aria-label="处理状态">
-              {STATUS_FILTERS.map((status) => (
+        {!showImportIntro ? (
+          <div className={styles.toolbar} aria-label="文档筛选与排序">
+            {activeTab === 'documents' ? (
+              !showScopeRail ? (
                 <Button
-                  key={status}
                   variant="ghost"
-                  className={styles.filter}
-                  disabled={batchWorking}
-                  aria-pressed={statusFilter === status}
-                  onClick={() => updateQuery({ statusFilter: status })}
+                  className={styles.directoryToggle}
+                  aria-label="目录"
+                  title="展开数据集与目录"
+                  aria-expanded={canShowScopeRail ? showScopeRail : scopeOpen}
+                  onClick={() => (canShowScopeRail ? setScopeRailOpen(true) : setScopeOpen(true))}
                 >
-                  {scopeT('status.' + status + '.label')}
-                  {statusCounts ? <span className={styles.filterCount}>{statusCounts[status]}</span> : null}
+                  <PanelLeftOpen className="size-4" />
+                  <span>目录</span>
                 </Button>
-              ))}
-            </div>
-          ) : null}
+              ) : null
+            ) : (
+              datasetSelect
+            )}
+            {activeTab === 'retrieval' && stats ? (
+              <p className={styles.scopeSummary}>
+                {stats.total} 份文档<span>·</span>
+                {stats.total_chunks} 个分片
+              </p>
+            ) : null}
+            {activeTab === 'documents' ? (
+              <div className={styles.filters} aria-label="处理状态">
+                {STATUS_FILTERS.map((status) => (
+                  <Button
+                    key={status}
+                    variant="ghost"
+                    className={styles.filter}
+                    disabled={batchWorking}
+                    aria-pressed={statusFilter === status}
+                    onClick={() => updateQuery({ statusFilter: status })}
+                  >
+                    {status !== 'all' ? (
+                      <span className={styles.filterDot} data-state={status} aria-hidden="true" />
+                    ) : null}
+                    {status === 'quarantined' ? documentsT('status.quarantined') : scopeT('status.' + status + '.label')}
+                    {statusCounts ? <span className={styles.filterCount}>{statusCounts[status]}</span> : null}
+                  </Button>
+                ))}
+                {hasActiveFilters ? (
+                  <Button variant="ghost" className={styles.resetFilters} onClick={clearFilters} disabled={batchWorking}>
+                    重置筛选
+                  </Button>
+                ) : null}
+              </div>
+            ) : null}
           <div className={styles.toolbarEnd}>
             {activeTab === 'documents' ? (
               <>
-                {!showImportIntro ? (
-                  <>
-                    <SearchInput
-                      aria-label="搜索文档名称"
-                      placeholder="搜索文档名称"
-                      value={docFilter}
-                      onValueChange={(value) => updateQuery({ docFilter: value })}
-                      disabled={batchWorking}
-                      containerClassName={styles.search}
-                      inputClassName={styles.searchInput}
-                    />
-                    <Select
-                      value={sortKey + ':' + sortDir}
-                      onValueChange={(value) => {
-                        const [key, direction] = value.split(':')
-                        updateQuery({
-                          sortKey: key as KnowledgeQueryState['sortKey'],
-                          sortDir: direction as KnowledgeQueryState['sortDir'],
-                        })
-                      }}
-                      disabled={batchWorking}
-                    >
-                      <SelectTrigger aria-label="文档排序" className={styles.sort}>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {SORT_OPTIONS.map((option) => (
-                          <SelectItem key={option.value} value={option.value}>
-                            {option.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </>
-                ) : null}
+                <SearchInput
+                  aria-label="搜索文档名称"
+                  placeholder="搜索文档名称"
+                  value={docFilter}
+                  onValueChange={(value) => updateQuery({ docFilter: value })}
+                  disabled={batchWorking}
+                  containerClassName={styles.search}
+                  inputClassName={styles.searchInput}
+                />
+                <Select
+                  value={sortKey + ':' + sortDir}
+                  onValueChange={(value) => {
+                    const [key, direction] = value.split(':')
+                    updateQuery({
+                      sortKey: key as KnowledgeQueryState['sortKey'],
+                      sortDir: direction as KnowledgeQueryState['sortDir'],
+                    })
+                  }}
+                  disabled={batchWorking}
+                >
+                  <SelectTrigger aria-label="文档排序" className={styles.sort}>
+                    排序
+                  </SelectTrigger>
+                  <SelectContent>
+                    {SORT_OPTIONS.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
                 <IconButton
                   label="更多筛选"
                   title="更多筛选"
                   variant="ghost"
-                  className={cn(styles.toolIcon, styles.advancedFilter)}
+                  className={styles.toolIcon}
                   aria-pressed={hasAdvancedFilters}
+                  aria-expanded={scopeOpen}
                   onClick={() => setScopeOpen(true)}
                   disabled={batchWorking}
                 >
@@ -657,7 +754,8 @@ export default function KnowledgePage() {
                   label="文档工具"
                   title="文档工具"
                   variant="ghost"
-                  className={cn(styles.toolIcon, styles.refresh)}
+                  className={styles.toolIcon}
+                  aria-expanded={operationsOpen}
                   onClick={() => setOperationsOpen(true)}
                 >
                   <MoreHorizontal className="size-4" />
@@ -668,14 +766,31 @@ export default function KnowledgePage() {
               label="刷新文档"
               title="刷新文档"
               variant="ghost"
-              className={cn(styles.toolIcon, styles.refresh)}
+              className={styles.toolIcon}
               disabled={isLoading || batchWorking}
               onClick={() => detachPromise(refreshDocuments())}
             >
               <RefreshCw className={cn('size-4', isLoading && 'animate-spin motion-reduce:animate-none')} />
             </IconButton>
+            {isDocumentsTab && documents.length > 0 && !documentViewerOpen ? (
+              <IconButton
+                label={rightInspectorVisible ? '收起文档详情' : '展开文档详情'}
+                title={rightInspectorVisible ? '收起文档详情' : '展开文档详情'}
+                variant="ghost"
+                className={styles.toolIcon}
+                aria-pressed={rightInspectorVisible}
+                onClick={() =>
+                  hasInspectorSpace
+                    ? changeInspectorRail(!inspectorRailOpen)
+                    : setInspectorSheetOpen(!inspectorSheetOpen)
+                }
+              >
+                {rightInspectorVisible ? <PanelRightClose className="size-4" /> : <PanelRightOpen className="size-4" />}
+              </IconButton>
+            ) : null}
           </div>
         </div>
+        ) : null}
 
         {activeTab === 'documents' && hasAdvancedFilters ? (
           <div className={styles.filterSummary}>
@@ -685,18 +800,91 @@ export default function KnowledgePage() {
               </span>
             ) : null}
             {folderPath ? <span title={folderPath}>文件夹：{folderPath}</span> : null}
-            <Button variant="ghost" onClick={clearFilters}>
-              清空筛选
-            </Button>
           </div>
         ) : null}
 
         <div
           className={styles.content}
           id={'knowledge-panel-' + activeTab}
-          role="tabpanel"
-          aria-labelledby={'knowledge-tab-' + activeTab}
+          role={showImportIntro ? undefined : 'tabpanel'}
+          aria-labelledby={showImportIntro ? undefined : 'knowledge-tab-' + activeTab}
         >
+          {isDocumentsTab && showScopeRail && showDatasetScope ? (
+            <aside
+              id="knowledge-scope-rail"
+              className={styles.scopeRail}
+              aria-label="数据集与目录"
+              data-knowledge-scope-rail="true"
+            >
+              <div className={styles.scopeRailHeader}>
+                <h2>数据集与目录</h2>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className={styles.scopeRailCollapse}
+                  aria-label="收起目录"
+                  title="收起目录"
+                  aria-expanded={true}
+                  aria-controls="knowledge-scope-rail"
+                  onClick={() => setScopeRailOpen(false)}
+                >
+                  <PanelLeftClose className="size-4" />
+                </Button>
+              </div>
+              <nav className={styles.datasetList} aria-label="数据集范围">
+                <button
+                  type="button"
+                  className={styles.datasetRow}
+                  data-tone="knowledge"
+                  data-active={selectedDatasetId === undefined}
+                  aria-current={selectedDatasetId === undefined ? 'true' : undefined}
+                  disabled={batchWorking}
+                  onClick={() => handleDatasetScopeChange(DATASET_ALL)}
+                >
+                  <DatasetIcon aria-hidden="true" />
+                  <span>{scopeT('dataset.all')}</span>
+                  {!selectedDatasetId && !hasActiveFilters && typeof documentCount === 'number' ? (
+                    <span className={styles.datasetDocumentCount}>{documentCount}</span>
+                  ) : null}
+                </button>
+                {datasets.map((dataset) => (
+                  <button
+                    key={dataset.id}
+                    type="button"
+                    className={styles.datasetRow}
+                    data-tone={getDatasetDomainTone(dataset)}
+                    title={datasetLabelById[dataset.id]}
+                    data-active={selectedDatasetId === dataset.id}
+                    aria-current={selectedDatasetId === dataset.id ? 'true' : undefined}
+                    disabled={batchWorking}
+                    onClick={() => handleDatasetScopeChange(dataset.id)}
+                  >
+                    <DatasetIcon aria-hidden="true" />
+                    <span>{datasetLabelById[dataset.id]}</span>
+                    <span className={styles.datasetDocumentCount}>
+                      {dataset.ingestion_summary?.total_documents ?? 0}
+                    </span>
+                  </button>
+                ))}
+              </nav>
+              {selectedDatasetId ? (
+                <section
+                  className={styles.folderSection}
+                  aria-label="目录"
+                  data-tone={selectedDataset ? getDatasetDomainTone(selectedDataset) : 'knowledge'}
+                >
+                  <h3>目录</h3>
+                  <DatasetFolderTree
+                    datasetId={selectedDatasetId}
+                    lifecycle={lifecycleFilter}
+                    selectedPath={folderPath}
+                    onSelect={(path) => updateQuery({ folderPath: path })}
+                    showHeader={false}
+                  />
+                </section>
+              ) : null}
+            </aside>
+          ) : null}
           {activeTab === 'documents' ? (
             <KnowledgeDocumentsPanel
               isLoading={isLoading}
@@ -712,6 +900,7 @@ export default function KnowledgePage() {
               hasActiveFilters={hasActiveFilters}
               showImportIntro={showImportIntro}
               onImportSource={(source) => importActionsRef.current?.openImport(source)}
+              onFilesDrop={handleFilesUpload}
               onClearFilters={clearFilters}
               onSwitchToAllDatasets={() => handleDatasetScopeChange(DATASET_ALL)}
               onImport={() => setImportOpen(true)}
@@ -755,6 +944,10 @@ export default function KnowledgePage() {
               onPeek={(id) => openDocument(id, undefined, undefined, { activeTab: 'chunks' })}
               operationsOpen={operationsOpen}
               setOperationsOpen={setOperationsOpen}
+              inspectorRailVisible={inspectorRailVisible}
+              inspectorSheetOpen={!hasInspectorSpace && !documentViewerOpen && inspectorSheetOpen}
+              onInspectorSheetOpenChange={setInspectorSheetOpen}
+              onInspectorRailOpenChange={changeInspectorRail}
             />
           ) : null}
           {activeTab === 'retrieval' ? (
@@ -773,7 +966,7 @@ export default function KnowledgePage() {
         <Sheet open={scopeOpen} onOpenChange={setScopeOpen}>
           <SheetContent className={styles.sheet}>
             <SheetHeader className={styles.sheetHeader}>
-              <SheetTitle>更多筛选</SheetTitle>
+              <SheetTitle>{showImportIntro ? '数据集与目录' : '更多筛选'}</SheetTitle>
               <SheetDescription className="sr-only">按文档生命周期与文件夹筛选</SheetDescription>
             </SheetHeader>
             <div className={styles.operationsBody} data-knowledge-scope-content="true">

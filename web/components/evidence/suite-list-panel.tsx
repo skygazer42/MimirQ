@@ -62,12 +62,12 @@ export function SuiteListPanel({
             tagContent = (
               <div className="mt-2 flex flex-wrap gap-1">
                 {tags.slice(0, 3).map((tag) => (
-                  <Badge key={tag} variant="secondary" className="text-xs font-mono">
+                  <Badge key={tag} variant="secondary" className="text-xs font-normal">
                     {tag}
                   </Badge>
                 ))}
                 {tags.length > 3 ? (
-                  <span className="text-xs font-mono text-muted-foreground">+{tags.length - 3}</span>
+                  <span className="text-xs font-normal text-muted-foreground">+{tags.length - 3}</span>
                 ) : null}
               </div>
             )
@@ -92,13 +92,9 @@ export function SuiteListPanel({
                   ) : null}
                 </div>
                 <div className="flex flex-shrink-0 flex-col items-end gap-1">
-                  <Badge variant="outline" className="font-mono tabular-nums">
-                    {total ?? '统计未提供'}
-                  </Badge>
+                  <span className="text-xs tabular-nums text-muted-foreground">{total ?? '统计未提供'}</span>
                   {approved !== undefined ? (
-                    <Badge variant="soft" className="font-mono tabular-nums">
-                      已审核 {approved}
-                    </Badge>
+                    <span className="text-xs tabular-nums text-muted-foreground">已通过 {approved}</span>
                   ) : null}
                 </div>
               </div>
@@ -122,7 +118,7 @@ export function SuiteListPanel({
     <Panel variant="seamless" className="border-0 bg-transparent p-4">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+          <div className="flex items-center gap-2 text-sm font-medium text-foreground">
             <ShieldCheck className="size-4 text-muted-foreground" aria-hidden="true" />
             证据集
           </div>
@@ -158,7 +154,7 @@ export function SuiteListPanel({
           />
           包含已归档
         </div>
-        <span className="font-mono tabular-nums">{filteredSuites.length}</span>
+        <span className="font-normal tabular-nums">{filteredSuites.length}</span>
       </div>
 
       {suitesError ? <div className="mt-3 text-xs text-destructive text-pretty">{suitesError}</div> : null}

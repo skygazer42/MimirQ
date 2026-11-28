@@ -1,6 +1,18 @@
 import { z } from 'zod'
 
+import type { RegressionRun } from '@/lib/regression-run-schema'
 import { integerSchema, stringRecordSchema } from '@/lib/response-schema'
+
+export const regressionAnswerModeLabels = { rag: '普通 RAG', ontology: '本体问答' }
+
+export function formatRegressionRunAnswerMode({ params }: RegressionRun): string {
+  if (params.answer_mode !== 'ontology') return regressionAnswerModeLabels.rag
+
+  const version = params.ontology_version_number
+  return typeof version === 'number'
+    ? `${regressionAnswerModeLabels.ontology} · v${version}`
+    : regressionAnswerModeLabels.ontology
+}
 
 const countSchema = integerSchema.nonnegative()
 const optionalCountSchema = countSchema.nullable().optional()

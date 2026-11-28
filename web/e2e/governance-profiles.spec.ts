@@ -195,9 +195,13 @@ async function fixture(page: Page) {
 async function openProfiles(page: Page) {
   await page.goto('/data-governance/profiles', { waitUntil: 'domcontentloaded' })
   await expect(page.getByRole('heading', { name: '治理配置', exact: true })).toBeVisible({ timeout: 60_000 })
-  await expect(page.locator('[data-profile-detail] table')).toBeVisible()
+  await expect(page.locator('[data-profile-detail] [data-rule-matrix]')).toBeVisible()
   await expect(page.locator('[data-profile-page]')).toHaveCSS('display', 'flex')
   await page.evaluate(() => document.fonts.ready)
+}
+async function openCleaningPreviewModal(page: Page) {
+  await page.locator('[data-profile-detail]').getByRole('button', { name: '清洗预览', exact: true }).click()
+  await expect(page.getByRole('dialog', { name: '清洗前后对照', exact: true })).toBeVisible()
 }
 async function noOverflow(page: Page) {
   expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(1)
@@ -214,13 +218,17 @@ test('directory selection displays actual resolved rules and previews preserve f
   await expect(detail.getByRole('button', { name: '编辑配置', exact: true })).toHaveCount(0)
   await page.getByRole('button', { name: /自定义配置/ }).click()
   await expect(detail).toContainText('继承自 PDF 文本版')
-  await expect(detail.getByRole('row', { name: /清理噪声行/ })).toContainText('关闭')
-  await expect(detail.getByRole('row', { name: /移除目录行/ })).toContainText('启用')
-  const input = page.getByRole('textbox', { name: '清洗前', exact: true })
+  await expect(detail.locator('[data-rule-state]').filter({ hasText: '清理噪声行' })).toContainText('关闭')
+  await expect(detail.locator('[data-rule-state]').filter({ hasText: '移除目录行' })).toContainText('已启用')
+  await openCleaningPreviewModal(page)
+  const previewDialog = page.getByRole('dialog', { name: '清洗前后对照', exact: true })
+  const input = previewDialog.getByRole('textbox', { name: '清洗前', exact: true })
   await input.fill('重复页眉\n保留这段正文。')
+  await page.keyboard.press('Escape')
   const refetched = page.waitForResponse((response) => response.url().includes(`${customId}/resolved`))
   await page.getByRole('button', { name: '重新加载目录', exact: true }).click()
   await refetched
+  await openCleaningPreviewModal(page)
   await expect(input).toHaveValue('重复页眉\n保留这段正文。')
   state.failPreview = true
   await page.getByRole('button', { name: '运行预览', exact: true }).click()
@@ -326,9 +334,11 @@ test('directory supports search, retry and mobile back focus, while surfaces fol
     .click()
   await page.locator('[data-profile-ref="builtin:html_web"]').click()
   await expect(page.locator('[data-profile-detail] h2')).toHaveText('网页 HTML')
+  await openCleaningPreviewModal(page)
   await expect(page.getByLabel('预览输入格式', { exact: true })).toHaveValue('html')
-  await expect(page.locator('[data-profile-detail] table')).toContainText('移除装饰图片')
-  await expect(page.locator('[data-profile-detail] table')).toContainText('网页导航菜单、网页 Cookie 横幅')
+  await page.keyboard.press('Escape')
+  await expect(page.locator('[data-profile-detail] [data-rule-matrix]')).toContainText('移除装饰图片')
+  await expect(page.locator('[data-profile-detail] [data-rule-matrix]')).toContainText('网页导航菜单、网页 Cookie 横幅')
   state.failList = true
   await page.getByRole('button', { name: '重新加载目录', exact: true }).click()
   await expect(page.locator('[data-profile-directory]').getByRole('alert')).toContainText('目录服务暂不可用', {
@@ -336,7 +346,7 @@ test('directory supports search, retry and mobile back focus, while surfaces fol
   })
   state.failList = false
   await page.getByRole('button', { name: '重试读取', exact: true }).click()
-  await expect(page.locator('[data-profile-detail] table')).toBeVisible()
+  await expect(page.locator('[data-profile-detail] [data-rule-matrix]')).toBeVisible()
   const profilePage = page.locator('[data-profile-page]')
   const before = await profilePage.evaluate((element) => getComputedStyle(element).backgroundColor)
   await page.getByRole('button', { name: '工作空间与外观设置', exact: true }).click()
@@ -360,7 +370,7 @@ test('directory supports search, retry and mobile back focus, while surfaces fol
   await page.evaluate(() => localStorage.setItem('theme', 'dark'))
   await page.reload()
   await expect(page.locator('html')).toHaveClass(/dark/)
-  await expect(page.locator('[data-profile-detail] table')).toBeVisible()
+  await expect(page.locator('[data-profile-detail] [data-rule-matrix]')).toBeVisible()
   await noOverflow(page)
   await page.screenshot({ path: path.join(evidence, 'dark.png') })
 })
@@ -422,6 +432,7 @@ test('parsed sources use original content, automatically preview across template
 }) => {
   const { preview, state } = await documentFixture(page)
   await openProfiles(page)
+  await openCleaningPreviewModal(page)
   const input = page.getByRole('textbox', { name: '清洗前', exact: true })
   await input.fill('手动草稿应保留。')
   await page.getByRole('button', { name: '选择已解析文档', exact: true }).click()
@@ -435,7 +446,9 @@ test('parsed sources use original content, automatically preview across template
   await expect(page.locator('[data-profile-preview-output]')).toContainText('解析完成后的原始正文。')
   await expect(page.locator('[data-preview-source]')).toContainText('解析原文')
   expect(preview.previewRequests.at(-1)?.markdown).not.toContain('已保存的清洗稿')
+  await page.keyboard.press('Escape')
   await page.getByRole('button', { name: /自定义配置/ }).click()
+  await openCleaningPreviewModal(page)
   await expect(page.getByRole('button', { name: '更换预览文档，当前 设备维护手册.pdf', exact: true })).toBeVisible()
   await expect.poll(() => preview.previewRequests.at(-1)?.remove_noise_lines).toBe(false)
   await expect(page.locator('[data-profile-preview-output]')).toContainText('解析完成后的原始正文。')
@@ -454,14 +467,15 @@ test('source list, content and cleaning failures recover in place; late source a
   const { preview, state } = await documentFixture(page)
   state.failList = true
   await openProfiles(page)
+  await openCleaningPreviewModal(page)
   await page.getByRole('button', { name: '选择已解析文档', exact: true }).click()
-  await expect(page.getByRole('dialog').getByRole('alert')).toContainText('解析目录暂不可用')
+  await expect(page.getByRole('dialog', { name: '选择已解析文档', exact: true }).getByRole('alert')).toContainText('解析目录暂不可用')
   await expect(page.getByText('还没有已解析文档', { exact: true })).toBeHidden()
   state.failList = false
   await page.getByRole('button', { name: '重试文档列表', exact: true }).click()
   state.failContent = true
   await page.getByRole('button', { name: '使用文档 设备维护手册.pdf', exact: true }).click()
-  await expect(page.locator('[data-profile-detail]').getByRole('alert')).toContainText('正文服务暂不可用')
+  await expect(page.getByRole('dialog', { name: '清洗前后对照', exact: true }).getByRole('alert')).toContainText('正文服务暂不可用')
   await expect(page.getByRole('button', { name: '重新预览', exact: true })).toBeDisabled()
   state.failContent = false
   preview.failPreview = true
@@ -512,6 +526,7 @@ test('source picker handles pagination, mobile keyboard access and parsed Markdo
   state.pageSize = 1
   await openProfiles(page)
   await page.locator('[data-profile-ref="builtin:html_web"]').click()
+  await openCleaningPreviewModal(page)
   await page.getByRole('button', { name: '选择已解析文档', exact: true }).click()
   const picker = page.getByRole('dialog', { name: '选择已解析文档', exact: true })
   await picker.getByRole('searchbox').fill('第二份')
@@ -521,8 +536,10 @@ test('source picker handles pagination, mobile keyboard access and parsed Markdo
   await expect(page.locator('[data-profile-preview-output]')).toContainText('第二份正文')
   expect(preview.previewRequests.at(-1)).toMatchObject({ input_format: 'markdown' })
   expect(state.listSkips).toEqual([0, 1])
+  await page.keyboard.press('Escape')
   await page.setViewportSize({ width: 390, height: 844 })
   await page.locator('[data-profile-ref="builtin:html_web"]').click()
+  await openCleaningPreviewModal(page)
   await page.getByRole('button', { name: /^更换预览文档/ }).click()
   await expect(picker.getByRole('searchbox')).toBeFocused()
   await noOverflow(page)

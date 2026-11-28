@@ -104,17 +104,15 @@ function CitationOption({
           disabled={disabled || !selectable}
         />
         <div className="min-w-0 flex-1">
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              <div className="truncate text-xs font-mono text-foreground">
-                {citation.document_name ?? citation.document_id?.slice(0, 8) ?? '未提供文档名称'}
-              </div>
-              <div className="mt-1 text-xs text-muted-foreground font-mono tabular-nums">
-                score {formatEvidenceScore(citation)}
-                {citation.page_number == null ? null : ` · P.${citation.page_number}`}
-                {citation.chunk_index == null ? null : ` · #${citation.chunk_index}`}
-              </div>
-            </div>
+          <div className="min-w-0 text-xs font-medium text-foreground [overflow-wrap:anywhere]">
+            {citation.document_name ?? citation.document_id?.slice(0, 8) ?? '未提供文档名称'}
+          </div>
+          <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
+            <span className="text-xs text-muted-foreground font-mono tabular-nums">
+              得分 {formatEvidenceScore(citation)}
+              {citation.page_number == null ? null : ` · P.${citation.page_number}`}
+              {citation.chunk_index == null ? null : ` · #${citation.chunk_index}`}
+            </span>
             <Badge variant={selectable ? 'outline' : 'destructive'} className="font-mono text-[11px]">
               {selectable ? chunkId.slice(0, 8) : '缺少文档或切片标识'}
             </Badge>
@@ -198,7 +196,7 @@ export function CreateItemDialog({
       pack version {importPackVersionLabel} · citations {importCitations.length}
     </div>
   ) : (
-    <div className="text-xs text-muted-foreground text-pretty">上传 Evidence Pack（来自检索预览导出）。</div>
+    <div className="text-xs text-muted-foreground text-pretty">上传从检索预览导出的证据包。</div>
   )
 
   let importListContent: ReactNode
@@ -222,17 +220,15 @@ export function CreateItemDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className={ws.dialog}>
         <DialogHeader className={ws.dialogHeader}>
-          <DialogTitle>新建 Evidence Item</DialogTitle>
-          <DialogDescription className="text-pretty">
-            先用检索找到证据切片，再将选中的引用保存为 <span className="font-mono">reference_sources</span>。
-          </DialogDescription>
+          <DialogTitle>新建证据条目</DialogTitle>
+          <DialogDescription className="text-pretty">检索并选择引用原文，保存为待复核的证据条目。</DialogDescription>
         </DialogHeader>
         <div className={ws.dialogBody}>
           <div className="space-y-4">
-            <fieldset disabled={creatingItem || importingPack} className="space-y-4">
+            <fieldset disabled={creatingItem || importingPack} className="min-w-0 space-y-4">
               <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                 <div className="space-y-1">
-                  <Label htmlFor="item-query">Query</Label>
+                  <Label htmlFor="item-query">问题</Label>
                   <Input
                     id="item-query"
                     value={newQuery}
@@ -241,7 +237,7 @@ export function CreateItemDialog({
                   />
                 </div>
                 <div className="space-y-1">
-                  <Label htmlFor="item-expected">Expected Answer（可选）</Label>
+                  <Label htmlFor="item-expected">参考答案（可选）</Label>
                   <Input
                     id="item-expected"
                     value={newExpected}
@@ -252,12 +248,12 @@ export function CreateItemDialog({
               </div>
 
               <div className="space-y-1">
-                <Label htmlFor="item-notes">Notes（可选）</Label>
+                <Label htmlFor="item-notes">复核备注（可选）</Label>
                 <Textarea
                   id="item-notes"
                   value={newNotes}
                   onChange={(event) => onNewNotesChange(event.target.value)}
-                  placeholder="记录为什么这些引用是 Ground Truth / 边界条件 / 预期召回方式…"
+                  placeholder="记录引用依据、边界条件或预期检索方式…"
                   rows={2}
                 />
               </div>
@@ -268,13 +264,13 @@ export function CreateItemDialog({
               >
                 <TabsList>
                   <TabsTrigger value="retrieve">检索选择</TabsTrigger>
-                  <TabsTrigger value="import">导入 Evidence Pack</TabsTrigger>
+                  <TabsTrigger value="import">导入证据包</TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="retrieve" className="mt-3 space-y-3">
                   <div className="flex flex-col gap-3 md:flex-row md:items-end">
                     <div className="w-full md:w-[220px]">
-                      <div className="mb-1 text-xs text-muted-foreground">Retrieval Profile</div>
+                      <div className="mb-1 text-xs text-muted-foreground">检索策略</div>
                       <Select
                         value={profile}
                         onValueChange={(value) =>
@@ -282,7 +278,7 @@ export function CreateItemDialog({
                         }
                       >
                         <SelectTrigger className="h-9">
-                          <SelectValue placeholder="选择 profile" />
+                          <SelectValue placeholder="选择检索策略" />
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="recall50">recall50 (默认)</SelectItem>
@@ -308,7 +304,7 @@ export function CreateItemDialog({
                       onClick={onApplyRetrieveSuggestions}
                       disabled={retrieving || !hasRetrieveResult || suggestedRetrieveChunkIds.length === 0}
                     >
-                      Suggest ({suggestedRetrieveChunkIds.length})
+                      应用建议引用 ({suggestedRetrieveChunkIds.length})
                     </Button>
 
                     <div className="ml-auto text-xs text-muted-foreground font-mono tabular-nums">
@@ -324,7 +320,7 @@ export function CreateItemDialog({
 
                   {expectedNeedles.length ? (
                     <div className="flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
-                      <span className="font-mono">needles:</span>
+                      <span className="font-mono">匹配词：</span>
                       {expectedNeedles.slice(0, 10).map((needle) => (
                         <Badge key={`needle:${needle}`} variant="secondary" className="text-[11px] font-mono">
                           {needle}
@@ -334,7 +330,7 @@ export function CreateItemDialog({
                   ) : null}
 
                   <Panel className="p-3">
-                    <ScrollArea className="h-[320px] pr-2">
+                    <ScrollArea className={hasRetrieveResult ? 'h-[320px] pr-2' : 'max-h-[320px] pr-2'}>
                       <div className="space-y-2">{retrieveListContent}</div>
                     </ScrollArea>
                   </Panel>
@@ -405,7 +401,7 @@ export function CreateItemDialog({
               (createItemTab === 'retrieve' ? selectedChunkIds.length === 0 : importSelectedChunkIds.length === 0)
             }
           >
-            创建 Item（draft）
+            创建草稿
           </LoadingButton>
         </DialogFooter>
       </DialogContent>

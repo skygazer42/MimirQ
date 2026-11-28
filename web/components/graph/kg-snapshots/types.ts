@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import type { DIFF_KEYS } from './constants'
 
 export type SnapshotPayload = Record<string, unknown>
 
@@ -50,7 +51,7 @@ export type SideBySideDiffRow = {
 }
 
 export type SnapshotDeltaRow = {
-  key: string
+  key: (typeof DIFF_KEYS)[number]
   a: number
   b: number
   delta: number
@@ -69,7 +70,6 @@ export type SnapshotStudioNode = {
   description: string
   x: number
   y: number
-  tone: 'blue' | 'green' | 'orange' | 'purple' | 'rose' | 'amber' | 'teal'
   icon: ReactNode
   occurrences: number
   status: '一致' | '新增' | '移除' | '变化'

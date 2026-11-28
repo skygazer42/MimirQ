@@ -19,6 +19,26 @@ import { CleanPreviewRuleStatsPanel } from '@/components/governance-profiles/cle
 import styles from './governance-inbox.module.css'
 
 const DATA_CLEANER_INPUT_FORMAT_VALUES = ['markdown', 'html'] as const
+const CLEANING_SWITCHES = [
+  ['governance_pii_anonymize', 'PII 脱敏'],
+  ['governance_secrets_redact', '密钥脱敏'],
+  ['governance_drop_duplicate_paragraphs', '重复段清理'],
+  ['governance_remove_noise_lines', '噪声行清理'],
+  ['governance_remove_toc_lines', '目录行清理'],
+  ['governance_remove_common_lines', '公共行清理'],
+  ['governance_unwrap_lines', '断行合并'],
+  ['governance_remove_boilerplate', '样板内容清理'],
+  ['governance_normalize_tables', '表格规范化'],
+  ['governance_normalize_urls', 'URL 规范化'],
+  ['governance_strip_code_line_numbers', '代码行号清理'],
+  ['governance_extract_frontmatter', '提取元数据'],
+  ['governance_strip_frontmatter', '移除元数据'],
+  ['governance_detect_language', '语言识别'],
+  ['governance_extract_keywords', '关键词提取'],
+  ['governance_trim_references', '参考文献清理'],
+  ['governance_drop_outline_only', '过滤纯目录'],
+  ['governance_drop_low_density', '过滤低密度内容'],
+] as const satisfies ReadonlyArray<readonly [keyof DocumentPipelineOptions, string]>
 
 type DataCleanerProps = {
   content: string
@@ -97,6 +117,7 @@ export function DataCleaner({
   })
   const promptTemplates = promptTemplatesQuery.data ?? []
   const suggestedPatch = lastPreview?.suggested_pipeline_patch
+  const activeRules = CLEANING_SWITCHES.filter(([key]) => options[key] === true)
 
   const handleApply = useCallback(async () => {
     if (activeApplyRef.current !== null || disabled || content.trim() === '') return
@@ -292,11 +313,7 @@ export function DataCleaner({
           <span>按当前规则生成清洗结果</span>
         </div>
         <div className={styles.toolActions}>
-          <Button variant="outline" disabled={isApplying || disabled} onClick={onConfigure}>
-            <Wrench className="size-4" />
-            清洗规则
-          </Button>
-          <Button onClick={() => void handleApply()} disabled={isApplying || disabled}>
+          <Button className={styles.primaryAction} onClick={() => void handleApply()} disabled={isApplying || disabled}>
             {isApplying ? <Loader2 className={styles.spinner} /> : <Wrench className="size-4" />}
             {isApplying ? '正在清洗…' : '运行清洗'}
           </Button>
@@ -304,6 +321,27 @@ export function DataCleaner({
       </div>
       <FeedbackToast type="error" message={backendError} id="governance-cleaning-feedback" />
       <div className={styles.toolBody}>
+        <section className={styles.rulesCard} aria-label="当前已启用规则">
+          <div className={styles.rulesHeading}>
+            <h3>当前已启用规则</h3>
+            {onConfigure && (
+              <Button size="sm" variant="ghost" disabled={isApplying || disabled} onClick={onConfigure}>
+                调整规则
+              </Button>
+            )}
+          </div>
+          <ul className={styles.rulesList}>
+            <li>统一换行</li>
+            <li>清理行尾空格</li>
+            {activeRules.map(([key, label]) => (
+              <li key={key}>{label}</li>
+            ))}
+            {typeof options.governance_max_blank_lines === 'number' && (
+              <li>空行规整 · 最多 {options.governance_max_blank_lines} 行</li>
+            )}
+            {options.governance_remove_images && options.governance_remove_images !== 'none' && <li>图片清理</li>}
+          </ul>
+        </section>
         <div className={styles.formRow}>
           <div className={styles.fieldGroup}>
             <label htmlFor="governance-clean-format">输入格式</label>
@@ -362,13 +400,20 @@ export function DataCleaner({
         </div>
         {lastPreview && (
           <details className={styles.compactDetails} open>
-            <summary>
-              清洗结果
-              {inputChars !== undefined && outputChars !== undefined
-                ? ` · ${inputChars.toLocaleString()} → ${outputChars.toLocaleString()} 字`
-                : null}
-            </summary>
+            <summary>清洗结果</summary>
             <div>
+              {inputChars !== undefined && outputChars !== undefined && (
+                <dl className={styles.cleanMetrics} aria-label="清洗前后字符数">
+                  <div>
+                    <dt>清洗前</dt>
+                    <dd>{inputChars.toLocaleString()} 字</dd>
+                  </div>
+                  <div>
+                    <dt>清洗后</dt>
+                    <dd>{outputChars.toLocaleString()} 字</dd>
+                  </div>
+                </dl>
+              )}
               {lastPreview.dropped ? (
                 <p className="text-xs text-destructive">当前规则会过滤该文档，正文已保留。请调整规则后重试。</p>
               ) : (
@@ -382,6 +427,7 @@ export function DataCleaner({
               ))}
               {suggestedPatch != null && Object.keys(suggestedPatch).length > 0 && (
                 <Button
+                  className={styles.primaryAction}
                   variant="ghost"
                   size="sm"
                   disabled={isApplying || disabled}
@@ -397,7 +443,7 @@ export function DataCleaner({
                 </details>
               )}
               {lastPreview.rule_stats?.length ? (
-                <details className={styles.compactDetails}>
+                <details className={`${styles.compactDetails} ${styles.ruleStats}`}>
                   <summary>规则命中记录</summary>
                   <CleanPreviewRuleStatsPanel ruleStats={lastPreview.rule_stats} />
                 </details>
@@ -405,7 +451,7 @@ export function DataCleaner({
               {lastPreview.diff_unified?.trim() && (
                 <details className={styles.compactDetails}>
                   <summary>查看文本差异{lastPreview.diff_truncated ? '（已截断）' : ''}</summary>
-                  <pre>{lastPreview.diff_unified}</pre>
+                  <pre className={styles.diff}>{lastPreview.diff_unified}</pre>
                 </details>
               )}
             </div>

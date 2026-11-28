@@ -14,42 +14,43 @@
 .header {
   display: flex;
   align-items: center;
-  min-height: 72px;
-  gap: 16px;
-  padding: 12px 28px;
+  min-height: 52px;
+  gap: 24px;
+  padding: 0 20px;
   border-bottom: 1px solid hsl(var(--border));
-  background: hsl(var(--muted) / 0.22);
+  background: hsl(var(--background));
   flex: none;
 }
 .heading {
   display: flex;
   align-items: center;
   gap: 11px;
+  flex-shrink: 0;
 }
 .heading > svg {
   width: 23px;
   height: 23px;
 }
 .heading h1 {
-  font-size: 20px;
+  font-size: var(--workspace-title-size);
   line-height: 28px;
-  font-weight: 650;
+  font-weight: var(--workspace-title-weight);
   margin: 0;
 }
 .headerActions {
   margin-left: auto;
   display: flex;
   gap: 8px;
+  flex-shrink: 0;
 }
 .headerActions button {
-  height: 36px;
+  height: 32px;
   gap: 8px;
   box-shadow: none;
   font-size: 13px;
 }
 .headerActions button:focus-visible,
 .runbar button:focus-visible,
-.primary:focus-visible,
 .sampleSearch input:focus-visible,
 .readerNav button:focus-visible,
 .dialogToolbar input:focus-visible,
@@ -70,17 +71,18 @@
 }
 .tabs {
   justify-content: flex-start;
-  gap: 30px;
-  padding: 0 28px;
-  height: 48px;
-  border-bottom: 1px solid hsl(var(--border));
+  gap: 24px;
+  padding: 0;
+  height: 51px;
+  min-width: 0;
   border-radius: 0;
   flex: none;
   overflow-x: auto;
   scrollbar-width: none;
+  background: transparent;
 }
 .tab {
-  height: 48px;
+  height: 100%;
   border-bottom: 2px solid transparent;
   border-radius: 0;
   padding: 0;
@@ -88,10 +90,11 @@
   background: transparent;
 }
 .tab[data-state='active'] {
-  border-bottom-color: hsl(var(--foreground));
+  border-bottom-color: hsl(var(--accent));
   background: transparent;
   color: hsl(var(--foreground));
-  font-weight: 600;
+  font-weight: 550;
+  box-shadow: none;
 }
 .panel,
 .scrollPanel {
@@ -122,6 +125,7 @@
   animation: workspace-enter 180ms ease-out;
 }
 .runbar {
+  background: hsl(var(--surface-2));
   display: flex;
   align-items: center;
   gap: 15px;
@@ -132,7 +136,7 @@
   flex-wrap: wrap;
 }
 .runbar button {
-  height: 34px;
+  height: 36px;
   gap: 7px;
   font-size: 13px;
   border-radius: 6px;
@@ -145,11 +149,11 @@
 }
 .runbar .conversationPicker {
   padding: 0;
-  font-size: 16px;
-  font-weight: 600;
+  font-size: 14px;
+  font-weight: 500;
   min-width: 0;
   max-width: 300px;
-  height: 32px;
+  height: 36px;
 }
 .conversationPicker > span {
   overflow: hidden;
@@ -168,6 +172,8 @@
   font-size: 12px;
   color: hsl(var(--muted-foreground));
   min-width: 0;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
 }
 .runMeta > span {
   white-space: nowrap;
@@ -179,86 +185,71 @@
   align-items: center;
   flex: none;
 }
-.primary {
-  background: hsl(var(--foreground));
-  color: hsl(var(--background));
-  border-radius: 6px;
-  box-shadow: none;
-  transition:
-    opacity 150ms ease,
-    transform 150ms ease;
-}
-.primary:hover {
-  background: hsl(var(--foreground) / 0.88);
-}
-.primary:active:not(:disabled) {
-  transform: scale(0.98);
-}
-.primary:disabled {
-  opacity: 0.42;
-}
-.parameterbar {
-  display: flex;
-  align-items: center;
-  gap: 24px;
-  min-height: 46px;
-  padding: 6px 24px;
-  flex: none;
-  background: hsl(var(--muted) / 0.3);
-  border-bottom: 1px solid hsl(var(--border));
-  font-size: 13px;
+.runbar .parameterSummary {
+  height: 32px;
+  border-radius: 999px;
+  padding-inline: 10px;
   color: hsl(var(--muted-foreground));
-  flex-wrap: wrap;
+  font-size: 12px;
 }
-.parameterbar > span {
+.readinessInline {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 6px;
-  white-space: nowrap;
+  justify-content: center;
+  gap: 4px 8px;
+  color: hsl(var(--muted-foreground));
+  font-size: 12px;
+  line-height: 20px;
 }
-.parameterbar b {
-  color: hsl(var(--foreground));
-  font-weight: 500;
-}
-.parameterbar > button {
-  height: 30px;
-  font-size: 13px;
-  gap: 7px;
-  margin-left: auto;
-  padding-right: 0;
-}
-.parameterbar svg {
-  width: 14px;
-  height: 14px;
-}
-.skip > svg {
-  color: hsl(var(--success));
+.readinessInline button {
+  height: auto;
+  padding: 4px 8px;
+  font-size: 12px;
 }
 .status {
+  --status-ink: var(--icon-source);
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  font-size: 13px;
+  gap: 5px;
+  padding: 1px 6px;
+  border: 1px solid hsl(var(--status-ink) / 0.14);
+  border-radius: 5px;
+  background: color-mix(in srgb, hsl(var(--status-ink)) 8%, hsl(var(--card)));
+  color: hsl(var(--status-ink));
+  font-size: 11px;
+  line-height: 19px;
   white-space: nowrap;
 }
 .status svg {
-  width: 14px;
-  height: 14px;
+  width: 12px;
+  height: 12px;
 }
 .success {
-  color: hsl(var(--success));
+  --status-ink: var(--icon-governance);
 }
 .danger {
-  color: hsl(var(--destructive));
+  --status-ink: var(--icon-pdf);
 }
 .processing {
-  color: hsl(var(--info));
+  --status-ink: var(--icon-source);
 }
 .muted {
   color: hsl(var(--muted-foreground));
 }
 .lowScore {
-  color: color-mix(in srgb, hsl(var(--warning)) 48%, hsl(var(--foreground)));
+  color: hsl(var(--icon-code));
+}
+.matrixTable tbody th > small.lowScore,
+.readerToolbar > .lowScore {
+  display: inline-flex;
+  width: fit-content;
+  padding: 0 5px;
+  border: 1px solid hsl(var(--icon-code) / 0.14);
+  border-radius: 4px;
+  background: color-mix(in srgb, hsl(var(--icon-code)) 8%, hsl(var(--card)));
+  font-size: 11px;
+  line-height: 19px;
 }
 .notice {
   display: flex;
@@ -278,7 +269,7 @@
   flex: none;
 }
 .notice > button {
-  height: 28px;
+  height: 36px;
   margin-left: auto;
   font-size: 13px;
 }
@@ -294,6 +285,7 @@
   min-height: 0;
 }
 .matrixPane {
+  background: hsl(var(--card));
   display: flex;
   flex: 1;
   flex-direction: column;
@@ -323,19 +315,30 @@
 .viewFilters {
   display: flex;
   align-items: center;
-  gap: 18px;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid hsl(var(--border));
+  border-radius: 7px;
+  background: hsl(var(--surface-2));
   flex: none;
 }
 .viewFilters button {
+  border: 1px solid transparent;
   font-size: 13px;
   line-height: 24px;
   color: hsl(var(--muted-foreground));
-  border-radius: 3px;
+  border-radius: 6px;
+  min-height: 28px;
+  padding: 0 8px;
   white-space: nowrap;
-  transition: color 150ms ease;
+  transition:
+    color 150ms ease,
+    background-color 150ms ease;
 }
 .viewFilters button[aria-pressed='true'] {
-  font-weight: 600;
+  border-color: hsl(var(--border));
+  background: hsl(var(--card));
+  font-weight: 500;
   color: hsl(var(--foreground));
 }
 .viewFilters button:focus-visible {
@@ -358,7 +361,7 @@
   color: hsl(var(--muted-foreground));
 }
 .sampleSearch input {
-  height: 30px;
+  height: 36px;
   padding-left: 31px;
   border-radius: 5px;
   font-size: 13px;
@@ -462,7 +465,7 @@
   background: hsl(var(--muted) / 0.5);
 }
 .matrixTable .meanRow {
-  background: hsl(var(--muted) / 0.27);
+  background: hsl(var(--surface-2));
 }
 .meanRow th {
   height: 64px;
@@ -497,23 +500,23 @@
 .track {
   display: block;
   width: 36px;
-  height: 3px;
-  background: hsl(var(--muted));
-  border-radius: 2px;
+  height: 6px;
+  background: hsl(var(--icon-process) / 0.12);
+  border-radius: 6px;
   overflow: hidden;
   flex: none;
 }
 .track > i {
   height: 100%;
   display: block;
-  background: hsl(var(--muted-foreground) / 0.65);
+  background: hsl(var(--metric-ink, var(--icon-process)));
   border-radius: inherit;
 }
 .lowScore .track {
-  background: hsl(var(--warning) / 0.15);
+  background: hsl(var(--icon-code) / 0.12);
 }
 .lowScore .track > i {
-  background: hsl(var(--warning) / 0.7);
+  background: hsl(var(--icon-code));
 }
 .footer {
   display: flex;
@@ -536,7 +539,7 @@
   flex-direction: column;
   min-height: 0;
   min-width: 0;
-  background: hsl(var(--muted) / 0.3);
+  background: hsl(var(--surface-2));
   border-left: 1px solid hsl(var(--border));
 }
 .readerToolbar {
@@ -561,8 +564,8 @@
   margin-right: 5px;
 }
 .readerNav button {
-  height: 29px;
-  width: 27px;
+  height: 36px;
+  width: 36px;
   padding: 0;
   box-shadow: none;
 }
@@ -594,9 +597,45 @@
 }
 .readerScores {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(82px, 1fr));
+  gap: 8px;
   margin-bottom: 17px;
+}
+.readerScores > div {
+  --metric-ink: var(--icon-process);
+  min-width: 0;
+  padding: 10px 8px;
+  border: 1px solid hsl(var(--border));
+  border-top: 2px solid hsl(var(--metric-ink) / 0.7);
+  border-radius: 7px;
+  background: hsl(var(--card));
+}
+.readerScores [data-metric='faithfulness'] {
+  --metric-ink: var(--icon-governance);
+}
+.readerScores [data-metric='response_relevancy'],
+.readerScores [data-metric='answer_relevancy'] {
+  --metric-ink: var(--icon-source);
+}
+.readerScores [data-metric='context_precision'],
+.readerScores [data-metric='context_recall'] {
+  --metric-ink: var(--icon-media);
+}
+.metricIcon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  margin-bottom: 7px;
+  border: 1px solid hsl(var(--metric-ink) / 0.14);
+  border-radius: 7px;
+  background: color-mix(in srgb, hsl(var(--metric-ink)) 8%, hsl(var(--card)));
+  color: hsl(var(--metric-ink));
+}
+.metricIcon svg {
+  width: 15px;
+  height: 15px;
 }
 .readerScores dt {
   font-size: 12px;
@@ -610,6 +649,14 @@
 .readerScores .score {
   font-size: 20px;
   line-height: 28px;
+  align-items: flex-start;
+  flex-direction: column;
+  gap: 6px;
+}
+.readerScores .track {
+  display: block;
+  width: 100%;
+  min-width: 40px;
 }
 .readerSection {
   border-top: 1px solid hsl(var(--border));
@@ -644,11 +691,14 @@
   display: flex;
   gap: 11px;
   margin-top: 14px;
-  padding-bottom: 14px;
+  padding: 12px;
+  border: 1px solid hsl(var(--border));
+  border-left: 2px solid hsl(var(--icon-source) / 0.45);
+  border-radius: 6px;
+  background: hsl(var(--card));
 }
 .readerSection blockquote + blockquote {
-  border-top: 1px solid hsl(var(--border));
-  padding-top: 15px;
+  margin-top: 8px;
 }
 .readerSection blockquote > span {
   font-size: 12px;
@@ -761,7 +811,7 @@
 }
 .state button {
   font-size: 13px;
-  height: 34px;
+  height: 36px;
 }
 .state a {
   color: hsl(var(--foreground));
@@ -825,7 +875,7 @@
 .dialogToolbar button {
   height: 36px;
   flex: none;
-  width: 34px;
+  width: 36px;
   padding: 0;
 }
 .dialogToolbar button svg {
@@ -833,7 +883,8 @@
   height: 15px;
 }
 .dialog > .viewFilters {
-  padding: 0 24px 12px;
+  margin: 0 24px 12px;
+  width: fit-content;
 }
 .dialogList {
   min-height: 120px;
@@ -894,6 +945,7 @@
   height: 14px;
 }
 .configBody {
+  background: hsl(var(--surface-2));
   padding: 20px 24px;
   overflow: auto;
 }
@@ -964,7 +1016,7 @@
 }
 .dialogFooter button {
   font-size: 13px;
-  height: 34px;
+  height: 36px;
 }
 .formError {
   font-size: 13px;
@@ -1048,8 +1100,8 @@
   }
   .mobileBack {
     display: inline-flex;
-    width: 28px;
-    height: 28px;
+    width: 36px;
+    height: 36px;
     padding: 0;
   }
   .mobileBack svg {
@@ -1083,17 +1135,6 @@
   .footer > span:last-child {
     display: none;
   }
-  .parameterbar {
-    padding: 7px 16px;
-    gap: 16px;
-    font-size: 12px;
-  }
-  .parameterbar .skip {
-    display: none;
-  }
-  .parameterbar > button {
-    font-size: 12px;
-  }
   .notice {
     padding: 8px 16px;
     align-items: flex-start;
@@ -1119,46 +1160,67 @@
     min-height: 180px;
   }
 }
+@container evaluation-workspace (max-width:1000px) {
+  .header {
+    flex-wrap: wrap;
+    gap: 0 16px;
+    padding-top: 12px;
+  }
+  .headerActions {
+    order: 1;
+  }
+  .tabs {
+    order: 2;
+    flex-basis: 100%;
+    height: 44px;
+  }
+}
 @media (max-width: 767px) {
   .header {
     min-height: 64px;
-    padding: 12px 16px 12px 60px;
+    padding: 12px 16px 0 60px;
   }
   .heading h1 {
     font-size: 18px;
   }
   .headerActions button {
-    padding: 0 6px;
+    width: 44px;
+    height: 44px;
+    padding: 0;
   }
   .headerActions button > span {
     display: none;
   }
   .tabs {
-    gap: 24px;
-    padding: 0 16px;
+    gap: 20px;
+    flex-basis: calc(100% + 44px);
+    margin-left: -44px;
   }
   .tab {
     font-size: 13px;
   }
   .runbar .conversationPicker {
-    max-width: 160px;
+    max-width: 100%;
+    flex: 1;
   }
   .runbar .runActions {
     gap: 4px;
+    flex-basis: 100%;
+    justify-content: flex-end;
   }
   .runActions button {
-    font-size: 12px;
+    font-size: 13px;
     gap: 5px;
   }
   .runActions svg {
-    width: 13px;
-    height: 13px;
+    width: 15px;
+    height: 15px;
   }
   .matrixToolbar h2 {
     font-size: 13px;
   }
   .matrixToolbar .viewFilters {
-    gap: 13px;
+    gap: 2px;
   }
   .sampleSearch {
     width: 100%;
@@ -1171,6 +1233,27 @@
   }
   .readerScores {
     gap: 12px;
+  }
+  .runbar button,
+  .notice > button,
+  .viewFilters button,
+  .readerNav button,
+  .mobileBack,
+  .dialogToolbar button,
+  .dialogFooter button,
+  .state button {
+    min-height: 44px;
+  }
+  .readerNav button,
+  .mobileBack,
+  .dialogToolbar button {
+    width: 44px;
+  }
+  .sampleSearch input,
+  .dialogToolbar input,
+  .numberField input {
+    height: 44px;
+    font-size: 16px;
   }
 }
 @keyframes workspace-enter {
@@ -1198,7 +1281,6 @@
   .readerContent {
     animation: none;
   }
-  .primary,
   .listItem,
   .viewFilters button {
     transition: none;

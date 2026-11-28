@@ -40,8 +40,18 @@ test('create and edit preserve failed drafts and explicitly clear the external I
   await editor.getByRole('textbox', { name: '组名称', exact: true }).fill('资料协作')
   await editor.getByRole('textbox', { name: /外部组 ID/ }).fill('team-docs')
   state.failSave = true
+  const failedSave = page.waitForRequest(
+    (request) => new URL(request.url()).pathname === '/api/v1/groups' && request.method() === 'POST',
+  )
   await editor.getByRole('button', { name: '创建组', exact: true }).click()
   await expect(editor.getByRole('alert')).toContainText('组信息暂时无法保存')
+  const requestId = (await failedSave).headers()['x-request-id']
+  expect(requestId).toBeTruthy()
+  const requestDetails = editor.locator('details')
+  await expect(requestDetails.locator('p')).not.toBeVisible()
+  await requestDetails.locator('summary').click()
+  await expect(requestDetails.locator('p')).toHaveText('request_id=' + requestId)
+  await expect(requestDetails.locator('p')).toBeVisible()
   await expect(editor.getByRole('textbox', { name: '组名称', exact: true })).toHaveValue('资料协作')
   state.failSave = false
   await editor.getByRole('button', { name: '创建组', exact: true }).click()

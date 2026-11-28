@@ -64,15 +64,6 @@ async function fixture(page: Page) {
   }
   await installCommonApiMocks(page, { uploaded: false, parsingDocuments: documents })
   await page.addInitScript(() => {
-    document.addEventListener(
-      'DOMContentLoaded',
-      () => {
-        const style = document.createElement('style')
-        style.textContent = 'nextjs-portal { display: none !important; }'
-        document.head.appendChild(style)
-      },
-      { once: true },
-    )
     if (!localStorage.getItem('theme')) localStorage.setItem('theme', 'light')
     localStorage.setItem('mimirq.surfaceTheme', 'ocean')
     localStorage.setItem('mimirq.themeColor', '#20262e')
@@ -146,9 +137,17 @@ async function fixture(page: Page) {
 async function openInbox(page: Page) {
   await page.goto('/data-governance', { waitUntil: 'domcontentloaded' })
   await expect(page.getByRole('heading', { name: '数据治理', exact: true })).toBeVisible({ timeout: 60_000 })
+  await page.getByRole('button', { name: '选择文档', exact: true }).click()
   await expect(page.locator('[data-governance-file]')).toHaveCount(12)
+  await page.keyboard.press('Escape')
   await expect(page.locator('[data-governance-document]')).toContainText('设备维护手册')
   await page.evaluate(() => document.fonts.ready)
+}
+async function selectDocument(page: Page, id: string) {
+  const directory = page.getByRole('dialog', { name: '文档目录', exact: true })
+  if (!(await directory.isVisible())) await page.getByRole('button', { name: '选择文档', exact: true }).click()
+  await directory.locator(`[data-governance-file="${id}"]`).click()
+  await expect(directory).toBeHidden()
 }
 async function noOverflow(page: Page) {
   expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(1)
@@ -170,14 +169,12 @@ test('governance checks, cleans, retains failed saves and reloads saved content 
   await openInbox(page)
   const reader = page.locator('[data-governance-reader]')
   const panes = await Promise.all([
-    page.locator('[data-governance-queue]').boundingBox(),
     page.getByRole('region', { name: '文档正文', exact: true }).boundingBox(),
     page.getByRole('complementary', { name: '治理工具箱', exact: true }).boundingBox(),
   ])
   expect(panes.every(Boolean)).toBe(true)
-  const [directory, documentPane, toolbox] = panes as NonNullable<(typeof panes)[number]>[]
-  expect(directory.x + directory.width).toBeLessThan(documentPane.x)
-  expect(documentPane.x + documentPane.width).toBeLessThan(toolbox.x)
+  const [documentPane, toolbox] = panes as NonNullable<(typeof panes)[number]>[]
+  expect(documentPane.x + documentPane.width).toBeLessThanOrEqual(toolbox.x)
   expect(Math.abs(documentPane.y - toolbox.y)).toBeLessThanOrEqual(1)
   await page.getByRole('button', { name: '收起治理工具', exact: true }).click()
   await expect(page.getByRole('tab', { name: '质量检测', exact: true })).toBeHidden()
@@ -194,9 +191,10 @@ test('governance checks, cleans, retains failed saves and reloads saved content 
   state.failScan = false
   await page.getByRole('button', { name: '开始检测', exact: true }).click()
   await expect(page.getByRole('button', { name: '重新检测', exact: true })).toBeVisible()
-  await expect(page.locator('[aria-label="检测问题"] button')).toHaveCount(3)
+  const issues = page.locator('[aria-label="检测问题"]')
+  await expect(issues.locator('article')).toHaveCount(3)
   await page.screenshot({ path: path.join(evidence, 'desktop.png') })
-  await page.locator('[aria-label="检测问题"] button').first().click()
+  await issues.locator('button[aria-pressed]').first().click()
   await page.screenshot({ path: path.join(evidence, 'issue-detail.png') })
   await page.getByRole('button', { name: '定位到正文', exact: true }).click()
   await expect(page.getByRole('textbox', { name: '编辑文档正文' })).toHaveValue(original)
@@ -206,6 +204,8 @@ test('governance checks, cleans, retains failed saves and reloads saved content 
       .evaluate((element: HTMLTextAreaElement) => element.value.slice(element.selectionStart, element.selectionEnd)),
   ).toBe(duplicate)
   await page.getByRole('button', { name: '预览', exact: true }).click()
+  await issues.locator('article').first().getByRole('button', { name: '忽略此项', exact: true }).click()
+  await expect(issues.locator('article')).toHaveCount(2)
   await page.getByRole('tab', { name: '文档清洗', exact: true }).click()
   state.failClean = true
   await page.getByRole('button', { name: '运行清洗', exact: true }).click()
@@ -243,9 +243,9 @@ test('governance checks, cleans, retains failed saves and reloads saved content 
   await page.getByRole('tab', { name: '分类归档' }).click()
   await expect(page.getByLabel('文档分类', { exact: true })).toHaveValue('技术文档')
   await expect(page.getByRole('button', { name: '删除标签 维护记录' })).toBeVisible()
-  await page.locator('[data-governance-file="gov-2"]').click()
+  await selectDocument(page, 'gov-2')
   await expect(page.locator('[data-governance-document]')).toContainText('安全操作规范')
-  await page.locator('[data-governance-file="gov-1"]').click()
+  await selectDocument(page, 'gov-1')
   await expect(page.locator('[data-governance-document]')).toContainText('[邮箱已脱敏]')
   await noOverflow(page)
   await page.getByRole('button', { name: '保存并继续切块', exact: true }).click()
@@ -261,25 +261,25 @@ test('governance discards stale operations after leaving a document and preserve
   })
   await page.getByRole('button', { name: '开始检测', exact: true }).click()
   await expect.poll(() => state.scanStarted).toBe(1)
-  await page.locator('[data-governance-file="gov-2"]').click()
+  await selectDocument(page, 'gov-2')
   const scanResponse = page.waitForResponse((response) =>
     new URL(response.url()).pathname.endsWith('/governance-analyze'),
   )
   finishScan()
   await (await scanResponse).finished()
   await expect(page.locator('[data-governance-reader]')).toContainText('尚未检测')
-  await page.locator('[data-governance-file="gov-1"]').click()
+  await selectDocument(page, 'gov-1')
   await expect(page.locator('[data-governance-reader]')).toContainText('尚未检测')
   await page.getByRole('button', { name: '开始检测', exact: true }).click()
   await expect(page.getByRole('button', { name: '重新检测', exact: true })).toBeVisible()
   await page.getByRole('button', { name: '编辑', exact: true }).click()
   await page.getByRole('textbox', { name: '编辑文档正文' }).fill(original + '\n\n文档一的草稿。')
-  await page.locator('[data-governance-file="gov-2"]').click()
+  await selectDocument(page, 'gov-2')
   await page.getByRole('button', { name: '编辑', exact: true }).click()
   await page.getByRole('textbox', { name: '编辑文档正文' }).fill('# 安全操作规范\n\n文档二的草稿。')
   await page.getByRole('button', { name: '保存', exact: true }).click()
   await expect(page.locator('[data-governance-reader]')).toContainText('治理结果已保存')
-  await page.locator('[data-governance-file="gov-1"]').click()
+  await selectDocument(page, 'gov-1')
   await expect(page.locator('[data-governance-document]')).toContainText('文档一的草稿。')
   await expect(page.locator('[data-governance-reader]')).toContainText('修改尚未保存')
   let finishClean!: () => void
@@ -304,27 +304,41 @@ test('governance supports phone navigation, themes, search, configuration and co
   await expect(page.getByRole('dialog')).toContainText('清洗规则')
   await page.screenshot({ path: path.join(evidence, 'configuration.png') })
   await page.keyboard.press('Escape')
+  await page.getByRole('button', { name: '选择文档', exact: true }).click()
   await page.getByRole('searchbox', { name: '搜索治理文档' }).fill('不存在')
   await expect(page.locator('[data-governance-file]')).toHaveCount(0)
   await page.screenshot({ path: path.join(evidence, 'no-matches.png') })
   await page.getByRole('button', { name: '清除文档搜索' }).click()
+  await page.keyboard.press('Escape')
   await page.setViewportSize({ width: 1280, height: 800 })
   await noOverflow(page)
   await page.screenshot({ path: path.join(evidence, 'laptop.png') })
+  await page.setViewportSize({ width: 1024, height: 768 })
+  await page.getByRole('button', { name: '治理工具', exact: true }).click()
+  await expect(page.getByRole('tab', { name: '质量检测', exact: true })).toBeVisible()
+  await noOverflow(page)
+  await page.screenshot({ path: path.join(evidence, 'tablet-tools.png') })
+  await page.getByRole('button', { name: '正文', exact: true }).click()
   await page.setViewportSize({ width: 390, height: 844 })
   await expect(page.getByRole('button', { name: '展开侧边栏', exact: true })).toBeVisible()
   await expect
     .poll(async () => page.locator('#mimirq-sidebar').evaluate((element) => element.getBoundingClientRect().right))
     .toBeLessThanOrEqual(0)
+  await page.getByRole('button', { name: '选择文档', exact: true }).click()
   await expect(page.locator('[data-governance-queue]')).toBeVisible()
-  await expect(page.locator('[data-governance-reader]')).toBeHidden()
+  await expect(page.getByRole('dialog', { name: '文档目录', exact: true })).toBeVisible()
   await page.screenshot({ path: path.join(evidence, 'phone-queue.png') })
-  await page.locator('[data-governance-file="gov-1"]').click()
+  await selectDocument(page, 'gov-1')
   await expect(page.locator('[data-governance-reader]')).toBeVisible()
   await page.screenshot({ path: path.join(evidence, 'phone-reader.png') })
   await noOverflow(page)
-  await page.getByRole('button', { name: '返回文档队列' }).click()
-  await expect(page.locator('[data-governance-file="gov-1"]')).toBeFocused()
+  await page.getByRole('button', { name: '治理工具', exact: true }).click()
+  await expect(page.getByRole('tab', { name: '质量检测', exact: true })).toBeVisible()
+  await expect(page.getByRole('region', { name: '文档正文', exact: true })).toBeHidden()
+  await page.getByRole('button', { name: '正文', exact: true }).click()
+  await page.getByRole('button', { name: '选择文档', exact: true }).click()
+  await page.keyboard.press('Escape')
+  await expect(page.getByRole('button', { name: '选择文档', exact: true })).toBeFocused()
   await page.setViewportSize({ width: 1600, height: 1000 })
   await page.evaluate(() => {
     localStorage.setItem('theme', 'dark')
@@ -335,7 +349,7 @@ test('governance supports phone navigation, themes, search, configuration and co
   await page.screenshot({ path: path.join(evidence, 'dark.png') })
   await noOverflow(page)
   state.failContent = true
-  await page.locator('[data-governance-file="gov-2"]').click()
+  await selectDocument(page, 'gov-2')
   await expect(page.getByRole('heading', { name: '正文加载失败' })).toBeVisible()
   await page.screenshot({ path: path.join(evidence, 'content-error.png') })
   state.failContent = false
@@ -410,7 +424,8 @@ test('annotation results separate document attributes, keywords and long text wh
   await expect
     .poll(async () => page.locator('#mimirq-sidebar').evaluate((element) => element.getBoundingClientRect().right))
     .toBeLessThanOrEqual(0)
-  await page.locator('[data-governance-file="gov-1"]').click()
+  await selectDocument(page, 'gov-1')
+  await page.getByRole('button', { name: '治理工具', exact: true }).click()
   await longDetails.locator('summary').click()
   await noOverflow(page)
   await expect(longDetails.getByText(longTags[1], { exact: true })).toBeVisible()
@@ -545,7 +560,8 @@ test('classification uses tag values, separates long text and retains manual edi
   await expect
     .poll(async () => page.locator('#mimirq-sidebar').evaluate((element) => element.getBoundingClientRect().right))
     .toBeLessThanOrEqual(0)
-  await page.locator('[data-governance-file="gov-1"]').click()
+  await selectDocument(page, 'gov-1')
+  await page.getByRole('button', { name: '治理工具', exact: true }).click()
   await noOverflow(page)
   await page.screenshot({ path: path.join(evidence, 'classifier-phone.png') })
   await page.setViewportSize({ width: 1600, height: 1000 })

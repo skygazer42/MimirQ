@@ -344,7 +344,7 @@ export function GovernanceSection({
                 >
                   <SelectTrigger
                     id={subjectFieldId}
-                    className="h-11 sm:h-9 rounded-md border-input bg-background text-[13px]"
+                    className="h-11 sm:h-9 rounded-md border-input bg-background text-base sm:text-sm"
                   >
                     <SelectValue placeholder="请选择有效成员" />
                   </SelectTrigger>
@@ -385,13 +385,12 @@ export function GovernanceSection({
                       setRtbfSubjectSource('manual')
                       setRtbfAccountId(event.currentTarget.value)
                     }}
-                    className="h-11 sm:h-9 rounded-md border-input bg-background text-[13px]"
+                    className="h-11 sm:h-9 rounded-md border-input bg-background text-base sm:text-sm"
                     placeholder="例如 user-123 / acct-1 / 用户 UUID"
                   />
                 </label>
                 <div className={settingsTextTokens.helpText}>
-                  后端会按文档归属账号和生命周期负责人匹配；如果填写用户
-                  UUID，也会一并匹配建议从成员权限或审计日志复制，不要填昵称
+                  请填写归属账号、生命周期负责人或用户 ID。可从成员权限或审计日志复制。
                 </div>
               </div>
               <div className="space-y-1.5">
@@ -401,11 +400,11 @@ export function GovernanceSection({
                     value={rtbfMaxDocs}
                     disabled={rtbfRunning}
                     onChange={(event) => setRtbfMaxDocs(event.currentTarget.value)}
-                    className="h-11 sm:h-9 rounded-md border-input bg-background text-[13px]"
+                    className="h-11 sm:h-9 rounded-md border-input bg-background text-base sm:text-sm"
                     inputMode="numeric"
                   />
                 </label>
-                <div className={settingsTextTokens.microText}>保护阈值，后端允许 1-1000</div>
+                <div className={settingsTextTokens.microText}>范围 1–1000</div>
               </div>
               <div className="space-y-1.5">
                 <label className="block space-y-1.5">
@@ -414,11 +413,11 @@ export function GovernanceSection({
                     value={rtbfMaxRetries}
                     disabled={rtbfRunning}
                     onChange={(event) => setRtbfMaxRetries(event.currentTarget.value)}
-                    className="h-11 sm:h-9 rounded-md border-input bg-background text-[13px]"
+                    className="h-11 sm:h-9 rounded-md border-input bg-background text-base sm:text-sm"
                     inputMode="numeric"
                   />
                 </label>
-                <div className={settingsTextTokens.microText}>删除失败时重试，后端允许 0-10</div>
+                <div className={settingsTextTokens.microText}>范围 0–10</div>
               </div>
               <div className="flex flex-col gap-2 md:col-span-2">
                 <div className={settingsTextTokens.helpText}>

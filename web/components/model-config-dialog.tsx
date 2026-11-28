@@ -232,244 +232,243 @@ export function ModelConfigDialog({ provider, open, saving, onClose, onSave }: R
     >
       <DialogContent
         showCloseButton={!saving}
-        className="sm:max-w-[600px] p-0 overflow-hidden gap-0 rounded-2xl border-0 shadow-strong"
+        className="flex max-h-[calc(100dvh-24px)] w-[calc(100vw-24px)] flex-col gap-0 overflow-hidden rounded-lg border border-border bg-popover p-0 shadow-strong sm:max-w-[600px]"
       >
         {/* 头部 */}
-        <div className="bg-muted/40 border-b border-border p-6 flex items-start gap-4">
-          <div className="h-11 w-11 rounded-xl bg-card border border-border flex items-center justify-center shadow-sm flex-shrink-0">
-            <ProviderIcon providerId={provider.id} className="size-8 object-contain" />
-          </div>
+        <div className="flex shrink-0 items-start gap-3 border-b border-border bg-popover px-5 py-4">
+          <ProviderIcon providerId={provider.id} className="mt-0.5 size-6 shrink-0 object-contain" />
           <div>
-            <DialogTitle className="text-xl font-semibold text-foreground mb-1">配置 {provider.name}</DialogTitle>
-            <DialogDescription className="leading-tight">{provider.description}</DialogDescription>
+            <DialogTitle className="mb-1 leading-7 text-foreground">配置 {provider.name}</DialogTitle>
+            <DialogDescription className="text-[13px] leading-5">{provider.description}</DialogDescription>
           </div>
         </div>
 
-        <fieldset disabled={saving} className="min-w-0 p-6 space-y-6">
-          {/* API Key */}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between gap-3">
-              <Label htmlFor={apiKeyId} className="text-sm font-medium text-foreground">
-                API Key{' '}
-                {apiKeyRequired ? (
-                  <span className="text-destructive ml-1">*</span>
-                ) : (
-                  <span className="ml-1 font-normal text-muted-foreground">（可选）</span>
-                )}
-              </Label>
-              {docsUrl !== undefined && (
-                <a
-                  href={docsUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-xs font-medium text-primary hover:underline"
-                >
-                  获取 Key <span aria-hidden>→</span>
-                </a>
-              )}
-            </div>
-            <div className="relative">
-              <Input
-                id={apiKeyId}
-                type={showApiKey ? 'text' : 'password'}
-                value={config.apiKey}
-                onChange={(event) => updateConfig({ apiKey: event.target.value })}
-                placeholder={apiKeyRequired ? `输入 ${provider.name} API Key` : '服务需要认证时填写'}
-                required={apiKeyRequired}
-                className="pr-10 font-mono"
-              />
-              <button
-                type="button"
-                onClick={() => setShowApiKey(!showApiKey)}
-                aria-label={showApiKey ? '隐藏 API Key' : '显示 API Key'}
-                title={showApiKey ? '隐藏 API Key' : '显示 API Key'}
-                className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors motion-reduce:transition-none focus-ring"
-              >
-                {showApiKey ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
-              </button>
-            </div>
-            {canTestConnection && hasMaskedApiKey && (
-              <p className="text-xs text-muted-foreground">
-                连接测试需要输入实际的 API Key。保存配置时可以保留已保存的密钥。
-              </p>
-            )}
-          </div>
-
-          {/* API Base URL */}
-          <div className="space-y-2">
-            <Label htmlFor={apiBaseId} className="text-sm font-medium text-foreground">
-              API Base URL
-            </Label>
-            <Input
-              id={apiBaseId}
-              type="text"
-              value={config.apiBase}
-              onChange={(event) => updateConfig({ apiBase: event.target.value })}
-              placeholder="https://api.example.com/v1"
-              className="font-mono"
-            />
-          </div>
-
-          {/* Model */}
-          <div className="space-y-3">
-            <div className="flex items-center justify-between gap-3">
-              <Label className="text-sm font-medium text-foreground">模型</Label>
-              <span className="text-[11px] text-muted-foreground">请求字段：model</span>
-            </div>
-
-            <div
-              role="group"
-              aria-label="模型 ID 来源"
-              className="grid grid-cols-2 gap-1 rounded-lg border border-border/60 bg-muted/35 p-1"
-            >
-              <button
-                type="button"
-                aria-pressed={modelEntryMode === 'preset'}
-                aria-controls={modelPanelId}
-                onClick={() => handleModelModeChange('preset')}
-                className={cn(
-                  'h-9 rounded-md px-3 text-sm font-medium transition-[background-color,color,box-shadow] motion-reduce:transition-none focus-ring',
-                  modelEntryMode === 'preset'
-                    ? 'bg-card text-foreground shadow-sm'
-                    : 'text-muted-foreground hover:bg-card/55 hover:text-foreground',
-                )}
-              >
-                推荐模型
-              </button>
-              <button
-                type="button"
-                aria-pressed={modelEntryMode === 'custom'}
-                aria-controls={modelPanelId}
-                onClick={() => handleModelModeChange('custom')}
-                className={cn(
-                  'h-9 rounded-md px-3 text-sm font-medium transition-[background-color,color,box-shadow] motion-reduce:transition-none focus-ring',
-                  modelEntryMode === 'custom'
-                    ? 'bg-card text-foreground shadow-sm'
-                    : 'text-muted-foreground hover:bg-card/55 hover:text-foreground',
-                )}
-              >
-                自定义模型 ID
-              </button>
-            </div>
-
-            <div id={modelPanelId} className="space-y-2">
-              {modelEntryMode === 'preset' ? (
-                <>
-                  <Label htmlFor={modelPresetId} className="sr-only">
-                    推荐模型
-                  </Label>
-                  <Select
-                    value={presetModel}
-                    onValueChange={(nextModel) => {
-                      clearConnectionTest()
-                      setPresetModel(nextModel)
-                    }}
+        <div className="min-h-0 min-w-0 flex-1 overflow-y-auto">
+          <fieldset disabled={saving} className="min-w-0 space-y-5 p-5">
+            {/* API Key */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between gap-3">
+                <Label htmlFor={apiKeyId} className="text-sm font-medium text-foreground">
+                  API Key{' '}
+                  {apiKeyRequired ? (
+                    <span className="text-destructive ml-1">*</span>
+                  ) : (
+                    <span className="ml-1 font-normal text-muted-foreground">（可选）</span>
+                  )}
+                </Label>
+                {docsUrl !== undefined && (
+                  <a
+                    href={docsUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs font-medium text-primary hover:underline"
                   >
-                    <SelectTrigger id={modelPresetId} aria-describedby={modelHintId} className="h-11">
-                      <SelectValue placeholder="选择推荐模型">
-                        {selectedPresetModel?.displayName ?? presetModel}
-                      </SelectValue>
-                    </SelectTrigger>
-                    <SelectContent>
-                      {modelOptions.map((model) => (
-                        <SelectItem key={model.id} value={model.name} className="py-2.5">
-                          <span className="grid min-w-0 gap-0.5">
-                            <span className="font-medium text-foreground">{model.displayName}</span>
-                            <span className="truncate font-mono text-[11px] text-muted-foreground">{model.name}</span>
-                          </span>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </>
-              ) : (
-                <>
-                  <Label htmlFor={modelCustomId} className="sr-only">
-                    自定义模型 ID
-                  </Label>
-                  <Input
-                    id={modelCustomId}
-                    type="text"
-                    value={model}
-                    onChange={(event) => handleCustomModelChange(event.target.value)}
-                    placeholder={
-                      provider.id === 'ark' ? '例如 doubao-seed-2-0-lite-260428' : '输入服务商控制台中的完整模型 ID'
-                    }
-                    aria-describedby={modelHintId}
-                    autoComplete="off"
-                    spellCheck={false}
-                    className="h-11 font-mono"
-                  />
-                </>
-              )}
-
-              <div className="rounded-lg border border-border/55 bg-muted/25 px-3 py-2.5">
-                <div className="mb-1 flex items-center justify-between gap-3 text-[11px] text-muted-foreground">
-                  <span>实际请求 ID</span>
-                  <span>{modelEntryMode === 'preset' ? '推荐项' : '自定义'}</span>
-                </div>
-                <code className="block break-all text-[12px] font-medium text-foreground">
-                  {model === '' ? '尚未填写' : model}
-                </code>
+                    获取 Key <span aria-hidden>→</span>
+                  </a>
+                )}
               </div>
+              <div className="relative">
+                <Input
+                  id={apiKeyId}
+                  type={showApiKey ? 'text' : 'password'}
+                  value={config.apiKey}
+                  onChange={(event) => updateConfig({ apiKey: event.target.value })}
+                  placeholder={apiKeyRequired ? `输入 ${provider.name} API Key` : '服务需要认证时填写'}
+                  required={apiKeyRequired}
+                  className="pr-10 font-mono"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowApiKey(!showApiKey)}
+                  aria-label={showApiKey ? '隐藏 API Key' : '显示 API Key'}
+                  title={showApiKey ? '隐藏 API Key' : '显示 API Key'}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors motion-reduce:transition-none focus-ring"
+                >
+                  {showApiKey ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                </button>
+              </div>
+              {canTestConnection && hasMaskedApiKey && (
+                <p className="text-xs text-muted-foreground">
+                  连接测试需要输入实际的 API Key。保存配置时可以保留已保存的密钥。
+                </p>
+              )}
             </div>
 
-            <p id={modelHintId} className="text-xs leading-relaxed text-muted-foreground">
-              推荐清单用于快捷选择；若服务商按账号、地域或版本提供其他 ID，请切换到自定义，测试和保存时会原样发送。
-            </p>
-          </div>
+            {/* API Base URL */}
+            <div className="space-y-2">
+              <Label htmlFor={apiBaseId} className="text-sm font-medium text-foreground">
+                API Base URL
+              </Label>
+              <Input
+                id={apiBaseId}
+                type="text"
+                value={config.apiBase}
+                onChange={(event) => updateConfig({ apiBase: event.target.value })}
+                placeholder="https://api.example.com/v1"
+                className="font-mono"
+              />
+            </div>
 
-          {canTestConnection && (
-            <div>
-              <button
-                type="button"
-                onClick={() => setShowAdvanced(!showAdvanced)}
-                className="flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors motion-reduce:transition-none group"
+            {/* Model */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between gap-3">
+                <Label className="text-sm font-medium text-foreground">模型</Label>
+                <span className="text-[11px] text-muted-foreground">请求字段：model</span>
+              </div>
+
+              <div
+                role="group"
+                aria-label="模型 ID 来源"
+                className="grid grid-cols-2 gap-1 rounded-lg border border-border/60 bg-muted/35 p-1"
               >
-                <ChevronRight className={cn('size-4 transition-transform', showAdvanced && 'rotate-90')} />
-                高级设置
-              </button>
+                <button
+                  type="button"
+                  aria-pressed={modelEntryMode === 'preset'}
+                  aria-controls={modelPanelId}
+                  onClick={() => handleModelModeChange('preset')}
+                  className={cn(
+                    'h-11 rounded-md px-3 text-sm font-medium transition-[background-color,color,box-shadow] motion-reduce:transition-none focus-ring sm:h-9',
+                    modelEntryMode === 'preset'
+                      ? 'bg-card text-foreground shadow-sm'
+                      : 'text-muted-foreground hover:bg-card/55 hover:text-foreground',
+                  )}
+                >
+                  推荐模型
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={modelEntryMode === 'custom'}
+                  aria-controls={modelPanelId}
+                  onClick={() => handleModelModeChange('custom')}
+                  className={cn(
+                    'h-11 rounded-md px-3 text-sm font-medium transition-[background-color,color,box-shadow] motion-reduce:transition-none focus-ring sm:h-9',
+                    modelEntryMode === 'custom'
+                      ? 'bg-card text-foreground shadow-sm'
+                      : 'text-muted-foreground hover:bg-card/55 hover:text-foreground',
+                  )}
+                >
+                  自定义模型 ID
+                </button>
+              </div>
 
-              {showAdvanced && (
-                <div className="mt-4 grid grid-cols-2 gap-4 motion-safe:animate-in motion-safe:slide-in-from-top-2 motion-safe:duration-200">
-                  <div className="space-y-1.5">
-                    <Label htmlFor={temperatureId} className="text-xs font-medium text-muted-foreground">
-                      Temperature
+              <div id={modelPanelId} className="space-y-2">
+                {modelEntryMode === 'preset' ? (
+                  <>
+                    <Label htmlFor={modelPresetId} className="sr-only">
+                      推荐模型
+                    </Label>
+                    <Select
+                      value={presetModel}
+                      onValueChange={(nextModel) => {
+                        clearConnectionTest()
+                        setPresetModel(nextModel)
+                      }}
+                    >
+                      <SelectTrigger id={modelPresetId} aria-describedby={modelHintId} className="h-11">
+                        <SelectValue placeholder="选择推荐模型">
+                          {selectedPresetModel?.displayName ?? presetModel}
+                        </SelectValue>
+                      </SelectTrigger>
+                      <SelectContent>
+                        {modelOptions.map((model) => (
+                          <SelectItem key={model.id} value={model.name} className="py-2.5">
+                            <span className="grid min-w-0 gap-0.5">
+                              <span className="font-medium text-foreground">{model.displayName}</span>
+                              <span className="truncate font-mono text-[11px] text-muted-foreground">{model.name}</span>
+                            </span>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </>
+                ) : (
+                  <>
+                    <Label htmlFor={modelCustomId} className="sr-only">
+                      自定义模型 ID
                     </Label>
                     <Input
-                      id={temperatureId}
-                      type="number"
-                      step="0.1"
-                      value={config.temperature}
-                      onChange={(event) => updateConfig({ temperature: event.target.value })}
-                      className="h-9 text-sm"
+                      id={modelCustomId}
+                      type="text"
+                      value={model}
+                      onChange={(event) => handleCustomModelChange(event.target.value)}
+                      placeholder={
+                        provider.id === 'ark' ? '例如 doubao-seed-2-0-lite-260428' : '输入服务商控制台中的完整模型 ID'
+                      }
+                      aria-describedby={modelHintId}
+                      autoComplete="off"
+                      spellCheck={false}
+                      className="h-11 font-mono"
                     />
+                  </>
+                )}
+
+                <div className="rounded-lg border border-border/55 bg-muted/25 px-3 py-2.5">
+                  <div className="mb-1 flex items-center justify-between gap-3 text-[11px] text-muted-foreground">
+                    <span>实际请求 ID</span>
+                    <span>{modelEntryMode === 'preset' ? '推荐项' : '自定义'}</span>
                   </div>
+                  <code className="block break-all text-[12px] font-medium text-foreground">
+                    {model === '' ? '尚未填写' : model}
+                  </code>
                 </div>
-              )}
+              </div>
+
+              <p id={modelHintId} className="text-xs leading-relaxed text-muted-foreground">
+                推荐清单用于快捷选择；若服务商按账号、地域或版本提供其他 ID，请切换到自定义，测试和保存时会原样发送。
+              </p>
             </div>
-          )}
 
-          <FeedbackToast
-            type={testResult?.success ? 'success' : 'error'}
-            message={testResult?.message}
-            id={MODEL_CONNECTION_TOAST_ID}
-          />
-          {saveError !== null && (
-            <p role="alert" className="text-sm text-destructive">
-              {saveError}
-            </p>
-          )}
-        </fieldset>
+            {canTestConnection && (
+              <div>
+                <button
+                  type="button"
+                  onClick={() => setShowAdvanced(!showAdvanced)}
+                  className="flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors motion-reduce:transition-none group"
+                >
+                  <ChevronRight className={cn('size-4 transition-transform', showAdvanced && 'rotate-90')} />
+                  高级设置
+                </button>
 
-        <DialogFooter className="p-6 pt-2 bg-card">
+                {showAdvanced && (
+                  <div className="mt-4 grid grid-cols-2 gap-4 motion-safe:animate-in motion-safe:slide-in-from-top-2 motion-safe:duration-200">
+                    <div className="space-y-1.5">
+                      <Label htmlFor={temperatureId} className="text-xs font-medium text-muted-foreground">
+                        Temperature
+                      </Label>
+                      <Input
+                        id={temperatureId}
+                        type="number"
+                        step="0.1"
+                        value={config.temperature}
+                        onChange={(event) => updateConfig({ temperature: event.target.value })}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            <FeedbackToast
+              type={testResult?.success ? 'success' : 'error'}
+              message={testResult?.message}
+              id={MODEL_CONNECTION_TOAST_ID}
+            />
+            {saveError !== null && (
+              <p role="alert" className="text-sm text-destructive">
+                {saveError}
+              </p>
+            )}
+          </fieldset>
+        </div>
+
+        <DialogFooter className="shrink-0 border-t border-border bg-popover px-5 py-4">
           <div className="flex gap-3 w-full">
             {canTestConnection && (
               <Button
                 variant="outline"
                 onClick={handleTest}
                 disabled={saving || config.apiKey.trim() === '' || hasMaskedApiKey || model.trim() === '' || isTesting}
-                className="flex-1 rounded-xl h-11"
+                className="flex-1"
               >
                 {isTesting ? (
                   <span className="animate-pulse motion-reduce:animate-none">测试中...</span>
@@ -484,7 +483,7 @@ export function ModelConfigDialog({ provider, open, saving, onClose, onSave }: R
             <Button
               onClick={handleSave}
               disabled={saving || (apiKeyRequired && config.apiKey.trim() === '') || model.trim() === ''}
-              className="flex-1 rounded-xl h-11"
+              className="flex-1"
             >
               <Save className="size-4 mr-2" />
               {saving ? '保存中…' : '保存配置'}

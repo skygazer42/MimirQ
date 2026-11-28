@@ -15,10 +15,11 @@ import { useSearchParams } from 'next/navigation'
 import { datasetApi, evaluationApi } from '@/lib/api'
 import type { RegressionRun, RegressionRunCreate } from '@/types'
 import { Button } from '@/components/ui/button'
-import { WorkspaceNotice } from '@/components/ui/operational-workspace'
+import { Label } from '@/components/ui/label'
+import { WorkspaceNotice, WorkspaceNoticeStack } from '@/components/ui/operational-workspace'
 import { TestCaseManager } from '@/components/test-case-manager'
 import { TestGenerationDialog } from '@/components/test-generation-dialog'
-import { Sparkles, Clock3, ChevronDown } from '@/components/icons'
+import { Sparkles, Clock3, ChevronDown, Grid3X3 } from '@/components/icons'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { formatApiError, toApiErrorInfo } from '@/lib/api-errors'
@@ -29,7 +30,9 @@ import {
   buildRegressionSummaryModel,
   formatRegressionCount,
   formatRegressionMetric,
+  formatRegressionRunAnswerMode,
   formatRegressionValue,
+  regressionAnswerModeLabels,
 } from '@/lib/regression-result-model'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
@@ -47,13 +50,6 @@ import {
 } from '@/components/ui/dialog'
 import evaluationStyles from './evaluation-panels.module.css'
 
-const REGRESSION_STAT_STYLES = {
-  neutral: { container: 'border-border/60 bg-card/90', value: 'text-foreground' },
-  success: { container: 'border-success/30 bg-success/5', value: 'text-success' },
-  warning: { container: 'border-warning/30 bg-warning/5', value: 'text-warning' },
-  info: { container: 'border-info/30 bg-info/5', value: 'text-info' },
-}
-
 function RegressionInlineStat({
   label,
   value,
@@ -61,14 +57,12 @@ function RegressionInlineStat({
 }: Readonly<{
   label: string
   value: ReactNode
-  tone?: keyof typeof REGRESSION_STAT_STYLES
+  tone?: 'neutral' | 'success' | 'warning' | 'info'
 }>) {
-  const styles = REGRESSION_STAT_STYLES[tone]
-
   return (
-    <div className={cn('inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1', styles.container)}>
+    <div className={evaluationStyles.inlineStat} data-tone={tone}>
       <span className="text-[13px] font-medium leading-none text-muted-foreground">{label}</span>
-      <span className={cn('text-[14px] font-semibold leading-6', styles.value)}>{value}</span>
+      <span className="text-[14px] font-semibold leading-6 tabular-nums">{value}</span>
     </div>
   )
 }
@@ -95,9 +89,13 @@ function RegressionMetricCompactGrid({
         {metrics.map((metric) => (
           <div
             key={metric.key}
-            className="min-w-0 rounded-lg border border-border/60 bg-card px-2 py-1.5"
+            className={evaluationStyles.metricCard}
+            data-metric={metric.key}
             title={`${ragasMetricLabel(metric.key)}: ${metric.value}`}
           >
+            <span className={evaluationStyles.metricIcon} aria-hidden="true">
+              <Grid3X3 />
+            </span>
             <div className="truncate text-[12px] font-medium leading-4 text-muted-foreground">
               {ragasMetricLabel(metric.key)}
             </div>
@@ -376,6 +374,7 @@ function RegressionWorkspace({ sessionKey }: Readonly<{ sessionKey: string }>) {
   const isLoadingLatestRegressionCase = latestRegressionCaseQuery.isLoading || latestRegressionCaseQuery.isFetching
 
   // 运行配置
+  const [answerMode, setAnswerMode] = useState<NonNullable<RegressionRunCreate['answer_mode']>>('rag')
   const [metricKeys, setMetricKeys] = useState<string[]>(['faithfulness', 'response_relevancy'])
   const [retrievalOnly, setRetrievalOnly] = useState(false)
   const [useLlmJudge, setUseLlmJudge] = useState(false)
@@ -535,9 +534,10 @@ function RegressionWorkspace({ sessionKey }: Readonly<{ sessionKey: string }>) {
     const params: RegressionRunCreate = {
       case_ids: ids,
       dataset_id: datasetId,
+      answer_mode: answerMode,
       metrics: runMetricKeys,
       use_llm_judge: runUsesLlmJudge,
-      skip_empty_contexts: true,
+      skip_empty_contexts: false,
       max_cases: ids.length,
     }
     const request = evaluationApi.createRegressionRun(params)
@@ -587,34 +587,73 @@ function RegressionWorkspace({ sessionKey }: Readonly<{ sessionKey: string }>) {
   )
   const summaryModel = summaryResult?.status === 'ready' ? summaryResult : undefined
 
+  const showLatestCaseError =
+    deepLinkDatasetId === '' &&
+    selectedDatasetId === '' &&
+    selectedRunId === null &&
+    latestRegressionCaseQuery.error !== null
+  const hasFloatingRunsRefreshError = runsQuery.error !== null && visibleRuns !== undefined
+  const hasFloatingRunDetailRefreshError = runDetailQuery.error !== null && runDetail !== undefined
+  const hasFloatingRegressionNotice =
+    datasetsQuery.error !== null ||
+    showLatestCaseError ||
+    hasFloatingRunsRefreshError ||
+    hasFloatingRunDetailRefreshError
+
   return (
     <div className={cn('flex-1 flex flex-col min-h-0 overflow-hidden', evaluationStyles.golden)}>
-      {datasetsQuery.error !== null ? (
-        <WorkspaceNotice
-          retry={() => void datasetsQuery.refetch()}
-          retryLabel="重新读取数据集目录"
-          pending={datasetsQuery.isFetching}
-        >
-          {datasets === undefined ? null : '更新失败，保留上次目录和当前选择。'}
-          {formatApiError(datasetsQuery.error, '数据集目录读取失败')}
-        </WorkspaceNotice>
+      {hasFloatingRegressionNotice ? (
+        <WorkspaceNoticeStack ariaLabel="回归评测状态提示">
+          {datasetsQuery.error !== null ? (
+            <WorkspaceNotice
+              tone="warning"
+              title={datasets === undefined ? '数据集目录读取失败' : '更新失败，保留上次目录和当前选择'}
+              error={datasetsQuery.error}
+              fallbackMessage="数据集目录读取失败"
+              retry={() => void datasetsQuery.refetch()}
+              retryLabel="重新读取数据集目录"
+              pending={datasetsQuery.isFetching}
+            />
+          ) : null}
+          {showLatestCaseError ? (
+            <WorkspaceNotice
+              tone="warning"
+              title="最近评测范围读取失败，请手动选择数据集"
+              error={latestRegressionCaseQuery.error}
+              fallbackMessage="最近评测范围读取失败，请手动选择数据集"
+              retry={() => void latestRegressionCaseQuery.refetch()}
+              retryLabel="重新读取最近评测范围"
+              pending={latestRegressionCaseQuery.isFetching}
+            />
+          ) : null}
+          {hasFloatingRunsRefreshError ? (
+            <WorkspaceNotice
+              tone="warning"
+              title="更新失败，保留上次历史"
+              error={runsQuery.error}
+              fallbackMessage="运行历史读取失败"
+              retry={() => void runsQuery.refetch()}
+              retryLabel="重新读取运行历史"
+              pending={runsQuery.isFetching}
+            />
+          ) : null}
+          {hasFloatingRunDetailRefreshError ? (
+            <WorkspaceNotice
+              tone="warning"
+              title="更新失败，保留上次详情"
+              error={runDetailQuery.error}
+              fallbackMessage="运行详情读取失败"
+              retry={() => void runDetailQuery.refetch()}
+              retryLabel="重新读取运行详情"
+              pending={runDetailQuery.isFetching}
+            />
+          ) : null}
+        </WorkspaceNoticeStack>
       ) : null}
       {datasetsQuery.isFetching && datasets !== undefined ? (
         <p role="status" className="text-sm text-muted-foreground">
           正在更新数据集目录，保留当前选择。
         </p>
-      ) : null}
-      {deepLinkDatasetId === '' &&
-      selectedDatasetId === '' &&
-      selectedRunId === null &&
-      latestRegressionCaseQuery.error !== null ? (
-        <WorkspaceNotice
-          retry={() => void latestRegressionCaseQuery.refetch()}
-          retryLabel="重新读取最近评测范围"
-          pending={latestRegressionCaseQuery.isFetching}
-        >
-          {formatApiError(latestRegressionCaseQuery.error, '最近评测范围读取失败，请手动选择数据集')}
-        </WorkspaceNotice>
       ) : null}
       <Dialog>
         <div className={evaluationStyles.goldenToolbar}>
@@ -644,7 +683,7 @@ function RegressionWorkspace({ sessionKey }: Readonly<{ sessionKey: string }>) {
                   </div>
                   <div className="mt-1 text-sm font-semibold text-foreground">Golden 评测配置</div>
                   <p className="mt-1 text-[13px] leading-4 text-muted-foreground">
-                    先锁定数据集，再维护 Golden 评测集并运行当前 RAG pipeline。
+                    按数据集维护 Golden 样本并配置评测方式。
                   </p>
                 </div>
                 <div className="flex items-center gap-1.5">
@@ -653,7 +692,7 @@ function RegressionWorkspace({ sessionKey }: Readonly<{ sessionKey: string }>) {
                       type="button"
                       variant="ghost"
                       size="sm"
-                      className="h-7 rounded-md px-2 text-[13px] text-muted-foreground hover:bg-muted hover:text-foreground"
+                      className="px-2 text-[13px] text-muted-foreground hover:bg-muted hover:text-foreground"
                     >
                       完成
                     </Button>
@@ -680,10 +719,7 @@ function RegressionWorkspace({ sessionKey }: Readonly<{ sessionKey: string }>) {
                   onValueChange={setSelectedDatasetId}
                   disabled={isLoadingDatasets || datasets === undefined || datasets.length === 0}
                 >
-                  <SelectTrigger
-                    aria-label="评测配置数据集"
-                    className="h-9 rounded-xl border-info/20 bg-info/[0.025] text-[13px]"
-                  >
+                  <SelectTrigger aria-label="评测配置数据集" className="text-[13px]">
                     <SelectValue placeholder={isLoadingDatasets ? '加载中...' : '选择数据集'} />
                   </SelectTrigger>
                   <SelectContent>
@@ -723,22 +759,38 @@ function RegressionWorkspace({ sessionKey }: Readonly<{ sessionKey: string }>) {
 
             <div className="min-h-0 flex-1 space-y-2.5 overflow-y-auto overscroll-contain p-2.5 pb-6 custom-scrollbar">
               <section className="border-t border-border bg-success/[0.04] py-4">
-                <h3 className="text-[13px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
-                  运行当前 RAG
-                </h3>
-                <p className="mt-1 text-[13px] leading-4 text-muted-foreground">
-                  当前数据集的标准问答会作为固定标尺，问题重新走 RAG 后再和标准答案、标准证据比较。
-                </p>
+                <h3 className="text-[13px] font-medium uppercase tracking-[0.12em] text-muted-foreground">运行方式</h3>
+                <div className="mt-3 max-w-xs space-y-1.5">
+                  <Label htmlFor="golden-answer-mode" className="text-[13px]">
+                    问答模式
+                  </Label>
+                  <Select value={answerMode} onValueChange={(mode) => setAnswerMode(mode as typeof answerMode)}>
+                    <SelectTrigger
+                      id="golden-answer-mode"
+                      aria-describedby="golden-answer-mode-description"
+                      className="text-[13px]"
+                    >
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="rag">{regressionAnswerModeLabels.rag}</SelectItem>
+                      <SelectItem value="ontology">{regressionAnswerModeLabels.ontology}</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p id="golden-answer-mode-description" className="text-[13px] leading-4 text-muted-foreground">
+                    本体问答使用已发布本体的图谱证据。
+                  </p>
+                </div>
                 <div className="mt-3 space-y-2">
                   <RegressionConfigToggle
                     title="仅检索评测"
-                    description="开启后 `metrics=[]`，只看标准证据命中：recall、hit@k、MRR、NDCG 与 abstain_rate。"
+                    description="只比较检索结果与标准证据。"
                     checked={retrievalOnly}
                     onCheckedChange={setRetrievalOnly}
                   />
                   <RegressionConfigToggle
                     title="LLM-as-Judge"
-                    description="为每个样本额外生成 score、reason 和 evidence quotes；检索-only 模式不可用。"
+                    description="为每个样本生成得分、理由和原文证据。"
                     checked={runUsesLlmJudge}
                     disabled={retrievalOnly}
                     onCheckedChange={setUseLlmJudge}
@@ -810,13 +862,12 @@ function RegressionWorkspace({ sessionKey }: Readonly<{ sessionKey: string }>) {
               </div>
             </div>
             <div className="overflow-y-auto overscroll-contain custom-scrollbar max-h-[190px]">
-              {runsQuery.error !== null ? (
+              {runsQuery.error !== null && visibleRuns === undefined ? (
                 <WorkspaceNotice
                   retry={() => void runsQuery.refetch()}
                   retryLabel="重新读取运行历史"
                   pending={runsQuery.isFetching}
                 >
-                  {visibleRuns === undefined ? null : '更新失败，保留上次历史。'}
                   {formatApiError(runsQuery.error, '运行历史读取失败')}
                 </WorkspaceNotice>
               ) : null}
@@ -867,26 +918,16 @@ function RegressionWorkspace({ sessionKey }: Readonly<{ sessionKey: string }>) {
                     >
                       <div className="flex items-center justify-between gap-2">
                         <div className="text-sm font-medium text-foreground truncate">运行 {run.id.slice(0, 8)}</div>
-                        <span
-                          className={cn(
-                            'text-[13px] px-2 py-0.5 rounded-full border',
-                            (() => {
-                              if (run.status === 'completed') {
-                                return 'bg-success/10 text-success border-success/20'
-                              } else if (run.status === 'failed') {
-                                return 'bg-destructive/10 text-destructive border-destructive/20'
-                              } else {
-                                return 'bg-info/10 text-info border-info/20'
-                              }
-                            })(),
-                          )}
-                        >
+                        <span className={evaluationStyles.runStatus} data-status={run.status}>
                           {run.status}
                         </span>
                       </div>
-                      <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
-                        <Clock3 className="h-3.5 w-3.5" />
-                        <span>{new Date(run.created_at).toLocaleString()}</span>
+                      <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+                        <span>{formatRegressionRunAnswerMode(run)}</span>
+                        <span className="inline-flex items-center gap-1">
+                          <Clock3 className="h-3.5 w-3.5" aria-hidden="true" />
+                          {new Date(run.created_at).toLocaleString()}
+                        </span>
                       </div>
                     </button>
                   ))
@@ -905,7 +946,11 @@ function RegressionWorkspace({ sessionKey }: Readonly<{ sessionKey: string }>) {
             <div className="mb-3">
               <div>
                 <div className="mt-1 text-sm font-semibold text-foreground">结果与标准对照</div>
-                <div className="mt-0.5 text-[13px] text-muted-foreground">对照标准答案、引用证据和预期元数据。</div>
+                <div className="mt-0.5 text-[13px] text-muted-foreground">
+                  {runDetail === undefined
+                    ? '对照标准答案、引用证据和预期元数据。'
+                    : formatRegressionRunAnswerMode(runDetail.run)}
+                </div>
               </div>
             </div>
 
@@ -921,17 +966,16 @@ function RegressionWorkspace({ sessionKey }: Readonly<{ sessionKey: string }>) {
                   pending={runsQuery.isFetching}
                 >
                   {runSubmission.message}
-                  {runSubmission.status === 'unconfirmed' ? ' 后端可能已经创建运行；再次提交会创建新记录。' : null}
+                  {runSubmission.status === 'unconfirmed' ? ' 重新提交会新建运行，请先核对记录。' : null}
                 </WorkspaceNotice>
               )
             ) : null}
-            {runDetailQuery.error !== null ? (
+            {runDetailQuery.error !== null && runDetail === undefined ? (
               <WorkspaceNotice
                 retry={() => void runDetailQuery.refetch()}
                 retryLabel="重新读取运行详情"
                 pending={runDetailQuery.isFetching}
               >
-                {runDetail === undefined ? null : '更新失败，保留上次详情。'}
                 {formatApiError(runDetailQuery.error, '运行详情读取失败')}
               </WorkspaceNotice>
             ) : null}
@@ -1160,8 +1204,14 @@ function RegressionWorkspace({ sessionKey }: Readonly<{ sessionKey: string }>) {
               </div>
             )}
           </div>
-          <details className={evaluationStyles.guide}>
-            <summary>指标说明</summary>
+          <details className={cn('group', evaluationStyles.guide)}>
+            <summary className="flex list-none items-center gap-2 [&::-webkit-details-marker]:hidden">
+              <ChevronDown
+                className="size-3.5 shrink-0 text-muted-foreground transition-transform group-open:rotate-180"
+                aria-hidden="true"
+              />
+              指标说明
+            </summary>
             <RegressionMetricGuideCard />
           </details>
         </div>

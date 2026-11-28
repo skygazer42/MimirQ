@@ -30,7 +30,6 @@ export function DiagnosticsDialogs({ controller: c }: { controller: DiagnosticsC
               关闭
             </Button>
             <Button
-              className={styles.primary}
               onClick={() => {
                 void c.copySummary()
               }}
@@ -94,7 +93,6 @@ export function DiagnosticsDialogs({ controller: c }: { controller: DiagnosticsC
             </Button>
             <Button
               disabled={c.statusRefreshing}
-              className={styles.primary}
               onClick={() => {
                 void c.refreshStatus()
               }}

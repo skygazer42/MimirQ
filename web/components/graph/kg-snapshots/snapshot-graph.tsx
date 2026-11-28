@@ -2,10 +2,8 @@ import { Box, Brain, FolderOpen, Network, Sparkles, Star, User } from '@/compone
 import type { ReactNode } from 'react'
 
 import { toTrimmedPrimitiveString } from '@/lib/primitive-text'
-import { cn } from '@/lib/utils'
 import type { KGGraphLink, KGGraphNode, KGGraphResponse } from '@/types'
 
-import { SNAPSHOT_NODE_TONE_CLASSES } from './constants'
 import type { SnapshotStudioLink, SnapshotStudioNode } from './types'
 import { firstDisplayString } from './utils'
 
@@ -69,17 +67,6 @@ function getLinkValue(link: KGGraphLink, ...keys: string[]): unknown {
     if (metaValue != null && metaValue !== '') return metaValue
   }
   return undefined
-}
-
-function toneForNodeType(type: string): SnapshotStudioNode['tone'] {
-  const normalized = type.toLowerCase()
-  if (normalized.includes('event') || normalized.includes('事件')) return 'orange'
-  if (normalized.includes('document') || normalized.includes('文档')) return 'amber'
-  if (normalized.includes('model') || normalized.includes('模型')) return 'purple'
-  if (normalized.includes('person') || normalized.includes('用户') || normalized.includes('人员')) return 'green'
-  if (normalized.includes('feedback') || normalized.includes('评价')) return 'rose'
-  if (normalized.includes('technology') || normalized.includes('技术')) return 'teal'
-  return 'blue'
 }
 
 function iconForNodeType(type: string): ReactNode {
@@ -148,7 +135,7 @@ export function graphLoadingTitle(isLoading: boolean): string {
 }
 
 export function graphLoadingDescription(isLoading: boolean, emptyMessage?: string): string {
-  if (isLoading) return '系统会按当前数据集、文档范围和 pipeline hash 请求后端接口。'
+  if (isLoading) return ''
   return emptyMessage || '当前作用域没有返回 KG 节点，请先完成文档入库或 KG 抽取。'
 }
 
@@ -179,7 +166,6 @@ export function buildSnapshotStudioGraphFromKgGraph(graph: KGGraphResponse | nul
         '来自 KG 图谱接口的真实节点。',
       x: Math.round((50 + Math.cos(angle) * radiusX) * 10) / 10,
       y: Math.round((50 + Math.sin(angle) * radiusY) * 10) / 10,
-      tone: toneForNodeType(type),
       icon: iconForNodeType(type),
       occurrences: Number.isFinite(occurrences) ? Math.max(0, occurrences) : 0,
       status: '一致' as const,
@@ -258,9 +244,4 @@ function layoutSnapshotStudioNodes(nodes: SnapshotStudioNode[], layout: string):
       y: clampPercent(50 + Math.sin(angle) * radius * radiusY),
     }
   })
-}
-
-export function snapshotToneClassName(tone: SnapshotStudioNode['tone'], selected: boolean) {
-  const base = SNAPSHOT_NODE_TONE_CLASSES[tone]
-  return cn(base, selected ? 'ring-4 ring-offset-4 ring-offset-background' : 'ring-1')
 }

@@ -7,6 +7,8 @@
   --muted-foreground: 26 7% 43%;
   --primary: 13.5 62.83% 44.3%;
   --primary-foreground: 0 0% 100%;
+  --accent: var(--primary);
+  --accent-foreground: var(--primary-foreground);
   --border: 32 14% 82%;
   --input: 32 16% 86%;
   --ring: var(--primary);
@@ -89,7 +91,7 @@
   min-width: 0;
   margin: 0 auto;
   padding: 32px;
-  border: 1px solid hsl(var(--border));
+  border: 1px solid hsl(var(--border) / 0.7);
   border-radius: 16px;
   background: hsl(var(--card));
   box-shadow:
@@ -193,6 +195,10 @@
   color: hsl(var(--foreground));
   font-size: 14px;
   line-height: 24px;
+}
+
+.input::-ms-reveal {
+  display: none;
 }
 
 .input::placeholder {

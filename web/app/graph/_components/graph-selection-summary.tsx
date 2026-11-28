@@ -1,7 +1,7 @@
 'use client'
 
 import type { Ref } from 'react'
-import { ExternalLink, GitBranch, Loader2, X } from '@/components/icons'
+import { ExternalLink, GitBranch, Loader2, Network, X } from '@/components/icons'
 import { Button } from '@/components/ui/button'
 import { coerceTrimmedString, getGraphNodeKind, type GraphNodeLike } from '../graph-page-utils'
 import { graphTypeLabel } from '../graph-directory-model'
@@ -16,6 +16,7 @@ type GraphSelectionSummaryProps = {
   loading: boolean
   detailError: string | null
   onDetails: () => void
+  isOntologyEntity?: boolean
   onExpand: () => void
   onSource: () => void
   onClose: () => void
@@ -29,6 +30,7 @@ export function GraphSelectionSummary({
   loading,
   detailError,
   onDetails,
+  isOntologyEntity,
   onExpand,
   onSource,
   onClose,
@@ -45,10 +47,18 @@ export function GraphSelectionSummary({
     node.meta?.chunk_id,
   )
   return (
-    <section className={styles.selectionSummary} aria-label="当前实体摘要" data-graph-selection>
+    <section
+      className={styles.selectionSummary}
+      aria-label="当前实体摘要"
+      data-graph-selection
+      data-entity-type={graphTypeLabel(node)}
+    >
       <div className={styles.selectionTitle}>
+        <i className={styles.iconTray} aria-hidden="true">
+          <Network />
+        </i>
         <h2 title={nodeLabel}>{nodeLabel}</h2>
-        <span>{graphTypeLabel(node)}</span>
+        <span className={styles.typeBadge}>{graphTypeLabel(node)}</span>
         <button type="button" className="focus-ring" aria-label="取消实体选择" onClick={onClose}>
           <X />
         </button>
@@ -72,14 +82,14 @@ export function GraphSelectionSummary({
       <div className={styles.selectionActions}>
         <Button ref={detailsButtonRef} variant="ghost" onClick={onDetails}>
           <ExternalLink />
-          查看详情与来源
+          {isOntologyEntity ? '查看与修正实体' : '查看详情与来源'}
         </Button>
         {canViewSource ? (
           <Button variant="ghost" onClick={onSource}>
             查看原文
           </Button>
         ) : null}
-        {getGraphNodeKind(node) === 'entity' ? (
+        {!isOntologyEntity && getGraphNodeKind(node) === 'entity' ? (
           <Button variant="outline" onClick={onExpand} disabled={loading}>
             <GitBranch />
             展开邻居

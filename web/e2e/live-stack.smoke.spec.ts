@@ -151,10 +151,11 @@ async function authenticateThroughUi(page: Page): Promise<JwtAuthState> {
 
   await page.goto('/auth')
   await expect(page.getByLabel('账号', { exact: true })).toBeVisible()
-  await expect(page.getByLabel('密码')).toBeVisible()
+  const password = page.getByLabel('密码', { exact: true })
+  await expect(password).toBeVisible()
 
   await page.getByLabel('账号', { exact: true }).fill(configuredIdentifier)
-  await page.getByLabel('密码').fill(configuredPassword)
+  await password.fill(configuredPassword)
   await page.locator('form').getByRole('button', { name: '登录', exact: true }).click()
   await page.waitForURL(/\/$/, { timeout: 60_000 })
   return { mode: 'jwt', accessToken: await readAccessToken(page) }

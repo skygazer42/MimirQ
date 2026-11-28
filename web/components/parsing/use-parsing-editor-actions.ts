@@ -490,12 +490,20 @@ export function useParsingEditorActions({
     [filesRef, router, setFiles, setSelectedGovernanceFileIds, updateParsedFile],
   )
 
-  const handleSubmitToGovernance = useCallback(async () => {
-    if (!activeFile || activeFile.status !== 'parsed') return
-    await submitGovernanceFiles([
-      { kind: 'queue', file: activeFile, selectionId: activeFile.libraryId ?? activeFile.id },
-    ])
-  }, [activeFile, submitGovernanceFiles])
+  const handleSubmitToGovernance = useCallback(
+    async (libraryFile?: ParsedFileData) => {
+      if (libraryFile) {
+        if ((libraryFile.status ?? 'parsed') !== 'parsed') return
+        await submitGovernanceFiles([{ kind: 'library', file: libraryFile, selectionId: libraryFile.id }])
+        return
+      }
+      if (!activeFile || activeFile.status !== 'parsed') return
+      await submitGovernanceFiles([
+        { kind: 'queue', file: activeFile, selectionId: activeFile.libraryId ?? activeFile.id },
+      ])
+    },
+    [activeFile, submitGovernanceFiles],
+  )
 
   const handleSubmitSelectedToGovernance = useCallback(async () => {
     const targets = getParsingGovernanceTargets(queueFiles, libraryFiles, selectedDatasetId).filter((target) =>

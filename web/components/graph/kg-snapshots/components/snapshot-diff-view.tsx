@@ -1,7 +1,7 @@
 'use client'
 
-import { Copy, Download, ChevronLeft, ChevronRight } from '@/components/icons'
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { Copy, Download, ChevronLeft, ChevronRight, Loader2, SlidersHorizontal } from '@/components/icons'
+import { useEffect, useId, useMemo, useState, type ReactNode } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -39,6 +39,10 @@ function changeName(item: Record<string, unknown>): string {
   return firstDisplayString(item.name, item.label, after?.name, after?.label, before?.name, before?.label, item.id)
 }
 
+function propertyText(value: unknown) {
+  return typeof value === 'string' ? value : JSON.stringify(value)
+}
+
 export function SnapshotDiffView({
   titleA,
   titleB,
@@ -53,6 +57,7 @@ export function SnapshotDiffView({
   onDownload,
   onLoadDetails,
   pending = false,
+  latencyMs,
 }: Readonly<{
   titleA: string
   titleB: string
@@ -67,13 +72,21 @@ export function SnapshotDiffView({
   onDownload: () => void
   onLoadDetails?: () => void
   pending?: boolean
+  latencyMs?: number | null
 }>) {
   const [view, setView] = useState<'changes' | 'raw'>('changes')
+  const [toolsOpen, setToolsOpen] = useState(false)
+  const toolsId = useId()
   const [query, setQuery] = useState('')
   const [kind, setKind] = useState('全部')
   const [change, setChange] = useState('全部')
   const [page, setPage] = useState(1)
   const [selected, setSelected] = useState<ChangeRow | null>(null)
+  const before = recordSchema.safeParse(selected?.item.before).data
+  const after = recordSchema.safeParse(selected?.item.after).data
+  const beforeProps = recordSchema.safeParse(before?.props).data ?? {}
+  const afterProps = recordSchema.safeParse(after?.props).data ?? {}
+  const propertyKeys = [...new Set([...Object.keys(beforeProps), ...Object.keys(afterProps)])]
   useEffect(() => {
     setSelected(null)
     setPage(1)
@@ -124,35 +137,102 @@ export function SnapshotDiffView({
       </Button>
     ) : null
   return (
-    <div className="flex h-full min-h-0 flex-col bg-background">
-      <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3 md:px-6">
-        <div role="group" aria-label="对比阅读方式" className="flex gap-1">
-          <Button
-            variant={view === 'changes' ? 'secondary' : 'ghost'}
-            aria-pressed={view === 'changes'}
-            onClick={() => setView('changes')}
-          >
-            变更明细
-          </Button>
-          <Button
-            variant={view === 'raw' ? 'secondary' : 'ghost'}
-            aria-pressed={view === 'raw'}
-            onClick={() => setView('raw')}
-          >
-            原始对照
-          </Button>
-        </div>
-        <div className="flex gap-1">
-          <Button variant="ghost" size="icon" aria-label="复制对比结果" onClick={onCopy} disabled={!ready}>
-            <Copy />
-          </Button>
-          <Button variant="ghost" size="icon" aria-label="导出对比结果" onClick={onDownload} disabled={!ready}>
-            <Download />
-          </Button>
+    <div className="flex h-full min-h-0 flex-col bg-background" aria-busy={pending}>
+      <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border px-4 py-2 md:px-6 md:py-3">
+        <Button
+          variant="outline"
+          className="md:hidden"
+          aria-label="筛选与视图"
+          aria-expanded={toolsOpen}
+          aria-controls={toolsId}
+          onClick={() => setToolsOpen((open) => !open)}
+        >
+          <SlidersHorizontal className="size-4" aria-hidden="true" />
+          筛选与视图{hasFilters ? ' · 已筛选' : ''}
+        </Button>
+        <div
+          id={toolsId}
+          className={cn('min-w-0 flex-wrap items-center gap-2 md:contents', toolsOpen ? 'flex w-full' : 'hidden')}
+        >
+          <div role="group" aria-label="对比阅读方式" className="flex shrink-0 gap-1">
+            <Button
+              variant={view === 'changes' ? 'secondary' : 'ghost'}
+              aria-pressed={view === 'changes'}
+              onClick={() => setView('changes')}
+            >
+              变更明细
+            </Button>
+            <Button
+              variant={view === 'raw' ? 'secondary' : 'ghost'}
+              aria-pressed={view === 'raw'}
+              onClick={() => setView('raw')}
+            >
+              原始对照
+            </Button>
+          </div>
+          {ready && view === 'changes' ? (
+            <div className="order-2 grid w-full grid-cols-2 gap-2 min-[375px]:grid-cols-[minmax(0,1fr)_auto_auto] md:order-none md:flex md:w-auto md:flex-1 md:items-center">
+              <Input
+                aria-label="搜索变更对象"
+                className="col-span-2 min-[375px]:col-span-1 md:ml-3 md:w-56"
+                value={query}
+                onChange={(event) => {
+                  setQuery(event.target.value)
+                  setPage(1)
+                }}
+                placeholder="搜索变更"
+              />
+              <select
+                aria-label="变更对象类别"
+                className="h-11 min-w-0 rounded-md border border-border bg-background px-3 text-sm md:h-9"
+                value={kind}
+                onChange={(event) => {
+                  setKind(event.target.value)
+                  setPage(1)
+                }}
+              >
+                <option value="全部">全部类别</option>
+                <option>节点</option>
+                <option>关系</option>
+              </select>
+              <select
+                aria-label="变更类型"
+                className="h-11 min-w-0 rounded-md border border-border bg-background px-3 text-sm md:h-9"
+                value={change}
+                onChange={(event) => {
+                  setChange(event.target.value)
+                  setPage(1)
+                }}
+              >
+                <option value="全部">全部变更</option>
+                <option>新增</option>
+                <option>移除</option>
+                <option>更新</option>
+              </select>
+            </div>
+          ) : null}
+          <div className="ml-auto flex shrink-0 gap-1">
+            <Button variant="ghost" size="icon" aria-label="复制对比结果" onClick={onCopy} disabled={!ready}>
+              <Copy />
+            </Button>
+            <Button variant="ghost" size="icon" aria-label="导出对比结果" onClick={onDownload} disabled={!ready}>
+              <Download />
+            </Button>
+          </div>
         </div>
       </div>
       {!ready ? (
-        emptyState
+        pending ? (
+          <div role="status" className="flex min-h-0 flex-1 items-center justify-center px-6">
+            <div className={ws.empty}>
+              <Loader2 className="size-5 animate-spin text-muted-foreground motion-reduce:animate-none" />
+              <h2>正在读取快照并生成对比</h2>
+              <p>完成后将显示节点和关系的变化。</p>
+            </div>
+          </div>
+        ) : (
+          emptyState
+        )
       ) : view === 'raw' ? (
         <div role="region" aria-label="快照原始对照" tabIndex={0} className="min-h-0 flex-1 overflow-auto">
           {leftCode && rightCode ? (
@@ -188,57 +268,9 @@ export function SnapshotDiffView({
         </div>
       ) : (
         <>
-          <div className="flex shrink-0 flex-wrap items-center gap-3 border-b border-border px-4 py-3 md:px-6">
-            <Input
-              aria-label="搜索变更对象"
-              className="w-64 max-w-full"
-              value={query}
-              onChange={(event) => {
-                setQuery(event.target.value)
-                setPage(1)
-              }}
-              placeholder="搜索对象名称或标识"
-            />
-            <select
-              aria-label="变更对象类别"
-              className="h-10 rounded-md border border-border bg-background px-3 text-sm"
-              value={kind}
-              onChange={(event) => {
-                setKind(event.target.value)
-                setPage(1)
-              }}
-            >
-              <option>全部</option>
-              <option>节点</option>
-              <option>关系</option>
-            </select>
-            <select
-              aria-label="变更类型"
-              className="h-10 rounded-md border border-border bg-background px-3 text-sm"
-              value={change}
-              onChange={(event) => {
-                setChange(event.target.value)
-                setPage(1)
-              }}
-            >
-              <option>全部</option>
-              <option>新增</option>
-              <option>移除</option>
-              <option>更新</option>
-            </select>
-            <span className="ml-auto text-[13px] text-muted-foreground">
-              {changeCount !== undefined
-                ? changeCount === changes.length
-                  ? `${changeCount} 项变化`
-                  : `${changeCount} 项变化 · 当前预览 ${changes.length} 项`
-                : detailed
-                  ? `变更总数未取得 · 当前预览 ${changes.length} 项`
-                  : '数量摘要'}
-            </span>
-          </div>
           <div className="min-h-0 flex-1 overflow-auto px-4 md:px-6">
             {filtered.length ? (
-              <WorkspaceTableScroll label="快照变更表格" stickyActions>
+              <WorkspaceTableScroll label="快照变更表格">
                 <table className={cn(ws.table, 'min-w-[300px] sm:min-w-[640px]')} aria-label="快照变更明细">
                   <thead>
                     <tr>
@@ -314,10 +346,17 @@ export function SnapshotDiffView({
               data-task-center-dock
               className="flex shrink-0 items-center justify-between gap-3 border-t border-border px-4 py-3 text-[13px] md:px-6"
             >
-              <span className="text-muted-foreground">
-                匹配 {filtered.length} 项 · 每页 {CHANGE_PAGE_SIZE} 项
-              </span>
-              <div className="flex items-center gap-3">
+              <div className="min-w-0 text-muted-foreground">
+                <p>
+                  {changeCount !== undefined ? `${changeCount} 项变化` : '变更总数未取得'}
+                  {changeCount !== changes.length ? ` · 预览 ${changes.length} 项` : ''}
+                  {hasFilters ? ` · 匹配 ${filtered.length} 项` : ''}
+                </p>
+                <p className="text-xs">
+                  {CHANGE_PAGE_SIZE} 项/页{latencyMs != null ? ` · ${latencyMs} ms` : ''}
+                </p>
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
                 <Button
                   variant="outline"
                   size="icon"
@@ -327,7 +366,7 @@ export function SnapshotDiffView({
                 >
                   <ChevronLeft />
                 </Button>
-                <span className="tabular-nums">
+                <span className="whitespace-nowrap tabular-nums">
                   {currentPage} / {pageCount}
                 </span>
                 <Button
@@ -362,9 +401,38 @@ export function SnapshotDiffView({
                   <Badge variant="outline">{selected.kind}</Badge>
                   <span className={selected.tone}>{selected.change}</span>
                 </div>
-                <pre className="overflow-x-auto whitespace-pre text-[13px] leading-6">
-                  {JSON.stringify(selected.item, null, 2)}
-                </pre>
+                {propertyKeys.length ? (
+                  <WorkspaceTableScroll label="变更属性对照">
+                    <table className={ws.table} aria-label="变更属性对照">
+                      <thead>
+                        <tr>
+                          <th>属性</th>
+                          <th>版本 A</th>
+                          <th>版本 B</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {propertyKeys.map((key) => (
+                          <tr key={key}>
+                            <th scope="row">{key}</th>
+                            <td className="break-words">
+                              {Object.hasOwn(beforeProps, key) ? propertyText(beforeProps[key]) : '未设置'}
+                            </td>
+                            <td className="break-words">
+                              {Object.hasOwn(afterProps, key) ? propertyText(afterProps[key]) : '未设置'}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </WorkspaceTableScroll>
+                ) : null}
+                <details className="mt-5" open={propertyKeys.length ? undefined : true}>
+                  <summary className="cursor-pointer text-[13px] font-medium">原始变更数据</summary>
+                  <pre className="mt-3 overflow-x-auto whitespace-pre text-[13px] leading-6">
+                    {JSON.stringify(selected.item, null, 2)}
+                  </pre>
+                </details>
               </>
             ) : null}
           </div>

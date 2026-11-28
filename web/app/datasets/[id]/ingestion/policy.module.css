@@ -17,13 +17,13 @@
   min-height: 72px;
   height: 72px;
   flex: none;
-  padding: 0 28px;
+  padding: 0 32px;
   border-bottom: 1px solid hsl(var(--border));
-  background: hsl(var(--background));
+  background: hsl(var(--card));
 }
 .header .back {
-  height: 32px;
-  width: 32px;
+  height: 36px;
+  width: 36px;
   flex: none;
   border-radius: 5px;
   box-shadow: none;
@@ -44,9 +44,9 @@
   height: 23px;
 }
 .heading h1 {
-  font-size: 20px;
+  font-size: var(--workspace-title-size);
   line-height: 28px;
-  font-weight: 650;
+  font-weight: var(--workspace-title-weight);
   margin: 0;
   white-space: nowrap;
 }
@@ -72,7 +72,7 @@
 }
 .headerActions button,
 .toolbar button {
-  height: 34px;
+  height: 36px;
   padding: 0 12px;
   gap: 7px;
   font-size: 13px;
@@ -81,7 +81,7 @@
   box-shadow: none;
 }
 .headerActions button:last-child {
-  width: 34px;
+  width: 36px;
   padding: 0;
 }
 .headerActions svg,
@@ -97,7 +97,7 @@
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 16px 28px;
+  padding: 16px 32px;
   flex: none;
   border-bottom: 1px solid hsl(var(--border));
   min-height: 68px;
@@ -111,7 +111,7 @@
 .listHeading h2 {
   font-size: 14px;
   line-height: 24px;
-  font-weight: 550;
+  font-weight: 500;
   margin: 0;
 }
 .listHeading > span {
@@ -165,7 +165,7 @@
 }
 .table th:first-child {
   width: 66px;
-  padding-left: 28px;
+  padding-left: 32px;
 }
 .table th:nth-child(2) {
   width: 30%;
@@ -180,8 +180,8 @@
   width: 76px;
 }
 .table th:last-child {
-  width: 64px;
-  padding-right: 28px;
+  width: 76px;
+  padding-right: 32px;
 }
 .table tbody td,
 .table tbody th {
@@ -193,7 +193,7 @@
   overflow-wrap: anywhere;
 }
 .table tbody td:first-child {
-  padding-left: 28px;
+  padding-left: 32px;
 }
 .table tbody td:last-child {
   padding-right: 22px;
@@ -222,7 +222,7 @@
   text-align: left;
   font-size: 14px;
   line-height: 24px;
-  font-weight: 550;
+  font-weight: 500;
   color: hsl(var(--foreground));
   overflow-wrap: anywhere;
   cursor: pointer;
@@ -268,8 +268,8 @@
   overflow-wrap: anywhere;
 }
 .table td:last-child button {
-  height: 32px;
-  width: 32px;
+  height: 36px;
+  width: 36px;
   border-radius: 5px;
   box-shadow: none;
   color: hsl(var(--muted-foreground));
@@ -285,11 +285,11 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 12px 28px;
+  padding: 12px 32px;
   flex: none;
   min-height: 62px;
   border-top: 1px solid hsl(var(--border));
-  background: hsl(var(--background));
+  background: hsl(var(--card));
 }
 .saveState {
   font-size: 13px;
@@ -311,25 +311,6 @@
   width: 15px;
   height: 15px;
 }
-.notice {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 5px 12px;
-  padding: 9px 12px;
-  margin: 12px 28px 0;
-  background: hsl(var(--destructive) / 0.07);
-  color: color-mix(in srgb, hsl(var(--destructive)) 70%, hsl(var(--foreground)));
-  font-size: 13px;
-  line-height: 24px;
-  border-radius: 4px;
-  overflow-wrap: anywhere;
-}
-.notice > span {
-  flex: 1;
-  min-width: 0;
-}
-.notice button,
 .fieldError button {
   border: 0;
   background: transparent;
@@ -340,9 +321,6 @@
   text-decoration: underline;
   text-underline-offset: 3px;
   min-height: 30px;
-}
-.notice + .tableScroll {
-  margin-top: 12px;
 }
 .empty,
 .remainingSpace {
@@ -420,9 +398,9 @@
   text-align: left;
 }
 .dialogHeader h2 {
-  font-size: 18px;
+  font-size: 16px;
   line-height: 28px;
-  font-weight: 600;
+  font-weight: 500;
   padding-right: 24px;
 }
 .dialogHeader p {
@@ -530,7 +508,7 @@
 .field > button {
   width: 100%;
   min-width: 0;
-  height: 38px;
+  height: 36px;
   font-size: 14px;
   line-height: 24px;
   border-radius: 6px;
@@ -579,7 +557,7 @@
   flex: none;
   padding: 13px 26px;
   border-top: 1px solid hsl(var(--border));
-  background: hsl(var(--muted) / 0.15);
+  background: hsl(var(--card));
 }
 .dialogFooter > span {
   font-size: 12px;
@@ -1122,7 +1100,7 @@
   }
   .headerActions button:last-child {
     height: 44px;
-    width: 40px;
+    width: 44px;
   }
   .headerActions button span {
     display: none;
@@ -1141,7 +1119,7 @@
     display: none;
   }
   .toolbar button {
-    height: 40px;
+    height: 44px;
     padding: 0 10px;
     gap: 6px;
   }
@@ -1172,14 +1150,14 @@
     width: 62px;
   }
   .table th:last-child {
-    width: 51px;
+    width: 56px;
   }
   .table tbody td:last-child {
     padding-left: 0;
     padding-right: 10px;
   }
   .table td:last-child button {
-    width: 40px;
+    width: 44px;
     height: 44px;
   }
   .table tbody td:nth-child(5) {
@@ -1210,21 +1188,12 @@
     line-height: 22px;
   }
   .footer button {
-    height: 42px;
+    height: 44px;
     padding: 0 10px;
     font-size: 13px;
   }
   .footer button:last-child {
     min-width: 96px;
-  }
-  .notice {
-    margin: 10px 16px 0;
-  }
-  .notice > span {
-    flex-basis: 100%;
-  }
-  .notice button {
-    min-height: 40px;
   }
   .editorDialog,
   .templatesDialog,

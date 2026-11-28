@@ -12,7 +12,7 @@ Status: implemented
 
 Template 使用项目 i18n/navigation 的 usePathname，在唯一消费位置维护管线页面前缀及完整路径段匹配。退出无其他调用方的 pipeline-route-scope 模块，不再自行猜测 locale。路由范围仍为原六类业务页面，不把所有页面都包进管线 Context。
 
-RootLayout 把 getLocale 的结果直接交给已有文档语言解析。请求头的语言校验继续由该解析负责。nonce 的 null 只在进入可选主题 Prop 时映射为 undefined；这是两个真实接口之间的类型适配，不产生默认 nonce。
+RootLayout 的文档语言与当前翻译共用 getLocale。请求头不决定中文界面的 HTML 语言或方向，边界见[文档语言跟随实际界面](../bug-fix/2026-11-23-ui-document-language.md)。nonce 的 null 只在进入可选主题 Prop 时映射为 undefined；这是两个真实接口之间的类型适配，不产生默认 nonce。
 
 AuthGuard 直接比较元信息中的模式；元信息未加载、失败和不认识的模式继续阻断受保护内容。认证事件、登录表单保留、私有子树重建及重定向规则保持。QueryProvider 只明确 ReactNode 的类型导入，不改变查询实例或重试策略。
 

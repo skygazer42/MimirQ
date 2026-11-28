@@ -62,7 +62,7 @@ const SheetContent = React.forwardRef<RadixRef<typeof DialogPrimitive.Content>, 
       <SheetOverlay className={overlayClassName} />
       <DialogPrimitive.Content ref={ref} className={cn(sheetVariants({ side }), className)} {...props}>
         {children}
-        <DialogPrimitive.Close className="absolute right-4 top-4 rounded-md opacity-60 ring-offset-background transition-opacity hover:opacity-100 hover:bg-muted/80 p-1 motion-reduce:transition-none focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-accent data-[state=open]:text-muted-foreground">
+        <DialogPrimitive.Close className="absolute right-3 top-3 inline-flex size-10 items-center justify-center rounded-md text-muted-foreground ring-offset-background transition-colors hover:bg-muted/80 hover:text-foreground motion-reduce:transition-none focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none sm:size-9">
           <X className="h-4 w-4" />
           <span className="sr-only">Close</span>
         </DialogPrimitive.Close>

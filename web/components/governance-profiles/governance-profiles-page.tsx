@@ -61,7 +61,7 @@ export function GovernanceProfilesPage() {
   }, [])
   const [query, setQuery] = useState('')
   const [search, setSearch] = useState('')
-  const [source, setSource] = useState<'builtin' | 'custom'>('builtin')
+  const [source, setSource] = useState<'all' | 'builtin' | 'custom'>('builtin')
   const [selectedRef, setSelectedRef] = useState<string | null>(null)
   const [revealed, setRevealed] = useState(false)
   const [editor, setEditor] = useState<{
@@ -90,8 +90,10 @@ export function GovernanceProfilesPage() {
   })
   const activeQuery = search ? matches : list
   const items = useMemo(() => {
-    const matched = (activeQuery.data?.items ?? []).filter((item) => item.is_system === (source === 'builtin'))
-    if (source !== 'builtin' || search === '') return matched
+    const matched = (activeQuery.data?.items ?? []).filter(
+      (item) => source === 'all' || item.is_system === (source === 'builtin'),
+    )
+    if (source === 'custom' || search === '') return matched
 
     const matchedRefs = new Set(matched.map(profileRef))
     const needle = search.toLowerCase()
@@ -205,7 +207,7 @@ export function GovernanceProfilesPage() {
       if (sessionKey === getAuthSessionKey()) toast.error(formatApiError(error, '导出配置失败'))
     }
   }
-  const changeSource = (next: 'builtin' | 'custom') => {
+  const changeSource = (next: 'all' | 'builtin' | 'custom') => {
     setSource(next)
     setRevealed(false)
   }
@@ -213,6 +215,23 @@ export function GovernanceProfilesPage() {
     setReturnTarget(target)
     setSelectedRef(profileRef(profile))
     setRevealed((target.closest('[data-profile-page]')?.clientWidth || 0) < 850)
+  }
+  const forkWithPatch = (profile: GovernanceProfileOut, patchOverride: Record<string, unknown>, label: string) => {
+    const base = buildGovernanceProfileCreateFromExisting(profile)
+    toast.info(`内置模板为只读，已带入「${label}」改动创建自定义副本`)
+    setEditor({
+      mode: 'create',
+      seed: {
+        ...base,
+        payload: {
+          ...base.payload,
+          pipeline_patch: {
+            ...base.payload.pipeline_patch,
+            ...patchOverride,
+          },
+        },
+      },
+    })
   }
   const back = () => {
     setRevealed(false)
@@ -224,10 +243,7 @@ export function GovernanceProfilesPage() {
       <header className={styles.header}>
         <div className={styles.title}>
           <PageTitleIcon name="governance-config" />
-          <div>
-            <h1>治理配置</h1>
-            <p>管理可复用的文档清洗与脱敏规则</p>
-          </div>
+          <h1>治理配置</h1>
         </div>
         <div className={styles.headerActions}>
           <Button asChild variant="ghost" className={styles.commonLines}>
@@ -258,7 +274,7 @@ export function GovernanceProfilesPage() {
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-          <Button onClick={() => setEditor({ mode: 'create' })}>
+          <Button className={styles.primaryAction} onClick={() => setEditor({ mode: 'create' })}>
             <Plus />
             新建配置
           </Button>
@@ -290,9 +306,13 @@ export function GovernanceProfilesPage() {
               }}
               placeholder="搜索模板名称或说明"
               aria-label="搜索治理配置"
+              containerClassName={styles.searchControl}
               inputClassName={styles.search}
             />
             <div className={styles.sourceTabs} role="group" aria-label="配置来源">
+              <button type="button" aria-pressed={source === 'all'} onClick={() => changeSource('all')}>
+                全部<span>{list.data?.total ?? '—'}</span>
+              </button>
               <button type="button" aria-pressed={source === 'builtin'} onClick={() => changeSource('builtin')}>
                 内置模板<span>{builtinCount}</span>
               </button>
@@ -356,6 +376,11 @@ export function GovernanceProfilesPage() {
                     >
                       <ProfileMark profile={profile} />
                       <span>{profileIdentity(profile).name}</span>
+                      {source === 'all' && !profile.is_system ? (
+                        <span className={styles.sourcePill} data-source="custom" aria-hidden="true">
+                          自定义
+                        </span>
+                      ) : null}
                       {selected && profileRef(selected) === profileRef(profile) && <ChevronRight aria-hidden="true" />}
                     </button>
                   ))}
@@ -368,9 +393,9 @@ export function GovernanceProfilesPage() {
             <span>
               {(activeQuery.data?.total || 0) > (activeQuery.data?.items.length || 0)
                 ? '更多配置可通过搜索查找'
-                : source === 'builtin'
-                  ? '内置模板可复制为自定义配置'
-                  : `${customCount} 项自定义配置`}
+                : source === 'custom'
+                  ? `${customCount} 项自定义配置`
+                  : '内置模板可复制为自定义配置'}
             </span>
             <Button
               variant="ghost"
@@ -394,6 +419,7 @@ export function GovernanceProfilesPage() {
               onPreviewSourceChange={setPreviewSource}
               onBack={back}
               onCopy={() => copy.mutate(selected)}
+              onForkWithPatch={forkWithPatch}
               onEdit={() => setEditor({ mode: 'edit', ref: profileRef(selected) })}
               onExport={(policy) => void exportProfile(selected, policy)}
               onDelete={() => {
@@ -415,7 +441,7 @@ export function GovernanceProfilesPage() {
               </h2>
               <p>
                 {waiting
-                  ? '目录与规则将显示在这里'
+                  ? '正在读取目录与规则…'
                   : source === 'custom' && !search
                     ? '从内置模板复制，或创建自己的清洗规则。'
                     : '在左侧目录中选择一项，查看规则与参数。'}

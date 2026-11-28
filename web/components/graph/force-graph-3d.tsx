@@ -24,6 +24,7 @@ import {
   type GraphNodeLike,
 } from '@/app/graph/graph-page-utils'
 import { getCssHslColor } from '@/lib/css-vars'
+import { getInitialGraphCamera } from '@/lib/graph-camera'
 import { buildGraphLinkProvenanceTooltipHtml } from '@/lib/graph-provenance'
 import { toTrimmedPrimitiveString } from '@/lib/primitive-text'
 import { buildTypeColorMap, EVENT_COLOR, NODE_COLOR_PALETTE } from './graph-colors'
@@ -105,7 +106,6 @@ const GRAPH_3D_PAN_SPEED = 0.2
 const GRAPH_3D_NODE_REL_SIZE = 5.2
 const GRAPH_3D_LABEL_TEXT_HEIGHT = 2.6
 const GRAPH_3D_LABEL_Y_OFFSET = 5.8
-const GRAPH_3D_LABEL_X_OFFSET = 6.2
 
 function getGraphCursor({
   isCanvasPanning,
@@ -535,6 +535,10 @@ export const KnowledgeGraph3D = forwardRef<KnowledgeGraph3DRef, ForceGraph3DProp
           const viewHeight = height ?? containerRef.current?.clientHeight ?? 0
           const graph = fgRef.current
           if (!graph?.zoomToFit || fittedViewRef.current === fitRequest || viewWidth <= 0 || viewHeight <= 0) return
+          if (fittedViewRef.current?.data !== fitRequest.data && !isLargeGraph && graphData.nodes.length > 1) {
+            const view = getInitialGraphCamera(graphData.nodes, viewWidth, viewHeight)
+            graph.cameraPosition?.(view.position, view.target, 0)
+          }
           graph.zoomToFit(0, Math.min(70, viewWidth * 0.12, viewHeight * 0.12))
           fittedViewRef.current = fitRequest
           setFittedView(fitRequest)
@@ -657,9 +661,9 @@ export const KnowledgeGraph3D = forwardRef<KnowledgeGraph3DRef, ForceGraph3DProp
                 const { isDimmed, isHighlighted, isHovered, isSelected } = getNodeDecorationState(node)
                 const emphasis = isSelected || isHighlighted || isHovered
                 const color = getNodeColor(node)
-                const labelDirection = (node.x ?? 0) >= 0 ? 1 : -1
 
                 const group = new Group()
+                if (!emphasis) return group
 
                 const label = new SpriteText(truncateGraphLabel(node.label, 24))
                 label.color = getGraphLabelTextColor({
@@ -682,8 +686,9 @@ export const KnowledgeGraph3D = forwardRef<KnowledgeGraph3DRef, ForceGraph3DProp
                 label.padding = [2.6, 1.15]
                 label.strokeWidth = isDark ? 0.82 : 0.58
                 label.strokeColor = labelStrokeColor
-                label.center.set(labelDirection === 1 ? 0 : 1, 0.5)
-                label.position.set(labelDirection * GRAPH_3D_LABEL_X_OFFSET, GRAPH_3D_LABEL_Y_OFFSET, 0)
+                label.center.set(0.5, 0)
+                label.position.set(0, GRAPH_3D_LABEL_Y_OFFSET, 0)
+                label.renderOrder = isSelected ? 2 : 1
                 label.material.depthWrite = false
                 label.material.depthTest = false
                 group.add(label)

@@ -246,6 +246,8 @@ test('parameters survive failed start, and both additional evaluation tabs remai
   await page.getByRole('button', { name: 'Golden 评测配置', exact: true }).click()
   await expect(page.getByRole('dialog', { name: 'Golden 评测参数' })).toBeVisible()
   await page.getByRole('dialog', { name: 'Golden 评测参数' }).getByRole('button', { name: '完成', exact: true }).click()
+  await expect(page.getByRole('dialog', { name: 'Golden 评测参数' })).toHaveCount(0)
+  await expect(page.locator('[data-state="closed"].fixed.inset-0')).toHaveCount(0)
   await page.screenshot({ path: `${evidence}/golden.png` })
   await page.getByRole('tab', { name: '检索集健康度', exact: true }).click()
   await expect(page).toHaveURL(/tab=queryset_health/)
@@ -266,6 +268,133 @@ test('parameters survive failed start, and both additional evaluation tabs remai
   await expect(page.getByRole('button', { name: '开始评测', exact: true })).toBeDisabled()
   await expect(page.getByText('这条对话没有引用上下文', { exact: true })).toBeVisible()
   expect(state.writes).toEqual([])
+})
+test('Golden submits the same cases in both answer modes and identifies the pinned ontology version', async ({
+  page,
+}, testInfo) => {
+  const datasetId = 'dataset-a'
+  const caseId = sampleId(1)
+  const stamp = '2026-10-25T10:42:22Z'
+  const sample = {
+    id: caseId,
+    tenant_id: 'tenant-1',
+    dataset_id: datasetId,
+    document_ids: [],
+    question,
+    expected_answer: '高级工程师还需达到系统设计与交付质量要求。',
+    reference_sources: [],
+    tags: ['golden'],
+    reasoning_hops: [],
+    evidence_chain: [],
+    extra: {},
+    created_by: null,
+    created_at: stamp,
+    updated_at: stamp,
+  }
+  const baseRun = {
+    id: runAId,
+    tenant_id: 'tenant-1',
+    account_id: null,
+    dataset_id: datasetId,
+    status: 'completed',
+    metrics: metricKeys,
+    params: {},
+    summary: { items: 1 },
+    error_message: null,
+    created_at: stamp,
+    started_at: stamp,
+    finished_at: stamp,
+  }
+  const runs = [baseRun]
+  const posts: unknown[] = []
+  await fixture(page)
+  await page.route('**/api/v1/evaluations/ragas/regression/cases?*', (route) =>
+    json(route, { total: 1, items: [sample] }),
+  )
+  await page.route(/\/api\/v1\/evaluations\/ragas\/regression\/runs(?:\?.*)?$/, (route) => {
+    if (route.request().method() === 'GET') return json(route, { total: runs.length, items: runs })
+    const payload = route.request().postDataJSON()
+    posts.push(payload)
+    const ontology = payload.answer_mode === 'ontology'
+    const run = {
+      ...baseRun,
+      id: ontology ? runBId : '11111111-1111-4111-8111-333333333333',
+      params: ontology
+        ? { answer_mode: 'ontology', ontology_version_id: 'pinned-release-7', ontology_version_number: 7 }
+        : { answer_mode: 'rag' },
+    }
+    runs.unshift(run)
+    return json(route, run)
+  })
+  await page.route(/\/api\/v1\/evaluations\/ragas\/regression\/runs\/[^/?]+\?/, (route) => {
+    const runId = new URL(route.request().url()).pathname.split('/').at(-1)
+    const run = runs.find(({ id }) => id === runId)
+    return run === undefined
+      ? json(route, { detail: '运行不存在' }, 404)
+      : json(route, {
+          run,
+          items: [
+            {
+              id: sampleId(2),
+              run_id: run.id,
+              case_id: sample.id,
+              question: sample.question,
+              response: run.id === runBId ? '证据不足，无法确认。' : sample.expected_answer,
+              retrieved_contexts: null,
+              citations: [],
+              scores: {},
+              meta: {},
+              created_at: stamp,
+            },
+          ],
+        })
+  })
+
+  await page.goto(`/evaluations?tab=regression&dataset_id=${datasetId}`, { waitUntil: 'domcontentloaded' })
+  const configButton = page.getByRole('button', { name: 'Golden 评测配置' })
+  const dialog = page.getByRole('dialog', { name: 'Golden 评测参数' })
+  const mode = dialog.getByRole('combobox', { name: '问答模式' })
+  await configButton.click()
+  await expect(mode).toHaveText('普通 RAG')
+  await dialog.getByRole('button', { name: '完成' }).click()
+  await expect(page.getByRole('button', { name: /运行 33333333.*普通 RAG/ })).toBeVisible()
+
+  const runGolden = page.getByRole('button', { name: '运行 Golden', exact: true })
+  await runGolden.click()
+  await expect(page.getByRole('button', { name: /运行 11111111.*普通 RAG/ })).toHaveAttribute('aria-pressed', 'true')
+
+  await configButton.click()
+  await mode.click()
+  await page.getByRole('option', { name: '本体问答' }).click()
+  await dialog.getByRole('button', { name: '完成' }).click()
+  await runGolden.click()
+  await expect(page.getByRole('button', { name: /运行 44444444.*本体问答 · v7/ })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  )
+  await expect(page.getByText('本体问答 · v7', { exact: true })).toHaveCount(2)
+  await expect(page.getByText('证据不足，无法确认。')).toBeVisible()
+  expect(posts).toEqual([
+    expect.objectContaining({
+      dataset_id: datasetId,
+      case_ids: [caseId],
+      answer_mode: 'rag',
+      skip_empty_contexts: false,
+    }),
+    expect.objectContaining({
+      dataset_id: datasetId,
+      case_ids: [caseId],
+      answer_mode: 'ontology',
+      skip_empty_contexts: false,
+    }),
+  ])
+  await page.screenshot({ path: testInfo.outputPath('golden-ontology-desktop.png') })
+
+  await page.setViewportSize({ width: 390, height: 844 })
+  await configButton.click()
+  await expect(mode).toHaveText('本体问答')
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(1)
+  await page.screenshot({ path: testInfo.outputPath('golden-ontology-narrow.png') })
 })
 test('narrow screen can read a selected sample and return to matrix without horizontal page overflow', async ({
   page,

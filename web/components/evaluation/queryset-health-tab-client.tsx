@@ -6,7 +6,7 @@ import { LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts'
 import { GitCompare, Scale, ChartLine, ShieldAlert } from '@/components/icons'
 
 import { Button } from '@/components/ui/button'
-import { WorkspaceNotice } from '@/components/ui/operational-workspace'
+import { WorkspaceNotice, WorkspaceNoticeStack } from '@/components/ui/operational-workspace'
 import { PageLoading } from '@/components/ui/page-loading'
 import { Panel } from '@/components/ui/panel'
 import { SafeResponsiveChart } from '@/components/ui/safe-responsive-chart'
@@ -188,7 +188,30 @@ export function QuerysetHealthTab() {
   )
   return (
     <div className={evaluationStyles.health}>
-      {runsError}
+      {runsQuery.isError || diffQuery.isError ? (
+        <WorkspaceNoticeStack ariaLabel="检索集健康度提示">
+          {runsQuery.isError ? (
+            <WorkspaceNotice
+              tone="warning"
+              title="检索集健康度历史更新失败"
+              error={runsQuery.error}
+              fallbackMessage="加载检索集健康度历史失败"
+              retry={() => void runsQuery.refetch()}
+              pending={runsQuery.isFetching}
+            />
+          ) : null}
+          {diffQuery.isError ? (
+            <WorkspaceNotice
+              tone="warning"
+              title="检索集健康度差异读取失败"
+              error={diffQuery.error}
+              fallbackMessage="加载检索集健康度差异失败"
+              retry={() => void diffQuery.refetch()}
+              pending={diffQuery.isFetching}
+            />
+          ) : null}
+        </WorkspaceNoticeStack>
+      ) : null}
 
       <Panel variant="seamless" padding="none" className={evaluationStyles.healthSection}>
         <div className="flex items-start justify-between gap-4">
@@ -219,7 +242,12 @@ export function QuerysetHealthTab() {
               ['弱命中率', formatPercent(latestMetrics?.weak_hit_rate)],
             ].map(([label, value]) => (
               <div key={label}>
-                <dt>{label}</dt>
+                <dt>
+                  <span className={evaluationStyles.metricIcon} aria-hidden="true">
+                    <ChartLine />
+                  </span>
+                  {label}
+                </dt>
                 <dd>{value}</dd>
               </div>
             ))}
@@ -323,7 +351,7 @@ export function QuerysetHealthTab() {
                   onValueChange={setBaselineTs}
                   disabled={runTimestamps.length === 0}
                 >
-                  <SelectTrigger aria-label="基线快照" className="h-9 rounded-xl">
+                  <SelectTrigger aria-label="基线快照">
                     <SelectValue placeholder="选择基线快照" />
                   </SelectTrigger>
                   <SelectContent>
@@ -342,7 +370,7 @@ export function QuerysetHealthTab() {
                   onValueChange={setCurrentTs}
                   disabled={runTimestamps.length === 0}
                 >
-                  <SelectTrigger aria-label="当前快照" className="h-9 rounded-xl">
+                  <SelectTrigger aria-label="当前快照">
                     <SelectValue placeholder="选择当前快照" />
                   </SelectTrigger>
                   <SelectContent>
@@ -360,11 +388,6 @@ export function QuerysetHealthTab() {
               <p role="status" className="mt-2 text-sm text-muted-foreground">
                 快照缺少可核对的信息，或评测配置、策略、样本集不同，无法比较。
               </p>
-            )}
-            {diffQuery.isError && (
-              <WorkspaceNotice retry={() => void diffQuery.refetch()} pending={diffQuery.isFetching}>
-                {formatApiError(diffQuery.error, '加载检索集健康度差异失败')}
-              </WorkspaceNotice>
             )}
             {diffMetricDeltas && (
               <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-1.5 text-xs">
@@ -395,9 +418,9 @@ export function QuerysetHealthTab() {
             )}
           </div>
 
-          <div className="flex items-center gap-3 rounded-2xl border border-info/15 bg-info/[0.025] px-4 py-3">
-            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-info/[0.08] text-info ring-1 ring-info/20">
-              <Scale className="h-5 w-5" aria-hidden="true" />
+          <div className="flex items-start gap-3 py-3">
+            <span className="inline-flex shrink-0 pt-0.5 text-muted-foreground">
+              <Scale className="size-4" aria-hidden="true" />
             </span>
             <div className="min-w-0">
               <div className="text-sm font-semibold text-foreground">如何解读差异</div>
@@ -420,7 +443,7 @@ export function QuerysetHealthTab() {
             <Button
               variant="outline"
               size="sm"
-              className="h-7 rounded-lg border-border px-2 text-[13px]"
+              className="px-2 text-[13px]"
               aria-expanded={showAllRuns}
               onClick={() => setShowAllRuns((showAll) => !showAll)}
             >
@@ -471,14 +494,10 @@ export function QuerysetHealthTab() {
                   return (
                     <tr key={`${timestamp}:${index}`} className="border-b border-border/40">
                       <td className="py-1.5 pr-4 font-mono text-xs text-muted-foreground">{timestamp}</td>
-                      <td
-                        className={cn(
-                          'py-1.5 pr-4 text-xs text-muted-foreground',
-                          status === 'degraded' && 'text-destructive',
-                          status === 'healthy' && 'text-success',
-                        )}
-                      >
-                        {statusLabel}
+                      <td className="py-1.5 pr-4 text-xs">
+                        <span className={evaluationStyles.runStatus} data-status={status}>
+                          {statusLabel}
+                        </span>
                       </td>
                       <td className="py-1.5 pr-4 text-right tabular-nums">{formatPercent(metrics?.hit_at_k)}</td>
                       <td className="py-1.5 pr-4 text-right tabular-nums">{formatNumber(metrics?.mrr, 3)}</td>

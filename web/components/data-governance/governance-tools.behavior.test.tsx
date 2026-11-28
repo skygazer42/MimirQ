@@ -175,6 +175,102 @@ const asyncTools = [
   },
 ] as const
 
+describe('focused governance tools', () => {
+  it('keeps an unchecked health ring neutral even when a previous score is supplied', async () => {
+    const view = renderTool(<QualityChecker content="Alpha source" initialScore={89} onComplete={vi.fn()} />)
+    await view.ready
+    expect(view.container.querySelector('[aria-label="尚未检测"]')).not.toBeNull()
+    expect(view.container.textContent).not.toContain('89')
+    expect(view.container.textContent).toContain('运行检测后查看结果')
+  })
+
+  it('puts actionable issues before collapsed statistics and expands the actual source excerpt', async () => {
+    const issue = { id: 'duplicate', type: 'warning' as const, message: '重复段落', position: { start: 6, end: 12 } }
+    const locate = vi.fn()
+    const ignore = vi.fn()
+    const clean = vi.fn()
+    function Review() {
+      const [activeIssueId, setActiveIssueId] = useState<string | null>(null)
+      return (
+        <QualityChecker
+          content="Alpha source excerpt"
+          checked
+          initialScore={95}
+          initialIssues={[issue]}
+          activeIssueId={activeIssueId}
+          onSelectIssue={(next) => setActiveIssueId(next.id)}
+          onLocateIssue={locate}
+          onIgnoreIssue={ignore}
+          onCleanRequest={clean}
+          onComplete={vi.fn()}
+        />
+      )
+    }
+    const view = renderTool(<Review />)
+    await view.ready
+    const issues = view.container.querySelector('[aria-label="检测问题"]')!
+    const stats = view.container.querySelector<HTMLDetailsElement>('details[aria-label="字符统计"]')!
+    expect(issues.compareDocumentPosition(stats) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(stats.open).toBe(false)
+    expect(stats.querySelectorAll('dl > div')).toHaveLength(8)
+    expect(view.container.textContent).toContain('发现 1 项待核对问题')
+    await click(view.container, '重复段落')
+    expect(issues.querySelector('pre')?.textContent).toBe('Alpha source excerpt')
+    await act(async () => issues.querySelector<HTMLButtonElement>('[aria-label="定位到正文"]')!.click())
+    await act(async () => issues.querySelector<HTMLButtonElement>('[aria-label="清洗文档"]')!.click())
+    await act(async () => issues.querySelector<HTMLButtonElement>('[aria-label="忽略此项"]')!.click())
+    expect(locate).toHaveBeenCalledWith(issue)
+    expect(ignore).toHaveBeenCalledWith(issue)
+    expect(clean).toHaveBeenCalledOnce()
+    expect(issues.querySelector('[data-severity="warning"]')).not.toBeNull()
+  })
+
+  it('derives enabled cleaning rules from current pipeline options and opens their configuration', async () => {
+    const configure = vi.fn()
+    const view = renderTool(<DataCleaner content="Alpha source" onConfigure={configure} onClean={vi.fn()} />)
+    await view.ready
+    const summary = view.container.querySelector('[aria-label="当前已启用规则"]')!
+    expect(summary.textContent).toContain('噪声行清理')
+    expect(summary.textContent).not.toContain('PII 脱敏')
+    expect(summary.textContent).not.toContain('密钥脱敏')
+    await act(async () =>
+      window.dispatchEvent(
+        new StorageEvent('storage', {
+          key: 'mimirq_pipeline_options',
+          newValue: JSON.stringify({
+            enabled: true,
+            options: {
+              governance_pii_anonymize: true,
+              governance_secrets_redact: false,
+              governance_drop_duplicate_paragraphs: true,
+              governance_remove_noise_lines: false,
+              governance_max_blank_lines: 2,
+            },
+          }),
+        }),
+      ),
+    )
+    expect(summary.textContent).toContain('PII 脱敏')
+    expect(summary.textContent).toContain('重复段清理')
+    expect(summary.textContent).toContain('空行规整 · 最多 2 行')
+    expect(summary.textContent).not.toContain('噪声行清理')
+    expect(summary.textContent).not.toContain('密钥脱敏')
+    await click(view.container, '调整规则')
+    expect(configure).toHaveBeenCalledOnce()
+    await click(view.container, '运行清洗')
+    expect(boundary.cleanPreview).toHaveBeenCalledWith(
+      expect.objectContaining({
+        pii_anonymize: true,
+        secrets_redact: false,
+        drop_duplicate_paragraphs: true,
+        remove_noise_lines: false,
+        max_blank_lines: 2,
+      }),
+      expect.anything(),
+    )
+  })
+})
+
 function QualityHarness({ content, publish }: { content: string; publish: (...values: unknown[]) => void }) {
   const [result, setResult] = useState<Parameters<React.ComponentProps<typeof QualityChecker>['onComplete']>[0] | null>(
     null,

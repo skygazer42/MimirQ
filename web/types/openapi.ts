@@ -3331,6 +3331,570 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/kg/ontologies/{ontology_id}/versions/{version_id}/draft-documents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Document Draft Route */
+        post: operations["create_document_draft_route_api_v1_kg_ontologies__ontology_id__versions__version_id__draft_documents_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/kg/ontologies/{ontology_id}/versions/{version_id}/draft-documents/{draft_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Document Draft Route */
+        get: operations["read_document_draft_route_api_v1_kg_ontologies__ontology_id__versions__version_id__draft_documents__draft_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/kg/ontologies/{ontology_id}/versions/{version_id}/draft-documents/{draft_id}/docx": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Export Document Draft Route */
+        get: operations["export_document_draft_route_api_v1_kg_ontologies__ontology_id__versions__version_id__draft_documents__draft_id__docx_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/kg/ontologies": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Drafts */
+        get: operations["list_drafts_api_v1_kg_ontologies_get"];
+        put?: never;
+        /** Create Draft Route */
+        post: operations["create_draft_route_api_v1_kg_ontologies_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/kg/ontologies/validate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Validate Definition */
+        post: operations["validate_definition_api_v1_kg_ontologies_validate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/kg/ontologies/binding-preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Binding Preview Route */
+        post: operations["binding_preview_route_api_v1_kg_ontologies_binding_preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/kg/ontologies/assets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Ontology Assets Route */
+        get: operations["list_ontology_assets_route_api_v1_kg_ontologies_assets_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/kg/ontologies/suggest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Suggest Ontology Route */
+        post: operations["suggest_ontology_route_api_v1_kg_ontologies_suggest_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/kg/ontologies/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Preview Extraction */
+        post: operations["preview_extraction_api_v1_kg_ontologies_preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/kg/ontologies/preview/rules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Preview Rules */
+        post: operations["preview_rules_api_v1_kg_ontologies_preview_rules_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/kg/ontologies/{ontology_id}/draft": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Update Draft Route */
+        put: operations["update_draft_route_api_v1_kg_ontologies__ontology_id__draft_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/kg/ontologies/{ontology_id}/versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Versions Route */
+        get: operations["list_versions_route_api_v1_kg_ontologies__ontology_id__versions_get"];
+        put?: never;
+        /** Publish Version Route */
+        post: operations["publish_version_route_api_v1_kg_ontologies__ontology_id__versions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/kg/ontologies/{ontology_id}/versions/{version_id}/metrics/{metric_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Query Metric Route */
+        post: operations["query_metric_route_api_v1_kg_ontologies__ontology_id__versions__version_id__metrics__metric_id__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/kg/ontologies/{ontology_id}/versions/{version_id}/actions/{action_id}/prepare": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Prepare Action Route */
+        post: operations["prepare_action_route_api_v1_kg_ontologies__ontology_id__versions__version_id__actions__action_id__prepare_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/kg/ontologies/{ontology_id}/versions/{version_id}/action-requests/{request_id}/{operation}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Advance Action Route */
+        post: operations["advance_action_route_api_v1_kg_ontologies__ontology_id__versions__version_id__action_requests__request_id___operation__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/kg/ontologies/{ontology_id}/versions/{version_id}/workflows/{workflow_id}/requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Workflow Route */
+        post: operations["create_workflow_route_api_v1_kg_ontologies__ontology_id__versions__version_id__workflows__workflow_id__requests_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/kg/ontologies/{ontology_id}/versions/{version_id}/workflow-requests/{request_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Workflow Route */
+        get: operations["get_workflow_route_api_v1_kg_ontologies__ontology_id__versions__version_id__workflow_requests__request_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/kg/ontologies/{ontology_id}/versions/{version_id}/workflow-requests/{request_id}/steps/{step_index}/{operation}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Advance Workflow Route */
+        post: operations["advance_workflow_route_api_v1_kg_ontologies__ontology_id__versions__version_id__workflow_requests__request_id__steps__step_index___operation__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/kg/ontologies/{ontology_id}/versions/{version_id}/objects/{object_type}/lookup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Lookup Object Route */
+        post: operations["lookup_object_route_api_v1_kg_ontologies__ontology_id__versions__version_id__objects__object_type__lookup_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/kg/ontologies/{ontology_id}/versions/{version_id}/relations/{relation_id}/from/{object_type}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Lookup Related Objects Route */
+        post: operations["lookup_related_objects_route_api_v1_kg_ontologies__ontology_id__versions__version_id__relations__relation_id__from__object_type__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/kg/ontologies/{ontology_id}/versions/{version_id}/rules/{rule_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Read Rule Route */
+        post: operations["read_rule_route_api_v1_kg_ontologies__ontology_id__versions__version_id__rules__rule_id__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/kg/ontologies/{ontology_id}/versions/{version_id}/functions/{function_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Call Function Route */
+        post: operations["call_function_route_api_v1_kg_ontologies__ontology_id__versions__version_id__functions__function_id__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/kg/ontologies/{ontology_id}/versions/{version_id}/documents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Prepare Document Route */
+        post: operations["prepare_document_route_api_v1_kg_ontologies__ontology_id__versions__version_id__documents_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/kg/ontologies/{ontology_id}/versions/{version_id}/documents/{document_id}/metadata": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Document Metadata Route */
+        get: operations["read_document_metadata_route_api_v1_kg_ontologies__ontology_id__versions__version_id__documents__document_id__metadata_get"];
+        /** Review Document Metadata Route */
+        put: operations["review_document_metadata_route_api_v1_kg_ontologies__ontology_id__versions__version_id__documents__document_id__metadata_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/kg/ontologies/{ontology_id}/versions/{version_id}/documents/{document_id}/evidence": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Prepared Evidence Route */
+        get: operations["read_prepared_evidence_route_api_v1_kg_ontologies__ontology_id__versions__version_id__documents__document_id__evidence_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/kg/ontologies/{ontology_id}/versions/{version_id}/datasets/{dataset_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Activate Dataset Route */
+        put: operations["activate_dataset_route_api_v1_kg_ontologies__ontology_id__versions__version_id__datasets__dataset_id__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/kg/ontologies/datasets/{dataset_id}/documents/{document_id}/graph": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Document Graph Route */
+        get: operations["read_document_graph_route_api_v1_kg_ontologies_datasets__dataset_id__documents__document_id__graph_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/kg/ontologies/datasets/{dataset_id}/documents/{document_id}/graph/{chunk_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Correct Document Graph Route */
+        put: operations["correct_document_graph_route_api_v1_kg_ontologies_datasets__dataset_id__documents__document_id__graph__chunk_id__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/kg/ontologies/datasets/{dataset_id}/active": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Dataset Active Route */
+        get: operations["dataset_active_route_api_v1_kg_ontologies_datasets__dataset_id__active_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/kg/ontologies/{ontology_id}/versions/{version_id}/ask/knowledge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Ask Ontology Knowledge Route */
+        post: operations["ask_ontology_knowledge_route_api_v1_kg_ontologies__ontology_id__versions__version_id__ask_knowledge_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/kg/ontologies/{ontology_id}/versions/{version_id}/ask": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Ask Ontology Route */
+        post: operations["ask_ontology_route_api_v1_kg_ontologies__ontology_id__versions__version_id__ask_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/kg/ontologies/datasets/{dataset_id}/ask": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Ask Dataset Ontology Route */
+        post: operations["ask_dataset_ontology_route_api_v1_kg_ontologies_datasets__dataset_id__ask_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/kg/ontologies/ask": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Ask From Datasets Route */
+        post: operations["ask_from_datasets_route_api_v1_kg_ontologies_ask_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/kg/network/k_hop_neighbors": {
         parameters: {
             query?: never;
@@ -7204,6 +7768,91 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** ActionDefinition */
+        ActionDefinition: {
+            /** Object Type */
+            object_type: string;
+            /** Target */
+            target: string;
+            /** Parameters */
+            parameters?: {
+                [key: string]: unknown | components["schemas"]["PropertyDefinition"];
+            };
+            /** Preconditions */
+            preconditions?: string[];
+            /**
+             * Approval Required
+             * @default false
+             */
+            approval_required: boolean;
+            /** Label */
+            label?: string | null;
+        };
+        /** ActionInput */
+        ActionInput: {
+            /** Key */
+            key: {
+                [key: string]: string | number | boolean;
+            };
+            /**
+             * Request Id
+             * Format: uuid
+             */
+            request_id: string;
+            /** Parameters */
+            parameters?: {
+                [key: string]: string | number | boolean;
+            };
+        };
+        /** ActionReceipt */
+        ActionReceipt: {
+            /**
+             * Request Id
+             * Format: uuid
+             */
+            request_id: string;
+            /** Receipt Id */
+            receipt_id: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "submitted" | "succeeded" | "failed";
+            /**
+             * Sync Status
+             * @default pending
+             * @enum {string}
+             */
+            sync_status: "pending" | "synced" | "failed";
+        };
+        /** ActionView */
+        ActionView: {
+            /**
+             * Request Id
+             * Format: uuid
+             */
+            request_id: string;
+            /**
+             * Version Id
+             * Format: uuid
+             */
+            version_id: string;
+            /** Action Id */
+            action_id: string;
+            /** State */
+            state: string;
+            inputs: components["schemas"]["ActionInput"];
+            /** Approved By */
+            approved_by: string | null;
+            receipt: components["schemas"]["ActionReceipt"] | null;
+        };
+        /** ActionWorkflowDefinition */
+        ActionWorkflowDefinition: {
+            /** Actions */
+            actions: string[];
+            /** Label */
+            label?: string | null;
+        };
         /**
          * ActivityMessage
          * @description Structured progress that is not conversation content, materialised as a
@@ -7258,6 +7907,17 @@ export interface components {
             chunks: {
                 [key: string]: unknown;
             }[];
+        };
+        /** AssetDescription */
+        AssetDescription: {
+            /** Id */
+            id: string;
+            /** Label */
+            label: string;
+            /** Kind */
+            kind: string;
+            /** Columns */
+            columns?: string[];
         };
         /**
          * AssistantMessage
@@ -7653,6 +8313,40 @@ export interface components {
              */
             message: string;
         };
+        /** BindingIssue */
+        BindingIssue: {
+            /** Code */
+            code: string;
+            /** Field */
+            field?: string | null;
+        };
+        /** BindingPreview */
+        BindingPreview: {
+            /** Asset Id */
+            asset_id: string;
+            /** Object Type */
+            object_type: string;
+            /** Role */
+            role: string;
+            /** Identity Columns */
+            identity_columns: string[];
+            /** Asset Revision */
+            asset_revision?: string | null;
+            /** Row Count */
+            row_count?: number | null;
+            /**
+             * Truncated
+             * @default false
+             */
+            truncated: boolean;
+            /** Sample */
+            sample?: {
+                [key: string]: unknown;
+            }[];
+            /** Issues */
+            issues?: components["schemas"]["BindingIssue"][];
+            edo?: components["schemas"]["EdoProvenance"] | null;
+        };
         /** Body_import_dataset_ingestion_policy_api_v1_datasets__dataset_id__ingestion_policy_import_post */
         Body_import_dataset_ingestion_policy_api_v1_datasets__dataset_id__ingestion_policy_import_post: {
             /** File */
@@ -7732,6 +8426,35 @@ export interface components {
              * @description Synchronized built-in template keys
              */
             template_keys: string[];
+        };
+        /** BusinessObject */
+        BusinessObject: {
+            /**
+             * Tenant Id
+             * Format: uuid
+             */
+            tenant_id: string;
+            /** Ontology */
+            ontology: string;
+            /** Object Type */
+            object_type: string;
+            /** Namespace */
+            namespace: string;
+            /** Key */
+            key: {
+                [key: string]: string | number | boolean;
+            };
+            /** Attributes */
+            attributes: {
+                [key: string]: string | number | boolean | null;
+            };
+            /** Asset Id */
+            asset_id: string;
+            /** Source Updated At */
+            source_updated_at: string | null;
+            edo?: components["schemas"]["EdoProvenance"] | null;
+            /** Enrichment Assets */
+            enrichment_assets?: string[];
         };
         /**
          * CacheConfig
@@ -8121,6 +8844,7 @@ export interface components {
             structured: boolean;
             /** Structured Data */
             structured_data?: unknown;
+            ontology_action?: components["schemas"]["OntologyActionProposal"] | null;
         };
         /** ChatTokenQuotaStatus */
         ChatTokenQuotaStatus: {
@@ -8320,6 +9044,31 @@ export interface components {
             payload?: {
                 [key: string]: unknown;
             };
+        };
+        /** ChunkPreview */
+        ChunkPreview: {
+            /**
+             * Document Id
+             * Format: uuid
+             */
+            document_id: string;
+            /**
+             * Chunk Id
+             * Format: uuid
+             */
+            chunk_id: string;
+            /** Page */
+            page: number | null;
+            /** Entities */
+            entities?: components["schemas"]["PreviewEntity-Output"][];
+            /** Relations */
+            relations?: components["schemas"]["PreviewRelation"][];
+            /** Rejected */
+            rejected?: components["schemas"]["RejectedCandidate"][];
+            /** Metadata Candidates */
+            metadata_candidates?: components["schemas"]["DocumentMetadataCandidate"][];
+            /** Extracted At */
+            extracted_at?: string | null;
         };
         /** ChunkPreviewByShaForm */
         ChunkPreviewByShaForm: {
@@ -9332,6 +10081,15 @@ export interface components {
             /** Rules */
             rules: components["schemas"]["CleanRegexRuleModel"][];
         };
+        /** ColumnMapping */
+        ColumnMapping: {
+            /** Column */
+            column: string;
+            /** Values */
+            values?: {
+                [key: string]: string;
+            };
+        };
         /** CommunityResponse */
         CommunityResponse: {
             /**
@@ -9368,6 +10126,17 @@ export interface components {
              * @default 0
              */
             failed_documents: number;
+        };
+        /** ConceptDefinition */
+        ConceptDefinition: {
+            /** Label */
+            label: string;
+            /** Description */
+            description: string;
+            /** Aliases */
+            aliases?: string[];
+            /** Sources */
+            sources: string[];
         };
         /** ConnectedComponentResponse */
         ConnectedComponentResponse: {
@@ -10730,6 +11499,16 @@ export interface components {
              * @default unavailable
              */
             status: string;
+        };
+        /** DatasetOntologyView */
+        DatasetOntologyView: {
+            /**
+             * Dataset Id
+             * Format: uuid
+             */
+            dataset_id: string;
+            /** Version Id */
+            version_id: string | null;
         };
         /** DatasetOut */
         DatasetOut: {
@@ -12434,6 +13213,11 @@ export interface components {
             total: number;
             /** Items */
             items: components["schemas"]["TableAssetOut"][];
+            /**
+             * Next Skip
+             * @description Next document offset, not table offset
+             */
+            next_skip?: number | null;
         };
         /** DatasetUpdate */
         DatasetUpdate: {
@@ -13408,6 +14192,35 @@ export interface components {
             /** Chunks */
             chunks?: components["schemas"]["DocumentChunkSchema"][] | null;
         };
+        /** DocumentDraftRequest */
+        DocumentDraftRequest: {
+            /** Template Id */
+            template_id: string;
+            question: components["schemas"]["OntologyQuestion"];
+            /** Manual Fields */
+            manual_fields?: {
+                [key: string]: string;
+            };
+        };
+        /** DocumentDraftView */
+        DocumentDraftView: {
+            /** Title */
+            title: string;
+            /** Markdown */
+            markdown: string;
+            /** Missing Required */
+            missing_required: string[];
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Version Id
+             * Format: uuid
+             */
+            version_id: string;
+        };
         /** DocumentDuplicateGroup */
         DocumentDuplicateGroup: {
             /** File Sha256 */
@@ -13423,6 +14236,29 @@ export interface components {
             total: number;
             /** Items */
             items?: components["schemas"]["DocumentDuplicateGroup"][];
+        };
+        /** DocumentField */
+        DocumentField: {
+            /** Label */
+            label: string;
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "object_key" | "metric" | "citations" | "metadata" | "manual";
+            /**
+             * Required
+             * @default true
+             */
+            required: boolean;
+            /**
+             * Type
+             * @default string
+             * @enum {string}
+             */
+            type: "string" | "integer" | "number" | "boolean" | "date" | "datetime";
+            /** Metadata Field */
+            metadata_field?: string | null;
         };
         /** DocumentFolderNode */
         DocumentFolderNode: {
@@ -13784,6 +14620,97 @@ export interface components {
             total: number;
             /** Items */
             items: components["schemas"]["DocumentDetail"][];
+        };
+        /** DocumentMetadataCandidate */
+        DocumentMetadataCandidate: {
+            /** Value */
+            value: string | number | boolean;
+            /**
+             * Value Type
+             * @enum {string}
+             */
+            value_type: "string" | "integer" | "number" | "boolean" | "date" | "datetime";
+            evidence: components["schemas"]["EvidenceSpan"];
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Field */
+            field: string;
+            /**
+             * Chunk Id
+             * Format: uuid
+             */
+            chunk_id: string;
+            /** Page */
+            page: number | null;
+            /**
+             * Origin
+             * @default extracted
+             * @enum {string}
+             */
+            origin: "extracted" | "manual";
+            /** Confirmed By */
+            confirmed_by?: string | null;
+            /** Confirmed At */
+            confirmed_at?: string | null;
+        };
+        /** DocumentMetadataField */
+        DocumentMetadataField: {
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "string" | "integer" | "number" | "boolean" | "date" | "datetime";
+            /** Label */
+            label?: string | null;
+            /**
+             * Required
+             * @default false
+             */
+            required: boolean;
+            /**
+             * Multiple
+             * @default false
+             */
+            multiple: boolean;
+            /** Enum */
+            enum?: string[];
+            /**
+             * Compare Across Documents
+             * @default false
+             */
+            compare_across_documents: boolean;
+            /**
+             * Method
+             * @default extract
+             * @enum {string}
+             */
+            method: "extract" | "manual";
+            /** Aliases */
+            aliases?: string[];
+        };
+        /** DocumentMetadataReview */
+        DocumentMetadataReview: {
+            /** Field */
+            field: string;
+            /** Candidate Ids */
+            candidate_ids?: string[];
+            /** Manual Values */
+            manual_values?: components["schemas"]["ManualMetadataValue"][];
+        };
+        /** DocumentMetadataStatus */
+        DocumentMetadataStatus: {
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "missing" | "pending" | "conflict" | "confirmed";
+            /** Candidates */
+            candidates: components["schemas"]["DocumentMetadataCandidate"][];
+            /** Confirmed */
+            confirmed: components["schemas"]["DocumentMetadataCandidate"][];
         };
         /**
          * DocumentParsePreview
@@ -14414,6 +15341,26 @@ export interface components {
             /** File */
             file: string;
         };
+        /** DocumentPreviewSource */
+        DocumentPreviewSource: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "document";
+            /**
+             * Document Id
+             * Format: uuid
+             */
+            document_id: string;
+            /** Pipeline Hash */
+            pipeline_hash?: string | null;
+            /**
+             * Limit
+             * @default 4
+             */
+            limit: number;
+        };
         /** DocumentQAGenerateRequest */
         DocumentQAGenerateRequest: {
             /**
@@ -14549,6 +15496,17 @@ export interface components {
              * @default 200
              */
             max_nodes: number;
+        };
+        /** DocumentTemplate */
+        DocumentTemplate: {
+            /** Title */
+            title: string;
+            /** Fields */
+            fields: {
+                [key: string]: unknown | components["schemas"]["DocumentField"];
+            };
+            /** Field Order */
+            field_order?: string[];
         };
         /** DocumentTimelineItem */
         DocumentTimelineItem: {
@@ -14746,6 +15704,36 @@ export interface components {
              * @default 1
              */
             weight: number;
+        };
+        /** EdoBinding */
+        EdoBinding: {
+            /** Endpoint */
+            endpoint: string;
+            /** Ontology Id */
+            ontology_id: string;
+            /** Working Revision */
+            working_revision: number;
+            /** Table */
+            table: string;
+        };
+        /** EdoProvenance */
+        EdoProvenance: {
+            /** Request Id */
+            request_id: string;
+            /** Ontology Id */
+            ontology_id: string;
+            /** Working Revision */
+            working_revision: number;
+            /** Projection Id */
+            projection_id: string | null;
+            /** Source Data Ids */
+            source_data_ids: string[];
+            /** Synced At */
+            synced_at: string | null;
+            /** Status */
+            status: string;
+            /** Reason Code */
+            reason_code: string | null;
         };
         /**
          * EmbeddingConfig
@@ -15501,6 +16489,17 @@ export interface components {
                 [key: string]: unknown;
             } | null;
         };
+        /** EvidenceSpan */
+        EvidenceSpan: {
+            /** Quote */
+            quote: string;
+            /** Start Char */
+            start_char: number;
+            /** End Char */
+            end_char: number;
+            /** Source */
+            source: string;
+        };
         /** EvidenceSuiteCoverage */
         EvidenceSuiteCoverage: {
             /** Language */
@@ -16196,6 +17195,36 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
+        /** FunctionDefinition */
+        FunctionDefinition: {
+            /** Metric */
+            metric: string;
+            /**
+             * Executor
+             * @default metric
+             * @constant
+             */
+            executor: "metric";
+            /**
+             * Returns
+             * @default number
+             * @constant
+             */
+            returns: "number";
+            /** Label */
+            label?: string | null;
+        };
+        /** FunctionResult */
+        FunctionResult: {
+            /**
+             * Version Id
+             * Format: uuid
+             */
+            version_id: string;
+            /** Function */
+            function: string;
+            result: components["schemas"]["MetricResult"];
+        };
         /**
          * GeneratedQuestion
          * @description Generated question.
@@ -16223,9 +17252,9 @@ export interface components {
             source_type: string;
             /**
              * Source Id
-             * @description Source ID
+             * @description Single source ID when the generator provides one
              */
-            source_id: string;
+            source_id?: string | null;
             /**
              * Metadata
              * @description Additional metadata
@@ -16702,6 +17731,17 @@ export interface components {
             algorithm: "degree" | "pagerank";
             /** Node Id */
             node_id?: string | null;
+        };
+        /** GroundedValue */
+        GroundedValue: {
+            /** Value */
+            value: string | number | boolean;
+            /**
+             * Value Type
+             * @enum {string}
+             */
+            value_type: "string" | "integer" | "number" | "boolean" | "date" | "datetime";
+            evidence: components["schemas"]["EvidenceSpan"];
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -18041,6 +19081,10 @@ export interface components {
             chunk_count: number;
             /** Event Count */
             event_count: number;
+            /** Ontology Version Id */
+            ontology_version_id?: string | null;
+            /** Relation Count */
+            relation_count?: number | null;
             /**
              * Message
              * @default KG extraction completed
@@ -18949,6 +19993,17 @@ export interface components {
              */
             max_retries: number;
         };
+        /** LLMMessage */
+        LLMMessage: {
+            role: components["schemas"]["LLMRole"];
+            /** Content */
+            content: string;
+        };
+        /**
+         * LLMRole
+         * @enum {string}
+         */
+        LLMRole: "system" | "user" | "assistant";
         /**
          * LangGraphConfig
          * @description LangGraph execution mode config.
@@ -19078,6 +20133,18 @@ export interface components {
                 [key: string]: unknown;
             };
             pipeline?: components["schemas"]["DocumentPipelineOptions"] | null;
+        };
+        /** ManualMetadataValue */
+        ManualMetadataValue: {
+            /**
+             * Chunk Id
+             * Format: uuid
+             */
+            chunk_id: string;
+            /** Start Char */
+            start_char: number;
+            /** End Char */
+            end_char: number;
         };
         /**
          * MarkerConfig
@@ -19316,6 +20383,7 @@ export interface components {
             message_metadata?: {
                 [key: string]: unknown;
             } | null;
+            ontology_action?: components["schemas"]["OntologyActionProposal"] | null;
             /**
              * Created At
              * Format: date-time
@@ -19365,6 +20433,146 @@ export interface components {
             api_version: string;
             build: components["schemas"]["BuildMeta"];
             features: components["schemas"]["PublicMetaFeatureFlags"];
+        };
+        /** MetricComparison */
+        MetricComparison: {
+            /** Value */
+            value: string | number | null;
+            /** Complete */
+            complete: boolean;
+            /** Reason */
+            reason: string | null;
+            /** Change */
+            change?: string | null;
+            /** Change Percent */
+            change_percent?: string | null;
+        };
+        /** MetricDefinition */
+        MetricDefinition: {
+            /** Object Type */
+            object_type: string;
+            /** Property */
+            property: string;
+            /**
+             * Aggregate
+             * @enum {string}
+             */
+            aggregate: "count" | "count_distinct" | "sum" | "avg" | "min" | "max";
+            /** Time Property */
+            time_property?: string | null;
+            /**
+             * Timezone
+             * @default UTC
+             */
+            timezone: string;
+            /** Allowed Filters */
+            allowed_filters?: string[];
+            /** Dimensions */
+            dimensions?: string[];
+            /** Required Filters */
+            required_filters?: {
+                [key: string]: unknown | (string | number | boolean);
+            };
+            /**
+             * Before Observation
+             * @default false
+             */
+            before_observation: boolean;
+            /** Label */
+            label?: string | null;
+            /** Unit */
+            unit?: string | null;
+            formula?: components["schemas"]["MetricFormula"] | null;
+        };
+        /** MetricFormula */
+        MetricFormula: {
+            /**
+             * Operation
+             * @enum {string}
+             */
+            operation: "difference" | "ratio" | "percent";
+            /** Metric */
+            metric: string;
+        };
+        /** MetricFormulaEvidence */
+        MetricFormulaEvidence: {
+            /**
+             * Operation
+             * @enum {string}
+             */
+            operation: "difference" | "ratio" | "percent";
+            /** Base Value */
+            base_value: string | number | null;
+            /** Reference Metric */
+            reference_metric: string;
+            /** Reference Value */
+            reference_value: string | number | null;
+            /** Reference Asset Id */
+            reference_asset_id: string;
+        };
+        /** MetricGroup */
+        MetricGroup: {
+            /** Dimensions */
+            dimensions: {
+                [key: string]: string | number | boolean | null;
+            };
+            /** Value */
+            value: string | number | null;
+        };
+        /** MetricQuery */
+        MetricQuery: {
+            /** Filters */
+            filters?: {
+                [key: string]: string | number | boolean;
+            };
+            /** Group By */
+            group_by?: string[];
+            /** Start */
+            start?: string | null;
+            /** End */
+            end?: string | null;
+            /** Observed At */
+            observed_at?: string | null;
+            /**
+             * Historical State
+             * @default false
+             */
+            historical_state: boolean;
+            comparison?: components["schemas"]["MetricWindow"] | null;
+        };
+        /** MetricResult */
+        MetricResult: {
+            /** Metric */
+            metric: string;
+            /** Value */
+            value: string | number | null;
+            /** Complete */
+            complete: boolean;
+            /** Asset Id */
+            asset_id: string;
+            /** Source Updated At */
+            source_updated_at: string | null;
+            query: components["schemas"]["MetricQuery"];
+            /** Groups */
+            groups?: components["schemas"]["MetricGroup"][] | null;
+            /** Reason */
+            reason?: string | null;
+            edo?: components["schemas"]["EdoProvenance"] | null;
+            comparison?: components["schemas"]["MetricComparison"] | null;
+            formula?: components["schemas"]["MetricFormulaEvidence"] | null;
+        };
+        /** MetricWindow */
+        MetricWindow: {
+            /**
+             * Start
+             * Format: date-time
+             */
+            start: string;
+            /**
+             * End
+             * Format: date-time
+             */
+            end: string;
         };
         /**
          * MilvusConfig
@@ -19479,6 +20687,48 @@ export interface components {
              */
             image_max_bytes: number;
         };
+        /** NamedQueryDefinition */
+        NamedQueryDefinition: {
+            /** Label */
+            label: string;
+            /** Description */
+            description: string;
+            /** Objects */
+            objects: string[];
+            /** Sql */
+            sql: string;
+            /** Parameters */
+            parameters?: {
+                [key: string]: unknown | components["schemas"]["QueryParameter"];
+            };
+            /** Sources */
+            sources?: string[];
+        };
+        /** NamedQueryResult */
+        NamedQueryResult: {
+            /** Query */
+            query: string;
+            /** Label */
+            label: string;
+            /** Description */
+            description: string;
+            /** Parameters */
+            parameters?: {
+                [key: string]: string | number | boolean | null;
+            };
+            /** Columns */
+            columns: string[];
+            /** Rows */
+            rows: (string | number | boolean | null)[][];
+            /** Complete */
+            complete: boolean;
+            /** Document Ids */
+            document_ids: string[];
+            /** Asset Ids */
+            asset_ids: string[];
+            /** Sql */
+            sql: string;
+        };
         /**
          * NavigationConfig
          * @description Frontend navigation visibility for ordinary tenant members.
@@ -19493,6 +20743,61 @@ export interface components {
             node_id: string;
             /** Hop */
             hop: number;
+        };
+        /** ObjectBinding */
+        ObjectBinding: {
+            /** Object Type */
+            object_type: string;
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "primary" | "enrichment" | "document_evidence";
+            /** Asset Id */
+            asset_id: string;
+            /** Asset Revision */
+            asset_revision?: string | null;
+            /** Identity Namespace */
+            identity_namespace?: string | null;
+            /** Row Access Column */
+            row_access_column?: string | null;
+            /** Identity Columns */
+            identity_columns?: string[];
+            /** Columns */
+            columns?: {
+                [key: string]: unknown | components["schemas"]["ColumnMapping"];
+            };
+            edo_binding?: components["schemas"]["EdoBinding"] | null;
+            /** Coverage Start */
+            coverage_start?: string | null;
+            /** Coverage End */
+            coverage_end?: string | null;
+            /** Snapshot Observed At */
+            snapshot_observed_at?: string | null;
+        };
+        /** ObjectDefinition */
+        ObjectDefinition: {
+            /** Label */
+            label?: string | null;
+            /** Aliases */
+            aliases?: string[];
+            /** Display Property */
+            display_property?: string | null;
+            /** Key Prefix */
+            key_prefix?: string | null;
+            /** Key */
+            key: string[];
+            /** Properties */
+            properties: {
+                [key: string]: unknown | components["schemas"]["PropertyDefinition"];
+            };
+        };
+        /** ObjectKey */
+        ObjectKey: {
+            /** Key */
+            key: {
+                [key: string]: string | number | boolean;
+            };
         };
         /**
          * ObservabilityConfig
@@ -19589,6 +20894,445 @@ export interface components {
             faithfulness_det_avg: (number | null)[];
             /** Chunk Utilization Avg */
             chunk_utilization_avg: (number | null)[];
+        };
+        /** OntologyActionParameterField */
+        OntologyActionParameterField: {
+            /** Label */
+            label: string;
+            /** Required */
+            required: boolean;
+        };
+        /** OntologyActionProposal */
+        OntologyActionProposal: {
+            /**
+             * Ontology Id
+             * Format: uuid
+             */
+            ontology_id: string;
+            /**
+             * Version Id
+             * Format: uuid
+             */
+            version_id: string;
+            /** Action Id */
+            action_id: string;
+            /** Label */
+            label: string;
+            /** Target */
+            target: string;
+            /** Approval Required */
+            approval_required: boolean;
+            /** Key Fields */
+            key_fields: {
+                [key: string]: string;
+            };
+            /** Parameter Fields */
+            parameter_fields: {
+                [key: string]: components["schemas"]["OntologyActionParameterField"];
+            };
+            /** Key */
+            key: {
+                [key: string]: string;
+            };
+            /** Parameters */
+            parameters: {
+                [key: string]: string | number | boolean;
+            };
+        };
+        /** OntologyAnswer */
+        OntologyAnswer: {
+            /**
+             * Ontology Version Id
+             * Format: uuid
+             */
+            ontology_version_id: string;
+            plan: components["schemas"]["QuestionPlan"];
+            metric?: components["schemas"]["MetricResult"] | null;
+            /** Metrics */
+            metrics?: components["schemas"]["MetricResult"][];
+            /** Queries */
+            queries?: components["schemas"]["NamedQueryResult"][];
+            object?: components["schemas"]["BusinessObject"] | null;
+            related?: components["schemas"]["RelatedObjects"] | null;
+            /** Object Choices */
+            object_choices?: components["schemas"]["BusinessObject"][];
+            /** Metric Choices */
+            metric_choices?: string[];
+            rule?: components["schemas"]["RuleResult"] | null;
+            function?: components["schemas"]["FunctionResult"] | null;
+            /** Citations */
+            citations?: components["schemas"]["OntologyCitation"][];
+            /** Conflicts */
+            conflicts?: string[];
+            /** Unavailable */
+            unavailable?: string[];
+            /** Answer */
+            answer: string;
+        };
+        /** OntologyCitation */
+        OntologyCitation: {
+            /**
+             * Document Id
+             * Format: uuid
+             */
+            document_id: string;
+            /** Filename */
+            filename: string;
+            /** Pipeline Hash */
+            pipeline_hash: string;
+            /**
+             * Chunk Id
+             * Format: uuid
+             */
+            chunk_id: string;
+            /** Page */
+            page: number | null;
+            evidence: components["schemas"]["EvidenceSpan"];
+            /**
+             * Applicability
+             * @default applicable
+             * @enum {string}
+             */
+            applicability: "applicable" | "pending";
+            /** Metadata */
+            metadata?: {
+                [key: string]: (string | number | boolean)[];
+            };
+        };
+        /** OntologyDefinition */
+        "OntologyDefinition-Input": {
+            /**
+             * Schema Version
+             * @constant
+             */
+            schema_version: 1;
+            /** Ontology */
+            ontology: string;
+            /** Object Types */
+            object_types: {
+                [key: string]: unknown | components["schemas"]["ObjectDefinition"];
+            };
+            /** Relations */
+            relations?: {
+                [key: string]: unknown | components["schemas"]["RelationDefinition"];
+            };
+            /** Bindings */
+            bindings?: components["schemas"]["ObjectBinding"][];
+            /** Relation Bindings */
+            relation_bindings?: {
+                [key: string]: unknown | components["schemas"]["RelationBinding"];
+            };
+            /** Metrics */
+            metrics?: {
+                [key: string]: unknown | components["schemas"]["MetricDefinition"];
+            };
+            /** Named Queries */
+            named_queries?: {
+                [key: string]: unknown | components["schemas"]["NamedQueryDefinition"];
+            };
+            /** Concepts */
+            concepts?: {
+                [key: string]: unknown | components["schemas"]["ConceptDefinition"];
+            };
+            /** Rules */
+            rules?: {
+                [key: string]: unknown | components["schemas"]["RuleDefinition"];
+            };
+            /** Functions */
+            functions?: {
+                [key: string]: unknown | components["schemas"]["FunctionDefinition"];
+            };
+            /** Actions */
+            actions?: {
+                [key: string]: unknown | components["schemas"]["ActionDefinition"];
+            };
+            /** Action Workflows */
+            action_workflows?: {
+                [key: string]: unknown | components["schemas"]["ActionWorkflowDefinition"];
+            };
+            /** Document Templates */
+            document_templates?: {
+                [key: string]: unknown | components["schemas"]["DocumentTemplate"];
+            };
+            /** Document Metadata */
+            document_metadata?: {
+                [key: string]: unknown | components["schemas"]["DocumentMetadataField"];
+            };
+        };
+        /** OntologyDefinition */
+        "OntologyDefinition-Output": {
+            /**
+             * Schema Version
+             * @constant
+             */
+            schema_version: 1;
+            /** Ontology */
+            ontology: string;
+            /** Object Types */
+            object_types: {
+                [key: string]: unknown | components["schemas"]["ObjectDefinition"];
+            };
+            /** Relations */
+            relations?: {
+                [key: string]: unknown | components["schemas"]["RelationDefinition"];
+            };
+            /** Bindings */
+            bindings?: components["schemas"]["ObjectBinding"][];
+            /** Relation Bindings */
+            relation_bindings?: {
+                [key: string]: unknown | components["schemas"]["RelationBinding"];
+            };
+            /** Metrics */
+            metrics?: {
+                [key: string]: unknown | components["schemas"]["MetricDefinition"];
+            };
+            /** Named Queries */
+            named_queries?: {
+                [key: string]: unknown | components["schemas"]["NamedQueryDefinition"];
+            };
+            /** Concepts */
+            concepts?: {
+                [key: string]: unknown | components["schemas"]["ConceptDefinition"];
+            };
+            /** Rules */
+            rules?: {
+                [key: string]: unknown | components["schemas"]["RuleDefinition"];
+            };
+            /** Functions */
+            functions?: {
+                [key: string]: unknown | components["schemas"]["FunctionDefinition"];
+            };
+            /** Actions */
+            actions?: {
+                [key: string]: unknown | components["schemas"]["ActionDefinition"];
+            };
+            /** Action Workflows */
+            action_workflows?: {
+                [key: string]: unknown | components["schemas"]["ActionWorkflowDefinition"];
+            };
+            /** Document Templates */
+            document_templates?: {
+                [key: string]: unknown | components["schemas"]["DocumentTemplate"];
+            };
+            /** Document Metadata */
+            document_metadata?: {
+                [key: string]: unknown | components["schemas"]["DocumentMetadataField"];
+            };
+        };
+        /** OntologyDocumentGraph */
+        OntologyDocumentGraph: {
+            /**
+             * Version Id
+             * Format: uuid
+             */
+            version_id: string;
+            /** Version Number */
+            version_number: number;
+            /** Pipeline Hash */
+            pipeline_hash: string;
+            /** Revision */
+            revision: string;
+            /** Can Edit */
+            can_edit: boolean;
+            /** Corrected */
+            corrected: boolean;
+            /** Chunks */
+            chunks: components["schemas"]["OntologyGraphChunk"][];
+            chunk: components["schemas"]["ChunkPreview"];
+            /** Source Text */
+            source_text: string;
+            /** Object Types */
+            object_types: {
+                [key: string]: components["schemas"]["ObjectDefinition"];
+            };
+            /** Relations */
+            relations: {
+                [key: string]: components["schemas"]["RelationDefinition"];
+            };
+        };
+        /** OntologyDocumentRequest */
+        OntologyDocumentRequest: {
+            /**
+             * Document Id
+             * Format: uuid
+             */
+            document_id: string;
+            /** Pipeline Hash */
+            pipeline_hash?: string | null;
+        };
+        /** OntologyDocumentView */
+        OntologyDocumentView: {
+            /**
+             * Document Id
+             * Format: uuid
+             */
+            document_id: string;
+            /**
+             * Version Id
+             * Format: uuid
+             */
+            version_id: string;
+            /** Pipeline Hash */
+            pipeline_hash: string;
+            /** Chunk Count */
+            chunk_count: number;
+        };
+        /** OntologyDraftUpdate */
+        OntologyDraftUpdate: {
+            /** Expected Revision */
+            expected_revision: number;
+            definition: components["schemas"]["OntologyDefinition-Input"];
+        };
+        /** OntologyDraftView */
+        OntologyDraftView: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Code */
+            code: string;
+            /** Draft Revision */
+            draft_revision: number;
+            draft: components["schemas"]["OntologyDefinition-Output"];
+        };
+        /** OntologyGraphChanges */
+        OntologyGraphChanges: {
+            /** Entities */
+            entities: components["schemas"]["PreviewEntity-Input"][];
+            /** Relations */
+            relations: components["schemas"]["PreviewRelation"][];
+        };
+        /** OntologyGraphChunk */
+        OntologyGraphChunk: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Page */
+            page: number | null;
+            /** Index */
+            index: number;
+        };
+        /** OntologyGraphEditRequest */
+        OntologyGraphEditRequest: {
+            /**
+             * Version Id
+             * Format: uuid
+             */
+            version_id: string;
+            /** Expected Revision */
+            expected_revision: string;
+            graph: components["schemas"]["OntologyGraphChanges"] | null;
+        };
+        /** OntologyImportRequest */
+        OntologyImportRequest: {
+            /** Content */
+            content: string;
+            /**
+             * Format
+             * @enum {string}
+             */
+            format: "yaml" | "json";
+        };
+        /** OntologyKnowledgeAnswer */
+        OntologyKnowledgeAnswer: {
+            ontology: components["schemas"]["OntologyAnswer"];
+            /** Answer */
+            answer: string;
+            /** Citations */
+            citations: components["schemas"]["Citation"][];
+            /** Metrics */
+            metrics: {
+                [key: string]: unknown;
+            };
+        };
+        /** OntologyKnowledgeQuestion */
+        OntologyKnowledgeQuestion: {
+            /** Question */
+            question: string;
+            /** Dataset Ids */
+            dataset_ids: string[];
+            /** Document Ids */
+            document_ids?: string[] | null;
+            /**
+             * Observed At
+             * Format: date-time
+             */
+            observed_at?: string;
+        };
+        /** OntologyPreviewRequest */
+        OntologyPreviewRequest: {
+            definition: components["schemas"]["OntologyDefinition-Input"];
+            /** Source */
+            source: components["schemas"]["SamplePreviewSource"] | components["schemas"]["DocumentPreviewSource"];
+        };
+        /** OntologyPublishRequest */
+        OntologyPublishRequest: {
+            /** Expected Revision */
+            expected_revision: number;
+        };
+        /** OntologyQuestion */
+        OntologyQuestion: {
+            /** Question */
+            question: string;
+            /** History */
+            history?: components["schemas"]["LLMMessage"][];
+            /** Dataset Ids */
+            dataset_ids?: string[];
+            /** Document Ids */
+            document_ids?: string[] | null;
+            /**
+             * Observed At
+             * Format: date-time
+             */
+            observed_at?: string;
+        };
+        /** OntologyRuleCandidate */
+        OntologyRuleCandidate: {
+            /** Id */
+            id: string;
+            rule: components["schemas"]["RuleDefinition"];
+            /**
+             * Chunk Id
+             * Format: uuid
+             */
+            chunk_id: string;
+            /** Page */
+            page: number | null;
+            evidence: components["schemas"]["EvidenceSpan"];
+        };
+        /** OntologySuggestion */
+        OntologySuggestion: {
+            definition: components["schemas"]["OntologyDefinition-Output"];
+            /** Sources */
+            sources: components["schemas"]["AssetDescription"][];
+        };
+        /** OntologyVersionView */
+        OntologyVersionView: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Ontology Id
+             * Format: uuid
+             */
+            ontology_id: string;
+            /** Number */
+            number: number;
+            /** Draft Revision */
+            draft_revision: number;
+            definition: components["schemas"]["OntologyDefinition-Output"];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Created By */
+            created_by: string;
         };
         /** OpsConfigSnapshotResponse */
         OpsConfigSnapshotResponse: {
@@ -20875,6 +22619,57 @@ export interface components {
             /** Warnings */
             warnings?: string[];
         };
+        /** PreviewEntity */
+        "PreviewEntity-Input": {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Object Type */
+            object_type: string;
+            evidence: components["schemas"]["EvidenceSpan"];
+            /** Key Fields */
+            key_fields?: string[];
+            /** Attributes */
+            attributes?: {
+                [key: string]: components["schemas"]["GroundedValue"][];
+            };
+        };
+        /** PreviewEntity */
+        "PreviewEntity-Output": {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Object Type */
+            object_type: string;
+            evidence: components["schemas"]["EvidenceSpan"];
+            /** Key Fields */
+            key_fields?: string[];
+            /** Attributes */
+            attributes?: {
+                [key: string]: components["schemas"]["GroundedValue"][];
+            };
+            /** Business Key */
+            readonly business_key: {
+                [key: string]: string | number | boolean;
+            } | null;
+            /**
+             * Identity Status
+             * @enum {string}
+             */
+            readonly identity_status: "key_candidate" | "unresolved";
+        };
+        /** PreviewRelation */
+        PreviewRelation: {
+            /** Subject Id */
+            subject_id: string;
+            /** Predicate */
+            predicate: string;
+            /** Object Id */
+            object_id: string;
+            evidence: components["schemas"]["EvidenceSpan"];
+        };
         /** PromptPreviewRequest */
         PromptPreviewRequest: {
             /** Query */
@@ -21164,6 +22959,28 @@ export interface components {
             /** Ab Weight */
             ab_weight?: number | null;
         };
+        /** PropertyDefinition */
+        PropertyDefinition: {
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "string" | "integer" | "number" | "boolean" | "date" | "datetime";
+            /** Label */
+            label?: string | null;
+            /**
+             * Required
+             * @default false
+             */
+            required: boolean;
+            /**
+             * Multiple
+             * @default false
+             */
+            multiple: boolean;
+            /** Enum */
+            enum?: string[];
+        };
         /** PublicMetaFeatureFlags */
         PublicMetaFeatureFlags: {
             /** Auth Mode */
@@ -21175,6 +22992,24 @@ export interface components {
             question: string;
             /** Answer */
             answer: string;
+        };
+        /** QueryParameter */
+        QueryParameter: {
+            /**
+             * Type
+             * @default string
+             * @enum {string}
+             */
+            type: "string" | "integer" | "number" | "boolean" | "date" | "datetime";
+            /**
+             * Required
+             * @default true
+             */
+            required: boolean;
+            /** Object Type */
+            object_type?: string | null;
+            /** Enum */
+            enum?: string[];
         };
         /** QuerysetHealthDiffResponse */
         QuerysetHealthDiffResponse: {
@@ -21217,6 +23052,72 @@ export interface components {
             weak_hit_rate: (number | null)[];
             /** Status */
             status: string[];
+        };
+        /** QuestionPlan */
+        QuestionPlan: {
+            /** Object Type */
+            object_type?: string | null;
+            /** Business Key */
+            business_key?: string | null;
+            /** Object Name */
+            object_name?: string | null;
+            /** Object Filters */
+            object_filters?: {
+                [key: string]: string | number | boolean;
+            };
+            /** Metric Id */
+            metric_id?: string | null;
+            /** Metric Ids */
+            metric_ids?: string[];
+            /** Query Ids */
+            query_ids?: string[];
+            /** Concept Ids */
+            concept_ids?: string[];
+            /** Query Parameters */
+            query_parameters?: {
+                [key: string]: {
+                    [key: string]: string | number | boolean | null;
+                } | {
+                    [key: string]: string | number | boolean | null;
+                }[];
+            };
+            /** Metric Candidates */
+            metric_candidates?: string[];
+            metric_query?: components["schemas"]["MetricQuery"] | null;
+            /** Metric Period */
+            metric_period?: "current_month" | null;
+            /**
+             * As Of
+             * @description An explicit as-of date or timestamp copied from the question.
+             */
+            as_of?: string | null;
+            /** Function Id */
+            function_id?: string | null;
+            /** Rule Id */
+            rule_id?: string | null;
+            /** Action Id */
+            action_id?: string | null;
+            /** Action Parameters */
+            action_parameters?: {
+                [key: string]: string | number | boolean;
+            };
+            /**
+             * Include Object
+             * @default false
+             */
+            include_object: boolean;
+            /** Relation Id */
+            relation_id?: string | null;
+            /**
+             * Relation Path
+             * @description Two to four declared relation IDs in forward traversal order.
+             */
+            relation_path?: string[] | null;
+            /**
+             * Include Documents
+             * @default false
+             */
+            include_documents: boolean;
         };
         /**
          * RAGConfig
@@ -22045,6 +23946,13 @@ export interface components {
              */
             dataset_id: string;
             /**
+             * Answer Mode
+             * @description Answer engine for the evaluation
+             * @default rag
+             * @enum {string}
+             */
+            answer_mode: "rag" | "ontology";
+            /**
              * Metrics
              * @description RAGAS metrics list
              */
@@ -22429,13 +24337,13 @@ export interface components {
             /** Expected Answer */
             expected_answer?: string | null;
             /** Reference Sources */
-            reference_sources?: components["schemas"]["ReferenceSource"][];
+            reference_sources?: components["schemas"]["StoredReferenceSource"][];
             /** Tags */
             tags?: string[];
             /** Reasoning Hops */
             reasoning_hops?: string[];
             /** Evidence Chain */
-            evidence_chain?: components["schemas"]["ReferenceSource"][];
+            evidence_chain?: components["schemas"]["StoredReferenceSource"][];
             /** Extra */
             extra?: {
                 [key: string]: unknown;
@@ -22534,6 +24442,13 @@ export interface components {
              * @description Run cases under this dataset (required)
              */
             dataset_id: string;
+            /**
+             * Answer Mode
+             * @description Answer engine for the evaluation
+             * @default rag
+             * @enum {string}
+             */
+            answer_mode: "rag" | "ontology";
             /**
              * Metrics
              * @description RAGAS metrics list
@@ -23196,6 +25111,52 @@ export interface components {
             /** Buckets */
             buckets?: components["schemas"]["RegressionRunSliceBucketDiff"][];
         };
+        /** RejectedCandidate */
+        RejectedCandidate: {
+            /** Candidate */
+            candidate: string;
+            /** Reason */
+            reason: string;
+            evidence?: components["schemas"]["EvidenceSpan"] | null;
+        };
+        /** RelatedObjects */
+        RelatedObjects: {
+            /** Relation */
+            relation: string;
+            /** Objects */
+            objects: components["schemas"]["BusinessObject"][];
+            /** Complete */
+            complete: boolean;
+        };
+        /** RelationBinding */
+        RelationBinding: {
+            /** Source Columns */
+            source_columns: string[];
+            /** Target Columns */
+            target_columns: string[];
+            /** Bridge Asset Id */
+            bridge_asset_id?: string | null;
+            /** Bridge Row Access Column */
+            bridge_row_access_column?: string | null;
+            /** Bridge Source Columns */
+            bridge_source_columns?: string[];
+            /** Bridge Target Columns */
+            bridge_target_columns?: string[];
+        };
+        /** RelationDefinition */
+        RelationDefinition: {
+            /** Label */
+            label?: string | null;
+            /** From */
+            from: string;
+            /** To */
+            to: string;
+            /**
+             * Cardinality
+             * @enum {string}
+             */
+            cardinality: "one_to_one" | "one_to_many" | "many_to_one" | "many_to_many";
+        };
         /**
          * ResumeEntry
          * @description An answer to one interrupt, sent on the run that continues from it.
@@ -23434,6 +25395,74 @@ export interface components {
                 [key: string]: unknown;
             };
         };
+        /** RuleCondition */
+        RuleCondition: {
+            /** Property */
+            property: string;
+            /**
+             * Operator
+             * @enum {string}
+             */
+            operator: "eq" | "ne" | "lt" | "le" | "gt" | "ge";
+            /**
+             * Operand
+             * @default literal
+             * @enum {string}
+             */
+            operand: "literal" | "observed_at" | "function";
+            /** Value */
+            value?: string | number | boolean | null;
+            /** Function */
+            function?: string | null;
+            /** Function Filters */
+            function_filters?: {
+                [key: string]: unknown | string;
+            };
+        };
+        /** RuleDefinition */
+        RuleDefinition: {
+            /** Object Type */
+            object_type: string;
+            /** Conditions */
+            conditions: components["schemas"]["RuleCondition"][];
+            /** Label */
+            label?: string | null;
+        };
+        /** RuleRequest */
+        RuleRequest: {
+            /** Key */
+            key: {
+                [key: string]: string | number | boolean;
+            };
+            /**
+             * Observed At
+             * Format: date-time
+             */
+            observed_at?: string;
+        };
+        /** RuleResult */
+        RuleResult: {
+            /**
+             * Version Id
+             * Format: uuid
+             */
+            version_id: string;
+            /** Rule */
+            rule: string;
+            /**
+             * Outcome
+             * @enum {string}
+             */
+            outcome: "true" | "false" | "unknown";
+            /**
+             * Observed At
+             * Format: date-time
+             */
+            observed_at: string;
+            evidence: components["schemas"]["BusinessObject"];
+            /** Functions */
+            functions?: components["schemas"]["MetricResult"][];
+        };
         /**
          * RunAgentInput
          * @description A request to run an agent. Also echoed back as RUN_STARTED.input. Only
@@ -23526,6 +25555,16 @@ export interface components {
             return_to: string;
             /** Bridge Code */
             bridge_code?: string | null;
+        };
+        /** SamplePreviewSource */
+        SamplePreviewSource: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "sample";
+            /** Text */
+            text: string;
         };
         /** SettingsConnectionStatus */
         SettingsConnectionStatus: {
@@ -23756,6 +25795,82 @@ export interface components {
             total: number;
             /** Items */
             items?: components["schemas"]["StaleDocumentItem"][];
+        };
+        /**
+         * StoredReferenceSource
+         * @description Read stored evidence metadata without applying authoring text budgets.
+         */
+        StoredReferenceSource: {
+            /**
+             * Document Id
+             * Format: uuid
+             * @description Evidence document id
+             */
+            document_id: string;
+            /**
+             * Chunk Id
+             * Format: uuid
+             * @description Evidence chunk id
+             */
+            chunk_id: string;
+            /**
+             * Chunk Index
+             * @description 0-based chunk index (optional)
+             */
+            chunk_index?: number | null;
+            /** Family Collapse Key */
+            family_collapse_key?: string | null;
+            /** Hierarchy Family Key */
+            hierarchy_family_key?: string | null;
+            /**
+             * Page Number
+             * @description 1-based page number (optional)
+             */
+            page_number?: number | null;
+            /**
+             * Start Char
+             * @description Start character offset (optional)
+             */
+            start_char?: number | null;
+            /**
+             * End Char
+             * @description End character offset (optional)
+             */
+            end_char?: number | null;
+            /** Doc Pipeline Key */
+            doc_pipeline_key?: string | null;
+            /** Pipeline Hash */
+            pipeline_hash?: string | null;
+            /**
+             * Record Identity
+             * @description Plugin-defined stable record identity for record-level recall across re-chunking
+             */
+            record_identity?: {
+                [key: string]: unknown;
+            } | null;
+            /** Semantic Keys */
+            semantic_keys?: string[];
+            /** Quote */
+            quote?: string | null;
+            /** Label */
+            label?: string | null;
+        };
+        /** SuggestionRequest */
+        SuggestionRequest: {
+            /** Ontology */
+            ontology: string;
+            /**
+             * Dataset Id
+             * Format: uuid
+             */
+            dataset_id: string;
+            /** Asset Ids */
+            asset_ids?: string[];
+            /**
+             * Sample
+             * @default
+             */
+            sample: string;
         };
         /**
          * SyntheticHardcaseGenerateRequest
@@ -25023,6 +27138,55 @@ export interface components {
             metadata?: unknown | null;
         } & {
             [key: string]: unknown;
+        };
+        /** WorkflowInput */
+        WorkflowInput: {
+            /**
+             * Request Id
+             * Format: uuid
+             */
+            request_id: string;
+            /** Steps */
+            steps: components["schemas"]["WorkflowStepInput"][];
+        };
+        /** WorkflowStepInput */
+        WorkflowStepInput: {
+            /** Key */
+            key: {
+                [key: string]: string | number | boolean;
+            };
+            /** Parameters */
+            parameters?: {
+                [key: string]: string | number | boolean;
+            };
+        };
+        /** WorkflowStepView */
+        WorkflowStepView: {
+            /** Action Id */
+            action_id: string;
+            inputs: components["schemas"]["ActionInput"];
+            action?: components["schemas"]["ActionView"] | null;
+        };
+        /** WorkflowView */
+        WorkflowView: {
+            /**
+             * Request Id
+             * Format: uuid
+             */
+            request_id: string;
+            /** Workflow Id */
+            workflow_id: string;
+            /**
+             * Version Id
+             * Format: uuid
+             */
+            version_id: string;
+            /** Canceled */
+            canceled: boolean;
+            /** Current Step */
+            current_step: number | null;
+            /** Steps */
+            steps: components["schemas"]["WorkflowStepView"][];
         };
         /** ZeroHitQuerySummary */
         ZeroHitQuerySummary: {
@@ -26944,6 +29108,13 @@ export interface operations {
                 };
                 content?: never;
             };
+            /** @description MinerU online API unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
     get_batch_task_status_api_v1_documents_batch_upload_status__batch_id__get: {
@@ -27012,6 +29183,13 @@ export interface operations {
             };
             /** @description Internal Server Error */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description MinerU online API unavailable */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -31383,7 +33561,9 @@ export interface operations {
                 fmt?: string;
                 include_citations?: boolean;
             };
-            header?: never;
+            header?: {
+                "X-EDO-Authorization"?: string | null;
+            };
             path: {
                 conversation_id: string;
             };
@@ -31459,7 +33639,9 @@ export interface operations {
                 limit?: number | null;
                 before?: string | null;
             };
-            header?: never;
+            header?: {
+                "X-EDO-Authorization"?: string | null;
+            };
             path: {
                 conversation_id: string;
             };
@@ -31532,7 +33714,9 @@ export interface operations {
     chat_api_v1_chat_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-EDO-Authorization"?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -31607,7 +33791,9 @@ export interface operations {
     stream_chat_api_v1_chat_stream_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-EDO-Authorization"?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -36605,6 +38791,8 @@ export interface operations {
                 dataset_id?: string | null;
                 /** @description Optional pipeline version filter (defaults to active pipeline per document) */
                 pipeline_hash?: string | null;
+                /** @description Show active ontology evidence for the selected dataset */
+                prefer_ontology?: boolean;
                 max_events?: number | null;
                 max_entities?: number | null;
                 max_links?: number | null;
@@ -36686,6 +38874,8 @@ export interface operations {
                 dataset_id?: string | null;
                 /** @description Optional pipeline version filter (defaults to active pipeline per document) */
                 pipeline_hash?: string | null;
+                /** @description Show active ontology evidence for the selected dataset */
+                prefer_ontology?: boolean;
                 max_events?: number | null;
                 max_entities?: number | null;
                 max_links?: number | null;
@@ -37392,6 +39582,8 @@ export interface operations {
                 dataset_id?: string | null;
                 /** @description Optional pipeline version filter (defaults to active pipeline per document) */
                 pipeline_hash?: string | null;
+                /** @description Show active ontology evidence for the selected dataset */
+                prefer_ontology?: boolean;
                 max_events?: number | null;
                 max_entities?: number | null;
                 max_links?: number | null;
@@ -38622,6 +40814,1330 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_document_draft_route_api_v1_kg_ontologies__ontology_id__versions__version_id__draft_documents_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-EDO-Authorization"?: string | null;
+            };
+            path: {
+                ontology_id: string;
+                version_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DocumentDraftRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentDraftView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_document_draft_route_api_v1_kg_ontologies__ontology_id__versions__version_id__draft_documents__draft_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-EDO-Authorization"?: string | null;
+            };
+            path: {
+                ontology_id: string;
+                version_id: string;
+                draft_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentDraftView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_document_draft_route_api_v1_kg_ontologies__ontology_id__versions__version_id__draft_documents__draft_id__docx_get: {
+        parameters: {
+            query?: {
+                final?: boolean;
+            };
+            header?: {
+                "X-EDO-Authorization"?: string | null;
+            };
+            path: {
+                ontology_id: string;
+                version_id: string;
+                draft_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_drafts_api_v1_kg_ontologies_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-EDO-Authorization"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OntologyDraftView"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_draft_route_api_v1_kg_ontologies_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-EDO-Authorization"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OntologyDefinition-Input"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OntologyDraftView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    validate_definition_api_v1_kg_ontologies_validate_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-EDO-Authorization"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OntologyImportRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OntologyDefinition-Output"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    binding_preview_route_api_v1_kg_ontologies_binding_preview_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-EDO-Authorization"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OntologyDefinition-Input"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BindingPreview"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_ontology_assets_route_api_v1_kg_ontologies_assets_get: {
+        parameters: {
+            query: {
+                dataset_id: string;
+            };
+            header?: {
+                "X-EDO-Authorization"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssetDescription"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    suggest_ontology_route_api_v1_kg_ontologies_suggest_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-EDO-Authorization"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SuggestionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OntologySuggestion"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_extraction_api_v1_kg_ontologies_preview_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-EDO-Authorization"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OntologyPreviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChunkPreview"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_rules_api_v1_kg_ontologies_preview_rules_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-EDO-Authorization"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OntologyPreviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OntologyRuleCandidate"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_draft_route_api_v1_kg_ontologies__ontology_id__draft_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-EDO-Authorization"?: string | null;
+            };
+            path: {
+                ontology_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OntologyDraftUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OntologyDraftView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_versions_route_api_v1_kg_ontologies__ontology_id__versions_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-EDO-Authorization"?: string | null;
+            };
+            path: {
+                ontology_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OntologyVersionView"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    publish_version_route_api_v1_kg_ontologies__ontology_id__versions_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-EDO-Authorization"?: string | null;
+            };
+            path: {
+                ontology_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OntologyPublishRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OntologyVersionView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    query_metric_route_api_v1_kg_ontologies__ontology_id__versions__version_id__metrics__metric_id__post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-EDO-Authorization"?: string | null;
+            };
+            path: {
+                ontology_id: string;
+                version_id: string;
+                metric_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MetricQuery"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetricResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    prepare_action_route_api_v1_kg_ontologies__ontology_id__versions__version_id__actions__action_id__prepare_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-EDO-Authorization"?: string | null;
+            };
+            path: {
+                ontology_id: string;
+                version_id: string;
+                action_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ActionInput"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActionView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    advance_action_route_api_v1_kg_ontologies__ontology_id__versions__version_id__action_requests__request_id___operation__post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-EDO-Authorization"?: string | null;
+            };
+            path: {
+                ontology_id: string;
+                version_id: string;
+                request_id: string;
+                operation: "approve" | "execute" | "receipt";
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActionView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_workflow_route_api_v1_kg_ontologies__ontology_id__versions__version_id__workflows__workflow_id__requests_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-EDO-Authorization"?: string | null;
+            };
+            path: {
+                ontology_id: string;
+                version_id: string;
+                workflow_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkflowInput"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_workflow_route_api_v1_kg_ontologies__ontology_id__versions__version_id__workflow_requests__request_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-EDO-Authorization"?: string | null;
+            };
+            path: {
+                ontology_id: string;
+                version_id: string;
+                request_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    advance_workflow_route_api_v1_kg_ontologies__ontology_id__versions__version_id__workflow_requests__request_id__steps__step_index___operation__post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-EDO-Authorization"?: string | null;
+            };
+            path: {
+                ontology_id: string;
+                version_id: string;
+                request_id: string;
+                step_index: number;
+                operation: "preview" | "approve" | "execute" | "receipt" | "cancel";
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    lookup_object_route_api_v1_kg_ontologies__ontology_id__versions__version_id__objects__object_type__lookup_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-EDO-Authorization"?: string | null;
+            };
+            path: {
+                ontology_id: string;
+                version_id: string;
+                object_type: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ObjectKey"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BusinessObject"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    lookup_related_objects_route_api_v1_kg_ontologies__ontology_id__versions__version_id__relations__relation_id__from__object_type__post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-EDO-Authorization"?: string | null;
+            };
+            path: {
+                ontology_id: string;
+                version_id: string;
+                relation_id: string;
+                object_type: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ObjectKey"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RelatedObjects"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_rule_route_api_v1_kg_ontologies__ontology_id__versions__version_id__rules__rule_id__post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-EDO-Authorization"?: string | null;
+            };
+            path: {
+                ontology_id: string;
+                version_id: string;
+                rule_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RuleRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RuleResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    call_function_route_api_v1_kg_ontologies__ontology_id__versions__version_id__functions__function_id__post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-EDO-Authorization"?: string | null;
+            };
+            path: {
+                ontology_id: string;
+                version_id: string;
+                function_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MetricQuery"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FunctionResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    prepare_document_route_api_v1_kg_ontologies__ontology_id__versions__version_id__documents_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-EDO-Authorization"?: string | null;
+            };
+            path: {
+                ontology_id: string;
+                version_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OntologyDocumentRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OntologyDocumentView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_document_metadata_route_api_v1_kg_ontologies__ontology_id__versions__version_id__documents__document_id__metadata_get: {
+        parameters: {
+            query?: {
+                pipeline_hash?: string | null;
+            };
+            header?: {
+                "X-EDO-Authorization"?: string | null;
+            };
+            path: {
+                ontology_id: string;
+                version_id: string;
+                document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: components["schemas"]["DocumentMetadataStatus"];
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    review_document_metadata_route_api_v1_kg_ontologies__ontology_id__versions__version_id__documents__document_id__metadata_put: {
+        parameters: {
+            query?: {
+                pipeline_hash?: string | null;
+            };
+            header?: {
+                "X-EDO-Authorization"?: string | null;
+            };
+            path: {
+                ontology_id: string;
+                version_id: string;
+                document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DocumentMetadataReview"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: components["schemas"]["DocumentMetadataStatus"];
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_prepared_evidence_route_api_v1_kg_ontologies__ontology_id__versions__version_id__documents__document_id__evidence_get: {
+        parameters: {
+            query?: {
+                pipeline_hash?: string | null;
+            };
+            header?: {
+                "X-EDO-Authorization"?: string | null;
+            };
+            path: {
+                ontology_id: string;
+                version_id: string;
+                document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChunkPreview"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    activate_dataset_route_api_v1_kg_ontologies__ontology_id__versions__version_id__datasets__dataset_id__put: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-EDO-Authorization"?: string | null;
+            };
+            path: {
+                ontology_id: string;
+                version_id: string;
+                dataset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DatasetOntologyView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_document_graph_route_api_v1_kg_ontologies_datasets__dataset_id__documents__document_id__graph_get: {
+        parameters: {
+            query?: {
+                chunk_id?: string | null;
+            };
+            header?: {
+                "X-EDO-Authorization"?: string | null;
+            };
+            path: {
+                dataset_id: string;
+                document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OntologyDocumentGraph"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    correct_document_graph_route_api_v1_kg_ontologies_datasets__dataset_id__documents__document_id__graph__chunk_id__put: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-EDO-Authorization"?: string | null;
+            };
+            path: {
+                dataset_id: string;
+                document_id: string;
+                chunk_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OntologyGraphEditRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OntologyDocumentGraph"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    dataset_active_route_api_v1_kg_ontologies_datasets__dataset_id__active_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-EDO-Authorization"?: string | null;
+            };
+            path: {
+                dataset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DatasetOntologyView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ask_ontology_knowledge_route_api_v1_kg_ontologies__ontology_id__versions__version_id__ask_knowledge_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-EDO-Authorization"?: string | null;
+            };
+            path: {
+                ontology_id: string;
+                version_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OntologyKnowledgeQuestion"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OntologyKnowledgeAnswer"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ask_ontology_route_api_v1_kg_ontologies__ontology_id__versions__version_id__ask_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-EDO-Authorization"?: string | null;
+            };
+            path: {
+                ontology_id: string;
+                version_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OntologyQuestion"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OntologyAnswer"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ask_dataset_ontology_route_api_v1_kg_ontologies_datasets__dataset_id__ask_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-EDO-Authorization"?: string | null;
+            };
+            path: {
+                dataset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OntologyQuestion"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OntologyAnswer"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ask_from_datasets_route_api_v1_kg_ontologies_ask_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-EDO-Authorization"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OntologyQuestion"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OntologyAnswer"];
+                };
             };
             /** @description Validation Error */
             422: {
@@ -42475,6 +45991,7 @@ export interface operations {
             query: {
                 /** @description Dataset ID (required) */
                 dataset_id: string;
+                skip?: number;
                 /** @description Max runs to return (default: 20) */
                 limit?: number;
             };

@@ -1,0 +1,36 @@
+.historyAvatar,
+.citationIcon {
+  --tray-ink: var(--icon-process);
+  display: inline-flex;
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid hsl(var(--tray-ink) / 0.14);
+  border-radius: 50%;
+  background: color-mix(in srgb, hsl(var(--tray-ink)) 8%, hsl(var(--card)));
+  color: hsl(var(--tray-ink));
+}
+.assistantAvatar {
+  --tray-ink: var(--icon-knowledge);
+}
+.citationIcon {
+  --tray-ink: var(--icon-source);
+  border-radius: 6px;
+}
+.citationOrder {
+  display: inline-flex;
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid hsl(var(--border));
+  border-radius: 6px;
+  background: hsl(var(--surface-2));
+  color: hsl(var(--muted-foreground));
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}

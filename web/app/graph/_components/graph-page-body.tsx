@@ -55,7 +55,11 @@ export function GraphPageBody({
   onAnalysisOpenChange,
 }: GraphPageBodyProps) {
   return (
-    <div className={styles.canvasRegion} data-graph-canvas-zone>
+    <div
+      className={styles.canvasRegion}
+      data-graph-canvas-zone
+      data-detail-open={nodeDetailPanelProps.open || linkDetailPanelProps.open}
+    >
       {canvasLabel}
       <div className={styles.graphViewport}>
         <GraphCanvas {...canvasProps} />
@@ -68,7 +72,7 @@ export function GraphPageBody({
         nodes={displayNodes}
       />
       {summary}
-      <GraphFloatingControls {...floatingControlsProps} />
+      {canvasProps.graphRenderData.nodes.length > 0 && <GraphFloatingControls {...floatingControlsProps} />}
       {nodeDetailPanelProps.open ? <GraphNodeDetailPanel {...nodeDetailPanelProps} /> : null}
       {linkDetailPanelProps.open ? <GraphLinkDetailPanel {...linkDetailPanelProps} /> : null}
       <Dialog open={analysisOpen} onOpenChange={onAnalysisOpenChange}>

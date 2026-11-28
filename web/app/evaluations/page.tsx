@@ -65,46 +65,46 @@ function EvaluationWorkspace() {
     !tenantAccess.isLoading && canShowAdminControlledNavigationModule(tenantAccess.data, 'ablations')
   return (
     <div className={styles.workspace} data-evaluation-page>
-      <header className={styles.header}>
-        <div className={styles.heading}>
-          <PageTitleIcon name="ragas-evaluation" />
-          <h1>RAG 评测</h1>
-        </div>
-        <div className={styles.headerActions}>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" aria-label="高级诊断">
-                <SlidersHorizontal aria-hidden="true" />
-                <span>高级诊断</span>
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-56">
-              <DropdownMenuItem asChild>
-                <Link href="/knowledge/similarity">
-                  <Grid3X3 className="mr-2 size-4" />
-                  向量相似度诊断
-                </Link>
-              </DropdownMenuItem>
-              {showAblations && (
+      <Tabs value={activeTab} onValueChange={changeTab} className={styles.tabsRoot}>
+        <header className={styles.header}>
+          <div className={styles.heading}>
+            <PageTitleIcon name="ragas-evaluation" />
+            <h1>RAG 评测</h1>
+          </div>
+          <TabsList className={styles.tabs} aria-label="评测类型">
+            {TABS.map((tab) => (
+              <TabsTrigger key={tab.id} value={tab.id} className={styles.tab}>
+                {tab.label}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+          <div className={styles.headerActions}>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" aria-label="高级诊断">
+                  <SlidersHorizontal aria-hidden="true" />
+                  <span>高级诊断</span>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
                 <DropdownMenuItem asChild>
-                  <Link href="/evaluations/ablations">
-                    <SlidersHorizontal className="mr-2 size-4" />
-                    检索调参对比
+                  <Link href="/knowledge/similarity">
+                    <Grid3X3 className="mr-2 size-4" />
+                    向量相似度诊断
                   </Link>
                 </DropdownMenuItem>
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-      </header>
-      <Tabs value={activeTab} onValueChange={changeTab} className={styles.tabsRoot}>
-        <TabsList className={styles.tabs} aria-label="评测类型">
-          {TABS.map((tab) => (
-            <TabsTrigger key={tab.id} value={tab.id} className={styles.tab}>
-              {tab.label}
-            </TabsTrigger>
-          ))}
-        </TabsList>
+                {showAblations && (
+                  <DropdownMenuItem asChild>
+                    <Link href="/evaluations/ablations">
+                      <SlidersHorizontal className="mr-2 size-4" />
+                      检索调参对比
+                    </Link>
+                  </DropdownMenuItem>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        </header>
         {(activeTab === 'conversation' || visited.includes('conversation')) && (
           <TabsContent value="conversation" forceMount hidden={activeTab !== 'conversation'} className={styles.panel}>
             <ConversationEvaluation active={activeTab === 'conversation'} />

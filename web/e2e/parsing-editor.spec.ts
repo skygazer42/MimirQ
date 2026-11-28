@@ -111,16 +111,50 @@ function localFile(id: string, folderId = 'root'): ParsedFileData {
 }
 
 for (const viewport of [
-  { width: 1280, height: 720 },
-  { width: 390, height: 844 },
-]) {
+  { width: 1440, height: 900, theme: 'light' },
+  { width: 390, height: 844, theme: 'light' },
+  { width: 1120, height: 850, theme: 'dark' },
+] as const) {
   test(`copies, downloads and hands off the edited document at width ${viewport.width}`, async ({ page, context }) => {
     await page.setViewportSize(viewport)
     const pageErrors: string[] = []
     page.on('pageerror', (error) => pageErrors.push(error.message))
     await installCommonApiMocks(page, { uploaded: false, parsingDocuments: [] })
+    await page.addInitScript((theme) => localStorage.setItem('theme', theme), viewport.theme)
     const file = localFile('editor-local')
+    const body = `## 文件导入
+
+在数据集中上传文件，确认原文与解析结果后，再继续数据治理。原始文件会保留，方便核对内容。
+
+### 支持的文档
+
+| 文件类型 | 处理方式 |
+| --- | --- |
+| PDF | 识别正文、标题与表格 |
+| Markdown | 保留段落与标题结构 |
+| 电子表格 | 按工作表提取数据 |
+
+## 核对与保存
+
+1. 检查标题层级和段落顺序。
+2. 对照原文确认表格内容。
+3. 保存修改后，继续数据治理。
+
+编辑正文不会覆盖原始文件。`
+    file.filename = '数据接入操作手册.md'
+    file.markdownContent = `# 数据接入操作手册\n\n${body}`
+    file.originalMarkdownContent = `# Original editor-local\n\n${body}`
+    file.fileSize = Buffer.byteLength(file.originalMarkdownContent, 'utf8')
     const storageKey = await seedTextParsingLibrary(page, [file])
+    await expect(page.getByTestId('parsing-workbench-title')).toBeVisible()
+    await expect(page.getByLabel('选择文档', { exact: true })).toBeVisible()
+    if (viewport.theme === 'dark') await expect(page.locator('html')).toHaveClass(/dark/)
+    await page.screenshot({ path: test.info().outputPath('parsing-empty.png'), animations: 'disabled' })
+    await page.getByRole('button', { name: '解析设置', exact: true }).click()
+    await expect(page.getByRole('dialog')).toBeVisible()
+    await page.screenshot({ path: test.info().outputPath('parsing-settings.png'), animations: 'disabled' })
+    await page.keyboard.press('Escape')
+    await expect(page.getByRole('dialog')).toHaveCount(0)
     await context.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: new URL(page.url()).origin })
     await page.getByLabel('选择文档', { exact: true }).click()
     const directory = page.getByRole('dialog', { name: '文件目录', exact: true })
@@ -128,8 +162,9 @@ for (const viewport of [
     await row.getByRole('button', { name: '选择待提交文档', exact: true }).click()
     await row.getByText(file.filename, { exact: true }).click()
     const result = page.getByRole('region', { name: '解析结果', exact: true })
-    await expect(result).toContainText('Processed editor-local')
-    if (viewport.width < 768) await page.getByRole('button', { name: '原文', exact: true }).click()
+    await expect(result.getByRole('heading', { name: /^数据接入操作手册/ })).toBeVisible()
+    const sourceTab = page.getByRole('button', { name: '原文', exact: true })
+    if (await sourceTab.isVisible()) await sourceTab.click()
     await page
       .getByRole('region', { name: '原文', exact: true })
       .getByRole('button', { name: '恢复源文件', exact: true })
@@ -138,20 +173,54 @@ for (const viewport of [
     await page.getByLabel('选择文档', { exact: true }).click()
     await expect(directory.getByRole('button', { name: '取消选择待提交文档', exact: true })).toHaveCount(1)
     await expect(directory.getByText('1 / 1 个待治理文件已选', { exact: true })).toBeVisible()
+    await page.screenshot({ path: test.info().outputPath('parsing-directory.png'), animations: 'disabled' })
     await page.keyboard.press('Escape')
+    await expect(directory).toBeHidden()
+    if (viewport.width < 640) {
+      const copyBox = await result.getByRole('button', { name: '复制 Markdown', exact: true }).boundingBox()
+      expect(copyBox!.width).toBeGreaterThanOrEqual(44)
+      expect(copyBox!.height).toBeGreaterThanOrEqual(44)
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true)
+      const headerBox = await page.getByTestId('parsing-workbench-title').boundingBox()
+      expect(headerBox!.height).toBeLessThan(90)
+    }
+    await page.screenshot({ path: test.info().outputPath('parsing-document.png'), animations: 'disabled' })
+    if (viewport.width < 640) {
+      await sourceTab.click()
+      await expect(result.getByRole('button', { name: '复制 Markdown', exact: true })).toHaveCount(0)
+      await page.getByRole('button', { name: '解析结果', exact: true }).click()
+      await result.getByRole('button', { name: '更多结果操作', exact: true }).click()
+      await page.getByRole('menuitem', { name: '查看 Markdown 源码', exact: true }).click()
+      await expect(result.locator('pre')).toContainText('# 数据接入操作手册')
+      await result.getByRole('button', { name: '更多结果操作', exact: true }).click()
+      await page.getByRole('menuitem', { name: '预览 Markdown', exact: true }).click()
+    }
     await result.getByRole('button', { name: '复制 Markdown', exact: true }).click()
     await expect(result.getByRole('button', { name: '已复制 Markdown', exact: true })).toBeVisible()
-    expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(file.markdownContent)
+    expect((await page.evaluate(() => navigator.clipboard.readText())).replaceAll('\r\n', '\n')).toBe(
+      file.markdownContent,
+    )
+    if (viewport.width < 640) await result.getByRole('button', { name: '更多结果操作', exact: true }).click()
     const downloadEvent = page.waitForEvent('download')
-    await result.getByRole('button', { name: '下载 Markdown', exact: true }).click()
+    await (
+      viewport.width < 640
+        ? page.getByRole('menuitem', { name: '下载 Markdown', exact: true })
+        : result.getByRole('button', { name: '下载 Markdown', exact: true })
+    ).click()
     const download = await downloadEvent
     expect(download.suggestedFilename()).toBe(file.filename)
     const downloadPath = await download.path()
     if (downloadPath === null) throw new Error('Expected a completed local download')
     expect(await readFile(downloadPath, 'utf8')).toBe(file.markdownContent)
-    await result.getByRole('button', { name: '更多结果操作', exact: true }).click()
-    await page.getByRole('menuitem', { name: '编辑 Markdown', exact: true }).click()
+    await page.getByRole('button', { name: '编辑 Markdown', exact: true }).click()
     await page.getByLabel('编辑 Markdown', { exact: true }).fill('# Edited processed document')
+    if (await sourceTab.isVisible()) {
+      await sourceTab.click()
+      await expect(page.getByLabel('编辑 Markdown', { exact: true })).toBeHidden()
+      await page.getByRole('button', { name: '解析结果', exact: true }).click()
+      await expect(page.getByLabel('编辑 Markdown', { exact: true })).toHaveValue('# Edited processed document')
+    }
+    await page.screenshot({ path: test.info().outputPath('parsing-editor.png'), animations: 'disabled' })
     await page.getByRole('button', { name: '保存修改', exact: true }).click()
     await expect(result).toContainText('Edited processed document')
     await expect
@@ -168,11 +237,13 @@ for (const viewport of [
       .poll(async () => (await readParsingLibrary(page, storageKey)).files[0].governanceStatus)
       .toBe('submitted')
     await expect(page).toHaveURL(/\/data-governance$/)
+    await page.getByRole('button', { name: '选择文档', exact: true }).click()
     await page.locator(`[data-governance-file="${file.id}"]`).click()
     await expect(page.locator('[data-governance-document]')).toContainText('Edited processed document')
     await page.getByRole('button', { name: '原文', exact: true }).click()
     await expect(page.locator('[data-governance-document]')).toContainText('Original editor-local')
     await page.reload()
+    await page.getByRole('button', { name: '选择文档', exact: true }).click()
     await page.locator(`[data-governance-file="${file.id}"]`).click()
     await expect(page.locator('[data-governance-document]')).toContainText('Edited processed document')
     await page.getByRole('button', { name: '原文', exact: true }).click()

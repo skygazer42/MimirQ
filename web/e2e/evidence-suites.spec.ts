@@ -110,7 +110,7 @@ async function installSuiteApi(page: Page) {
 async function openWorkbench(page: Page) {
   await page.goto(`/datasets/${datasetId}/evidence`)
   await page.getByRole('button', { name: /原文核验集/ }).click()
-  await expect(page.getByRole('heading', { name: '证据条目', exact: true })).toBeVisible()
+  await expect(page.getByRole('region', { name: '证据条目', exact: true })).toBeVisible()
 }
 
 for (const width of [1440, 390]) {
@@ -179,22 +179,22 @@ for (const width of [1440, 390]) {
     )
     await openWorkbench(page)
     await page.getByRole('button', { name: '新建条目', exact: true }).click()
-    const create = page.getByRole('dialog', { name: '新建 Evidence Item', exact: true })
-    await create.getByRole('textbox', { name: 'Query', exact: true }).fill('原文问题')
-    await create.getByRole('textbox', { name: 'Notes（可选）', exact: true }).fill('  保留备注\n')
+    const create = page.getByRole('dialog', { name: '新建证据条目', exact: true })
+    await create.getByRole('textbox', { name: '问题', exact: true }).fill('原文问题')
+    await create.getByRole('textbox', { name: '复核备注（可选）', exact: true }).fill('  保留备注\n')
     await create.getByRole('button', { name: '运行检索', exact: true }).click()
     const choices = create.getByRole('checkbox', { name: '选择该引用', exact: true })
     await expect(choices).toHaveCount(2)
     await expect(choices.nth(0)).toBeDisabled()
     await expect(create).toContainText('0.0000')
     await choices.nth(1).click()
-    await create.getByRole('button', { name: '创建 Item（draft）', exact: true }).click()
+    await create.getByRole('button', { name: '创建草稿', exact: true }).click()
     await expect(page.getByText(/创建尚未保存 503/)).toBeVisible()
     await expect(create).toBeVisible()
-    await expect(create.getByRole('textbox', { name: 'Notes（可选）', exact: true })).toHaveValue('  保留备注\n')
+    await expect(create.getByRole('textbox', { name: '复核备注（可选）', exact: true })).toHaveValue('  保留备注\n')
     await expect(choices.nth(1)).toBeChecked()
     await page.screenshot({ path: testInfo.outputPath('create-failed-draft.png') })
-    await create.getByRole('button', { name: '创建 Item（draft）', exact: true }).focus()
+    await create.getByRole('button', { name: '创建草稿', exact: true }).focus()
     await page.keyboard.press('Enter')
     await expect(create).toBeHidden()
     expect(server.createAttempts).toBe(2)
@@ -206,9 +206,11 @@ for (const width of [1440, 390]) {
     })
     await page.getByRole('button', { name: '原文问题', exact: true }).click()
     const detail = page.getByRole('dialog', { name: '证据条目', exact: true })
-    await detail.getByRole('button', { name: 'Review', exact: true }).click()
-    await detail.getByRole('button', { name: 'Approve', exact: true }).click()
-    await expect(detail.getByText('approved', { exact: true })).toBeVisible()
+    await detail.getByRole('button', { name: '标记已复核', exact: true }).click()
+    await expect(page.getByText('已标记为已复核', { exact: true })).toBeVisible()
+    await expect(detail.getByText('已复核', { exact: true })).toBeVisible()
+    await detail.getByRole('button', { name: '通过复核', exact: true }).click()
+    await expect(detail.getByText('已通过', { exact: true })).toBeVisible()
     await detail.getByRole('button', { name: 'Close', exact: true }).click()
     await page.reload()
     await page.getByRole('button', { name: /原文核验集/ }).click()
@@ -253,8 +255,8 @@ for (const width of [1440, 390]) {
       )
       await openWorkbench(page)
       await page.getByRole('button', { name: '新建条目', exact: true }).click()
-      const create = page.getByRole('dialog', { name: '新建 Evidence Item', exact: true })
-      await create.getByRole('textbox', { name: 'Query', exact: true }).fill('旧请求')
+      const create = page.getByRole('dialog', { name: '新建证据条目', exact: true })
+      await create.getByRole('textbox', { name: '问题', exact: true }).fill('旧请求')
       const responded = page.waitForResponse((response) => new URL(response.url()).pathname === '/api/v1/rag/retrieve')
       await create.getByRole('button', { name: '运行检索', exact: true }).click()
       try {
@@ -266,7 +268,7 @@ for (const width of [1440, 390]) {
       await expect(create).toBeHidden()
       await page.getByRole('button', { name: '新建条目', exact: true }).click()
       await expect(create.getByRole('checkbox', { name: '选择该引用', exact: true })).toHaveCount(0)
-      await create.getByRole('tab', { name: '导入 Evidence Pack', exact: true }).click()
+      await create.getByRole('tab', { name: '导入证据包', exact: true }).click()
       const pack = { version: 0, citations: [source], selected_chunk_ids: [chunkId], metadata: { flag: false } }
       const file = create.locator('input[type="file"]')
       await file.setInputFiles({
@@ -328,3 +330,112 @@ for (const width of [1440, 390]) {
     },
   )
 }
+
+test('keeps the first evidence question and primary controls in view on short phones', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 390, height: 620 })
+  const server = await installSuiteApi(page)
+  Object.assign(server.suites[0], { item_counts: { total: 1, draft: 0, reviewed: 0, approved: 1, archived: 0 } })
+  server.items = [
+    {
+      id: '66666666-6666-4666-8666-666666666666',
+      tenant_id: '77777777-7777-4777-8777-777777777777',
+      dataset_id: datasetId,
+      suite_id: suiteId,
+      query: '知识图谱按什么组织信息？',
+      expected_answer: '保留用于核验的参考答案。',
+      notes: '已核对引用来源。',
+      reference_sources: [
+        { document_id: documentId, chunk_id: chunkId, chunk_index: 0, label: '引用来源', quote: '保留引用正文。' },
+      ],
+      status: 'approved',
+      created_at: timestamp,
+      updated_at: timestamp,
+    },
+  ]
+  await openWorkbench(page)
+  const question = page.getByRole('button', { name: server.items[0].query, exact: true })
+  await expect(question).toBeVisible()
+  await page.screenshot({ path: testInfo.outputPath('short-phone-list.png'), animations: 'disabled' })
+  await expect(question).toBeInViewport({ ratio: 1 })
+  await expect(page.getByRole('searchbox', { name: '搜索问题或说明', exact: true })).toBeInViewport({ ratio: 1 })
+  await expect(page.getByRole('button', { name: '新建条目', exact: true })).toBeInViewport({ ratio: 1 })
+  await page.getByRole('button', { name: '证据集操作', exact: true }).click()
+  const menu = page.getByRole('menu')
+  await expect(menu).toContainText('草稿 0')
+  await expect(menu).toContainText('已复核 0')
+  await expect(menu).toContainText('已通过 1')
+  await expect(menu).toContainText('已归档 0')
+  await page.keyboard.press('Escape')
+  await expect(page.getByRole('button', { name: '证据集操作', exact: true })).toBeFocused()
+  const search = page.getByRole('searchbox', { name: '搜索问题或说明', exact: true })
+  await search.fill('没有对应的内容')
+  await expect(page.getByText('没有符合当前条件的条目。', { exact: true })).toBeVisible()
+  await search.fill('')
+  await expect(question).toBeVisible()
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true)
+})
+
+test('keeps citation controls and filenames inside the narrow creation dialog', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 320, height: 620 })
+  await installSuiteApi(page)
+  const citation = { ...source, document_name: 'knowledge_graph.md' }
+  await page.route(
+    (url) => url.pathname === '/api/v1/rag/retrieve',
+    (route) =>
+      route.fulfill({
+        json: {
+          schema: 'mimirq.evidence.v1',
+          query_for_retrieval: '窄屏引用选择',
+          has_evidence: true,
+          abstain_triggered: false,
+          citations: [citation],
+          metrics: {},
+          retrieval_trace: { kept: false },
+        },
+      }),
+  )
+  await openWorkbench(page)
+  await page.getByRole('button', { name: '新建条目', exact: true }).click()
+  const create = page.getByRole('dialog', { name: '新建证据条目', exact: true })
+  await create.getByRole('textbox', { name: '问题', exact: true }).fill('窄屏引用选择')
+  const retrieve = create.getByRole('button', { name: '运行检索', exact: true })
+  await retrieve.click()
+  await expect(create.getByRole('checkbox', { name: '选择该引用', exact: true })).toBeEnabled()
+  const horizontalOverflow = await create.evaluate((root) =>
+    Array.from(root.querySelectorAll<HTMLElement>('*'))
+      .filter(
+        (element) =>
+          ['auto', 'scroll'].includes(getComputedStyle(element).overflowX) &&
+          element.scrollWidth > element.clientWidth + 1,
+      )
+      .map((element) => ({
+        tag: element.tagName,
+        role: element.getAttribute('role'),
+        excessWidth: element.scrollWidth - element.clientWidth,
+      })),
+  )
+  await testInfo.attach('narrow-form-overflow', {
+    body: JSON.stringify(horizontalOverflow),
+    contentType: 'application/json',
+  })
+  expect(horizontalOverflow).toEqual([])
+  await retrieve.evaluate((element) => element.scrollIntoView({ block: 'center', inline: 'nearest' }))
+  await page.screenshot({ path: testInfo.outputPath('narrow-candidate-controls.png'), animations: 'disabled' })
+  await expect(retrieve).toBeInViewport({ ratio: 1 })
+  const filename = create.getByText(citation.document_name, { exact: true })
+  await filename.evaluate((element) => element.scrollIntoView({ block: 'center', inline: 'nearest' }))
+  await expect(filename).toBeInViewport({ ratio: 1 })
+  expect(await filename.evaluate((element) => element.scrollWidth <= element.clientWidth + 1)).toBe(true)
+  const filenameLayout = await filename.evaluate((element) => {
+    const range = document.createRange()
+    range.selectNodeContents(element)
+    return {
+      lines: new Set(Array.from(range.getClientRects(), (rect) => Math.round(rect.y))).size,
+      filenameBottom: element.getBoundingClientRect().bottom,
+      metadataTop: element.nextElementSibling!.getBoundingClientRect().top,
+    }
+  })
+  expect(filenameLayout.lines).toBe(1)
+  expect(filenameLayout.metadataTop).toBeGreaterThanOrEqual(filenameLayout.filenameBottom)
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+})

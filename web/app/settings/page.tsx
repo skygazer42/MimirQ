@@ -4,7 +4,7 @@
 'use client'
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
+import { WorkspaceNotice, WorkspaceNoticeStack } from '@/components/ui/operational-workspace'
 import { FeedbackToast } from '@/components/feedback-toast'
 import { TenantPermissionGate } from '@/components/auth/tenant-permission-gate'
 import { AppFrame } from '@/components/app-frame'
@@ -53,7 +53,6 @@ import {
   RuleSet,
   Search,
   SlidersHorizontal,
-  XCircle,
   type PlatformIcon,
 } from '@/components/icons'
 import { cn } from '@/lib/utils'
@@ -320,7 +319,7 @@ function SettingsContent({
 
   useLayoutEffect(() => {
     positionSection()
-  }, [activeId, state.loading, positionSection])
+  }, [activeId, positionSection])
 
   const selectSection = (id: string) => {
     if (!sectionIds.includes(id)) return
@@ -328,6 +327,25 @@ function SettingsContent({
     window.history.replaceState(window.history.state, '', `${window.location.pathname}${window.location.search}#${id}`)
     if (id === activeId) positionSection()
   }
+
+  const hasFloatingSettingsError = state.hasLoadedSettings && state.loadError !== null
+  const hasFloatingStatusError = activeId === 'sec-status' && Boolean(state.status) && state.statusError != null
+  const initialLoadErrorNotice =
+    !state.hasLoadedSettings && state.loadError !== null ? (
+      <div className={styles.alerts}>
+        <WorkspaceNotice
+          placement="inline"
+          tone="error"
+          titleAs="h5"
+          title="首次读取设置失败"
+          retry={() => void state.loadSettings()}
+          retryLabel="重新读取设置"
+          pending={state.loading}
+        >
+          {state.loadError}
+        </WorkspaceNotice>
+      </div>
+    ) : null
 
   return (
     <div className={styles.layout} data-settings-workspace>
@@ -348,12 +366,13 @@ function SettingsContent({
               role="group"
               aria-labelledby={`settings-directory-${group.id}`}
             >
-              <h2 id={`settings-directory-${group.id}`} className={styles.groupName}>
+              <h2 id={`settings-directory-${group.id}`} className="sr-only">
                 {group.label}
               </h2>
               <ul>
                 {group.sections.map((section) => {
                   const isActive = activeId === section.id
+                  const Icon = section.icon
                   return (
                     <li key={section.id}>
                       <button
@@ -364,6 +383,7 @@ function SettingsContent({
                         aria-current={isActive ? 'location' : undefined}
                         className={cn(styles.directoryItem, 'focus-ring')}
                       >
+                        <Icon aria-hidden="true" className={styles.directoryIcon} />
                         <span>{section.label}</span>
                       </button>
                     </li>
@@ -390,7 +410,12 @@ function SettingsContent({
           </nav>
           <div className={styles.toolbarStatus}>
             <div role="status" aria-live="polite" className="flex min-h-8 items-center gap-2">
-              {state.saveError ? (
+              {state.loading && state.hasLoadedSettings ? (
+                <>
+                  <Loader2 className="size-3.5 animate-spin motion-reduce:animate-none" />
+                  正在读取…
+                </>
+              ) : state.saveError ? (
                 <Button
                   variant="ghost"
                   size="sm"
@@ -438,42 +463,53 @@ function SettingsContent({
           }
         />
         <div ref={scrollRef} className={styles.scroll} data-page-scroll-container>
-          {state.loading ? (
+          {hasFloatingSettingsError || hasFloatingStatusError ? (
+            <WorkspaceNoticeStack ariaLabel="系统设置同步提示">
+              {hasFloatingSettingsError ? (
+                <WorkspaceNotice
+                  tone="warning"
+                  titleAs="h5"
+                  title="设置同步异常"
+                  retry={() => void state.loadSettings()}
+                  retryLabel="重新读取设置"
+                  pending={state.loading}
+                >
+                  {state.loadError}
+                </WorkspaceNotice>
+              ) : null}
+              {hasFloatingStatusError ? (
+                <WorkspaceNotice
+                  tone="warning"
+                  title="读取服务状态失败"
+                  retry={() => void state.reloadStatus()}
+                  retryLabel="重试服务状态"
+                  pending={state.statusLoading}
+                >
+                  {state.statusError}
+                </WorkspaceNotice>
+              ) : null}
+            </WorkspaceNoticeStack>
+          ) : null}
+          {state.loading && !state.hasLoadedSettings ? (
             <div className={styles.loading}>
               <RefreshCw className="size-7 animate-spin motion-reduce:animate-none" aria-label="正在加载设置" />
             </div>
-          ) : state.loadError !== null ? (
-            <div className={styles.alerts}>
-              <Alert variant="destructive" className="rounded-md border-destructive/25 bg-destructive/10 shadow-none">
-                <XCircle className="size-4" />
-                <div>
-                  <AlertTitle>加载失败</AlertTitle>
-                  <AlertDescription>{state.loadError}</AlertDescription>
-                  <Button type="button" variant="outline" className="mt-3" onClick={() => void state.loadSettings()}>
-                    重新读取设置
-                  </Button>
-                </div>
-              </Alert>
-            </div>
+          ) : state.loadError !== null && !state.hasLoadedSettings ? (
+            initialLoadErrorNotice
           ) : (
             <>
               <SettingsSectionFrame section={SETTINGS_SECTION_BY_ID['sec-status']} hidden={activeId !== 'sec-status'}>
-                {state.statusError != null && (
-                  <Alert variant="destructive">
-                    <AlertTitle>读取服务状态失败</AlertTitle>
-                    <AlertDescription>{state.statusError}</AlertDescription>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="mt-3"
-                      disabled={state.statusLoading}
-                      onClick={() => void state.reloadStatus()}
-                    >
-                      重试服务状态
-                    </Button>
-                  </Alert>
-                )}
+                {state.statusError != null && !state.status ? (
+                  <WorkspaceNotice
+                    tone="error"
+                    title="读取服务状态失败"
+                    retry={() => void state.reloadStatus()}
+                    retryLabel="重试服务状态"
+                    pending={state.statusLoading}
+                  >
+                    {state.statusError}
+                  </WorkspaceNotice>
+                ) : null}
                 {state.status ? (
                   <SystemStatusSection status={state.status} backendMeta={state.backendMeta} />
                 ) : state.statusError == null ? (

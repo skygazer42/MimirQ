@@ -25,6 +25,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { Copy, Loader2 } from '@/components/icons'
+import { cn } from '@/lib/utils'
 import { promptDate, promptScenario } from './prompt-model'
 import { PromptStatus, PromptVariables } from './prompt-table'
 import type { PromptsController } from './use-prompt-templates'
@@ -209,13 +210,19 @@ export function PromptDialogs({ controller }: { controller: PromptsController })
                   <div>
                     <dt>场景 / 分类</dt>
                     <dd>
-                      {promptScenario(previewTemplate.category).label}
+                      <span className={cn(styles.sceneLabel, styles[promptScenario(previewTemplate.category).tone])}>
+                        {promptScenario(previewTemplate.category).label}
+                      </span>
                       <small>{previewTemplate.category ?? '未分类'}</small>
                     </dd>
                   </div>
                   <div>
                     <dt>来源</dt>
-                    <dd>{previewTemplate.is_system ? '内置 · 只读' : '自定义'}</dd>
+                    <dd>
+                      <span className={previewTemplate.is_system ? styles.builtinSource : styles.customSource}>
+                        {previewTemplate.is_system ? '内置 · 只读' : '自定义'}
+                      </span>
+                    </dd>
                   </div>
                   <div>
                     <dt>状态</dt>
@@ -318,14 +325,19 @@ export function PromptDialogs({ controller }: { controller: PromptsController })
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-      <Dialog open={controller.bindingOpen} onOpenChange={controller.setBindingOpen}>
+      <Dialog
+        open={controller.bindingEntry !== null}
+        onOpenChange={(open) => {
+          if (!open) controller.closeBindings()
+        }}
+      >
         <DialogContent className={styles.bindingDialog} onCloseAutoFocus={controller.restoreFocus}>
           <DialogHeader className={styles.dialogHeader}>
             <DialogTitle>场景绑定</DialogTitle>
-            <DialogDescription>选择各场景使用的模板，维护知识图谱关系词表。</DialogDescription>
+            <DialogDescription className="sr-only">场景模板与关系词表。</DialogDescription>
           </DialogHeader>
-          {controller.bindingOpen ? (
-            <Tabs defaultValue="templates" className={styles.bindingTabs}>
+          {controller.bindingEntry ? (
+            <Tabs defaultValue={controller.bindingEntry} className={styles.bindingTabs}>
               <TabsList className={styles.bindingTabList} aria-label="绑定配置类型">
                 <TabsTrigger value="templates">场景模板</TabsTrigger>
                 <TabsTrigger value="predicates">关系词表</TabsTrigger>

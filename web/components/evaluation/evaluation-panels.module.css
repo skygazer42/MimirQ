@@ -40,7 +40,7 @@
   flex: none;
 }
 .goldenToolbar button {
-  height: 34px;
+  height: 36px;
   gap: 7px;
   font-size: 13px;
   border-radius: 6px;
@@ -69,7 +69,7 @@
   min-width: 0;
   min-height: 0;
   border-left: 1px solid hsl(var(--border));
-  background: hsl(var(--muted) / 0.25);
+  background: hsl(var(--surface-2));
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-width: thin;
@@ -120,7 +120,7 @@
 }
 .goldenConfigBody > div:first-child {
   border-bottom: 1px solid hsl(var(--border));
-  background: hsl(var(--muted) / 0.2);
+  background: hsl(var(--surface-2));
 }
 .health {
   display: flex;
@@ -138,15 +138,22 @@
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
   margin: 20px 0 8px;
+  gap: 8px;
 }
 .healthMetrics > div {
-  padding: 0 20px;
+  --metric-ink: var(--icon-process);
+  min-width: 0;
+  padding: 12px 16px;
+  border: 1px solid hsl(var(--border));
+  border-top: 2px solid hsl(var(--metric-ink) / 0.7);
+  border-radius: 7px;
+  background: hsl(var(--card));
 }
-.healthMetrics > div:first-child {
-  padding-left: 0;
+.healthMetrics > div:nth-child(-n + 3) {
+  --metric-ink: var(--icon-source);
 }
-.healthMetrics > div + div {
-  border-left: 1px solid hsl(var(--border));
+.healthMetrics > div:nth-last-child(-n + 2) {
+  --metric-ink: var(--icon-code);
 }
 .healthMetrics dt {
   font-size: 13px;
@@ -176,6 +183,78 @@
 .healthChart + .healthChart {
   border-left: 1px solid hsl(var(--border));
 }
+.metricCard {
+  --metric-ink: var(--icon-process);
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid hsl(var(--border));
+  border-top: 2px solid hsl(var(--metric-ink) / 0.7);
+  border-radius: 7px;
+  background: hsl(var(--card));
+}
+.metricCard[data-metric='faithfulness'] {
+  --metric-ink: var(--icon-governance);
+}
+.metricCard[data-metric='response_relevancy'],
+.metricCard[data-metric='retrieval_recall'] {
+  --metric-ink: var(--icon-source);
+}
+.metricIcon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  margin-bottom: 7px;
+  border: 1px solid hsl(var(--metric-ink) / 0.14);
+  border-radius: 7px;
+  background: color-mix(in srgb, hsl(var(--metric-ink)) 8%, hsl(var(--card)));
+  color: hsl(var(--metric-ink));
+}
+.metricIcon svg {
+  width: 15px;
+  height: 15px;
+}
+.inlineStat,
+.runStatus {
+  --status-ink: var(--icon-neutral);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 1px 6px;
+  border: 1px solid hsl(var(--status-ink) / 0.14);
+  border-radius: 5px;
+  background: color-mix(in srgb, hsl(var(--status-ink)) 8%, hsl(var(--card)));
+  color: hsl(var(--status-ink));
+  font-size: 11px;
+  line-height: 19px;
+  white-space: nowrap;
+}
+.runStatus::before {
+  content: '';
+  width: 5px;
+  height: 5px;
+  flex: none;
+  border-radius: 50%;
+  background: currentColor;
+}
+.inlineStat[data-tone='success'],
+.runStatus[data-status='completed'],
+.runStatus[data-status='healthy'] {
+  --status-ink: var(--icon-governance);
+}
+.inlineStat[data-tone='warning'],
+.runStatus[data-status='degraded'] {
+  --status-ink: var(--icon-code);
+}
+.inlineStat[data-tone='info'],
+.runStatus[data-status='pending'],
+.runStatus[data-status='running'] {
+  --status-ink: var(--icon-source);
+}
+.runStatus[data-status='failed'] {
+  --status-ink: var(--icon-pdf);
+}
 @container golden-evaluation (max-width:1000px) {
   .goldenGrid {
     grid-template-columns: minmax(0, 1fr) 320px;
@@ -197,7 +276,7 @@
     font-size: 14px;
   }
   .goldenToolbar button {
-    font-size: 12px;
+    font-size: 13px;
   }
   .goldenGrid {
     display: flex;
@@ -221,17 +300,15 @@
 @media (max-width: 1100px) {
   .healthMetrics {
     grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 20px 0;
-  }
-  .healthMetrics > div:nth-child(4) {
-    border-left: 0;
-    padding-left: 0;
   }
   .healthMetrics dd {
     font-size: 24px;
   }
 }
 @media (max-width: 767px) {
+  .goldenToolbar button {
+    min-height: 44px;
+  }
   .healthSection {
     padding: 18px 16px;
   }
@@ -239,15 +316,7 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .healthMetrics > div {
-    padding: 0 14px;
-  }
-  .healthMetrics > div:nth-child(odd) {
-    padding-left: 0;
-    border-left: 0;
-  }
-  .healthMetrics > div:nth-child(even) {
-    padding-left: 14px;
-    border-left: 1px solid hsl(var(--border));
+    padding: 12px;
   }
   .healthCharts {
     grid-template-columns: 1fr;

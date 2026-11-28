@@ -1,7 +1,7 @@
 'use client'
 import { useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Download, Search } from '@/components/icons'
+import { ChevronDown, Download, Search } from '@/components/icons'
 import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 import { z } from 'zod'
@@ -24,6 +24,7 @@ import {
   DirectoryWorkspace,
   WorkspaceMetrics,
   WorkspaceNotice,
+  WorkspaceNoticeStack,
   workspaceStyles as ws,
 } from '@/components/ui/operational-workspace'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
@@ -191,7 +192,7 @@ export function EvidenceWorkbench({ tools }: { tools?: ReactNode }) {
   const context = datasetScope === DATASET_ALL ? '全部文档' : datasetName === undefined ? datasetScope : datasetName
 
   const inputClass =
-    'h-10 w-full min-w-0 rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring'
+    'h-9 w-full min-w-0 rounded-md border border-input bg-background px-3 text-[13px] outline-none max-sm:h-11 max-sm:text-base focus-visible:ring-2 focus-visible:ring-ring'
   const queryForm = (
     <form
       className="space-y-5 p-4"
@@ -218,15 +219,6 @@ export function EvidenceWorkbench({ tools }: { tools?: ReactNode }) {
           ))}
         </select>
       </label>
-      {datasetsError ? (
-        <WorkspaceNotice
-          retry={() => {
-            void datasetsQuery.refetch()
-          }}
-        >
-          {datasetsError}
-        </WorkspaceNotice>
-      ) : null}
       <label className="block space-y-2 text-[13px]">
         检索预设
         <select
@@ -284,13 +276,38 @@ export function EvidenceWorkbench({ tools }: { tools?: ReactNode }) {
             <span className="hidden sm:inline">导出结果</span>
           </Button>
           {tools ? (
-            <Button variant="ghost" onClick={() => setToolsOpen(true)}>
+            <Button variant="ghost" aria-expanded={toolsOpen} onClick={() => setToolsOpen(true)}>
               高级工具
             </Button>
           ) : null}
         </>
       }
     >
+      {datasetsError || error ? (
+        <WorkspaceNoticeStack ariaLabel="证据调试状态提示">
+          {datasetsError ? (
+            <WorkspaceNotice
+              tone="warning"
+              retry={() => {
+                void datasetsQuery.refetch()
+              }}
+            >
+              {datasetsError}
+            </WorkspaceNotice>
+          ) : null}
+          {error ? (
+            <WorkspaceNotice
+              retry={() => {
+                void run()
+              }}
+              retryLabel="重新检索"
+              pending={running}
+            >
+              {error}
+            </WorkspaceNotice>
+          ) : null}
+        </WorkspaceNoticeStack>
+      ) : null}
       <DirectoryWorkspace
         directory={queryForm}
         pane={pane}
@@ -298,17 +315,6 @@ export function EvidenceWorkbench({ tools }: { tools?: ReactNode }) {
         directoryLabel="问题与范围"
         detailLabel="引用证据"
       >
-        {error ? (
-          <WorkspaceNotice
-            retry={() => {
-              void run()
-            }}
-            retryLabel="重新检索"
-            pending={running}
-          >
-            {error}
-          </WorkspaceNotice>
-        ) : null}
         {running && result === null ? (
           <section role="status" aria-label="正在检索当前问题的证据" className="space-y-5 py-4">
             <Skeleton className="h-6 w-40" />
@@ -331,7 +337,7 @@ export function EvidenceWorkbench({ tools }: { tools?: ReactNode }) {
             <div className="border-b border-border py-4">
               <h2
                 className={cn(
-                  'text-lg font-semibold',
+                  'text-lg font-medium',
                   result.response.abstain_triggered && !result.response.has_evidence ? ws.warning : 'text-foreground',
                 )}
               >
@@ -362,7 +368,7 @@ export function EvidenceWorkbench({ tools }: { tools?: ReactNode }) {
                   <article key={index} className="border-b border-border py-5">
                     <header className="flex flex-wrap items-start justify-between gap-3">
                       <div className="min-w-0">
-                        <h3 className="break-words text-[15px] font-semibold leading-6">{title}</h3>
+                        <h3 className="break-words text-[15px] font-medium leading-6">{title}</h3>
                         {citation.header_path ? (
                           <p className="mt-1 break-words text-[13px] text-muted-foreground">{citation.header_path}</p>
                         ) : null}
@@ -390,8 +396,14 @@ export function EvidenceWorkbench({ tools }: { tools?: ReactNode }) {
                 </div>
               ) : null}
             </section>
-            <details className="py-5 text-[13px]">
-              <summary className="cursor-pointer font-medium">原始检索结果</summary>
+            <details className="group py-5 text-[13px]">
+              <summary className="flex cursor-pointer list-none items-center gap-2 font-medium [&::-webkit-details-marker]:hidden">
+                <ChevronDown
+                  className="size-3.5 shrink-0 text-muted-foreground transition-transform group-open:rotate-180"
+                  aria-hidden="true"
+                />
+                原始检索结果
+              </summary>
               <pre tabIndex={0} className="mt-4 max-h-96 overflow-auto bg-muted/30 p-4 text-xs leading-6">
                 {JSON.stringify(result.response, null, 2)}
               </pre>

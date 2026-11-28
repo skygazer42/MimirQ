@@ -29,9 +29,11 @@ export function FeedbackCandidatesDialog({
         <DialogHeader className={styles.candidateHeader}>
           <DialogTitle>反哺候选</DialogTitle>
           <DialogDescription>
-            查看不高于 {CANDIDATE_QUERY.max_rating} 分、最多 {CANDIDATE_QUERY.limit} 条反馈生成的候选；规则集为{' '}
-            {CANDIDATE_QUERY.ruleset}。
+            不高于 {CANDIDATE_QUERY.max_rating} 分，最多 {CANDIDATE_QUERY.limit} 条反馈。
           </DialogDescription>
+          <small className="block text-xs text-muted-foreground">
+            规则集标识：<code>{CANDIDATE_QUERY.ruleset}</code>
+          </small>
         </DialogHeader>
         <FeedbackCandidatesContent />
       </DialogContent>

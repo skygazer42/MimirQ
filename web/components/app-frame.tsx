@@ -1,13 +1,17 @@
 'use client'
 
-import { useState, type ReactNode } from 'react'
+import { useState, type CSSProperties, type ReactNode } from 'react'
 import { useTranslations } from 'next-intl'
 
 import { Navbar } from '@/components/navbar'
 import { AppBackground } from '@/components/ui/app-background'
 import { useIsMobile } from '@/hooks/use-media-query'
 import { cn } from '@/lib/utils'
-import { useDocumentView } from '@/store/document-view'
+import {
+  MAX_DOCUMENT_VIEWER_PANEL_WIDTH,
+  MIN_DOCUMENT_VIEWER_PANEL_WIDTH,
+  useDocumentView,
+} from '@/store/document-view'
 
 type AppFrameProps = {
   children: ReactNode
@@ -36,8 +40,18 @@ export function AppFrame({
   const sidebarExpanded = showNavbar && navigationVariant === 'default' && (sidebarOpenOverride ?? !isMobile)
   const isSidebarOverlayOpen = isMobile && sidebarExpanded
   const isDocPanelOpen = useDocumentView((state) => state.isOpen)
+  const docPanelLayout = useDocumentView((state) =>
+    state.documentId === null ? undefined : state.documentLayouts[state.documentId],
+  )
   const docPanelPadding =
-    withDocumentViewerPadding && isDocPanelOpen ? 'mr-0 md:mr-[45vw] lg:mr-[40vw] xl:mr-[35vw]' : undefined
+    withDocumentViewerPadding && isDocPanelOpen
+      ? 'mr-0 md:mr-[var(--document-viewer-panel-width)] md:[--document-viewer-panel-default-width:40vw] lg:[--document-viewer-panel-default-width:500px] xl:[--document-viewer-panel-default-width:40vw]'
+      : undefined
+  const docPanelStyle = {
+    '--document-viewer-panel-width': docPanelLayout?.isExpanded
+      ? '80vw'
+      : `clamp(${MIN_DOCUMENT_VIEWER_PANEL_WIDTH}px, ${docPanelLayout?.panelWidthPx ? `${docPanelLayout.panelWidthPx}px` : 'var(--document-viewer-panel-default-width)'}, min(${MAX_DOCUMENT_VIEWER_PANEL_WIDTH}px, 86vw, calc(100vw - 48px)))`,
+  } as CSSProperties
 
   return (
     <div className={cn('relative h-dvh overflow-hidden bg-background text-foreground', className)}>
@@ -57,6 +71,7 @@ export function AppFrame({
           <main
             id="main-content"
             tabIndex={-1}
+            style={docPanelPadding ? docPanelStyle : undefined}
             className={cn(
               // Avoid animating layout properties like `margin` (baseline-ui).
               'flex-1 min-h-0 relative flex flex-col overflow-hidden',

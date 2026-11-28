@@ -18,6 +18,15 @@ const NON_BROWSER_BACKEND_ROUTES = new Set([
   // Deployment access reviews use the audit CLI.
   'GET /audit/access-graph/export',
   'GET /audit/access-graph/summary',
+  // Published ontology business queries are programmatic integration entrypoints.
+  // The authoring workbench uses its fixed-version question/document/action APIs.
+  'POST /kg/ontologies/{}/versions/{}/metrics/{}',
+  'POST /kg/ontologies/{}/versions/{}/objects/{}/lookup',
+  'POST /kg/ontologies/{}/versions/{}/relations/{}/from/{}',
+  'POST /kg/ontologies/{}/versions/{}/rules/{}',
+  'POST /kg/ontologies/{}/versions/{}/functions/{}',
+  'POST /kg/ontologies/datasets/{}/ask',
+  'POST /kg/ontologies/ask',
 ])
 
 function main() {

@@ -25,7 +25,7 @@ function PreviewCharacterLimit({
       <SettingsNumberInput
         max={MAX_PREVIEW_CHARACTERS}
         value={value}
-        className="h-11 sm:h-9 border-input bg-background text-[13px]"
+        className="h-11 sm:h-9 border-input bg-background text-base sm:text-sm"
         onValueChange={onChange}
       />
     </label>

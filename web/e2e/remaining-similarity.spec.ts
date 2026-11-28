@@ -41,7 +41,12 @@ for (const variant of [
     expect(state.requests).toHaveLength(2)
     await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true)
     await remainingShot(page, `after-similarity-${variant.name}`)
-    await page.getByRole('button', { name: '显示与筛选', exact: true }).click()
+    if (variant.name === 'phone') {
+      await page.getByRole('button', { name: '工具', exact: true }).click()
+      await page.getByRole('menuitem', { name: '显示与筛选', exact: true }).click()
+    } else {
+      await page.getByRole('button', { name: '显示与筛选', exact: true }).click()
+    }
     await expect(dialog.getByRole('button', { name: '完成', exact: true })).toBeVisible()
     await remainingShot(page, `after-similarity-filters-${variant.name}`)
   })

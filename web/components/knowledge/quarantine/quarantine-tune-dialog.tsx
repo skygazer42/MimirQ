@@ -18,6 +18,8 @@ import { Switch } from '@/components/ui/switch'
 import type { Document, DocumentPipelineOptions } from '@/types'
 
 import type { ActingState } from '@/app/knowledge/quarantine/types'
+import { getDropReasons, getQuarantineSeverity, reasonLabel } from '@/app/knowledge/quarantine/quarantine-signals'
+import styles from '@/app/knowledge/quarantine/quarantine.module.css'
 
 function readNumberOverride(input: HTMLInputElement): number | null {
   return input.value === '' ? null : input.valueAsNumber
@@ -57,19 +59,17 @@ export function QuarantineTuneDialog({
         if (nextOpen || !tuneBusy) onOpenChange(nextOpen)
       }}
     >
-      <DialogContent className="sm:max-w-[720px]" showCloseButton={!tuneBusy}>
-        <DialogHeader>
+      <DialogContent className={styles.tuneDialog} showCloseButton={!tuneBusy}>
+        <DialogHeader className={styles.tuneHeader}>
           <DialogTitle className="flex items-center gap-2">
-            <Settings2 className="size-5 text-warning" />
+            <Settings2 className="size-4 text-muted-foreground" />
             调参回放
           </DialogTitle>
-          <DialogDescription>
-            仅修改该文档的 pipeline overrides（`metadata.pipeline`），用于快速回放重试；不会影响其他文档。
-          </DialogDescription>
         </DialogHeader>
 
         <form
           id={fieldId}
+          className={styles.tuneForm}
           onSubmit={(event) => {
             event.preventDefault()
             if (tuneDisabled) return
@@ -79,37 +79,30 @@ export function QuarantineTuneDialog({
         >
           <fieldset disabled={tuneDisabled} className="min-w-0 space-y-5">
             <legend className="sr-only">文档处理配置</legend>
-            <div className="rounded-xl border border-border bg-muted/40 p-4">
-              <div className="flex items-start justify-between gap-4">
+            <div className={styles.tunePreset}>
+              <div className="flex flex-wrap items-start justify-between gap-4">
                 <div>
                   <div className="text-sm font-medium text-foreground">推荐预设</div>
                   <div className="mt-1 text-xs text-muted-foreground">
                     关闭对应质量过滤器，让更多内容进入切块（仍建议人工抽检）。
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    className="rounded-xl"
-                    onClick={onApplyDisableQualityFilters}
-                  >
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button type="button" size="sm" variant="outline" onClick={onApplyDisableQualityFilters}>
                     关闭质量过滤
                   </Button>
-                  <Button type="button" size="sm" variant="outline" className="rounded-xl" onClick={onResetRecommended}>
+                  <Button type="button" size="sm" variant="outline" onClick={onResetRecommended}>
                     还原推荐
                   </Button>
                 </div>
               </div>
             </div>
 
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-              <div className="space-y-3 rounded-xl border border-border bg-card/60 p-4">
+            <div className={styles.tuneGrid}>
+              <div className="min-w-0 space-y-3">
                 <div className="flex items-center justify-between">
                   <div>
                     <div className="text-sm font-medium">大纲过滤</div>
-                    <div className="text-xs text-muted-foreground">outline_only</div>
                   </div>
                   <Switch
                     aria-label="大纲过滤"
@@ -168,11 +161,10 @@ export function QuarantineTuneDialog({
                 </div>
               </div>
 
-              <div className="space-y-3 rounded-xl border border-border bg-card/60 p-4">
+              <div className="min-w-0 space-y-3">
                 <div className="flex items-center justify-between">
                   <div>
                     <div className="text-sm font-medium">低密度过滤</div>
-                    <div className="text-xs text-muted-foreground">low_density</div>
                   </div>
                   <Switch
                     aria-label="低密度过滤"
@@ -210,11 +202,10 @@ export function QuarantineTuneDialog({
               </div>
             </div>
 
-            <div className="space-y-3 rounded-xl border border-border bg-card/60 p-4">
+            <div className="space-y-3 border-t pt-5">
               <div className="flex items-center justify-between">
                 <div>
                   <div className="text-sm font-medium">隔离策略</div>
-                  <div className="text-xs text-muted-foreground">quarantine_on_drop</div>
                 </div>
                 <Switch
                   aria-label="触发质量过滤后隔离"
@@ -228,42 +219,36 @@ export function QuarantineTuneDialog({
                   className="data-[state=checked]:bg-primary"
                 />
               </div>
-              <div className="text-xs text-muted-foreground">
-                开启后：触发质量过滤时标记为 quarantined（而非 failed），便于人工复核。
-              </div>
+              <div className="text-xs text-muted-foreground">触发质量过滤时加入隔离队列，等待人工复核。</div>
             </div>
           </fieldset>
         </form>
 
         {tuneBusy && (
-          <p role="status" className="text-sm text-muted-foreground">
+          <p role="status" className={styles.tuneBusy}>
             正在保存配置…
           </p>
         )}
 
-        <DialogFooter className="gap-2 sm:gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            className="rounded-xl"
-            onClick={() => onOpenChange(false)}
-            disabled={tuneBusy}
-          >
+        <DialogFooter className={styles.tuneFooter}>
+          <DialogDescription className={styles.tuneDescription}>
+            配置仅对「{target?.filename}」生效，保存后可重试入库。
+            {target !== null && (
+              <span className={styles.tuneSignals}>
+                隔离原因：{getDropReasons(target).map(reasonLabel).join('、') || '待确认原因'} ·{' '}
+                {getQuarantineSeverity(target)}风险
+              </span>
+            )}
+          </DialogDescription>
+          <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={tuneBusy}>
             取消
           </Button>
-          <Button type="submit" form={fieldId} variant="outline" className="rounded-xl" disabled={tuneDisabled}>
-            <Settings2 className="size-4 mr-1" />
+          <Button type="submit" form={fieldId} variant="outline" disabled={tuneDisabled}>
+            <Settings2 className="size-4" />
             保存配置
           </Button>
-          <Button
-            type="submit"
-            form={fieldId}
-            value="retry"
-            variant="warning"
-            className="rounded-xl"
-            disabled={tuneDisabled}
-          >
-            <RotateCcw className="size-4 mr-1" />
+          <Button type="submit" form={fieldId} value="retry" className={styles.tunePrimary} disabled={tuneDisabled}>
+            <RotateCcw className="size-4" />
             保存并重试
           </Button>
         </DialogFooter>

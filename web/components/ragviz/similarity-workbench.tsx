@@ -13,9 +13,12 @@ import {
   OperationalWorkspace,
   WorkspaceMetrics,
   WorkspaceNotice,
+  WorkspaceNoticeStack,
   workspaceStyles as ws,
 } from '@/components/ui/operational-workspace'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import styles from './similarity/similarity-workbench.module.css'
 import { cn as joinClasses } from '@/lib/utils'
 import { cn, detachPromise } from '@/lib/utils'
 import { queryKeys } from '@/lib/query-keys'
@@ -725,16 +728,49 @@ export function RagvizSimilarityWorkbench() {
               向量诊断
             </Button>
           </div>
-          <Button variant="ghost" disabled={!results.length} onClick={() => setPanel('controls')}>
+          <Button
+            className="hidden sm:inline-flex"
+            variant="ghost"
+            disabled={!results.length}
+            onClick={() => setPanel('controls')}
+          >
             矩阵管理{results.length > 0 && ` ${results.length}`}
           </Button>
-          <Button variant="ghost" disabled={!primaryEntry} onClick={() => setPanel('filters')}>
+          <Button
+            className="hidden sm:inline-flex"
+            variant="ghost"
+            disabled={!primaryEntry}
+            onClick={() => setPanel('filters')}
+          >
             显示与筛选
           </Button>
-          <Button variant="ghost" disabled={!primaryEntry} onClick={() => setPanel('statistics')}>
+          <Button
+            className="hidden sm:inline-flex"
+            variant="ghost"
+            disabled={!primaryEntry}
+            onClick={() => setPanel('statistics')}
+          >
             统计与详情
           </Button>
-          <label className="ml-auto flex items-center gap-2 text-[13px]">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" className="sm:hidden">
+                工具
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem disabled={!results.length} onSelect={() => setPanel('controls')}>
+                矩阵管理 {results.length || ''}
+              </DropdownMenuItem>
+              <DropdownMenuItem disabled={!primaryEntry} onSelect={() => setPanel('filters')}>
+                显示与筛选
+              </DropdownMenuItem>
+              <DropdownMenuItem disabled={!primaryEntry} onSelect={() => setPanel('statistics')}>
+                统计与详情
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <label className="ml-auto hidden items-center gap-2 text-[13px] sm:flex">
             色阶
             <select
               aria-label="矩阵色阶"
@@ -756,7 +792,7 @@ export function RagvizSimilarityWorkbench() {
       }
     >
       {calculationErrors.length ? (
-        <div className="px-4">
+        <WorkspaceNoticeStack ariaLabel="相似度计算提示">
           {calculationErrors.map((failure, index) => (
             <WorkspaceNotice
               key={`${index}:${failure.message}`}
@@ -778,18 +814,19 @@ export function RagvizSimilarityWorkbench() {
               {failure.message}
             </WorkspaceNotice>
           ))}
-        </div>
+        </WorkspaceNoticeStack>
       ) : null}
       {heatmapSummaryMetrics.length ? (
         <div className="px-4 md:px-6">
           <WorkspaceMetrics
+            className={styles.summary}
             items={heatmapSummaryMetrics.map((metric) => ({ label: metric.label, value: metric.value }))}
           />
         </div>
       ) : null}
       <div className="min-h-0 min-w-0 flex-1 overflow-auto" aria-label="相似度工作区">
         {primaryEntry ? (
-          <div className="h-full min-h-[560px] min-w-[640px]">
+          <div className="h-full min-h-[560px] min-w-0">
             <SimilarityMainPanel
               primaryEntry={primaryEntry}
               displayMatrix={displayMatrix}
@@ -951,9 +988,9 @@ export function RagvizSimilarityWorkbench() {
             {panel === 'controls' ? (
               <Panel title="">
                 {results.length === 0 ? (
-                  <div className="rounded-[1.25rem] border border-border/34 bg-card/58 p-3.5 text-center shadow-[inset_0_1px_0_hsl(var(--card)/0.55)]">
-                    <div className="text-[13px] font-semibold text-foreground/84">等待矩阵结果</div>
-                    <p className="mt-1 text-[11px] leading-4 text-muted-foreground/64">
+                  <div className="border-b border-border py-4 text-left">
+                    <div className="text-[13px] font-medium text-foreground/84">等待矩阵结果</div>
+                    <p className="mt-1 text-xs leading-4 text-muted-foreground">
                       先在上方选择两个 collections，再生成热力图并在这里切换主图、筛选器和独占模式。
                     </p>
                     <div className="mt-4 grid grid-cols-3 gap-2">
@@ -964,7 +1001,7 @@ export function RagvizSimilarityWorkbench() {
                   </div>
                 ) : (
                   <div className="space-y-2">
-                    <p className="text-[11px] text-muted-foreground">
+                    <p className="text-xs text-muted-foreground">
                       提示：应用数据=显示/差值；应用筛选器=合并筛选条件(可多选)；独占模式=锁定编辑该图
                     </p>
                     <div className="space-y-2">
@@ -987,7 +1024,7 @@ export function RagvizSimilarityWorkbench() {
                                 {entry.xCollectionLabel} <span className="text-muted-foreground">vs</span>{' '}
                                 {entry.yCollectionLabel}
                               </div>
-                              <div className="text-[11px] text-muted-foreground flex items-center gap-2">
+                              <div className="text-xs text-muted-foreground flex items-center gap-2">
                                 <span>
                                   {matrixShape(entry).rows}×{matrixShape(entry).cols}
                                 </span>
@@ -1102,14 +1139,14 @@ export function RagvizSimilarityWorkbench() {
                 {mainView === 'heatmap' && primaryEntry ? (
                   <div className="mt-4 border-t border-sidebar-border/60 pt-4">
                     <div className="mb-2 flex items-center justify-between gap-2">
-                      <div className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
+                      <div className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
                         选中单元
                       </div>
                       {selectedCellDetails ? (
                         <Button
                           variant="ghost"
                           size="sm"
-                          className="h-7 px-2 text-[11px]"
+                          className="h-7 px-2 text-xs"
                           onClick={() => setSelectedCell(null)}
                         >
                           清除
@@ -1122,14 +1159,14 @@ export function RagvizSimilarityWorkbench() {
                         <div className="border-b border-border py-4">
                           <div className="grid grid-cols-2 gap-3">
                             <div className="min-w-0">
-                              <div className="text-[11px] font-medium text-muted-foreground">X（列）</div>
-                              <div className="mt-1 truncate text-sm font-semibold text-foreground">
+                              <div className="text-xs font-medium text-muted-foreground">X（列）</div>
+                              <div className="mt-1 truncate text-sm font-medium text-foreground">
                                 {selectedCellDetails.xLabel}
                               </div>
                             </div>
                             <div className="min-w-0">
-                              <div className="text-[11px] font-medium text-muted-foreground">Y（行）</div>
-                              <div className="mt-1 truncate text-sm font-semibold text-foreground">
+                              <div className="text-xs font-medium text-muted-foreground">Y（行）</div>
+                              <div className="mt-1 truncate text-sm font-medium text-foreground">
                                 {selectedCellDetails.yLabel}
                               </div>
                             </div>
@@ -1137,12 +1174,12 @@ export function RagvizSimilarityWorkbench() {
 
                           <div className="mt-4 grid grid-cols-[1fr_auto] items-end gap-3">
                             <div>
-                              <div className="text-[11px] font-medium text-muted-foreground">
+                              <div className="text-xs font-medium text-muted-foreground">
                                 {isDifferenceMode ? '差值' : '相似度'}
                               </div>
                               <div
                                 className={cn(
-                                  'mt-1 text-3xl font-semibold tabular-nums',
+                                  'mt-1 text-3xl font-medium tabular-nums',
                                   selectedCellDetails.rawValue >= 0.8 ? 'text-destructive' : 'text-foreground',
                                 )}
                               >
@@ -1151,7 +1188,7 @@ export function RagvizSimilarityWorkbench() {
                             </div>
                             <div
                               className={cn(
-                                'inline-flex items-center rounded-full border px-2 py-0.5 text-[11px]',
+                                'inline-flex items-center rounded-full border px-2 py-0.5 text-xs',
                                 selectedCellDetails.isVisible
                                   ? 'border-success/25 bg-success/10 text-success'
                                   : 'border-warning/25 bg-warning/10 text-warning',
@@ -1200,6 +1237,25 @@ export function RagvizSimilarityWorkbench() {
             ) : null}
             {panel === 'filters' ? (
               <Panel title="">
+                <label className="flex items-center justify-between gap-3 border-b border-border pb-4 text-sm">
+                  矩阵色阶
+                  <select
+                    aria-label="矩阵色阶"
+                    value={colorScheme}
+                    onChange={(event) => {
+                      const value = event.currentTarget.value
+                      if (isColorSchemeKey(value)) setColorScheme(value)
+                    }}
+                    className="h-11 max-w-full rounded-md border border-input bg-background px-3 sm:h-9"
+                  >
+                    {Object.entries(COLOR_SCHEMES).map(([key, scheme]) => (
+                      <option key={key} value={key}>
+                        {scheme.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
                 {primaryEntry ? (
                   <div className="space-y-5">
                     <div className="space-y-2">
@@ -1361,7 +1417,7 @@ export function RagvizSimilarityWorkbench() {
                           纵轴Top-K
                         </Button>
                       </div>
-                      <p className="text-[11px] text-muted-foreground">
+                      <p className="text-xs text-muted-foreground">
                         当前：Top-{uiTopK.value}（
                         {(() => {
                           if (uiTopK.value === 0) {

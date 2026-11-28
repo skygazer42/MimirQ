@@ -14,6 +14,7 @@ describe('report overview values', () => {
     expect(reportStatusRows({ archived: 3, failed: 0 })).toEqual([
       { key: 'archived', value: 3, label: 'archived', tone: 'info' },
     ])
+    expect(reportStatusRows({ parsing: 6 })).toEqual([{ key: 'parsing', value: 6, label: '解析中', tone: 'info' }])
   })
   it('distinguishes unavailable coverage from a true zero', () => {
     expect(formatRecordShare(0, 0)).toBe('—')

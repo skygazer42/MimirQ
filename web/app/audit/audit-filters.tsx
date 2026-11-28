@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, type FormEvent } from 'react'
+import { useState, type FormEvent, type ReactNode } from 'react'
 import { Calendar, ChevronDown, Filter, X } from '@/components/icons'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -38,7 +38,7 @@ function getTextFilterDraft(filters: AuditFilters) {
   }
 }
 
-export function AuditFiltersBar({ audit }: Readonly<{ audit: AuditState }>) {
+export function AuditFiltersBar({ audit, children }: Readonly<{ audit: AuditState; children: ReactNode }>) {
   const [moreOpen, setMoreOpen] = useState(false)
   const [timeOpen, setTimeOpen] = useState(false)
   const [draft, setDraft] = useState(() => getTextFilterDraft(audit.scope.filters))
@@ -46,6 +46,9 @@ export function AuditFiltersBar({ audit }: Readonly<{ audit: AuditState }>) {
   const [period, setPeriod] = useState<Partial<Pick<AuditFilters, 'since' | 'until'>>>({})
   const [timeError, setTimeError] = useState<string | undefined>()
   const extras = (['resource_id', 'request_id'] as const).filter((key) => audit.scope.filters[key].length > 0)
+  const selected = (['action', 'actor_id', 'resource_type', 'resource_id', 'request_id'] as const).filter(
+    (key) => audit.scope.filters[key].length > 0,
+  )
   const hasFilters = Object.keys(audit.filters).length > 0
   const blocked = audit.busy !== null
   function choosePeriod(hours: number | null) {
@@ -91,7 +94,6 @@ export function AuditFiltersBar({ audit }: Readonly<{ audit: AuditState }>) {
   return (
     <>
       <div className={styles.filters}>
-        <span className={styles.filterLabel}>筛选</span>
         <Popover
           open={timeOpen}
           onOpenChange={(open) => {
@@ -176,7 +178,6 @@ export function AuditFiltersBar({ audit }: Readonly<{ audit: AuditState }>) {
           disabled={blocked}
           onChange={(resource_type) => audit.setFilters((current) => ({ ...current, resource_type }))}
         />
-        <span className={styles.spacer} />
         <Dialog
           open={moreOpen}
           onOpenChange={(open) => {
@@ -188,16 +189,30 @@ export function AuditFiltersBar({ audit }: Readonly<{ audit: AuditState }>) {
           }}
         >
           <DialogTrigger asChild>
-            <Button variant="ghost" className={styles.moreFilters} aria-label="更多审计筛选" disabled={blocked}>
+            <Button
+              variant="ghost"
+              className={styles.moreFilters}
+              aria-label="更多审计筛选"
+              title={
+                selected.map((key) => `${FILTER_LABELS[key]}：${audit.scope.filters[key]}`).join('；') || '精确筛选'
+              }
+              disabled={blocked}
+            >
               <Filter />
-              <span>更多筛选{extras.length ? ` ${extras.length}` : ''}</span>
+              <span className={styles.desktopFilterLabel}>
+                更多筛选{selected.length ? <span className={styles.filterCount}>{selected.length}</span> : null}
+              </span>
+              <span className={styles.mobileFilterLabel}>筛选{selected.length ? `（${selected.length}）` : ''}</span>
             </Button>
           </DialogTrigger>
           <DialogContent className={styles.filterDialog}>
             <form className={styles.dialogForm} onSubmit={applyMore}>
               <div className={styles.dialogHeader}>
                 <DialogTitle>精确筛选</DialogTitle>
-                <DialogDescription>按动作代码、操作者、资源或请求的完整值匹配。</DialogDescription>
+                <DialogDescription>
+                  按动作代码、操作者、资源或请求的完整值匹配。筛选建议来自最近{' '}
+                  {AUDIT_SUGGESTION_LIMIT.toLocaleString('zh-CN')} 条及当前页，其他值可在此输入。
+                </DialogDescription>
               </div>
               <div className={styles.dialogBody}>
                 <div className={styles.filterFields}>
@@ -233,6 +248,7 @@ export function AuditFiltersBar({ audit }: Readonly<{ audit: AuditState }>) {
           <Button
             variant="ghost"
             size="icon"
+            className={styles.clearFilters}
             aria-label="清空审计筛选"
             disabled={blocked}
             onClick={() => audit.setFilters(createAuditFilterDraft())}
@@ -240,27 +256,6 @@ export function AuditFiltersBar({ audit }: Readonly<{ audit: AuditState }>) {
             <X />
           </Button>
         ) : null}
-        <span className={styles.tenantLabel}>当前租户</span>
-      </div>
-      <div className={styles.presets}>
-        <span>建议来自最近 {AUDIT_SUGGESTION_LIMIT.toLocaleString('zh-CN')} 条及当前页，其他值可用精确筛选。</span>
-        <span>快捷筛选</span>
-        {QUICK_ACTIONS.map((action) => (
-          <button
-            key={action.value}
-            type="button"
-            aria-pressed={audit.scope.filters.action === action.value}
-            disabled={blocked}
-            onClick={() =>
-              audit.setFilters((current) => ({
-                ...current,
-                action: current.action === action.value ? '' : action.value,
-              }))
-            }
-          >
-            {action.label}
-          </button>
-        ))}
         {extras.length ? (
           <span className={styles.applied}>
             {extras.map((key) => (
@@ -277,8 +272,38 @@ export function AuditFiltersBar({ audit }: Readonly<{ audit: AuditState }>) {
             ))}
           </span>
         ) : null}
+        <div className={styles.tableToolbar}>{children}</div>
       </div>
     </>
+  )
+}
+
+export function AuditPresets({ audit }: Readonly<{ audit: AuditState }>) {
+  const blocked = audit.busy !== null
+  return (
+    <div className={styles.presets} role="group" aria-label="快捷筛选">
+      <button
+        type="button"
+        aria-pressed={audit.scope.filters.action === ''}
+        disabled={blocked}
+        onClick={() => audit.setFilters((current) => ({ ...current, action: '' }))}
+      >
+        全部
+      </button>
+      {QUICK_ACTIONS.map((action) => (
+        <button
+          key={action.value}
+          type="button"
+          aria-pressed={audit.scope.filters.action === action.value}
+          disabled={blocked}
+          onClick={() =>
+            audit.setFilters((current) => ({ ...current, action: current.action === action.value ? '' : action.value }))
+          }
+        >
+          {action.label}
+        </button>
+      ))}
+    </div>
   )
 }
 

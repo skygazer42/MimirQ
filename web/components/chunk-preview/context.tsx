@@ -75,7 +75,7 @@ const STORAGE_PARENT_CHILD_SETTINGS_KEY = 'mimirq_chunk_preview_parent_child_set
 const CHUNK_PREVIEW_SCOPE_DOCUMENT_LIMIT = 8
 const MANUAL_INGEST_STATUS_POLL_INTERVAL_MS = 1500
 const MANUAL_INGEST_STATUS_MAX_WAIT_MS = 30 * 60 * 1000
-const MANUAL_INGEST_STILL_PROCESSING_MESSAGE = '入库已提交，后端仍在处理。请稍后刷新列表确认结果。'
+const MANUAL_INGEST_STILL_PROCESSING_MESSAGE = '入库处理中，请稍后刷新列表查看结果。'
 const PREVIEW_UPDATE_REQUIRED_MESSAGE = '当前预览需要更新，请重新生成后再入库。'
 const COMPLETE_PREVIEW_REQUIRED_MESSAGE = '当前预览只包含部分切块，请将“最多返回切块”设为 0，重新生成完整预览后再入库。'
 type MarkdownChunkFileSource = {
@@ -183,7 +183,7 @@ async function waitForDocumentIngestCompletion(
     if (!isSessionCurrent()) return
     if (status === 'completed') return
     if (status === 'failed' || status === 'cancelled' || status === 'quarantined') {
-      throw new ManualIngestFailedError(`入库失败：后端状态为 ${status}`)
+      throw new ManualIngestFailedError(`入库失败（${status}）`)
     }
 
     await sleep(MANUAL_INGEST_STATUS_POLL_INTERVAL_MS)
@@ -192,7 +192,7 @@ async function waitForDocumentIngestCompletion(
     status = latest.status.trim().toLowerCase()
     if (status === 'completed') return
     if (status === 'failed' || status === 'cancelled' || status === 'quarantined') {
-      throw new ManualIngestFailedError(latest.error_message ?? `入库失败：后端状态为 ${status}`)
+      throw new ManualIngestFailedError(latest.error_message ?? `入库失败（${status}）`)
     }
   }
 
@@ -1580,7 +1580,7 @@ function ChunkPreviewWorkspace({ children, onConfirm, onClose }: Readonly<ChunkP
         setError(lastFailure)
         toast.error(`已入库 ${successCount} 个，处理中 ${processingCount} 个，失败 ${failureCount} 个`)
       } else if (processingCount > 0) {
-        toast.info(`已提交 ${processingCount} 个文件，后端仍在处理`)
+        toast.info(`${processingCount} 个文件正在入库`)
       } else {
         toast.success(`已批量入库 ${successCount} 个文件`)
       }

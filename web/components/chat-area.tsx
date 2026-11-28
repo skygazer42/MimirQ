@@ -14,7 +14,7 @@ import {
   type ReactNode,
 } from 'react'
 import { useTranslations } from 'next-intl'
-import { ArrowUp, StopCircle, Settings2, Mic, ArrowDown, Route, ChevronDown } from '@/components/icons'
+import { ArrowUp, ArrowRight, StopCircle, Settings2, Mic, ArrowDown, Route, ChevronDown } from '@/components/icons'
 import { toast } from 'sonner'
 import { useQuery } from '@tanstack/react-query'
 import { useChat } from '@/hooks/use-chat'
@@ -39,7 +39,7 @@ import { RagTraceDialog } from '@/components/rag-trace/rag-trace-dialog'
 import getCaretCoordinates from 'textarea-caret'
 import { SlashMenu } from '@/components/chat/slash-menu'
 import { globalEventBus } from '@/lib/event-bus'
-import { useRouter } from '@/i18n/navigation'
+import { Link, useRouter } from '@/i18n/navigation'
 import { coerceOneOf } from '@/lib/one-of'
 import { queryKeys } from '@/lib/query-keys'
 import { reportClientError } from '@/lib/client-logging'
@@ -112,6 +112,7 @@ export function ChatArea({
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const advancedRetrievalModeRef = useRef<HTMLDivElement>(null)
   const autoScrollRef = useRef(true)
   const [isNearBottom, setIsNearBottom] = useState(true)
   const [focusedMessageId, setFocusedMessageId] = useState<string | null>(null)
@@ -604,13 +605,7 @@ export function ChatArea({
 
   return (
     <div className="flex-1 min-h-0 flex flex-col overflow-hidden bg-background relative transition-colors duration-200 motion-reduce:transition-none">
-      {isWelcomeState && (
-        <div
-          aria-hidden="true"
-          className="pointer-events-none absolute inset-0 text-foreground opacity-[0.035] [background-image:radial-gradient(currentColor_1px,transparent_1px)] [background-size:22px_22px] [mask-image:radial-gradient(ellipse_65%_60%_at_50%_45%,#000,transparent_85%)]"
-        />
-      )}
-      <header className="relative z-10 flex h-13 shrink-0 items-center justify-between gap-3 border-b border-border/40 bg-background/80 pl-16 pr-4 sm:pr-6">
+      <header className="relative z-10 flex h-[52px] shrink-0 items-center justify-between gap-3 border-b border-border/75 bg-background pl-16 pr-4 sm:px-5">
         <div className="flex min-w-0 flex-1 items-center gap-2 text-xs">
           <span className="truncate font-medium">{t('workspaceTitle')}</span>
           <span className="hidden text-muted-foreground sm:inline" aria-hidden="true">
@@ -628,7 +623,7 @@ export function ChatArea({
           type="button"
           variant="ghost"
           size="sm"
-          className="h-10 shrink-0 gap-2 px-2 text-xs font-normal"
+          className="h-11 shrink-0 gap-2 px-2 text-xs font-normal md:h-8"
           disabled={!conversationId}
           onClick={() => setTraceDialogOpen(true)}
           title={conversationId ? t('viewRagTrace') : t('sendMessageFirst')}
@@ -641,7 +636,7 @@ export function ChatArea({
         ref={scrollContainerRef}
         onScroll={handleScroll}
         className={cn(
-          'flex-1 overflow-y-auto overscroll-contain px-4 pb-4 scroll-smooth no-scrollbar md:px-6',
+          'flex-1 overflow-y-auto overscroll-contain px-4 pb-20 scroll-smooth no-scrollbar sm:pb-8 md:px-6',
           isWelcomeState && 'hidden',
         )}
         role="log"
@@ -753,10 +748,7 @@ export function ChatArea({
 
           <div
             className={cn(
-              '@container relative border transition-[border-color,box-shadow] duration-200 motion-reduce:transition-none',
-              isWelcomeState
-                ? 'rounded-2xl border-border/50 bg-card shadow-subtle focus-within:border-ring/60 focus-within:ring-3 focus-within:ring-ring/12'
-                : 'rounded-xl border-border/60 bg-card focus-within:border-ring/60 focus-within:ring-3 focus-within:ring-ring/12',
+              '@container relative rounded-2xl border border-border bg-card shadow-[0_2px_12px_rgba(15,23,42,0.04)] transition-[border-color,box-shadow] duration-200 hover:border-foreground/20 focus-within:border-foreground/30 focus-within:shadow-[0_4px_18px_rgba(15,23,42,0.06)] dark:shadow-none dark:focus-within:border-foreground/35 motion-reduce:transition-none',
             )}
           >
             <Label htmlFor="chat-composer" className="sr-only">
@@ -776,7 +768,7 @@ export function ChatArea({
                 'block w-full resize-none outline-none max-h-[200px] bg-transparent text-base leading-7 placeholder:text-muted-foreground no-scrollbar text-foreground',
                 isWelcomeState
                   ? 'min-h-[72px] rounded-t-2xl px-5 pb-3 pt-4 sm:min-h-[88px] sm:px-6 sm:pb-4 sm:pt-5'
-                  : 'min-h-[88px] rounded-t-xl px-5 pb-3 pt-4',
+                  : 'min-h-[88px] rounded-t-2xl px-5 pb-3 pt-4',
               )}
               rows={1}
             />
@@ -823,19 +815,17 @@ export function ChatArea({
                     <Button
                       type="button"
                       variant="ghost"
-                      className="h-11 shrink-0 gap-1.5 rounded-lg border border-border/60 bg-card/70 px-2 text-xs text-muted-foreground shadow-none data-[state=open]:bg-ring/10 data-[state=open]:text-foreground @min-[30rem]:h-8"
+                      className="h-11 shrink-0 gap-1.5 rounded-lg px-2 text-xs text-muted-foreground shadow-none data-[state=open]:bg-muted data-[state=open]:text-foreground @min-[30rem]:h-8"
                       title={t('retrievalSettings')}
                       aria-label={t('retrievalSettings')}
                       aria-controls="chat-retrieval-settings"
                     >
                       <Settings2 className="size-4" aria-hidden="true" />
-                      <span className="hidden max-w-40 truncate @min-[30rem]:inline">
+                      <span className="max-w-24 truncate @min-[30rem]:max-w-40">
                         {t(`retrievalModes.${retrievalMode}`)}
                         {graphEnabled && <> · {t('graphRetrieval')}</>}
                       </span>
-                      <span className="rounded bg-muted px-1.5 py-0.5 font-mono text-[11px] tabular-nums">
-                        Top {effectiveTopK}
-                      </span>
+                      <span className="font-mono text-[11px] tabular-nums">Top {effectiveTopK}</span>
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent
@@ -846,7 +836,7 @@ export function ChatArea({
                     sideOffset={8}
                     avoidCollisions
                     collisionPadding={16}
-                    className="max-h-[min(26rem,var(--radix-popover-content-available-height))] w-80 max-w-[calc(100vw-3rem)] space-y-4 overflow-y-auto overscroll-contain rounded-xl p-4"
+                    className="max-h-[min(34rem,var(--radix-popover-content-available-height))] w-80 max-w-[calc(100vw-3rem)] space-y-4 overflow-y-auto overscroll-contain rounded-xl p-4 pb-5"
                   >
                     <h2 id="chat-retrieval-settings-title" className="text-sm font-medium">
                       {t('retrievalSettings')}
@@ -967,7 +957,14 @@ export function ChatArea({
                       ) : null}
                     </div>
 
-                    <details className="group/advanced border-t border-border pt-2">
+                    <details
+                      className="group/advanced border-t border-border pt-2"
+                      onToggle={(event) => {
+                        if (event.currentTarget.open) {
+                          advancedRetrievalModeRef.current?.scrollIntoView({ block: 'nearest' })
+                        }
+                      }}
+                    >
                       <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 rounded-md text-sm font-medium outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
                         {t('advancedSettings')}
                         <ChevronDown
@@ -976,7 +973,7 @@ export function ChatArea({
                         />
                       </summary>
                       <div className="space-y-3 pt-2">
-                        <div className="space-y-2">
+                        <div ref={advancedRetrievalModeRef} className="space-y-2 scroll-my-1">
                           <Label htmlFor="chat-other-retrieval-mode" className="text-sm font-normal">
                             {t('allRetrievalModes')}
                           </Label>
@@ -1155,8 +1152,27 @@ export function ChatArea({
             </p>
           ) : null}
 
+          {!hasDocumentScope && selectedDataset?.ingestion_summary?.total_chunks === 0 ? (
+            <p
+              role="status"
+              className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border/80 bg-muted/45 px-3.5 py-2 text-xs text-muted-foreground"
+            >
+              <span className="inline-flex items-center gap-2">
+                <span className="size-1.5 shrink-0 rounded-full bg-warning" aria-hidden="true" />
+                {t('composerNoTextChunks')}
+              </span>
+              <Link
+                href={`/knowledge?dataset=${selectedDataset.id}`}
+                className="inline-flex min-h-8 items-center gap-1 rounded-sm text-foreground hover:underline underline-offset-4 focus-ring"
+              >
+                {t('inspectDocuments')}
+                <ArrowRight className="size-3.5" aria-hidden="true" />
+              </Link>
+            </p>
+          ) : null}
+
           {!isWelcomeState ? (
-            <p className="text-[11px] text-center text-muted-foreground/75">
+            <p className="hidden text-[11px] text-center text-muted-foreground/75 sm:block">
               {t.rich('composerHelpText', {
                 slash: renderComposerSlash,
                 enter: renderComposerEnter,
@@ -1167,24 +1183,6 @@ export function ChatArea({
           {isWelcomeState && <StarterPrompts onSelect={insertStarterPrompt} />}
         </div>
       </div>
-
-      {isWelcomeState && (
-        <footer className="relative z-10 flex shrink-0 flex-wrap items-center justify-center gap-x-4 gap-y-2 px-5 py-3 text-xs text-muted-foreground">
-          <span className="inline-flex items-center gap-1.5">
-            <kbd className="rounded border border-border bg-card px-1.5 py-0.5 font-mono text-[11px] shadow-subtle">
-              Enter
-            </kbd>
-            {t('send')}
-          </span>
-          <span className="inline-flex items-center gap-1.5">
-            <kbd className="rounded border border-border bg-card px-1.5 py-0.5 font-mono text-[11px] shadow-subtle">
-              Shift + Enter
-            </kbd>
-            {t('newLine')}
-          </span>
-          <span>{t('starterHint')}</span>
-        </footer>
-      )}
 
       <SlashMenu open={slashOpen} onOpenChange={setSlashOpen} onSelect={handleSlashSelect} position={slashPos} />
 
@@ -1257,12 +1255,12 @@ function WelcomeScreen() {
   const t = useTranslations('Chat')
 
   return (
-    <header className="mb-7 text-center sm:mb-8">
-      <div className="flex items-center justify-center gap-3">
-        <BrandLogo variant="mark" className="size-9 shrink-0 sm:size-10" decorative priority />
-        <h1 className="text-2xl font-semibold leading-9 text-foreground sm:text-[26px]">{t('welcomeTitle')}</h1>
+    <header className="mb-6 text-center sm:mb-7">
+      <div className="flex items-center justify-center gap-2.5">
+        <BrandLogo variant="mark" className="size-7 shrink-0 sm:size-8" decorative priority />
+        <h1 className="text-xl font-medium leading-8 text-foreground sm:text-[24px]">{t('welcomeTitle')}</h1>
       </div>
-      <p className="mt-3 text-sm leading-6 text-muted-foreground">{t('welcomeSubtitle')}</p>
+      <p className="mt-2 text-sm leading-6 text-muted-foreground">{t('welcomeSubtitle')}</p>
     </header>
   )
 }

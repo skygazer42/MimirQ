@@ -47,9 +47,14 @@ vi.mock('next/navigation', () => ({
 vi.mock('@/i18n/navigation', () => ({
   usePathname: () => '/knowledge/quarantine',
   useRouter: () => routerMock,
+  Link: ({ children, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement>) =>
+    React.createElement('a', props, children),
 }))
 vi.mock('@/hooks/use-datasets', () => ({
   useDatasets: () => datasetsState,
+}))
+vi.mock('@/hooks/use-media-query', () => ({
+  useMediaQuery: () => false,
 }))
 vi.mock('@/lib/api', () => ({
   documentApi: documentApiMock,
@@ -77,8 +82,10 @@ vi.mock('@/components/ui/page-title-icon', () => ({
   PageTitleIcon: () => React.createElement('div', null, 'icon'),
 }))
 vi.mock('@/components/ui/button', () => ({
-  Button: ({ children, ...props }: React.ButtonHTMLAttributes<HTMLButtonElement>) =>
-    React.createElement('button', props, children),
+  Button: ({ children, asChild, ...props }: React.ButtonHTMLAttributes<HTMLButtonElement> & { asChild?: boolean }) =>
+    asChild
+      ? React.cloneElement(children as React.ReactElement, props)
+      : React.createElement('button', props, children),
 }))
 vi.mock('@/components/ui/search-input', () => ({
   SearchInput: ({
@@ -259,26 +266,26 @@ describe('QuarantineQueuePage behavior', () => {
     document.body.innerHTML = ''
   })
 
-  it('reviews in the current row, keeps source text inert, and closes it when changing pages', async () => {
+  it('reviews in the right review panel, keeps source text inert, and updates when changing pages', async () => {
     const container = renderPage()
     await loaded(container)
     expect(container.querySelectorAll('[data-quarantine-row]')).toHaveLength(20)
-    expect(documentApiMock.getParsedContent).not.toHaveBeenCalled()
+    const rail = container.querySelector('[data-quarantine-review-rail]')
+    expect(rail).not.toBeNull()
     const source = button(container, '复核 quarantine-1.pdf')
-    await click(source)
-    expect(source.getAttribute('aria-expanded')).toBe('true')
+    expect(source.getAttribute('aria-current')).toBe('true')
     await act(async () => {
-      await vi.waitFor(() => expect(container.querySelector('pre')?.textContent).toContain('<script>普通文本</script>'))
+      await vi.waitFor(() => expect(rail?.querySelector('pre')?.textContent).toContain('<script>普通文本</script>'))
     })
-    expect(container.querySelector('pre script')).toBeNull()
+    expect(rail?.querySelector('pre script')).toBeNull()
     await click(button(container, '查看原文'))
     expect(documentViewMock.openDocument).toHaveBeenCalledWith('doc-1')
     await click(button(container, '下一页'))
     expect(container.querySelectorAll('[data-quarantine-row]')).toHaveLength(1)
     expect(container.textContent).toContain('quarantine-21.pdf')
-    expect(container.querySelector('pre')).toBeNull()
+    expect(rail?.textContent).toContain('quarantine-21.pdf')
     await click(button(container, '上一页'))
-    expect(button(container, '复核 quarantine-1.pdf').getAttribute('aria-expanded')).toBe('false')
+    expect(button(container, '复核 quarantine-1.pdf').getAttribute('aria-current')).toBe('true')
   })
 
   it('retains search text on no match and can restore the list', async () => {
@@ -303,7 +310,31 @@ describe('QuarantineQueuePage behavior', () => {
     expect(container.textContent).not.toContain('当前没有待复核文档')
   })
 
-  it('keeps the expanded document and error available after a retry fails', async () => {
+  it('replaces a truly empty queue with guidance and omits empty controls', async () => {
+    documentApiMock.list.mockResolvedValue({ items: [], total: 0 })
+    const container = renderPage()
+    await act(async () => vi.waitFor(() => expect(container.textContent).toContain('当前没有待复核文档')))
+    expect(container.querySelector('table')).toBeNull()
+    expect(container.querySelector('footer')).toBeNull()
+    expect(container.querySelector('[data-page-scroll-container="true"]')).toBeTruthy()
+    expect(container.querySelector('[aria-label="筛选数据集"]')).toBeNull()
+    expect(container.querySelector('a[href="/knowledge"]')?.textContent).toContain('查看知识库')
+    expect(button(container, '导出').disabled).toBe(true)
+    expect(container.textContent).toContain('当前没有进入隔离或解析失败队列的文档。')
+    expect(container.textContent).not.toContain('所有文档均已通过质量门禁')
+  })
+
+  it('keeps dataset scope and recovery controls for an empty scoped queue', async () => {
+    documentApiMock.list.mockResolvedValue({ items: [], total: 0 })
+    routeState.search = 'datasetId=ds-1'
+    const container = renderPage()
+    await act(async () => vi.waitFor(() => expect(container.textContent).toContain('没有符合条件的文档')))
+    expect(container.querySelector('[aria-label="筛选数据集"]')).toBeTruthy()
+    expect(button(container, '清除筛选')).toBeTruthy()
+    expect(container.textContent).not.toContain('所有文档均已通过质量门禁')
+  })
+
+  it('keeps the selected document and error available after a retry fails', async () => {
     const { toast } = await import('sonner')
     documentApiMock.retry.mockRejectedValueOnce(new Error('重试服务暂时不可用'))
     const container = renderPage()
@@ -311,7 +342,7 @@ describe('QuarantineQueuePage behavior', () => {
     await click(button(container, '复核 quarantine-1.pdf'))
     await click(button(container, '重试'))
     expect(toast.error).toHaveBeenCalledWith(expect.stringContaining('重试服务暂时不可用'))
-    expect(button(container, '复核 quarantine-1.pdf').getAttribute('aria-expanded')).toBe('true')
+    expect(button(container, '复核 quarantine-1.pdf').getAttribute('aria-current')).toBe('true')
     expect(documentApiMock.patchUserMetadata).not.toHaveBeenCalled()
     await click(button(container, '重试'))
     expect(documentApiMock.retry).toHaveBeenCalledTimes(2)
@@ -324,12 +355,18 @@ describe('QuarantineQueuePage behavior', () => {
     expect(container.querySelector('[role="alert"]')).toBeNull()
   })
 
-  it('opens the existing document tuning form from inline review', async () => {
+  it('opens the existing document tuning form from the right review panel', async () => {
     const container = renderPage()
     await loaded(container)
     await click(button(container, '复核 quarantine-1.pdf'))
+    const rail = container.querySelector('[data-quarantine-review-rail]')
+    expect(rail).not.toBeNull()
+    expect(rail?.textContent).toContain('quarantine-1.pdf')
+    expect(rail?.textContent).toContain('仅包含大纲')
+    expect(rail?.textContent).toContain('中风险')
     await click(button(container, '调参'))
     expect(container.textContent).toContain('调参回放')
+    expect(container.textContent).toContain('隔离原因：仅包含大纲 · 中风险')
     expect(container.textContent).toContain('保存并重试')
   })
 

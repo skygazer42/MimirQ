@@ -57,7 +57,7 @@ const governanceMessages = {
       activePrompt: '请在右侧选中文本...',
     },
     auto: {
-      action: 'AI 自动打标',
+      action: '自动打标',
       running: '正在自动打标...',
       providerTitle: '打标方式',
       providers: {
@@ -66,7 +66,7 @@ const governanceMessages = {
           description: '关键词、动作项、风险线索，零模型成本',
         },
         llm: {
-          label: 'AI 语义',
+          label: '语义模型',
           description: '摘要、主题、分类与重点短句',
         },
         compliance: {
@@ -99,7 +99,7 @@ const governanceMessages = {
       title: '分类归档',
     },
     actions: {
-      autoClassify: 'AI 分类',
+      autoClassify: '自动分类',
       analyzing: '分析中...',
     },
     auto: {
@@ -164,7 +164,7 @@ const governanceMessages = {
     ],
     tags: {
       inputPlaceholder: '输入新标签...',
-      aiSuggested: 'AI 推荐标签',
+      aiSuggested: '推荐标签',
       showMore: '显示更多...',
     },
     summary: {
@@ -183,8 +183,8 @@ const governanceMessages = {
       title: '质量检测',
     },
     actions: {
-      backendScanOn: '后端检测：开',
-      backendScanOff: '后端检测：关',
+      backendScanOn: '检测已开启',
+      backendScanOff: '检测已关闭',
       scan: '重新扫描',
       scanning: '扫描中 {progress}%',
     },
@@ -266,9 +266,9 @@ const governanceMessages = {
     },
     backendIssues: {
       countSuffix: '（{count}）',
-      detected: '后端检测：{message}',
-      suggestedPatch: '后端建议：可优化治理配置（{count} 项）',
-      failed: '后端检测失败（可忽略）',
+      detected: '检测结果：{message}',
+      suggestedPatch: '{count} 项治理建议',
+      failed: '检测未完成',
     },
   },
   DataCleaner: {
@@ -322,7 +322,7 @@ const governanceMessages = {
       filtered: '清洗后文档被过滤：{reason}',
       qualityFilterTriggered: '质量过滤触发',
       llmCleanFailedKeepPreview: 'LLM 清洗失败，已保留规则清洗结果',
-      backendCleanFailed: '后端清洗失败',
+      backendCleanFailed: '清洗失败',
     },
     diff: {
       title: '内容差异对比',
@@ -337,7 +337,7 @@ const governanceMessages = {
         referencesRemovedLines: 'references_removed_lines',
       },
       issuesTitle: '检测到的问题（Best-effort）',
-      applySuggestionHint: '已生成治理建议，可一键应用到当前配置（会覆盖对应字段）。',
+      applySuggestionHint: '应用将覆盖当前对应配置。',
       applySuggestion: '应用建议',
       noIssueHint: '暂无明显问题提示。',
       unifiedDiff: 'Unified Diff',
@@ -418,10 +418,10 @@ const governanceMessages = {
     emptyUpload: {
       openUploadDialog: '打开文件上传对话框',
       uploadingTitle: '正在解析文档...',
-      idleTitle: '拖拽文档至全息工作台',
-      uploadingDescription: 'AI 正在分析文档结构并提取内容，请稍候...',
-      idleDescription: '支持 PDF, Word, Excel, TXT, MD, ZIP 等格式。即刻开启智能治理流程。',
-      dropCta: '拖入文件或点击选择，系统会自动解析目录、章节和清洗线索。',
+      idleTitle: '上传文档',
+      uploadingDescription: '正在解析文档结构并提取内容…',
+      idleDescription: '支持 PDF、Word、Excel、TXT、MD、ZIP 格式。',
+      dropCta: '拖入文件或点击选择',
       scanRingLabel: 'Governance Intake',
       structureTitle: '文档结构',
       structureEmptyTitle: '等待生成目录',
@@ -440,7 +440,7 @@ const governanceMessages = {
       selectLocalFiles: '选择本地文件',
       cancelParsing: '取消解析',
       stages: {
-        parse: '智能解析',
+        parse: '文档解析',
         quality: '质量检测',
         clean: '自动清洗',
       },

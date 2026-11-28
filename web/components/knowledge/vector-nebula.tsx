@@ -255,14 +255,16 @@ export function VectorNebula() {
   const [panel, setPanel] = useState<'legend' | 'node' | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const reducedMotion = useMediaQuery('(prefers-reduced-motion: reduce)')
+  const touchControls = useMediaQuery('(pointer: coarse)')
   const nebulaQuery = useQuery({
     queryKey: queryKeys.documents.nebula,
     queryFn: ({ signal }) => loadVectorNebulaData(signal),
   })
   const data = nebulaQuery.data ?? EMPTY_NEBULA
   const loading = nebulaQuery.isFetching
+  const awaitingData = nebulaQuery.data === undefined && nebulaQuery.isPending
   const error = nebulaQuery.error ? formatApiError(nebulaQuery.error, '语义星云数据读取失败') : null
-  const selectedNode = data.nodes.find((node) => node.id === selectedId)
+  const selectedNode = data.nodes.find((node) => node.id === selectedId) ?? data.nodes[0]
   const totalDocuments = data.clusters.reduce((sum, cluster) => sum + cluster.count, 0)
   useLayoutEffect(() => {
     const update = () => {
@@ -309,12 +311,24 @@ export function VectorNebula() {
     },
     [reducedMotion],
   )
+  const renderNode = useCallback(
+    (raw: unknown) => renderNebulaNode(raw, (raw as NebulaNode).id === selectedNode?.id, linkColor),
+    [selectedNode?.id, linkColor],
+  )
   return (
     <OperationalWorkspace
       title="语义星云"
       icon="knowledge-graph"
       mode="canvas"
-      context={loading && !nebulaQuery.data ? '正在读取切片…' : `${totalDocuments} 文档 · ${data.nodes.length} 切片`}
+      context={
+        nebulaQuery.data === undefined
+          ? nebulaQuery.isPaused
+            ? '等待网络连接'
+            : error
+              ? '未取得切片'
+              : '正在读取切片…'
+          : `${totalDocuments} 文档 · ${data.nodes.length} 切片`
+      }
       actions={
         <>
           <Button variant="outline" onClick={() => setPanel('legend')}>
@@ -333,7 +347,9 @@ export function VectorNebula() {
       }
       toolbar={
         <>
-          <p className="text-[13px] text-muted-foreground">拖动旋转，滚轮缩放；选择切片查看正文。</p>
+          <p className="text-[13px] text-muted-foreground">
+            {touchControls ? '单指旋转，双指缩放；点按切片查看正文。' : '拖动旋转，滚轮缩放；选择切片查看正文。'}
+          </p>
           <Button variant="ghost" className="ml-auto" disabled={!data.nodes.length} onClick={fitCamera}>
             重置视角
           </Button>
@@ -341,17 +357,17 @@ export function VectorNebula() {
       }
     >
       {error ? (
-        <div className="px-4">
-          <WorkspaceNotice
-            retry={() => {
-              void nebulaQuery.refetch()
-            }}
-            pending={loading}
-          >
-            {error}
-            {data.nodes.length ? '。当前仍显示上次读取的切片。' : ''}
-          </WorkspaceNotice>
-        </div>
+        <WorkspaceNotice
+          placement="floating"
+          tone="warning"
+          title={data.nodes.length ? '切片更新失败，保留上次数据' : '切片加载失败'}
+          retry={() => {
+            void nebulaQuery.refetch()
+          }}
+          pending={loading}
+        >
+          {error}
+        </WorkspaceNotice>
       ) : null}
       <div
         ref={viewportRef}
@@ -386,23 +402,33 @@ export function VectorNebula() {
             enableNodeDrag={false}
             cooldownTicks={0}
             onNodeClick={(raw: unknown) => selectNode(raw as NebulaNode)}
-            nodeThreeObject={renderNebulaNode}
+            nodeThreeObject={renderNode}
           />
         ) : null}
         {!data.nodes.length ? (
           <div className="absolute inset-0 flex items-center justify-center px-6">
             <div className="max-w-md text-left">
-              <h2 className="text-lg font-semibold">
-                {loading ? '正在读取文档切片' : error ? '暂时无法生成星云' : '当前没有可视化切片'}
+              <h2 className="text-lg font-medium">
+                {awaitingData
+                  ? nebulaQuery.isPaused
+                    ? '等待网络连接'
+                    : '正在读取文档切片'
+                  : loading
+                    ? '正在读取文档切片'
+                    : error
+                      ? '暂时无法生成星云'
+                      : '当前没有可视化切片'}
               </h2>
               <p className="mt-3 text-sm leading-6 text-muted-foreground">
                 {error
                   ? '重新读取成功后，将在这里显示切片。'
-                  : loading
-                    ? '读取完成后可浏览切片和原文。'
-                    : '在知识库完成文档入库后，可在这里浏览切片。'}
+                  : nebulaQuery.isPaused && awaitingData
+                    ? '恢复网络连接后会继续读取切片。'
+                    : loading || awaitingData
+                      ? '读取完成后可浏览切片和原文。'
+                      : '在知识库完成文档入库后，可在这里浏览切片。'}
               </p>
-              {!loading && !error ? (
+              {!awaitingData && !loading && !error ? (
                 <Button asChild variant="outline" className="mt-5">
                   <Link href="/knowledge">打开知识库</Link>
                 </Button>
@@ -411,6 +437,24 @@ export function VectorNebula() {
           </div>
         ) : null}
       </div>
+      {selectedNode ? (
+        <div
+          className="flex min-w-0 items-center gap-3 border-t border-border px-4 py-2 text-[13px]"
+          aria-label="当前切片"
+        >
+          <div className="min-w-0 flex-1">
+            <p className="truncate" title={selectedNode.documentName}>
+              {selectedNode.documentName}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              切片 {selectedNode.chunkIndex} · {selectedNode.group} · 轮廓标记为当前切片
+            </p>
+          </div>
+          <Button variant="outline" onClick={() => selectNode(selectedNode)}>
+            查看正文
+          </Button>
+        </div>
+      ) : null}
       <Dialog
         open={panel !== null}
         onOpenChange={(open) => {
@@ -424,7 +468,7 @@ export function VectorNebula() {
           <div className={ws.dialogBody}>
             {panel === 'node' && selectedNode ? (
               <article>
-                <h2 className="break-words text-base font-semibold leading-7">{selectedNode.documentName}</h2>
+                <h2 className="break-words text-base font-medium leading-7">{selectedNode.documentName}</h2>
                 <p className="mt-2 text-[13px] text-muted-foreground">
                   {selectedNode.group} · 切片 {selectedNode.chunkIndex}
                 </p>
@@ -461,7 +505,7 @@ export function VectorNebula() {
                 <label className="block space-y-2 text-sm">
                   定位切片
                   <select
-                    className="h-10 w-full min-w-0 rounded-md border border-input bg-background px-3 text-sm"
+                    className="h-9 w-full min-w-0 rounded-md border border-input bg-background px-3 text-[13px] max-sm:h-11 max-sm:text-base"
                     value=""
                     disabled={!data.nodes.length}
                     onChange={(event) => {
@@ -494,7 +538,7 @@ export function VectorNebula() {
   )
 }
 
-function renderNebulaNode(rawNode: unknown) {
+function renderNebulaNode(rawNode: unknown, selected: boolean, selectionColor: string) {
   const node = rawNode as NebulaNode
   const [minSize] = node.style.sizeRange
   const coreSize = Math.max(node.val, minSize)
@@ -515,5 +559,13 @@ function renderNebulaNode(rawNode: unknown) {
   const group = new THREE.Group()
   group.add(haloMesh)
   group.add(coreMesh)
+  if (selected) {
+    group.add(
+      new THREE.Mesh(
+        new THREE.SphereGeometry(coreSize * node.style.halo.scale, 12, 8),
+        new THREE.MeshBasicMaterial({ color: selectionColor, wireframe: true, transparent: true, opacity: 0.5 }),
+      ),
+    )
+  }
   return group
 }

@@ -38,6 +38,7 @@ type KnowledgeWorkbenchActionsProps = {
   onConnectorRunCreated?: (run: ConnectorRunOut) => void
   open?: boolean
   onOpenChange?: (open: boolean) => void
+  hideTrigger?: boolean
   className?: string
 }
 
@@ -54,6 +55,7 @@ export function KnowledgeWorkbenchActions({
   onConnectorRunCreated,
   open,
   onOpenChange,
+  hideTrigger = false,
   className,
 }: Readonly<KnowledgeWorkbenchActionsProps>) {
   const t = useTranslations('KnowledgeWorkbenchActions')
@@ -114,25 +116,27 @@ export function KnowledgeWorkbenchActions({
         onChange={handleFileUpload}
       />
 
-      <DropdownMenu open={open} onOpenChange={onOpenChange}>
-        <DropdownMenuTrigger asChild>
-          <Button ref={importTriggerRef} type="button" size="sm" className={cn('gap-2 shadow-none', className)}>
-            <Plus className="size-4" />
-            <span>{t('importOrCreate')}</span>
-            <ChevronDown className="size-3.5" />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-72">
-          <KnowledgeImportMenu
-            onUploadFiles={handleOpenFilePicker}
-            onOpenUrlImport={() => openImportFromMenu('url')}
-            onOpenUrlBatch={() => setOpenDialog('url-batch')}
-            onOpenWebCrawl={() => openImportFromMenu('crawl')}
-            onOpenJiraProject={() => setOpenDialog('jira')}
-            onOpenPipelineConfig={() => setOpenDialog('pipeline-config')}
-          />
-        </DropdownMenuContent>
-      </DropdownMenu>
+      {!hideTrigger ? (
+        <DropdownMenu open={open} onOpenChange={onOpenChange}>
+          <DropdownMenuTrigger asChild>
+            <Button ref={importTriggerRef} type="button" size="sm" className={cn('gap-2 shadow-none', className)}>
+              <Plus className="size-4" />
+              <span>{t('importOrCreate')}</span>
+              <ChevronDown className="size-3.5" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-72">
+            <KnowledgeImportMenu
+              onUploadFiles={handleOpenFilePicker}
+              onOpenUrlImport={() => openImportFromMenu('url')}
+              onOpenUrlBatch={() => setOpenDialog('url-batch')}
+              onOpenWebCrawl={() => openImportFromMenu('crawl')}
+              onOpenJiraProject={() => setOpenDialog('jira')}
+              onOpenPipelineConfig={() => setOpenDialog('pipeline-config')}
+            />
+          </DropdownMenuContent>
+        </DropdownMenu>
+      ) : null}
 
       <KnowledgePipelineConfigDialog
         open={openDialog === 'pipeline-config'}

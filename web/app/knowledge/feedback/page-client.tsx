@@ -12,6 +12,7 @@ import {
   ChevronRight,
   Copy,
   Filter,
+  Layers,
   Mail as Inbox,
   MessageSquare,
   MoreHorizontal,
@@ -21,25 +22,27 @@ import {
   TestTube2,
   ThumbsDown,
   ThumbsUp,
-  UserRound,
 } from '@/components/icons'
 import { toast } from 'sonner'
 
 import { AppFrame } from '@/components/app-frame'
 import { PageTitleIcon } from '@/components/ui/page-title-icon'
 import { Button } from '@/components/ui/button'
+import { SplitEmptyStudio } from '@/components/ui/split-empty-studio'
 import { LoadingButton } from '@/components/ui/loading-button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { SearchInput } from '@/components/ui/search-input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
-import { FileTypeIcon } from '@/components/ui/file-type-icon'
+import { getFileTypeMeta } from '@/components/knowledge/file-type'
 import { Link } from '@/i18n/navigation'
 import { chatApi } from '@/lib/api/chat'
 import { feedbackApi } from '@/lib/api/feedback'
 import { formatApiError } from '@/lib/api-errors'
 import { getAuthSessionKey, subscribeAuthSession } from '@/lib/auth-storage'
+import { getTagDomainTone, matchSemanticDomainTone } from '@/lib/dataset-domain-tone'
+import { cn } from '@/lib/utils'
 import { useDocumentView } from '@/store/document-view'
 import type { Message, MessageFeedbackEnriched } from '@/types'
 import {
@@ -184,68 +187,64 @@ function FeedbackReader({
     }
   }
 
+  const kind = getFeedbackKind(item)
+  const datasetName = typeof item.extra.dataset_name === 'string' ? item.extra.dataset_name : null
+  const datasetTone = datasetName ? (matchSemanticDomainTone(datasetName) ?? 'knowledge') : undefined
+
   return (
     <section className={styles.reader} data-feedback-reader aria-label="反馈详情">
+      <div className={styles.recordBar}>
+        <Button variant="ghost" size="icon" className={styles.back} onClick={onBack} aria-label="返回反馈队列">
+          <ArrowLeft />
+        </Button>
+        <span className={styles.recordId} title={item.id}>
+          用户反馈
+        </span>
+        <StateLabel item={item} />
+        <div className={styles.recordNav}>
+          <span>
+            {position + 1} / {total}
+          </span>
+          <Button variant="ghost" size="icon" onClick={onPrevious} disabled={position === 0} aria-label="上一条反馈">
+            <ChevronLeft />
+          </Button>
+          <Button variant="ghost" size="icon" onClick={onNext} disabled={position >= total - 1} aria-label="下一条反馈">
+            <ChevronRight />
+          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" aria-label="反馈更多操作">
+                <MoreHorizontal />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onSelect={() => void copy()}>
+                <Copy />
+                复制详情
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      </div>
       <div className={styles.readerScroll} tabIndex={0} aria-label="反馈内容">
         <article className={styles.reading}>
-          <div className={styles.recordBar}>
-            <Button variant="ghost" size="icon" className={styles.back} onClick={onBack} aria-label="返回反馈队列">
-              <ArrowLeft />
-            </Button>
-            <span className={styles.recordId} title={item.id}>
-              {item.id.slice(0, 8)}
-            </span>
-            <StateLabel item={item} />
-            <div className={styles.recordNav}>
-              <span>
-                {position + 1} / {total}
-              </span>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={onPrevious}
-                disabled={position === 0}
-                aria-label="上一条反馈"
-              >
-                <ChevronLeft />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={onNext}
-                disabled={position >= total - 1}
-                aria-label="下一条反馈"
-              >
-                <ChevronRight />
-              </Button>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon" aria-label="反馈更多操作">
-                    <MoreHorizontal />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuItem onSelect={() => void copy()}>
-                    <Copy />
-                    复制详情
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </div>
-          </div>
           <h2 className={styles.question}>
             {question === undefined ? getFeedbackLabel(item) : question.length === 0 ? '提问内容为空' : question}
           </h2>
           <div className={styles.context}>
             <span>
-              <UserRound aria-hidden="true" />
+              <span className={styles.userAvatar} aria-hidden="true">{item.account_id.slice(0, 1).toUpperCase()}</span>
               {item.account_id}
             </span>
             <span>{SOURCE_LABELS[getFeedbackSource(item)]}</span>
             <time dateTime={item.created_at} title={formatFeedbackTime(item.created_at, true)}>
               {formatFeedbackTime(item.created_at)}
             </time>
-            {typeof item.extra.dataset_name === 'string' && <span>知识库 · {item.extra.dataset_name}</span>}
+            {datasetName && (
+              <span className={styles.datasetPill} data-tone={datasetTone}>
+                知识库 · {datasetName}
+              </span>
+            )}
           </div>
           {context.isFetching && (
             <p className={styles.missing} role="status">
@@ -268,20 +267,24 @@ function FeedbackReader({
           <section className={styles.section}>
             <div className={styles.sectionHeading}>
               <h3>用户反馈</h3>
-              <span className={styles.tag}>{getFeedbackIssue(item)}</span>
+              <span className={styles.issuePill} data-kind={kind}>
+                {getFeedbackIssue(item)}
+              </span>
               <Rating item={item} />
             </div>
-            <p className={item.reason === null || item.reason.length === 0 ? styles.missing : styles.copy}>
-              {item.reason === null
-                ? '用户未填写反馈原因。'
-                : item.reason.length === 0
-                  ? '反馈原因为空。'
-                  : item.reason}
-            </p>
+            <div className={styles.feedbackCallout} data-kind={kind}>
+              <p className={item.reason === null || item.reason.length === 0 ? styles.missing : styles.copy}>
+                {item.reason === null
+                  ? '用户未填写反馈原因。'
+                  : item.reason.length === 0
+                    ? '反馈原因为空。'
+                    : item.reason}
+              </p>
+            </div>
             {item.tags.length > 0 && (
               <div className={styles.tags}>
                 {item.tags.map((tag, index) => (
-                  <span key={`${tag}-${index}`} className={styles.tag}>
+                  <span key={`${tag}-${index}`} className={styles.tagPill} data-tone={getTagDomainTone(tag)}>
                     {tag}
                   </span>
                 ))}
@@ -293,14 +296,16 @@ function FeedbackReader({
               <h3>原回答</h3>
               {answerIsPreview && <span className={styles.sectionMeta}>列表中的回答预览，最多 4,000 字符</span>}
             </div>
-            <div className={answer === null || answer.length === 0 ? styles.missing : styles.copy}>
-              {answer === null
-                ? original === null
-                  ? '未找到这条原回答。'
-                  : '原回答暂不可用。'
-                : answer.length === 0
-                  ? '原回答内容为空。'
-                  : answer}
+            <div className={styles.answerSurface}>
+              <div className={answer === null || answer.length === 0 ? styles.missing : styles.copy}>
+                {answer === null
+                  ? original === null
+                    ? '未找到这条原回答。'
+                    : '原回答暂不可用。'
+                  : answer.length === 0
+                    ? '原回答内容为空。'
+                    : answer}
+              </div>
             </div>
           </section>
           <section className={styles.section}>
@@ -309,14 +314,20 @@ function FeedbackReader({
             </div>
             <div
               className={
-                item.expected_answer === null || item.expected_answer.length === 0 ? styles.missing : styles.copy
+                item.expected_answer === null || item.expected_answer.length === 0
+                  ? styles.missing
+                  : styles.expectedSurface
               }
             >
-              {item.expected_answer === null
-                ? '用户未填写期望回答。'
-                : item.expected_answer.length === 0
-                  ? '期望回答为空。'
-                  : item.expected_answer}
+              <div
+                className={item.expected_answer === null || item.expected_answer.length === 0 ? undefined : styles.copy}
+              >
+                {item.expected_answer === null
+                  ? '用户未填写期望回答。'
+                  : item.expected_answer.length === 0
+                    ? '期望回答为空。'
+                    : item.expected_answer}
+              </div>
             </div>
           </section>
           <section className={styles.section}>
@@ -334,33 +345,41 @@ function FeedbackReader({
               <p className={styles.missing}>这条回答没有引用来源。</p>
             ) : (
               <ol className={styles.sources}>
-                {citations.map((citation, index) => (
-                  <li key={JSON.stringify([citation, index])}>
-                    <span className={styles.sourceOrder}>{index + 1}</span>
-                    <FileTypeIcon filename={citation.document_name} />
-                    <div className={styles.sourceContent}>
-                      <Button
-                        variant="link"
-                        className={styles.sourceTitle}
-                        onClick={() => openDocument(citation.document_id, citation.chunk_id)}
-                      >
-                        {citation.document_name.length === 0 ? '文档名称为空' : citation.document_name}
-                        <ArrowUpRight aria-hidden="true" />
-                      </Button>
-                      {(citation.page_number !== undefined || citation.header_path !== undefined) && (
-                        <span className={styles.sourceLocation}>
-                          {[
-                            citation.page_number === undefined ? undefined : `第 ${citation.page_number} 页`,
-                            citation.header_path,
-                          ]
-                            .filter((value) => value !== undefined)
-                            .join(' · ')}
-                        </span>
-                      )}
-                      {citation.chunk_content && <p className={styles.sourceExcerpt}>{citation.chunk_content}</p>}
-                    </div>
-                  </li>
-                ))}
+                {citations.map((citation, index) => {
+                  const fileType = getFileTypeMeta({ filename: citation.document_name })
+                  const TypeIcon = fileType.icon
+                  return (
+                    <li key={JSON.stringify([citation, index])}>
+                      <span className={styles.sourceOrder}>{index + 1}</span>
+                      <span className={cn(styles.fileBadge, fileType.bg)}>
+                        <TypeIcon appearance="color" aria-hidden="true" className={styles.fileIcon} />
+                      </span>
+                      <div className={styles.sourceContent}>
+                        <div className={styles.sourceHeader}>
+                          <Button
+                            variant="link"
+                            className={styles.sourceTitle}
+                            onClick={() => openDocument(citation.document_id, citation.chunk_id)}
+                          >
+                            {citation.document_name.length === 0 ? '文档名称为空' : citation.document_name}
+                            <ArrowUpRight aria-hidden="true" />
+                          </Button>
+                          {(citation.page_number !== undefined || citation.header_path !== undefined) && (
+                            <span className={styles.sourceLocation}>
+                              {[
+                                citation.page_number === undefined ? undefined : `第 ${citation.page_number} 页`,
+                                citation.header_path,
+                              ]
+                                .filter((value) => value !== undefined)
+                                .join(' · ')}
+                            </span>
+                          )}
+                        </div>
+                        {citation.chunk_content && <p className={styles.sourceExcerpt}>{citation.chunk_content}</p>}
+                      </div>
+                    </li>
+                  )
+                })}
               </ol>
             )}
           </section>
@@ -394,7 +413,12 @@ function FeedbackReader({
               创建回归用例
             </LoadingButton>
           )}
-          <LoadingButton onClick={onArchive} disabled={busy !== null} loading={busy === 'archive'}>
+          <LoadingButton
+            className={styles.primaryAction}
+            onClick={onArchive}
+            disabled={busy !== null}
+            loading={busy === 'archive'}
+          >
             {isFeedbackArchived(item) ? <Archive /> : <CheckCheck />}
             {isFeedbackArchived(item) ? '取消归档' : '归档反馈'}
           </LoadingButton>
@@ -485,6 +509,7 @@ function FeedbackTriageWorkspace({ sessionKey }: Readonly<{ sessionKey: string }
   const position = selected ? filtered.findIndex((item) => item.id === selected.id) : -1
   const activeFilters =
     view !== 'all' || rating !== 'all' || kind !== 'all' || source !== 'all' || range !== 'all' || search.trim() !== ''
+  const showEmptyInbox = query.isSuccess && !query.isFetching && items?.length === 0 && !activeFilters
   const extraFilters = kind !== 'all' || source !== 'all'
   const statusCounts = useMemo(() => {
     if (items === undefined) return undefined
@@ -585,16 +610,39 @@ function FeedbackTriageWorkspace({ sessionKey }: Readonly<{ sessionKey: string }
           <div className={styles.heading}>
             <PageTitleIcon name="feedback-quality" />
             <h1>反馈质检</h1>
-            <span className={styles.headerView}>
-              <Inbox aria-hidden="true" />
-              收件箱
-            </span>
           </div>
+          {!showEmptyInbox && statusCounts ? (
+            <div className={styles.headerTabs} role="group" aria-label="反馈视图">
+              {(
+                [
+                  { id: 'all', label: '全部', count: statusCounts.total },
+                  { id: 'pending', label: '待分析', count: statusCounts.pending },
+                  { id: 'priority', label: '优先分析', count: statusCounts.priority },
+                  { id: 'archived', label: '已归档', count: statusCounts.archived },
+                ] as const
+              ).map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  className={styles.headerTab}
+                  aria-pressed={view === tab.id}
+                  onClick={() => {
+                    setView(tab.id)
+                    resetPosition()
+                  }}
+                >
+                  {tab.label}
+                  <span className={styles.headerTabCount}>{tab.count}</span>
+                </button>
+              ))}
+            </div>
+          ) : null}
           <div className={styles.headerActions}>
             <Button
               variant="ghost"
               className={styles.candidatesButton}
               aria-label="反哺候选"
+              aria-expanded={candidatesOpen}
               onClick={() => setCandidatesOpen(true)}
             >
               <TestTube2 />
@@ -630,274 +678,351 @@ function FeedbackTriageWorkspace({ sessionKey }: Readonly<{ sessionKey: string }
             </LoadingButton>
           </div>
         </header>
-        <div className={styles.workspace} data-detail-open={mobileDetail && !!selected}>
-          <aside className={styles.queue} data-feedback-queue aria-label="反馈队列">
-            <div className={styles.queueTools}>
-              <div className={styles.searchRow}>
-                <SearchInput
-                  value={search}
-                  onValueChange={(value) => {
-                    setSearch(value)
-                    resetPosition()
-                  }}
-                  placeholder="搜索问题、反馈或用户"
-                  aria-label="搜索反馈"
-                  containerClassName={styles.search}
-                  inputClassName={styles.searchInput}
+        {showEmptyInbox ? (
+          <SplitEmptyStudio
+            dataAttributes={{
+              'data-feedback-empty-studio': 'true',
+              'data-page-scroll-container': 'true',
+            }}
+            ariaLabel="反馈质检空状态"
+            illustration={
+              <svg width="88" height="80" viewBox="0 0 88 80" fill="none">
+                <path
+                  d="M14 22a6 6 0 0 1 6-6h36a6 6 0 0 1 6 6v22a6 6 0 0 1-6 6H29l-9 7v-7h-0a6 6 0 0 1-6-6V22Z"
+                  fill="hsl(var(--surface-2))"
+                  stroke="hsl(var(--border))"
+                  strokeWidth="1.5"
                 />
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className={styles.filterButton}
-                      data-active={extraFilters}
-                      aria-label="更多反馈筛选"
-                    >
-                      <Filter />
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent align="start" className={styles.filterPopover}>
-                    <label>
-                      反馈类型
-                      <Select
-                        value={kind}
-                        onValueChange={(value) => {
-                          setKind(value)
-                          resetPosition()
-                        }}
-                      >
-                        <SelectTrigger aria-label="反馈类型">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="all">全部类型</SelectItem>
-                          <SelectItem value="negative">低分反馈</SelectItem>
-                          <SelectItem value="neutral">中立反馈</SelectItem>
-                          <SelectItem value="positive">正向反馈</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </label>
-                    <label>
-                      反馈来源
-                      <Select
-                        value={source}
-                        onValueChange={(value) => {
-                          setSource(value as FeedbackSource)
-                          resetPosition()
-                        }}
-                      >
-                        <SelectTrigger aria-label="反馈来源">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {Object.entries(SOURCE_LABELS).map(([value, label]) => (
-                            <SelectItem key={value} value={value}>
-                              {label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </label>
-                    {activeFilters && (
-                      <Button variant="ghost" onClick={clearFilters}>
-                        清除全部筛选
-                      </Button>
-                    )}
-                  </PopoverContent>
-                </Popover>
-              </div>
-              <div className={styles.queueFilters}>
-                <Select
-                  value={view}
-                  onValueChange={(value) => {
-                    setView(value as FeedbackView)
-                    resetPosition()
-                  }}
-                >
-                  <SelectTrigger className={styles.filterControl} aria-label="反馈处理状态">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">全部反馈{count === undefined ? '' : ` · ${count}`}</SelectItem>
-                    <SelectItem value="pending">待分析{statusCounts && ` · ${statusCounts.pending}`}</SelectItem>
-                    <SelectItem value="priority">优先分析{statusCounts && ` · ${statusCounts.priority}`}</SelectItem>
-                    <SelectItem value="archived">已归档{statusCounts && ` · ${statusCounts.archived}`}</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Select
-                  value={rating}
-                  onValueChange={(value) => {
-                    setRating(value)
-                    resetPosition()
-                  }}
-                >
-                  <SelectTrigger className={styles.filterControl} aria-label="反馈评分">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">评分 · 全部</SelectItem>
-                    {[1, 2, 3, 4, 5].map((value) => (
-                      <SelectItem key={value} value={String(value)}>
-                        {value} / 5 分
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              {activeFilters && (
-                <Button variant="ghost" className={styles.clearFilters} onClick={clearFilters}>
-                  清除筛选
+                <line x1="25" y1="29" x2="47" y2="29" stroke="hsl(var(--muted-foreground) / 0.45)" strokeWidth="2.5" strokeLinecap="round" />
+                <line x1="25" y1="38" x2="39" y2="38" stroke="hsl(var(--muted-foreground) / 0.35)" strokeWidth="2.5" strokeLinecap="round" />
+                <path
+                  d="M42 44a5 5 0 0 1 5-5h23a5 5 0 0 1 5 5v14a5 5 0 0 1-5 5h-2v6l-7-6H47a5 5 0 0 1-5-5V44Z"
+                  fill="hsl(var(--card))"
+                  stroke="hsl(var(--border))"
+                  strokeWidth="1.5"
+                />
+                <circle cx="53" cy="51" r="1.6" fill="hsl(var(--muted-foreground) / 0.6)" />
+                <circle cx="59" cy="51" r="1.6" fill="hsl(var(--muted-foreground) / 0.6)" />
+                <circle cx="65" cy="51" r="1.6" fill="hsl(var(--muted-foreground) / 0.6)" />
+                <circle cx="62" cy="18" r="11" fill="hsl(var(--accent))" />
+                <path
+                  d="M57.5 18.2 60.6 21.2 66.8 15"
+                  stroke="hsl(var(--accent-foreground))"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            }
+            title="暂无反馈记录"
+            description="复核问答反馈，转为 Golden 回归评测用例。"
+            actions={
+              <>
+                <Button asChild className="bg-accent text-accent-foreground hover:bg-accent/90">
+                  <Link href="/">前往知识问答</Link>
                 </Button>
-              )}
-            </div>
-            {query.isError && (
-              <div className={styles.queueError} role="alert">
-                <AlertCircle />
-                <span>反馈加载失败</span>
-                <Button variant="ghost" onClick={() => void query.refetch()}>
-                  重试
+                <Button variant="outline" aria-expanded={candidatesOpen} onClick={() => setCandidatesOpen(true)}>
+                  <TestTube2 />
+                  反哺候选
                 </Button>
-                <details>
-                  <summary>错误详情</summary>
-                  {formatApiError(query.error, '请稍后重试')}
-                </details>
-              </div>
-            )}
-            <div className={styles.queueList} ref={queueScroll} aria-busy={query.isFetching}>
-              {waitingForNetwork ? (
-                <p className={styles.queueState} role="status">
-                  等待网络连接
-                </p>
-              ) : query.isPending ? (
-                <div role="status">
-                  <span className="sr-only">正在加载反馈…</span>
-                  <div aria-hidden="true">
-                    {[0, 1, 2, 3].map((index) => (
-                      <div key={index} className={`${styles.queueItem} pointer-events-none`}>
-                        <Skeleton className="h-4 w-3/4" />
-                        <div className={styles.queueMeta}>
-                          <Skeleton className="h-3 w-12" />
-                          <Skeleton className="h-3 w-16" />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ) : paginated.length ? (
-                paginated.map((item) => (
-                  <button
-                    key={item.id}
-                    ref={(element) => {
-                      if (element) queueButtons.current.set(item.id, element)
-                      else queueButtons.current.delete(item.id)
+              </>
+            }
+            stepsHeading="质检反哺闭环"
+            steps={[
+              { index: '01', title: '问答采集', description: '收集问答点赞、点踩与期望回答' },
+              { index: '02', title: '复核归因', description: '核对原回答、引用来源与问题类型' },
+              { index: '03', title: '回归反哺', description: '转为 Golden 回归评测用例' },
+            ]}
+            shortcutsHeading="常用入口"
+            shortcuts={[
+              {
+                key: 'candidates',
+                icon: <TestTube2 />,
+                title: '反哺候选',
+                description: '查看困难负样本、训练三元组与规则候选',
+                ariaLabel: '打开反哺候选列表',
+                ariaExpanded: candidatesOpen,
+                onClick: () => setCandidatesOpen(true),
+              },
+              {
+                key: 'regression',
+                icon: <Layers />,
+                title: '回归评测集',
+                description: '前往评测中心查看已沉淀用例',
+                href: '/evaluations?tab=regression',
+              },
+            ]}
+          />
+        ) : (
+          <div className={styles.workspace} data-detail-open={mobileDetail && !!selected}>
+            <aside className={styles.queue} data-feedback-queue aria-label="反馈队列">
+              <div className={styles.queueTools}>
+                <div className={styles.searchRow}>
+                  <SearchInput
+                    value={search}
+                    onValueChange={(value) => {
+                      setSearch(value)
+                      resetPosition()
                     }}
-                    type="button"
-                    className={styles.queueItem}
-                    data-feedback-item={item.id}
-                    aria-current={selected?.id === item.id ? 'true' : undefined}
-                    onClick={() => selectRecord(item.id)}
+                    placeholder="搜索问题、反馈或用户"
+                    aria-label="搜索反馈"
+                    containerClassName={styles.search}
+                    inputClassName={styles.searchInput}
+                  />
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className={styles.filterButton}
+                        data-active={extraFilters}
+                        aria-label="更多反馈筛选"
+                      >
+                        <Filter />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent align="start" className={styles.filterPopover}>
+                      <label>
+                        反馈类型
+                        <Select
+                          value={kind}
+                          onValueChange={(value) => {
+                            setKind(value)
+                            resetPosition()
+                          }}
+                        >
+                          <SelectTrigger aria-label="反馈类型">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">全部类型</SelectItem>
+                            <SelectItem value="negative">低分反馈</SelectItem>
+                            <SelectItem value="neutral">中立反馈</SelectItem>
+                            <SelectItem value="positive">正向反馈</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </label>
+                      <label>
+                        反馈来源
+                        <Select
+                          value={source}
+                          onValueChange={(value) => {
+                            setSource(value as FeedbackSource)
+                            resetPosition()
+                          }}
+                        >
+                          <SelectTrigger aria-label="反馈来源">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {Object.entries(SOURCE_LABELS).map(([value, label]) => (
+                              <SelectItem key={value} value={value}>
+                                {label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </label>
+                      {activeFilters && (
+                        <Button variant="ghost" onClick={clearFilters}>
+                          清除全部筛选
+                        </Button>
+                      )}
+                    </PopoverContent>
+                  </Popover>
+                </div>
+                <div className={styles.queueFilters}>
+                  <Select
+                    value={view}
+                    onValueChange={(value) => {
+                      setView(value as FeedbackView)
+                      resetPosition()
+                    }}
                   >
-                    <span className={styles.queueQuestion}>{getFeedbackLabel(item)}</span>
-                    <span className={styles.queueMeta}>
-                      <Rating item={item} />
-                      <span className={styles.queueIssue}>
-                        {isFeedbackArchived(item) ? '已归档' : getFeedbackIssue(item)}
+                    <SelectTrigger className={styles.filterControl} aria-label="反馈处理状态">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">全部反馈{count === undefined ? '' : ` · ${count}`}</SelectItem>
+                      <SelectItem value="pending">待分析{statusCounts && ` · ${statusCounts.pending}`}</SelectItem>
+                      <SelectItem value="priority">优先分析{statusCounts && ` · ${statusCounts.priority}`}</SelectItem>
+                      <SelectItem value="archived">已归档{statusCounts && ` · ${statusCounts.archived}`}</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Select
+                    value={rating}
+                    onValueChange={(value) => {
+                      setRating(value)
+                      resetPosition()
+                    }}
+                  >
+                    <SelectTrigger className={styles.filterControl} aria-label="反馈评分">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">评分 · 全部</SelectItem>
+                      {[1, 2, 3, 4, 5].map((value) => (
+                        <SelectItem key={value} value={String(value)}>
+                          {value} / 5 分
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                {activeFilters && (
+                  <Button variant="ghost" className={styles.clearFilters} onClick={clearFilters}>
+                    清除筛选
+                  </Button>
+                )}
+              </div>
+              {query.isError && (
+                <div className={styles.queueError} role="alert">
+                  <AlertCircle />
+                  <span>反馈加载失败</span>
+                  <Button variant="ghost" onClick={() => void query.refetch()}>
+                    重试
+                  </Button>
+                  <details>
+                    <summary>错误详情</summary>
+                    {formatApiError(query.error, '请稍后重试')}
+                  </details>
+                </div>
+              )}
+              <div className={styles.queueList} ref={queueScroll} aria-busy={query.isFetching}>
+                {waitingForNetwork ? (
+                  <p className={styles.queueState} role="status">
+                    等待网络连接
+                  </p>
+                ) : query.isPending ? (
+                  <div role="status">
+                    <span className="sr-only">正在加载反馈…</span>
+                    <div aria-hidden="true">
+                      {[0, 1, 2, 3].map((index) => (
+                        <div key={index} className={`${styles.queueItem} pointer-events-none`}>
+                          <Skeleton className="h-4 w-3/4" />
+                          <div className={styles.queueMeta}>
+                            <Skeleton className="h-3 w-12" />
+                            <Skeleton className="h-3 w-16" />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : paginated.length ? (
+                  paginated.map((item) => (
+                    <button
+                      key={item.id}
+                      ref={(element) => {
+                        if (element) queueButtons.current.set(item.id, element)
+                        else queueButtons.current.delete(item.id)
+                      }}
+                      type="button"
+                      className={styles.queueItem}
+                      data-feedback-item={item.id}
+                      aria-current={selected?.id === item.id ? 'true' : undefined}
+                      onClick={() => selectRecord(item.id)}
+                    >
+                      <span className={styles.queueQuestion}>{getFeedbackLabel(item)}</span>
+                      <span className={styles.queueMeta}>
+                        <Rating item={item} />
+                        <span className={styles.queueIssue}>
+                          {isFeedbackArchived(item) ? '已归档' : getFeedbackIssue(item)}
+                        </span>
+                        <time dateTime={item.created_at}>{formatFeedbackTime(item.created_at)}</time>
                       </span>
-                      <time dateTime={item.created_at}>{formatFeedbackTime(item.created_at)}</time>
-                    </span>
-                  </button>
-                ))
-              ) : (
-                !query.isError && (
-                  <div className={styles.queueState} data-empty={!items?.length}>
-                    <Search />
-                    <p>{items?.length ? '没有匹配的反馈' : '暂无反馈'}</p>
+                    </button>
+                  ))
+                ) : (
+                  !query.isError && (
+                    <div className={styles.queueState} data-empty={!items?.length}>
+                      <Search />
+                      <p>{items?.length ? '没有匹配的反馈' : '暂无反馈'}</p>
+                      {activeFilters && (
+                        <Button variant="ghost" onClick={clearFilters}>
+                          清除筛选
+                        </Button>
+                      )}
+                    </div>
+                  )
+                )}
+              </div>
+              <footer className={styles.queueFooter}>
+                <span>
+                  {count === undefined
+                    ? '—'
+                    : activeFilters
+                      ? `筛选 ${filtered.length} / ${count} 条`
+                      : `共 ${count} 条反馈`}
+                </span>
+                <div className={styles.pagination}>
+                  <span>
+                    {items === undefined ? '—' : filtered.length === 0 ? '0 / 0' : `${safePage} / ${totalPages}`}
+                  </span>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    disabled={safePage <= 1}
+                    aria-label="上一页反馈"
+                    onClick={() => changePage(safePage - 1)}
+                  >
+                    <ChevronLeft />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    disabled={safePage >= totalPages}
+                    aria-label="下一页反馈"
+                    onClick={() => changePage(safePage + 1)}
+                  >
+                    <ChevronRight />
+                  </Button>
+                </div>
+              </footer>
+            </aside>
+            {waitingForNetwork ? null : query.isPending ? (
+              <FeedbackReaderLoading />
+            ) : selected ? (
+              <FeedbackReader
+                key={selected.id}
+                item={selected}
+                sessionKey={sessionKey}
+                position={position}
+                total={filtered.length}
+                busy={busyById[selected.id] ?? null}
+                result={results[selected.id]}
+                onPrevious={() => navigateRecord(-1)}
+                onNext={() => navigateRecord(1)}
+                onBack={() => {
+                  setMobileDetail(false)
+                  requestAnimationFrame(() => queueButtons.current.get(selected.id)?.focus())
+                }}
+                onArchive={() => void runAction(selected, 'archive')}
+                onCreate={() => void runAction(selected, 'case')}
+              />
+            ) : (
+              <div className={styles.emptyReader}>
+                {query.isError ? (
+                  <>
+                    <AlertCircle />
+                    <h2>暂时无法读取反馈</h2>
+                    <p>可在左侧重试。</p>
+                  </>
+                ) : (
+                  <>
+                    <Inbox />
+                    <h2>{items?.length ? '没有匹配的反馈' : '暂无反馈'}</h2>
+                    <p>{items?.length ? '调整左侧筛选后再查看。' : '暂无用户反馈。'}</p>
                     {activeFilters && (
-                      <Button variant="ghost" onClick={clearFilters}>
+                      <Button variant="outline" onClick={clearFilters}>
                         清除筛选
                       </Button>
                     )}
-                  </div>
-                )
-              )}
-            </div>
-            <footer className={styles.queueFooter}>
-              <span>
-                {count === undefined
-                  ? '—'
-                  : activeFilters
-                    ? `筛选 ${filtered.length} / ${count} 条`
-                    : `共 ${count} 条反馈`}
-              </span>
-              <div className={styles.pagination}>
-                <span>
-                  {items === undefined ? '—' : filtered.length === 0 ? '0 / 0' : `${safePage} / ${totalPages}`}
-                </span>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  disabled={safePage <= 1}
-                  aria-label="上一页反馈"
-                  onClick={() => changePage(safePage - 1)}
-                >
-                  <ChevronLeft />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  disabled={safePage >= totalPages}
-                  aria-label="下一页反馈"
-                  onClick={() => changePage(safePage + 1)}
-                >
-                  <ChevronRight />
-                </Button>
+                  </>
+                )}
               </div>
-            </footer>
-          </aside>
-          {waitingForNetwork ? null : query.isPending ? (
-            <FeedbackReaderLoading />
-          ) : selected ? (
-            <FeedbackReader
-              key={selected.id}
-              item={selected}
-              sessionKey={sessionKey}
-              position={position}
-              total={filtered.length}
-              busy={busyById[selected.id] ?? null}
-              result={results[selected.id]}
-              onPrevious={() => navigateRecord(-1)}
-              onNext={() => navigateRecord(1)}
-              onBack={() => {
-                setMobileDetail(false)
-                requestAnimationFrame(() => queueButtons.current.get(selected.id)?.focus())
-              }}
-              onArchive={() => void runAction(selected, 'archive')}
-              onCreate={() => void runAction(selected, 'case')}
-            />
-          ) : (
-            <div className={styles.emptyReader}>
-              {query.isError ? (
-                <>
-                  <AlertCircle />
-                  <h2>暂时无法读取反馈</h2>
-                  <p>可在左侧重试。</p>
-                </>
-              ) : (
-                <>
-                  <Inbox />
-                  <h2>{items?.length ? '没有匹配的反馈' : '暂无反馈'}</h2>
-                  <p>{items?.length ? '调整左侧筛选后再查看。' : '用户提交评分或意见后，会显示在这里。'}</p>
-                  {activeFilters && (
-                    <Button variant="outline" onClick={clearFilters}>
-                      清除筛选
-                    </Button>
-                  )}
-                </>
-              )}
-            </div>
-          )}
-        </div>
+            )}
+          </div>
+        )}
         <FeedbackCandidatesDialog open={candidatesOpen} onOpenChange={setCandidatesOpen} />
       </div>
     </AppFrame>

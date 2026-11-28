@@ -206,6 +206,21 @@ afterEach(async () => {
 })
 
 describe('automatic settings read ownership', () => {
+  it('keeps an acknowledged write visible when reading the saved settings fails', async () => {
+    const hook = await mount()
+    boundary.get.mockRejectedValueOnce(new Error('readback unavailable'))
+    act(() => hook.result.current.updateRag({ retrieval_top_k: 12 }))
+    await act(async () => hook.result.current.retrySave())
+    expect(stored.rag.retrieval_top_k).toBe(12)
+    expect(hook.result.current.ragMerged.retrieval_top_k).toBe(12)
+    expect(hook.result.current.loadError).toContain('readback unavailable')
+    expect(hook.result.current.hasLoadedSettings).toBe(true)
+    expect(hook.result.current.hasChanges).toBe(false)
+    await act(async () => hook.result.current.loadSettings())
+    expect(hook.result.current.ragMerged.retrieval_top_k).toBe(12)
+    expect(hook.result.current.loadError).toBeNull()
+  })
+
   it.each(['late success', 'late failure'] as const)('keeps the latest scope read after %s', async (kind) => {
     const hook = await mount(),
       old = deferred<SystemSettings>(),

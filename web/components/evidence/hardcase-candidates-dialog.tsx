@@ -68,19 +68,19 @@ function HardcaseCandidate({
     <Panel className="p-3">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <h3 className="text-xs text-muted-foreground">question_hash</h3>
+          <h3 className="text-xs text-muted-foreground">问题校验值</h3>
           <div className="mt-0.5 font-mono text-sm break-all">{candidate.question_hash}</div>
         </div>
         <div className="flex shrink-0 items-center gap-2">
           <Badge variant="outline" className="font-mono tabular-nums">
-            cluster {candidate.cluster_size}
+            同组反馈 {candidate.cluster_size}
           </Badge>
           <Button
             variant="outline"
             size="icon"
             className="size-8"
-            aria-label="复制 question_hash"
-            onClick={() => onCopyText('question_hash', candidate.question_hash)}
+            aria-label="复制问题校验值"
+            onClick={() => onCopyText('问题校验值', candidate.question_hash)}
           >
             <Copy className="size-4" aria-hidden="true" />
           </Button>
@@ -88,10 +88,10 @@ function HardcaseCandidate({
       </div>
       <div className="mt-2 flex flex-wrap gap-2 text-xs font-mono tabular-nums text-muted-foreground">
         {candidate.retrieval_config_hash ? (
-          <Badge variant="secondary">cfg {candidate.retrieval_config_hash.slice(0, 16)}</Badge>
+          <Badge variant="secondary">检索配置 {candidate.retrieval_config_hash.slice(0, 16)}</Badge>
         ) : null}
         {candidate.citations_count !== undefined && candidate.citations_count !== null ? (
-          <Badge variant="outline">cites {candidate.citations_count}</Badge>
+          <Badge variant="outline">引用 {candidate.citations_count}</Badge>
         ) : null}
         {errors.map(([kind, count]) => (
           <Badge key={kind} variant="outline">
@@ -101,17 +101,17 @@ function HardcaseCandidate({
         {errors.length === 0 ? <span>未记录检索错误</span> : null}
         {template?.template_key ? (
           <Badge variant="outline" className="max-w-full break-all whitespace-normal">
-            tmpl {template.template_key}
+            模板 {template.template_key}
           </Badge>
         ) : null}
         {template?.version !== undefined && template.version !== null ? (
-          <Badge variant="outline">version {template.version}</Badge>
+          <Badge variant="outline">版本 {template.version}</Badge>
         ) : null}
-        {template?.patch_hash ? <Badge variant="outline">patch {template.patch_hash.slice(0, 10)}</Badge> : null}
+        {template?.patch_hash ? <Badge variant="outline">配置补丁 {template.patch_hash.slice(0, 10)}</Badge> : null}
       </div>
       <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
         <div>
-          <h4 className="mb-1 text-xs text-muted-foreground">feedback_ids (sample)</h4>
+          <h4 className="mb-1 text-xs text-muted-foreground">反馈标识（样本）</h4>
           <div className="flex flex-wrap gap-2">
             {candidate.feedback_ids.length === 0 ? (
               <span className={ws.muted}>未提供反馈标识。</span>
@@ -128,8 +128,8 @@ function HardcaseCandidate({
                         variant="outline"
                         size="icon"
                         className="size-7"
-                        aria-label="复制 feedback_id"
-                        onClick={() => onCopyText('feedback_id', feedbackId)}
+                        aria-label="复制反馈标识"
+                        onClick={() => onCopyText('反馈标识', feedbackId)}
                       >
                         <Copy className="size-3.5" aria-hidden="true" />
                       </Button>
@@ -143,7 +143,7 @@ function HardcaseCandidate({
                         value={feedbackId}
                         disabled={!selectedSuiteId}
                       >
-                        转为 draft
+                        转为草稿
                       </LoadingButton>
                     </div>
                     {conversionError !== undefined ? (
@@ -158,7 +158,7 @@ function HardcaseCandidate({
           </div>
         </div>
         <div>
-          <h4 className="mb-1 text-xs text-muted-foreground">request_ids (sample)</h4>
+          <h4 className="mb-1 text-xs text-muted-foreground">请求标识（样本）</h4>
           <div className="flex flex-wrap gap-2">
             {candidate.request_ids.length === 0 ? (
               <span className={ws.muted}>未提供请求标识。</span>
@@ -172,8 +172,8 @@ function HardcaseCandidate({
                     variant="outline"
                     size="icon"
                     className="size-7"
-                    aria-label="复制 request_id"
-                    onClick={() => onCopyText('request_id', requestId)}
+                    aria-label="复制请求标识"
+                    onClick={() => onCopyText('请求标识', requestId)}
                   >
                     <Copy className="size-3.5" aria-hidden="true" />
                   </Button>
@@ -230,7 +230,7 @@ export function HardcaseCandidatesDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className={`${ws.dialog} ${ws.wideDialog}`}>
         <DialogHeader className={ws.dialogHeader}>
-          <DialogTitle>Hardcase Candidates</DialogTitle>
+          <DialogTitle>难例候选</DialogTitle>
           <DialogDescription>从低评分反馈中发现候选，选择反馈转为草稿证据条目。</DialogDescription>
         </DialogHeader>
         <div className={ws.dialogBody}>
@@ -243,7 +243,7 @@ export function HardcaseCandidatesDialog({
           >
             <div className="flex flex-wrap items-end gap-3">
               <div className="space-y-1 text-xs">
-                <Label htmlFor="evidence-hardcase-rating">max rating</Label>
+                <Label htmlFor="evidence-hardcase-rating">最高评分</Label>
                 <Select value={String(maxRating)} onValueChange={(value) => onMaxRatingChange(Number(value))}>
                   <SelectTrigger id="evidence-hardcase-rating" className="h-8 w-24">
                     <SelectValue />
@@ -259,12 +259,12 @@ export function HardcaseCandidatesDialog({
                 <Checkbox
                   checked={includeExisting}
                   onCheckedChange={(value) => onIncludeExistingChange(value === true)}
-                  aria-label="Include existing items"
+                  aria-label="包含已有条目"
                 />
-                include existing
+                包含已有条目
               </label>
               <div className="space-y-1 text-xs">
-                <Label htmlFor="evidence-hardcase-limit">max candidates</Label>
+                <Label htmlFor="evidence-hardcase-limit">候选数量</Label>
                 <Input
                   id="evidence-hardcase-limit"
                   type="number"
@@ -292,11 +292,11 @@ export function HardcaseCandidatesDialog({
               disabled={!selectedSuiteId || limitError !== null}
             >
               <RefreshCw className="size-4" aria-hidden="true" />
-              refresh
+              刷新候选
             </LoadingButton>
           </form>
           <p id="evidence-hardcase-limit-help" className="mb-3 text-xs text-muted-foreground">
-            候选数量修改后点击 refresh 或按 Enter 应用。
+            候选数量修改后点击“刷新候选”或按 Enter 应用。
           </p>
           {limitError !== null ? (
             <p id="evidence-hardcase-limit-error" role="alert" className="mb-3 text-sm text-destructive">
@@ -315,12 +315,12 @@ export function HardcaseCandidatesDialog({
               onConvertFeedback(feedbackId, questionHash)
             }}
           >
-            <Label htmlFor="evidence-hardcase-tags">Convert tags</Label>
+            <Label htmlFor="evidence-hardcase-tags">导入标签</Label>
             <TagInput
               inputId="evidence-hardcase-tags"
               value={tags}
               onValueChange={onTagsChange}
-              placeholder="回车添加 tag…"
+              placeholder="回车添加标签…"
             />
           </form>
           {error !== null ? (

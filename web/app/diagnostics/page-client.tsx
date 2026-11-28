@@ -18,11 +18,13 @@ export default function DiagnosticsPageClient() {
   const c = useDiagnostics()
   const drift = currentProbeVerdict(c.drift.status, '检查中', driftVerdict(c.drift.result?.data))
   const perf = currentProbeVerdict(c.perf.status, '运行中', perfVerdict(c.perf.result?.data))
-  let readinessLabel = '就绪状态待确认'
-  if (c.ready.isError) readinessLabel = '就绪状态未取得'
-  else if (c.ready.data !== undefined) {
-    readinessLabel = c.ready.data.ok ? '必需依赖已就绪' : '必需依赖未就绪'
-  }
+  const previewState = currentProbeVerdict(
+    c.preview.status,
+    '运行中',
+    c.preview.result?.partialErrors.length
+      ? { label: '部分信息未取得', tone: 'warning' }
+      : { label: '已返回', tone: 'success' },
+  )
   const healthUpdatedAt = Math.max(c.health.dataUpdatedAt, c.ready.dataUpdatedAt)
   const resultsRef = useRef<HTMLDivElement>(null)
   const finishedAt = c.preview.result?.finishedAt
@@ -44,80 +46,89 @@ export default function DiagnosticsPageClient() {
   return (
     <AppFrame>
       <section className={styles.workspace} data-diagnostics-flow data-diagnostics-layout="workbench">
-        <header className={styles.header}>
-          <div className={styles.heading}>
-            <PageTitleIcon name="diagnostics" />
-            <h1>诊断</h1>
-          </div>
-          <div className={styles.headerActions}>
-            <Button
-              variant="ghost"
-              data-diag-details-trigger
-              aria-label="查看原始响应"
-              onClick={(event) => c.openDetails(event.currentTarget)}
-            >
-              <Code />
-              <span>原始响应</span>
-            </Button>
-            <Button
-              variant="ghost"
-              aria-label="复制诊断摘要"
-              onClick={() => {
-                void c.copySummary()
-              }}
-            >
-              <Copy />
-              <span>复制摘要</span>
-            </Button>
-            <Button
-              variant="outline"
-              aria-label="刷新诊断状态"
-              disabled={c.statusRefreshing}
-              onClick={() => {
-                void c.refreshStatus()
-              }}
-            >
-              {c.statusRefreshing ? <Loader2 className="animate-spin motion-reduce:animate-none" /> : <RefreshCw />}
-              <span>刷新状态</span>
-            </Button>
-          </div>
-        </header>
-        <div className={styles.healthBar}>
-          <button
-            data-diag-services-trigger
-            onClick={(event) => c.openServices(event.currentTarget)}
-            aria-label="打开服务检查"
-          >
-            <Status {...c.systemState} />
-          </button>
-          <span>{readinessLabel}</span>
-          <span>
-            向量后端 <strong>{c.vectorBackend ?? '未知'}</strong>
-          </span>
-          <span className={styles.spacer} />
-          <span className={styles.onlineBadge}>
-            在线评估 ·{' '}
-            {c.online.isError ? '未取得' : c.online.isPending ? '检查中' : c.online.data?.enabled ? '已启用' : '未启用'}
-          </span>
-          <time>{timestamp(healthUpdatedAt === 0 ? null : healthUpdatedAt)}</time>
-        </div>
         <Tabs value={c.tab} onValueChange={c.setTab} className={styles.tabsRoot}>
-          <TabsList aria-label="诊断探针" className={styles.tabs}>
-            <TabsTrigger className={styles.tab} value="retrieval">
-              <Search />
-              检索预览
-            </TabsTrigger>
-            <TabsTrigger className={styles.tab} value="drift">
-              <BarChart3 />
-              向量漂移
-              <Status label={drift.label} tone="neutral" />
-            </TabsTrigger>
-            <TabsTrigger className={styles.tab} value="performance">
-              <ShieldCheck />
-              性能门禁
-              <Status label={perf.label} tone="neutral" />
-            </TabsTrigger>
-          </TabsList>
+          <header className={styles.header}>
+            <div className={styles.heading}>
+              <PageTitleIcon name="diagnostics" />
+              <h1>诊断</h1>
+            </div>
+            <TabsList aria-label="诊断探针" className={styles.tabs}>
+              <TabsTrigger className={styles.tab} value="retrieval">
+                <Search />
+                检索预览
+                {c.preview.status !== 'idle' ? (
+                  <i
+                    className={styles.tabSignal}
+                    data-tone={previewState.tone}
+                    aria-hidden="true"
+                    title={previewState.label}
+                  />
+                ) : null}
+              </TabsTrigger>
+              <TabsTrigger className={styles.tab} value="drift">
+                <BarChart3 />
+                向量漂移
+                {c.drift.status !== 'idle' ? (
+                  <i className={styles.tabSignal} data-tone={drift.tone} aria-hidden="true" title={drift.label} />
+                ) : null}
+              </TabsTrigger>
+              <TabsTrigger className={styles.tab} value="performance">
+                <ShieldCheck />
+                性能门禁
+                {c.perf.status !== 'idle' ? (
+                  <i className={styles.tabSignal} data-tone={perf.tone} aria-hidden="true" title={perf.label} />
+                ) : null}
+              </TabsTrigger>
+            </TabsList>
+            <div className={styles.headerActions}>
+              <Button
+                variant="ghost"
+                className={styles.healthTrigger}
+                data-diag-services-trigger
+                onClick={(event) => c.openServices(event.currentTarget)}
+                aria-label="打开服务检查"
+                title={`${c.systemState.label} · 向量 ${c.vectorBackend ?? '未知'}`}
+              >
+                <Status {...c.systemState} />
+                <span className={styles.vectorLabel}>
+                  向量 <strong>{c.vectorBackend ?? '未知'}</strong>
+                </span>
+              </Button>
+              <Button
+                variant="outline"
+                aria-label="刷新诊断状态"
+                title="刷新状态"
+                disabled={c.statusRefreshing}
+                onClick={() => {
+                  void c.refreshStatus()
+                }}
+              >
+                {c.statusRefreshing ? <Loader2 className="animate-spin motion-reduce:animate-none" /> : <RefreshCw />}
+                <span className={styles.refreshLabel}>刷新状态</span>
+              </Button>
+              <Button
+                variant="ghost"
+                data-diag-details-trigger
+                aria-label="查看原始响应"
+                title="查看原始响应"
+                size="icon"
+                onClick={(event) => c.openDetails(event.currentTarget)}
+              >
+                <Code />
+              </Button>
+              <Button
+                variant="ghost"
+                aria-label="复制诊断摘要"
+                title="复制诊断摘要"
+                size="icon"
+                onClick={() => {
+                  void c.copySummary()
+                }}
+              >
+                <Copy />
+              </Button>
+            </div>
+          </header>
           <TabsContent value="retrieval" className={styles.workbench}>
             <aside className={styles.configuration} aria-label="查询与范围">
               <h2 className={styles.sidebarHeading}>查询与范围</h2>
@@ -130,28 +141,12 @@ export default function DiagnosticsPageClient() {
               <div className={styles.retrievalBody}>
                 <RetrievalChain controller={c} />
               </div>
-              <div className={styles.probeShortcuts} aria-label="其他诊断检查">
-                <Button variant="ghost" onClick={() => c.setTab('drift')}>
-                  <BarChart3 />
-                  向量漂移
-                  <Status {...drift} />
-                </Button>
-                <Button variant="ghost" onClick={() => c.setTab('performance')}>
-                  <ShieldCheck />
-                  性能门禁
-                  <Status {...perf} />
-                </Button>
-                <span className={styles.spacer} />
-                <span>各探针独立执行</span>
-              </div>
             </div>
           </TabsContent>
           <TabsContent value="drift" className={styles.tabBody}>
-            <ScopeControls controller={c} />
             <DriftProbe controller={c} />
           </TabsContent>
           <TabsContent value="performance" className={styles.tabBody}>
-            <ScopeControls controller={c} />
             <PerformanceProbe controller={c} />
           </TabsContent>
         </Tabs>
@@ -164,12 +159,12 @@ export default function DiagnosticsPageClient() {
                 ? '请求失败'
                 : c.preview.result
                   ? '已返回'
-                  : '待执行'}
+                  : '输入查询后运行'}
           </span>
           {c.preview.result ? <time>{timestamp(c.preview.result.finishedAt)}</time> : null}
           <span className={styles.spacer} />
-          <span>漂移 · {drift.label}</span>
-          <span>门禁 · {perf.label}</span>
+          <span>各探针独立执行</span>
+          <time>状态更新 {timestamp(healthUpdatedAt === 0 ? null : healthUpdatedAt)}</time>
         </footer>
         <DiagnosticsDialogs controller={c} />
       </section>

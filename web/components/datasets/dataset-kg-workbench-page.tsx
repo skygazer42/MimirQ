@@ -44,6 +44,16 @@ import type { Document, KGGraphNode, KGStatsResponse } from '@/types'
 
 type KGExtractionResult = Awaited<ReturnType<typeof kgApi.extract>>
 
+const DOCUMENT_STATUS_LABELS: Record<Document['status'], string> = {
+  pending: '等待入库',
+  processing: '入库处理中',
+  completed: '文档已就绪',
+  failed: '入库失败',
+  quarantined: '已隔离',
+  cancelled: '已取消',
+  deleting: '删除中',
+}
+
 function limitPositiveInt(raw: unknown, fallback: number, opts?: { min?: number; max?: number }): number {
   const n = Math.floor(Number(raw))
   if (!Number.isFinite(n)) return fallback
@@ -202,6 +212,8 @@ function DatasetKGWorkbench({ datasetId }: Readonly<{ datasetId: string }>) {
     Record<string, { ok: true; res: KGExtractionResult } | { ok: false; error: string }>
   >({})
   const extractionBusy = extractRunning || singleExtractingDocId !== null
+  const extractionActionLabel =
+    extractRunning && extractProgress ? `抽取 ${extractProgress.done}/${extractProgress.total}` : '抽取配置'
 
   useLayoutEffect(
     () => () => {
@@ -294,6 +306,7 @@ function DatasetKGWorkbench({ datasetId }: Readonly<{ datasetId: string }>) {
       clusterResult: graphClusterResult,
     })
   }, [datasetId, graphClusterResult, graphData])
+  const hasGraphPreview = graphData !== null && graphData.nodes.length > 0
 
   const selectedNodeDetail = useMemo(() => {
     if (!graphData || !selectedGraphNodeId) return null
@@ -691,9 +704,13 @@ function DatasetKGWorkbench({ datasetId }: Readonly<{ datasetId: string }>) {
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
-            <Button onClick={() => setExtractOpen(true)}>
+            <Button
+              variant={hasGraphPreview ? 'default' : 'outline'}
+              className={cn(!hasGraphPreview && scopedDocIds.length > 0 && 'lg:hidden')}
+              onClick={() => setExtractOpen(true)}
+            >
               <Sparkles />
-              {extractRunning && extractProgress ? `抽取 ${extractProgress.done}/${extractProgress.total}` : '抽取配置'}
+              {extractionActionLabel}
             </Button>
           </>
         }
@@ -728,7 +745,7 @@ function DatasetKGWorkbench({ datasetId }: Readonly<{ datasetId: string }>) {
                       value={docQuery}
                       onChange={(e) => setDocQuery(e.target.value)}
                       placeholder="按文件名搜索"
-                      className="h-9"
+                      className="h-11 sm:h-9"
                     />
                   </div>
                   <div className="pt-5">
@@ -753,12 +770,15 @@ function DatasetKGWorkbench({ datasetId }: Readonly<{ datasetId: string }>) {
                     <DocsLoadingSkeleton />
                   ) : docsQuery.isError ? (
                     <WorkspaceNotice
+                      placement="floating"
+                      tone="warning"
+                      title="文档目录读取失败"
+                      error={docsQuery.error}
+                      fallbackMessage="文档目录读取失败"
                       retry={() => {
                         void docsQuery.refetch()
                       }}
-                    >
-                      {formatApiError(docsQuery.error, '文档目录读取失败')}
-                    </WorkspaceNotice>
+                    />
                   ) : docs.length === 0 ? (
                     <div className="space-y-3 py-5 text-sm text-muted-foreground">
                       <p>{activeDocQuery ? '没有匹配的文档' : '当前数据集还没有文档'}</p>
@@ -785,31 +805,26 @@ function DatasetKGWorkbench({ datasetId }: Readonly<{ datasetId: string }>) {
                         <div
                           key={id}
                           className={cn(
-                            'flex items-start gap-2 border-b border-border/60 px-2 py-3 transition-colors',
-                            checked ? 'bg-primary/5' : 'hover:bg-muted/40',
+                            'flex flex-col gap-1 border-b border-border/60 px-2 py-3 transition-colors',
+                            checked ? 'bg-muted' : 'hover:bg-muted/40',
                           )}
                         >
-                          <label className="flex min-w-0 flex-1 cursor-pointer items-start gap-2">
+                          <label className="flex min-w-0 cursor-pointer items-center gap-2">
                             <Checkbox
                               aria-label={`选择文档 ${filename}`}
                               checked={checked}
                               onCheckedChange={(value) => toggleDoc(id, value === true)}
-                              className="mt-0.5"
                             />
-                            <span className="min-w-0 flex-1">
-                              <span className="block truncate text-sm font-medium">{filename}</span>
-                              {status ? (
-                                <Badge variant="outline" className="font-mono text-xs px-1.5 py-0">
-                                  {status}
-                                </Badge>
-                              ) : null}
+                            <span className="min-w-0 flex-1 truncate text-sm" title={filename}>
+                              {filename}
                             </span>
                           </label>
-                          <div className="flex-shrink-0">
+                          <div className="ml-6 flex min-w-0 items-center justify-between gap-2">
+                            <span className="text-xs text-muted-foreground">{DOCUMENT_STATUS_LABELS[status]}</span>
                             <Button
-                              variant="outline"
+                              variant="ghost"
                               size="sm"
-                              className="h-7 px-2 gap-1 text-xs"
+                              className="h-11 px-2 gap-1 text-sm sm:h-9 sm:text-xs"
                               disabled={extractionBusy}
                               onClick={() => detachPromise(extractOneDoc(id))}
                             >
@@ -834,32 +849,23 @@ function DatasetKGWorkbench({ datasetId }: Readonly<{ datasetId: string }>) {
             <div className={ws.sectionHeading}>
               <h2 className={ws.sectionTitle}>图谱预览</h2>
               <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  disabled={graphLoading || !scopedDocIds.length}
-                  onClick={() => {
-                    void loadGraphPreview()
-                  }}
-                >
-                  {graphLoading ? <Loader2 className="animate-spin motion-reduce:animate-none" /> : <RefreshCw />}
-                  加载图谱
-                </Button>
+                {hasGraphPreview ? (
+                  <Button
+                    variant="outline"
+                    disabled={graphLoading}
+                    onClick={() => {
+                      void loadGraphPreview()
+                    }}
+                  >
+                    {graphLoading ? <Loader2 className="animate-spin motion-reduce:animate-none" /> : <RefreshCw />}
+                    加载图谱
+                  </Button>
+                ) : null}
                 <Button variant="ghost" disabled={!scopedDocIds.length} onClick={() => router.push(scopedGraphUrl)}>
                   打开全图
                 </Button>
               </div>
             </div>
-            {graphError ? (
-              <WorkspaceNotice
-                retry={() => {
-                  void loadGraphPreview()
-                }}
-                retryLabel="重试加载图谱"
-                pending={graphLoading}
-              >
-                {graphError}
-              </WorkspaceNotice>
-            ) : null}
             {statsError ? (
               <p role="status" className={ws.muted}>
                 {statsError}
@@ -904,20 +910,63 @@ function DatasetKGWorkbench({ datasetId }: Readonly<{ datasetId: string }>) {
                   onBackgroundClick={() => setSelectedGraphNodeId(null)}
                 />
               ) : graphLoading ? null : (
-                <div className="h-full flex items-center justify-center text-sm text-muted-foreground">
-                  {graphError
-                    ? ''
-                    : graphData
-                      ? '当前范围暂无图谱数据'
-                      : docsQuery.isError
-                        ? '文档读取失败，请先重试。'
-                        : !docsQuery.isLoading && !docs.length
-                          ? activeDocQuery
-                            ? '当前筛选下没有文档。'
-                            : '当前数据集暂无可预览文档。'
-                          : scopedDocIds.length
-                            ? '点击“加载图谱”查看当前范围。'
-                            : '先从目录选择文档，再加载图谱。'}
+                <div className="flex min-h-[360px] flex-col items-center justify-center px-5 py-10 text-center text-sm">
+                  <div className="flex w-full max-w-md flex-col items-center gap-3">
+                    {scopedDocIds.length > 0 ? (
+                      <p className="text-[13px] text-muted-foreground">当前范围 · {scopedDocIds.length} 份文档</p>
+                    ) : null}
+                    {graphError ? (
+                      <>
+                        <h3 className="text-base">图谱读取失败</h3>
+                        <div className="w-full text-left">
+                          <WorkspaceNotice>{graphError}</WorkspaceNotice>
+                        </div>
+                      </>
+                    ) : graphData ? (
+                      <>
+                        <h3 className="text-base">当前范围暂无图谱数据</h3>
+                        <p className="max-w-sm text-[13px] leading-6 text-muted-foreground">
+                          文档就绪后，执行图谱抽取，再重新加载图谱。
+                        </p>
+                      </>
+                    ) : (
+                      <p className="leading-6 text-muted-foreground">
+                        {docsQuery.isError
+                          ? '文档读取失败，请先重试。'
+                          : !docsQuery.isLoading && !docs.length
+                            ? activeDocQuery
+                              ? '当前筛选下没有文档。'
+                              : '当前数据集暂无可预览文档。'
+                            : scopedDocIds.length
+                              ? '当前文档范围尚未加载图谱。'
+                              : '先从目录选择文档，再加载图谱。'}
+                      </p>
+                    )}
+                    {scopedDocIds.length > 0 ? (
+                      <div className="mt-2 flex flex-wrap items-center justify-center gap-2">
+                        {graphData ? (
+                          <Button onClick={() => setExtractOpen(true)}>
+                            <Sparkles />
+                            {extractRunning ? extractionActionLabel : '执行图谱抽取'}
+                          </Button>
+                        ) : null}
+                        <Button
+                          variant={graphData ? 'outline' : 'default'}
+                          onClick={() => {
+                            void loadGraphPreview()
+                          }}
+                        >
+                          <RefreshCw />
+                          {graphError ? '重试加载图谱' : graphData ? '重新加载图谱' : '加载图谱'}
+                        </Button>
+                        {!graphData ? (
+                          <Button variant="ghost" onClick={() => setExtractOpen(true)}>
+                            {extractionActionLabel}
+                          </Button>
+                        ) : null}
+                      </div>
+                    ) : null}
+                  </div>
                 </div>
               )}
               {graphLoading ? (
@@ -945,7 +994,7 @@ function DatasetKGWorkbench({ datasetId }: Readonly<{ datasetId: string }>) {
                       value={pipelineHash}
                       onChange={(e) => setPipelineHash(e.target.value)}
                       placeholder="e.g. 9f8a…"
-                      className="h-9 font-mono text-xs"
+                      className="h-11 font-mono text-base sm:h-9 sm:text-xs"
                     />
                   </div>
                   <div className="space-y-1">
@@ -954,7 +1003,7 @@ function DatasetKGWorkbench({ datasetId }: Readonly<{ datasetId: string }>) {
                       aria-label="最大抽取文档数"
                       value={String(bulkMaxDocs)}
                       onChange={(e) => setBulkMaxDocs(limitPositiveInt(e.target.value, 20, { min: 1, max: 200 }))}
-                      className="h-9 font-mono text-xs"
+                      className="h-11 font-mono text-base sm:h-9 sm:text-xs"
                       inputMode="numeric"
                     />
                   </div>
@@ -979,7 +1028,7 @@ function DatasetKGWorkbench({ datasetId }: Readonly<{ datasetId: string }>) {
                       aria-label="并发数"
                       value={String(bulkConcurrency)}
                       onChange={(e) => setBulkConcurrency(limitPositiveInt(e.target.value, 3, { min: 1, max: 8 }))}
-                      className="h-9 font-mono text-xs"
+                      className="h-11 font-mono text-base sm:h-9 sm:text-xs"
                       inputMode="numeric"
                     />
                   </div>
@@ -1085,7 +1134,7 @@ function DatasetKGWorkbench({ datasetId }: Readonly<{ datasetId: string }>) {
                       aria-label="最大预览文档数"
                       value={String(graphMaxDocs)}
                       onChange={(e) => setGraphMaxDocs(limitPositiveInt(e.target.value, 50, { min: 1, max: 200 }))}
-                      className="h-9 font-mono text-xs"
+                      className="h-11 font-mono text-base sm:h-9 sm:text-xs"
                       inputMode="numeric"
                     />
                   </div>
@@ -1111,7 +1160,7 @@ function DatasetKGWorkbench({ datasetId }: Readonly<{ datasetId: string }>) {
                       aria-label="最小共享事件数"
                       value={String(minSharedEvents)}
                       onChange={(e) => setMinSharedEvents(limitPositiveInt(e.target.value, 2, { min: 1, max: 10 }))}
-                      className="h-9 font-mono text-xs"
+                      className="h-11 font-mono text-base sm:h-9 sm:text-xs"
                       inputMode="numeric"
                     />
                   </div>
@@ -1169,7 +1218,7 @@ function DatasetKGWorkbench({ datasetId }: Readonly<{ datasetId: string }>) {
                     aria-label="搜索图谱节点"
                     onChange={(e) => setSearchQuery(e.target.value)}
                     placeholder="搜索实体或事件"
-                    className="h-9"
+                    className="h-11 sm:h-9"
                     onKeyDown={(e) => {
                       if (e.key === 'Enter') detachPromise(runQuickSearch())
                     }}

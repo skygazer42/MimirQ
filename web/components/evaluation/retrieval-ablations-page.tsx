@@ -6,6 +6,7 @@ import { toast } from 'sonner'
 import { AppFrame } from '@/components/app-frame'
 import { AblationCaseDrilldown } from '@/components/evaluation/ablation-case-drilldown'
 import { AblationComparisonMatrix } from '@/components/evaluation/ablation-comparison-matrix'
+import { AblationComparisonSummary } from '@/components/evaluation/ablation-comparison-summary'
 import { AblationGridPanel } from '@/components/evaluation/ablation-grid-panel'
 import { AblationParameterImpactPanel } from '@/components/evaluation/ablation-parameter-impact-panel'
 import { AblationParetoPanel } from '@/components/evaluation/ablation-pareto-panel'
@@ -19,6 +20,7 @@ import { Label } from '@/components/ui/label'
 import {
   OperationalWorkspace,
   WorkspaceNotice,
+  WorkspaceNoticeStack,
   WorkspaceTableScroll,
   workspaceStyles as ws,
 } from '@/components/ui/operational-workspace'
@@ -43,6 +45,7 @@ import { evaluationApi } from '@/lib/api/evaluation'
 import { Link } from '@/i18n/navigation'
 import { queryKeys } from '@/lib/query-keys'
 import { RERANKER_PROVIDER_OPTIONS } from '@/lib/reranker-provider-options'
+import { formatRegressionRunAnswerMode } from '@/lib/regression-result-model'
 import { sanitizeFilename } from '@/lib/sanitize'
 import {
   analyzeRegressionRuns,
@@ -160,11 +163,6 @@ const LEADERBOARD_METRIC_OPTIONS = [
 
 function formatMetric(value: number | null | undefined): string {
   return value === null || value === undefined ? '—' : value.toFixed(4)
-}
-
-function shortId(value: string | null | undefined): string {
-  if (value === null || value === undefined || value === '') return '—'
-  return `${value.slice(0, 8)}…`
 }
 
 function leaderboardMetricLabel(key: string): string {
@@ -293,7 +291,7 @@ async function exportRegressionRunBundle(
 
 function runSelectText(run: RegressionRun): string {
   const statusMeta = runStatusMeta(run.status)
-  return `${shortId(run.id)} · ${statusMeta.label}`
+  return `${formatRegressionRunAnswerMode(run)} · ${run.id} · ${statusMeta.label}`
 }
 
 function AblationInfoTooltip({
@@ -524,12 +522,6 @@ function JsonCodeViewer({ code }: Readonly<{ code: string }>) {
   )
 }
 
-type AblationDiffScoreDisplay = {
-  base: string
-  target: string
-  delta: string
-}
-
 type AblationParamDiffRow = {
   key: string
   before: string
@@ -539,8 +531,6 @@ type AblationParamDiffRow = {
 
 function AblationOverviewTab({
   diff,
-  diffScoreFmt,
-  diffDeltaClass,
   metricDiffRows,
   datasetId,
   caseCount,
@@ -551,8 +541,6 @@ function AblationOverviewTab({
   onAutoRun,
 }: Readonly<{
   diff: RagasRegressionRunDiffResponse | null
-  diffScoreFmt: AblationDiffScoreDisplay
-  diffDeltaClass: string
   metricDiffRows: RegressionRunMetricDiff[]
   datasetId: string
   caseCount: number | undefined
@@ -579,21 +567,6 @@ function AblationOverviewTab({
   return (
     <div className="px-5 py-3">
       <div className="overflow-hidden border border-border/70">
-        <div className="grid border-b border-border/70 sm:grid-cols-3">
-          <div className="bg-background px-3 py-2.5 sm:border-r sm:border-border/70">
-            <div className="text-[11px] tracking-[0.08em] text-muted-foreground">基线得分</div>
-            <div className="mt-1 font-mono text-[13px] font-semibold text-foreground">{diffScoreFmt.base}</div>
-          </div>
-          <div className="bg-background px-3 py-2.5 sm:border-r sm:border-border/70">
-            <div className="text-[11px] tracking-[0.08em] text-muted-foreground">候选得分</div>
-            <div className="mt-1 font-mono text-[13px] font-semibold text-foreground">{diffScoreFmt.target}</div>
-          </div>
-          <div className="bg-background px-3 py-2.5">
-            <div className="text-[11px] tracking-[0.08em] text-muted-foreground">指标变化</div>
-            <div className={cn('mt-1 font-mono text-[13px] font-semibold', diffDeltaClass)}>{diffScoreFmt.delta}</div>
-          </div>
-        </div>
-
         {metricDiffRows.length ? (
           <WorkspaceTableScroll label="运行指标差异">
             <table className="w-full min-w-[560px] text-xs">
@@ -621,12 +594,18 @@ function AblationOverviewTab({
                       {row.key}
                     </th>
                     <td className="px-3 py-2 text-right font-mono text-[11px] text-muted-foreground">
-                      {serializeDiffValue(row.before)}
+                      {typeof row.before === 'number' ? formatMetric(row.before) : serializeDiffValue(row.before)}
                     </td>
                     <td className="px-3 py-2 text-right font-mono text-[11px] text-muted-foreground">
-                      {serializeDiffValue(row.after)}
+                      {typeof row.after === 'number' ? formatMetric(row.after) : serializeDiffValue(row.after)}
                     </td>
-                    <td className="px-3 py-2 text-right font-mono text-[11px] text-foreground">
+                    <td
+                      className={cn(
+                        'px-3 py-2 text-right font-mono text-[11px] tabular-nums',
+                        ablationDeltaClass(row.delta),
+                      )}
+                    >
+                      {row.delta !== null && row.delta > 0 ? '+' : ''}
                       {formatMetric(row.delta)}
                     </td>
                   </tr>
@@ -831,7 +810,6 @@ function AblationRawTab({ diffJson }: Readonly<{ diffJson: string }>) {
 
 function AblationComparisonWorkspace({
   runsSelectionHint,
-  diffDeltaClass,
   runsLoading,
   selectedBaseRunId,
   selectedTargetRunId,
@@ -845,7 +823,6 @@ function AblationComparisonWorkspace({
   computeDiff,
   diff,
   exportDiffHtml,
-  diffScoreFmt,
   metricDiffRows,
   paramDiffRows,
   datasetId,
@@ -862,7 +839,6 @@ function AblationComparisonWorkspace({
   runAutoBootstrap,
 }: Readonly<{
   runsSelectionHint: string
-  diffDeltaClass: string
   runsLoading: boolean
   selectedBaseRunId: string
   selectedTargetRunId: string
@@ -876,7 +852,6 @@ function AblationComparisonWorkspace({
   computeDiff: () => Promise<void>
   diff: RagasRegressionRunDiffResponse | null
   exportDiffHtml: () => Promise<void>
-  diffScoreFmt: AblationDiffScoreDisplay
   metricDiffRows: RegressionRunMetricDiff[]
   paramDiffRows: AblationParamDiffRow[]
   datasetId: string
@@ -901,7 +876,7 @@ function AblationComparisonWorkspace({
   return (
     <section className="min-w-0 border-t border-border">
       <div className="flex min-h-0 flex-col">
-        <div className="flex min-h-[58px] items-center justify-between gap-3 border-b border-border bg-background px-4 py-3">
+        <div className="flex items-center justify-between gap-3 border-b border-border bg-background px-4 py-2.5">
           <div className="flex min-w-0 items-center gap-1.5">
             <h2 className="truncate text-[15px] font-semibold text-foreground">差异对比工作区</h2>
             <AblationInfoTooltip label="查看运行记录选择说明" side="bottom">
@@ -910,103 +885,115 @@ function AblationComparisonWorkspace({
           </div>
         </div>
 
-        <div className="border-b border-border bg-background px-4 py-3">
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1">
-              <Label className="text-[12px] text-muted-foreground">选择基线运行</Label>
-              <Select value={selectedBaseRunId} onValueChange={setSelectedBaseRunId} disabled={runsSelectDisabled}>
-                <SelectTrigger
-                  aria-label="选择基线运行"
-                  className="h-10 rounded-xl border-border bg-background text-[13px]"
+        <details open={diff === null} className="group border-b border-border bg-background">
+          <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-2 text-[13px] leading-6 text-muted-foreground [&::-webkit-details-marker]:hidden">
+            <ChevronDown
+              className="size-3.5 shrink-0 text-muted-foreground transition-transform group-open:rotate-180"
+              aria-hidden="true"
+            />
+            比较运行与导出
+          </summary>
+          <div className="px-4 pb-3">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="min-w-0 space-y-1">
+                <Label className="text-[12px] text-muted-foreground">选择基线运行</Label>
+                <Select value={selectedBaseRunId} onValueChange={setSelectedBaseRunId} disabled={runsSelectDisabled}>
+                  <SelectTrigger
+                    aria-label="选择基线运行"
+                    className="h-auto min-h-11 text-left sm:h-auto sm:min-h-9 sm:text-[13px] [&>span]:line-clamp-none [&>span]:break-all"
+                  >
+                    <SelectValue placeholder={basePlaceholder} />
+                  </SelectTrigger>
+                  <SelectContent className="max-w-[calc(100vw-32px)]">
+                    {selectedBaseRunId !== '' && !runsByDataset.some((run) => run.id === selectedBaseRunId) ? (
+                      <SelectItem value={selectedBaseRunId} disabled>
+                        {selectedBaseRunId}（记录未载入）
+                      </SelectItem>
+                    ) : null}
+                    {runsByDataset.map((run) => (
+                      <SelectItem key={run.id} value={run.id} className="break-all">
+                        {runSelectText(run)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="min-w-0 space-y-1">
+                <Label className="text-[12px] text-muted-foreground">选择候选运行</Label>
+                <Select
+                  value={selectedTargetRunId}
+                  onValueChange={setSelectedTargetRunId}
+                  disabled={runsSelectDisabled}
                 >
-                  <SelectValue placeholder={basePlaceholder} />
-                </SelectTrigger>
-                <SelectContent>
-                  {selectedBaseRunId !== '' && !runsByDataset.some((run) => run.id === selectedBaseRunId) ? (
-                    <SelectItem value={selectedBaseRunId} disabled>
-                      {selectedBaseRunId}（记录未载入）
-                    </SelectItem>
-                  ) : null}
-                  {runsByDataset.map((run) => (
-                    <SelectItem key={run.id} value={run.id}>
-                      {runSelectText(run)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                  <SelectTrigger
+                    aria-label="选择候选运行"
+                    className="h-auto min-h-11 text-left sm:h-auto sm:min-h-9 sm:text-[13px] [&>span]:line-clamp-none [&>span]:break-all"
+                  >
+                    <SelectValue placeholder={targetPlaceholder} />
+                  </SelectTrigger>
+                  <SelectContent className="max-w-[calc(100vw-32px)]">
+                    {selectedTargetRunId !== '' && !runsByDataset.some((run) => run.id === selectedTargetRunId) ? (
+                      <SelectItem value={selectedTargetRunId} disabled>
+                        {selectedTargetRunId}（记录未载入）
+                      </SelectItem>
+                    ) : null}
+                    {runsByDataset.map((run) => (
+                      <SelectItem key={run.id} value={run.id} className="break-all">
+                        {runSelectText(run)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
-            <div className="space-y-1">
-              <Label className="text-[12px] text-muted-foreground">选择候选运行</Label>
-              <Select value={selectedTargetRunId} onValueChange={setSelectedTargetRunId} disabled={runsSelectDisabled}>
-                <SelectTrigger
-                  aria-label="选择候选运行"
-                  className="h-10 rounded-xl border-border bg-background text-[13px]"
-                >
-                  <SelectValue placeholder={targetPlaceholder} />
-                </SelectTrigger>
-                <SelectContent>
-                  {selectedTargetRunId !== '' && !runsByDataset.some((run) => run.id === selectedTargetRunId) ? (
-                    <SelectItem value={selectedTargetRunId} disabled>
-                      {selectedTargetRunId}（记录未载入）
-                    </SelectItem>
-                  ) : null}
-                  {runsByDataset.map((run) => (
-                    <SelectItem key={run.id} value={run.id}>
-                      {runSelectText(run)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
 
-          <div className="mt-4 flex items-center justify-end">
-            <div className="flex items-center gap-1.5">
-              <Button
-                className="gap-2"
-                disabled={diffLoading || !canGenerateDiff}
-                onClick={() => detachPromise(computeDiff())}
-              >
-                <GitCompare className="h-3.5 w-3.5" />
-                生成对比
-              </Button>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="outline"
-                    className="h-9 gap-1.5 rounded-xl border-border bg-background px-3 text-[13px] text-foreground hover:bg-muted/50"
-                  >
-                    导出
-                    <MoreHorizontal className="h-3.5 w-3.5" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-40">
-                  <DropdownMenuItem
-                    disabled={!selectedBaseRunId}
-                    onSelect={() => detachPromise(exportRunBundle(selectedBaseRunId, 'base'))}
-                  >
-                    导出基线
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    disabled={!selectedTargetRunId}
-                    onSelect={() => detachPromise(exportRunBundle(selectedTargetRunId, 'target'))}
-                  >
-                    导出候选
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    disabled={!diff}
-                    onSelect={() => downloadJson(diff, sanitizeFilename('regression-run-diff.json'))}
-                  >
-                    导出数据
-                  </DropdownMenuItem>
-                  <DropdownMenuItem disabled={!canGenerateDiff} onSelect={() => detachPromise(exportDiffHtml())}>
-                    导出页面
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+            <div className="mt-3 flex items-center justify-end">
+              <div className="flex items-center gap-1.5">
+                <Button
+                  className="gap-2"
+                  disabled={diffLoading || !canGenerateDiff}
+                  onClick={() => detachPromise(computeDiff())}
+                >
+                  <GitCompare className="h-3.5 w-3.5" />
+                  生成对比
+                </Button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" className="gap-1.5 px-3 text-[13px]">
+                      导出
+                      <MoreHorizontal className="h-3.5 w-3.5" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-40">
+                    <DropdownMenuItem
+                      disabled={!selectedBaseRunId}
+                      onSelect={() => detachPromise(exportRunBundle(selectedBaseRunId, 'base'))}
+                    >
+                      导出基线
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      disabled={!selectedTargetRunId}
+                      onSelect={() => detachPromise(exportRunBundle(selectedTargetRunId, 'target'))}
+                    >
+                      导出候选
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      disabled={!diff}
+                      onSelect={() => downloadJson(diff, sanitizeFilename('regression-run-diff.json'))}
+                    >
+                      导出数据
+                    </DropdownMenuItem>
+                    <DropdownMenuItem disabled={!canGenerateDiff} onSelect={() => detachPromise(exportDiffHtml())}>
+                      导出页面
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
             </div>
           </div>
-        </div>
+        </details>
+
+        {diff !== null ? <AblationComparisonSummary diff={diff} /> : null}
 
         <Tabs defaultValue="overview" className="flex min-h-0 flex-1 flex-col">
           <div className="border-b border-border px-4">
@@ -1041,8 +1028,6 @@ function AblationComparisonWorkspace({
           <TabsContent value="overview" className="mt-0 min-h-0 flex-1 overflow-auto">
             <AblationOverviewTab
               diff={diff}
-              diffScoreFmt={diffScoreFmt}
-              diffDeltaClass={diffDeltaClass}
               metricDiffRows={metricDiffRows}
               datasetId={datasetId}
               caseCount={caseCount}
@@ -1250,13 +1235,6 @@ function RetrievalAblationWorkspace({ sessionKey }: Readonly<{ sessionKey: strin
   })
   const diff = diffQuery.data ?? null
   const diffJson = diff === null ? '尚未生成运行对比' : JSON.stringify(diff, null, 2)
-  const diffScore = diff?.diff_score ?? null
-
-  const diffScoreFmt = {
-    base: formatMetric(diffScore?.base_score),
-    target: formatMetric(diffScore?.target_score),
-    delta: formatMetric(diffScore?.delta),
-  }
 
   const datasets = datasetsQuery.data ?? EMPTY_DATASETS
   const runs = runsQuery.data === undefined ? EMPTY_RUNS : runsQuery.data.items
@@ -1358,7 +1336,7 @@ function RetrievalAblationWorkspace({ sessionKey }: Readonly<{ sessionKey: strin
           ...current,
           [role]: {
             id,
-            message: `${role === 'base' ? '基线' : '候选'} ${shortId(id)}：${formatApiError(error, '读取运行详情失败')}`,
+            message: `${role === 'base' ? '基线' : '候选'} ${id}：${formatApiError(error, '读取运行详情失败')}`,
           },
         }))
     } finally {
@@ -1623,8 +1601,6 @@ function RetrievalAblationWorkspace({ sessionKey }: Readonly<{ sessionKey: strin
     return '这里用于比较两次运行的配置、指标和逐样本差异；基线通常选择稳定版本，候选选择待验证版本。'
   }, [datasetId, runsByDataset.length, runsLoading])
   const deepDiveMetricKeys = useMemo(() => LEADERBOARD_METRIC_OPTIONS.map((item) => item.key), [])
-  const diffDelta = diffScore === null ? null : diffScore.delta
-  const diffDeltaClass = ablationDeltaClass(diffDelta)
   const metricDiffRows = diff === null ? [] : diff.metric_diffs
   const paramDiffRows = useMemo(() => {
     if (diff === null) return []
@@ -1700,7 +1676,7 @@ function RetrievalAblationWorkspace({ sessionKey }: Readonly<{ sessionKey: strin
               数据集
               <select
                 aria-label="实验数据集"
-                className="h-10 max-w-[220px] rounded-md border border-input bg-background px-3"
+                className="h-11 max-w-[220px] rounded-md border border-input bg-background px-3 sm:h-9"
                 value={datasetId}
                 disabled={datasetsLoading}
                 onChange={(event) => {
@@ -1722,7 +1698,7 @@ function RetrievalAblationWorkspace({ sessionKey }: Readonly<{ sessionKey: strin
               主指标
               <select
                 aria-label="排行榜主指标"
-                className="h-10 rounded-md border border-input bg-background px-3"
+                className="h-11 rounded-md border border-input bg-background px-3 sm:h-9"
                 value={leaderboardMetricKey}
                 onChange={(event) => setLeaderboardMetricKey(event.target.value)}
               >
@@ -1745,59 +1721,123 @@ function RetrievalAblationWorkspace({ sessionKey }: Readonly<{ sessionKey: strin
           </>
         }
       >
-        {!configOpen && actionError !== null ? (
-          <WorkspaceNotice>
-            <p>{actionError}</p>
-            <Button type="button" variant="outline" size="sm" onClick={() => detachPromise(refetchAblationPanels())}>
-              重新读取运行记录
-            </Button>
-          </WorkspaceNotice>
+        {(!configOpen && actionError !== null) ||
+        recordedConfigurations.errors.length > 0 ||
+        datasetsQuery.isError ||
+        runsQuery.isError ||
+        leaderboardQuery.isError ||
+        selectedDatasetCasesQuery.isError ||
+        diffQuery.isError ? (
+          <WorkspaceNoticeStack ariaLabel="检索消融状态提示">
+            {!configOpen && actionError !== null ? (
+              <WorkspaceNotice
+                tone="warning"
+                retry={() => detachPromise(refetchAblationPanels())}
+                retryLabel="重新读取运行记录"
+              >
+                {actionError}
+              </WorkspaceNotice>
+            ) : null}
+            {recordedConfigurations.errors.length > 0 ? (
+              <WorkspaceNotice tone="warning">
+                {recordedConfigurations.errors.map((issue) => (
+                  <p key={issue.runId}>
+                    运行 {issue.runId} 的记录参数不可用于自动配置：{formatApiError(issue.error, '参数结构无效')}
+                  </p>
+                ))}
+              </WorkspaceNotice>
+            ) : null}
+            {datasetsQuery.isError ? (
+              <WorkspaceNotice
+                tone="warning"
+                title="数据集读取失败"
+                error={datasetsQuery.error}
+                fallbackMessage="数据集读取失败"
+                retry={() => {
+                  void datasetsQuery.refetch()
+                }}
+              />
+            ) : null}
+            {runsQuery.isError ? (
+              <WorkspaceNotice
+                tone="warning"
+                title="实验记录读取失败"
+                error={runsQuery.error}
+                fallbackMessage="实验记录读取失败"
+                retry={() => {
+                  void runsQuery.refetch()
+                }}
+              />
+            ) : null}
+            {leaderboardQuery.isError ? (
+              <WorkspaceNotice
+                tone="warning"
+                title="实验排行读取失败"
+                error={leaderboardQuery.error}
+                fallbackMessage="实验排行读取失败"
+                retry={() => {
+                  void leaderboardQuery.refetch()
+                }}
+              />
+            ) : null}
+            {selectedDatasetCasesQuery.isError ? (
+              <WorkspaceNotice
+                tone="warning"
+                title="评测样本读取失败"
+                error={selectedDatasetCasesQuery.error}
+                fallbackMessage="评测样本读取失败"
+                retry={() => {
+                  void selectedDatasetCasesQuery.refetch()
+                }}
+              />
+            ) : null}
+            {diffQuery.isError ? (
+              <WorkspaceNotice
+                tone="warning"
+                title="运行对比读取失败"
+                error={diffQuery.error}
+                fallbackMessage="运行对比读取失败"
+                retry={() => {
+                  void computeDiff()
+                }}
+              />
+            ) : null}
+          </WorkspaceNoticeStack>
         ) : null}
-        {recordedConfigurations.errors.length > 0 ? (
-          <WorkspaceNotice>
-            {recordedConfigurations.errors.map((issue) => (
-              <p key={issue.runId}>
-                运行 {issue.runId} 的记录参数不可用于自动配置：{formatApiError(issue.error, '参数结构无效')}
-              </p>
-            ))}
-          </WorkspaceNotice>
-        ) : null}
-        {datasetsQuery.isError ? (
-          <WorkspaceNotice
-            retry={() => {
-              void datasetsQuery.refetch()
-            }}
-          >
-            {formatApiError(datasetsQuery.error, '数据集读取失败')}
-          </WorkspaceNotice>
-        ) : null}
-        {runsQuery.isError ? (
-          <WorkspaceNotice
-            retry={() => {
-              void runsQuery.refetch()
-            }}
-          >
-            {formatApiError(runsQuery.error, '实验记录读取失败')}
-          </WorkspaceNotice>
-        ) : null}
-        {leaderboardQuery.isError ? (
-          <WorkspaceNotice
-            retry={() => {
-              void leaderboardQuery.refetch()
-            }}
-          >
-            {formatApiError(leaderboardQuery.error, '实验排行读取失败')}
-          </WorkspaceNotice>
-        ) : null}
-        {selectedDatasetCasesQuery.isError ? (
-          <WorkspaceNotice
-            retry={() => {
-              void selectedDatasetCasesQuery.refetch()
-            }}
-          >
-            {formatApiError(selectedDatasetCasesQuery.error, '评测样本读取失败')}
-          </WorkspaceNotice>
-        ) : null}
+        <AblationComparisonWorkspace
+          runsSelectionHint={runsSelectionHint}
+          runsLoading={runsLoading}
+          selectedBaseRunId={selectedBaseRunId}
+          selectedTargetRunId={selectedTargetRunId}
+          setSelectedBaseRunId={(id) => {
+            void selectRun(id, 'base')
+          }}
+          setSelectedTargetRunId={(id) => {
+            void selectRun(id, 'target')
+          }}
+          runsSelectDisabled={runsSelectDisabled}
+          runsByDataset={availableRuns}
+          runsQuery={runsQuery}
+          diffLoading={diffLoading}
+          canGenerateDiff={canGenerateDiff}
+          computeDiff={computeDiff}
+          diff={diff}
+          exportDiffHtml={exportDiffHtml}
+          metricDiffRows={metricDiffRows}
+          paramDiffRows={paramDiffRows}
+          datasetId={datasetId}
+          runDisabledReason={runDisabledReason}
+          runGridBatch={runGridBatch}
+          exportRunBundle={exportRunBundle}
+          leaderboardMetricKey={leaderboardMetricKey}
+          deepDiveMetricKeys={deepDiveMetricKeys}
+          diffJson={diffJson}
+          caseCount={selectedDatasetCaseCount}
+          autoRunLabel={autoRunLabel}
+          autoRunHelper={autoRunHelper}
+          autoBootstrapPending={autoBootstrapPending}
+          runAutoBootstrap={runAutoBootstrap}
+        />
         <section className={ws.section}>
           <div className={ws.sectionHeading}>
             <h2 className={ws.sectionTitle}>实验记录与排行</h2>
@@ -1848,8 +1888,16 @@ function RetrievalAblationWorkspace({ sessionKey }: Readonly<{ sessionKey: strin
                     const badge = runStatusMeta(row.status)
                     return (
                       <tr key={row.id} data-selected={row.id === selectedBaseRunId || row.id === selectedTargetRunId}>
-                        <td>
-                          <strong className="font-mono text-[13px] font-medium">{shortId(row.id)}</strong>
+                        <td className="max-w-[360px] whitespace-normal">
+                          <strong className="block break-all font-mono text-[13px] font-normal" title={row.id}>
+                            {row.id}
+                          </strong>
+                          {row.id === selectedBaseRunId ? (
+                            <span className="mr-2 text-xs text-muted-foreground">基线</span>
+                          ) : null}
+                          {row.id === selectedTargetRunId ? (
+                            <span className="text-xs text-muted-foreground">候选</span>
+                          ) : null}
                           <div className="mt-1 sm:hidden">
                             <StatusBadge status={badge.status} label={badge.label} dense />
                           </div>
@@ -1917,51 +1965,6 @@ function RetrievalAblationWorkspace({ sessionKey }: Readonly<{ sessionKey: strin
             </div>
           ) : null}
         </section>
-        {diffQuery.isError ? (
-          <WorkspaceNotice
-            retry={() => {
-              void computeDiff()
-            }}
-          >
-            {formatApiError(diffQuery.error, '运行对比读取失败')}
-          </WorkspaceNotice>
-        ) : null}
-        <AblationComparisonWorkspace
-          runsSelectionHint={runsSelectionHint}
-          diffDeltaClass={diffDeltaClass}
-          runsLoading={runsLoading}
-          selectedBaseRunId={selectedBaseRunId}
-          selectedTargetRunId={selectedTargetRunId}
-          setSelectedBaseRunId={(id) => {
-            void selectRun(id, 'base')
-          }}
-          setSelectedTargetRunId={(id) => {
-            void selectRun(id, 'target')
-          }}
-          runsSelectDisabled={runsSelectDisabled}
-          runsByDataset={availableRuns}
-          runsQuery={runsQuery}
-          diffLoading={diffLoading}
-          canGenerateDiff={canGenerateDiff}
-          computeDiff={computeDiff}
-          diff={diff}
-          exportDiffHtml={exportDiffHtml}
-          diffScoreFmt={diffScoreFmt}
-          metricDiffRows={metricDiffRows}
-          paramDiffRows={paramDiffRows}
-          datasetId={datasetId}
-          runDisabledReason={runDisabledReason}
-          runGridBatch={runGridBatch}
-          exportRunBundle={exportRunBundle}
-          leaderboardMetricKey={leaderboardMetricKey}
-          deepDiveMetricKeys={deepDiveMetricKeys}
-          diffJson={diffJson}
-          caseCount={selectedDatasetCaseCount}
-          autoRunLabel={autoRunLabel}
-          autoRunHelper={autoRunHelper}
-          autoBootstrapPending={autoBootstrapPending}
-          runAutoBootstrap={runAutoBootstrap}
-        />
         <Dialog
           open={configOpen}
           onOpenChange={(open) => {
@@ -1975,305 +1978,321 @@ function RetrievalAblationWorkspace({ sessionKey }: Readonly<{ sessionKey: strin
                 数据集：{selectedDataset?.name ?? (datasetId === '' ? '未选择' : datasetId)}。本次参数仅用于新建实验。
               </DialogDescription>
             </DialogHeader>
-            <fieldset disabled={submitting} className={cn(ws.dialogBody, 'min-w-0')}>
-              <p className="mb-3 text-[13px] text-muted-foreground">{selectedDatasetCasesStatusText}</p>
-              <AblationSection
-                title="评测模式"
-                description="决定这轮只看检索，还是同时带上生成质量指标。"
-                className="bg-card"
+            {actionError !== null ? (
+              <p
+                role="alert"
+                className="shrink-0 border-b border-border px-[18px] py-3 text-sm text-destructive sm:px-6"
               >
-                <div className="space-y-3">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="text-sm font-medium text-foreground">仅检索评测</div>
-                      <div className="mt-1 text-[11px] leading-5 text-muted-foreground">
-                        关闭生成质量指标，只保留召回率、平均倒数排名与归一化增益等检索指标。
+                {actionError}
+              </p>
+            ) : null}
+            <div className={cn(ws.dialogBody, 'min-w-0 flex-1')}>
+              <fieldset disabled={submitting} className="min-w-0">
+                <p className="mb-3 text-[13px] text-muted-foreground">{selectedDatasetCasesStatusText}</p>
+                <AblationSection
+                  title="评测模式"
+                  description="决定这轮只看检索，还是同时带上生成质量指标。"
+                  className="bg-card"
+                  collapsible={false}
+                >
+                  <div className="space-y-3">
+                    <div className="flex flex-col items-start justify-between gap-3 sm:flex-row">
+                      <div className="min-w-0">
+                        <div className="text-sm font-medium text-foreground">仅检索评测</div>
+                        <div className="mt-1 text-[11px] leading-5 text-muted-foreground">
+                          关闭生成质量指标，只保留召回率、平均倒数排名与归一化增益等检索指标。
+                        </div>
+                      </div>
+                      <div className="flex w-full shrink-0 items-center justify-between gap-3 sm:w-auto">
+                        <span className="text-sm text-foreground">{retrievalOnly ? '仅检索' : '检索与生成'}</span>
+                        <Switch aria-label="仅检索模式" checked={retrievalOnly} onCheckedChange={setRetrievalOnly} />
                       </div>
                     </div>
-                    <Switch aria-label="仅检索模式" checked={retrievalOnly} onCheckedChange={setRetrievalOnly} />
-                  </div>
 
-                  <div className="grid gap-2.5">
-                    {RAGAS_METRIC_OPTIONS.map((option) => {
-                      const checked = metricKeys.includes(option.key)
-                      return (
-                        <label
-                          key={option.key}
-                          className={cn('flex items-start gap-3 py-1.5', retrievalOnly && 'opacity-60')}
-                        >
-                          <Checkbox
-                            checked={checked}
-                            disabled={retrievalOnly}
-                            onCheckedChange={(value) => {
-                              const next = new Set(metricKeys)
-                              if (value === true) next.add(option.key)
-                              else next.delete(option.key)
-                              setMetricKeys(Array.from(next))
-                            }}
-                          />
-                          <span className="space-y-1">
-                            <span className="block text-sm font-medium text-foreground">{option.label}</span>
-                            <span className="block text-[11px] leading-5 text-muted-foreground">{option.hint}</span>
-                          </span>
-                        </label>
-                      )
-                    })}
+                    <div className="grid gap-2.5">
+                      {RAGAS_METRIC_OPTIONS.map((option) => {
+                        const checked = metricKeys.includes(option.key)
+                        return (
+                          <label
+                            key={option.key}
+                            className={cn('flex items-start gap-3 py-1.5', retrievalOnly && 'opacity-60')}
+                          >
+                            <Checkbox
+                              checked={checked}
+                              disabled={retrievalOnly}
+                              onCheckedChange={(value) => {
+                                const next = new Set(metricKeys)
+                                if (value === true) next.add(option.key)
+                                else next.delete(option.key)
+                                setMetricKeys(Array.from(next))
+                              }}
+                            />
+                            <span className="space-y-1">
+                              <span className="block text-sm font-medium text-foreground">{option.label}</span>
+                              <span className="block text-[11px] leading-5 text-muted-foreground">{option.hint}</span>
+                            </span>
+                          </label>
+                        )
+                      })}
+                    </div>
                   </div>
-                </div>
-              </AblationSection>
+                </AblationSection>
 
-              <AblationSection title="检索参数" description="召回窗口、混合检索与权重参数。" className="bg-card">
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <div className="space-y-1.5">
-                    <Label htmlFor="ablation-max-cases" className="text-[11px] tracking-[0.08em] text-muted-foreground">
-                      样本上限
-                    </Label>
-                    <Input
-                      id="ablation-max-cases"
-                      aria-label="评测样本上限"
-                      type="number"
-                      value={maxCases}
-                      min={1}
-                      max={500}
-                      required
-                      onChange={(e) => setMaxCases(e.target.value)}
-                      className="h-9 rounded-lg border-border/70 bg-card"
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label htmlFor="ablation-top-k" className="text-[11px] tracking-[0.08em] text-muted-foreground">
-                      召回数量
-                    </Label>
-                    <Input
-                      id="ablation-top-k"
-                      aria-label="召回数量 TOP-K"
-                      type="number"
-                      value={topK}
-                      min={1}
-                      max={50}
-                      required
-                      onChange={(e) => setTopK(e.target.value)}
-                      className="h-9 rounded-lg border-border/70 bg-card"
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label
-                      htmlFor="ablation-retrieval-mode"
-                      className="text-[11px] tracking-[0.08em] text-muted-foreground"
-                    >
-                      检索模式
-                    </Label>
-                    <Select value={retrievalMode} onValueChange={setRetrievalMode}>
-                      <SelectTrigger id="ablation-retrieval-mode" className="h-9 rounded-lg border-border/70 bg-card">
-                        <SelectValue placeholder="选择模式" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {RETRIEVAL_MODE_OPTIONS.map((option) => (
-                          <SelectItem key={option.key} value={option.key}>
-                            {option.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label
-                      htmlFor="ablation-score-threshold"
-                      className="text-[11px] tracking-[0.08em] text-muted-foreground"
-                    >
-                      分数阈值
-                    </Label>
-                    <Input
-                      id="ablation-score-threshold"
-                      aria-label="分数阈值"
-                      type="number"
-                      value={scoreThreshold}
-                      min={0}
-                      max={1}
-                      step="any"
-                      required
-                      onChange={(e) => setScoreThreshold(e.target.value)}
-                      className="h-9 rounded-lg border-border/70 bg-card"
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label htmlFor="ablation-alpha" className="text-[11px] tracking-[0.08em] text-muted-foreground">
-                      混合权重
-                    </Label>
-                    <Input
-                      id="ablation-alpha"
-                      aria-label="混合权重"
-                      type="number"
-                      value={alpha}
-                      min={0}
-                      max={1}
-                      step="any"
-                      required
-                      onChange={(e) => setAlpha(e.target.value)}
-                      className="h-9 rounded-lg border-border/70 bg-card"
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label
-                      htmlFor="ablation-mmr-lambda"
-                      className="text-[11px] tracking-[0.08em] text-muted-foreground"
-                    >
-                      多样性系数
-                    </Label>
-                    <Input
-                      id="ablation-mmr-lambda"
-                      aria-label="MMR 多样性系数"
-                      type="number"
-                      value={mmrLambda}
-                      min={0}
-                      max={1}
-                      step="any"
-                      required
-                      onChange={(e) => setMmrLambda(e.target.value)}
-                      className="h-9 rounded-lg border-border/70 bg-card"
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label
-                      htmlFor="ablation-vector-weight"
-                      className="text-[11px] tracking-[0.08em] text-muted-foreground"
-                    >
-                      向量权重
-                    </Label>
-                    <Input
-                      id="ablation-vector-weight"
-                      aria-label="向量权重"
-                      type="number"
-                      value={vectorWeight}
-                      min={0}
-                      max={1}
-                      step="any"
-                      required
-                      onChange={(e) => setVectorWeight(e.target.value)}
-                      className="h-9 rounded-lg border-border/70 bg-card"
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label
-                      htmlFor="ablation-keyword-weight"
-                      className="text-[11px] tracking-[0.08em] text-muted-foreground"
-                    >
-                      关键词权重
-                    </Label>
-                    <Input
-                      id="ablation-keyword-weight"
-                      aria-label="关键词权重"
-                      type="number"
-                      value={keywordWeight}
-                      min={0}
-                      max={1}
-                      step="any"
-                      required
-                      onChange={(e) => setKeywordWeight(e.target.value)}
-                      className="h-9 rounded-lg border-border/70 bg-card"
-                    />
-                  </div>
-                </div>
-              </AblationSection>
-
-              <AblationSection title="重排与过滤" description="控制过滤策略与重排模型参数。" className="bg-card">
-                <div className="space-y-3">
-                  <label className="flex items-start gap-3 py-1.5">
-                    <Checkbox
-                      checked={skipEmptyContexts}
-                      onCheckedChange={(value) => setSkipEmptyContexts(value === true)}
-                    />
-                    <span className="space-y-1">
-                      <span className="block text-sm font-medium text-foreground">跳过空上下文样本</span>
-                      <span className="block text-[11px] leading-5 text-muted-foreground">
-                        过滤掉没有引用上下文的样本，减少空样本对分数的扰动。
-                      </span>
-                    </span>
-                  </label>
-
-                  <label className="flex items-start gap-3 py-1.5">
-                    <Checkbox
-                      checked={enableWeightRerank}
-                      onCheckedChange={(value) => setEnableWeightRerank(value === true)}
-                    />
-                    <span className="space-y-1">
-                      <span className="block text-sm font-medium text-foreground">启用权重重排</span>
-                      <span className="block text-[11px] leading-5 text-muted-foreground">
-                        对混合检索结果做二次权重整合，观察向量与关键词配比的影响。
-                      </span>
-                    </span>
-                  </label>
-
-                  <div className="border-t border-border/70 pt-3">
+                <AblationSection title="检索参数" description="召回窗口、混合检索与权重参数。" className="bg-card">
+                  <div className="grid gap-3 sm:grid-cols-2">
                     <div className="space-y-1.5">
-                      <Label htmlFor="ablation-reranker-mode">重排配置</Label>
-                      <Select value={rerankerMode} onValueChange={setRerankerMode}>
-                        <SelectTrigger
-                          id="ablation-reranker-mode"
-                          aria-label="本轮重排配置"
-                          className="h-9 rounded-lg border-border/70 bg-card"
-                        >
-                          <SelectValue />
+                      <Label
+                        htmlFor="ablation-max-cases"
+                        className="text-[11px] tracking-[0.08em] text-muted-foreground"
+                      >
+                        样本上限
+                      </Label>
+                      <Input
+                        id="ablation-max-cases"
+                        aria-label="评测样本上限"
+                        type="number"
+                        value={maxCases}
+                        min={1}
+                        max={500}
+                        required
+                        onChange={(e) => setMaxCases(e.target.value)}
+                        className="border-border/70 bg-card"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="ablation-top-k" className="text-[11px] tracking-[0.08em] text-muted-foreground">
+                        召回数量
+                      </Label>
+                      <Input
+                        id="ablation-top-k"
+                        aria-label="召回数量 TOP-K"
+                        type="number"
+                        value={topK}
+                        min={1}
+                        max={50}
+                        required
+                        onChange={(e) => setTopK(e.target.value)}
+                        className="border-border/70 bg-card"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label
+                        htmlFor="ablation-retrieval-mode"
+                        className="text-[11px] tracking-[0.08em] text-muted-foreground"
+                      >
+                        检索模式
+                      </Label>
+                      <Select value={retrievalMode} onValueChange={setRetrievalMode}>
+                        <SelectTrigger id="ablation-retrieval-mode" className="border-border/70 bg-card">
+                          <SelectValue placeholder="选择模式" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="system">跟随系统</SelectItem>
-                          <SelectItem value="disabled">本轮关闭</SelectItem>
-                          <SelectItem value="enabled">本轮启用并指定参数</SelectItem>
+                          {RETRIEVAL_MODE_OPTIONS.map((option) => (
+                            <SelectItem key={option.key} value={option.key}>
+                              {option.label}
+                            </SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
                     </div>
-                    {rerankerMode === 'system' ? (
-                      <p className="mt-2 text-[11px] text-muted-foreground">
-                        本轮不覆盖重排选项，服务端使用实际全局配置。
-                      </p>
-                    ) : rerankerMode === 'enabled' ? (
-                      <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                        <div className="space-y-1.5">
-                          <Label htmlFor="ablation-reranker-provider" className="text-[11px] text-muted-foreground">
-                            重排服务
-                          </Label>
-                          <Select value={rerankerProvider} onValueChange={setRerankerProvider}>
-                            <SelectTrigger
-                              id="ablation-reranker-provider"
-                              aria-label="本轮重排服务"
-                              className="h-9 rounded-lg border-border/70 bg-card"
-                            >
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {RERANKER_PROVIDER_OPTIONS.filter((option) => option.key !== 'none').map((option) => (
-                                <SelectItem key={option.key} value={option.key}>
-                                  {option.label}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                        <label className="block space-y-1.5 text-[11px] text-muted-foreground">
-                          重排数量
-                          <Input
-                            type="number"
-                            value={rerankerTopN}
-                            min={1}
-                            max={200}
-                            required
-                            onChange={(event) => setRerankerTopN(event.target.value)}
-                            className="h-9 rounded-lg border-border/70 bg-card"
-                          />
-                        </label>
-                      </div>
-                    ) : null}
+                    <div className="space-y-1.5">
+                      <Label
+                        htmlFor="ablation-score-threshold"
+                        className="text-[11px] tracking-[0.08em] text-muted-foreground"
+                      >
+                        分数阈值
+                      </Label>
+                      <Input
+                        id="ablation-score-threshold"
+                        aria-label="分数阈值"
+                        type="number"
+                        value={scoreThreshold}
+                        min={0}
+                        max={1}
+                        step="any"
+                        required
+                        onChange={(e) => setScoreThreshold(e.target.value)}
+                        className="border-border/70 bg-card"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="ablation-alpha" className="text-[11px] tracking-[0.08em] text-muted-foreground">
+                        混合权重
+                      </Label>
+                      <Input
+                        id="ablation-alpha"
+                        aria-label="混合权重"
+                        type="number"
+                        value={alpha}
+                        min={0}
+                        max={1}
+                        step="any"
+                        required
+                        onChange={(e) => setAlpha(e.target.value)}
+                        className="border-border/70 bg-card"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label
+                        htmlFor="ablation-mmr-lambda"
+                        className="text-[11px] tracking-[0.08em] text-muted-foreground"
+                      >
+                        多样性系数
+                      </Label>
+                      <Input
+                        id="ablation-mmr-lambda"
+                        aria-label="MMR 多样性系数"
+                        type="number"
+                        value={mmrLambda}
+                        min={0}
+                        max={1}
+                        step="any"
+                        required
+                        onChange={(e) => setMmrLambda(e.target.value)}
+                        className="border-border/70 bg-card"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label
+                        htmlFor="ablation-vector-weight"
+                        className="text-[11px] tracking-[0.08em] text-muted-foreground"
+                      >
+                        向量权重
+                      </Label>
+                      <Input
+                        id="ablation-vector-weight"
+                        aria-label="向量权重"
+                        type="number"
+                        value={vectorWeight}
+                        min={0}
+                        max={1}
+                        step="any"
+                        required
+                        onChange={(e) => setVectorWeight(e.target.value)}
+                        className="border-border/70 bg-card"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label
+                        htmlFor="ablation-keyword-weight"
+                        className="text-[11px] tracking-[0.08em] text-muted-foreground"
+                      >
+                        关键词权重
+                      </Label>
+                      <Input
+                        id="ablation-keyword-weight"
+                        aria-label="关键词权重"
+                        type="number"
+                        value={keywordWeight}
+                        min={0}
+                        max={1}
+                        step="any"
+                        required
+                        onChange={(e) => setKeywordWeight(e.target.value)}
+                        className="border-border/70 bg-card"
+                      />
+                    </div>
                   </div>
-                </div>
-              </AblationSection>
+                </AblationSection>
 
-              {!configuration.success ? (
-                <p role="alert" className="mt-3 text-sm text-destructive">
-                  {configuration.error.issues[0].message}
-                </p>
-              ) : null}
-              {actionError !== null ? <WorkspaceNotice>{actionError}</WorkspaceNotice> : null}
-            </fieldset>
+                <AblationSection title="重排与过滤" description="控制过滤策略与重排模型参数。" className="bg-card">
+                  <div className="space-y-3">
+                    <label className="flex items-start gap-3 py-1.5">
+                      <Checkbox
+                        checked={skipEmptyContexts}
+                        onCheckedChange={(value) => setSkipEmptyContexts(value === true)}
+                      />
+                      <span className="space-y-1">
+                        <span className="block text-sm font-medium text-foreground">跳过空上下文样本</span>
+                        <span className="block text-[11px] leading-5 text-muted-foreground">
+                          过滤掉没有引用上下文的样本，减少空样本对分数的扰动。
+                        </span>
+                      </span>
+                    </label>
+
+                    <label className="flex items-start gap-3 py-1.5">
+                      <Checkbox
+                        checked={enableWeightRerank}
+                        onCheckedChange={(value) => setEnableWeightRerank(value === true)}
+                      />
+                      <span className="space-y-1">
+                        <span className="block text-sm font-medium text-foreground">启用权重重排</span>
+                        <span className="block text-[11px] leading-5 text-muted-foreground">
+                          对混合检索结果做二次权重整合，观察向量与关键词配比的影响。
+                        </span>
+                      </span>
+                    </label>
+
+                    <div className="border-t border-border/70 pt-3">
+                      <div className="space-y-1.5">
+                        <Label htmlFor="ablation-reranker-mode">重排配置</Label>
+                        <Select value={rerankerMode} onValueChange={setRerankerMode}>
+                          <SelectTrigger
+                            id="ablation-reranker-mode"
+                            aria-label="本轮重排配置"
+                            className="border-border/70 bg-card"
+                          >
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="system">跟随系统</SelectItem>
+                            <SelectItem value="disabled">本轮关闭</SelectItem>
+                            <SelectItem value="enabled">本轮启用并指定参数</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      {rerankerMode === 'system' ? (
+                        <p className="mt-2 text-[11px] text-muted-foreground">
+                          本轮不覆盖重排选项，服务端使用实际全局配置。
+                        </p>
+                      ) : rerankerMode === 'enabled' ? (
+                        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                          <div className="space-y-1.5">
+                            <Label htmlFor="ablation-reranker-provider" className="text-[11px] text-muted-foreground">
+                              重排服务
+                            </Label>
+                            <Select value={rerankerProvider} onValueChange={setRerankerProvider}>
+                              <SelectTrigger
+                                id="ablation-reranker-provider"
+                                aria-label="本轮重排服务"
+                                className="border-border/70 bg-card"
+                              >
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {RERANKER_PROVIDER_OPTIONS.filter((option) => option.key !== 'none').map((option) => (
+                                  <SelectItem key={option.key} value={option.key}>
+                                    {option.label}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <label className="block space-y-1.5 text-[11px] text-muted-foreground">
+                            重排数量
+                            <Input
+                              type="number"
+                              value={rerankerTopN}
+                              min={1}
+                              max={200}
+                              required
+                              onChange={(event) => setRerankerTopN(event.target.value)}
+                              className="border-border/70 bg-card"
+                            />
+                          </label>
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+                </AblationSection>
+
+                {!configuration.success ? (
+                  <p role="alert" className="mt-3 text-sm text-destructive">
+                    {configuration.error.issues[0].message}
+                  </p>
+                ) : null}
+              </fieldset>
+            </div>
             <DialogFooter className={ws.dialogFooter}>
               <Button variant="outline" disabled={submitting} onClick={() => setConfigOpen(false)}>
                 取消

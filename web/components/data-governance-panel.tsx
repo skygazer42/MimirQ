@@ -7,8 +7,14 @@ import { FeedbackToast } from '@/components/feedback-toast'
 
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { DataGovernance } from '@/components/icons'
 import {
+  BarChart3,
+  Copy,
+  ExternalLink,
+  FolderOpen,
+  Layers,
+  Shield,
+  Table2,
   Tag,
   FolderTree,
   FileText,
@@ -25,6 +31,7 @@ import {
   Check,
   ArrowLeft,
   ArrowRight,
+  ChevronDown,
   ChevronRight,
   ListChecks,
   Loader2,
@@ -35,6 +42,8 @@ import {
 } from '@/components/icons'
 import { useTranslations } from 'next-intl'
 import { Button } from '@/components/ui/button'
+import { PageTitleIcon } from '@/components/ui/page-title-icon'
+import { WorkbenchPanelDialog } from '@/components/workbench'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import {
   AlertDialog,
@@ -66,6 +75,7 @@ import { QualityChecker } from '@/components/data-governance/quality-checker'
 import { DataCleaner } from '@/components/data-governance/data-cleaner'
 import { DataAnnotator } from '@/components/data-governance/data-annotator'
 import { DataClassifier } from '@/components/data-governance/data-classifier'
+import { GovernanceEmptyPresets } from '@/components/data-governance/governance-empty-presets'
 import { datasetApi } from '@/lib/api/datasets'
 import { queryKeys } from '@/lib/query-keys'
 import { documentApi } from '@/lib/api/documents'
@@ -202,9 +212,47 @@ type FileGovernanceState = {
   resetRevision: number
 }
 
+const STANDBY_CLEANING_RULES = [
+  {
+    key: 'governance_remove_noise_lines',
+    icon: FileText,
+    title: '去除噪声行',
+    description: '识别并移除页眉、页脚、页码等与正文无关的内容',
+  },
+  {
+    key: 'governance_unwrap_lines',
+    icon: ScanLine,
+    title: '修正断行与段落',
+    description: '合并不合理的断行，重建段落结构并提升文本连贯性',
+  },
+  {
+    key: 'governance_normalize_tables',
+    icon: Table2,
+    title: '规范表格结构',
+    description: '识别并保留表格内容，维持行列结构与单元格关系',
+  },
+  {
+    key: 'governance_drop_duplicate_paragraphs',
+    icon: Copy,
+    title: '检测重复内容',
+    description: '识别文档内的重复段落或重复片段，避免冗余数据入库',
+  },
+  {
+    key: 'governance_pii_anonymize',
+    icon: Shield,
+    title: '敏感信息脱敏',
+    description: '自动识别并脱敏邮箱、电话等 PII 敏感字段',
+  },
+] as const satisfies ReadonlyArray<{
+  key: keyof DocumentPipelineOptions
+  icon: typeof FileText
+  title: string
+  description: string
+}>
+
 export function DataGovernancePanel() {
   const t = useTranslations('DataGovernancePanel')
-  const { updateOption, setEnabled } = usePipelineOptions()
+  const { options, updateOption, setEnabled } = usePipelineOptions()
   const router = useRouter()
   const searchParams = useSearchParams()
   const files = useParsedFiles((state) => state.files)
@@ -354,14 +402,21 @@ export function DataGovernancePanel() {
   const contentScrollRef = useRef<HTMLDivElement>(null)
   const toolboxScrollRef = useRef<HTMLDivElement>(null)
   const editorRef = useRef<HTMLTextAreaElement>(null)
-  const queueItemRefs = useRef(new Map<string, HTMLButtonElement>())
+  const qualityScanRef = useRef<HTMLButtonElement>(null)
+  const directoryTriggerRef = useRef<HTMLButtonElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [search, setSearch] = useState('')
-  const [mobileReader, setMobileReader] = useState(false)
+  const [directoryOpen, setDirectoryOpen] = useState(false)
+  const handleDirectoryOpenChange = useCallback((open: boolean) => {
+    setDirectoryOpen(open)
+    if (!open) requestAnimationFrame(() => directoryTriggerRef.current?.focus())
+  }, [])
+  const [mobilePane, setMobilePane] = useState<'document' | 'tools'>('document')
   const [configOpen, setConfigOpen] = useState(false)
   const [toolsOpen, setToolsOpen] = useState(true)
   const [batchMode, setBatchMode] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [qualityScanning, setQualityScanning] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
   const [activeIssueId, setActiveIssueId] = useState<string | null>(null)
   useEffect(() => {
@@ -769,10 +824,10 @@ export function DataGovernancePanel() {
       if (file) {
         setSelectedFileId(fileId)
         initializeGovernanceState(file)
-        setMobileReader(true)
+        if (directoryOpen) handleDirectoryOpenChange(false)
       }
     },
-    [scopedFiles, initializeGovernanceState],
+    [scopedFiles, initializeGovernanceState, directoryOpen, handleDirectoryOpenChange],
   )
 
   // 手动编辑回调
@@ -1008,7 +1063,7 @@ export function DataGovernancePanel() {
       file.chunkStatus === 'ready' ||
       file.chunkStatus === 'submitted'
     )
-      return { id: 'done', label: '已完成', tone: styles.success, score }
+      return { id: 'done', label: '已保存', tone: styles.success, score }
     if (score != null) return { id: 'review', label: '待核对', tone: styles.warning, score }
     return { id: 'pending', label: '待治理', tone: '', score: null }
   }
@@ -1024,7 +1079,6 @@ export function DataGovernancePanel() {
   else if (selectedFile?.governanceStatus === 'ready' || selectedFile?.governanceStatus === 'submitted')
     saveStateText = '治理结果已保存'
   const currentIndex = queueFiles.findIndex((file) => file.id === selectedFileId)
-  const activeIssue = governanceState?.issues.find((issue) => issue.id === activeIssueId)
   const currentStatus = selectedFile ? statusFor(selectedFile) : null
   const documentActions =
     selectedFile === null ? null : (
@@ -1039,8 +1093,9 @@ export function DataGovernancePanel() {
           <Button
             variant="ghost"
             size="icon"
-            className="size-8"
-            aria-label="重置文档修改"
+            className="size-11 sm:size-9"
+            aria-label="恢复原文"
+            title="恢复原文"
             disabled={!canUseContent || saving}
           >
             <RotateCcw className="size-3.5" />
@@ -1049,8 +1104,9 @@ export function DataGovernancePanel() {
         <Button
           variant="ghost"
           size="icon"
-          className="size-8"
-          aria-label="删除当前文档"
+          className="size-11 sm:size-9"
+          aria-label="删除文档"
+          title="删除文档"
           disabled={saving}
           onClick={() => {
             setDeleteFileTarget({ id: selectedFile.id, filename: selectedFile.filename })
@@ -1065,22 +1121,54 @@ export function DataGovernancePanel() {
     const next = queueFiles[(currentIndex + 1) % queueFiles.length]
     if (next) handleSelectFile(next.id)
   }
-  const returnToQueue = () => {
-    setMobileReader(false)
-    requestAnimationFrame(() => {
-      if (selectedFileId) queueItemRefs.current.get(selectedFileId)?.focus()
-    })
-  }
   const locateIssue = (issue: FileGovernanceState['issues'][number]) => {
     setActiveIssueId(issue.id)
     if (!issue.position) return
     setViewMode('edit')
+    setMobilePane('document')
     requestAnimationFrame(() => {
       editorRef.current?.focus()
       editorRef.current?.setSelectionRange(issue.position!.start, issue.position!.end)
       editorRef.current?.scrollIntoView({ block: 'nearest', behavior: 'auto' })
     })
   }
+  const ignoreIssue = (issue: FileGovernanceState['issues'][number]) => {
+    if (!selectedFileId) return
+    setGovernanceStates((prev) => ({
+      ...prev,
+      [selectedFileId]: {
+        ...prev[selectedFileId],
+        issues: prev[selectedFileId].issues.filter((item) => item.id !== issue.id),
+        isModified: true,
+      },
+    }))
+    setActiveIssueId(null)
+  }
+  const libraryFeedback = (
+    <>
+      {loadError !== undefined && (
+        <div className={styles.inlineError} role="alert">
+          <span>本地文档记录读取失败：{formatApiError(loadError, '无法读取文档目录')}</span>
+          <Button size="sm" variant="ghost" onClick={() => void useParsedFiles.persist.rehydrate()}>
+            重试读取文档
+          </Button>
+        </div>
+      )}
+      {documentSyncError !== null && (
+        <div className={styles.inlineError} role="alert">
+          <span>队列加载失败</span>
+          <Button
+            size="sm"
+            variant="ghost"
+            disabled={documentSyncQuery.isFetching}
+            onClick={() => void documentSyncQuery.refetch()}
+          >
+            重试
+          </Button>
+        </div>
+      )}
+    </>
+  )
 
   return (
     <div
@@ -1092,11 +1180,75 @@ export function DataGovernancePanel() {
     >
       <header className={styles.header}>
         <div className={styles.title}>
-          <DataGovernance appearance="color" className="size-6" />
-          <div>
-            <h1>{headerTitle}</h1>
-            <p className={styles.subtitle}>{t('header.workspaceSubtitle')}</p>
-          </div>
+          <PageTitleIcon name="data-governance" className="size-[18px]" />
+          <h1>{headerTitle}</h1>
+        </div>
+        <Select
+          value={selectedDatasetId || ALL_DATASETS_VALUE}
+          onValueChange={handleDatasetScopeChange}
+          disabled={uploading || saving}
+        >
+          <SelectTrigger className={styles.scope} aria-label="数据集范围">
+            <SelectValue placeholder="全部数据集" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={ALL_DATASETS_VALUE}>全部数据集</SelectItem>
+            {availableDatasets.map((dataset) => (
+              <SelectItem key={dataset.id} value={dataset.id}>
+                {dataset.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <button
+          ref={directoryTriggerRef}
+          type="button"
+          className={styles.filePicker}
+          aria-label="选择文档"
+          aria-describedby={selectedFile ? 'governance-file-name governance-file-size' : undefined}
+          aria-haspopup="dialog"
+          aria-expanded={directoryOpen}
+          onClick={() => handleDirectoryOpenChange(true)}
+        >
+          {selectedFile ? getFileIcon(selectedFile.filename, 'size-5 shrink-0') : <FolderTree className="size-4" />}
+          <span id="governance-file-name" className={styles.fileIdentity} title={selectedFile?.filename}>
+            {selectedFile?.filename ?? '选择文档'}
+          </span>
+          {selectedFile && (
+            <span id="governance-file-size" className={styles.fileSize}>
+              {formatFileSize(selectedFile.fileSize)}
+            </span>
+          )}
+          {currentStatus && (
+            <span className={cn(styles.status, currentStatus.tone)}>
+              <i className={styles.dot} aria-hidden="true" />
+              {currentStatus.label}
+            </span>
+          )}
+          <ChevronDown className="size-3.5 shrink-0 text-muted-foreground" />
+        </button>
+        <div className={styles.fileNavigation} aria-label="文档翻页">
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label="上一份文档"
+            disabled={currentIndex <= 0 || saving}
+            onClick={() => handleSelectFile(queueFiles[currentIndex - 1].id)}
+          >
+            <ArrowLeft className="size-3.5" />
+          </Button>
+          <span>
+            {currentIndex + 1} / {queueFiles.length}
+          </span>
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label="下一份文档"
+            disabled={currentIndex < 0 || currentIndex >= queueFiles.length - 1 || saving}
+            onClick={() => handleSelectFile(queueFiles[currentIndex + 1].id)}
+          >
+            <ArrowRight className="size-3.5" />
+          </Button>
         </div>
         <div className={styles.headerActions}>
           <Button variant="ghost" size="sm" aria-label="治理配置" onClick={() => setConfigOpen(true)}>
@@ -1109,11 +1261,26 @@ export function DataGovernancePanel() {
               取消解析
             </Button>
           ) : (
-            <Button variant="outline" size="sm" disabled={saving} onClick={() => fileInputRef.current?.click()}>
+            <Button
+              variant="outline"
+              size="sm"
+              aria-label="添加文档"
+              disabled={saving}
+              onClick={() => fileInputRef.current?.click()}
+            >
               <Plus className="size-4" />
-              添加文档
+              <span className={styles.actionLabel}>添加文档</span>
             </Button>
           )}
+          <Button
+            size="sm"
+            className="bg-accent text-accent-foreground hover:bg-accent/90"
+            onClick={() => void saveDocuments(true)}
+            disabled={!hasText || saving}
+          >
+            {saving ? <Loader2 className={styles.spinner} /> : <ArrowRight className="size-3.5" />}
+            保存并继续切块
+          </Button>
           <input
             ref={fileInputRef}
             type="file"
@@ -1125,16 +1292,27 @@ export function DataGovernancePanel() {
           />
         </div>
       </header>
-      <div className={styles.workspace} data-mobile-reader={mobileReader}>
+      {datasetsQuery.error && (
+        <div role="alert" className={styles.inlineError}>
+          {formatApiError(datasetsQuery.error, '加载数据集失败')}
+        </div>
+      )}
+      {!directoryOpen && libraryFeedback}
+      <WorkbenchPanelDialog
+        open={directoryOpen}
+        onOpenChange={handleDirectoryOpenChange}
+        title="文档目录"
+        className={styles.directoryDialog}
+      >
         <aside className={styles.queue} data-governance-queue aria-label="文档队列">
           <div className={styles.queueHeading}>
-            <h2>文档目录</h2>
+            <h2>当前范围</h2>
             <span className={styles.count}>{visibleFiles.length}</span>
             <div className={styles.queueActions}>
               <Button
                 variant="ghost"
                 size="icon"
-                className="size-7"
+                className="size-11 sm:size-9"
                 aria-label="批量选择切块文档"
                 aria-pressed={batchMode}
                 onClick={() => {
@@ -1147,28 +1325,6 @@ export function DataGovernancePanel() {
             </div>
           </div>
           <div className={styles.queueFilters}>
-            <Select
-              value={selectedDatasetId || ALL_DATASETS_VALUE}
-              onValueChange={handleDatasetScopeChange}
-              disabled={uploading || saving}
-            >
-              <SelectTrigger className={styles.scope} aria-label="数据集范围">
-                <SelectValue placeholder="全部数据集" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={ALL_DATASETS_VALUE}>全部数据集</SelectItem>
-                {availableDatasets.map((dataset) => (
-                  <SelectItem key={dataset.id} value={dataset.id}>
-                    {dataset.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {datasetsQuery.error ? (
-              <p role="alert" className="break-words text-xs text-destructive">
-                {formatApiError(datasetsQuery.error, '加载数据集失败')}
-              </p>
-            ) : null}
             <div className={styles.search}>
               <Search />
               <input
@@ -1192,27 +1348,7 @@ export function DataGovernancePanel() {
             <span>文件</span>
             <span>{queueFiles.length}</span>
           </div>
-          {loadError !== undefined && (
-            <div className={styles.inlineError} role="alert">
-              <span>本地文档记录读取失败：{formatApiError(loadError, '无法读取文档目录')}</span>
-              <Button size="sm" variant="ghost" onClick={() => void useParsedFiles.persist.rehydrate()}>
-                重试读取文档
-              </Button>
-            </div>
-          )}
-          {documentSyncError !== null && (
-            <div className={styles.inlineError} role="alert">
-              <span>队列加载失败</span>
-              <Button
-                size="sm"
-                variant="ghost"
-                disabled={documentSyncQuery.isFetching}
-                onClick={() => void documentSyncQuery.refetch()}
-              >
-                重试
-              </Button>
-            </div>
-          )}
+          {directoryOpen && libraryFeedback}
           <div className={styles.queueScroll}>
             {isLibraryLoading ? (
               <div className={styles.emptySmall} role="status">
@@ -1245,10 +1381,6 @@ export function DataGovernancePanel() {
                       type="button"
                       className={styles.queueItem}
                       disabled={saving}
-                      ref={(node) => {
-                        if (node) queueItemRefs.current.set(file.id, node)
-                        else queueItemRefs.current.delete(file.id)
-                      }}
                       aria-current={selectedFileId === file.id}
                       data-governance-file={file.id}
                       onClick={() => handleSelectFile(file.id)}
@@ -1299,302 +1431,422 @@ export function DataGovernancePanel() {
               <>
                 <span>已保存</span>
                 <span>
-                  {queueFiles.filter((file) => statusFor(file).id === 'done').length} / {queueFiles.length} 份
+                  {
+                    queueFiles.filter(
+                      (file) =>
+                        !governanceStates[file.id]?.isModified &&
+                        (file.governanceStatus === 'ready' ||
+                          file.governanceStatus === 'submitted' ||
+                          file.chunkStatus === 'ready' ||
+                          file.chunkStatus === 'submitted'),
+                    ).length
+                  }{' '}
+                  / {queueFiles.length} 份
                 </span>
               </>
             )}
           </div>
         </aside>
+      </WorkbenchPanelDialog>
+      <div className={styles.workspace}>
         <main className={styles.reader} data-governance-reader aria-label="文档治理工作区">
-          {selectedFile && governanceState ? (
-            <>
-              <div className={styles.mobileDocumentHeading}>
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  className="size-8"
-                  aria-label="返回文档队列"
-                  onClick={returnToQueue}
-                >
-                  <ArrowLeft className="size-4" />
-                </Button>
-                <strong title={selectedFile.filename}>{selectedFile.filename}</strong>
+          <div className={styles.paneSwitcher} aria-label="工作区视图">
+            <button
+              type="button"
+              aria-pressed={mobilePane === 'document'}
+              onClick={() => setMobilePane('document')}
+            >
+              <FileText className="size-4" />
+              正文
+            </button>
+            <button
+              type="button"
+              aria-pressed={mobilePane === 'tools'}
+              onClick={() => {
+                setMobilePane('tools')
+                setToolsOpen(true)
+              }}
+            >
+              <ListChecks className="size-4" />
+              治理工具
+            </button>
+          </div>
+          <div className={styles.reviewColumns} data-tools-open={toolsOpen} data-mobile-pane={mobilePane}>
+            <section className={styles.documentPane} aria-label="文档正文">
+              <div className={styles.documentToolbar}>
+                <h2>
+                  <FileText />
+                  {selectedFile && governanceState ? '文档预览与编辑' : '文档治理'}
+                </h2>
+                {selectedFile && governanceState ? (
+                  <div className={styles.viewActions} aria-label="正文显示方式">
+                    <button
+                      type="button"
+                      aria-pressed={viewMode === 'preview'}
+                      onClick={() => setViewMode('preview')}
+                    >
+                      预览
+                    </button>
+                    <button
+                      type="button"
+                      aria-pressed={viewMode === 'original'}
+                      onClick={() => setViewMode('original')}
+                    >
+                      原文
+                    </button>
+                    <button
+                      type="button"
+                      disabled={!canUseContent || saving}
+                      aria-pressed={viewMode === 'edit'}
+                      onClick={() => setViewMode('edit')}
+                    >
+                      编辑
+                    </button>
+                    {viewMode !== 'edit' && (
+                      <button
+                        type="button"
+                        aria-pressed={previewFormat === 'markdown'}
+                        onClick={() => setPreviewFormat((value) => (value === 'rendered' ? 'markdown' : 'rendered'))}
+                      >
+                        Markdown
+                      </button>
+                    )}
+                  </div>
+                ) : null}
                 {documentActions}
               </div>
-              <div className={styles.reviewColumns} data-tools-open={toolsOpen}>
-                <section className={styles.documentPane} aria-label="文档正文">
-                  <div className={styles.fileHeading}>
-                    <span className={styles.fileIcon}>{getFileIcon(selectedFile.filename, 'size-6')}</span>
-                    <div className={styles.fileIdentity}>
-                      <div className={styles.fileTitle}>
-                        <h2 title={selectedFile.filename}>{selectedFile.filename}</h2>
-                        <span className={cn(styles.status, currentStatus?.tone)}>
-                          <i className={styles.dot} aria-hidden />
-                          {currentStatus?.label}
-                        </span>
-                      </div>
-                      <div className={styles.fileMeta}>
-                        <span>
-                          {selectedFile.datasetName ||
-                            (selectedFile.source === 'knowledge_base' ? '知识库' : '解析文档')}
-                        </span>
-                        <span>{formatFileSize(selectedFile.fileSize)}</span>
-                        {canUseContent && <span>{governanceState.cleanedContent.length.toLocaleString()} 字</span>}
-                      </div>
-                    </div>
-                    {documentActions}
-                  </div>
-                  <div className={styles.readerScroll} ref={contentScrollRef}>
-                    {loadingContent ? (
-                      <div className={styles.empty} role="status">
+              <div
+                className={styles.readerScroll}
+                data-empty={!selectedFile || !governanceState}
+                ref={contentScrollRef}
+              >
+                {selectedFile && governanceState ? (
+                  loadingContent ? (
+                    <div className={styles.emptyStage} role="status">
+                      <div className={styles.emptyStageHero}>
                         <Loader2 className={styles.spinner} />
                         <p>正在加载正文…</p>
                       </div>
-                    ) : contentError ? (
-                      <div className={styles.empty} role="alert">
-                        <AlertTriangle />
+                    </div>
+                  ) : contentError ? (
+                    <div className={styles.emptyStage} role="alert">
+                      <div className={styles.emptyStageHero}>
+                        <AlertTriangle className={styles.emptyPaperIcon} />
                         <h3>正文加载失败</h3>
                         <p>{formatApiError(contentQuery.error, '请确认文档已经解析，再重试。')}</p>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          disabled={contentQuery.isFetching}
-                          onClick={() => void contentQuery.refetch()}
-                        >
-                          重新加载正文
-                        </Button>
-                      </div>
-                    ) : (
-                      <>
-                        <div className={styles.documentToolbar}>
-                          <span>
-                            <FileText />
-                            {viewMode === 'original' ? '原文' : viewMode === 'edit' ? '编辑 Markdown' : '正文预览'}
-                          </span>
-                          <div className={styles.viewActions} aria-label="正文显示方式">
-                            <button
-                              type="button"
-                              aria-pressed={viewMode === 'preview'}
-                              onClick={() => setViewMode('preview')}
-                            >
-                              预览
-                            </button>
-                            <button
-                              type="button"
-                              aria-pressed={viewMode === 'original'}
-                              onClick={() => setViewMode('original')}
-                            >
-                              原文
-                            </button>
-                            <button
-                              type="button"
-                              disabled={saving}
-                              aria-pressed={viewMode === 'edit'}
-                              onClick={() => setViewMode('edit')}
-                            >
-                              编辑
-                            </button>
-                            {viewMode !== 'edit' && (
-                              <button
-                                type="button"
-                                aria-pressed={previewFormat === 'markdown'}
-                                onClick={() =>
-                                  setPreviewFormat((value) => (value === 'rendered' ? 'markdown' : 'rendered'))
-                                }
-                              >
-                                Markdown
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                        <div className={styles.document} data-governance-selection-root="true" data-governance-document>
-                          {viewMode === 'edit' ? (
-                            <textarea
-                              ref={editorRef}
-                              aria-label="编辑文档正文"
-                              value={displayContent}
-                              onChange={(event) => handleManualEdit(event.target.value)}
-                              disabled={saving}
-                              className={styles.editor}
-                              spellCheck={false}
-                            />
-                          ) : !displayContent ? (
-                            <div className={styles.empty}>
-                              <FileText />
-                              <h3>文档正文为空</h3>
-                              <p>可切换到编辑模式补充内容，或重新解析原文件。</p>
-                            </div>
-                          ) : previewFormat === 'markdown' ? (
-                            <pre className={styles.raw}>{displayContent}</pre>
-                          ) : (
-                            <MarkdownRenderer markdown={displayContent} />
-                          )}
-                        </div>
-                      </>
-                    )}
-                  </div>
-                </section>
-                <aside className={styles.toolbox} data-governance-tools aria-label="治理工具箱">
-                  <div className={styles.toolboxHeading}>
-                    <h2>治理工具</h2>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="size-8"
-                      aria-label={toolsOpen ? '收起治理工具' : '展开治理工具'}
-                      aria-expanded={toolsOpen}
-                      aria-controls="governance-tools-content"
-                      onClick={() => setToolsOpen((value) => !value)}
-                    >
-                      {toolsOpen ? <PanelRightClose className="size-4" /> : <PanelRightOpen className="size-4" />}
-                    </Button>
-                  </div>
-                  <div className={styles.toolboxContent} id="governance-tools-content" hidden={!toolsOpen}>
-                    <div className={styles.tabs} role="tablist" aria-label="治理工具">
-                      {governanceTabs.map((tab, index) => {
-                        const Icon = tab.icon
-                        return (
-                          <button
-                            type="button"
-                            key={tab.id}
-                            id={'governance-tab-' + tab.id}
-                            role="tab"
-                            data-tone={tab.color}
-                            aria-selected={activeTab === tab.id}
-                            aria-controls="governance-tool-panel"
-                            tabIndex={activeTab === tab.id ? 0 : -1}
-                            onClick={() => setActiveTab(tab.id)}
-                            onKeyDown={(event) => {
-                              if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
-                              event.preventDefault()
-                              const next =
-                                event.key === 'Home'
-                                  ? 0
-                                  : event.key === 'End'
-                                    ? governanceTabs.length - 1
-                                    : (index + (event.key === 'ArrowRight' ? 1 : -1) + governanceTabs.length) %
-                                      governanceTabs.length
-                              setActiveTab(governanceTabs[next].id)
-                              document.getElementById('governance-tab-' + governanceTabs[next].id)?.focus()
-                            }}
+                        <div className={styles.emptyStageActions}>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={contentQuery.isFetching}
+                            onClick={() => void contentQuery.refetch()}
                           >
-                            <Icon />
-                            {tab.label}
-                          </button>
-                        )
-                      })}
-                    </div>
-                    <div
-                      className={styles.toolboxScroll}
-                      ref={toolboxScrollRef}
-                      id="governance-tool-panel"
-                      role="tabpanel"
-                      aria-labelledby={'governance-tab-' + activeTab}
-                    >
-                      {canUseContent ? (
-                        <fieldset disabled={saving} className={styles.tools} key={selectedFile.id + ':' + activeTab}>
-                          {activeTab === 'quality' && (
-                            <QualityChecker
-                              content={governanceState.cleanedContent}
-                              initialScore={governanceState.qualityScore}
-                              initialIssues={governanceState.issues}
-                              checked={governanceState.qualityChecked}
-                              resetRevision={governanceState.resetRevision}
-                              disabled={saving || !hasText}
-                              onComplete={handleQualityCheck}
-                              activeIssueId={activeIssueId}
-                              onSelectIssue={(issue) => setActiveIssueId(issue.id)}
-                              onCleanRequest={() => setActiveTab('clean')}
-                            />
-                          )}
-                          {activeTab === 'clean' && (
-                            <DataCleaner
-                              key={selectedFile.id}
-                              content={governanceState.cleanedContent}
-                              resetRevision={governanceState.resetRevision}
-                              onClean={handleClean}
-                              disabled={saving || !hasText}
-                              onConfigure={() => setConfigOpen(true)}
-                            />
-                          )}
-                          {activeTab === 'annotate' && (
-                            <DataAnnotator
-                              content={governanceState.cleanedContent}
-                              annotations={governanceState.annotations}
-                              onAnnotate={handleAnnotate}
-                              onDocumentTags={handleDocumentTags}
-                            />
-                          )}
-                          {activeTab === 'classify' && (
-                            <DataClassifier
-                              content={governanceState.cleanedContent}
-                              initialCategory={governanceState.category}
-                              initialTags={governanceState.tags}
-                              onClassify={handleClassify}
-                            />
-                          )}
-                          {activeTab === 'quality' && activeIssue && (
-                            <div className={styles.issueDetail}>
-                              <p>{activeIssue.message}</p>
-                              {activeIssue.position && (
-                                <pre>
-                                  {governanceState.cleanedContent.slice(
-                                    Math.max(0, activeIssue.position.start - 45),
-                                    Math.min(governanceState.cleanedContent.length, activeIssue.position.end + 100),
-                                  )}
-                                </pre>
-                              )}
-                              <div className={styles.issueDetailActions}>
-                                {activeIssue.position && (
-                                  <Button size="sm" variant="ghost" onClick={() => locateIssue(activeIssue)}>
-                                    <Search className="size-3" />
-                                    定位到正文
-                                  </Button>
-                                )}
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  disabled={saving}
-                                  onClick={() => {
-                                    setGovernanceStates((prev) => ({
-                                      ...prev,
-                                      [selectedFile.id]: {
-                                        ...prev[selectedFile.id],
-                                        issues: prev[selectedFile.id].issues.filter(
-                                          (issue) => issue.id !== activeIssue.id,
-                                        ),
-                                        isModified: true,
-                                      },
-                                    }))
-                                    setActiveIssueId(null)
-                                  }}
-                                >
-                                  忽略此项
-                                </Button>
-                                <Button size="sm" variant="outline" onClick={() => setActiveTab('clean')}>
-                                  <Wrench className="size-3" />
-                                  清洗文档
-                                </Button>
-                              </div>
-                            </div>
-                          )}
-                        </fieldset>
-                      ) : (
-                        <div className={styles.emptySmall}>
-                          {loadingContent ? '正在加载正文…' : '正文加载后可使用治理工具'}
+                            重新加载正文
+                          </Button>
                         </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className={styles.document} data-governance-selection-root="true" data-governance-document>
+                      {viewMode === 'edit' ? (
+                        <textarea
+                          ref={editorRef}
+                          aria-label="编辑文档正文"
+                          value={displayContent}
+                          onChange={(event) => handleManualEdit(event.target.value)}
+                          disabled={saving}
+                          className={styles.editor}
+                          spellCheck={false}
+                        />
+                      ) : !displayContent ? (
+                        <div className={styles.empty}>
+                          <FileText />
+                          <h3>文档正文为空</h3>
+                          <p>可切换到编辑模式补充内容，或重新解析原文件。</p>
+                        </div>
+                      ) : previewFormat === 'markdown' ? (
+                        <pre className={styles.raw}>{displayContent}</pre>
+                      ) : (
+                        <MarkdownRenderer markdown={displayContent} />
                       )}
                     </div>
+                  )
+                ) : isLibraryLoading ? (
+                  <div className={styles.emptyStage} role="status">
+                    <div className={styles.emptyStageHero}>
+                      <Loader2 className={styles.spinner} />
+                      <h3>正在加载文档…</h3>
+                      <p>正在同步文档目录与已解析正文，请稍候。</p>
+                    </div>
                   </div>
-                </aside>
+                ) : loadError !== undefined ? (
+                  <div className={styles.emptyStage} role="alert">
+                    <div className={styles.emptyStageHero}>
+                      <AlertTriangle className={styles.emptyPaperIcon} />
+                      <h3>文档目录暂不可用</h3>
+                      <p>{formatApiError(loadError, '无法读取本地文档记录，可重试或前往文档解析。')}</p>
+                      <div className={styles.emptyStageActions}>
+                        <Button size="sm" variant="outline" onClick={() => void useParsedFiles.persist.rehydrate()}>
+                          重试读取文档
+                        </Button>
+                        <Button size="sm" variant="outline" onClick={() => router.push('/parsing')}>
+                          <ExternalLink className="size-4" />
+                          前往文档解析
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className={styles.emptyStage}>
+                    <div className={styles.emptyStageHero}>
+                      <div className={styles.emptyDocIllust} aria-hidden="true">
+                        <svg viewBox="0 0 180 124" fill="none">
+                          <path
+                            d="M14 104C44 86 136 86 166 104"
+                            stroke="currentColor"
+                            strokeOpacity="0.14"
+                            strokeWidth="1.2"
+                          />
+                          <rect
+                            x="56"
+                            y="14"
+                            width="68"
+                            height="84"
+                            rx="7"
+                            fill="hsl(var(--surface-2))"
+                            stroke="currentColor"
+                            strokeOpacity="0.18"
+                            strokeWidth="1.2"
+                          />
+                          <path d="M104 14V32H124" stroke="currentColor" strokeOpacity="0.18" strokeWidth="1.2" />
+                          <rect x="70" y="42" width="38" height="4.5" rx="2.25" fill="currentColor" fillOpacity="0.18" />
+                          <rect x="70" y="55" width="42" height="4.5" rx="2.25" fill="currentColor" fillOpacity="0.14" />
+                          <rect x="70" y="68" width="28" height="4.5" rx="2.25" fill="currentColor" fillOpacity="0.12" />
+                        </svg>
+                      </div>
+                      <h3>暂无待治理文档</h3>
+                      <p>选择文档后，即可开始质量检测、规则清洗与标签归档流程</p>
+                      <div className={styles.emptyStageActions}>
+                        <Button
+                          size="sm"
+                          className={styles.emptyPrimaryAction}
+                          onClick={() => setDirectoryOpen(true)}
+                        >
+                          <FolderOpen className="size-4" />
+                          打开文档目录
+                        </Button>
+                        <Button size="sm" variant="outline" onClick={() => router.push('/parsing')}>
+                          <ExternalLink className="size-4" />
+                          前往文档解析
+                        </Button>
+                      </div>
+                    </div>
+                    <div className={styles.emptyDeliverables} aria-label="治理产出说明">
+                      <div>
+                        <BarChart3 className="size-4" aria-hidden="true" />
+                        <span>质量报告</span>
+                      </div>
+                      <div>
+                        <Layers className="size-4" aria-hidden="true" />
+                        <span>规则差异</span>
+                      </div>
+                      <div>
+                        <Tag className="size-4" aria-hidden="true" />
+                        <span>标签与分类</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
-              <FeedbackToast
-                type="error"
-                message={saveError ? `保存失败：${saveError}。修改内容已保留。` : null}
-                id="governance-save-feedback"
-              />
-              <footer className={styles.footer}>
-                <span className={styles.saveState} role="status">
+            </section>
+            <aside className={styles.toolbox} data-governance-tools aria-label="治理工具箱">
+              <div className={styles.toolboxHeading}>
+                <h2>
+                  <ListChecks className="size-4" />
+                  治理工作台
+                </h2>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="size-11 sm:size-9"
+                  aria-label={toolsOpen ? '收起治理工具' : '展开治理工具'}
+                  aria-expanded={toolsOpen}
+                  aria-controls="governance-tools-content"
+                  onClick={() => {
+                    setToolsOpen((value) => !value)
+                    setMobilePane('document')
+                  }}
+                >
+                  {toolsOpen ? <PanelRightClose className="size-4" /> : <PanelRightOpen className="size-4" />}
+                </Button>
+              </div>
+              <div className={styles.toolboxContent} id="governance-tools-content" hidden={!toolsOpen}>
+                <div className={styles.tabs} role="tablist" aria-label="治理工具">
+                  {governanceTabs.map((tab, index) => {
+                    const Icon = tab.icon
+                    return (
+                      <button
+                        type="button"
+                        key={tab.id}
+                        id={'governance-tab-' + tab.id}
+                        role="tab"
+                        data-tone={tab.color}
+                        aria-selected={activeTab === tab.id}
+                        aria-controls="governance-tool-panel"
+                        tabIndex={activeTab === tab.id ? 0 : -1}
+                        onClick={() => setActiveTab(tab.id)}
+                        onKeyDown={(event) => {
+                          if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
+                          event.preventDefault()
+                          const next =
+                            event.key === 'Home'
+                              ? 0
+                              : event.key === 'End'
+                                ? governanceTabs.length - 1
+                                : (index + (event.key === 'ArrowRight' ? 1 : -1) + governanceTabs.length) %
+                                  governanceTabs.length
+                          setActiveTab(governanceTabs[next].id)
+                          document.getElementById('governance-tab-' + governanceTabs[next].id)?.focus()
+                        }}
+                      >
+                        <Icon />
+                        {tab.label}
+                      </button>
+                    )
+                  })}
+                </div>
+                <div
+                  className={styles.toolboxScroll}
+                  ref={toolboxScrollRef}
+                  id="governance-tool-panel"
+                  role="tabpanel"
+                  aria-labelledby={'governance-tab-' + activeTab}
+                >
+                  {selectedFile && governanceState ? (
+                    canUseContent ? (
+                      <fieldset disabled={saving} className={styles.tools} key={selectedFile.id + ':' + activeTab}>
+                        {activeTab === 'quality' && (
+                          <QualityChecker
+                            content={governanceState.cleanedContent}
+                            initialScore={governanceState.qualityScore}
+                            initialIssues={governanceState.issues}
+                            checked={governanceState.qualityChecked}
+                            resetRevision={governanceState.resetRevision}
+                            disabled={saving || !hasText}
+                            onComplete={handleQualityCheck}
+                            activeIssueId={activeIssueId}
+                            onSelectIssue={(issue) => setActiveIssueId(issue.id)}
+                            onLocateIssue={locateIssue}
+                            onIgnoreIssue={ignoreIssue}
+                            onCleanRequest={() => setActiveTab('clean')}
+                            scanButtonRef={qualityScanRef}
+                            onScanningChange={setQualityScanning}
+                          />
+                        )}
+                        {activeTab === 'clean' && (
+                          <DataCleaner
+                            key={selectedFile.id}
+                            content={governanceState.cleanedContent}
+                            resetRevision={governanceState.resetRevision}
+                            onClean={handleClean}
+                            disabled={saving || !hasText}
+                            onConfigure={() => setConfigOpen(true)}
+                          />
+                        )}
+                        {activeTab === 'annotate' && (
+                          <DataAnnotator
+                            content={governanceState.cleanedContent}
+                            annotations={governanceState.annotations}
+                            onAnnotate={handleAnnotate}
+                            onDocumentTags={handleDocumentTags}
+                          />
+                        )}
+                        {activeTab === 'classify' && (
+                          <DataClassifier
+                            content={governanceState.cleanedContent}
+                            initialCategory={governanceState.category}
+                            initialTags={governanceState.tags}
+                            onClassify={handleClassify}
+                          />
+                        )}
+                      </fieldset>
+                    ) : (
+                      <div className={styles.emptySmall}>
+                        {loadingContent ? '正在加载正文…' : '正文加载后可使用治理工具'}
+                      </div>
+                    )
+                  ) : (
+                    <div className={styles.tools} key={'empty:' + activeTab}>
+                      {activeTab === 'quality' && (
+                        <>
+                          <div className={styles.standbyCard}>
+                            <div className={styles.standbyRing} aria-hidden="true">
+                              <svg viewBox="0 0 64 64">
+                                <circle className={styles.standbyRingTrack} cx="32" cy="32" r="24" />
+                                <circle className={styles.standbyRingArc} cx="32" cy="32" r="24" />
+                              </svg>
+                            </div>
+                            <strong>等待文档</strong>
+                            <p>请先选择已解析文档或前往文档解析，完成后将在此进行质量体检与治理</p>
+                          </div>
+                          <section className={styles.standbyRules} aria-label="清洗规则快捷开关">
+                            <div className={styles.standbyRulesHeader}>
+                              <h4>
+                                <SlidersHorizontal className="size-3.5" aria-hidden="true" />
+                                清洗规则
+                              </h4>
+                              <Button size="sm" variant="ghost" onClick={() => setConfigOpen(true)}>
+                                全部配置
+                              </Button>
+                            </div>
+                            <div className={styles.standbyRuleList}>
+                              {STANDBY_CLEANING_RULES.map((rule) => {
+                                const RuleIcon = rule.icon
+                                const checked = options[rule.key] === true
+                                return (
+                                  <label key={rule.key} className={styles.standbyRuleRow}>
+                                    <RuleIcon className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                                    <span className={styles.standbyRuleCopy}>
+                                      <strong>{rule.title}</strong>
+                                      <small>{rule.description}</small>
+                                    </span>
+                                    <input
+                                      type="checkbox"
+                                      checked={checked}
+                                      onChange={(event) => {
+                                        setEnabled(true)
+                                        updateOption(rule.key, event.target.checked)
+                                      }}
+                                    />
+                                  </label>
+                                )
+                              })}
+                            </div>
+                          </section>
+                        </>
+                      )}
+                      {activeTab !== 'quality' && (
+                        <GovernanceEmptyPresets
+                          tab={activeTab}
+                          onOpenConfig={() => setConfigOpen(true)}
+                          onOpenDirectory={() => setDirectoryOpen(true)}
+                        />
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </aside>
+          </div>
+          <FeedbackToast
+            type="error"
+            message={saveError ? `保存失败：${saveError}。修改内容已保留。` : null}
+            id="governance-save-feedback"
+          />
+          <footer className={styles.footer}>
+            <span className={styles.saveState} role="status">
+              {selectedFile && governanceState ? (
+                <>
                   {saving || loadingContent ? (
                     <Loader2 className={styles.spinner} />
                   ) : contentError ? (
@@ -1605,45 +1857,66 @@ export function DataGovernancePanel() {
                     <Check className="size-3.5" />
                   )}
                   {saveStateText}
-                </span>
-                <div className={styles.footerActions}>
-                  <Button size="sm" variant="ghost" onClick={nextFile} disabled={queueFiles.length < 2 || saving}>
-                    下一份
-                    <ChevronRight className="size-3.5" />
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => void saveDocuments(false)}
-                    disabled={!canUseContent || saving}
+                </>
+              ) : (
+                <>
+                  <span className={cn(styles.dot, styles.success)} />
+                  {isLibraryLoading ? '正在同步文档队列…' : '就绪 · 暂无文档，请选择文档并开始治理'}
+                </>
+              )}
+            </span>
+            <div className={styles.footerMeta}>
+              {selectedFile && governanceState ? (
+                <>
+                  <span>文件大小 {formatFileSize(selectedFile.fileSize)}</span>
+                  {canUseContent && (
+                    <>
+                      <span>字数 {governanceState.cleanedContent.length.toLocaleString()}</span>
+                      <span>
+                        段落数 {governanceState.cleanedContent.split(/\n\s*\n/).filter((value) => value.trim()).length}
+                      </span>
+                    </>
+                  )}
+                  <span
+                    title={
+                      selectedFile.datasetName || (selectedFile.source === 'knowledge_base' ? '知识库' : '解析文档')
+                    }
                   >
-                    <Save className="size-3.5" />
-                    保存
-                  </Button>
-                  <Button size="sm" onClick={() => void saveDocuments(true)} disabled={!hasText || saving}>
-                    保存并继续切块
-                    <ArrowRight className="size-3.5" />
-                  </Button>
-                </div>
-              </footer>
-            </>
-          ) : (
-            <div className={styles.empty}>
-              <FileSearch />
-              <h2>
-                {loadError !== undefined
-                  ? '文档目录暂不可用'
-                  : isLibraryLoading
-                    ? '正在加载文档…'
-                    : '选择需要治理的文档'}
-              </h2>
-              <p>打开队列里的文档，或添加文档后检查和清洗。</p>
-              <Button size="sm" variant="outline" onClick={() => fileInputRef.current?.click()} disabled={uploading}>
-                <Plus className="size-4" />
-                添加文档
+                    {selectedFile.datasetName || (selectedFile.source === 'knowledge_base' ? '知识库' : '解析文档')}
+                  </span>
+                </>
+              ) : (
+                <span>当前范围 {queueFiles.length} 份文档</span>
+              )}
+            </div>
+            <div className={styles.footerActions}>
+              {selectedFile && governanceState && activeTab === 'quality' && toolsOpen && governanceState.qualityChecked && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  aria-label="重新检测当前文档"
+                  disabled={!hasText || saving || qualityScanning}
+                  onClick={() => qualityScanRef.current?.click()}
+                >
+                  <RotateCcw className="size-3.5" />
+                  重新检测
+                </Button>
+              )}
+              <Button size="sm" variant="ghost" onClick={nextFile} disabled={!selectedFile || queueFiles.length < 2 || saving}>
+                下一份
+                <ChevronRight className="size-3.5" />
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => void saveDocuments(false)}
+                disabled={!selectedFile || !canUseContent || saving}
+              >
+                <Save className="size-3.5" />
+                保存
               </Button>
             </div>
-          )}
+          </footer>
         </main>
       </div>
       <Sheet open={configOpen} onOpenChange={setConfigOpen}>

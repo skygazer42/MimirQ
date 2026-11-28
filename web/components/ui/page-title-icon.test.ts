@@ -9,7 +9,10 @@ import { PAGE_TITLE_ICON_NAMES, PageTitleIcon } from './page-title-icon'
 describe('PageTitleIcon vector coverage', () => {
   it('renders every existing title name as a decorative, theme-colored vector', () => {
     const iconDirectory = path.resolve(__dirname, '../../public/page-title-icons')
-    const svgNames = fs.readdirSync(iconDirectory).filter((file) => file.endsWith('.svg')).map((file) => path.basename(file, '.svg'))
+    const svgNames = fs
+      .readdirSync(iconDirectory)
+      .filter((file) => file.endsWith('.svg'))
+      .map((file) => path.basename(file, '.svg'))
     expect([...PAGE_TITLE_ICON_NAMES].sort()).toEqual(svgNames.sort())
     for (const name of PAGE_TITLE_ICON_NAMES) {
       const rendered = renderToStaticMarkup(createElement(PageTitleIcon, { name }))

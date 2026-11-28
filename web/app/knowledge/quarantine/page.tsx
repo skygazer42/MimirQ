@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Download, Quarantine, RefreshCw } from '@/components/icons'
+import { Download, Ingestion, Quarantine, RefreshCw, Settings2 } from '@/components/icons'
 import { useSearchParams } from 'next/navigation'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
@@ -10,8 +10,10 @@ import { QuarantineTableWorkspace } from '@/components/knowledge/quarantine/quar
 import { QuarantineTuneDialog } from '@/components/knowledge/quarantine/quarantine-tune-dialog'
 import { Button } from '@/components/ui/button'
 import { WorkspaceNotice } from '@/components/ui/operational-workspace'
+import { SplitEmptyStudio } from '@/components/ui/split-empty-studio'
 import { Switch } from '@/components/ui/switch'
 import { cn, detachPromise } from '@/lib/utils'
+import { getDatasetDomainTone, type DomainTone } from '@/lib/dataset-domain-tone'
 import { documentApi } from '@/lib/api/documents'
 import { formatApiError, toApiErrorInfo } from '@/lib/api-errors'
 import { getAuthSessionRevision } from '@/lib/auth-storage'
@@ -20,7 +22,7 @@ import { downloadBlob } from '@/lib/download'
 import { useDatasets } from '@/hooks/use-datasets'
 import type { Document, DocumentPipelineOptions } from '@/types'
 import { useDocumentView } from '@/store/document-view'
-import { usePathname, useRouter } from '@/i18n/navigation'
+import { Link, usePathname, useRouter } from '@/i18n/navigation'
 import { DocumentViewerPanel } from '@/components/document-viewer-panel'
 import { IngestionDetailDialog } from '@/components/ingestion/ingestion-detail-dialog'
 import { QUARANTINE_PAGE_SIZE } from './constants'
@@ -49,8 +51,17 @@ export default function QuarantineQueuePage() {
   const demoMode = /(^|\/)demo(\/|$)/.test(pathname) && searchParams.get('demo') === '1'
   const datasetParam = searchParams.get('datasetId')
   const datasetFromQuery = datasetParam === null || datasetParam === '' ? 'all' : datasetParam
-  const { openDocument } = useDocumentView()
+  const { openDocument, isOpen: documentViewerOpen } = useDocumentView()
   const [autoRefresh, setAutoRefresh] = useState(true)
+  const [reviewRailOpen, setReviewRailOpen] = useState(true)
+  const [reviewSheetOpen, setReviewSheetOpen] = useState(false)
+  useEffect(() => {
+    setReviewRailOpen(localStorage.getItem('ragvia.quarantine.reviewOpen') !== 'false')
+  }, [])
+  const changeReviewRail = useCallback((open: boolean) => {
+    setReviewRailOpen(open)
+    localStorage.setItem('ragvia.quarantine.reviewOpen', String(open))
+  }, [])
   const [search, setSearch] = useState('')
   const [selectedReason, setSelectedReason] = useState('all')
   const [selectedDataset, setSelectedDataset] = useState(datasetFromQuery)
@@ -256,6 +267,10 @@ export default function QuarantineQueuePage() {
   const datasetLabelById = useMemo(
     () => Object.fromEntries(datasetOptions.map(({ id, label }) => [id, label])),
     [datasetOptions],
+  )
+  const datasetToneById = useMemo<Record<string, DomainTone>>(
+    () => Object.fromEntries(datasets.map((dataset) => [dataset.id, getDatasetDomainTone(dataset)])),
+    [datasets],
   )
 
   const sourceOptions = useMemo(
@@ -638,6 +653,19 @@ export default function QuarantineQueuePage() {
 
   const countsReady = demoMode || Boolean(data && failedData)
   const initialLoading = !demoMode && !countsReady && queueFetching && !documents.length
+  const showEmptyQueue =
+    countsReady &&
+    queueErrorMessage === null &&
+    datasetsError === null &&
+    documents.length === 0 &&
+    !hasActiveFilters &&
+    datasetFromQuery === 'all'
+
+  const headerViews = [
+    { id: 'all' as const, label: '全部', count: stats.total },
+    { id: 'pending' as const, label: '待复核', count: stats.unreviewed },
+    { id: 'reviewed' as const, label: '已复核', count: stats.reviewed },
+  ]
 
   return (
     <AppFrame rightPanel={<DocumentViewerPanel />} withDocumentViewerPadding>
@@ -647,6 +675,22 @@ export default function QuarantineQueuePage() {
             <Quarantine appearance="color" data-quarantine-title-mark="true" aria-hidden="true" />
             <h1>隔离队列</h1>
           </div>
+          {!showEmptyQueue ? (
+            <div className={styles.tabs} role="group" aria-label="复核状态">
+              {headerViews.map((view) => (
+                <button
+                  key={view.id}
+                  type="button"
+                  className={styles.tab}
+                  aria-pressed={reviewState === view.id}
+                  onClick={() => setReviewState(view.id)}
+                >
+                  {view.label}
+                  {countsReady && <span className={styles.tabCount}>{view.count}</span>}
+                </button>
+              ))}
+            </div>
+          ) : null}
           <div className={styles.headerActions}>
             {demoMode && (
               <Button size="sm" variant="ghost" onClick={handleExitDemoMode}>
@@ -661,6 +705,7 @@ export default function QuarantineQueuePage() {
               variant="ghost"
               className={styles.sync}
               aria-label="同步隔离队列"
+              title="同步隔离队列"
               disabled={queueFetching}
               onClick={() => {
                 if (!demoMode) detachPromise(refreshQueue({ notify: true }))
@@ -685,72 +730,149 @@ export default function QuarantineQueuePage() {
         </header>
         {!demoMode && datasetsError !== null ? (
           <WorkspaceNotice
+            placement="floating"
+            tone="warning"
+            title="数据集目录读取失败，隔离队列范围已保留"
+            error={datasetsError}
+            fallbackMessage="数据集目录读取失败，隔离队列范围已保留"
             retry={() => void refreshDatasets()}
             retryLabel="重新读取数据集目录"
             pending={datasetsFetching}
-          >
-            {formatApiError(datasetsError, '数据集目录读取失败，隔离队列范围已保留')}
-          </WorkspaceNotice>
+          />
         ) : null}
         {!demoMode && datasetsFetching && !datasetsLoading ? (
           <p role="status" className="text-sm text-muted-foreground">
             正在更新数据集目录，保留当前范围。
           </p>
         ) : null}
-        <QuarantineTableWorkspace
-          demoMode={demoMode}
-          dateFrom={dateFrom}
-          dateTo={dateTo}
-          datasetLabelById={datasetLabelById}
-          datasetOptions={datasetOptions}
-          datasetsLoading={datasetsLoading}
-          documentsCount={documents.length}
-          filteredCount={filtered.length}
-          hasActiveFilters={hasActiveFilters}
-          paginated={paginated}
-          queueFetching={queueFetching}
-          initialLoading={initialLoading}
-          queueError={queueErrorMessage}
-          countsReady={countsReady}
-          reviewCounts={stats}
-          severityCounts={severityCounts}
-          reviewState={reviewState}
-          safePage={safePage}
-          search={search}
-          selectedDataset={selectedDataset}
-          selectedId={selectedId}
-          selectedReason={selectedReason}
-          selectedSeverity={selectedSeverity}
-          selectedSource={selectedSource}
-          sortedReasons={sortedReasons}
-          sourceOptions={sourceOptions}
-          totalPages={totalPages}
-          reasonCounts={reasonCounts}
-          actingByDocumentId={actingByDocumentId}
-          actionError={actionError}
-          onDateFromChange={setDateFrom}
-          onDateToChange={setDateTo}
-          onDatasetChange={handleDatasetScopeChange}
-          onOpenDocument={openDocument}
-          onOpenReview={(docId) => setSelectedId((current) => (current === docId ? null : docId))}
-          onPageChange={setPage}
-          onReasonChange={setSelectedReason}
-          onRefresh={() => detachPromise(refreshQueue({ notify: true }))}
-          onResetFilters={resetFilters}
-          onReviewStateChange={setReviewState}
-          onSearchChange={setSearch}
-          onSeverityChange={setSelectedSeverity}
-          onSourceChange={setSelectedSource}
-          onRelease={handleRelease}
-          onRetry={handleRetry}
-          onTune={openTuneDialog}
-          onMarkReviewed={handleMarkReviewedOnly}
-          onDelete={handleDelete}
-          onShowDetails={(docId) => {
-            setDetailDocumentId(docId)
-            setDetailOpen(true)
-          }}
-        />
+        {showEmptyQueue ? (
+          <SplitEmptyStudio
+            dataAttributes={{
+              'data-quarantine-empty-studio': 'true',
+              'data-page-scroll-container': 'true',
+            }}
+            ariaLabel="隔离队列空状态"
+            illustration={
+              <svg width="84" height="84" viewBox="0 0 84 84" fill="none">
+                <path
+                  d="M42 12 66 21v19c0 16.5-10.2 27.6-24 32-13.8-4.4-24-15.5-24-32V21l24-9Z"
+                  fill="hsl(var(--surface-2))"
+                  stroke="hsl(var(--border))"
+                  strokeWidth="1.5"
+                  strokeLinejoin="round"
+                />
+                <path
+                  d="M31 35h22M31 44h16"
+                  stroke="hsl(var(--muted-foreground) / 0.45)"
+                  strokeWidth="2.4"
+                  strokeLinecap="round"
+                />
+                <circle cx="58" cy="56" r="11" fill="hsl(var(--card))" stroke="hsl(var(--border))" />
+                <path
+                  d="M53.5 56h9"
+                  stroke="hsl(var(--muted-foreground))"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            }
+            title="当前没有待复核文档"
+            description="当前没有进入隔离或解析失败队列的文档。文档触发隔离规则或解析异常后，会自动进入此队列供人工复核。"
+            actions={
+              <>
+                <Button asChild className="bg-accent text-accent-foreground hover:bg-accent/90">
+                  <Link href="/knowledge">查看知识库</Link>
+                </Button>
+                <Button asChild variant="outline">
+                  <Link href="/data-governance/profiles">管理治理配置</Link>
+                </Button>
+              </>
+            }
+            stepsHeading="质量门禁触发项"
+            steps={[
+              { index: '01', title: '仅含目录或大纲', description: '识别目录页与无正文文档并自动拦截待审' },
+              { index: '02', title: '信息密度偏低', description: '有效正文占比不足时隔离，避免噪声污染索引' },
+              { index: '03', title: '解析与入库异常', description: '保留现场与原文摘录，支持调参后放行重试' },
+            ]}
+            shortcutsHeading="常用入口"
+            shortcuts={[
+              {
+                key: 'profiles',
+                icon: <Settings2 />,
+                title: '治理配置',
+                description: '查看并调整文档清洗与质量门禁规则',
+                href: '/data-governance/profiles',
+              },
+              {
+                key: 'ingestion',
+                icon: <Ingestion />,
+                title: '入库管理',
+                description: '导入新文档或监控实时入库流水线',
+                href: '/knowledge/ingestion',
+              },
+            ]}
+          />
+        ) : (
+          <QuarantineTableWorkspace
+            demoMode={demoMode}
+            dateFrom={dateFrom}
+            dateTo={dateTo}
+            datasetLabelById={datasetLabelById}
+            datasetToneById={datasetToneById}
+            datasetOptions={datasetOptions}
+            datasetsLoading={datasetsLoading}
+            documentsCount={documents.length}
+            filteredCount={filtered.length}
+            hasActiveFilters={hasActiveFilters}
+            paginated={paginated}
+            queueFetching={queueFetching}
+            initialLoading={initialLoading}
+            queueError={queueErrorMessage}
+            countsReady={countsReady}
+            reviewCounts={stats}
+            severityCounts={severityCounts}
+            safePage={safePage}
+            search={search}
+            selectedDataset={selectedDataset}
+            selectedId={selectedId}
+            selectedReason={selectedReason}
+            selectedSeverity={selectedSeverity}
+            selectedSource={selectedSource}
+            sortedReasons={sortedReasons}
+            sourceOptions={sourceOptions}
+            totalPages={totalPages}
+            reasonCounts={reasonCounts}
+            actingByDocumentId={actingByDocumentId}
+            actionError={actionError}
+            documentViewerOpen={documentViewerOpen}
+            reviewRailOpen={reviewRailOpen}
+            reviewSheetOpen={reviewSheetOpen}
+            onReviewRailOpenChange={changeReviewRail}
+            onReviewSheetOpenChange={setReviewSheetOpen}
+            onDateFromChange={setDateFrom}
+            onDateToChange={setDateTo}
+            onDatasetChange={handleDatasetScopeChange}
+            onOpenDocument={openDocument}
+            onSelectDocument={setSelectedId}
+            onPageChange={setPage}
+            onReasonChange={setSelectedReason}
+            onRefresh={() => detachPromise(refreshQueue({ notify: true }))}
+            onResetFilters={resetFilters}
+            onSearchChange={setSearch}
+            onSeverityChange={setSelectedSeverity}
+            onSourceChange={setSelectedSource}
+            onRelease={handleRelease}
+            onRetry={handleRetry}
+            onTune={openTuneDialog}
+            onMarkReviewed={handleMarkReviewedOnly}
+            onDelete={handleDelete}
+            onShowDetails={(docId) => {
+              setDetailDocumentId(docId)
+              setDetailOpen(true)
+            }}
+          />
+        )}
       </div>
       <IngestionDetailDialog open={detailOpen} onOpenChange={setDetailOpen} documentId={detailDocumentId} />
       <QuarantineTuneDialog

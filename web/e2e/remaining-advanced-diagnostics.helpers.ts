@@ -69,6 +69,8 @@ export function diagnosticReport(
 
 export async function diagnosticsFixture(page: Page, theme: 'light' | 'dark' = 'light') {
   await remainingFixture(page, theme)
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.addInitScript(() => localStorage.removeItem('mimirq.themeColor'))
   const state = { fail: true, gate: null as Promise<void> | null, requests: [] as Record<string, unknown>[] }
   await page.route('**/api/v1/**', async (route) => {
     const url = new URL(route.request().url()),

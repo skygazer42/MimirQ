@@ -398,7 +398,7 @@ function DatasetCategoryTreeContent({
             <AlertDialogTitle>删除分类？</AlertDialogTitle>
             <AlertDialogDescription>
               {categoryToDelete?.name ? `将删除分类“${categoryToDelete.name}”。` : '将删除当前分类。'}{' '}
-              如果该分类下仍有子分类，后端会拒绝删除。
+              有子分类时，请先移走或删除子分类。
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

@@ -242,6 +242,15 @@ export async function installCommonApiMocks(page: Page, state: EnterpriseTelemet
       })
     }
 
+    if (pathname === '/api/v1/documents/folders' && method === 'GET') {
+      const total = state.uploaded ? 1 : 0
+      return fulfillJson(route, {
+        total_documents: total,
+        total_with_source_path: 0,
+        root: { name: '', path: '', depth: 0, documents: total, children: [] },
+      })
+    }
+
     if (pathname === '/api/v1/documents/stats' && method === 'GET') {
       const total = state.uploaded ? 1 : 0
       return fulfillJson(route, {

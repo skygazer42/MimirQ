@@ -397,7 +397,7 @@ const PIPELINE_TOGGLES: ToggleOptionItem[] = [
   {
     key: 'parse_fallback_enabled',
     label: '解析回退',
-    hint: '解析质量差时尝试其他后端（PDF）',
+    hint: 'PDF 解析效果不佳时可切换解析器。',
   },
   {
     key: 'persist_parsed_content',
@@ -668,8 +668,9 @@ export function PipelineOptionsPanel(props: Readonly<PipelineOptionsPanelProps>)
   )
   const toggleRowClass = formLayout
     ? styles.enabledRow
-    : 'flex items-center justify-between gap-3 border-b border-border/60 pb-4'
-  const indexPresetClass = 'border-b border-border/60 pb-4'
+    : 'flex items-center justify-between gap-3 border-b border-border/75 pb-4'
+  const IndexPresetContainer = formLayout ? 'details' : 'div'
+  const indexPresetClass = 'min-w-0 border-b border-border/75 pb-5'
   const jsonToolbarClass = cn(
     'flex items-center gap-2 border-b border-border/60 pb-3',
     compact ? 'justify-between' : 'justify-end',
@@ -697,7 +698,7 @@ export function PipelineOptionsPanel(props: Readonly<PipelineOptionsPanelProps>)
       )}
 
       {showIndexingControls && (
-        <details className={formLayout ? styles.preset : indexPresetClass} open={formLayout ? undefined : true}>
+        <IndexPresetContainer className={formLayout ? styles.preset : indexPresetClass}>
           {formLayout && (
             <summary>
               索引模式
@@ -706,9 +707,7 @@ export function PipelineOptionsPanel(props: Readonly<PipelineOptionsPanelProps>)
           )}
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="min-w-0">
-              <div className={cn('font-semibold tracking-[-0.01em] text-foreground/85', titleClasses)}>
-                索引模式（成本/质量）
-              </div>
+              <div className={cn('font-medium text-foreground', titleClasses)}>索引模式（成本/质量）</div>
               <p className={cn('mt-0.5 text-muted-foreground', descClasses)}>先预览改动再应用，也可逐项调整。</p>
             </div>
             <Select
@@ -728,7 +727,7 @@ export function PipelineOptionsPanel(props: Readonly<PipelineOptionsPanelProps>)
             >
               <SelectTrigger
                 aria-label="索引模式"
-                className="h-11 w-full shrink-0 bg-background text-[13px] shadow-none sm:h-9 sm:w-52"
+                className="h-11 w-full shrink-0 border-border bg-card text-[13px] font-normal shadow-none sm:h-9 sm:w-48"
               >
                 <SelectValue />
               </SelectTrigger>
@@ -801,7 +800,7 @@ export function PipelineOptionsPanel(props: Readonly<PipelineOptionsPanelProps>)
               </details>
             </div>
           ) : null}
-        </details>
+        </IndexPresetContainer>
       )}
 
       {showJsonToolbar && (
@@ -870,7 +869,7 @@ export function PipelineOptionsPanel(props: Readonly<PipelineOptionsPanelProps>)
         </div>
       )}
 
-      <div className="grid divide-y divide-border/60">
+      <div className="grid min-w-0 divide-y divide-border/75">
         {optionGroups.map((group) => {
           const Icon = group.icon
           return (
@@ -881,14 +880,14 @@ export function PipelineOptionsPanel(props: Readonly<PipelineOptionsPanelProps>)
                 !enabled && 'grayscale-[0.5] pointer-events-none',
               )}
             >
-              <div className={formLayout ? styles.groupTitle : 'mb-3 flex items-center gap-2'}>
-                <Icon className="size-4 shrink-0 text-muted-foreground" />
-                <span className={cn('font-medium text-foreground', titleClasses)}>{group.title}</span>
+              <div className={formLayout ? styles.groupTitle : 'mb-3 flex items-center gap-2 text-muted-foreground'}>
+                <Icon className="size-3.5 shrink-0 text-muted-foreground" />
+                <span className={formLayout ? undefined : 'text-xs font-medium leading-5'}>{group.title}</span>
               </div>
 
               <div
                 className={cn(
-                  formLayout ? styles.options : 'space-y-3',
+                  formLayout ? styles.options : 'space-y-4',
                   formLayout && group.title === '索引策略' && styles.paired,
                   formLayout && group.title === '知识图谱' && styles.graph,
                 )}
@@ -900,13 +899,13 @@ export function PipelineOptionsPanel(props: Readonly<PipelineOptionsPanelProps>)
                   return (
                     <div
                       key={item.key}
-                      className={formLayout ? styles.optionRow : 'flex items-center justify-between gap-3'}
+                      className={formLayout ? styles.optionRow : 'flex min-h-9 items-center justify-between gap-4'}
                     >
                       <div className="flex-1 min-w-0">
                         <div className={cn('font-medium text-foreground', titleClasses)}>{item.label}</div>
                         <p
                           className={cn(
-                            'text-muted-foreground',
+                            'mt-0.5 text-muted-foreground',
                             descClasses,
                             formLayout && group.title === '知识图谱' && 'sr-only',
                           )}
@@ -931,15 +930,15 @@ export function PipelineOptionsPanel(props: Readonly<PipelineOptionsPanelProps>)
                   <details className="group/details">
                     <summary
                       className={cn(
-                        'flex min-h-11 cursor-pointer list-none select-none items-center justify-between rounded-md text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:min-h-9',
+                        'flex min-h-11 cursor-pointer list-none select-none items-center justify-between gap-3 rounded-md font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:min-h-9 [&::-webkit-details-marker]:hidden',
                         descClasses,
                       )}
                     >
                       <span>高级治理参数</span>
-                      <ChevronDown className="size-3 transition-transform group-open/details:rotate-180" />
+                      <ChevronDown className="size-3.5 shrink-0 transition-transform group-open/details:rotate-180" />
                     </summary>
-                    <div className="space-y-4 border-l border-border/60 pl-3">
-                      <div className="space-y-2 pt-2">
+                    <div className="mt-2 space-y-4 border-t border-border/75 pt-4">
+                      <div className="space-y-3">
                         <div className="text-[13px] font-medium text-foreground">治理清洗</div>
                         <div className="space-y-3">
                           {GOVERNANCE_TOGGLES.map((item) => {
@@ -1264,8 +1263,7 @@ export function PipelineOptionsPanel(props: Readonly<PipelineOptionsPanelProps>)
                             </div>
                           ) : (
                             <div className="text-xs leading-5 text-muted-foreground">
-                              仅允许小型 JSON 对象（primitive
-                              values），后端会做同样的安全校验；显式参数将覆盖数据集/默认值
+                              只能填写字符串、数字、布尔值或空值。填写的参数会覆盖数据集默认值。
                             </div>
                           )}
                         </div>

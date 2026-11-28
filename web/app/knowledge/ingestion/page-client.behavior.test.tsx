@@ -42,6 +42,7 @@ const observabilityApiMock = vi.hoisted(() => ({
 vi.mock('next-intl', () => ({ useTranslations: () => (key: string) => key }))
 
 vi.mock('next/navigation', () => ({
+  usePathname: () => routeState.pathname,
   useSearchParams: () => {
     const search = routeState.search
     return React.useMemo(() => new URLSearchParams(search), [search])
@@ -356,5 +357,36 @@ describe('knowledge ingestion page behavior', () => {
     })
 
     act(() => root.unmount())
+  })
+
+  it('renders unified tab header and split standby workspace when no execution tasks exist', async () => {
+    routeState.search = 'mode=execution-monitor'
+    documentApiMock.list.mockResolvedValueOnce({ items: [] })
+
+    const { container, root } = renderPage()
+    try {
+      await act(async () => {
+        await vi.waitFor(() => expect(container.textContent).toContain('当前范围暂无执行任务'))
+      })
+
+      expect(container.textContent).toContain('入库管理')
+      expect(container.textContent).toContain('入库操作')
+      expect(container.textContent).toContain('执行监控')
+      expect(container.textContent).toContain('流水线阶段待命')
+      expect(container.textContent).toContain('运行概况')
+      expect(container.textContent).toContain('自动估算')
+
+      const goOperationButton = Array.from(container.querySelectorAll('button')).find((btn) =>
+        btn.textContent?.includes('前往入库操作'),
+      )
+      expect(goOperationButton).toBeDefined()
+      await act(async () => {
+        goOperationButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+        await Promise.resolve()
+      })
+      expect(routerMock.replace).toHaveBeenCalledWith('/knowledge/ingestion')
+    } finally {
+      act(() => root.unmount())
+    }
   })
 })

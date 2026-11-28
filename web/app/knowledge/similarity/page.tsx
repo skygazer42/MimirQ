@@ -9,7 +9,7 @@ const RagvizSimilarityWorkbench = dynamic(
   () => import('@/components/ragviz/similarity-workbench').then((mod) => mod.RagvizSimilarityWorkbench),
   {
     ssr: false,
-    loading: () => <PageLoading message="正在加载 Similarity Workbench..." srMessage="Loading similarity workbench" />,
+    loading: () => <PageLoading message="正在加载向量相似度诊断…" srMessage="正在加载向量相似度诊断" />,
   },
 )
 

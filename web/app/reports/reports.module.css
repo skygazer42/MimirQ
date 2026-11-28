@@ -1,4 +1,5 @@
 .workspace {
+  --report-gutter: max(28px, calc((100% - 1440px) / 2 + 28px));
   container-name: reports-workspace;
   container-type: inline-size;
   display: flex;
@@ -10,17 +11,49 @@
   font-family: var(--font-sans);
   background: hsl(var(--background));
   color: hsl(var(--foreground));
-  --report-warning: color-mix(in srgb, hsl(var(--warning)) 48%, hsl(var(--foreground)));
-  --report-danger: color-mix(in srgb, hsl(var(--destructive)) 75%, hsl(var(--foreground)));
+  --report-warning: hsl(var(--icon-code));
+  --report-danger: hsl(var(--icon-pdf));
+  --report-ink: var(--icon-neutral);
+}
+.workspace [data-tone='source'] {
+  --report-ink: var(--icon-source);
+}
+.workspace [data-tone='success'] {
+  --report-ink: var(--icon-governance);
+}
+.workspace [data-tone='analysis'] {
+  --report-ink: var(--icon-analysis);
+}
+.workspace [data-tone='danger'] {
+  --report-ink: var(--icon-pdf);
+}
+.workspace [data-tone='warning'] {
+  --report-ink: var(--icon-code);
+}
+.iconTray {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  flex: none;
+  border: 1px solid hsl(var(--report-ink) / 0.14);
+  border-radius: 7px;
+  background: color-mix(in srgb, hsl(var(--report-ink)) 8%, hsl(var(--card)));
+  color: hsl(var(--report-ink));
+}
+.iconTray svg {
+  width: 15px;
+  height: 15px;
 }
 .header {
   display: flex;
   align-items: center;
   gap: 18px;
-  min-height: 72px;
-  padding: 12px 28px;
+  min-height: 52px;
+  padding: 0 20px;
   border-bottom: 1px solid hsl(var(--border));
-  background: hsl(var(--muted) / 0.22);
+  background: hsl(var(--background));
   flex: none;
 }
 .heading {
@@ -34,9 +67,9 @@
 }
 .heading h1 {
   margin: 0;
-  font-size: 20px;
+  font-size: var(--workspace-title-size);
   line-height: 28px;
-  font-weight: 650;
+  font-weight: var(--workspace-title-weight);
 }
 .headerActions {
   display: flex;
@@ -45,7 +78,7 @@
   margin-left: auto;
 }
 .headerActions button {
-  height: 34px;
+  height: 32px;
   gap: 7px;
   font-size: 13px;
   border-radius: 6px;
@@ -59,14 +92,14 @@
   width: 12px;
 }
 .primary {
-  background: hsl(var(--foreground));
-  color: hsl(var(--background));
+  background: hsl(var(--accent));
+  color: hsl(var(--accent-foreground));
   transition:
     transform 150ms ease,
     opacity 150ms ease;
 }
 .primary:hover {
-  background: hsl(var(--foreground) / 0.88);
+  background: hsl(var(--accent) / 0.9);
 }
 .primary:active:not(:disabled) {
   transform: scale(0.98);
@@ -79,9 +112,9 @@
   align-items: center;
   gap: 18px;
   min-height: 60px;
-  padding: 8px 28px;
+  padding: 8px var(--report-gutter);
   border-bottom: 1px solid hsl(var(--border));
-  background: hsl(var(--muted) / 0.22);
+  background: hsl(var(--surface-2));
   flex: none;
   flex-wrap: wrap;
 }
@@ -92,8 +125,7 @@
   min-width: 0;
 }
 .scopeBar > label + label {
-  border-left: 1px solid hsl(var(--border));
-  padding-left: 17px;
+  padding-left: 8px;
 }
 .scopeBar > label > span {
   font-size: 13px;
@@ -101,12 +133,12 @@
   white-space: nowrap;
 }
 .scopeBar > label > button {
-  height: 32px;
-  border: 0;
-  border-radius: 4px;
-  padding: 0 4px 0 5px;
+  height: 36px;
+  border: 1px solid hsl(var(--border));
+  border-radius: 6px;
+  padding: 0 9px;
   gap: 8px;
-  background: transparent;
+  background: hsl(var(--card));
   box-shadow: none;
   font-size: 13px;
 }
@@ -168,6 +200,10 @@
   gap: 10px 12px;
   font-size: 13px;
   line-height: 23px;
+  padding: 12px;
+  border: 1px solid hsl(var(--border));
+  border-radius: 7px;
+  background: hsl(var(--surface-2));
 }
 .reportInfo dt,
 .findingDialog dt {
@@ -193,6 +229,26 @@
   height: 15px;
   width: 15px;
 }
+.exportMenu .exportIcon {
+  --report-ink: var(--icon-source);
+  height: 26px;
+  width: 26px;
+  padding: 5px;
+  border: 1px solid hsl(var(--report-ink) / 0.14);
+  border-radius: 6px;
+  background: color-mix(in srgb, hsl(var(--report-ink)) 8%, hsl(var(--card)));
+  color: hsl(var(--report-ink));
+}
+.exportMenu [data-format='audit'],
+.exportMenu [data-format='zip'] {
+  --report-ink: var(--icon-analysis);
+}
+.exportMenu [data-format='html'] {
+  --report-ink: var(--icon-knowledge);
+}
+.exportMenu [data-format='chart'] {
+  --report-ink: var(--icon-process);
+}
 .exportMenu [role='menuitemcheckbox'] {
   padding-left: 32px;
 }
@@ -204,6 +260,11 @@
   min-width: 0;
   min-height: 0;
 }
+.reportBody {
+  width: 100%;
+  max-width: 1440px;
+  margin-inline: auto;
+}
 .tabs {
   height: 47px;
   flex: none;
@@ -214,6 +275,7 @@
   border-bottom: 1px solid hsl(var(--border));
   overflow-x: auto;
   scrollbar-width: none;
+  background: transparent;
 }
 .tab {
   height: 47px;
@@ -225,9 +287,10 @@
 }
 .tab[data-state='active'] {
   background: transparent;
-  border-bottom-color: hsl(var(--foreground));
+  border-bottom-color: hsl(var(--accent));
   color: hsl(var(--foreground));
-  font-weight: 600;
+  font-weight: 500;
+  box-shadow: none;
 }
 .tabBody {
   margin: 0;
@@ -251,6 +314,7 @@
   flex: none;
   padding: 16px 0;
   border-bottom: 1px solid hsl(var(--border));
+  background: hsl(var(--surface-2));
 }
 .metrics dl {
   display: grid;
@@ -263,6 +327,9 @@
   border-left: 1px solid hsl(var(--border));
 }
 .metrics dt {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   font-size: 13px;
   line-height: 22px;
   color: hsl(var(--muted-foreground));
@@ -270,7 +337,7 @@
 .metrics dd {
   font-size: 28px;
   line-height: 40px;
-  font-weight: 650;
+  font-weight: 550;
   font-variant-numeric: tabular-nums;
   margin: 3px 0 0;
 }
@@ -300,8 +367,8 @@
   display: flex;
   width: 300px;
   max-width: 35%;
-  height: 7px;
-  border-radius: 3px;
+  height: 6px;
+  border-radius: 6px;
   overflow: hidden;
   flex: none;
 }
@@ -310,27 +377,27 @@
   height: 100%;
   border-right: 2px solid hsl(var(--background));
 }
-.statusBar .success,
-.statusLegend .success {
+.statusBar > .success,
+.statusLegend i.success {
   background: hsl(var(--success) / 0.65);
 }
-.statusBar .info,
-.statusLegend .info {
+.statusBar > .info,
+.statusLegend i.info {
   background: hsl(var(--info) / 0.65);
 }
-.statusBar .danger,
-.statusLegend .danger {
+.statusBar > .danger,
+.statusLegend i.danger {
   background: hsl(var(--destructive) / 0.6);
 }
-.statusBar .warning,
-.statusLegend .warning {
+.statusBar > .warning,
+.statusLegend i.warning {
   background: hsl(var(--warning) / 0.6);
 }
 .statusLegend {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 5px 22px;
+  gap: 5px 8px;
   margin-left: auto;
   font-size: 13px;
   color: hsl(var(--muted-foreground));
@@ -384,9 +451,12 @@
   flex-wrap: wrap;
 }
 .sectionHeading h2 {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   margin: 0;
   font-size: 14px;
-  font-weight: 600;
+  font-weight: 500;
   line-height: 24px;
 }
 .sectionHeading > small {
@@ -421,15 +491,15 @@
   line-height: 23px;
 }
 .coverageRow > i {
-  height: 4px;
-  border-radius: 2px;
+  height: 6px;
+  border-radius: 6px;
   background: hsl(var(--muted));
   overflow: hidden;
 }
 .coverageRow > i > i {
   display: block;
   height: 100%;
-  background: hsl(var(--muted-foreground) / 0.65);
+  background: hsl(var(--icon-source) / 0.7);
   border-radius: inherit;
 }
 .coverageRow strong {
@@ -445,12 +515,19 @@
   font-variant-numeric: tabular-nums;
 }
 .stateLabel,
-.level {
+.level,
+.semanticPill {
+  --tone: var(--icon-neutral);
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: 12px;
-  line-height: 23px;
+  padding: 0 6px;
+  border: 1px solid hsl(var(--tone) / 0.14);
+  border-radius: 5px;
+  background: color-mix(in srgb, hsl(var(--tone)) 8%, hsl(var(--card)));
+  color: hsl(var(--tone));
+  font-size: 11px;
+  line-height: 21px;
   white-space: nowrap;
 }
 .stateLabel svg,
@@ -460,19 +537,42 @@
   flex: none;
 }
 .green {
-  color: hsl(var(--success));
+  --tone: var(--icon-governance);
 }
 .amber,
 .level.warning {
-  color: var(--report-warning);
+  --tone: var(--icon-code);
 }
 .rose,
 .level.error {
-  color: var(--report-danger);
+  --tone: var(--icon-pdf);
 }
 .slate,
 .level.info {
-  color: hsl(var(--muted-foreground));
+  --tone: var(--icon-neutral);
+}
+.level.info,
+.semanticPill.info {
+  --tone: var(--icon-source);
+}
+.semanticPill.success {
+  --tone: var(--icon-governance);
+}
+.semanticPill.danger {
+  --tone: var(--icon-pdf);
+}
+.semanticPill.warning {
+  --tone: var(--icon-code);
+}
+.statusLegend .semanticPill {
+  display: inline-flex;
+  color: hsl(var(--tone));
+  font-size: 11px;
+  gap: 5px;
+}
+.statusLegend .semanticPill strong {
+  color: inherit;
+  font-size: inherit;
 }
 .localTable {
   min-width: 0;
@@ -505,7 +605,7 @@
 .auditTable thead th,
 .findingsTable thead th,
 .connectorTable thead th {
-  background: hsl(var(--muted) / 0.35);
+  background: hsl(var(--surface-2));
   font-size: 12px;
   font-weight: 500;
   color: hsl(var(--muted-foreground));
@@ -579,9 +679,12 @@
   flex-wrap: wrap;
 }
 .findingsHeading h2 {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   font-size: 14px;
   line-height: 24px;
-  font-weight: 600;
+  font-weight: 500;
   margin: 0;
 }
 .findingsHeading > small {
@@ -802,7 +905,7 @@
 }
 .gateDetails summary small {
   font-size: 13px;
-  color: hsl(var(--muted-foreground));
+  color: hsl(var(--tone));
   font-weight: 450;
 }
 .gateDetails dl {
@@ -1242,6 +1345,18 @@
   }
 }
 @media (max-width: 767px) {
+  .headerActions button,
+  .scopeBar > label > button,
+  .reportTime,
+  .findingsTable td:last-child > button,
+  .moreRows,
+  .quietLink,
+  .runWarningLink {
+    min-height: 44px;
+  }
+  .headerActions button:first-child {
+    min-width: 44px;
+  }
   .header {
     min-height: 64px;
     padding: 12px 16px 12px 60px;
@@ -1262,6 +1377,7 @@
     display: none;
   }
   .headerActions button {
+    min-width: 44px;
     font-size: 12px;
     padding: 0 9px;
   }
@@ -1340,6 +1456,131 @@
   .findingsTable thead th:nth-child(2) {
     background: color-mix(in srgb, hsl(var(--muted)) 35%, hsl(var(--card)));
     z-index: 3;
+  }
+}
+@container reports-workspace (max-width:560px) {
+  .header {
+    min-height: 60px;
+    padding-top: 8px;
+    padding-bottom: 8px;
+    gap: 8px;
+  }
+  .headerActions .primary {
+    width: 44px;
+    min-width: 44px;
+    padding: 0;
+  }
+  .scopeBar {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0 12px;
+    padding: 4px 16px;
+  }
+  .scopeBar > label > span {
+    display: none;
+  }
+  .scopeBar > label > button {
+    width: 100%;
+  }
+  .scopeBar .reportTime {
+    min-width: 0;
+    font-size: 11px;
+  }
+  .reportTime > span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .metrics {
+    padding: 12px 0;
+  }
+  .metrics dl {
+    gap: 10px 0;
+  }
+  .metrics dd {
+    line-height: 34px;
+  }
+  .metrics dl > div:first-child dd small {
+    display: none;
+  }
+  .processing {
+    gap: 6px;
+    padding: 10px 16px;
+  }
+  .analysisColumns > section {
+    border-top: 1px solid hsl(var(--border));
+  }
+  .analysisColumns > .auditPanel {
+    order: -1;
+    border-top: 0;
+  }
+  .analysisColumns .auditEmpty {
+    min-height: 0;
+    padding-block: 12px;
+  }
+  .findingsTable {
+    display: block;
+    min-width: 0;
+  }
+  .findingsTable colgroup {
+    display: none;
+  }
+  .findingsTable thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .findingsTable tbody {
+    display: block;
+  }
+  .findingsTable tbody tr {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-areas:
+      'rule rule action'
+      'level count action'
+      'description description description';
+    gap: 4px 12px;
+    height: auto;
+    padding: 12px 16px;
+    border-bottom: 1px solid hsl(var(--border));
+  }
+  .findingsTable tbody tr > *,
+  .findingsTable tbody td:first-child,
+  .findingsTable tbody td:last-child {
+    min-width: 0;
+    padding: 0;
+    border: 0;
+  }
+  .findingsTable tbody th:nth-child(2) {
+    grid-area: rule;
+    position: static;
+    box-shadow: none;
+  }
+  .findingsTable tbody td:first-child {
+    grid-area: level;
+  }
+  .findingsTable tbody .count {
+    grid-area: count;
+  }
+  .findingsTable tbody .count::before {
+    content: '命中 ';
+    font-weight: 450;
+  }
+  .findingsTable tbody .count::after {
+    content: ' 次';
+    font-weight: 450;
+  }
+  .findingsTable .findingDescription {
+    grid-area: description;
+    white-space: normal;
+  }
+  .findingsTable tbody td:last-child {
+    grid-area: action;
+    align-self: start;
   }
 }
 @keyframes report-enter {

@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useSyncExternalStore } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { FolderTree, Loader2, Pencil, RefreshCw, Search, X } from '@/components/icons'
+import { Loader2, Pencil, RefreshCw, Search, X } from '@/components/icons'
 import { toast } from 'sonner'
 
 import { Badge } from '@/components/ui/badge'
@@ -18,14 +18,14 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
-import { Panel } from '@/components/ui/panel'
 import { datasetApi, datasetCategoryApi } from '@/lib/api/datasets'
 import { formatApiError } from '@/lib/api-errors'
 import { getAuthSessionKey, subscribeAuthSession } from '@/lib/auth-storage'
 import { reportClientError } from '@/lib/client-logging'
 import { flattenDatasetCategoryTree } from '@/lib/dataset-categories'
+import { getCategoryDomainTone } from '@/lib/dataset-domain-tone'
 import { queryKeys } from '@/lib/query-keys'
-import { cn } from '@/lib/utils'
+import styles from './category-multi-select.module.css'
 
 function toggleCategoryId(selectedIds: readonly string[], categoryId: string): string[] {
   if (selectedIds.includes(categoryId)) return selectedIds.filter((id) => id !== categoryId)
@@ -112,13 +112,10 @@ export function DatasetCategoryMultiSelect({
   }
 
   return (
-    <Panel padding="lg" className={cn('rounded-3xl', className)}>
+    <section className={className} aria-label="数据集分类">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <div className="flex items-center gap-2">
-            <FolderTree className="h-4 w-4 text-muted-foreground" />
-            <div className="text-sm font-semibold text-foreground">分类</div>
-          </div>
+          <h3 className="text-[13px] font-semibold text-foreground">分类</h3>
           <div className="mt-2 flex flex-wrap gap-2">
             {(() => {
               if (loading) {
@@ -135,13 +132,13 @@ export function DatasetCategoryMultiSelect({
               if (visibleCategories.length > 0) {
                 return (
                   <>
-                    {visibleCategories.map((id) => (
-                      <Badge key={id} variant="outline" className="text-xs">
+                    {visibleCategories.map((id, index) => (
+                      <Badge key={id} variant="soft" className={styles.categoryBadge} data-tone={getCategoryDomainTone(nameById.get(id) ?? id, index)}>
                         {nameById.get(id) ?? id}
                       </Badge>
                     ))}
                     {remainingCategoryCount > 0 ? (
-                      <Badge variant="soft" className="text-xs">{`+${remainingCategoryCount}`}</Badge>
+                      <Badge variant="soft" className={styles.categoryBadge}>{`+${remainingCategoryCount}`}</Badge>
                     ) : null}
                   </>
                 )
@@ -156,11 +153,11 @@ export function DatasetCategoryMultiSelect({
           ) : null}
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1">
           <Button
             variant="ghost"
-            size="sm"
-            className="h-9 px-3"
+            size="icon"
+            className="size-11 text-muted-foreground sm:size-8"
             onClick={() => {
               void Promise.all([categoryTreeQuery.refetch(), assignedCategoriesQuery.refetch()])
             }}
@@ -176,7 +173,12 @@ export function DatasetCategoryMultiSelect({
           </Button>
           <Dialog open={open} onOpenChange={changeOpen}>
             <DialogTrigger asChild>
-              <Button variant="outline" size="sm" className="h-9 px-3 gap-2" disabled={!canEdit}>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-11 gap-1.5 px-2 text-xs text-accent hover:bg-accent/10 hover:text-accent sm:h-8"
+                disabled={!canEdit}
+              >
                 <Pencil className="h-4 w-4" />
                 编辑
               </Button>
@@ -184,7 +186,7 @@ export function DatasetCategoryMultiSelect({
             <DialogContent className="max-w-xl">
               <DialogHeader>
                 <DialogTitle>编辑分类</DialogTitle>
-                <DialogDescription>为该数据集选择一个或多个分类（用于侧边栏筛选与组织）。</DialogDescription>
+                <DialogDescription>选择此数据集所属的分类。</DialogDescription>
               </DialogHeader>
 
               <div className="space-y-3">
@@ -251,6 +253,6 @@ export function DatasetCategoryMultiSelect({
           </Dialog>
         </div>
       </div>
-    </Panel>
+    </section>
   )
 }

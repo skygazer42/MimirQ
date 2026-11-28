@@ -72,6 +72,14 @@ describe('member permissions boundaries', () => {
     expect(paginateDirectory(rows, 5, 20)).toMatchObject({ page: 1, pages: 1, total: 2, start: 1, end: 2 })
     expect(paginateDirectory([], 5, 20)).toMatchObject({ page: 1, pages: 1, start: 0, end: 0 })
   })
+  it('filters account status independently of role and search', () => {
+    const active = person(),
+      inactive = person({ id: 'inactive', user_id: 'old-account', role: 'viewer', is_active: false })
+    const rows = [active, inactive]
+    expect(filterMembers(rows, '', 'all', 'active', 'account-a')).toEqual([active])
+    expect(filterMembers(rows, 'old-account', 'viewer', 'inactive', 'account-a')).toEqual([inactive])
+    expect(filterMembers(rows, '', 'admin', 'inactive', 'account-a')).toEqual([])
+  })
   it('reads beyond the first 500 members', async () => {
     const all = Array.from({ length: 507 }, (_, index) => person({ id: `record-${index}`, user_id: `user-${index}` }))
     const calls: number[] = []

@@ -1,11 +1,12 @@
 'use client'
 
-import { Suspense, useSyncExternalStore } from 'react'
-import { Code, Copy, RefreshCw } from '@/components/icons'
+import { Suspense, useSyncExternalStore, type ReactNode } from 'react'
+import { Code, Copy, Cpu, MessageSquare, RefreshCw, TextCursorInput, Timer } from '@/components/icons'
 import { TenantPermissionGate } from '@/components/auth/tenant-permission-gate'
 import { AppFrame } from '@/components/app-frame'
 import { Button } from '@/components/ui/button'
 import { LoadingButton } from '@/components/ui/loading-button'
+import { WorkspaceNotice, WorkspaceNoticeStack } from '@/components/ui/operational-workspace'
 import { PageLoading } from '@/components/ui/page-loading'
 import {
   Dialog,
@@ -17,7 +18,6 @@ import {
 } from '@/components/ui/dialog'
 import { PageTitleIcon } from '@/components/ui/page-title-icon'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { formatApiError } from '@/lib/api-errors'
 import { getAuthSessionKey, subscribeAuthSession } from '@/lib/auth-storage'
 import { TENANT_PERMISSIONS } from '@/lib/tenant-permissions'
 import { cn } from '@/lib/utils'
@@ -97,6 +97,8 @@ function UsageOverview({ sessionKey }: Readonly<{ sessionKey: string }>) {
     (view === 'resources'
       ? costSnapshot === undefined && costQuery.isPending
       : incompleteEmptyAttribution && (summaryQuery.isPending || costQuery.isPending))
+  const enabledQuotas = quotas.filter((quota) => quota.enabled === true).length
+  const disabledQuotas = quotas.filter((quota) => quota.enabled === false).length
 
   return (
     <AppFrame>
@@ -107,25 +109,23 @@ function UsageOverview({ sessionKey }: Readonly<{ sessionKey: string }>) {
               <PageTitleIcon name="usage-quota" />
               <h1>用量／配额</h1>
             </div>
+            <div className={styles.windowPresets} role="group" aria-label="用量统计窗口">
+              {USAGE_WINDOW_DAYS.map((days) => (
+                <button
+                  key={days}
+                  type="button"
+                  aria-pressed={windowDays === days}
+                  onClick={() => replaceUsageLocation({ windowDays: days, page: 1 })}
+                >
+                  近 {days} 天
+                </button>
+              ))}
+            </div>
+            <span className={styles.window}>
+              {windowSource ? displayedWindow : tablePending ? '正在读取统计窗口…' : '统计窗口未取得'}
+            </span>
             <div className={styles.headerActions}>
-              <DialogTrigger asChild>
-                <Button variant="ghost" aria-label="查看原始配额" disabled={!hasQuotaData}>
-                  <Code />
-                  <span className={styles.actionLabel}>原始配额</span>
-                </Button>
-              </DialogTrigger>
-              <LoadingButton
-                variant="ghost"
-                aria-label="复制配额"
-                disabled={!hasQuotaData}
-                loading={copying}
-                onClick={() => {
-                  void copyQuota()
-                }}
-              >
-                <Copy />
-                <span className={styles.actionLabel}>复制配额</span>
-              </LoadingButton>
+              <span className={styles.tenant}>当前租户</span>
               <LoadingButton
                 variant="outline"
                 aria-label="刷新用量"
@@ -163,147 +163,187 @@ function UsageOverview({ sessionKey }: Readonly<{ sessionKey: string }>) {
               </DialogClose>
             </div>
           </DialogContent>
-        </Dialog>
-        <div className={styles.scrollArea}>
-          <div className={styles.scopeBar}>
-            <span>统计窗口</span>
-            <div className={styles.windowPresets} role="group" aria-label="用量统计窗口">
-              {USAGE_WINDOW_DAYS.map((days) => (
-                <button
-                  key={days}
-                  type="button"
-                  aria-pressed={windowDays === days}
-                  onClick={() => replaceUsageLocation({ windowDays: days, page: 1 })}
-                >
-                  近 {days} 天
-                </button>
-              ))}
-            </div>
-            <span className={styles.window}>
-              {windowSource
-                ? `近 ${windowSource.windowDays} 天 · ${displayedWindow}`
-                : tablePending
-                  ? '正在读取统计窗口…'
-                  : '统计窗口未取得'}
-            </span>
-            <span className={styles.tenant}>当前租户</span>
-          </div>
-          {summarySnapshot !== undefined && summarySnapshot.windowDays !== windowDays ? (
-            <p className={styles.resourceWindow} role="status">
-              助手用量仍显示近 {summarySnapshot.windowDays} 天的结果；当前选择为近 {windowDays} 天。
-            </p>
-          ) : null}
-          {showResourceWindow ? (
-            <p className={styles.resourceWindow}>
-              链路资源 · 近 {costSnapshot.windowDays} 天 · {resourceWindow}
-            </p>
-          ) : null}
-          {costSnapshot !== undefined && costSnapshot.windowDays !== windowDays ? (
-            <p className={styles.resourceWindow} role="status">
-              链路资源仍显示近 {costSnapshot.windowDays} 天的结果；当前选择为近 {windowDays} 天。
-            </p>
-          ) : null}
-          {errors.length ? (
-            <div className={styles.errors} aria-label="数据读取状态">
-              {errors.map((read) => (
-                <div key={read.label} role="alert">
-                  <span>
-                    <strong>{read.label}读取失败</strong> · {formatApiError(read.query.error, '请重试')}
-                    {read.hasResult ? '，显示上次读取结果' : null}
-                  </span>
-                  <Button
-                    variant="ghost"
-                    disabled={read.query.isFetching}
-                    onClick={() => {
-                      void retryRead(read)
-                    }}
-                  >
-                    重试{read.label}
-                  </Button>
-                </div>
-              ))}
-            </div>
-          ) : null}
-          <dl
-            className={styles.metrics}
-            aria-label="累计用量"
-            aria-busy={summaryQuery.isPending || costQuery.isPending}
-          >
-            <Metric
-              label="助手消息"
-              value={formatCount(summary?.total_assistant_messages)}
-              unit={summary ? '条' : undefined}
-            />
-            <Metric label="助手 token" value={formatCount(summary?.total_assistant_tokens)} />
-            <Metric label="向量查询 token" value={formatCount(cost?.total_embedding_query_tokens)} />
-            <Metric
-              label="每条助手消息平均检索耗时"
-              value={formatDuration(
-                averageRetrievalMs(cost?.total_retrieval_elapsed_sec, cost?.total_assistant_messages),
-              )}
-            />
-          </dl>
-          <QuotaSummary quotas={quotas} pending={quotaPending} />
-          <Tabs
-            value={view}
-            onValueChange={(view) => {
-              if (view === 'attribution' || view === 'resources' || view === 'quotas')
-                replaceUsageLocation({ view, page: 1 })
-            }}
-            className={styles.tabsRoot}
-          >
-            <TabsList aria-label="用量视图" className={styles.tabs}>
-              <TabsTrigger value="attribution" className={styles.tab}>
-                用量归因
-              </TabsTrigger>
-              <TabsTrigger value="resources" className={styles.tab}>
-                链路资源
-              </TabsTrigger>
-              <TabsTrigger value="quotas" className={styles.tab}>
-                配额状态
-              </TabsTrigger>
-            </TabsList>
-            <TabsContent value="attribution" className={styles.tabBody}>
-              <UsageTable
-                rows={rows}
-                mode="attribution"
-                page={page}
-                onPageChange={(page) => replaceUsageLocation({ page })}
-                pending={tablePending}
-                failed={tableFailed}
-                windowDays={attributionWindowDays}
-              />
-            </TabsContent>
-            <TabsContent value="resources" className={styles.tabBody}>
-              <dl className={styles.resourceMetrics} aria-label="链路资源汇总">
-                <Metric label="LLM 输入 token" value={formatCount(cost?.total_llm_prompt_tokens)} />
-                <Metric label="LLM 输出 token" value={formatCount(cost?.total_llm_completion_tokens)} />
-                <Metric label="LLM 合计 token" value={formatCount(cost?.total_llm_total_tokens)} />
-                <Metric label="向量查询字符" value={formatCount(cost?.total_embedding_query_chars)} />
+          <div className={styles.scrollArea}>
+            <div className={styles.mainPane}>
+              {summarySnapshot !== undefined && summarySnapshot.windowDays !== windowDays ? (
+                <p className={styles.resourceWindow} role="status">
+                  助手用量仍显示近 {summarySnapshot.windowDays} 天的结果；当前选择为近 {windowDays} 天。
+                </p>
+              ) : null}
+              {showResourceWindow ? (
+                <p className={styles.resourceWindow}>
+                  链路资源 · 近 {costSnapshot.windowDays} 天 · {resourceWindow}
+                </p>
+              ) : null}
+              {costSnapshot !== undefined && costSnapshot.windowDays !== windowDays ? (
+                <p className={styles.resourceWindow} role="status">
+                  链路资源仍显示近 {costSnapshot.windowDays} 天的结果；当前选择为近 {windowDays} 天。
+                </p>
+              ) : null}
+              {errors.length ? (
+                <WorkspaceNoticeStack ariaLabel="数据读取状态">
+                  {errors.map((read) => (
+                    <WorkspaceNotice
+                      key={read.label}
+                      tone={read.hasResult ? 'warning' : 'error'}
+                      title={`${read.label}读取失败${read.hasResult ? '，显示上次读取结果' : ''}`}
+                      error={read.query.error}
+                      fallbackMessage="请稍后重试"
+                      retry={() => {
+                        void retryRead(read)
+                      }}
+                      retryLabel={`重试${read.label}`}
+                      pending={read.query.isFetching}
+                    />
+                  ))}
+                </WorkspaceNoticeStack>
+              ) : null}
+              <dl
+                className={styles.metrics}
+                aria-label="累计用量"
+                aria-busy={summaryQuery.isPending || costQuery.isPending}
+              >
                 <Metric
-                  label="检索总耗时"
-                  value={formatDuration(cost === undefined ? undefined : cost.total_retrieval_elapsed_sec * 1000)}
+                  label="助手消息"
+                  value={formatCount(summary?.total_assistant_messages)}
+                  unit={summary ? '条' : undefined}
+                  icon={<MessageSquare />}
+                  tone="knowledge"
+                  description={summarySnapshot ? `近 ${summarySnapshot.windowDays} 天累计` : '窗口累计'}
                 />
                 <Metric
-                  label="重排总耗时"
-                  value={formatDuration(cost === undefined ? undefined : cost.total_rerank_elapsed_sec * 1000)}
+                  label="助手 token"
+                  value={formatCount(summary?.total_assistant_tokens)}
+                  icon={<Cpu />}
+                  tone="process"
+                  description="回答生成消耗"
+                />
+                <Metric
+                  label="向量查询 token"
+                  value={formatCount(cost?.total_embedding_query_tokens)}
+                  icon={<TextCursorInput />}
+                  tone="source"
+                  description="检索向量化消耗"
+                />
+                <Metric
+                  label="平均检索耗时"
+                  value={formatDuration(
+                    averageRetrievalMs(cost?.total_retrieval_elapsed_sec, cost?.total_assistant_messages),
+                  )}
+                  icon={<Timer />}
+                  tone="analysis"
+                  description="每条助手消息"
                 />
               </dl>
-              <UsageTable
-                rows={rows}
-                mode="resources"
-                page={page}
-                onPageChange={(page) => replaceUsageLocation({ page })}
-                pending={tablePending}
-                failed={tableFailed}
-                windowDays={costSnapshot === undefined ? windowDays : costSnapshot.windowDays}
-              />
-            </TabsContent>
-            <TabsContent value="quotas" className={styles.tabBody}>
-              <QuotaDetails quotas={quotas} pending={quotaPending} />
-            </TabsContent>
-          </Tabs>
-        </div>
+              <Tabs
+                value={view}
+                onValueChange={(view) => {
+                  if (view === 'attribution' || view === 'resources' || view === 'quotas')
+                    replaceUsageLocation({ view, page: 1 })
+                }}
+                className={styles.tabsRoot}
+              >
+                <div className={styles.detailHeader}>
+                  <TabsList aria-label="用量视图" className={styles.tabs}>
+                    <TabsTrigger value="attribution" className={styles.tab}>
+                      用量归因
+                    </TabsTrigger>
+                    <TabsTrigger value="resources" className={styles.tab}>
+                      链路资源
+                    </TabsTrigger>
+                    <TabsTrigger value="quotas" className={styles.tab}>
+                      配额状态
+                    </TabsTrigger>
+                  </TabsList>
+                  <span className={styles.detailHint}>
+                    {view === 'quotas' ? '各配额独立统计' : `按${view === 'resources' ? '模型' : '助手'} token 排序`}
+                  </span>
+                </div>
+                <TabsContent value="attribution" className={styles.tabBody}>
+                  <UsageTable
+                    rows={rows}
+                    mode="attribution"
+                    page={page}
+                    onPageChange={(page) => replaceUsageLocation({ page })}
+                    pending={tablePending}
+                    failed={tableFailed}
+                    windowDays={attributionWindowDays}
+                  />
+                </TabsContent>
+                <TabsContent value="resources" className={styles.tabBody}>
+                  <dl className={styles.resourceMetrics} aria-label="链路资源汇总">
+                    <Metric label="LLM 输入 token" value={formatCount(cost?.total_llm_prompt_tokens)} />
+                    <Metric label="LLM 输出 token" value={formatCount(cost?.total_llm_completion_tokens)} />
+                    <Metric label="LLM 合计 token" value={formatCount(cost?.total_llm_total_tokens)} />
+                    <Metric label="向量查询字符" value={formatCount(cost?.total_embedding_query_chars)} />
+                    <Metric
+                      label="检索总耗时"
+                      value={formatDuration(cost === undefined ? undefined : cost.total_retrieval_elapsed_sec * 1000)}
+                    />
+                    <Metric
+                      label="重排总耗时"
+                      value={formatDuration(cost === undefined ? undefined : cost.total_rerank_elapsed_sec * 1000)}
+                    />
+                  </dl>
+                  <UsageTable
+                    rows={rows}
+                    mode="resources"
+                    page={page}
+                    onPageChange={(page) => replaceUsageLocation({ page })}
+                    pending={tablePending}
+                    failed={tableFailed}
+                    windowDays={costSnapshot === undefined ? windowDays : costSnapshot.windowDays}
+                  />
+                </TabsContent>
+                <TabsContent value="quotas" className={styles.tabBody}>
+                  <QuotaDetails quotas={quotas} pending={quotaPending} />
+                </TabsContent>
+              </Tabs>
+            </div>
+            <aside className={styles.quotaRail} aria-label="租户配额与限流">
+              <div className={styles.quotaRailHeader}>
+                <h2>租户资源配额</h2>
+                <span className={styles.quotaBadge}>
+                  {disabledQuotas === 5
+                    ? '5 项未启用'
+                    : enabledQuotas > 0
+                      ? `已启用 ${enabledQuotas}/5`
+                      : quotaPending.chat || quotaPending.tenant
+                        ? '读取中'
+                        : '未取得'}
+                </span>
+                <div className={styles.quotaActions}>
+                  <DialogTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      title="查看原始配额"
+                      aria-label="查看原始配额"
+                      disabled={!hasQuotaData}
+                    >
+                      <Code />
+                    </Button>
+                  </DialogTrigger>
+                  <LoadingButton
+                    variant="ghost"
+                    size="icon"
+                    title="复制配额"
+                    aria-label="复制配额"
+                    disabled={!hasQuotaData}
+                    loading={copying}
+                    onClick={() => {
+                      void copyQuota()
+                    }}
+                  >
+                    <Copy />
+                  </LoadingButton>
+                </div>
+              </div>
+              <QuotaSummary quotas={quotas} pending={quotaPending} />
+              <p className={styles.quotaNote}>所有数据集共享，独立于左侧窗口用量。</p>
+            </aside>
+          </div>
+        </Dialog>
         <footer className={styles.footer} data-task-center-dock>
           <span>
             当前租户{windowSource === undefined ? '' : ` · 显示近 ${windowSource.windowDays} 天`}
@@ -320,16 +360,34 @@ function UsageOverview({ sessionKey }: Readonly<{ sessionKey: string }>) {
   )
 }
 
-function Metric({ label, value, unit }: Readonly<{ label: string; value: string; unit?: string }>) {
+function Metric({
+  label,
+  value,
+  unit,
+  icon,
+  description,
+  tone,
+}: Readonly<{
+  label: string
+  value: string
+  unit?: string
+  icon?: ReactNode
+  description?: string
+  tone?: 'knowledge' | 'process' | 'source' | 'analysis'
+}>) {
   const duration = unit === undefined ? /^(.+) (ms|s)$/.exec(value) : null
   const displayUnit = unit === undefined ? duration?.[2] : unit
   return (
-    <div>
-      <dt>{label}</dt>
+    <div data-tone={tone}>
+      <dt>
+        {label}
+        {icon ? <span aria-hidden="true">{icon}</span> : null}
+      </dt>
       <dd className={cn(value === '—' && styles.missingValue)}>
         {duration === null ? value : duration[1]}
         {displayUnit !== undefined ? <small>{duration === null ? displayUnit : ` ${displayUnit}`}</small> : null}
       </dd>
+      {description ? <p className={styles.metricDescription}>{description}</p> : null}
     </div>
   )
 }

@@ -5,6 +5,7 @@
 import type { JsonObject } from './common'
 import type { OpenApiSchema } from './backend'
 import type { Citation } from './processing'
+import type { OntologyActionProposal } from './enterprise-ontology'
 
 // ==================== 对话相关类型 ====================
 
@@ -41,6 +42,7 @@ export type Message = {
   citations?: Citation[]
   steps?: string[]
   message_metadata?: ChatMessageMetadata | null
+  ontology_action?: OntologyActionProposal | null
   created_at: string
 }
 
@@ -212,6 +214,7 @@ export type ChatResponse = {
   metrics: JsonObject
   structured: boolean
   structured_data?: unknown
+  ontology_action?: OntologyActionProposal | null
 }
 
 export type CheckpointItem = {

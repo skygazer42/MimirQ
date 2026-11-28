@@ -79,12 +79,12 @@ export function EvidenceViewerDialog({
     }
   }, [open, citation, sessionKey])
 
-  const kindTitle = kind === 'image' ? 'Image Evidence' : kind === 'table' ? 'Table Evidence' : 'Evidence'
+  const kindTitle = kind === 'image' ? '图片证据' : kind === 'table' ? '表格证据' : '引用证据'
   const EvidenceIcon = kind === 'image' ? ImageIcon : kind === 'table' ? Table2 : FileText
   const pageLabel =
     citation?.page_number === undefined || citation.page_number === null ? '' : ` · P.${citation.page_number}`
   const documentLabel = citation?.document_name ? ` · ${citation.document_name}` : ''
-  const title = citation === null ? 'Evidence' : `${kindTitle}${documentLabel}${pageLabel}`
+  const title = citation === null ? '引用证据' : `${kindTitle}${documentLabel}${pageLabel}`
 
   function onOpenInDoc() {
     if (!citation?.document_id) return
@@ -135,27 +135,27 @@ export function EvidenceViewerDialog({
       rows.push({ key, value: String(value) })
     }
 
-    push('document_id', citation.document_id)
-    push('chunk_id', citation.chunk_id)
-    push('page_number', citation.page_number)
-    push('chunk_index', citation.chunk_index)
-    push('span', spanLabel(citation.start_char, citation.end_char))
-    push('evidence_span', spanLabel(citation.evidence_start_char, citation.evidence_end_char))
-    push('hit_type', citation.hit_type)
-    push('retrieval_role', citation.retrieval_role)
-    push('neighbor_of', citation.neighbor_of)
-    push('doc_pipeline_key', citation.doc_pipeline_key)
-    push('pipeline_hash', citation.pipeline_hash)
-    push('retrieval_mode', citation.retrieval_mode)
-    push('reranker_provider', citation.reranker_provider)
-    push('relevance_score', citation.relevance_score)
-    push('vector_score', citation.vector_score)
-    push('bm25_score', citation.bm25_score)
-    push('keyword_score', citation.keyword_score)
-    push('rerank_score', citation.rerank_score)
-    push('retrieval_score', citation.retrieval_score)
-    push('retrieval_elapsed_sec', citation.retrieval_elapsed_sec)
-    push('rerank_elapsed_sec', citation.rerank_elapsed_sec)
+    push('文档标识', citation.document_id)
+    push('切片标识', citation.chunk_id)
+    push('页码', citation.page_number)
+    push('切片编号', citation.chunk_index)
+    push('切片字符范围', spanLabel(citation.start_char, citation.end_char))
+    push('引用字符范围', spanLabel(citation.evidence_start_char, citation.evidence_end_char))
+    push('命中类型', citation.hit_type)
+    push('检索角色', citation.retrieval_role)
+    push('相邻切片来源', citation.neighbor_of)
+    push('文档处理流程', citation.doc_pipeline_key)
+    push('处理配置校验值', citation.pipeline_hash)
+    push('检索模式', citation.retrieval_mode)
+    push('重排服务', citation.reranker_provider)
+    push('相关性得分', citation.relevance_score)
+    push('向量得分', citation.vector_score)
+    push('BM25 得分', citation.bm25_score)
+    push('关键词得分', citation.keyword_score)
+    push('重排得分', citation.rerank_score)
+    push('检索得分', citation.retrieval_score)
+    push('检索耗时（秒）', citation.retrieval_elapsed_sec)
+    push('重排耗时（秒）', citation.rerank_elapsed_sec)
 
     return rows
   }, [citation])
@@ -279,7 +279,7 @@ export function EvidenceViewerDialog({
 
               {citation?.chunk_content ? (
                 <div className="space-y-2">
-                  <div className="text-xs font-semibold text-foreground">Evidence Snippet</div>
+                  <div className="text-xs font-semibold text-foreground">引用原文</div>
                   <pre
                     className={cn(
                       'rounded-xl border border-border/60 bg-muted/20 p-3',
@@ -293,7 +293,7 @@ export function EvidenceViewerDialog({
 
               {meta.length ? (
                 <div className="space-y-2">
-                  <div className="text-xs font-semibold text-foreground">Provenance</div>
+                  <div className="text-xs font-semibold text-foreground">来源信息</div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     {meta.map((row) => (
                       <div key={row.key} className="rounded-xl border border-border/60 bg-card px-3 py-2">

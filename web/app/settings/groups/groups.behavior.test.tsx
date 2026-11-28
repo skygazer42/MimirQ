@@ -144,11 +144,16 @@ describe('group directory operation ownership', () => {
     await act(async () => pending.resolve(group('new', 'Submitted')))
   })
   it('retains the failed draft and actual failure', async () => {
-    api.patch.mockRejectedValue(new Error('conflict'))
+    api.patch.mockRejectedValue(
+      Object.assign(new Error('conflict'), { requestId: 'group-save-5fbf0a93-9b67-47bd-9744-9e876d379b24' }),
+    )
     const view = await open()
     edit(view, 'Retained')
     await act(async () => view.result.current.saveEditor())
-    expect(view.result.current.editor).toMatchObject({ name: 'Retained', error: expect.stringContaining('conflict') })
+    expect(view.result.current.editor).toMatchObject({
+      name: 'Retained',
+      error: { message: 'conflict', requestId: 'group-save-5fbf0a93-9b67-47bd-9744-9e876d379b24' },
+    })
     expect(api.success).not.toHaveBeenCalled()
   })
   it('serializes deletion and keeps its original target until completion', async () => {

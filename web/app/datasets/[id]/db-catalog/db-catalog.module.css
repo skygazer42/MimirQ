@@ -1,0 +1,33 @@
+.syncForm {
+  display: grid;
+  align-content: start;
+  gap: 24px;
+}
+
+.syncForm input {
+  min-height: 44px;
+}
+
+.syncFooter.syncFooter {
+  flex-direction: row;
+  padding: 12px 18px;
+}
+
+.syncFooter > button {
+  flex: 1;
+  min-height: 44px;
+}
+
+@media (min-width: 640px) {
+  .syncForm {
+    gap: 20px;
+  }
+
+  .syncFooter.syncFooter {
+    padding: 16px 24px;
+  }
+
+  .syncFooter > button {
+    flex: none;
+  }
+}

@@ -1,17 +1,19 @@
 'use client'
 import { useMemo, useState } from 'react'
-import { ChevronLeft, ChevronRight, Activity, FileText, Search } from '@/components/icons'
+import { ChevronLeft, ChevronRight, RefreshCcw, Search } from '@/components/icons'
 import type { EChartsOption } from 'echarts'
 import type { Document } from '@/types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { FileTypeIcon } from '@/components/ui/file-type-icon'
 import { Badge } from '@/components/ui/badge'
 import { EChart } from '@/components/ui/echart'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
-import { WorkspaceMetrics, WorkspaceTableScroll, workspaceStyles as ws } from '@/components/ui/operational-workspace'
+import { WorkspaceTableScroll, workspaceStyles as ws } from '@/components/ui/operational-workspace'
 import { getDocumentStatusLabel, getDocumentStatusTone } from '@/app/knowledge/ingestion/presentation'
 import { formatDurationClock } from '@/app/knowledge/ingestion/document-signals'
 import { cn, formatFileSize } from '@/lib/utils'
+import styles from './execution-monitor.module.css'
 type ExecutionBatchAnalysis = {
   sourceLabel: string
   complexity: string
@@ -38,17 +40,21 @@ type ExecutionPipelineCard = {
 
 type ExecutionMonitorPanelProps = {
   batchProfileBarOption: EChartsOption
+  detail?: 'analysis' | 'logs' | null
   executionBatchAnalysis: ExecutionBatchAnalysis
   executionPipelineCards: ExecutionPipelineCard[]
   executionPipelineEstimateLabel: string
   executionPipelineWarning: string | null
   executionRecentLogs: ExecutionRecentLog[]
   executionTaskRows: Document[]
+  isRefreshing?: boolean
   predictionOption: EChartsOption
   radarOption: EChartsOption
   selectedDatasetId: string | null
+  onDetailChange?: (next: 'analysis' | 'logs' | null) => void
   onOpenAuditSnapshot: (documentId: string) => void
   onOpenIngestionOperation: () => void
+  onRefresh?: () => void
   onScopeAllProjects: () => void
 }
 
@@ -76,7 +82,9 @@ export function ExecutionMonitorPanel(props: Readonly<ExecutionMonitorPanelProps
   const [status, setStatus] = useState('all')
   const [query, setQuery] = useState('')
   const [page, setPage] = useState(1)
-  const [detail, setDetail] = useState<'analysis' | 'logs' | null>(null)
+  const [localDetail, setLocalDetail] = useState<'analysis' | 'logs' | null>(null)
+  const detail = props.detail !== undefined ? props.detail : localDetail
+  const setDetail = props.onDetailChange ?? setLocalDetail
   const rows = useMemo(
     () =>
       props.executionTaskRows.filter(
@@ -90,42 +98,179 @@ export function ExecutionMonitorPanel(props: Readonly<ExecutionMonitorPanelProps
   const currentPage = Math.min(page, pageCount)
   const visibleRows = rows.slice((currentPage - 1) * 20, currentPage * 20)
   const counts = (state: string) => props.executionTaskRows.filter((doc) => doc.status === state).length
+  const isStandbyEmpty = props.executionTaskRows.length === 0
   return (
     <>
-      <WorkspaceMetrics
-        className={ws.compactMetrics}
-        items={[
-          { label: '当前载入任务', value: props.executionTaskRows.length },
-          { label: '处理中', value: counts('processing') },
-          { label: '等待中', value: counts('pending') },
-          { label: '已完成', value: counts('completed') },
-          { label: '失败', value: counts('failed'), tone: counts('failed') ? 'danger' : undefined },
-        ]}
-      />
       {props.executionPipelineWarning ? (
-        <p role="alert" className="py-3 text-sm text-destructive">
+        <p role="alert" className="px-5 pt-3 text-sm text-destructive">
           {props.executionPipelineWarning}
         </p>
       ) : null}
-      <section className={ws.section}>
-        <div className={ws.sectionHeading}>
-          <h2 className={ws.sectionTitle}>执行任务</h2>
-          <div className="flex flex-wrap gap-2">
-            <Button variant="ghost" onClick={() => setDetail('logs')}>
-              最近事件
-            </Button>
-            <Button variant="outline" onClick={() => setDetail('analysis')}>
-              <Activity />
-              阶段与统计
-            </Button>
+      {isStandbyEmpty ? (
+        <div className={styles.standbySplit} data-execution-monitor-empty="true">
+          <section className={styles.standbyLeft} aria-label="执行监控待命">
+            <div className={styles.standbyIllust} aria-hidden="true">
+              <svg viewBox="0 0 224 92" fill="none">
+                <path
+                  d="M24 52H72C80 52 84 46 88 46"
+                  stroke="currentColor"
+                  strokeOpacity="0.28"
+                  strokeWidth="1.25"
+                  strokeLinecap="round"
+                />
+                <path
+                  d="M52 24H66C74 24 78 36 86 42"
+                  stroke="currentColor"
+                  strokeOpacity="0.28"
+                  strokeWidth="1.25"
+                  strokeLinecap="round"
+                />
+                <path
+                  d="M138 44C148 44 156 18 170 18H186"
+                  stroke="currentColor"
+                  strokeOpacity="0.34"
+                  strokeWidth="1.25"
+                  strokeLinecap="round"
+                />
+                <path
+                  d="M138 50C152 50 164 56 176 46H200"
+                  stroke="currentColor"
+                  strokeOpacity="0.28"
+                  strokeWidth="1.25"
+                  strokeLinecap="round"
+                />
+                <circle cx="20" cy="52" r="4" fill="hsl(var(--card))" stroke="currentColor" strokeOpacity="0.34" strokeWidth="1.25" />
+                <circle cx="48" cy="24" r="4" fill="hsl(var(--card))" stroke="currentColor" strokeOpacity="0.34" strokeWidth="1.25" />
+                <circle cx="204" cy="46" r="4" fill="hsl(var(--card))" stroke="currentColor" strokeOpacity="0.34" strokeWidth="1.25" />
+                <circle cx="188" cy="18" r="4.5" fill="hsl(var(--accent))" />
+                <rect
+                  x="86"
+                  y="20"
+                  width="52"
+                  height="52"
+                  rx="12"
+                  fill="hsl(var(--surface-2))"
+                  stroke="currentColor"
+                  strokeOpacity="0.32"
+                  strokeWidth="1.25"
+                />
+                <path
+                  d="M112 34L124 40.5L112 47L100 40.5L112 34Z"
+                  stroke="currentColor"
+                  strokeOpacity="0.55"
+                  strokeWidth="1.35"
+                  strokeLinejoin="round"
+                />
+                <path
+                  d="M100 46.5L112 53L124 46.5"
+                  stroke="currentColor"
+                  strokeOpacity="0.45"
+                  strokeWidth="1.35"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+                <path
+                  d="M100 52.5L112 59L124 52.5"
+                  stroke="currentColor"
+                  strokeOpacity="0.38"
+                  strokeWidth="1.35"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </div>
+            <h2>当前范围暂无执行任务</h2>
+            <p>提交入库任务后，这里将实时追踪解析、切块、治理与索引进度。</p>
+            <div className={styles.standbyActions}>
+              <Button className={styles.primaryAction} onClick={props.onOpenIngestionOperation}>
+                前往入库操作
+              </Button>
+              {props.onRefresh ? (
+                <Button
+                  variant="outline"
+                  className={styles.secondaryAction}
+                  onClick={props.onRefresh}
+                  disabled={props.isRefreshing}
+                >
+                  <RefreshCcw className="size-3.5" aria-hidden="true" />
+                  重新读取
+                </Button>
+              ) : null}
+              {props.selectedDatasetId ? (
+                <Button variant="outline" className={styles.secondaryAction} onClick={props.onScopeAllProjects}>
+                  查看全部数据集
+                </Button>
+              ) : null}
+            </div>
+          </section>
+          <aside className={styles.standbyRight} aria-label="流水线阶段与运行概况">
+            <div className={styles.standbyGroup}>
+              <h3>流水线阶段待命</h3>
+              <ul className={styles.stageList}>
+                {props.executionPipelineCards.map((stage) => (
+                  <li key={stage.key} className={styles.stageRow}>
+                    <span className={styles.stageName}>{stage.label}</span>
+                    <span className={styles.stageStatus}>{stage.statusLabel}</span>
+                    <span className={styles.stageCount}>{stage.metrics[0]?.[1] ?? '0'}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div className={styles.standbyGroup}>
+              <h3>运行概况</h3>
+              <div className={styles.summaryList}>
+                <div className={styles.summaryRow}>
+                  <span className={styles.stageName}>队列模式</span>
+                  <span className={styles.summaryValue}>{props.executionPipelineEstimateLabel}</span>
+                </div>
+                <button
+                  type="button"
+                  className={styles.summaryRowButton}
+                  onClick={() => setDetail('logs')}
+                >
+                  <span className={styles.stageName}>最近事件</span>
+                  <span className={styles.summaryValue}>
+                    {props.executionRecentLogs.length > 0 ? `${props.executionRecentLogs.length} 条记录` : '暂无记录'}
+                    <ChevronRight className="size-3.5 shrink-0" aria-hidden="true" />
+                  </span>
+                </button>
+              </div>
+            </div>
+          </aside>
+        </div>
+      ) : (
+      <section className={cn(styles.activeBody, 'border-b border-border/70')}>
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <div className="flex min-w-0 items-baseline gap-3">
+            <h2 className={ws.sectionTitle}>执行任务</h2>
+            <span className="text-[13px] text-muted-foreground tabular-nums">
+              已载入 {props.executionTaskRows.length} 条
+            </span>
           </div>
         </div>
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-          <div role="group" aria-label="任务状态" className="flex flex-wrap gap-1">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2 sm:mb-4 sm:gap-3">
+          <select
+            aria-label="任务状态"
+            value={status}
+            className="h-11 rounded-md border border-border bg-background px-2 text-sm sm:hidden"
+            onChange={(event) => {
+              setStatus(event.target.value)
+              setPage(1)
+            }}
+          >
+            {statusViews.map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
+                {value === 'all' ? '' : ` ${counts(value)}`}
+              </option>
+            ))}
+          </select>
+          <div role="group" aria-label="任务状态" className="hidden flex-wrap gap-1 sm:flex">
             {statusViews.map(([value, label]) => (
               <Button
                 key={value}
                 variant={status === value ? 'secondary' : 'ghost'}
+                className="h-9 px-3 text-[13px] max-sm:h-11"
                 aria-pressed={status === value}
                 onClick={() => {
                   setStatus(value)
@@ -137,8 +282,8 @@ export function ExecutionMonitorPanel(props: Readonly<ExecutionMonitorPanelProps
               </Button>
             ))}
           </div>
-          <div className="relative w-full max-w-xs">
-            <Search className="absolute left-3 top-2.5 size-4 text-muted-foreground" />
+          <div className="relative min-w-0 flex-1 sm:w-full sm:max-w-xs sm:flex-auto">
+            <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               aria-label="搜索执行任务"
               placeholder="搜索文件名"
@@ -152,15 +297,15 @@ export function ExecutionMonitorPanel(props: Readonly<ExecutionMonitorPanelProps
           </div>
         </div>
         <WorkspaceTableScroll label="执行任务表格" stickyActions>
-          <table className={cn(ws.table, 'min-w-[880px]')}>
+          <table className={cn(ws.table, 'table-fixed sm:min-w-[880px] sm:table-auto')}>
             <thead>
               <tr>
                 <th>文件</th>
-                <th>当前阶段</th>
-                <th>状态</th>
-                <th>进度</th>
-                <th>耗时</th>
-                <th>操作</th>
+                <th className="hidden sm:table-cell">当前阶段</th>
+                <th className="hidden sm:table-cell">状态</th>
+                <th className="hidden sm:table-cell">进度</th>
+                <th className="hidden sm:table-cell">耗时</th>
+                <th className="w-20 sm:w-auto">操作</th>
               </tr>
             </thead>
             <tbody>
@@ -172,29 +317,39 @@ export function ExecutionMonitorPanel(props: Readonly<ExecutionMonitorPanelProps
                       ? 100
                       : null
                 const duration = new Date(doc.updated_at).getTime() - new Date(doc.created_at).getTime()
+                const stage = doc.current_stage
+                  ? (stageLabels[doc.current_stage.toLowerCase()] ?? doc.current_stage)
+                  : '—'
                 return (
                   <tr key={doc.id}>
                     <td>
                       <div className="flex items-center gap-3">
-                        <FileText appearance="color" className="size-5 shrink-0 text-muted-foreground" />
+                        <FileTypeIcon type={doc.file_type} filename={doc.filename} className="size-5 shrink-0" />
                         <div className="min-w-0">
                           <div className="max-w-[360px] truncate font-medium" title={doc.filename}>
                             {doc.filename}
                           </div>
-                          <p>
+                          <p className="hidden sm:block">
                             {(doc.file_type || '—').toUpperCase()} ·{' '}
                             {typeof doc.file_size === 'number' ? formatFileSize(doc.file_size) : '—'}
                           </p>
+                          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs sm:hidden">
+                            <span className={getDocumentStatusTone(doc.status)}>
+                              {getDocumentStatusLabel(doc.status)}
+                            </span>
+                            <span className="text-muted-foreground">{stage}</span>
+                            <span className="tabular-nums text-muted-foreground">
+                              {progress === null ? '—' : `${progress}%`}
+                            </span>
+                          </div>
                         </div>
                       </div>
                     </td>
-                    <td className="whitespace-nowrap">
-                      {doc.current_stage ? (stageLabels[doc.current_stage.toLowerCase()] ?? doc.current_stage) : '—'}
-                    </td>
-                    <td className={cn(getDocumentStatusTone(doc.status), 'whitespace-nowrap')}>
+                    <td className="hidden whitespace-nowrap sm:table-cell">{stage}</td>
+                    <td className={cn(getDocumentStatusTone(doc.status), 'hidden whitespace-nowrap sm:table-cell')}>
                       {getDocumentStatusLabel(doc.status)}
                     </td>
-                    <td>
+                    <td className="hidden sm:table-cell">
                       <div className="flex items-center gap-2">
                         {progress !== null ? (
                           <>
@@ -215,7 +370,7 @@ export function ExecutionMonitorPanel(props: Readonly<ExecutionMonitorPanelProps
                         )}
                       </div>
                     </td>
-                    <td className="tabular-nums">
+                    <td className="hidden tabular-nums sm:table-cell">
                       {Number.isFinite(duration) && duration > 0 ? formatDurationClock(duration / 1000) : '—'}
                     </td>
                     <td>
@@ -263,7 +418,8 @@ export function ExecutionMonitorPanel(props: Readonly<ExecutionMonitorPanelProps
             </tbody>
           </table>
         </WorkspaceTableScroll>
-        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm text-muted-foreground">
+        {/* 为悬浮任务中心留出分页点击空间。 */}
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 pr-16 text-sm text-muted-foreground">
           <span>共 {rows.length} 条 · 每页 20 条</span>
           <div className="flex items-center gap-3">
             <Button
@@ -288,6 +444,7 @@ export function ExecutionMonitorPanel(props: Readonly<ExecutionMonitorPanelProps
           </div>
         </div>
       </section>
+      )}
       <Dialog
         open={detail !== null}
         onOpenChange={(open) => {

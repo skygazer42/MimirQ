@@ -8,6 +8,15 @@ function readWorkspaceFile(relativePath: string): string {
 }
 
 describe('global page title baseline', () => {
+  it('keeps the ontology lifecycle controls in the 52px title bar', () => {
+    const src = readWorkspaceFile('app/ontology/ontology-workspace.tsx')
+    const css = readWorkspaceFile('app/ontology/ontology.module.css')
+    expect(src).toContain('PageTitleIcon name="ontology"')
+    expect(src).toContain('aria-label="本体生命周期"')
+    expect(css).toContain('height: 52px')
+    expect(css).toContain('min-height: 44px')
+  })
+
   it('keeps the shared PageHeader aligned with the flat knowledge title bar', () => {
     const src = readWorkspaceFile('components/ui/page-header.tsx')
 

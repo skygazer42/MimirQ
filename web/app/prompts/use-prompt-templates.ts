@@ -60,7 +60,7 @@ export function usePromptTemplates(sessionKey: string) {
   const [formError, setFormError] = useState('')
   const [preview, setPreview] = useState<PromptTemplate | null>(null)
   const [deleteTargets, setDeleteTargets] = useState<PromptTemplate[]>([])
-  const [bindingOpen, setBindingOpen] = useState(false)
+  const [bindingEntry, setBindingEntry] = useState<'templates' | null>(null)
   const returnFocus = useRef<string | null>(null)
   const mounted = useRef(true)
 
@@ -323,11 +323,11 @@ export function usePromptTemplates(sessionKey: string) {
     duplicate,
     toggleActive,
     syncBuiltins,
-    bindingOpen,
-    setBindingOpen,
+    bindingEntry,
+    closeBindings: () => setBindingEntry(null),
     openBindings: () => {
       returnFocus.current = 'bindings'
-      setBindingOpen(true)
+      setBindingEntry('templates')
     },
     restoreFocus: (event: Event) => {
       event.preventDefault()

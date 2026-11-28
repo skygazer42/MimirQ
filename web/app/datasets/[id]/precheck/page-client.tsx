@@ -38,6 +38,7 @@ import { PolicySuggestionSummary } from './policy-suggestion-summary'
 import styles from './precheck.module.css'
 import { Panel } from '@/components/ui/panel'
 import { Button } from '@/components/ui/button'
+import { WorkspaceNotice, WorkspaceNoticeStack } from '@/components/ui/operational-workspace'
 import { Badge } from '@/components/ui/badge'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -760,40 +761,41 @@ function DatasetPrecheckWorkspace({ datasetId }: Readonly<{ datasetId: string }>
             </DropdownMenu>
           </div>
         </div>
-        {datasetQuery.isError || runsQuery.isError ? (
-          <div role="alert" className={styles.notice}>
-            <span>{formatApiError(datasetQuery.error || runsQuery.error, '预检页面读取失败')}</span>
-            <button
-              disabled={datasetQuery.isFetching || runsQuery.isFetching}
-              onClick={() => {
+        <WorkspaceNoticeStack ariaLabel="数据预检状态提示">
+          {datasetQuery.isError || runsQuery.isError ? (
+            <WorkspaceNotice
+              error={datasetQuery.error || runsQuery.error}
+              fallbackMessage="预检页面读取失败"
+              pending={datasetQuery.isFetching || runsQuery.isFetching}
+              retry={() => {
                 void datasetQuery.refetch()
                 void runsQuery.refetch()
               }}
-            >
-              重新读取页面
-            </button>
-          </div>
-        ) : null}
-        {cancelError ? (
-          <div role="alert" className={styles.notice}>
-            {cancelError}
-          </div>
-        ) : null}
-        {scanRunning && trackingError !== null && trackingError.runId === selectedRunId && (
-          <div role="alert" className={styles.notice}>
-            <span>{trackingError.message}</span>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => {
+              retryLabel="重新读取页面"
+            />
+          ) : null}
+          {cancelError ? <WorkspaceNotice>{cancelError}</WorkspaceNotice> : null}
+          {scanRunning && trackingError !== null && trackingError.runId === selectedRunId ? (
+            <WorkspaceNotice
+              retry={() => {
                 setTrackingError(null)
                 setTrackingRetry((count) => count + 1)
               }}
+              retryLabel="重读扫描状态"
             >
-              重读扫描状态
-            </Button>
-          </div>
-        )}
+              {trackingError.message}
+            </WorkspaceNotice>
+          ) : null}
+          {selectedRun?.status === 'completed' && summaryQuery.isError ? (
+            <WorkspaceNotice
+              error={summaryQuery.error}
+              fallbackMessage="报告读取失败"
+              pending={summaryQuery.isFetching}
+              retry={() => void summaryQuery.refetch()}
+              retryLabel="重新读取报告"
+            />
+          ) : null}
+        </WorkspaceNoticeStack>
         {selectedRun ? (
           <div className={styles.runMeta}>
             <span>
@@ -839,19 +841,6 @@ function DatasetPrecheckWorkspace({ datasetId }: Readonly<{ datasetId: string }>
             </div>
           ) : selectedRun?.status === 'completed' ? (
             <>
-              {summaryQuery.isError ? (
-                <div className={styles.notice} role="alert">
-                  <span>{formatApiError(summaryQuery.error, '报告读取失败')}</span>
-                  <button
-                    disabled={summaryQuery.isFetching}
-                    onClick={() => {
-                      void summaryQuery.refetch()
-                    }}
-                  >
-                    重新读取报告
-                  </button>
-                </div>
-              ) : null}
               {!summary ? (
                 <div className={styles.empty} role="status">
                   <FileText />
@@ -919,37 +908,43 @@ function DatasetPrecheckWorkspace({ datasetId }: Readonly<{ datasetId: string }>
                               </tr>
                             </thead>
                             <tbody>
-                              {summary.findings.map((finding) => (
-                                <tr key={finding.key}>
-                                  <td>
-                                    <span className={styles.findingName}>{finding.label}</span>
-                                    {finding.description ? <p>{finding.description}</p> : null}
-                                  </td>
-                                  <td>
-                                    <Badge
-                                      variant={findingBadgeVariant(finding.severity)}
-                                      className={finding.severity === 'warning' ? styles.findingWarning : undefined}
-                                    >
-                                      {finding.severity === 'error'
-                                        ? '错误'
-                                        : finding.severity === 'warning'
-                                          ? '注意'
-                                          : '提示'}
-                                    </Badge>
-                                  </td>
-                                  <td className="tabular-nums">{finding.count}</td>
-                                  <td>
-                                    <Button
-                                      variant="ghost"
-                                      size="sm"
-                                      aria-label={`查看${finding.label}文件`}
-                                      onClick={() => openFinding(finding)}
-                                    >
-                                      查看文件
-                                    </Button>
-                                  </td>
-                                </tr>
-                              ))}
+                              {summary.findings.map((finding) => {
+                                const severityBadge = (
+                                  <Badge
+                                    variant={findingBadgeVariant(finding.severity)}
+                                    className={finding.severity === 'warning' ? styles.findingWarning : undefined}
+                                  >
+                                    {finding.severity === 'error'
+                                      ? '错误'
+                                      : finding.severity === 'warning'
+                                        ? '注意'
+                                        : '提示'}
+                                  </Badge>
+                                )
+                                return (
+                                  <tr key={finding.key}>
+                                    <td>
+                                      <div className={styles.findingIdentity}>
+                                        <span className={styles.findingName}>{finding.label}</span>
+                                        <span className={styles.mobileFindingSeverity}>{severityBadge}</span>
+                                      </div>
+                                      {finding.description ? <p>{finding.description}</p> : null}
+                                    </td>
+                                    <td>{severityBadge}</td>
+                                    <td className="tabular-nums">{finding.count}</td>
+                                    <td>
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        aria-label={`查看${finding.label}文件`}
+                                        onClick={() => openFinding(finding)}
+                                      >
+                                        查看文件
+                                      </Button>
+                                    </td>
+                                  </tr>
+                                )
+                              })}
                             </tbody>
                           </table>
                         </div>
@@ -960,12 +955,12 @@ function DatasetPrecheckWorkspace({ datasetId }: Readonly<{ datasetId: string }>
                     {embeddingAdvisories.length > 0 ? (
                       <Panel variant="seamless" className={styles.section}>
                         <div className="flex items-start gap-3">
-                          <div className="flex size-9 shrink-0 items-center justify-center rounded-2xl border border-warning/30 bg-warning/10 text-warning">
-                            <AlertCircle className="size-4" />
-                          </div>
                           <div className="min-w-0 flex-1 space-y-3">
                             <div>
-                              <div className="text-sm font-semibold text-foreground">Embedding 建议</div>
+                              <h2 className="flex items-center gap-2">
+                                <AlertCircle className="size-4 text-warning" aria-hidden="true" />
+                                向量模型建议
+                              </h2>
                               <div className="mt-1 text-[12px] leading-5 text-muted-foreground">
                                 根据本次报告检查向量模型，模型配置不会自动变更。
                               </div>
@@ -980,10 +975,7 @@ function DatasetPrecheckWorkspace({ datasetId }: Readonly<{ datasetId: string }>
                                     <Badge variant="soft" className="border-warning/20 bg-warning/10 text-warning">
                                       注意
                                     </Badge>
-                                    <div className="text-[13px] font-semibold text-foreground">{advisory.title}</div>
-                                    <div className="font-mono text-[11px] text-muted-foreground">
-                                      code={advisory.code}
-                                    </div>
+                                    <div className="text-[13px] font-medium text-foreground">{advisory.title}</div>
                                   </div>
                                   <div className="mt-2 grid gap-2 text-[12px] leading-5 text-muted-foreground md:grid-cols-2">
                                     <div>
@@ -1004,6 +996,10 @@ function DatasetPrecheckWorkspace({ datasetId }: Readonly<{ datasetId: string }>
                                       ))}
                                     </div>
                                   ) : null}
+                                  <details className="mt-2 text-xs text-muted-foreground">
+                                    <summary className="cursor-pointer">建议标识</summary>
+                                    <p className="mt-1 break-all font-mono">{advisory.code}</p>
+                                  </details>
                                 </div>
                               ))}
                             </div>
@@ -1072,6 +1068,7 @@ function DatasetPrecheckWorkspace({ datasetId }: Readonly<{ datasetId: string }>
                             <Bar
                               isAnimationActive={false}
                               dataKey="value"
+                              name="文件数"
                               fill="hsl(var(--chart-2))"
                               radius={[6, 6, 0, 0]}
                             />
@@ -1135,6 +1132,7 @@ function DatasetPrecheckWorkspace({ datasetId }: Readonly<{ datasetId: string }>
                             <Bar
                               isAnimationActive={false}
                               dataKey="value"
+                              name="文件数"
                               fill="hsl(var(--chart-3))"
                               radius={[6, 6, 0, 0]}
                             />
@@ -1163,6 +1161,7 @@ function DatasetPrecheckWorkspace({ datasetId }: Readonly<{ datasetId: string }>
                               <Bar
                                 isAnimationActive={false}
                                 dataKey="value"
+                                name="命中次数"
                                 fill="hsl(var(--chart-4))"
                                 radius={[6, 6, 0, 0]}
                               />
@@ -1194,6 +1193,7 @@ function DatasetPrecheckWorkspace({ datasetId }: Readonly<{ datasetId: string }>
                               <Bar
                                 isAnimationActive={false}
                                 dataKey="value"
+                                name="命中次数"
                                 fill="hsl(var(--chart-6))"
                                 radius={[6, 6, 0, 0]}
                               />
@@ -1248,9 +1248,9 @@ function DatasetPrecheckWorkspace({ datasetId }: Readonly<{ datasetId: string }>
                       </div>
 
                       {samplesQuery.isError && (
-                        <p role="alert" className={styles.notice}>
+                        <WorkspaceNotice placement="floating" retry={() => void samplesQuery.refetch()}>
                           {formatApiError(samplesQuery.error, '样本读取失败，请重试。')}
-                        </p>
+                        </WorkspaceNotice>
                       )}
                       {samplesRes ? (
                         <div className="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -1361,9 +1361,9 @@ function DatasetPrecheckWorkspace({ datasetId }: Readonly<{ datasetId: string }>
                       </div>
 
                       {nearDupQuery.isError && (
-                        <p role="alert" className={styles.notice}>
+                        <WorkspaceNotice placement="floating" retry={() => void nearDupQuery.refetch()}>
                           {formatApiError(nearDupQuery.error, '近重复候选读取失败，请重试。')}
-                        </p>
+                        </WorkspaceNotice>
                       )}
                       {nearDupRes ? (
                         <div className="mt-4 text-[11px] text-muted-foreground/65">
@@ -1417,9 +1417,9 @@ function DatasetPrecheckWorkspace({ datasetId }: Readonly<{ datasetId: string }>
                       </div>
 
                       {diffQuery.isError && (
-                        <p role="alert" className={styles.notice}>
+                        <WorkspaceNotice placement="floating" retry={() => void diffQuery.refetch()}>
                           {formatApiError(diffQuery.error, '对比读取失败，请重试。')}
-                        </p>
+                        </WorkspaceNotice>
                       )}
                       {diffRes ? (
                         <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">

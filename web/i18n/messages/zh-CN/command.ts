@@ -100,7 +100,7 @@ const commandMessages = {
       },
       stageArrows: {
         label: '切换追踪阶段',
-        description: '使用方向键快速浏览前后处理阶段。',
+        description: '使用方向键切换前后处理阶段。',
       },
       sliceFocus: {
         label: '切片焦点跳转',
@@ -242,6 +242,11 @@ const commandMessages = {
       },
     },
     modules: {
+      ontology: {
+        label: '企业本体',
+        description: '建模、校验并运行企业业务定义',
+        keywords: ['ontology', 'enterprise ontology', '企业本体', '本体', '建模', '规则', '动作'],
+      },
       knowledge: {
         label: '知识库',
         description: '管理文档导入、索引状态与检索质量',

@@ -63,7 +63,10 @@ async function captureGuideScreenshot(page: Page, filename: string) {
     document.querySelectorAll('nextjs-portal').forEach((portal) => portal.remove())
   })
   await page.screenshot({
-    path: path.resolve(__dirname, '../../docs/images/screenshots', filename),
+    path: path.join(
+      process.env.CAPTURE_DOCS_SCREENSHOTS_DIR || path.resolve(__dirname, '../../docs/images/screenshots'),
+      filename,
+    ),
     fullPage: false,
   })
 }
@@ -502,7 +505,7 @@ test.describe('management surfaces smoke', () => {
   test('loads prompts page with the managed prompt shell', async ({ page }) => {
     await page.goto('/prompts')
     await expect(page.getByRole('heading', { name: '提示词', exact: true })).toBeVisible({ timeout: 60_000 })
-    await expect(page.getByRole('button', { name: '创建模板', exact: true })).toBeVisible()
+    await expect(page.locator('header').getByRole('button', { name: '创建模板', exact: true })).toBeVisible()
   })
 
   test('loads reports page with mocked dataset data', async ({ page }) => {
@@ -534,6 +537,7 @@ test.describe('management surfaces smoke', () => {
   })
 
   test('renders the knowledge workbench header contract', async ({ page }) => {
+    await installCommonApiMocks(page, { uploaded: true, parsingDocuments: [] })
     await page.goto('/knowledge')
     const toolbar = page.getByTestId('knowledge-page-toolbar')
     await expect(toolbar).toBeVisible({ timeout: 60_000 })
@@ -568,18 +572,19 @@ test.describe('management surfaces smoke', () => {
       {
         route: '/knowledge/quarantine',
         heading: '隔离队列',
-        description: '自动刷新',
+        action: '同步隔离队列',
       },
       {
         route: '/knowledge/feedback',
         heading: '反馈质检',
-        description: '收件箱',
+        action: '反哺候选',
       },
     ]) {
       await page.goto(surface.route)
       const heading = page.getByRole('heading', { name: surface.heading }).first()
       await expect(heading).toBeVisible({ timeout: 60_000 })
-      await expect(page.getByText(surface.description)).toBeVisible()
+      const header = heading.locator('xpath=ancestor::header[1]')
+      await expect(header.getByRole('button', { name: surface.action, exact: true })).toBeVisible()
       expect(await documentHorizontalOverflow(page)).toBeLessThanOrEqual(1)
     }
   })
@@ -715,18 +720,21 @@ test.describe('management surfaces smoke', () => {
 
     await page.goto('/knowledge/ingestion', { waitUntil: 'domcontentloaded' })
     await expect(page.getByRole('heading', { name: '入库管理', exact: true })).toBeVisible({ timeout: 60_000 })
-    const settings = page.locator('[data-ingestion-context-panel]')
+    await page.locator('[data-ingestion-import-trigger]').click()
+    const dialog = page.getByRole('dialog', { name: '导入文档', exact: true })
+    await expect(dialog).toBeVisible()
+    const settings = dialog.locator('[data-ingestion-context-panel]')
     await expect(settings.getByRole('combobox', { name: '目标数据集', exact: true })).toContainText('Smoke Dataset')
-    await page.getByLabel('选择待入库文件', { exact: true }).setInputFiles({
+    await dialog.getByLabel('选择待入库文件', { exact: true }).setInputFiles({
       name: 'theme-check.docx',
       mimeType: 'application/octet-stream',
       buffer: Buffer.from('UI appearance test only'),
     })
-    const submit = page.locator('[data-ingestion-submit]')
+    const submit = dialog.locator('[data-ingestion-submit]')
     await expect(submit).toBeEnabled()
     const expected = await colors()
-    await expect(submit).toHaveCSS('background-color', expected.primary)
-    await expect(settings.locator('input[value="upload_only"]')).toHaveCSS('accent-color', expected.primary)
+    await expect(submit).toHaveCSS('background-color', expected.accent)
+    await expect(settings.locator('input[value="upload_only"]')).toHaveCSS('accent-color', expected.accent)
   })
 
   test('synchronizes appearance controls between open pages', async ({ page, context }) => {
@@ -796,52 +804,37 @@ test.describe('management surfaces smoke', () => {
     expect(runHistoryCardHeight).toBeGreaterThan(100)
   })
 
-  test('keeps ingestion files and configuration scrollable at laptop heights', async ({ page }) => {
+  test('keeps the ingestion import dialog scrollable with visible actions at laptop heights', async ({ page }) => {
     test.setTimeout(180_000)
     for (const viewport of [
       { width: 1024, height: 768 },
       { width: 1280, height: 720 },
       { width: 1366, height: 768 },
+      { width: 390, height: 844 },
     ]) {
       await page.setViewportSize(viewport)
-      await page.goto('/knowledge/ingestion', {
-        waitUntil: 'domcontentloaded',
-        timeout: 150_000,
-      })
-      await expect(page.getByRole('heading', { name: '入库管理', exact: true })).toBeVisible({
-        timeout: 60_000,
-      })
-
-      await expect(page.locator('[data-ingestion-operation-root="true"]')).toBeVisible()
+      await page.goto('/knowledge/ingestion', { waitUntil: 'domcontentloaded', timeout: 150_000 })
+      await expect(page.getByRole('heading', { name: '入库管理', exact: true })).toBeVisible({ timeout: 60_000 })
       await expect(page.locator('[data-ingestion-operation-workspace="true"]')).toBeVisible()
-      const compactConfiguration = page.getByRole('button', { name: '入库配置', exact: true })
-      const compact = await compactConfiguration.isVisible()
-      const selectors = ['section[aria-label="导入内容"]']
-      if (!compact) {
-        await expect(page.locator('[data-ingestion-context-panel]')).toBeVisible()
-        await page.locator('[data-ingestion-context-panel] summary').click()
-        selectors.push('[data-ingestion-context-panel]')
-      }
-      for (const selector of selectors) {
-        const metrics = await scrollContainerMetrics(page, selector)
-        expect(metrics.clientHeight).toBeGreaterThan(0)
-        expect(['auto', 'scroll']).toContain(metrics.overflowY)
-        expect(metrics.scrollHeight).toBeGreaterThanOrEqual(metrics.clientHeight)
-        if (metrics.scrollHeight > metrics.clientHeight + 20) {
-          expect(metrics.scrolled).toBe(true)
-        }
-      }
-      await expect(page.locator('[data-ingestion-submit]')).toBeVisible()
-      if (compact) {
-        await compactConfiguration.click()
-        const configuration = page.getByRole('dialog', { name: '入库配置', exact: true })
-        await configuration.locator('summary').click()
-        const directory = configuration.getByLabel('目标目录', { exact: true })
-        await directory.scrollIntoViewIfNeeded()
-        await expect(directory).toBeInViewport()
-        await page.keyboard.press('Escape')
-        await expect(compactConfiguration).toBeFocused()
-      }
+      await expect(page.getByRole('navigation', { name: '文件来源' })).toHaveCount(0)
+      const trigger = page.locator('[data-ingestion-import-trigger]')
+      await trigger.click()
+      const dialog = page.getByRole('dialog', { name: '导入文档', exact: true })
+      await expect(dialog).toBeVisible()
+      await dialog.locator('[data-ingestion-advanced-settings] summary').click()
+      const metrics = await scrollContainerMetrics(page, '[data-ingestion-dialog-body]')
+      expect(metrics.clientHeight).toBeGreaterThan(0)
+      expect(metrics.overflowY).toBe('auto')
+      if (metrics.scrollHeight > metrics.clientHeight + 20) expect(metrics.scrolled).toBe(true)
+      const directory = dialog.getByLabel('目标目录', { exact: true })
+      await directory.scrollIntoViewIfNeeded()
+      await expect(directory).toBeInViewport()
+      await expect(dialog.locator('[data-ingestion-submit]')).toBeInViewport({ ratio: 1 })
+      await expect(dialog.getByRole('button', { name: '取消', exact: true })).toBeInViewport({ ratio: 1 })
+      expect(await documentHorizontalOverflow(page)).toBeLessThanOrEqual(1)
+      await page.keyboard.press('Escape')
+      await expect(dialog).toHaveCount(0)
+      await expect(trigger).toBeFocused()
     }
   })
 
@@ -906,10 +899,11 @@ test.describe('management surfaces smoke', () => {
     expect(await documentHorizontalOverflow(page)).toBeLessThanOrEqual(1)
   })
 
-  test('keeps evidence workbench usable at 1024px and 1280px widths', async ({ page }) => {
+  test('keeps evidence workbench usable at 960px, 1024px and 1280px widths', async ({ page }) => {
     test.setTimeout(180_000)
     for (const viewport of [
-      { width: 1024, height: 768, compact: true },
+      { width: 960, height: 768, compact: true },
+      { width: 1024, height: 768, compact: false },
       { width: 1280, height: 720, compact: false },
     ]) {
       await page.setViewportSize(viewport)
@@ -956,6 +950,7 @@ test.describe('management surfaces smoke', () => {
 
   test('keeps knowledge filters in a scrollable drawer at low height', async ({ page }) => {
     test.setTimeout(180_000)
+    await installCommonApiMocks(page, { uploaded: true, parsingDocuments: [] })
     await page.setViewportSize({ width: 1280, height: 720 })
 
     await page.goto('/knowledge', {
@@ -965,7 +960,7 @@ test.describe('management surfaces smoke', () => {
     await expect(page.getByRole('heading', { name: '知识库', exact: true })).toBeVisible({
       timeout: 60_000,
     })
-    await expect(page.getByRole('combobox', { name: '筛选数据集' })).toBeVisible()
+    await expect(page.getByRole('complementary', { name: '数据集与目录', exact: true })).toBeVisible()
     await page.getByRole('button', { name: '更多筛选', exact: true }).click()
     await expect(page.getByRole('dialog').getByRole('heading', { name: '更多筛选' })).toBeVisible()
 

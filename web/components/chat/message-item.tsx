@@ -25,6 +25,7 @@ import remarkGfm from 'remark-gfm'
 
 import { AuthImage } from '@/components/auth-image'
 import { BrandLogo } from '@/components/brand-logo'
+import { ChatOntologyAction } from '@/components/chat/ontology-action'
 import { useRouter } from '@/i18n/navigation'
 import { resolveMarkdownImageSrc, sanitizeMarkdownHref } from '@/components/markdown/markdown-safety'
 import type { Citation } from '@/types/processing'
@@ -48,6 +49,7 @@ import { formatApiError } from '@/lib/api-errors'
 import { AUTH_SCOPE_CHANGED_EVENT, getAuthSessionRevision } from '@/lib/auth-storage'
 import { reportClientError } from '@/lib/client-logging'
 import { toast } from 'sonner'
+import styles from './message-item.module.css'
 
 const INLINE_CITATION_HREF_PREFIX = 'mimirq-citation://'
 
@@ -68,7 +70,6 @@ function isCurrentMessageOperation(owner: { active: boolean }, sessionRevision: 
 type ConfidenceMeta = Readonly<{
   label: string
   badgeClass: string
-  lineClass: string
 }>
 
 type CitationRow = Readonly<{ key: string; citation: Citation }>
@@ -173,21 +174,18 @@ function getConfidenceMeta(band: unknown): ConfidenceMeta | null {
     return {
       label: '✓ 高置信度',
       badgeClass: 'border-success/20 bg-success/10 text-success',
-      lineClass: 'border-l-emerald-500/80',
     }
   }
   if (band === 'medium') {
     return {
       label: '中置信度',
       badgeClass: 'border-warning/20 bg-warning/10 text-warning',
-      lineClass: 'border-l-amber-500/80',
     }
   }
   if (band === 'low') {
     return {
       label: '低置信度',
       badgeClass: 'border-destructive/20 bg-destructive/10 text-destructive',
-      lineClass: 'border-l-rose-500/80',
     }
   }
   return null
@@ -735,7 +733,7 @@ export const ChatMessageItem = memo(function ChatMessageItem({
         isCompact ? 'w-full' : '',
       )}
     >
-      {!isUser && !isHistory && (
+      {!isUser && variant === 'minimal' && (
         <div
           className={cn(
             'flex-shrink-0 flex items-center justify-center shadow-sm mt-0.5 transition-all duration-300',
@@ -762,14 +760,13 @@ export const ChatMessageItem = memo(function ChatMessageItem({
                 ? 'max-w-[78%] px-4 py-3 rounded-2xl rounded-br-md border border-[#BDE0FE] bg-[#A2D2FF] text-black shadow-sm backdrop-blur-sm'
                 : 'max-w-[88%] px-4 py-3 flex-1 rounded-2xl rounded-bl-md border border-border/60 bg-background/92 text-foreground shadow-sm backdrop-blur-sm'
               : isUser
-                ? 'max-w-3xl px-6 py-4 rounded-2xl rounded-tr-sm border border-[#8FC8E8] bg-[#AAD9F2] text-[#17384D] shadow-sm backdrop-blur-sm'
-                : 'max-w-3xl px-6 py-4 glass-card text-foreground rounded-2xl rounded-tl-sm border border-border/60 border-l-4 hover:shadow-lg hover:shadow-primary/10',
-          (isUser || !isCompact) && (confidenceMeta?.lineClass ?? 'border-l-primary/30'),
+                ? 'min-w-0 max-w-[90%] rounded-xl bg-muted px-4 py-3 text-foreground'
+                : 'min-w-0 max-w-3xl flex-1 text-foreground',
         )}
       >
         {isHistory && isUser && (
           <div className="mb-3 flex items-center gap-2.5 text-[12.5px] font-medium text-foreground">
-            <span className="flex size-[22px] items-center justify-center rounded-full border border-border text-muted-foreground">
+            <span className={styles.historyAvatar}>
               <User className="size-[13px]" />
             </span>
             <span>你</span>
@@ -784,12 +781,20 @@ export const ChatMessageItem = memo(function ChatMessageItem({
             </time>
           </div>
         )}
-        {!isUser && isCompact && (
+        {!isUser && (
           <div className="flex items-center gap-2 mb-2.5">
-            {isHistory && <BrandLogo variant="mark" decorative className="size-6" />}
+            {variant !== 'minimal' && (
+              isHistory ? (
+                <span className={cn(styles.historyAvatar, styles.assistantAvatar)}>
+                  <BrandLogo variant="mark" decorative className="size-4" />
+                </span>
+              ) : <BrandLogo variant="mark" decorative className="size-6" />
+            )}
             <span
               className={
-                isHistory ? 'text-[13.5px] font-semibold text-foreground' : 'text-[11px] font-medium text-foreground/80'
+                variant !== 'minimal'
+                  ? 'text-sm font-medium text-foreground'
+                  : 'text-[11px] font-medium text-foreground/80'
               }
             >
               {BRAND_NAME}
@@ -797,9 +802,9 @@ export const ChatMessageItem = memo(function ChatMessageItem({
             <span
               suppressHydrationWarning
               className={
-                isHistory
+                variant !== 'minimal'
                   ? 'ml-auto text-[11.5px] text-muted-foreground tabular-nums'
-                  : 'text-[9px] font-medium text-muted-foreground/40 tabular-nums'
+                  : 'text-[11px] font-medium text-muted-foreground tabular-nums'
               }
             >
               {new Intl.DateTimeFormat('zh-CN', { hour: '2-digit', minute: '2-digit' }).format(
@@ -834,12 +839,14 @@ export const ChatMessageItem = memo(function ChatMessageItem({
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
-                    <span className="text-[11px] font-bold uppercase text-primary/75">思考路径</span>
-                    <span className="rounded-full border border-primary/15 bg-background/60 px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+                    <span className="text-[11px] font-bold text-primary/75">
+                      {isStreaming ? '正在处理' : '处理记录'}
+                    </span>
+                    <span className="rounded-full border border-primary/15 bg-background/60 px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
                       {stepCount} 步
                     </span>
                   </div>
-                  {!stepsOpen && latestStep ? (
+                  {!stepsOpen && isStreaming && latestStep ? (
                     <div className="mt-0.5 truncate text-[11px] text-muted-foreground">{latestStep}</div>
                   ) : null}
                 </div>
@@ -868,9 +875,8 @@ export const ChatMessageItem = memo(function ChatMessageItem({
                           key={`${idx}-${step}`}
                           className={cn(
                             'text-xs transition-opacity duration-200 motion-reduce:transition-none',
-                            idx === stepCount - 1
-                              ? 'font-medium text-foreground motion-safe:animate-pulse'
-                              : 'text-muted-foreground/60',
+                            idx === stepCount - 1 ? 'font-medium text-foreground' : 'text-muted-foreground',
+                            isStreaming && idx === stepCount - 1 && 'motion-safe:animate-pulse',
                           )}
                         >
                           {step}
@@ -911,7 +917,6 @@ export const ChatMessageItem = memo(function ChatMessageItem({
                       </div>
                       <div className="min-w-0">
                         <div className="text-base font-semibold text-foreground">检索诊断</div>
-                        <div className="text-xs text-muted-foreground">message_metadata / citations（仅用于调试）</div>
                       </div>
                     </DialogTitle>
                     <Button size="sm" variant="outline" onClick={handleCopyDiagnostics} className="text-xs">
@@ -1150,7 +1155,7 @@ export const ChatMessageItem = memo(function ChatMessageItem({
             'opacity-0 group-hover:opacity-100 scale-90 group-hover:scale-100 transition-opacity transition-transform',
             'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60',
             'text-muted-foreground hover:text-foreground hover:bg-muted/60',
-            isHistory && !isUser && 'hidden',
+            (isHistory || canRate) && !isUser && 'hidden',
           )}
         >
           {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
@@ -1213,13 +1218,16 @@ export const ChatMessageItem = memo(function ChatMessageItem({
             isUser
               ? cn(
                   'max-w-none break-words leading-relaxed [&>*]:text-inherit',
-                  isHistory ? 'text-[16px] leading-[1.85] text-foreground' : 'text-primary-foreground',
+                  isHistory ? 'text-[16px] leading-[1.85] text-foreground' : 'text-inherit',
                 )
               : 'prose prose-neutral dark:prose-invert max-w-none break-words leading-relaxed prose-p:my-2 prose-p:leading-7 prose-pre:bg-secondary/50 prose-pre:border prose-pre:border-border/50 prose-pre:text-foreground prose-pre:rounded-xl prose-pre:p-4 prose-pre:my-3 prose-code:bg-[hsl(var(--code-background))] prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded-md prose-code:text-sm prose-code:font-mono prose-code:text-primary prose-code:before:content-none prose-code:after:content-none',
             isHistory && !isUser && 'text-[15.5px] leading-[1.85] prose-p:leading-[1.85]',
           )}
         >
           {renderedContent}
+          {!isUser && !isStreaming && message.ontology_action && (
+            <ChatOntologyAction key={message.id} proposal={message.ontology_action} messageId={message.id} />
+          )}
         </div>
 
         {isUser && message.message_metadata?.send_state === 'sending' && (
@@ -1247,8 +1255,8 @@ export const ChatMessageItem = memo(function ChatMessageItem({
                   onClick={() => handleOpenCitation(citation)}
                   className="flex min-h-8 w-full items-center gap-2 rounded-sm py-1 text-left text-[13px] leading-5 text-foreground transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none max-md:min-h-11"
                 >
-                  <FileText className="size-3.5 shrink-0 text-muted-foreground" />
-                  <span className="w-4 shrink-0 text-[11.5px] tabular-nums text-muted-foreground">{idx + 1}.</span>
+                  <span className={styles.citationOrder}>{idx + 1}.</span>
+                  <span className={styles.citationIcon} aria-hidden="true"><FileText className="size-3.5" /></span>
                   <span className="min-w-0 break-words">{citation.document_name}</span>
                   {citation.page_number != null && (
                     <span className="shrink-0 text-[11.5px] text-muted-foreground">第 {citation.page_number} 页</span>
@@ -1406,59 +1414,28 @@ export const ChatMessageItem = memo(function ChatMessageItem({
         )}
 
         {!isUser && (isHistory || canRate) && (
-          <div className={isHistory ? 'mt-3 flex flex-wrap items-start gap-x-5' : undefined}>
-            {isHistory && (
-              <button
-                type="button"
-                onClick={handleCopy}
-                aria-label={copied ? 'Copied' : 'Copy message'}
-                className="inline-flex min-h-8 items-center gap-1.5 rounded-sm text-[11.5px] text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-md:min-h-11"
-              >
-                {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
-                {copied ? '已复制' : '复制回答'}
-              </button>
-            )}
+          <div className="mt-3 flex flex-wrap items-start gap-x-5">
+            <button
+              type="button"
+              onClick={handleCopy}
+              aria-label={copied ? 'Copied' : 'Copy message'}
+              className="inline-flex min-h-8 items-center gap-1.5 rounded-sm text-[11.5px] text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-md:min-h-11"
+            >
+              {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
+              {copied ? '已复制' : '复制回答'}
+            </button>
             {canRate && (
-              <details
-                className={
-                  isHistory
-                    ? 'open:w-full'
-                    : 'mt-4 overflow-hidden rounded-2xl border border-border/60 bg-background/35 open:bg-background/45'
-                }
-              >
+              <details className="open:w-full">
                 <summary
                   className={cn(
                     'cursor-pointer list-none [&::-webkit-details-marker]:hidden',
-                    isHistory
-                      ? 'inline-flex min-h-8 items-center gap-1.5 rounded-sm text-[11.5px] text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-md:min-h-11'
-                      : 'flex items-center justify-between gap-3 px-4 py-3',
+                    'inline-flex min-h-8 items-center gap-1.5 rounded-sm text-[11.5px] text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-md:min-h-11',
                   )}
                 >
-                  {isHistory ? (
-                    <>
-                      <Star className="size-3.5" />
-                      <span>{rating == null ? '评价回答' : `我的评分 ${rating} / 5`}</span>
-                    </>
-                  ) : (
-                    <>
-                      <div>
-                        <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-muted-foreground/80">
-                          反馈评分
-                        </div>
-                        <div className="mt-1 text-xs text-muted-foreground">用 1-5 星记录这条回答是否有帮助。</div>
-                      </div>
-                      <span className="text-[11px] text-muted-foreground">
-                        {rating == null ? '展开评分' : `${rating} / 5`}
-                      </span>
-                    </>
-                  )}
+                  <Star className="size-3.5" />
+                  <span>{rating == null ? '评价回答' : `我的评分 ${rating} / 5`}</span>
                 </summary>
                 <div className="flex flex-col gap-3 border-t border-border/50 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
-                  {!isHistory && (
-                    <div className="text-xs text-muted-foreground">
-                      评分越低，越适合后续进入回归或 evidence workbench 继续分析。
-                    </div>
-                  )}
                   <div className="flex items-center gap-1">
                     {[1, 2, 3, 4, 5].map((v) => {
                       const active = rating != null && v <= rating
@@ -1471,7 +1448,7 @@ export const ChatMessageItem = memo(function ChatMessageItem({
                           className={cn(
                             'inline-flex h-8 w-8 items-center justify-center rounded-lg transition-colors',
                             'hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60',
-                            isHistory && 'max-md:size-11',
+                            'max-md:size-11',
                             ratingSending && 'cursor-not-allowed opacity-50',
                           )}
                           aria-label={`rate-${v}`}

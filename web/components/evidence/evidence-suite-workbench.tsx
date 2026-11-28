@@ -23,7 +23,7 @@ export function EvidenceSuiteWorkbench({
       context={state.dataset?.name ?? (state.datasetLoading ? '正在读取数据集…' : '数据集未取得')}
       back={() => router.push('/datasets')}
       actions={
-        <Button asChild variant="outline">
+        <Button asChild variant="outline" className="px-3">
           <Link href={`/datasets/${encodeURIComponent(datasetId)}/profile`}>数据画像</Link>
         </Button>
       }

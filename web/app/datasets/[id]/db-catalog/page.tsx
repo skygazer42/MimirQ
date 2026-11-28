@@ -14,7 +14,7 @@ import { useParams } from 'next/navigation'
 import { skipToken, useQuery } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { z } from 'zod'
-import { Play, Search } from '@/components/icons'
+import { Play } from '@/components/icons'
 
 import { AppFrame } from '@/components/app-frame'
 import { Badge } from '@/components/ui/badge'
@@ -28,11 +28,14 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
+import { SearchInput } from '@/components/ui/search-input'
 import { Label } from '@/components/ui/label'
 import {
   OperationalWorkspace,
   DirectoryWorkspace,
   WorkspaceNotice,
+  WorkspaceNoticeStack,
+  WorkspaceTableScroll,
   workspaceStyles as ws,
 } from '@/components/ui/operational-workspace'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -50,9 +53,32 @@ import { queryKeys } from '@/lib/query-keys'
 import { cn, formatDate } from '@/lib/utils'
 
 import type { ConnectorRunOut, DbCatalogTableSummary } from '@/types'
+import styles from './db-catalog.module.css'
 
 const ENGINE_OPTIONS: ReadonlyArray<'all' | 'mysql' | 'sqlserver'> = ['all', 'mysql', 'sqlserver']
 const DB_CATALOG_LIST_LIMIT = 200
+const catalogDateTimeFormatter = new Intl.DateTimeFormat('zh-CN', {
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+  second: '2-digit',
+  hour12: false,
+  timeZoneName: 'shortOffset',
+})
+const CATALOG_RUN_STATUS_LABELS: Readonly<Record<string, string>> = {
+  pending: '排队中',
+  running: '同步中',
+  completed: '已完成',
+  failed: '失败',
+  cancelled: '已取消',
+}
+
+function catalogRunStatusLabel(status: ConnectorRunOut['status']): string {
+  return Object.hasOwn(CATALOG_RUN_STATUS_LABELS, status) ? CATALOG_RUN_STATUS_LABELS[status] : status
+}
+
 const dbCatalogPanelClass = ws.canvasPanel
 
 type DbCatalogSyncConfig = {
@@ -113,13 +139,13 @@ function CatalogSchemaDiff({ value }: Readonly<{ value: unknown }>) {
 
   return (
     <details className="mt-2 rounded-xl border border-border/60 bg-card/55 px-3 py-2 dark:border-border/60 dark:bg-muted/20">
-      <summary className="cursor-pointer select-none text-[11px] font-medium text-muted-foreground">结构变更</summary>
-      <div className="mt-2 max-h-40 space-y-2 overflow-y-auto text-[11px] no-scrollbar">
+      <summary className="cursor-pointer select-none text-[13px] font-medium text-muted-foreground">结构变更</summary>
+      <div className="mt-2 max-h-40 space-y-2 overflow-y-auto text-[13px] no-scrollbar">
         {textChanges
           .filter((change) => change.count > 0)
           .map((change) => (
             <div key={change.label}>
-              <div className="font-semibold text-foreground">
+              <div className="font-medium text-foreground">
                 {change.label} {change.count}
                 {change.truncated && `（显示 ${change.items.length} 项）`}
               </div>
@@ -128,7 +154,7 @@ function CatalogSchemaDiff({ value }: Readonly<{ value: unknown }>) {
           ))}
         {columnChanges.count > 0 && (
           <div>
-            <div className="font-semibold text-foreground">
+            <div className="font-medium text-foreground">
               变更列 {columnChanges.count}
               {columnChanges.truncated && `（显示 ${columnChanges.items.length} 项）`}
             </div>
@@ -328,26 +354,14 @@ function DatasetDbCatalogWorkspace({ datasetId }: Readonly<{ datasetId: string }
     const name = formatQualifiedName(selected)
     const rowCount = latestProfile?.profile.row_count_estimate
     return (
-      <div className="flex flex-wrap items-center gap-2 text-xs">
-        <Badge variant="outline" className="font-mono">
-          {name}
-        </Badge>
-        <Badge variant="soft" className="font-mono">
-          {selected.engine}
-        </Badge>
-        <Badge variant="soft" className="font-mono">
-          {selected.table_type}
-        </Badge>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[13px] text-muted-foreground">
+        <span className="break-all font-mono text-sm text-foreground">{name}</span>
+        <span className="font-mono text-foreground">{selected.engine}</span>
+        <span className="font-mono text-foreground">{selected.table_type}</span>
         {typeof rowCount === 'number' && Number.isFinite(rowCount) ? (
-          <Badge variant="soft" className="font-mono tabular-nums">
-            rows~: {rowCount.toLocaleString()}
-          </Badge>
+          <span className="tabular-nums">约 {rowCount.toLocaleString()} 行</span>
         ) : null}
-        {selected.columns.length > 0 ? (
-          <Badge variant="soft" className="font-mono tabular-nums">
-            cols: {selected.columns.length}
-          </Badge>
-        ) : null}
+        {selected.columns.length > 0 ? <span className="tabular-nums">{selected.columns.length} 列</span> : null}
       </div>
     )
   }, [latestProfile, selected])
@@ -378,12 +392,55 @@ function DatasetDbCatalogWorkspace({ datasetId }: Readonly<{ datasetId: string }
           </Button>
         }
       >
-        {loadError ? (
-          <div className="px-5">
-            <WorkspaceNotice retry={refreshCatalogList} pending={isLoading}>
-              {formatApiError(loadError, '数据库目录读取失败')}
-            </WorkspaceNotice>
-          </div>
+        {loadError || detailQuery.isError || latestProfileQuery.isError || latestRunQuery.isError ? (
+          <WorkspaceNoticeStack ariaLabel="数据库目录状态提示">
+            {loadError ? (
+              <WorkspaceNotice
+                tone="warning"
+                title="数据库目录读取失败"
+                error={loadError}
+                fallbackMessage="数据库目录读取失败"
+                retry={refreshCatalogList}
+                pending={isLoading}
+              />
+            ) : null}
+            {detailQuery.isError ? (
+              <WorkspaceNotice
+                tone="warning"
+                title="表结构读取失败"
+                error={detailQuery.error}
+                fallbackMessage="表结构读取失败"
+                retry={() => {
+                  void detailQuery.refetch()
+                }}
+                pending={detailQuery.isFetching}
+              />
+            ) : null}
+            {latestProfileQuery.isError ? (
+              <WorkspaceNotice
+                tone="warning"
+                title="安全画像读取失败"
+                error={latestProfileQuery.error}
+                fallbackMessage="安全画像读取失败"
+                retry={() => {
+                  void latestProfileQuery.refetch()
+                }}
+                pending={latestProfileQuery.isFetching}
+              />
+            ) : null}
+            {latestRunQuery.isError ? (
+              <WorkspaceNotice
+                tone="warning"
+                title="同步记录读取失败"
+                error={latestRunQuery.error}
+                fallbackMessage="同步记录读取失败"
+                retry={() => {
+                  void latestRunQuery.refetch()
+                }}
+                pending={latestRunQuery.isFetching}
+              />
+            ) : null}
+          </WorkspaceNoticeStack>
         ) : null}
         <DirectoryWorkspace
           pane={pane}
@@ -395,9 +452,9 @@ function DatasetDbCatalogWorkspace({ datasetId }: Readonly<{ datasetId: string }
               <div className="shrink-0 border-b border-border/60 bg-card/65 p-3.5 dark:border-border/60 dark:bg-muted/20">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <div className="text-sm font-semibold text-foreground dark:text-foreground">表资产</div>
+                    <div className="text-sm font-medium text-foreground dark:text-foreground">表资产</div>
                     <div className="mt-0.5 text-[11px] leading-4 text-muted-foreground">
-                      当前最多展示 {DB_CATALOG_LIST_LIMIT} 张表；按名称、schema 或引擎快速过滤。
+                      最多显示 {DB_CATALOG_LIST_LIMIT} 张表，可搜索或按引擎筛选。
                     </div>
                   </div>
                   {catalogTablesQuery.data !== undefined && (
@@ -406,16 +463,14 @@ function DatasetDbCatalogWorkspace({ datasetId }: Readonly<{ datasetId: string }
                     </Badge>
                   )}
                 </div>
-                <div className="mt-3 flex items-center gap-2 rounded-xl border border-border/60 bg-card/75 px-3 py-2 shadow-inner dark:border-border/60 dark:bg-muted/20">
-                  <Search className="size-3.5 shrink-0 text-muted-foreground" />
-                  <Input
-                    aria-label="搜索数据库表"
-                    value={query}
-                    onChange={(e) => setQuery(e.target.value)}
-                    placeholder="db / schema / table"
-                    className="focus-ring h-7 border-0 bg-transparent px-0 text-[13px] shadow-none"
-                  />
-                </div>
+                <SearchInput
+                  aria-label="搜索数据库表"
+                  value={query}
+                  onValueChange={setQuery}
+                  placeholder="搜索库、schema 或表名"
+                  containerClassName="mt-3"
+                  inputClassName="h-11 text-base sm:h-9 sm:text-sm"
+                />
                 <div className="mt-2 flex flex-wrap gap-1.5">
                   {ENGINE_OPTIONS.map((k) => (
                     <Button
@@ -456,7 +511,7 @@ function DatasetDbCatalogWorkspace({ datasetId }: Readonly<{ datasetId: string }
                             <button
                               key={t.id}
                               type="button"
-                              className={cn(ws.directoryRow, active ? 'bg-primary/5' : 'hover:bg-muted/40')}
+                              className={cn(ws.directoryRow, active ? 'bg-muted' : 'hover:bg-muted/40')}
                               aria-current={active ? 'true' : undefined}
                               onClick={() => {
                                 setSelectedTableId(t.id)
@@ -465,14 +520,14 @@ function DatasetDbCatalogWorkspace({ datasetId }: Readonly<{ datasetId: string }
                             >
                               <div className="flex items-center justify-between gap-3">
                                 <div className="min-w-0">
-                                  <div className="truncate font-mono text-xs tabular-nums text-foreground dark:text-foreground">
+                                  <div className="truncate font-mono text-sm tabular-nums text-foreground dark:text-foreground">
                                     {formatQualifiedName(t)}
                                   </div>
-                                  <div className="mt-1 truncate text-[11px] text-muted-foreground">
-                                    {t.comment || '暂无备注'}
-                                  </div>
+                                  {t.comment ? (
+                                    <div className="mt-1 truncate text-[13px] text-muted-foreground">{t.comment}</div>
+                                  ) : null}
                                 </div>
-                                <Badge variant="outline" className="shrink-0 rounded-lg font-mono text-[10px]">
+                                <Badge variant="outline" className="shrink-0 rounded-lg font-mono text-[13px]">
                                   {t.engine}
                                 </Badge>
                               </div>
@@ -484,7 +539,7 @@ function DatasetDbCatalogWorkspace({ datasetId }: Readonly<{ datasetId: string }
                   }
                   return (
                     <div className="py-4">
-                      <div className="text-sm font-semibold text-foreground">
+                      <div className="text-sm font-medium text-foreground">
                         {hasCatalogFilters ? '没有匹配的表' : '暂无数据库目录'}
                       </div>
                       <div className="mt-1 text-xs leading-5 text-muted-foreground">
@@ -506,20 +561,23 @@ function DatasetDbCatalogWorkspace({ datasetId }: Readonly<{ datasetId: string }
                   </p>
                 ) : (
                   <>
-                    <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
-                      <Badge variant="outline" className="rounded-lg font-mono text-[10px]">
-                        {latestRun.connector_id}
+                    <p className="mb-2 text-[13px] text-muted-foreground">
+                      数据集最近一次目录同步 · {catalogRunStatusLabel(latestRun.status)}
+                    </p>
+                    <div className="flex flex-wrap items-center gap-1.5 text-[13px]">
+                      <Badge variant="outline" className="rounded-lg font-mono text-[13px] text-foreground">
+                        连接器 {latestRun.connector_id}
                       </Badge>
-                      <Badge variant="soft" className="rounded-lg font-mono text-[10px]">
+                      <Badge variant="soft" className="rounded-lg font-mono text-[13px] text-foreground">
                         任务 {latestRun.id.slice(0, 8)}
                       </Badge>
                       {typeof tableCount === 'number' && Number.isInteger(tableCount) && tableCount >= 0 && (
-                        <Badge variant="soft" className="rounded-lg font-mono text-[10px]">
-                          本次同步 {tableCount} 张表
+                        <Badge variant="soft" className="rounded-lg font-mono text-[13px] text-foreground">
+                          该连接器本次同步 {tableCount} 张表
                         </Badge>
                       )}
                       {catalogLastSeenAt.success && (
-                        <Badge variant="soft" className="rounded-lg text-[10px]">
+                        <Badge variant="soft" className="rounded-lg text-[13px] text-foreground">
                           目录更新于 <time dateTime={catalogLastSeenAt.data}>{formatDate(catalogLastSeenAt.data)}</time>
                         </Badge>
                       )}
@@ -538,20 +596,10 @@ function DatasetDbCatalogWorkspace({ datasetId }: Readonly<{ datasetId: string }
               <TabsTrigger value="history">同步记录</TabsTrigger>
             </TabsList>
             <TabsContent value="structure" className={ws.tabContent}>
-              {detailQuery.isError ? (
-                <WorkspaceNotice
-                  retry={() => {
-                    void detailQuery.refetch()
-                  }}
-                  pending={detailQuery.isFetching}
-                >
-                  {formatApiError(detailQuery.error, '表结构读取失败')}
-                </WorkspaceNotice>
-              ) : null}
               <Panel variant="seamless" className={cn(dbCatalogPanelClass, 'flex min-h-0 min-w-0 flex-col p-0')}>
                 <div className="flex shrink-0 items-start justify-between gap-3 border-b border-border/60 bg-card/65 px-3.5 py-3 dark:border-border/60 dark:bg-muted/20">
                   <div className="min-w-0 space-y-1.5">
-                    <div className="text-sm font-semibold text-foreground dark:text-foreground">表结构</div>
+                    <div className="text-sm font-medium text-foreground dark:text-foreground">表结构</div>
                     {selectedSummary}
                   </div>
                 </div>
@@ -571,7 +619,7 @@ function DatasetDbCatalogWorkspace({ datasetId }: Readonly<{ datasetId: string }
                     if (selected) {
                       return (
                         <div className="overflow-hidden">
-                          <div className="grid grid-cols-12 gap-0 bg-muted/40 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground dark:bg-muted/30">
+                          <div className="grid grid-cols-12 gap-0 bg-muted/40 text-[13px] font-medium text-muted-foreground dark:bg-muted/30">
                             <div className="col-span-5 px-3 py-2">字段</div>
                             <div className="col-span-4 px-3 py-2">类型</div>
                             <div className="col-span-3 px-3 py-2">允许为空</div>
@@ -579,14 +627,14 @@ function DatasetDbCatalogWorkspace({ datasetId }: Readonly<{ datasetId: string }
                           {selected.columns.length > 0 ? (
                             <div className="divide-y divide-border/60 dark:divide-border/60">
                               {selected.columns.map((c) => (
-                                <div key={c.id} className="grid grid-cols-12 gap-0 text-xs hover:bg-info/5">
+                                <div key={c.id} className="grid grid-cols-12 gap-0 text-sm hover:bg-muted/40">
                                   <div className="col-span-5 truncate px-3 py-2.5 font-mono text-foreground dark:text-foreground">
                                     {c.name}
                                   </div>
-                                  <div className="col-span-4 truncate px-3 py-2.5 font-mono text-muted-foreground">
+                                  <div className="col-span-4 truncate px-3 py-2.5 font-mono text-foreground">
                                     {c.data_type || '—'}
                                   </div>
-                                  <div className="col-span-3 px-3 py-2.5 font-mono text-muted-foreground">
+                                  <div className="col-span-3 px-3 py-2.5 font-mono text-[13px] text-muted-foreground">
                                     {(() => {
                                       if (c.nullable === null || c.nullable === undefined) return '—'
                                       return c.nullable ? 'true' : 'false'
@@ -636,18 +684,13 @@ function DatasetDbCatalogWorkspace({ datasetId }: Readonly<{ datasetId: string }
             <TabsContent value="profile" className={ws.tabContent}>
               <section className={ws.section}>
                 <h2 className={ws.sectionTitle}>最新安全画像</h2>
-                {latestProfileQuery.isError ? (
-                  <WorkspaceNotice
-                    retry={() => {
-                      void latestProfileQuery.refetch()
-                    }}
-                    pending={latestProfileQuery.isFetching}
-                  >
-                    {formatApiError(latestProfileQuery.error, '安全画像读取失败')}
-                  </WorkspaceNotice>
-                ) : latestProfile ? (
+                {latestProfile ? (
                   <>
-                    <p className="my-3 text-xs text-muted-foreground">{latestProfile.created_at}</p>
+                    <p className="my-3 text-xs text-muted-foreground">
+                      <time dateTime={latestProfile.created_at} title={latestProfile.created_at}>
+                        {catalogDateTimeFormatter.format(new Date(latestProfile.created_at))}
+                      </time>
+                    </p>
                     <pre className="overflow-auto bg-muted/20 p-3 text-xs leading-6">
                       {JSON.stringify(latestProfile.profile, null, 2)}
                     </pre>
@@ -672,7 +715,7 @@ function DatasetDbCatalogWorkspace({ datasetId }: Readonly<{ datasetId: string }
             <TabsContent value="history" className={ws.tabContent}>
               <section className={ws.section}>
                 <div className={ws.sectionHeading}>
-                  <h2 className={ws.sectionTitle}>同步记录</h2>
+                  <h2 className={ws.sectionTitle}>数据集同步记录</h2>
                   <Button
                     variant="ghost"
                     disabled={isLoading || latestRunQuery.isFetching}
@@ -684,13 +727,11 @@ function DatasetDbCatalogWorkspace({ datasetId }: Readonly<{ datasetId: string }
                     重新读取记录
                   </Button>
                 </div>
-                {latestRunQuery.isError && (
-                  <WorkspaceNotice>{formatApiError(latestRunQuery.error, '同步记录读取失败')}</WorkspaceNotice>
-                )}
+                <p className={ws.muted}>当前数据集各连接器的目录同步运行记录。</p>
                 {latestRunQuery.isPending && <p className={ws.muted}>正在读取同步记录…</p>}
                 {catalogRuns?.length === 0 && <p className={ws.muted}>最近的运行中没有数据库目录同步记录。</p>}
                 {catalogRuns !== undefined && catalogRuns.length > 0 && (
-                  <div className={ws.tableScroll}>
+                  <WorkspaceTableScroll label="数据库目录同步记录表格">
                     <table className={ws.table} aria-label="数据库目录同步记录">
                       <thead>
                         <tr>
@@ -703,15 +744,19 @@ function DatasetDbCatalogWorkspace({ datasetId }: Readonly<{ datasetId: string }
                       <tbody>
                         {catalogRuns.map((run) => (
                           <tr key={run.id}>
-                            <td className="font-mono text-xs">{run.id.slice(0, 8)}</td>
+                            <td className="font-mono text-[13px]">{run.id.slice(0, 8)}</td>
                             <td>{run.connector_id}</td>
-                            <td>{run.status}</td>
-                            <td>{run.created_at}</td>
+                            <td className="whitespace-nowrap">{catalogRunStatusLabel(run.status)}</td>
+                            <td className="tabular-nums">
+                              <time dateTime={run.created_at} title={run.created_at}>
+                                {catalogDateTimeFormatter.format(new Date(run.created_at))}
+                              </time>
+                            </td>
                           </tr>
                         ))}
                       </tbody>
                     </table>
-                  </div>
+                  </WorkspaceTableScroll>
                 )}
               </section>
             </TabsContent>
@@ -733,7 +778,7 @@ function DatasetDbCatalogWorkspace({ datasetId }: Readonly<{ datasetId: string }
               </DialogDescription>
             </DialogHeader>
 
-            <form id="db-catalog-sync" className={ws.dialogBody} onSubmit={submitSync}>
+            <form id="db-catalog-sync" className={cn(ws.dialogBody, styles.syncForm)} onSubmit={submitSync}>
               <fieldset className="space-y-2">
                 <legend className="text-sm font-medium">连接器</legend>
                 <div className="flex flex-wrap gap-2">
@@ -760,7 +805,7 @@ function DatasetDbCatalogWorkspace({ datasetId }: Readonly<{ datasetId: string }
                 </div>
               </fieldset>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="grid grid-cols-[minmax(0,1fr)_5rem] gap-4 sm:grid-cols-3">
                 <div className="space-y-2 sm:col-span-2">
                   <Label htmlFor="db-catalog-sync-host">主机</Label>
                   <Input
@@ -786,7 +831,7 @@ function DatasetDbCatalogWorkspace({ datasetId }: Readonly<{ datasetId: string }
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="db-catalog-sync-database">数据库</Label>
                   <Input
@@ -830,7 +875,7 @@ function DatasetDbCatalogWorkspace({ datasetId }: Readonly<{ datasetId: string }
                     id="db-catalog-sync-schemas"
                     value={syncIncludeSchemas}
                     onChange={(e) => setSyncIncludeSchemas(e.target.value)}
-                    placeholder="dbo\nsales"
+                    placeholder={'dbo\nsales'}
                     rows={2}
                   />
                 </div>
@@ -847,7 +892,7 @@ function DatasetDbCatalogWorkspace({ datasetId }: Readonly<{ datasetId: string }
                 />
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="db-catalog-sync-max-tables">最大表数</Label>
                   <Input
@@ -861,12 +906,10 @@ function DatasetDbCatalogWorkspace({ datasetId }: Readonly<{ datasetId: string }
                     onChange={(event) => setSyncMaxTables(event.target.value)}
                   />
                 </div>
-                <div className="rounded-xl border border-border bg-muted/20 px-4 py-3 flex items-center justify-between gap-3">
+                <div className="flex items-center justify-between gap-3 py-3">
                   <div className="min-w-0">
                     <Label htmlFor="db-catalog-sync-profile">安全画像</Label>
-                    <div className="text-xs text-muted-foreground text-pretty truncate">
-                      记录 row_count_estimate 等聚合统计
-                    </div>
+                    <div className="text-xs text-muted-foreground text-pretty truncate">记录行数估计等汇总信息</div>
                   </div>
                   <Switch
                     id="db-catalog-sync-profile"
@@ -875,11 +918,14 @@ function DatasetDbCatalogWorkspace({ datasetId }: Readonly<{ datasetId: string }
                   />
                 </div>
               </div>
-
-              {syncError ? <WorkspaceNotice>{syncError}</WorkspaceNotice> : null}
             </form>
 
-            <DialogFooter className={ws.dialogFooter}>
+            <DialogFooter className={cn(ws.dialogFooter, styles.syncFooter)}>
+              {syncError ? (
+                <div className="min-w-0 basis-full break-words">
+                  <WorkspaceNotice>{syncError}</WorkspaceNotice>
+                </div>
+              ) : null}
               <Button type="button" variant="outline" onClick={() => setSyncOpen(false)} disabled={syncSubmitting}>
                 取消
               </Button>

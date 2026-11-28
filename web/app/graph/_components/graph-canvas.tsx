@@ -2,7 +2,6 @@
 
 import type { RefObject } from 'react'
 
-import { Network } from '@/components/icons'
 import dynamic from 'next/dynamic'
 
 import { GraphLoadingIndicator } from '@/components/graph/graph-loading-indicator'
@@ -13,6 +12,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import type { GraphData } from '@/lib/graph-types'
 
 import type { GraphLinkLike, GraphNodeLike } from '../graph-page-utils'
+import styles from './graph-workspace.module.css'
 const KnowledgeGraph3D = dynamic(
   () => import('@/components/graph/force-graph-3d').then((mod) => mod.KnowledgeGraph3D),
   {
@@ -47,7 +47,6 @@ type GraphCanvasProps = Readonly<{
   layoutMode: LayoutMode
   isLoading: boolean
   hasLoadError: boolean
-  hasActiveScope: boolean
   onNodeClick: (node: GraphNodeLike) => void
   onNodeRightClick: (node: GraphNodeLike, event: MouseEvent) => void
   onLinkClick: (link: GraphLinkLike) => void
@@ -73,7 +72,6 @@ export function GraphCanvas({
   layoutMode,
   isLoading,
   hasLoadError,
-  hasActiveScope,
   onNodeClick,
   onNodeRightClick,
   onLinkClick,
@@ -142,80 +140,22 @@ export function GraphCanvas({
           )}
         </>
       ) : (
-        <div className="absolute inset-0 z-10 flex items-center justify-center px-5 py-6">
+        <div className={styles.emptyStage}>
           {isLoading ? (
             <GraphLoadingIndicator message="正在读取图谱…" />
           ) : hasLoadError ? null : (
-            <section className="mx-auto flex w-full max-w-[36rem] flex-col items-center justify-center px-8 py-14 text-center md:px-10 md:py-16">
-              <div className="mb-7 flex items-center justify-center">
-                <svg aria-hidden="true" viewBox="0 0 180 72" className="h-14 w-36">
-                  <path
-                    d="M36 46H90M90 46H144M90 46V22"
-                    fill="none"
-                    stroke="hsl(var(--info) / 0.24)"
-                    strokeWidth="1.6"
-                    strokeLinecap="round"
-                  />
-                  <circle
-                    cx="36"
-                    cy="46"
-                    r="8.7"
-                    fill="hsl(var(--background) / 0.92)"
-                    stroke="hsl(var(--info) / 0.32)"
-                    strokeWidth="1.5"
-                  />
-                  <circle
-                    cx="144"
-                    cy="46"
-                    r="8.7"
-                    fill="hsl(var(--background) / 0.92)"
-                    stroke="hsl(var(--info) / 0.32)"
-                    strokeWidth="1.5"
-                  />
-                  <circle
-                    cx="90"
-                    cy="22"
-                    r="10.2"
-                    fill="hsl(var(--info) / 0.10)"
-                    stroke="hsl(var(--info) / 0.62)"
-                    strokeWidth="1.6"
-                  />
-                  <circle
-                    cx="90"
-                    cy="46"
-                    r="8.7"
-                    fill="hsl(var(--background) / 0.92)"
-                    stroke="hsl(var(--info) / 0.32)"
-                    strokeWidth="1.5"
-                  />
-                  <circle cx="36" cy="46" r="2" fill="hsl(var(--info) / 0.48)" />
-                  <circle cx="90" cy="46" r="2" fill="hsl(var(--info) / 0.48)" />
-                  <circle cx="144" cy="46" r="2" fill="hsl(var(--info) / 0.48)" />
-                  <circle cx="90" cy="22" r="2.7" fill="hsl(var(--info))" />
-                </svg>
-              </div>
-              <h2 className="mx-auto w-full max-w-[19rem] text-balance text-[1.42rem] font-semibold  text-foreground md:text-[1.56rem]">
-                {hasActiveScope ? '当前范围暂无图谱' : '选择图谱'}
-              </h2>
-              <div className="mx-auto mt-3 w-full max-w-[30rem] text-pretty text-sm leading-7 text-muted-foreground md:text-[15px]">
-                {hasActiveScope
-                  ? '当前范围还没有实体与关系，可以切换到其他已有图谱。'
-                  : '选择数据集或文档，查看已有的实体、关系与来源。'}
-              </div>
-              <div className="mx-auto mt-7 flex w-full max-w-[30rem] flex-wrap items-center justify-center gap-3">
-                <Button
-                  variant="outline"
-                  className="h-9 gap-2 rounded-md px-3 text-[13px] shadow-none"
-                  onClick={onTriggerManualKgUpload}
-                >
-                  <Network className="h-4 w-4" />
-                  导入 KG JSON / JSONL
-                </Button>
-                <Button className="h-9 gap-2 rounded-md px-3 text-[13px] shadow-none" onClick={onOpenGraphPicker}>
+            <div className={styles.filteredEmpty}>
+              <h2>当前筛选条件下暂无匹配实体</h2>
+              <p>调整实体类型或关系筛选条件，或重新选择图谱范围。</p>
+              <div className={styles.filteredEmptyActions}>
+                <Button variant="outline" onClick={onOpenGraphPicker}>
                   选择图谱
                 </Button>
+                <Button variant="outline" onClick={onTriggerManualKgUpload}>
+                  导入 KG JSON / JSONL
+                </Button>
               </div>
-            </section>
+            </div>
           )}
         </div>
       )}

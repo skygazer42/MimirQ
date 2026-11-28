@@ -5,7 +5,8 @@ import { openRemaining, remainingEvidence, remainingFixture, datasetRoute } from
 
 test('opening a workspace does not compile every navigation destination in the background', async ({ page }) => {
   test.setTimeout(180000)
-  await remainingFixture(page)
+  const state = await remainingFixture(page)
+  await page.route('**/api/v1/observability/frontend-vitals', (route) => route.fulfill({ status: 204 }))
   // Exercise the actual user-browser branch, which differs from automated browsers.
   await page.addInitScript(() => Object.defineProperty(navigator, 'webdriver', { get: () => false }))
   const prefetches: string[] = []
@@ -31,4 +32,5 @@ test('opening a workspace does not compile every navigation destination in the b
   expect(prefetches).toEqual([])
   await page.getByRole('link', { name: '数据集', exact: true }).click()
   await expect(page.getByRole('heading', { name: '数据集', exact: true })).toBeVisible({ timeout: 60000 })
+  expect(state.base.errors).toEqual([])
 })

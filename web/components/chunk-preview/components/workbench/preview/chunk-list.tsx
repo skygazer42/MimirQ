@@ -558,6 +558,7 @@ export function ChunkList({ mobileView }: Readonly<{ mobileView?: 'original' | '
     getItemKey: getRowKey,
     getScrollElement: () => scrollRef.current,
     estimateSize: (idx) => (displayRows[idx].kind === 'section' ? 44 : 140),
+    gap: 10,
     overscan: 8,
   })
 
@@ -754,10 +755,10 @@ export function ChunkList({ mobileView }: Readonly<{ mobileView?: 'original' | '
         aria-label={t('chunkList.toolsLabel')}
         className="min-h-0 max-h-[50%] shrink-0 overflow-y-auto"
       >
-        <div className="shrink-0 border-b border-border bg-card">
-          <div className="flex flex-col">
-            <div className={styles.paneHead}>
-              <div className="flex min-w-0 items-center gap-1.5">
+        <div className="shrink-0 bg-card">
+          <div className={styles.listTools}>
+            <div data-chunk-list-toolbar className={cn(styles.paneHead, styles.listHeader)}>
+              <div className={styles.listTitle}>
                 <span className="flex min-w-0 items-center gap-1.5 whitespace-nowrap text-[13px] font-semibold text-foreground">
                   <span className="inline-flex items-center text-muted-foreground">
                     <Rows3 className="h-3.5 w-3.5" />
@@ -769,55 +770,68 @@ export function ChunkList({ mobileView }: Readonly<{ mobileView?: 'original' | '
                   <span className="truncate font-mono text-[10.5px] text-muted-foreground">{matchesLabel}</span>
                 ) : null}
               </div>
+              <div className={styles.listToolRow}>
+                <div data-chunk-list-search className={cn(styles.listSearch, 'relative')}>
+                  <Search className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                  <Input
+                    value={queryInput}
+                    onChange={(e) => setQueryInput(e.target.value)}
+                    placeholder={t('chunkList.searchPlaceholder')}
+                    className="h-full min-w-0 flex-1 border-0 bg-transparent px-0 pr-5 text-[13px] shadow-none focus-visible:ring-1 focus-visible:ring-ring"
+                    aria-label="搜索切块内容"
+                  />
+                  {queryInput ? (
+                    <button
+                      type="button"
+                      className="absolute right-2 top-1/2 -translate-y-1/2 rounded text-muted-foreground transition-colors hover:text-foreground focus-ring"
+                      onClick={() => {
+                        commitListQuery('')
+                      }}
+                      aria-label={t('chunkList.clearSearch')}
+                      title={t('chunkList.clearSearch')}
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  ) : null}
+                </div>
+                <Button
+                  type="button"
+                  variant={retrieveOpen ? 'secondary' : 'outline'}
+                  size="sm"
+                  className={
+                    retrieveOpen || retrieveQuery.trim()
+                      ? chunkListToolbarActiveButtonClass
+                      : chunkListToolbarButtonClass
+                  }
+                  onClick={() => setRetrieveOpen((v) => !v)}
+                  title={t('chunkList.retrieve.triggerTitle')}
+                >
+                  <Search className="h-3.5 w-3.5 mr-1" />
+                  {t('chunkList.retrieve.trigger')}
+                  {retrieveQuery.trim() ? ` ${retrievalDisplayResults.length}` : ''}
+                </Button>
+                <Button
+                  type="button"
+                  variant={filtersOpen || filterActiveCount > 0 ? 'secondary' : 'outline'}
+                  size="sm"
+                  className={
+                    filtersOpen || filterActiveCount > 0
+                      ? chunkListToolbarActiveButtonClass
+                      : chunkListToolbarButtonClass
+                  }
+                  onClick={() => setFiltersOpen((v) => !v)}
+                  aria-expanded={filtersOpen}
+                  aria-controls="chunk-list-filter-panel"
+                  title={filterButtonLabel}
+                >
+                  <SlidersHorizontal className="h-3.5 w-3.5 mr-1" />
+                  {filterButtonLabel}
+                </Button>
+              </div>
             </div>
 
-            <div data-chunk-list-toolbar className={cn(styles.listToolRow, 'px-6 py-2.5')}>
-              <div data-chunk-list-search className={cn(styles.listSearch, 'relative')}>
-                <Search className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                <Input
-                  value={queryInput}
-                  onChange={(e) => setQueryInput(e.target.value)}
-                  placeholder={t('chunkList.searchPlaceholder')}
-                  className="h-full min-w-0 flex-1 border-0 bg-transparent px-0 pr-5 text-[13px] shadow-none focus-visible:ring-1 focus-visible:ring-ring"
-                  aria-label="搜索切块内容"
-                />
-                {queryInput ? (
-                  <button
-                    type="button"
-                    className="absolute right-2 top-1/2 -translate-y-1/2 rounded text-muted-foreground transition-colors hover:text-foreground focus-ring"
-                    onClick={() => {
-                      commitListQuery('')
-                    }}
-                    aria-label={t('chunkList.clearSearch')}
-                    title={t('chunkList.clearSearch')}
-                  >
-                    <X className="w-3 h-3" />
-                  </button>
-                ) : null}
-              </div>
-              {selectedChunk === undefined ? null : (
-                <>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className={cn(chunkListToolbarButtonClass, styles.desktopListAction)}
-                    onClick={() => detachPromise(copySelectedChunk())}
-                  >
-                    {t('chunkList.actions.copySelected')}
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className={cn(chunkListToolbarButtonClass, styles.desktopListAction)}
-                    onClick={() => selectChunkIndex(null)}
-                  >
-                    {t('chunkList.actions.clearSelection')}
-                  </Button>
-                </>
-              )}
-              {!showOriginalPanel && supportsPdfDocking ? (
+            {!showOriginalPanel && supportsPdfDocking ? (
+              <div className={styles.selectionTools}>
                 <Button
                   type="button"
                   variant="outline"
@@ -828,37 +842,8 @@ export function ChunkList({ mobileView }: Readonly<{ mobileView?: 'original' | '
                 >
                   {t('chunkList.actions.restorePdfDock')}
                 </Button>
-              ) : null}
-              <Button
-                type="button"
-                variant={retrieveOpen ? 'secondary' : 'outline'}
-                size="sm"
-                className={
-                  retrieveOpen || retrieveQuery.trim() ? chunkListToolbarActiveButtonClass : chunkListToolbarButtonClass
-                }
-                onClick={() => setRetrieveOpen((v) => !v)}
-                title={t('chunkList.retrieve.triggerTitle')}
-              >
-                <Search className="h-3.5 w-3.5 mr-1" />
-                {t('chunkList.retrieve.trigger')}
-                {retrieveQuery.trim() ? ` ${retrievalDisplayResults.length}` : ''}
-              </Button>
-              <Button
-                type="button"
-                variant={filtersOpen || filterActiveCount > 0 ? 'secondary' : 'outline'}
-                size="sm"
-                className={
-                  filtersOpen || filterActiveCount > 0 ? chunkListToolbarActiveButtonClass : chunkListToolbarButtonClass
-                }
-                onClick={() => setFiltersOpen((v) => !v)}
-                aria-expanded={filtersOpen}
-                aria-controls="chunk-list-filter-panel"
-                title={filterButtonLabel}
-              >
-                <SlidersHorizontal className="h-3.5 w-3.5 mr-1" />
-                {filterButtonLabel}
-              </Button>
-            </div>
+              </div>
+            ) : null}
 
             {filtersOpen ? (
               <div id="chunk-list-filter-panel" className={cn(styles.listFilters, 'px-6 pb-3')}>
@@ -1502,6 +1487,7 @@ export function ChunkList({ mobileView }: Readonly<{ mobileView?: 'original' | '
                             onToggleSelect={() => {
                               selectChunkIndex(selectedChunkIndex === position ? null : position)
                             }}
+                            onCopySelected={() => detachPromise(copySelectedChunk())}
                           />
                         </div>
                       </div>

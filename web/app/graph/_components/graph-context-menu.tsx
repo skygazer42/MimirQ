@@ -29,13 +29,13 @@ type GraphContextMenuProps = Readonly<{
   viewMode: '2d' | '3d'
   showEdgeLabels: boolean
   onClose: () => void
-  onExpandNode: (nodeId: string) => void
+  onExpandNode?: (nodeId: string) => void
   onStartPathFromNode: (node: GraphNodeLike) => void
-  onStartConnectFromNode: (node: GraphNodeLike) => void
+  onStartConnectFromNode?: (node: GraphNodeLike) => void
   onChatWithNode: (node: GraphNodeLike) => void
   onViewSourceForNode: (node: GraphNodeLike) => void
   onCopyNodeId: (nodeId: string) => void
-  onDeleteNode: (node: GraphNodeLike) => void
+  onDeleteNode?: (node: GraphNodeLike) => void
   onOpenLinkDetail: (link: GraphLinkLike) => void
   onCopyLinkPredicate: (predicate: string) => void
   onZoomToFit: () => void
@@ -81,19 +81,21 @@ export function GraphContextMenu({
           <div className="truncate font-mono text-[11px] text-muted-foreground">{nodeId}</div>
         </div>
         <div className="p-1">
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="h-8 w-full justify-start"
-            onClick={() => {
-              onClose()
-              onExpandNode(nodeId)
-            }}
-          >
-            <Layers className="w-4 h-4 mr-2" />
-            展开邻居
-          </Button>
+          {onExpandNode && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-8 w-full justify-start"
+              onClick={() => {
+                onClose()
+                onExpandNode(nodeId)
+              }}
+            >
+              <Layers className="w-4 h-4 mr-2" />
+              展开邻居
+            </Button>
+          )}
           <Button
             type="button"
             variant="ghost"
@@ -107,19 +109,21 @@ export function GraphContextMenu({
             <Route className="w-4 h-4 mr-2" />
             查找路径
           </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="h-8 w-full justify-start"
-            onClick={() => {
-              onClose()
-              onStartConnectFromNode(node)
-            }}
-          >
-            <LinkIcon className="w-4 h-4 mr-2" />
-            连线
-          </Button>
+          {onStartConnectFromNode && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-8 w-full justify-start"
+              onClick={() => {
+                onClose()
+                onStartConnectFromNode(node)
+              }}
+            >
+              <LinkIcon className="w-4 h-4 mr-2" />
+              连线
+            </Button>
+          )}
           <div className="my-1 h-px bg-border/60" />
           <Button
             type="button"
@@ -160,19 +164,21 @@ export function GraphContextMenu({
             <Copy className="w-4 h-4 mr-2" />
             复制 ID
           </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="h-8 w-full justify-start text-destructive hover:text-destructive"
-            onClick={() => {
-              onClose()
-              onDeleteNode(node)
-            }}
-          >
-            <Trash2 className="w-4 h-4 mr-2" />
-            删除
-          </Button>
+          {onDeleteNode && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-8 w-full justify-start text-destructive hover:text-destructive"
+              onClick={() => {
+                onClose()
+                onDeleteNode(node)
+              }}
+            >
+              <Trash2 className="w-4 h-4 mr-2" />
+              删除
+            </Button>
+          )}
         </div>
       </div>
     )

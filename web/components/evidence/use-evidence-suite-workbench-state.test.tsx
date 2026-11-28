@@ -481,12 +481,12 @@ describe('Evidence workbench request ownership', () => {
   })
 
   it.each([
-    ['handleReviewItem', 'reviewItem', 'reviewed'],
-    ['handleApproveItem', 'approveItem', 'approved'],
-    ['handleArchiveItem', 'archiveItem', 'archived'],
+    ['handleReviewItem', 'reviewItem', 'reviewed', '已标记为已复核'],
+    ['handleApproveItem', 'approveItem', 'approved', '已通过'],
+    ['handleArchiveItem', 'archiveItem', 'archived', '已归档'],
   ] as const)(
     'keeps a committed %s result when an earlier item refresh arrives later',
-    async (handler, api, status) => {
+    async (handler, api, status, feedback) => {
       const original = item('current-item')
       const updated = { ...original, status }
       mocks.listItems.mockResolvedValue({ total: 1, items: [original] })
@@ -500,6 +500,7 @@ describe('Evidence workbench request ownership', () => {
         refresh = state!.loadItems()
       })
       await act(async () => state![handler](original.id))
+      expect(mocks.toast.success).toHaveBeenCalledWith(feedback)
       await act(async () => {
         earlier.resolve({ total: 1, items: [original] })
         await refresh

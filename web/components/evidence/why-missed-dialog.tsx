@@ -24,6 +24,16 @@ const REFERENCE_STATUS_LABELS = {
   drifted: '引用已变化',
   unknown: '待确认',
 } as const
+const REFERENCE_DRIFT_REASON_LABELS: Partial<Record<string, string>> = {
+  document_missing: '引用文档不存在',
+  document_dataset_mismatch: '引用文档不属于当前数据集',
+  chunk_missing: '引用切片不存在',
+  chunk_disabled: '引用切片已停用',
+  chunk_document_mismatch: '切片与引用文档不一致',
+  chunk_index_mismatch: '切片编号与引用记录不一致',
+  pipeline_hash_mismatch: '处理版本与引用记录不一致',
+  doc_pipeline_key_mismatch: '文档处理配置与引用记录不一致',
+}
 const REFERENCE_STATUS_VARIANTS = {
   retrieved: 'soft',
   missing: 'destructive',
@@ -57,25 +67,29 @@ type WhyMissedDialogProps = {
 function ReferenceDiagnostic({ reference }: { reference: WhyMissedReport['references'][number] }) {
   return (
     <article className="rounded-lg border border-border/60 p-2">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-col items-start justify-between gap-2 sm:flex-row sm:gap-3">
+        <div className="min-w-0 w-full">
+          <div className="flex flex-col items-start gap-2 sm:flex-row sm:flex-wrap sm:items-center">
             <Badge variant={REFERENCE_STATUS_VARIANTS[reference.status]} className="font-mono text-xs">
               {REFERENCE_STATUS_LABELS[reference.status]}
             </Badge>
-            <h4 className="truncate text-xs font-mono text-foreground">
-              {reference.document_id.slice(0, 8)}:{reference.chunk_id.slice(0, 8)}
+            <h4 className="min-w-0 text-xs font-medium text-foreground [overflow-wrap:anywhere]">
+              {reference.label || `${reference.document_id.slice(0, 8)}:${reference.chunk_id.slice(0, 8)}`}
             </h4>
           </div>
           {reference.label ? (
-            <p className="mt-1 line-clamp-1 text-xs text-muted-foreground">{reference.label}</p>
+            <p className="mt-1 text-xs font-mono text-muted-foreground">
+              {reference.document_id.slice(0, 8)}:{reference.chunk_id.slice(0, 8)}
+            </p>
           ) : null}
           {reference.drift !== undefined ? (
-            <p className="mt-1 break-words text-xs text-muted-foreground">{reference.drift.reason}</p>
+            <p className="mt-1 break-words text-xs text-muted-foreground">
+              {REFERENCE_DRIFT_REASON_LABELS[reference.drift.reason] ?? reference.drift.reason}
+            </p>
           ) : null}
           {reference.retrieval !== undefined ? (
             <p className="mt-1 text-xs text-muted-foreground font-mono tabular-nums">
-              {reference.retrieval.hit_type} · rank {reference.retrieval.rank} · score{' '}
+              {reference.retrieval.hit_type} · 排名 {reference.retrieval.rank} · 得分{' '}
               {typeof reference.retrieval.score === 'number' ? reference.retrieval.score.toFixed(4) : '未提供'}
             </p>
           ) : null}
@@ -83,12 +97,12 @@ function ReferenceDiagnostic({ reference }: { reference: WhyMissedReport['refere
             <div className="mt-2 flex flex-wrap gap-1">
               {reference.hints.document_hit_rank !== undefined ? (
                 <Badge variant="outline" className="font-mono text-xs">
-                  doc@{reference.hints.document_hit_rank}
+                  文档排名 {reference.hints.document_hit_rank}
                 </Badge>
               ) : null}
               {reference.hints.chunk_index_hit_rank !== undefined ? (
                 <Badge variant="outline" className="font-mono text-xs">
-                  idx@{reference.hints.chunk_index_hit_rank}
+                  切片排名 {reference.hints.chunk_index_hit_rank}
                 </Badge>
               ) : null}
             </div>
@@ -126,25 +140,25 @@ function RetrievedCitation({
             : 'border-border/60',
       )}
     >
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2">
-            <h4 className="truncate text-xs font-mono text-foreground">
+      <div className="flex flex-col items-start justify-between gap-2 sm:flex-row sm:gap-3">
+        <div className="min-w-0 w-full">
+          <div className="flex flex-col items-start gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+            <h4 className="min-w-0 text-xs font-medium text-foreground [overflow-wrap:anywhere]">
               #{rank} {citation.document_name ?? citation.document_id?.slice(0, 8) ?? '未提供文档名称'}
             </h4>
             {isReferenceChunk ? (
               <Badge variant="soft" className="font-mono text-xs">
-                ref_chunk
+                标准引用切片
               </Badge>
             ) : null}
             {isReferenceDocument && !isReferenceChunk ? (
               <Badge variant="outline" className="font-mono text-xs">
-                ref_doc
+                标准引用文档
               </Badge>
             ) : null}
           </div>
           <p className="mt-1 text-xs text-muted-foreground font-mono tabular-nums">
-            {citation.hit_type} · score {formatEvidenceScore(citation)}
+            {citation.hit_type} · 得分 {formatEvidenceScore(citation)}
             {citation.page_number !== undefined && citation.page_number !== null
               ? ` · P.${citation.page_number}`
               : null}
@@ -194,7 +208,7 @@ export function WhyMissedDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className={`${ws.dialog} ${ws.wideDialog}`} onCloseAutoFocus={onCloseAutoFocus}>
         <DialogHeader className={ws.dialogHeader}>
-          <DialogTitle>Why missed?</DialogTitle>
+          <DialogTitle>排查漏召</DialogTitle>
           <DialogDescription>对比标准引用与当前检索结果；漂移审计覆盖不足的引用标为待确认。</DialogDescription>
         </DialogHeader>
         <div className={ws.dialogBody}>
@@ -202,14 +216,14 @@ export function WhyMissedDialog({
             <div className="flex flex-col gap-3 md:flex-row md:items-end">
               <div className="w-full md:w-[220px]">
                 <label htmlFor="evidence-why-profile" className="mb-1 block text-xs text-muted-foreground">
-                  Retrieval Profile
+                  检索策略
                 </label>
                 <Select
                   value={whyMissedProfile}
                   onValueChange={(value) => onWhyMissedProfileChange(retrievalProfileSchema.parse(value))}
                 >
                   <SelectTrigger id="evidence-why-profile" className="h-9">
-                    <SelectValue placeholder="选择 profile" />
+                    <SelectValue placeholder="选择检索策略" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="recall50">recall50 (默认)</SelectItem>
@@ -233,15 +247,15 @@ export function WhyMissedDialog({
                 disabled={!selectedSuiteId || selectedItem === null}
               >
                 <RefreshCw className="size-4" aria-hidden="true" />
-                Drift Audit
+                引用漂移审计
               </LoadingButton>
               <Button variant="outline" onClick={onExportReport} disabled={whyMissedReport === null}>
                 <Download className="size-4" aria-hidden="true" />
                 导出 JSON
               </Button>
               <div className="ml-auto text-xs text-muted-foreground font-mono tabular-nums">
-                {selectedItem === null ? null : `item ${selectedItem.id.slice(0, 8)}`}
-                {whyMissedRanRetrieve ? ` · citations ${whyMissedCitations.length}` : null}
+                {selectedItem === null ? null : `条目 ${selectedItem.id.slice(0, 8)}`}
+                {whyMissedRanRetrieve ? ` · 检索引用 ${whyMissedCitations.length}` : null}
               </div>
             </div>
             {whyMissedError !== null ? (
@@ -259,16 +273,16 @@ export function WhyMissedDialog({
             ) : (
               <div className="flex flex-wrap gap-2 text-xs">
                 <Badge variant="outline" className="font-mono tabular-nums">
-                  refs {whyMissedReport.summary.total_references}
+                  标准引用 {whyMissedReport.summary.total_references}
                 </Badge>
                 <Badge variant="soft" className="font-mono tabular-nums">
-                  retrieved {whyMissedReport.summary.retrieved_references}
+                  已召回 {whyMissedReport.summary.retrieved_references}
                 </Badge>
                 <Badge variant="destructive" className="font-mono tabular-nums">
-                  missed {whyMissedReport.summary.missing_references}
+                  未召回 {whyMissedReport.summary.missing_references}
                 </Badge>
                 <Badge variant="secondary" className="font-mono tabular-nums">
-                  drifted {whyMissedReport.summary.drifted_references}
+                  已漂移 {whyMissedReport.summary.drifted_references}
                 </Badge>
                 {whyMissedReport.summary.unknown_references > 0 ? (
                   <Badge variant="outline" className="font-mono tabular-nums">
@@ -279,7 +293,7 @@ export function WhyMissedDialog({
             )}
             <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
               <Panel className="p-3">
-                <h3 className="mb-2 text-xs font-medium text-muted-foreground">Ground Truth（reference_sources）</h3>
+                <h3 className="mb-2 text-xs font-medium text-muted-foreground">标准引用</h3>
                 <ScrollArea className="h-[420px] pr-2">
                   <div className="space-y-2" aria-busy={whyMissedDriftLoading}>
                     {selectedItem === null ? (
@@ -295,7 +309,7 @@ export function WhyMissedDialog({
                 </ScrollArea>
               </Panel>
               <Panel className="p-3">
-                <h3 className="mb-2 text-xs font-medium text-muted-foreground">Retrieved Citations（当前检索结果）</h3>
+                <h3 className="mb-2 text-xs font-medium text-muted-foreground">当前检索结果</h3>
                 <ScrollArea className="h-[420px] pr-2">
                   <div className="space-y-2" aria-busy={whyMissedRetrieving}>
                     {whyMissedRetrieving && !whyMissedRanRetrieve ? (

@@ -6,6 +6,8 @@ import { policyDatasetId } from './dataset-policy.helpers'
 
 export async function snapshotFixture(page: Page, theme: 'light' | 'dark' = 'light') {
   const base = await remainingFixture(page, theme)
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.addInitScript(() => localStorage.removeItem('mimirq.themeColor'))
   const data = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures/remaining-graph-snapshots.json'), 'utf8'))
   const state = {
     base,

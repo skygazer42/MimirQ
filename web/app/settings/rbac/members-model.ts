@@ -4,18 +4,18 @@ export const MEMBER_ROLES = [
   { key: 'owner', label: '所有者', tone: 'ink', description: '管理成员、配置及租户运维；当前管理权限与管理员相同。' },
   { key: 'admin', label: '管理员', tone: 'blue', description: '管理成员、配置及租户运维。' },
   { key: 'auditor', label: '审计员', tone: 'amber', description: '读取审计记录，使用表格 SQL 查询。' },
-  { key: 'editor', label: '编辑者', tone: 'blue', description: '可处理反馈；内容编辑范围由数据集和文档授权决定。' },
+  { key: 'editor', label: '编辑者', tone: 'violet', description: '可处理反馈；内容编辑范围由数据集和文档授权决定。' },
   {
     key: 'dataset_operator',
     label: '数据集运维',
-    tone: 'green',
+    tone: 'source',
     description: '可处理反馈；数据集操作范围由单独授权决定。',
   },
   { key: 'viewer', label: '查看者', tone: 'neutral', description: '按数据集和文档授权访问内容。' },
 ] as const
 
 export type MemberRole = (typeof MEMBER_ROLES)[number]['key']
-export type MemberScope = 'all' | 'current' | 'others' | 'unassigned'
+export type MemberScope = 'all' | 'active' | 'inactive' | 'current' | 'others' | 'unassigned'
 export const MEMBER_PAGE_SIZES = [10, 20, 50] as const
 
 export function memberIdentity(member: TenantMember) {
@@ -64,6 +64,8 @@ export function filterMembers(
       )
     const scopeMatch =
       scope === 'all' ||
+      (scope === 'active' && member.is_active) ||
+      (scope === 'inactive' && !member.is_active) ||
       (scope === 'current' && isCurrentAccount(member, accountId)) ||
       (scope === 'others' && Boolean(accountId) && !isCurrentAccount(member, accountId)) ||
       (scope === 'unassigned' && !member.role.trim())

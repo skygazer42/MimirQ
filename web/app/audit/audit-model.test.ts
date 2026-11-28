@@ -90,4 +90,16 @@ describe('audit filters and operation scopes', () => {
     })
     expect(await formatAuditError(error, '导出失败')).toContain('当前账号不能导出')
   })
+
+  it.each([
+    ['rbac.member.remove', 'delete'],
+    ['tenant.member.disable', 'delete'],
+    ['rbac.role.update', 'permission'],
+    ['security.policy.update', 'permission'],
+    ['auth.login', 'export'],
+    ['document.update', 'update'],
+    ['document.read', 'neutral'],
+  ])('uses the event meaning to color %s', (action, tone) => {
+    expect(getAuditActionTone(action)).toBe(tone)
+  })
 })

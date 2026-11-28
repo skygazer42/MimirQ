@@ -126,9 +126,15 @@ export default function DocumentHealthPage({ documentId }: Readonly<DocumentHeal
         back={() => router.push('/knowledge')}
       >
         {error !== null ? (
-          <WorkspaceNotice retry={reloadHealth} pending={isFetching}>
-            {formatApiError(error, '加载失败')}
-          </WorkspaceNotice>
+          <WorkspaceNotice
+            placement={health !== undefined ? 'floating' : 'inline'}
+            tone={health !== undefined ? 'warning' : 'error'}
+            title="加载失败"
+            error={error}
+            fallbackMessage="加载失败"
+            retry={reloadHealth}
+            pending={isFetching}
+          />
         ) : null}
         {isPending ? (
           <p role="status" className="py-12 text-sm text-muted-foreground">
@@ -151,6 +157,7 @@ function DocumentHealthReport({ health }: Readonly<{ health: DocumentHealthCard 
   const kgSummary = isRecord(kg?.summary) ? kg.summary : undefined
   const kgComponents = isRecord(kg?.components) ? kg.components : undefined
   const entityCount = readNumber(kgSummary?.entities)
+  const relationCount = readNumber(kgSummary?.relations)
   const retrievalHitsStatus = retrievalHitsStatusLabel(retrievalHits)
   const retrievalSample = retrievalHits?.available ? retrievalHits : undefined
   const status = documentStatus(health.status)
@@ -191,34 +198,51 @@ function DocumentHealthReport({ health }: Readonly<{ health: DocumentHealthCard 
         items={[
           {
             label: '解析评分',
-            value: qualityScore?.toFixed(3) ?? '—',
-            detail: qualityBadge?.label ?? '暂无评分',
+            value:
+              qualityScore === undefined ? <span className="text-muted-foreground">—</span> : qualityScore.toFixed(3),
+            detail: qualityBadge?.label,
             tone: qualityBadge?.tone === 'bad' ? 'danger' : qualityBadge?.tone === 'warn' ? 'warning' : undefined,
           },
           {
             label: '字符覆盖率',
-            value: formatPercent(coverage?.coverage_ratio),
-            detail: coverage ? `缺口 ${formatCount(coverage.gap_count)}` : '尚无覆盖统计',
+            value: (
+              <span className={coverage?.coverage_ratio == null ? 'text-muted-foreground' : undefined}>
+                {formatPercent(coverage?.coverage_ratio)}
+              </span>
+            ),
+            detail: coverage ? `缺口 ${formatCount(coverage.gap_count)}` : undefined,
           },
           {
             label: 'KG 实体',
-            value: formatCount(entityCount),
-            detail: `关系 ${formatCount(readNumber(kgSummary?.relations))}`,
+            value: (
+              <span className={entityCount === undefined ? 'text-muted-foreground' : undefined}>
+                {formatCount(entityCount)}
+              </span>
+            ),
+            detail: relationCount === undefined ? undefined : `关系 ${formatCount(relationCount)}`,
           },
-          { label: '检索命中率', value: formatPercent(retrievalSample?.hit_rate, 2), detail: retrievalHitsStatus },
+          {
+            label: '检索命中率',
+            value: (
+              <span className={retrievalSample?.hit_rate == null ? 'text-muted-foreground' : undefined}>
+                {formatPercent(retrievalSample?.hit_rate, 2)}
+              </span>
+            ),
+            detail: retrievalHitsStatus,
+          },
         ]}
       />
+      <p className="pt-3 text-[12px] leading-5 text-muted-foreground">“—” 表示未采集或暂无统计。</p>
       <div className="grid min-w-0 gap-x-10 xl:grid-cols-2">
         <HealthSection
           icon={FileText}
           title="解析链路"
-          badge={qualityBadge?.label ?? '未评分'}
+          badge={qualityBadge?.label}
           tone={qualityBadge?.tone ?? 'neutral'}
         >
           <DenseGrid>
             <Fact label="解析器" value={formatText(parsing.parser_backend)} />
             <Fact label="请求解析器" value={formatText(parsing.parser_backend_requested)} />
-            <Fact label="Parse score" value={qualityScore?.toFixed(4) ?? '—'} />
             <Fact label="扫描件" value={formatBoolean(parsing.is_scanned)} />
             <Fact label="页数" value={formatCount(parsing.page_count)} />
             <Fact label="处理时间" value={parsing.processed_at ? formatDate(parsing.processed_at) : '—'} />
@@ -227,7 +251,7 @@ function DocumentHealthReport({ health }: Readonly<{ health: DocumentHealthCard 
         <HealthSection
           icon={Layers}
           title="切片链路"
-          badge={`覆盖 ${formatPercent(coverage?.coverage_ratio)}`}
+          badge={coverage?.coverage_ratio == null ? undefined : `覆盖 ${formatPercent(coverage.coverage_ratio)}`}
           tone={getCoverageTone(coverage?.coverage_ratio)}
         >
           <DenseGrid>
@@ -236,7 +260,7 @@ function DocumentHealthReport({ health }: Readonly<{ health: DocumentHealthCard 
             <Fact label="切片数" value={formatCount(chunking.chunk_count)} />
             <Fact label="总字符" value={formatCount(chunking.total_characters)} />
             <Fact label="覆盖率" value={formatPercent(coverage?.coverage_ratio)} />
-            <Fact label="Overlap waste" value={formatPercent(coverage?.overlap_waste_ratio)} />
+            <Fact label="重叠冗余率" value={formatPercent(coverage?.overlap_waste_ratio)} />
             <Fact label="缺口数" value={formatCount(coverage?.gap_count)} />
             <Fact label="最大缺口" value={formatCount(coverage?.largest_gap)} />
           </DenseGrid>
@@ -244,7 +268,7 @@ function DocumentHealthReport({ health }: Readonly<{ health: DocumentHealthCard 
           {semanticQuality ? (
             <div className="mt-5 border-t border-border pt-4">
               <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                <h3 className="text-[12px] font-semibold text-foreground">语义质量抽样</h3>
+                <h3 className="text-[12px] font-medium text-foreground">语义质量抽样</h3>
                 {semanticQuality.note ? (
                   <p className="text-[10px] text-muted-foreground">{semanticQuality.note}</p>
                 ) : null}
@@ -256,19 +280,24 @@ function DocumentHealthReport({ health }: Readonly<{ health: DocumentHealthCard 
                   value={`${formatCount(semanticQuality.needs_review)} · ${formatPercent(needsReviewRatio)}`}
                   tone={getReviewTone(needsReviewRatio)}
                 />
-                <Fact label="信息密度" value={semanticQuality.mean_information_density?.toString() ?? '—'} />
-                <Fact label="语义完整" value={semanticQuality.mean_semantic_completeness?.toString() ?? '—'} />
-                <Fact label="自包含" value={semanticQuality.mean_self_containedness?.toString() ?? '—'} />
-                <Fact label="代词率" value={semanticQuality.mean_pronoun_ratio?.toString() ?? '—'} />
+                <Fact label="信息密度" value={semanticQuality.mean_information_density?.toFixed(3) ?? '—'} />
+                <Fact label="语义完整" value={semanticQuality.mean_semantic_completeness?.toFixed(3) ?? '—'} />
+                <Fact label="自包含" value={semanticQuality.mean_self_containedness?.toFixed(3) ?? '—'} />
+                <Fact label="代词率" value={formatPercent(semanticQuality.mean_pronoun_ratio)} />
               </DenseGrid>
             </div>
           ) : null}
         </HealthSection>
-        <HealthSection icon={Network} title="KG 链路" badge={`实体 ${formatCount(entityCount)}`} tone="neutral">
+        <HealthSection
+          icon={Network}
+          title="KG 链路"
+          badge={entityCount === undefined ? undefined : `实体 ${formatCount(entityCount)}`}
+          tone="neutral"
+        >
           <DenseGrid>
             <Fact label="事件" value={formatCount(readNumber(kgSummary?.events))} />
             <Fact label="实体" value={formatCount(entityCount)} />
-            <Fact label="关系" value={formatCount(readNumber(kgSummary?.relations))} />
+            <Fact label="关系" value={formatCount(relationCount)} />
             <Fact label="孤立实体" value={formatPercent(readNumber(kgSummary?.isolated_entity_ratio), 2)} />
             <Fact label="连通分量" value={formatCount(readNumber(kgComponents?.components))} />
             <Fact label="最大分量" value={formatPercent(readNumber(kgComponents?.largest_component_ratio), 2)} />
@@ -282,18 +311,18 @@ function DocumentHealthReport({ health }: Readonly<{ health: DocumentHealthCard 
         >
           <DenseGrid>
             <Fact label="窗口（分钟）" value={formatCount(retrievalHits?.window_minutes)} />
-            <Fact label="扫描 trace" value={formatCount(retrievalSample?.traces_scanned)} />
-            <Fact label="命中 trace" value={formatCount(retrievalSample?.traces_with_hits)} />
+            <Fact label="扫描检索记录" value={formatCount(retrievalSample?.traces_scanned)} />
+            <Fact label="命中检索记录" value={formatCount(retrievalSample?.traces_with_hits)} />
             <Fact label="引用命中" value={formatCount(retrievalSample?.citations_matched)} />
-            <Fact label="唯一 chunk" value={formatCount(retrievalSample?.unique_chunks_matched)} />
+            <Fact label="去重命中切片" value={formatCount(retrievalSample?.unique_chunks_matched)} />
             <Fact label="命中率" value={formatPercent(retrievalSample?.hit_rate, 2)} />
             <Fact label="截断" value={formatBoolean(retrievalSample?.truncated)} />
           </DenseGrid>
 
           {retrievalHits?.enabled === false ? (
-            <div className="mt-3 flex items-start gap-2 rounded-[14px] border border-warning/22 bg-warning/[0.08] px-3 py-2 text-[11px] leading-4 text-warning dark:text-warning">
+            <div className="mt-3 flex items-start gap-2 border-l-2 border-warning pl-3 text-[13px] leading-6 text-warning">
               <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
-              <span>提示：需要启用后端 metrics 日志（ENABLE_METRICS_LOG=true）才能统计命中频率。</span>
+              <span>检索命中统计未启用。</span>
             </div>
           ) : null}
         </HealthSection>
@@ -303,7 +332,7 @@ function DocumentHealthReport({ health }: Readonly<{ health: DocumentHealthCard 
 }
 
 type HealthSectionProps = {
-  badge: string
+  badge?: string
   children: ReactNode
   icon: PlatformIcon
   title: string
@@ -313,21 +342,23 @@ type HealthSectionProps = {
 function HealthSection({ badge, children, icon: Icon, title, tone }: Readonly<HealthSectionProps>) {
   return (
     <section className={ws.section}>
-      <header className="mb-5 flex flex-wrap items-start justify-between gap-3">
+      <header className="mb-3 flex flex-wrap items-start justify-between gap-3 sm:mb-5">
         <div>
-          <h2 className="flex items-center gap-2 text-[15px] font-semibold">
+          <h2 className="flex items-center gap-2 text-[15px] font-medium">
             <Icon className="size-5" appearance="color" />
             {title}
           </h2>
         </div>
-        <span
-          className={cn(
-            'text-[13px]',
-            tone === 'bad' ? 'text-destructive' : tone === 'warn' ? ws.warning : 'text-muted-foreground',
-          )}
-        >
-          {badge}
-        </span>
+        {badge === undefined ? null : (
+          <span
+            className={cn(
+              'text-[13px]',
+              tone === 'bad' ? 'text-destructive' : tone === 'warn' ? ws.warning : 'text-muted-foreground',
+            )}
+          >
+            {badge}
+          </span>
+        )}
       </header>
       {children}
     </section>
@@ -335,7 +366,7 @@ function HealthSection({ badge, children, icon: Icon, title, tone }: Readonly<He
 }
 
 function DenseGrid({ children }: Readonly<{ children: ReactNode }>) {
-  return <div className="grid grid-cols-1 gap-x-6 sm:grid-cols-2">{children}</div>
+  return <div className="grid grid-cols-2 gap-x-4 sm:gap-x-6">{children}</div>
 }
 
 type FactProps = {
@@ -346,13 +377,18 @@ type FactProps = {
 
 function Fact({ label, tone = 'neutral', value }: Readonly<FactProps>) {
   return (
-    <div className="min-w-0 border-b border-border/60 py-3">
+    <div className="min-w-0 border-b border-border/60 py-2 sm:py-3">
       <div className="text-[13px] leading-5 text-muted-foreground">{label}</div>
       <div
         className={cn(
-          'mt-1 break-words text-sm font-medium leading-6 tabular-nums text-foreground',
-
-          tone === 'bad' ? 'text-destructive' : tone === 'warn' ? ws.warning : undefined,
+          'mt-1 break-words text-[13px] leading-5 tabular-nums sm:text-sm sm:leading-6',
+          tone === 'bad'
+            ? 'text-destructive'
+            : tone === 'warn'
+              ? ws.warning
+              : value === '—'
+                ? 'text-muted-foreground'
+                : 'text-foreground',
         )}
         title={value}
       >

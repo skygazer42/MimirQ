@@ -16,6 +16,12 @@ const routerMock = vi.hoisted(() => ({
   replace: vi.fn(),
 }))
 
+const openDocumentMock = vi.hoisted(() => vi.fn())
+vi.mock('@/store/document-view', () => ({
+  useDocumentView: (selector: (state: { openDocument: typeof openDocumentMock }) => unknown) =>
+    selector({ openDocument: openDocumentMock }),
+}))
+
 const settingsState = vi.hoisted(() => ({
   urlIngestEnabled: false,
 }))
@@ -71,7 +77,8 @@ vi.mock('@/lib/client-storage', async (importOriginal) => {
   }
 })
 
-vi.mock('@/lib/api-errors', () => ({
+vi.mock('@/lib/api-errors', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/api-errors')>()),
   formatApiError: (_error: unknown, fallback: string) => fallback,
 }))
 
@@ -99,6 +106,22 @@ vi.mock('@/components/ui/button', () => ({
     React.createElement('button', { type: 'button', ...props }, children),
 }))
 
+vi.mock('@/components/ui/dialog', () => ({
+  Dialog: ({ open, children }: { open: boolean; children: React.ReactNode }) =>
+    open ? React.createElement(React.Fragment, null, children) : null,
+  DialogContent: ({
+    children,
+    showCloseButton: _showCloseButton,
+    ...props
+  }: React.HTMLAttributes<HTMLDivElement> & { showCloseButton?: boolean }) =>
+    React.createElement('div', { ...props, role: 'dialog' }, children),
+  DialogHeader: ({ children, ...props }: React.HTMLAttributes<HTMLDivElement>) =>
+    React.createElement('div', props, children),
+  DialogTitle: ({ children }: { children: React.ReactNode }) => React.createElement('h2', null, children),
+  DialogDescription: ({ children, ...props }: React.HTMLAttributes<HTMLParagraphElement>) =>
+    React.createElement('p', props, children),
+}))
+
 vi.mock('@/components/ui/input', () => ({
   Input: React.forwardRef(function Input(
     props: React.InputHTMLAttributes<HTMLInputElement>,
@@ -110,6 +133,14 @@ vi.mock('@/components/ui/input', () => ({
 
 vi.mock('@/components/ui/textarea', () => ({
   Textarea: ({ ...props }: React.TextareaHTMLAttributes<HTMLTextAreaElement>) => React.createElement('textarea', props),
+}))
+
+vi.mock('@/components/ui/tooltip', () => ({
+  TooltipProvider: ({ children }: { children: React.ReactNode }) => React.createElement(React.Fragment, null, children),
+  Tooltip: ({ children }: { children: React.ReactNode }) => React.createElement(React.Fragment, null, children),
+  TooltipTrigger: ({ children }: { children: React.ReactNode }) => React.createElement(React.Fragment, null, children),
+  TooltipContent: ({ children }: { children: React.ReactNode }) =>
+    React.createElement('span', { role: 'tooltip', hidden: true }, children),
 }))
 
 vi.mock('@/components/ui/page-title-icon', () => ({
@@ -249,7 +280,7 @@ function findButtonByText(container: HTMLElement, text: string) {
 }
 
 function getSubmitButton(container: HTMLElement) {
-  const button = container.querySelector<HTMLButtonElement>('[data-ingestion-action-bar="true"] button')
+  const button = container.querySelector<HTMLButtonElement>('[data-ingestion-submit="true"]')
   if (!button) throw new Error('submit button not found')
   return button
 }
@@ -299,10 +330,16 @@ async function setTextareaValue(container: HTMLElement, placeholder: string, val
   })
 }
 
-async function waitForDatasetBootstrap(container: HTMLElement) {
+async function openImportDialog(container: HTMLElement) {
+  if (container.querySelector('[role="dialog"]')) return
+  await act(async () => container.querySelector<HTMLButtonElement>('[data-ingestion-import-trigger]')!.click())
+}
+
+async function waitForDatasetBootstrap(container: HTMLElement, openImport = true) {
   await act(async () => {
     await vi.waitFor(() => expect(container.textContent).toContain('Dataset One'))
   })
+  if (openImport) await openImportDialog(container)
 }
 
 async function setInputValue(container: HTMLElement, placeholder: string, value: string) {
@@ -328,6 +365,7 @@ beforeEach(() => {
 
   routerMock.push.mockReset()
   routerMock.replace.mockReset()
+  openDocumentMock.mockReset()
 
   toastMock.success.mockReset()
   toastMock.error.mockReset()
@@ -391,6 +429,110 @@ afterEach(() => {
 })
 
 describe('knowledge ingestion operation page behavior', () => {
+  it('shows the dataset document table with search, status filtering and client pagination before importing', async () => {
+    const items = Array.from({ length: 23 }, (_, index) => ({
+      id: `doc-${index}`,
+      filename: `manual-${index}.pdf`,
+      file_type: 'pdf',
+      file_size: 1024,
+      status: index === 22 ? 'failed' : 'completed',
+      created_at: '2026-11-25T12:00:00Z',
+      metadata: index === 21 ? { ingest_stage: 'uploaded_only' } : {},
+    }))
+    documentApiMock.list.mockResolvedValueOnce({ items })
+    datasetApiMock.getIngestionStats.mockResolvedValueOnce({ total_documents: 23 })
+    const { container, root } = renderPage()
+    try {
+      await waitForDatasetBootstrap(container, false)
+      await act(async () => vi.waitFor(() => expect(container.textContent).toContain('共 23 条文档')))
+      expect(container.querySelector('[role="dialog"]')).toBeNull()
+      expect(container.querySelector('nav[aria-label="文件来源"]')).toBeNull()
+      expect(container.querySelector('[data-ingestion-context-panel]')).toBeNull()
+      expect(container.textContent).toContain('共 23 条文档')
+      expect(container.querySelectorAll('table[aria-label="数据集文档"] tbody tr')).toHaveLength(20)
+      await act(async () => findButtonByText(container, '下一页')!.click())
+      expect(container.querySelectorAll('table[aria-label="数据集文档"] tbody tr')).toHaveLength(3)
+      expect(container.querySelector('table')?.textContent).toContain('已登记')
+      await setInputValue(container, '搜索文档名称', 'manual-22')
+      expect(container.querySelectorAll('table[aria-label="数据集文档"] tbody tr')).toHaveLength(1)
+      expect(container.querySelector('table')?.textContent).toContain('失败')
+      await act(async () => container.querySelector<HTMLButtonElement>('tbody button')!.click())
+      expect(openDocumentMock).toHaveBeenCalledWith('doc-22')
+      await act(async () => container.querySelector<HTMLButtonElement>('[data-select-item="registered"]')!.click())
+      expect(container.textContent).toContain('没有匹配的文档')
+      await setInputValue(container, '搜索文档名称', '')
+      expect(container.querySelector('table')?.textContent).toContain('manual-21.pdf')
+      expect(container.querySelectorAll('tbody tr')).toHaveLength(1)
+    } finally {
+      act(() => root.unmount())
+    }
+  })
+
+  it('opens the import dialog on a page file drag and stages the drop in the current dataset', async () => {
+    const { container, root } = renderPage()
+    try {
+      await waitForDatasetBootstrap(container, false)
+      const file = new File(['# guide'], 'dropped.md', { type: 'text/markdown' })
+      const transfer = { types: ['Files'], files: [file] }
+      const drag = new Event('dragover', { bubbles: true, cancelable: true })
+      Object.defineProperty(drag, 'dataTransfer', { value: transfer })
+      await act(async () => {
+        window.dispatchEvent(drag)
+      })
+      expect(container.querySelector('[role="dialog"]')).not.toBeNull()
+      const drop = new Event('drop', { bubbles: true, cancelable: true })
+      Object.defineProperty(drop, 'dataTransfer', { value: transfer })
+      await act(async () => {
+        window.dispatchEvent(drop)
+      })
+      expect(container.querySelector('[data-ingestion-file-staging-workspace]')?.textContent).toContain('dropped.md')
+      expect(getSubmitButton(container).disabled).toBe(false)
+      await act(async () => findButtonByText(container, '取消')!.click())
+      expect(container.querySelector('[role="dialog"]')).toBeNull()
+      await openImportDialog(container)
+      expect(container.querySelector('[data-ingestion-file-staging-workspace]')?.textContent).toContain('dropped.md')
+    } finally {
+      act(() => root.unmount())
+    }
+  })
+
+  it('refreshes registered documents and shows the upload-only receipt without losing the dialog', async () => {
+    const { container, root } = renderPage()
+    try {
+      await waitForDatasetBootstrap(container)
+      await setFileInputFiles(container, [new File(['pdf'], 'manual.pdf', { type: 'application/pdf' })])
+      documentApiMock.list.mockResolvedValueOnce({
+        items: [
+          {
+            id: 'new-doc',
+            filename: 'manual.pdf',
+            file_type: 'pdf',
+            file_size: 3,
+            status: 'pending',
+            metadata: { ingest_stage: 'uploaded_only' },
+            created_at: '2026-11-25T12:00:00Z',
+          },
+        ],
+      })
+      expect(getSubmitButton(container).textContent).toContain('上传原件')
+      await act(async () => getSubmitButton(container).click())
+      await act(async () =>
+        vi.waitFor(() =>
+          expect(container.querySelector('table[aria-label="数据集文档"]')?.textContent).toContain('manual.pdf'),
+        ),
+      )
+      expect(documentApiMock.uploadBatch).toHaveBeenCalledWith(
+        expect.any(Array),
+        expect.objectContaining({ upload_only: true }),
+      )
+      expect(container.querySelector('[role="dialog"]')?.textContent).toContain('上次提交：成功 1 · 失败 0')
+      expect(container.querySelector('table[aria-label="数据集文档"]')?.textContent).toContain('已登记')
+      expect(routerMock.push).not.toHaveBeenCalled()
+    } finally {
+      act(() => root.unmount())
+    }
+  })
+
   it.each(['pending', 'running'] as const)(
     'releases submission after the connector accepts a %s run',
     async (status) => {
@@ -526,28 +668,55 @@ describe('knowledge ingestion operation page behavior', () => {
   )
 
   it('keeps all five source options reachable', async () => {
+    const scrollIntoView = vi.spyOn(HTMLElement.prototype, 'scrollIntoView')
     const { container, root } = renderPage()
-
-    await act(async () => {
-      await vi.waitFor(() => expect(container.textContent).toContain('添加文件到本次任务'))
-    })
+    await waitForDatasetBootstrap(container)
+    expect(container.textContent).toContain('拖入或选择文件，添加到本次导入')
 
     await chooseSource(container, '文件夹')
     expect(container.textContent).toContain('选择本地文件夹')
 
     await chooseSource(container, 'URL列表')
     expect(container.textContent).toContain('URL 列表')
+    expect(container.querySelector<HTMLTextAreaElement>('textarea')?.placeholder).toBe(
+      'https://example.com/manual.pdf\nhttps://example.com/guide.md',
+    )
+    expect(container.textContent).not.toContain('填写文件链接，选好处理方式后提交。')
 
     await chooseSource(container, '对象存储')
     expect(container.textContent).toContain('Bucket（可选）')
+    expect(container.textContent).not.toContain('按上方的前缀和扩展名选择待导入对象。')
 
     await chooseSource(container, 'API导入')
+    expect(scrollIntoView).toHaveBeenLastCalledWith({ inline: 'nearest', block: 'nearest' })
+    scrollIntoView.mockClear()
+    await act(async () => container.querySelector<HTMLButtonElement>('nav[aria-label="文件来源"] button')!.focus())
+    expect(scrollIntoView).toHaveBeenCalledWith({ inline: 'nearest', block: 'nearest' })
     expect(container.textContent).toContain('API Payload')
+    expect(container.textContent).not.toContain('提交后会在目标数据集中创建一份文档。')
 
     await chooseSource(container, '本地文件')
-    expect(container.textContent).toContain('添加文件到本次任务')
+    expect(container.textContent).toContain('拖入或选择文件，添加到本次导入')
 
     act(() => root.unmount())
+    scrollIntoView.mockRestore()
+  })
+
+  it('shows the current import mode before upload and focuses the existing mode choices for switching', async () => {
+    const { container, root } = renderPage()
+    try {
+      await waitForDatasetBootstrap(container, false)
+      await act(async () => vi.waitFor(() => expect(container.textContent).toContain('当前模式：仅传原件')))
+      const summary = findButtonByText(container, '当前模式：仅传原件')!
+      expect(summary).toBeTruthy()
+      await act(async () => summary.click())
+      const choices = container.querySelector<HTMLElement>('[aria-label="默认处理模式"]')!
+      expect(document.activeElement).toBe(choices.querySelector('[aria-pressed="true"]'))
+      await act(async () => choices.querySelectorAll<HTMLButtonElement>('button')[1].click())
+      expect(summary.textContent).toContain(choices.querySelector('[aria-pressed="true"]')!.textContent)
+    } finally {
+      act(() => root.unmount())
+    }
   })
 
   it('enables the CTA after selecting a local file', async () => {
@@ -556,6 +725,10 @@ describe('knowledge ingestion operation page behavior', () => {
     await waitForDatasetBootstrap(container)
 
     expect(getSubmitButton(container).disabled).toBe(true)
+
+    expect(container.querySelector('[data-ingestion-empty-file-drop="true"]')).not.toBeNull()
+    expect(container.querySelector('[data-ingestion-file-staging-workspace="true"]')).toBeNull()
+    expect(container.textContent).toContain('尚未添加文件')
 
     const file = new File(['pdf'], 'manual.pdf', {
       type: 'application/pdf',
@@ -568,9 +741,11 @@ describe('knowledge ingestion operation page behavior', () => {
     })
 
     const stagingWorkspace = container.querySelector('[data-ingestion-file-staging-workspace="true"]')
-    expect(stagingWorkspace?.textContent).toContain('本次任务文件')
+    expect(stagingWorkspace?.textContent).toContain('已添加的文件 (1)')
     expect(stagingWorkspace?.textContent).toContain('1')
     expect(container.textContent).toContain('manual.pdf')
+    expect(container.querySelector('[data-ingestion-empty-file-drop="true"]')).not.toBeNull()
+    expect(container.textContent).toContain('已选择 1 个文件')
 
     act(() => root.unmount())
   })
@@ -588,7 +763,7 @@ describe('knowledge ingestion operation page behavior', () => {
     })
     await setFileInputFiles(container, [file])
 
-    expect(getSubmitButton(container).textContent).toContain('登记并解析')
+    expect(getSubmitButton(container).textContent).toContain('上传并解析')
 
     await act(async () => {
       getSubmitButton(container).dispatchEvent(new MouseEvent('click', { bubbles: true }))
@@ -718,6 +893,7 @@ describe('knowledge ingestion operation page behavior', () => {
 
   it('renders the advanced settings section', async () => {
     const { container, root } = renderPage()
+    await waitForDatasetBootstrap(container)
 
     await act(async () => {
       await vi.waitFor(() =>
@@ -766,13 +942,8 @@ describe('knowledge ingestion operation page behavior', () => {
     await setFileInputFiles(container, [new File(['guide'], 'guide.md', { type: 'text/markdown' })])
     await act(async () => getSubmitButton(container).click())
 
-    await act(async () =>
-      vi.waitFor(() => {
-        expect(toastMock.error).toHaveBeenCalledWith(
-          expect.stringContaining('入库任务提交失败'),
-          expect.objectContaining({ duration: 4000 }),
-        )
-      }),
+    expect(container.querySelector('[role="dialog"] [role="alert"]')?.textContent).toContain(
+      '入库任务提交失败。文件和配置已保留',
     )
     expect(container.textContent).toContain('guide.md')
     expect(container.querySelector<HTMLInputElement>('input[value="parse_only"]')?.checked).toBe(true)

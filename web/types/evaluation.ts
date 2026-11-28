@@ -116,6 +116,7 @@ export type RegressionRun = import('@/lib/regression-run-schema').RegressionRun
 export type RegressionRunCreate = {
   case_ids?: string[]
   dataset_id: string
+  answer_mode?: 'rag' | 'ontology'
   metrics?: string[]
   use_llm_judge?: boolean
   skip_empty_contexts?: boolean

@@ -145,7 +145,7 @@ export function RagSection({ rag, updateRag }: Readonly<RagSectionProps>) {
             <Select value={rerankerProviderValue} onValueChange={(value) => updateRag({ reranker_provider: value })}>
               <SelectTrigger
                 aria-label="重排服务"
-                className="h-11 sm:h-9 rounded-md border-input bg-background text-[13px]"
+                className="h-11 sm:h-9 rounded-md border-input bg-background text-base sm:text-sm"
               >
                 <SelectValue placeholder="选择重排服务" />
               </SelectTrigger>
@@ -164,7 +164,6 @@ export function RagSection({ rag, updateRag }: Readonly<RagSectionProps>) {
             </Select>
             <p className="mt-1.5 text-[13px] text-muted-foreground">
               用作默认重排服务，实验页可临时覆盖
-              <InlineHelp label="重排服务后端字段">对应后端 RERANKER_PROVIDER；主界面只显示中文服务名称</InlineHelp>
             </p>
           </div>
 
@@ -178,11 +177,10 @@ export function RagSection({ rag, updateRag }: Readonly<RagSectionProps>) {
               max={200}
               value={rag.reranker_top_n}
               onValueChange={(value) => updateRag({ reranker_top_n: value })}
-              className="h-11 sm:h-9 rounded-md border-input bg-background text-[13px]"
+              className="h-11 sm:h-9 rounded-md border-input bg-background text-base sm:text-sm"
             />
             <p className="mt-1.5 text-[13px] text-muted-foreground">
               用作默认重排数量，建议保持 10-50
-              <InlineHelp label="重排数量后端字段">对应后端 RERANKER_TOP_N</InlineHelp>
             </p>
           </div>
         </div>

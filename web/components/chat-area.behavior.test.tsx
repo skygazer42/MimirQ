@@ -126,6 +126,18 @@ afterEach(() => {
 })
 
 describe('ChatArea composer intent', () => {
+  it('offers document inspection for a known empty text index without blocking other retrieval modes', async () => {
+    api.datasetApi.listAll.mockResolvedValue([
+      { id: 'dataset-a', name: 'Dataset A', ingestion_summary: { total_documents: 1, total_chunks: 0 } },
+    ])
+    const { container } = mount()
+    await ready(container)
+
+    expect(container.textContent).toContain('composerNoTextChunks')
+    expect(container.querySelector<HTMLAnchorElement>('a[href="/knowledge?dataset=dataset-a"]')?.target).toBe('')
+    expect(container.querySelector<HTMLButtonElement>('button[aria-label="send"]')?.disabled).toBe(false)
+  })
+
   it.each([{ isComposing: true }, { keyCode: 229 }])(
     'keeps the draft when Enter is part of composition: %j',
     async (composition) => {
@@ -245,6 +257,27 @@ describe('ChatArea composer intent', () => {
     })
 
     expect(topK.value).toBe('5')
+  })
+
+  it('reveals the complete retrieval control when advanced settings expand', async () => {
+    const view = mount({ initialPrompt: 'draft', initialOpenRagSettings: true })
+    await ready(view.container)
+    const control = document.querySelector<HTMLButtonElement>('#chat-other-retrieval-mode')!
+    const advanced = control.closest('details')!
+    const reveal = vi.spyOn(control.parentElement!, 'scrollIntoView')
+
+    await act(async () => {
+      advanced.open = true
+      advanced.dispatchEvent(new Event('toggle'))
+    })
+
+    expect(reveal).toHaveBeenCalledWith({ block: 'nearest' })
+    reveal.mockClear()
+    await act(async () => {
+      advanced.open = false
+      advanced.dispatchEvent(new Event('toggle'))
+    })
+    expect(reveal).not.toHaveBeenCalled()
   })
 
   it('retains a draft while autorun waits for scope, then sends the prompt once', async () => {

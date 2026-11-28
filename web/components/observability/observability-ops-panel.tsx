@@ -77,34 +77,23 @@ export function ObservabilityOpsPanel({ initialWindowMinutes }: Readonly<{ initi
   const driftTargetId = driftItemId.trim()
 
   return (
-    <fieldset disabled={busy !== null} className="space-y-4">
+    <fieldset disabled={busy !== null} className="space-y-5">
       <legend className="sr-only">观测运维操作</legend>
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-        <div>
-          <div className="text-sm font-semibold text-foreground">观测运维操作</div>
-          <p className="mt-1 text-xs leading-5 text-muted-foreground">
-            聚合在线质量、成本、依赖、队列和 SLO；文档级漂移、Trace 上报和 drift 解决放到高级参数。
-          </p>
-        </div>
-      </div>
-
-      <div className="mt-3 grid gap-2 md:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-3">
         <Field label="时间窗口（分钟）">
-          <Input
-            value={windowMinutes}
-            onChange={(event) => setWindowMinutes(event.target.value)}
-            className="h-10 text-sm"
-            inputMode="numeric"
-          />
+          <Input value={windowMinutes} onChange={(event) => setWindowMinutes(event.target.value)} inputMode="numeric" />
         </Field>
-        <DatasetSelectField value={datasetId} onChange={setDatasetId} label="数据集范围" allowAll />
+        <DatasetSelectField
+          value={datasetId}
+          onChange={setDatasetId}
+          label="数据集范围"
+          allowAll
+          className="space-y-2"
+          labelClassName="text-[13px]"
+          triggerClassName="h-11 text-base sm:h-9 sm:text-sm"
+        />
         <Field label="性能迭代次数">
-          <Input
-            value={iterations}
-            onChange={(event) => setIterations(event.target.value)}
-            className="h-10 text-sm"
-            inputMode="numeric"
-          />
+          <Input value={iterations} onChange={(event) => setIterations(event.target.value)} inputMode="numeric" />
         </Field>
       </div>
 
@@ -183,33 +172,22 @@ export function ObservabilityOpsPanel({ initialWindowMinutes }: Readonly<{ initi
         />
       </div>
 
-      <details className="mt-3 rounded-lg border border-border/60 bg-background/70 p-3">
-        <summary className="cursor-pointer text-xs font-semibold text-foreground">高级参数（可选）</summary>
-        <p className="mt-1 text-xs leading-5 text-muted-foreground">
-          仅在排查单文档 embedding drift、性能探针、手动 trace 或解决 index drift 时使用。
-        </p>
+      <details className="border-t border-border pt-4">
+        <summary className="cursor-pointer text-[13px] font-medium text-foreground">高级参数</summary>
         <div className="mt-3 grid gap-2 md:grid-cols-3">
           <Field label="文档标识">
             <Input
               value={documentId}
               onChange={(event) => setDocumentId(event.target.value)}
-              className="h-8 font-mono text-xs"
+              className="font-mono"
               placeholder="Embedding drift 可选"
             />
           </Field>
           <Field label="Drift 项">
-            <Input
-              value={driftItemId}
-              onChange={(event) => setDriftItemId(event.target.value)}
-              className="h-8 font-mono text-xs"
-            />
+            <Input value={driftItemId} onChange={(event) => setDriftItemId(event.target.value)} className="font-mono" />
           </Field>
           <Field label="处理备注">
-            <Input
-              value={resolutionNote}
-              onChange={(event) => setResolutionNote(event.target.value)}
-              className="h-10 text-sm"
-            />
+            <Input value={resolutionNote} onChange={(event) => setResolutionNote(event.target.value)} />
           </Field>
         </div>
         <div className="mt-3 flex flex-wrap gap-2">
@@ -273,13 +251,17 @@ export function ObservabilityOpsPanel({ initialWindowMinutes }: Readonly<{ initi
         </div>
       </details>
 
-      <OperationResultPanel
-        className="mt-3"
-        title="观测运维结果"
-        result={result}
-        emptyMessage="选择上方操作后，这里展示执行摘要；原始响应默认收起。"
-      />
-      {actionError ? <WorkspaceNotice>{actionError}</WorkspaceNotice> : null}
+      {result === null ? (
+        <p className="text-[13px] text-muted-foreground">尚无执行结果。</p>
+      ) : (
+        <OperationResultPanel
+          className="rounded-none border-0 bg-transparent p-0"
+          title="观测运维结果"
+          result={result}
+          emptyMessage="尚无执行结果。"
+        />
+      )}
+      {actionError ? <WorkspaceNotice placement="floating">{actionError}</WorkspaceNotice> : null}
     </fieldset>
   )
 }
@@ -309,12 +291,12 @@ function ActionButton({
   return (
     <LoadingButton
       variant="outline"
-      className="h-8 gap-1.5 rounded-lg px-3 text-xs font-semibold"
+      className="gap-2 text-[13px]"
       loading={busy}
       disabled={disabled}
       onClick={() => detachPromise(onClick())}
     >
-      <Icon className="h-3.5 w-3.5" />
+      <Icon className="size-4" />
       {label}
     </LoadingButton>
   )

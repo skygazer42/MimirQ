@@ -1,8 +1,6 @@
-import path from 'node:path'
 import { expect, test } from '@playwright/test'
 import { changePreviewAppearance, fixture, open, original, noOverflow } from './chunk-compare.helpers'
 
-const evidence = path.resolve(__dirname, '../../artifacts/rebrand/chunk-compare-v1/tests')
 test('equal columns link actual source positions and preserve edited, reviewed and skipped chunks through export and failed ingestion', async ({
   page,
 }) => {
@@ -54,7 +52,7 @@ test('equal columns link actual source positions and preserve edited, reviewed a
   state.failIngest = false
   await page.getByRole('button', { name: '确认入库', exact: true }).click()
   await expect(page.getByRole('button', { name: '已完成', exact: true })).toBeVisible()
-  await page.screenshot({ path: path.join(evidence, 'selected-edit-ingested.png') })
+  await page.screenshot({ path: test.info().outputPath('selected-edit-ingested.png') })
   await page.reload()
   const saved = await page.evaluate(async () => (await fetch('/api/v1/documents/ingested-document')).json())
   expect(saved.chunks[1].content).toContain('已修订')
@@ -125,9 +123,10 @@ test('documents and advanced controls remain reachable, while narrow views and t
   page,
 }) => {
   await fixture(page)
+  await page.setViewportSize({ width: 1440, height: 900 })
   await open(page)
   await noOverflow(page)
-  await page.screenshot({ path: path.join(evidence, 'desktop.png') })
+  await page.screenshot({ path: test.info().outputPath('desktop.png') })
   await page.getByRole('button', { name: '管理文档', exact: true }).click()
   const drawer = page.getByRole('dialog', { name: '文档与数据范围', exact: true })
   await expect(drawer.getByRole('heading', { name: '文件列表 (2)', exact: true })).toBeVisible()
@@ -145,11 +144,11 @@ test('documents and advanced controls remain reachable, while narrow views and t
   await expect(page.locator('[data-compare-original] mark')).toContainText('作业前检查紧固件')
   await expect(page.locator('[data-compare-results]')).toBeHidden()
   await noOverflow(page)
-  await page.screenshot({ path: path.join(evidence, 'phone-original.png') })
+  await page.screenshot({ path: test.info().outputPath('phone-original.png') })
   await page.getByRole('button', { name: '切块结果', exact: true }).click()
   await expect(page.locator('[data-chunk-card][data-selected=true]')).toHaveAttribute('data-chunk-index', '1')
-  await page.screenshot({ path: path.join(evidence, 'phone-result.png') })
-  await page.setViewportSize({ width: 1600, height: 1000 })
+  await page.screenshot({ path: test.info().outputPath('phone-result.png') })
+  await page.setViewportSize({ width: 1440, height: 900 })
   await changePreviewAppearance(page, '深色', '米白')
   await expect(page.locator('html')).toHaveClass(/dark/)
   await expect(page.locator('html')).toHaveAttribute('data-surface-theme', 'earth')
@@ -157,7 +156,7 @@ test('documents and advanced controls remain reachable, while narrow views and t
   await expect(page.locator('[data-chunk-card]')).toHaveCount(3)
   await expect(page.locator('[data-chunk-card][data-selected=true]')).toHaveAttribute('data-chunk-index', '1')
   await noOverflow(page)
-  await page.screenshot({ path: path.join(evidence, 'dark-earth.png') })
+  await page.screenshot({ path: test.info().outputPath('dark-earth.png') })
 })
 
 test('empty workspace offers both existing documents and upload, then reaches preview without extra parsing or model endpoints', async ({
@@ -166,7 +165,7 @@ test('empty workspace offers both existing documents and upload, then reaches pr
   const state = await fixture(page, { empty: true })
   await open(page, true)
   await expect(page.getByRole('heading', { name: '预览文档切片', exact: true })).toBeVisible()
-  await page.screenshot({ path: path.join(evidence, 'empty.png') })
+  await page.screenshot({ path: test.info().outputPath('empty.png') })
   await page.getByRole('button', { name: '选择已有文档', exact: true }).click()
   await expect(page.getByRole('dialog', { name: '文档与数据范围', exact: true })).toBeVisible()
   await page.getByRole('button', { name: '返回预览', exact: true }).click()
@@ -195,7 +194,7 @@ test('reading mode locates a late source range and preserves it across mobile so
     '项目 13',
     '复核要求',
   ])
-  await page.screenshot({ path: path.join(evidence, 'reading-linked.png') })
+  await page.screenshot({ path: test.info().outputPath('reading-linked.png') })
   await page.getByRole('button', { name: '源码', exact: true }).click()
   await expect(page.locator('[data-compare-original] mark')).toBeInViewport()
   await page.getByRole('textbox', { name: '搜索切块内容', exact: true }).fill('')

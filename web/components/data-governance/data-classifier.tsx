@@ -7,6 +7,7 @@ import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
+import { getTagDomainTone } from '@/lib/dataset-domain-tone'
 import { pipelineApi } from '@/lib/api/pipeline'
 import { reportClientWarning } from '@/lib/client-logging'
 import type { AutoDocumentTag } from '@/types/processing'
@@ -209,7 +210,11 @@ export function DataClassifier({
           <span>{tags.length} 个标签</span>
         </div>
         <div className={styles.toolActions}>
-          <Button onClick={() => void handleAutoClassify()} disabled={isAutoClassifying || !content.trim()}>
+          <Button
+            className={styles.primaryAction}
+            onClick={() => void handleAutoClassify()}
+            disabled={isAutoClassifying || !content.trim()}
+          >
             {isAutoClassifying ? <Loader2 className={styles.spinner} /> : <FolderTree className="size-4" />}
             {isAutoClassifying ? '正在分类…' : '自动分类'}
           </Button>
@@ -269,7 +274,7 @@ export function DataClassifier({
         {shortTags.length > 0 && (
           <ul className={`${styles.tags} ${styles.classifierTags}`} aria-label="已添加标签">
             {shortTags.map((tag) => (
-              <li className={styles.tag} key={tag}>
+              <li className={styles.tag} key={tag} data-value={tag} data-domain-tone={getTagDomainTone(tag)}>
                 <span title={displayTag(tag) !== tag ? tag : undefined}>{displayTag(tag)}</span>
                 <button type="button" aria-label={'删除标签 ' + tag} onClick={() => handleRemoveTag(tag)}>
                   <X />

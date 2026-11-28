@@ -61,7 +61,7 @@ const meta = {
 }
 const inputClass = cn(
   settingsLayoutTokens.input,
-  'border-transparent bg-[var(--settings-value)] placeholder:text-muted-foreground focus-visible:border-input',
+  'border-input bg-background placeholder:text-muted-foreground focus-visible:border-input',
 )
 const actionClass = 'h-11 shrink-0 gap-1.5 px-3 text-[13px] font-medium sm:h-10'
 const secondaryActionClass = cn(actionClass, 'hover:bg-[var(--settings-active)] hover:text-foreground')

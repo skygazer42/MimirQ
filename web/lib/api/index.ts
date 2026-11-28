@@ -1,3 +1,4 @@
+export { enterpriseOntologyApi } from './enterprise-ontology'
 export { chatApi } from './chat'
 export { connectorApi } from './connectors'
 export { datasetApi, datasetCategoryApi } from './datasets'

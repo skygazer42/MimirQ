@@ -107,6 +107,14 @@ function command(value: string) {
 }
 
 describe('command menu explicit execution', () => {
+  it('opens the independent ontology studio from its searchable module command', async () => {
+    await query('ontology')
+    expect(command('module:ontology')?.textContent).toContain('企业本体')
+    await act(async () => command('module:ontology')?.click())
+    expect(mocks.push).toHaveBeenCalledExactlyOnceWith('/ontology')
+    expect(mocks.setOpen).toHaveBeenCalledExactlyOnceWith(false)
+  })
+
   it('opens the selected command once through its result row', async () => {
     await query('/upload')
     await expectSelectedCommand('slash:upload')

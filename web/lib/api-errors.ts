@@ -1,9 +1,9 @@
 import { readNonEmptyString } from '@/lib/primitive-text'
 
 const REQUEST_ID_IN_TEXT_PATTERN = /\brequest_id=([A-Za-z0-9._:-]+)\b/
+const REQUEST_ID_SUFFIX_PATTERN = /\s*[（(]\s*request_id=[A-Za-z0-9._:-]+\s*[）)]\s*/g
 
-export const HTML_API_ERROR_MESSAGE =
-  'Backend returned HTML (可能 API 地址配错了；请检查 NEXT_PUBLIC_API_URL / 反向代理配置)'
+export const HTML_API_ERROR_MESSAGE = '服务响应异常，请稍后重试或联系管理员'
 
 export type ApiErrorInfo = {
   message: string
@@ -175,7 +175,7 @@ export function toApiErrorInfo(error: unknown, fallbackMessage: string): ApiErro
   else message = fallbackMessage
 
   if (response === undefined && (code === 'ECONNABORTED' || code === 'ETIMEDOUT')) {
-    message = `${fallbackMessage}：请求超时，后端可能仍在处理。请稍后刷新列表确认结果，或缩小本次操作范围后重试`
+    message = '请求响应超时，请稍后刷新确认或重试'
   }
 
   const normalizedMessage = errorMessage?.toLowerCase()
@@ -183,7 +183,7 @@ export function toApiErrorInfo(error: unknown, fallbackMessage: string): ApiErro
     response === undefined &&
     (code === 'ERR_NETWORK' || normalizedMessage === 'network error' || normalizedMessage === 'failed to fetch')
   ) {
-    message = `${fallbackMessage}：无法连接后端 API，请确认后端服务已启动，或检查 NEXT_PUBLIC_API_URL / 反向代理配置`
+    message = '服务连接暂时中断，请检查网络后重试'
   }
 
   if (status === 429) {
@@ -199,6 +199,26 @@ export function toApiErrorInfo(error: unknown, fallbackMessage: string): ApiErro
   }
 
   return { message, requestId: extractRequestIdFromError(error), status }
+}
+
+export function stripRequestIdFromMessage(message: string): string {
+  return message.replace(REQUEST_ID_SUFFIX_PATTERN, ' ').replace(/\s+/g, ' ').trim()
+}
+
+export function splitApiErrorDisplay(
+  input: unknown,
+  fallbackMessage = '操作暂时失败，请稍后重试',
+): { message: string; requestId?: string } {
+  if (typeof input === 'string') {
+    const requestId = extractRequestIdFromError(input)
+    const clean = stripRequestIdFromMessage(input)
+    return { message: clean || fallbackMessage, requestId }
+  }
+  const info = toApiErrorInfo(input, fallbackMessage)
+  return {
+    message: stripRequestIdFromMessage(info.message) || fallbackMessage,
+    requestId: info.requestId,
+  }
 }
 
 export function formatApiError(error: unknown, fallbackMessage: string): string {

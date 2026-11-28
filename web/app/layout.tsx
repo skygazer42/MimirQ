@@ -16,7 +16,6 @@ import { ServiceWorkerRegistrar } from '@/components/providers/service-worker-re
 import { WebVitalsReporter } from '@/components/providers/web-vitals-reporter'
 import { RouteScrollReset } from '@/components/route-scroll-reset'
 import { AuthGuard } from '@/components/auth-guard'
-import { resolveRequestDocumentSettings } from '@/lib/document-language'
 import { BRAND_ASSETS, BRAND_DESCRIPTION, BRAND_NAME } from '@/lib/brand'
 import {
   normalizeSurfaceTheme,
@@ -55,12 +54,11 @@ export default async function RootLayout({ children }: Readonly<RootLayoutProps>
   const cspNonce = requestHeaders.get('x-nonce') ?? undefined
   const surfaceTheme = normalizeSurfaceTheme(appearanceCookies.get(SURFACE_THEME_COOKIE_KEY)?.value)
   const themeColorOverride = normalizeThemeColorCookie(appearanceCookies.get(THEME_COLOR_COOKIE_KEY)?.value)
-  const { lang: documentLang, dir: documentDir } = resolveRequestDocumentSettings(requestHeaders, locale)
 
   return (
     <html
-      lang={documentLang}
-      dir={documentDir}
+      lang={locale}
+      dir="ltr"
       suppressHydrationWarning
       className="h-full overflow-hidden"
       data-surface-theme={surfaceTheme}

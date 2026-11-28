@@ -828,10 +828,7 @@ export function TestCaseManager({
             </Button>
             <Button
               size="sm"
-              className={cn(
-                'gap-2',
-                dense && 'h-9 rounded-md bg-foreground px-3 text-[13px] text-background hover:bg-foreground/85',
-              )}
+              className={cn('gap-2', dense && 'h-9 rounded-md px-3 text-[13px]')}
               onClick={() => setIsCreating(true)}
               disabled={!hasDataset || evidenceImporting || evidenceCreating}
             >

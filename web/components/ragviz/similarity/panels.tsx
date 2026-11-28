@@ -103,7 +103,7 @@ function SimilarityHeatmapPanel({
   return (
     <div className="h-full overflow-auto">
       <section className="flex h-full min-h-[560px] flex-col overflow-hidden bg-background">
-        <div className="flex items-center justify-between gap-3 border-b border-border/34 bg-muted/[0.10] px-4 py-3">
+        <div className="flex items-center justify-between gap-3 border-b border-border/34 px-4 py-2">
           <div className="min-w-0">
             <div className="truncate text-sm font-semibold text-foreground">
               {primaryEntry.xCollectionLabel}（X 轴）
@@ -112,9 +112,7 @@ function SimilarityHeatmapPanel({
               {displayLabels.xLabels.length} 项 × {displayLabels.yLabels.length} 项
             </div>
           </div>
-          <div className="rounded-full border border-border/34 bg-background/44 px-2.5 py-1 text-[11px] font-medium text-muted-foreground/70">
-            点击单元格查看详情
-          </div>
+          <div className="hidden text-[11px] text-muted-foreground sm:block">点击单元格查看详情</div>
         </div>
 
         <div className="min-h-0 flex-1 p-3">

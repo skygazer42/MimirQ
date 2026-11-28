@@ -1,7 +1,7 @@
 'use client'
 
 import { useRef, useState } from 'react'
-import { AlertCircle, CheckCircle2, ChevronRight, Clock3, FileText } from '@/components/icons'
+import { AlertCircle, CheckCircle2, ChevronRight, Clock3, FileText, ShieldCheck } from '@/components/icons'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -57,7 +57,12 @@ export function AuditPanel({
   return (
     <section className={styles.auditPanel} aria-label="召回审计结果">
       <div className={styles.sectionHeading}>
-        <h2>召回审计</h2>
+        <h2>
+          <span className={styles.iconTray} data-tone="analysis" aria-hidden="true">
+            <ShieldCheck />
+          </span>
+          召回审计
+        </h2>
         <span className={cn(styles.stateLabel, styles[tone])}>
           {tone === 'rose' ? <AlertCircle /> : tone === 'green' ? <CheckCircle2 /> : <Clock3 />}
           {retrievalAuditStatusLabel(audit?.status)}
@@ -141,7 +146,9 @@ export function AuditPanel({
             >
               <summary>
                 <span>{formatReportText(gate.name)}</span>
-                <small>{retrievalAuditStatusLabel(gate.status)}</small>
+                <small className={cn(styles.stateLabel, styles[retrievalAuditTone(gate.status)])}>
+                  {retrievalAuditStatusLabel(gate.status)}
+                </small>
               </summary>
               {gate.failed_conditions.length > 0 ? (
                 <ul className={styles.failedConditions}>
@@ -209,6 +216,9 @@ export function FindingsTable({
     <section className={styles.findingsSection}>
       <div className={styles.findingsHeading}>
         <h2 ref={heading} tabIndex={-1}>
+          <span className={styles.iconTray} data-tone="warning" aria-hidden="true">
+            <AlertCircle />
+          </span>
           质量规则命中
         </h2>
         <small>

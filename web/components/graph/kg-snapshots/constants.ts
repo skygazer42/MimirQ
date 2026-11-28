@@ -1,13 +1,21 @@
-import type { DeltaDirection, SnapshotInlineStatTone, SnapshotStudioNode } from './types'
+import type { DeltaDirection, SnapshotInlineStatTone } from './types'
 
 export const DIFF_KEYS = ['docs', 'events', 'entities', 'links', 'relations'] as const
 
+export const SNAPSHOT_COUNT_LABELS = {
+  docs: '文档',
+  events: '事件',
+  entities: '实体',
+  links: '关联',
+  relations: '关系',
+}
+
 export const INLINE_STAT_TONE_CLASSES: Record<SnapshotInlineStatTone, string> = {
-  muted: 'border-border/70 bg-card text-muted-foreground',
-  neutral: 'border-border/70 bg-card text-foreground',
-  positive: 'border-success/30 bg-success/5 text-success',
-  negative: 'border-destructive/30 bg-destructive/5 text-destructive',
-  warning: 'border-warning/30 bg-warning/5 text-warning',
+  muted: 'text-muted-foreground',
+  neutral: 'text-foreground',
+  positive: 'text-success',
+  negative: 'text-destructive',
+  warning: 'text-warning',
 }
 
 export const INLINE_STAT_VALUE_TONE_CLASSES: Record<SnapshotInlineStatTone, string> = {
@@ -16,16 +24,6 @@ export const INLINE_STAT_VALUE_TONE_CLASSES: Record<SnapshotInlineStatTone, stri
   positive: 'text-success',
   negative: 'text-destructive',
   warning: 'text-warning',
-}
-
-export const SNAPSHOT_NODE_TONE_CLASSES: Record<SnapshotStudioNode['tone'], string> = {
-  amber: 'bg-warning/15 text-foreground ring-warning/40',
-  blue: 'bg-info/15 text-foreground ring-info/40',
-  green: 'bg-success/15 text-foreground ring-success/40',
-  orange: 'bg-warning/15 text-foreground ring-warning/40',
-  purple: 'bg-primary/10 text-foreground ring-primary/35',
-  rose: 'bg-destructive/10 text-foreground ring-destructive/35',
-  teal: 'bg-success/15 text-foreground ring-success/35',
 }
 
 export const DELTA_TEXT_CLASSES: Record<DeltaDirection, string> = {
@@ -47,7 +45,7 @@ export const DELTA_BADGE_VARIANTS: Record<DeltaDirection, 'soft' | 'outline' | '
 }
 
 export const DELTA_LABELS: Record<DeltaDirection, string> = {
-  flat: 'flat',
-  negative: 'decrease',
-  positive: 'increase',
+  flat: '不变',
+  negative: '减少',
+  positive: '增加',
 }
