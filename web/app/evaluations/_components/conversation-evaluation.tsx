@@ -163,7 +163,10 @@ function RunStatus({ status }: { status?: string }) {
 function Score({ value, bars = false }: { value: unknown; bars?: boolean }) {
   const number = numericScore(value)
   return (
-    <span className={cn(styles.score, number !== null && number < LOW_SCORE_THRESHOLD && styles.lowScore)}>
+    <span
+      className={cn(styles.score, number !== null && number < LOW_SCORE_THRESHOLD && styles.lowScore)}
+      data-scored={number !== null}
+    >
       {number === null ? '—' : number.toFixed(2)}
       {bars && number !== null && number >= 0 && number <= 1 && (
         <i className={styles.track} aria-hidden="true">

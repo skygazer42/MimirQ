@@ -117,8 +117,10 @@ export function ScanConfigDialog({
       >
         <DialogHeader className={styles.dialogHeader}>
           <DialogTitle>新建文档预检</DialogTitle>
-          <DialogDescription>扫描文件并生成质量报告，不执行入库、切块或索引。</DialogDescription>
         </DialogHeader>
+        <DialogDescription className={styles.configDescription}>
+          扫描文件并生成质量报告，不执行入库、切块或索引。
+        </DialogDescription>
         <form className={styles.configForm} onSubmit={submitScan}>
           <Tabs value={tab} onValueChange={setTab} className={styles.configTabs}>
             <TabsList aria-label="预检配置分类" className={styles.configTabList}>
@@ -189,7 +191,7 @@ export function ScanConfigDialog({
             <Button variant="ghost" type="button" onClick={() => onOpenChange(false)}>
               关闭
             </Button>
-            <Button type="submit" disabled={starting}>
+            <Button className={styles.primaryAction} type="submit" disabled={starting}>
               {starting ? <Loader2 className="animate-spin motion-reduce:animate-none" /> : <Play />}
               {starting ? '正在启动…' : '开始预检'}
             </Button>

@@ -1,11 +1,13 @@
 .workspace {
   --text-xs: 13px;
-  --settings-directory: hsl(var(--sidebar-background));
-  --settings-active: hsl(var(--secondary));
-  --settings-value: hsl(var(--muted));
-  --settings-value-active: hsl(var(--secondary));
+  --settings-directory: hsl(var(--surface-1));
+  --settings-active: hsl(var(--surface-2));
+  --settings-value: hsl(var(--surface-2));
+  --settings-value-active: hsl(var(--surface-2));
   --settings-choice-description: hsl(var(--muted-foreground));
   --settings-motion: 150ms;
+  background: hsl(var(--card));
+  color: hsl(var(--foreground));
   font-family: var(--font-sans);
   font-size: 14px;
   font-weight: 450;
@@ -27,17 +29,22 @@
   background: var(--settings-directory);
 }
 .directoryTitle {
+  display: flex;
+  height: 52px;
   flex: none;
-  margin: 22px 24px;
+  align-items: center;
+  margin: 0;
+  padding: 0 20px;
+  border-bottom: 1px solid hsl(var(--border));
   font-size: var(--workspace-title-size);
   font-weight: var(--workspace-title-weight);
-  line-height: 28px;
+  line-height: 22px;
 }
 .directoryScroll {
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding-bottom: 20px;
+  padding: 12px 0 20px;
 }
 .directoryGroup + .directoryGroup {
   margin-top: 12px;
@@ -48,13 +55,13 @@
   align-items: center;
   gap: 10px;
   width: calc(100% - 24px);
-  min-height: 36px;
+  min-height: 32px;
   margin: 0 12px;
-  padding: 7px 12px;
+  padding: 5px 12px;
   border-radius: 6px;
   color: hsl(var(--foreground));
   text-align: left;
-  font-size: 14px;
+  font-size: 13px;
   line-height: 22px;
   transition:
     background-color var(--settings-motion),
@@ -111,19 +118,20 @@
 }
 .toolbar {
   display: flex;
-  min-height: 72px;
+  min-height: 52px;
   flex: none;
   align-items: center;
   justify-content: space-between;
-  gap: 20px;
-  padding: 16px 28px;
+  gap: 12px;
+  padding: 0 20px;
   border-bottom: 1px solid hsl(var(--border));
+  background: hsl(var(--background));
 }
 .breadcrumb {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 13px;
+  gap: 8px;
   font-size: 13px;
   color: hsl(var(--muted-foreground));
 }
@@ -136,8 +144,9 @@
   justify-content: flex-end;
   flex-wrap: wrap;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
   font-size: 13px;
+  font-variant-numeric: tabular-nums;
   color: hsl(var(--muted-foreground));
 }
 .account {
@@ -149,13 +158,13 @@
   flex: 1;
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding: 24px 28px 40px;
+  padding: 20px 20px 32px;
   scroll-padding-top: 34px;
 }
 .mobileDirectory {
   flex: none;
-  padding: 12px 24px;
-  background: hsl(var(--background));
+  padding: 8px 20px;
+  background: hsl(var(--surface-1));
   border-bottom: 1px solid hsl(var(--border));
 }
 .section {
@@ -169,7 +178,7 @@
   animation: enter var(--settings-motion) ease-out;
 }
 .sectionHeader {
-  margin-bottom: 20px;
+  margin-bottom: 16px;
 }
 .sectionTitle {
   margin: 0;
@@ -178,13 +187,39 @@
   line-height: 28px;
 }
 .sectionHint {
-  margin-top: 7px;
+  margin-top: 4px;
   font-size: 13px;
   line-height: 23px;
   color: hsl(var(--muted-foreground));
 }
 .sectionBody {
   min-width: 0;
+}
+.toolbar button,
+.mobileDirectory [role='combobox'],
+.sectionBody :global(button.inline-flex):not([role='switch'], [role='checkbox'], [role='radio'], [role='tab']),
+.sectionBody input:where(:not([type='range'], [type='radio'], [type='checkbox'], [type='hidden'])),
+.sectionBody select,
+.sectionBody button[role='combobox'] {
+  height: 32px;
+  min-height: 32px;
+  padding-block: 0;
+  border-radius: 6px;
+  font-size: 13px;
+  line-height: 22px;
+}
+.mobileDirectory [role='combobox'],
+.sectionBody
+  :is(
+    input:where(:not([type='range'], [type='radio'], [type='checkbox'], [type='hidden'])),
+    select,
+    button[role='combobox']
+  ):where(:not(:focus-visible, [aria-invalid='true'])) {
+  border: 1px solid hsl(var(--border));
+  background: hsl(var(--surface-1));
+}
+.sectionBody :global(button.inline-flex):not([role='switch'], [role='checkbox'], [role='radio'], [role='tab']) {
+  border-color: hsl(var(--border));
 }
 .alerts {
   margin-bottom: 24px;
@@ -232,16 +267,16 @@
   width: 100%;
   align-items: center;
   gap: 11px;
-  min-height: 44px;
+  min-height: 32px;
   margin-top: 12px;
-  padding: 9px 12px;
-  border: 1px solid hsl(var(--input));
+  padding: 4px 10px;
+  border: 1px solid hsl(var(--border));
   border-radius: 6px;
-  background: hsl(var(--background));
+  background: hsl(var(--surface-1));
   text-align: left;
   font-size: 14px;
   font-weight: 500;
-  line-height: 25px;
+  line-height: 22px;
   transition:
     background-color var(--settings-motion),
     border-color var(--settings-motion);
@@ -251,7 +286,7 @@
 }
 .value[aria-pressed='true'] {
   background: var(--settings-value-active);
-  border-color: hsl(var(--input));
+  border-color: hsl(var(--border));
 }
 .valueCopy {
   flex: 1;
@@ -456,7 +491,7 @@
 }
 .moreSummary {
   display: flex;
-  min-height: 44px;
+  min-height: 32px;
   cursor: pointer;
   align-items: center;
   justify-content: space-between;
@@ -534,6 +569,7 @@
   gap: 6px;
   white-space: nowrap;
   font-size: 13px;
+  font-variant-numeric: tabular-nums;
   line-height: 22px;
 }
 .statusDetail {
@@ -564,6 +600,7 @@
 .statusParserCount {
   margin-left: auto;
   font-size: 13px;
+  font-variant-numeric: tabular-nums;
   font-weight: 450;
   color: hsl(var(--muted-foreground));
   white-space: nowrap;
@@ -704,12 +741,13 @@
 }
 .ruleTab {
   gap: 7px;
-  min-height: 44px;
+  min-height: 32px;
   margin-bottom: -1px;
-  padding: 9px 0;
+  padding: 4px 0;
   border-bottom: 2px solid transparent;
   border-radius: 0;
   font-size: 14px;
+  line-height: 22px;
   transition:
     color var(--settings-motion),
     border-color var(--settings-motion);
@@ -719,7 +757,7 @@
   background: transparent;
 }
 .ruleTab[data-state='active'] {
-  border-bottom-color: hsl(var(--primary));
+  border-bottom-color: hsl(var(--accent));
   font-weight: 650;
 }
 .rulePanel {
@@ -788,13 +826,6 @@
 }
 
 @media (max-width: 1279px) {
-  .toolbar {
-    min-height: 72px;
-    padding-inline: 24px;
-  }
-  .scroll {
-    padding: 24px 24px 40px;
-  }
   .preferences {
     grid-template-columns: minmax(240px, 0.8fr) minmax(0, 1.5fr);
     gap: 24px;
@@ -830,12 +861,7 @@
   }
 }
 
-@media (max-width: 767px) {
-  .toolbar {
-    min-height: 64px;
-    padding: 12px 20px;
-    align-items: flex-start;
-  }
+@media (max-width: 768px) {
   .breadcrumb {
     gap: 7px;
   }
@@ -849,11 +875,31 @@
   .account {
     display: none;
   }
-  .scroll {
-    padding: 24px 20px 40px;
+  .toolbar button,
+  .mobileDirectory [role='combobox'],
+  .sectionBody :global(button.inline-flex):not([role='switch'], [role='checkbox'], [role='radio'], [role='tab']),
+  .sectionBody input:where(:not([type='range'], [type='radio'], [type='checkbox'], [type='hidden'])),
+  .sectionBody select,
+  .sectionBody button[role='combobox'] {
+    height: 44px;
+    min-height: 44px;
   }
-  .mobileDirectory {
-    padding-inline: 20px;
+  .toolbar button,
+  .sectionBody :global(button.inline-flex):not([role='switch'], [role='checkbox'], [role='radio'], [role='tab']) {
+    min-width: 44px;
+  }
+  .directoryItem,
+  .value,
+  .moreSummary,
+  .ruleTab,
+  .retry {
+    min-height: 44px;
+  }
+  .mobileDirectory [role='combobox'],
+  .sectionBody input:where(:not([type='range'], [type='radio'], [type='checkbox'], [type='hidden'])),
+  .sectionBody select,
+  .sectionBody button[role='combobox'] {
+    font-size: 16px;
   }
   .preferences {
     grid-template-columns: minmax(0, 1fr);

@@ -288,7 +288,9 @@ export function PolicyRuleEditor({
             <Button type="button" variant="ghost" onClick={() => policyController.setEditor(null)}>
               取消
             </Button>
-            <Button type="submit">{editor.originalId ? '应用修改' : '加入策略'}</Button>
+            <Button type="submit" className={styles.primaryAction}>
+              {editor.originalId ? '应用修改' : '加入策略'}
+            </Button>
           </div>
         </form>
       </DialogContent>
@@ -406,6 +408,7 @@ export function PolicyTemplateDialog({ policyController }: { policyController: I
           </span>
           <Button
             disabled={policyController.blocked}
+            className={styles.primaryAction}
             onClick={() => {
               try {
                 policyController.applyTemplate(selected, placement)

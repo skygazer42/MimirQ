@@ -31,6 +31,7 @@ import {
 import { Switch } from '@/components/ui/switch'
 import { useRouter } from '@/i18n/navigation'
 import { getParserLabel } from '@/lib/parser-options'
+import { getDatasetDomainTone } from '@/lib/dataset-domain-tone'
 import { useIngestionPolicy, type IngestionPolicyController } from './use-ingestion-policy'
 import { PolicyRuleEditor, PolicyTemplateDialog } from './policy-dialogs'
 import { PolicyOverviewDialog, PolicyPreviewDialog } from './policy-preview'
@@ -81,7 +82,7 @@ function RulesTable({ policyController }: { policyController: IngestionPolicyCon
                   >
                     {rule.name}
                   </button>
-                  <div className={styles.match}>
+                  <div className={`${styles.match} ${styles.semanticPill}`} data-tone="source">
                     {rule.match?.extensions?.length ? rule.match.extensions.join(' · ') : '任意文件类型'}
                   </div>
                   {rule.match?.filename_regex ? (
@@ -91,16 +92,25 @@ function RulesTable({ policyController }: { policyController: IngestionPolicyCon
                   ) : null}
                 </th>
                 <td className={styles.processingColumn}>
-                  <span>{parser}</span>
+                  <span className={styles.semanticPill} data-tone="process">
+                    {parser}
+                  </span>
                   <small>
                     {rule.chunk_strategy || '使用默认切块策略'}
                     {rule.preprocess?.enabled ? ` · 预处理 ${rule.preprocess.steps?.length ?? 0} 项` : ''}
                   </small>
                 </td>
                 <td className={styles.profileColumn}>
-                  <span>{profile?.name ?? rule.governance_profile_ref ?? '不使用预设'}</span>
+                  <span
+                    className={styles.semanticPill}
+                    data-tone={rule.governance_profile_ref ? 'governance' : undefined}
+                  >
+                    {profile?.name ?? rule.governance_profile_ref ?? '不使用预设'}
+                  </span>
                   {rule.pipeline_patch && Object.keys(rule.pipeline_patch).length ? (
-                    <small>参数覆盖 {Object.keys(rule.pipeline_patch).length} 项</small>
+                    <small className={styles.semanticPill} data-tone="process">
+                      参数覆盖 {Object.keys(rule.pipeline_patch).length} 项
+                    </small>
                   ) : null}
                 </td>
                 <td>
@@ -206,7 +216,15 @@ export default function PolicyWorkspace({ datasetId }: { datasetId: string }) {
               <PageTitleIcon name="ingestion-operation" />
               <h1>入库策略</h1>
             </div>
-            <span className={styles.datasetContext} title={policyController.datasetQuery.data?.name}>
+            <span
+              className={styles.datasetContext}
+              title={policyController.datasetQuery.data?.name}
+              data-tone={
+                policyController.datasetQuery.data
+                  ? getDatasetDomainTone(policyController.datasetQuery.data)
+                  : undefined
+              }
+            >
               {policyController.datasetQuery.data?.name ??
                 (policyController.datasetQuery.isPending ? '正在读取数据集…' : '数据集未取得')}
             </span>
@@ -306,6 +324,7 @@ export default function PolicyWorkspace({ datasetId }: { datasetId: string }) {
           <Button
             variant="outline"
             data-policy-add
+            className={styles.primaryAction}
             aria-label="新增规则"
             disabled={policyController.blocked || policyController.rules.length >= 60}
             onClick={(event) => policyController.openEditor(null, event.currentTarget)}
@@ -398,6 +417,7 @@ export default function PolicyWorkspace({ datasetId }: { datasetId: string }) {
           <Button
             disabled={!policyController.dirty || policyController.blocked}
             aria-label="保存策略"
+            className={styles.primaryAction}
             onClick={() => {
               void policyController.save()
             }}

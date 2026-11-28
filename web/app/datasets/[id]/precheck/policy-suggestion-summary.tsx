@@ -8,7 +8,7 @@ export function PolicySuggestionSummary({ policy }: { policy: IngestionPolicy })
 
   return (
     <section aria-labelledby="precheck-suggested-rules">
-      <h3 id="precheck-suggested-rules" className="text-sm font-semibold">
+      <h3 id="precheck-suggested-rules" className={styles.policyHeading}>
         建议规则 · {rules.length} 条
       </h3>
       <p className="mt-1 text-sm leading-6 text-muted-foreground">应用后用于后续入库，不会重新处理已有文档。</p>
@@ -20,7 +20,7 @@ export function PolicySuggestionSummary({ policy }: { policy: IngestionPolicy })
                 <h4>
                   <span className="mr-2 tabular-nums text-muted-foreground">{index + 1}.</span>
                   {rule.name}
-                  {!rule.enabled ? <span className="ml-2 text-xs text-muted-foreground">未启用</span> : null}
+                  {!rule.enabled ? <span className={styles.statusPill}>未启用</span> : null}
                 </h4>
                 <p>{rule.match?.extensions?.length ? rule.match.extensions.join(' · ') : '任意文件类型'}</p>
                 {rule.match?.filename_regex ? (
@@ -37,7 +37,7 @@ export function PolicySuggestionSummary({ policy }: { policy: IngestionPolicy })
           ))}
         </ol>
       ) : (
-        <p className="mt-3 text-sm text-warning">本次建议不含规则；覆盖应用会清空已有策略。</p>
+        <p className={styles.policyWarning}>本次建议不含规则；覆盖应用会清空已有策略。</p>
       )}
     </section>
   )

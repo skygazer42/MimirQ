@@ -81,13 +81,6 @@ const PRECHECK_POLICY_SUGGESTION_PARAMS = { max_names_per_bucket: 50 } as const
 const PRECHECK_FINDING_PAGE_SIZE = 50
 const POLICY_APPLY_TOAST_ID = 'precheck-policy-apply'
 
-function findingBadgeVariant(severity: string): 'secondary' | 'outline' | 'soft' | 'destructive' {
-  const normalized = severity.toLowerCase()
-  if (normalized === 'error') return 'destructive'
-  if (normalized === 'warning') return 'soft'
-  return 'outline'
-}
-
 function readStringField(value: unknown, key: string): string {
   if (!value || typeof value !== 'object') return ''
   const raw = (value as Record<string, unknown>)[key]
@@ -626,13 +619,14 @@ function DatasetPrecheckWorkspace({ datasetId }: Readonly<{ datasetId: string }>
               <PageTitleIcon name="profile-discovery" />
               <h1>文档预检</h1>
             </div>
-            <span className={styles.datasetContext}>
+            <span className={styles.datasetContext} title={dataset?.name}>
               {dataset?.name ?? (datasetQuery.isPending ? '正在读取数据集…' : '数据集读取失败')}
             </span>
           </div>
           <div className={styles.headerActions}>
             <Button
               ref={configTriggerRef}
+              className={styles.primaryAction}
               aria-label="新建预检"
               disabled={starting || scanRunning}
               onClick={openConfig}
@@ -835,7 +829,7 @@ function DatasetPrecheckWorkspace({ datasetId }: Readonly<{ datasetId: string }>
               <FileSearch />
               <h2>还没有预检记录</h2>
               <p>选择服务可访问的文件夹，检查文件格式、文本质量和风险，再决定入库方式。</p>
-              <Button variant="outline" onClick={openConfig}>
+              <Button className={styles.primaryAction} onClick={openConfig}>
                 配置首次预检
               </Button>
             </div>
@@ -911,8 +905,9 @@ function DatasetPrecheckWorkspace({ datasetId }: Readonly<{ datasetId: string }>
                               {summary.findings.map((finding) => {
                                 const severityBadge = (
                                   <Badge
-                                    variant={findingBadgeVariant(finding.severity)}
-                                    className={finding.severity === 'warning' ? styles.findingWarning : undefined}
+                                    variant="outline"
+                                    className={styles.statusPill}
+                                    data-severity={finding.severity}
                                   >
                                     {finding.severity === 'error'
                                       ? '错误'
@@ -969,10 +964,10 @@ function DatasetPrecheckWorkspace({ datasetId }: Readonly<{ datasetId: string }>
                               {embeddingAdvisories.map((advisory) => (
                                 <div
                                   key={`${advisory.code}-${advisory.effectiveEmbedding || 'none'}`}
-                                  className="border-t border-border py-3"
+                                  className={styles.advisory}
                                 >
                                   <div className="flex flex-wrap items-center gap-2">
-                                    <Badge variant="soft" className="border-warning/20 bg-warning/10 text-warning">
+                                    <Badge variant="outline" className={styles.statusPill} data-severity="warning">
                                       注意
                                     </Badge>
                                     <div className="text-[13px] font-medium text-foreground">{advisory.title}</div>
@@ -1787,7 +1782,7 @@ function DatasetPrecheckWorkspace({ datasetId }: Readonly<{ datasetId: string }>
                       {JSON.stringify(policyRes.policy, null, 2)}
                     </pre>
                   </details>
-                  <div className="flex items-center gap-2">
+                  <div className={styles.policyChoice}>
                     <Checkbox
                       id="precheck-policy-replace"
                       checked={policyApplyReplace}
@@ -1824,6 +1819,7 @@ function DatasetPrecheckWorkspace({ datasetId }: Readonly<{ datasetId: string }>
                 下载策略
               </Button>
               <Button
+                className={styles.primaryAction}
                 disabled={!hasSuggestedRules || policyLoading || policyApplying || policySuggestionQuery.isError}
                 onClick={() => {
                   void applyPolicy()

@@ -48,6 +48,7 @@ export function PolicyPreviewDialog({ policyController }: { policyController: In
             />
           </div>
           <LoadingButton
+            className={styles.primaryAction}
             loading={policyController.previewing}
             disabled={!policyController.previewFile || policyController.dirty || policyController.blocked}
             onClick={() => {
@@ -63,6 +64,7 @@ export function PolicyPreviewDialog({ policyController }: { policyController: In
             <span>当前修改尚未保存，请先保存策略再预览。</span>
             <Button
               variant="outline"
+              className={styles.primaryAction}
               disabled={policyController.blocked}
               onClick={() => {
                 void policyController.save()

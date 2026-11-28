@@ -4,41 +4,59 @@
   min-height: 0;
   min-width: 0;
   flex-direction: column;
-  background: hsl(var(--background));
+  background: hsl(var(--card));
   color: hsl(var(--foreground));
+  font-family: var(--font-sans);
 }
 .header {
   display: flex;
-  min-height: 72px;
+  min-height: 52px;
   flex-shrink: 0;
   align-items: center;
   gap: 12px;
-  padding: 12px 24px;
+  padding: 0 20px;
   border-bottom: 1px solid hsl(var(--border));
+}
+.header > button:first-child {
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
 }
 .titleGroup {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 12px;
   min-width: 0;
 }
 .heading {
   display: flex;
   align-items: center;
-  gap: 9px;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.heading > svg {
+  width: 18px;
+  height: 18px;
   flex-shrink: 0;
 }
 .heading h1 {
-  font-size: var(--workspace-title-size);
-  line-height: 28px;
-  font-weight: var(--workspace-title-weight);
+  font-size: 15px;
+  line-height: 22px;
+  font-weight: 600;
+  white-space: nowrap;
 }
 .datasetContext {
   min-width: 0;
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 13px;
+  border: 1px solid hsl(var(--border));
+  border-radius: 999px;
+  padding: 1px 8px;
+  background: hsl(var(--surface-2));
+  font-size: 12px;
+  line-height: 20px;
   color: hsl(var(--muted-foreground));
 }
 .headerActions {
@@ -49,49 +67,100 @@
   flex-shrink: 0;
 }
 .headerActions button {
+  height: 32px;
+  min-width: 32px;
+  border-radius: 6px;
   font-size: 13px;
+  box-shadow: none;
+}
+.headerActions svg,
+.toolbarActions svg,
+.dialogFooter svg {
+  width: 15px;
+  height: 15px;
+}
+.primaryAction {
+  background: hsl(var(--accent));
+  color: hsl(var(--accent-foreground));
+  box-shadow: none;
+}
+.primaryAction:hover {
+  background: hsl(var(--accent) / 0.9);
 }
 .toolbar {
   display: flex;
+  min-height: 44px;
+  flex-shrink: 0;
   align-items: center;
   flex-wrap: wrap;
-  gap: 12px;
-  padding: 14px 24px;
+  gap: 8px 12px;
+  padding: 0 20px;
   border-bottom: 1px solid hsl(var(--border));
+  background: hsl(var(--surface-2));
+}
+.toolbar button,
+.comparisonControls button,
+.sectionHead button {
+  height: 32px;
+  border-radius: 6px;
+  font-size: 12px;
+  box-shadow: none;
 }
 .history {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   min-width: 0;
 }
 .history label {
-  font-size: 13px;
+  font-size: 12px;
   white-space: nowrap;
   color: hsl(var(--muted-foreground));
 }
 .historyTrigger {
-  width: 280px;
+  width: clamp(180px, 22vw, 280px);
   min-width: 0;
-  font-size: 13px;
+  background: hsl(var(--card));
+  font-variant-numeric: tabular-nums;
 }
-.runStatus {
+.runStatus,
+.statusPill {
+  --status-ink: hsl(var(--muted-foreground));
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  font-size: 13px;
-  font-weight: 550;
-  padding: 4px 0;
+  gap: 5px;
+  border: 1px solid color-mix(in srgb, var(--status-ink) 14%, transparent);
+  border-radius: 999px;
+  padding: 1px 7px;
+  background: color-mix(in srgb, var(--status-ink) 8%, hsl(var(--card)));
+  color: var(--status-ink);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 20px;
+  white-space: nowrap;
 }
-.runStatus[data-state='completed'] {
-  color: hsl(var(--success));
+.runStatus > span {
+  font-size: 8px;
 }
-.runStatus[data-state='failed'] {
-  color: hsl(var(--destructive));
+.runStatus[data-state='completed'],
+.statusPill[data-severity='low' i],
+.statusPill[data-severity='pass' i] {
+  --status-ink: hsl(var(--icon-governance));
+}
+.runStatus[data-state='failed'],
+.statusPill[data-severity='high' i],
+.statusPill[data-severity='error' i] {
+  --status-ink: hsl(var(--icon-pdf));
+}
+.statusPill[data-severity='medium' i],
+.statusPill[data-severity='warn' i],
+.statusPill[data-severity='warning' i] {
+  --status-ink: hsl(var(--icon-code));
 }
 .runStatus[data-state='running'],
-.runStatus[data-state='pending'] {
-  color: hsl(var(--info));
+.runStatus[data-state='pending'],
+.statusPill[data-severity='info' i] {
+  --status-ink: hsl(var(--icon-process));
 }
 .toolbarActions {
   display: flex;
@@ -101,13 +170,13 @@
 }
 .runMeta {
   display: flex;
-  gap: 12px 24px;
+  gap: 8px 20px;
   flex-wrap: wrap;
-  padding: 14px 24px;
+  padding: 8px 20px;
   font-size: 12px;
   line-height: 20px;
   color: hsl(var(--muted-foreground));
-  background: hsl(var(--muted) / 0.2);
+  background: hsl(var(--card));
   border-bottom: 1px solid hsl(var(--border));
 }
 .runMeta span {
@@ -135,7 +204,7 @@
 }
 .progress div {
   height: 100%;
-  background: hsl(var(--primary));
+  background: hsl(var(--accent));
   transition: width 180ms ease;
 }
 .content {
@@ -151,8 +220,8 @@
   display: flex;
   justify-content: flex-start;
   gap: 24px;
-  height: 54px;
-  padding: 0 24px;
+  height: 44px;
+  padding: 0 20px;
   border-radius: 0;
   border-bottom: 1px solid hsl(var(--border));
   background: transparent;
@@ -162,43 +231,56 @@
   padding: 0 2px;
   border-radius: 0;
   border-bottom: 2px solid transparent;
-  background: transparent !important;
-  box-shadow: none !important;
-  font-size: 14px;
+  font-size: 13px;
   color: hsl(var(--muted-foreground));
+}
+.reportTabList button[data-state] {
+  background: transparent;
+  box-shadow: none;
 }
 .reportTabList button:focus-visible {
   outline: 2px solid hsl(var(--ring));
   outline-offset: 2px;
 }
 .reportTabList button[data-state='active'] {
-  border-bottom-color: hsl(var(--primary));
+  border-bottom-color: hsl(var(--foreground) / 0.65);
   color: hsl(var(--foreground));
   font-weight: 600;
 }
 .tabContent {
   margin: 0;
-  padding: 0 24px 24px;
+  padding: 0 20px 20px;
   animation: enter 150ms ease-out;
 }
 .metrics {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 16px;
-  padding: 24px 0;
-  border-bottom: 1px solid hsl(var(--border));
+  margin-top: 16px;
+  border: 1px solid hsl(var(--border));
+  border-radius: 8px;
+  background: hsl(var(--surface-2));
+  overflow: hidden;
+}
+.metrics > div {
+  min-width: 0;
+  padding: 12px 8px;
+  text-align: center;
+}
+.metrics > div + div {
+  border-left: 1px solid hsl(var(--border));
 }
 .metrics dt {
   color: hsl(var(--muted-foreground));
-  font-size: 13px;
-  line-height: 22px;
+  font-size: 12px;
+  line-height: 20px;
 }
 .metrics dd {
-  margin-top: 5px;
-  font-size: 26px;
-  line-height: 34px;
+  margin-top: 4px;
+  font-size: 22px;
+  line-height: 28px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
 }
 .metrics small {
   font-size: 12px;
@@ -208,7 +290,7 @@
 }
 .section {
   background: transparent;
-  padding: 22px 0;
+  padding: 20px 0;
   min-width: 0;
 }
 .section h2 {
@@ -235,6 +317,9 @@
 .tableScroll {
   overflow-x: auto;
   min-width: 0;
+  border: 1px solid hsl(var(--border));
+  border-radius: 8px;
+  background: hsl(var(--card));
 }
 .findings {
   width: 100%;
@@ -245,14 +330,18 @@
 .findings th {
   padding: 10px 12px;
   color: hsl(var(--muted-foreground));
-  background: hsl(var(--muted) / 0.3);
+  background: hsl(var(--surface-2));
+  border-bottom: 1px solid hsl(var(--border));
   font-weight: 500;
   font-size: 12px;
 }
 .findings td {
-  padding: 13px 12px;
-  border-bottom: 1px solid hsl(var(--border) / 0.7);
+  padding: 12px;
+  border-bottom: 1px solid hsl(var(--border));
   vertical-align: middle;
+}
+.findings tbody tr:last-child td {
+  border-bottom: 0;
 }
 .findings td:first-child {
   min-width: 200px;
@@ -275,9 +364,24 @@
 .findingName {
   font-weight: 550;
 }
-.findingWarning,
-.findings .findingWarning {
-  color: color-mix(in srgb, hsl(var(--warning)) 50%, hsl(var(--foreground)));
+.advisory,
+.policyWarning {
+  border: 1px solid hsl(var(--border));
+  border-left: 2px solid hsl(var(--icon-code));
+  border-radius: 0 6px 6px 0;
+  padding: 12px 14px;
+  background: hsl(var(--surface-2));
+}
+.policyWarning {
+  margin-top: 12px;
+  color: hsl(var(--icon-code));
+  font-size: 13px;
+  line-height: 22px;
+}
+.policyHeading {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 22px;
 }
 .sampleTable td {
   font-family: var(--font-sans), sans-serif;
@@ -288,19 +392,30 @@
   font-size: 14px;
 }
 .policyRules {
-  margin-top: 14px;
+  margin-top: 12px;
+  border: 1px solid hsl(var(--border));
+  border-radius: 8px;
+  background: hsl(var(--card));
+  overflow: hidden;
 }
 .policyRule {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(140px, 0.55fr);
   gap: 16px;
-  padding: 14px 0;
+  padding: 12px 14px;
   border-bottom: 1px solid hsl(var(--border));
+}
+.policyRule:last-child {
+  border-bottom: 0;
 }
 .policyRule h4 {
   font-size: 14px;
   line-height: 24px;
   font-weight: 550;
+}
+.policyRule h4 .statusPill {
+  margin-left: 8px;
+  vertical-align: middle;
 }
 .policyRule p {
   margin-top: 3px;
@@ -317,6 +432,14 @@
   gap: 5px;
   font-size: 13px;
   line-height: 22px;
+}
+.ruleMethod > span {
+  align-self: flex-start;
+  border: 1px solid hsl(var(--border));
+  border-radius: 5px;
+  padding: 1px 7px;
+  background: hsl(var(--surface-2));
+  font-size: 12px;
 }
 .ruleMethod small {
   font-size: 12px;
@@ -392,7 +515,7 @@
   text-underline-offset: 3px;
 }
 .empty {
-  padding: clamp(40px, 8vh, 96px) 24px;
+  padding: clamp(40px, 8vh, 96px) 20px;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
@@ -413,6 +536,10 @@
   line-height: 24px;
   color: hsl(var(--muted-foreground));
 }
+.empty button {
+  height: 32px;
+  font-size: 13px;
+}
 .configDialog,
 .reportDialog {
   display: flex;
@@ -430,64 +557,85 @@
   max-width: 960px;
 }
 .dialogHeader {
-  padding: 22px 24px 18px;
+  min-height: 52px;
+  justify-content: center;
+  padding: 12px 52px 12px 20px;
   flex-shrink: 0;
   border-bottom: 1px solid hsl(var(--border));
+  text-align: left;
 }
 .dialogHeader h2 {
-  font-size: 18px;
+  font-size: 15px;
   font-weight: 600;
-  line-height: 26px;
-  padding-right: 20px;
-}
-.dialogHeader p {
-  font-size: 13px;
   line-height: 22px;
+}
+.dialogHeader p,
+.configDescription {
+  font-size: 12px;
+  line-height: 20px;
   color: hsl(var(--muted-foreground));
+}
+.configDescription {
+  flex-shrink: 0;
+  padding: 12px 20px;
 }
 .configForm,
 .configTabs {
   display: flex;
   flex-direction: column;
   min-height: 0;
+  overflow: hidden;
 }
 .configTabList {
   flex-shrink: 0;
   justify-content: flex-start;
-  height: 48px;
-  background: transparent;
-  margin: 8px 24px 0;
+  height: 44px;
+  border-radius: 0;
+  border-bottom: 1px solid hsl(var(--border));
+  padding: 0 20px;
+  background: hsl(var(--surface-2));
 }
 .configTabList button {
+  height: 32px;
   font-size: 13px;
 }
+.configTabList button[data-state='active'] {
+  background: hsl(var(--card));
+  color: hsl(var(--foreground));
+  box-shadow: 0 1px 2px hsl(var(--foreground) / 0.06);
+}
 .dialogBody {
-  padding: 20px 24px;
+  padding: 16px 20px;
   overflow-y: auto;
+  overscroll-behavior: contain;
   min-height: 0;
 }
 .dialogFooter {
   display: flex;
+  min-height: 52px;
   justify-content: flex-end;
   align-items: center;
   flex-wrap: wrap;
   gap: 8px;
-  padding: 16px 24px;
+  padding: 8px 20px;
   border-top: 1px solid hsl(var(--border));
+  background: hsl(var(--surface-2));
   flex-shrink: 0;
 }
 .dialogFooter button {
-  min-height: 38px;
+  height: 32px;
+  border-radius: 6px;
   font-size: 13px;
+  box-shadow: none;
 }
 .field {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
 }
 .field label,
 .configRow label {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 500;
   line-height: 22px;
 }
@@ -506,7 +654,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 24px;
-  padding: 13px 0;
+  padding: 12px 0;
   border-bottom: 1px solid hsl(var(--border) / 0.6);
 }
 .configRow:last-child {
@@ -518,8 +666,10 @@
   gap: 20px;
 }
 .formError {
-  padding: 10px 24px;
-  color: hsl(var(--destructive));
+  padding: 10px 20px;
+  border-left: 2px solid hsl(var(--icon-pdf));
+  background: hsl(var(--surface-2));
+  color: hsl(var(--icon-pdf));
   font-size: 13px;
   line-height: 22px;
   flex-shrink: 0;
@@ -536,6 +686,11 @@
   gap: 8px;
   min-width: 0;
 }
+.policyChoice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
 .comparisonControls > button:first-child {
   width: 300px;
   min-width: 0;
@@ -550,31 +705,16 @@
     transform: translateY(0);
   }
 }
-@media (max-width: 1000px) {
+@media (max-width: 768px) {
   .titleGroup {
     align-items: flex-start;
     flex-direction: column;
     gap: 2px;
   }
   .header {
-    padding-inline: 18px;
-  }
-  .metrics {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-}
-@media (max-width: 640px) {
-  .header {
-    padding: 10px 16px 10px 56px;
+    padding: 8px 16px 8px 56px;
     gap: 4px;
-    min-height: 72px;
-  }
-  .heading h1 {
-    font-size: 18px;
-  }
-  .heading > svg {
-    width: 26px;
-    height: 26px;
+    min-height: 60px;
   }
   .header > button:first-child {
     display: none;
@@ -609,6 +749,13 @@
     justify-content: flex-end;
     margin-left: 0;
   }
+  .toolbar button,
+  .sectionHead button,
+  .comparisonControls button,
+  .empty button {
+    min-height: 44px;
+    min-width: 44px;
+  }
   .runMeta {
     padding: 8px 16px;
     gap: 4px 12px;
@@ -626,11 +773,16 @@
   }
   .metrics {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 10px 12px;
-    padding: 14px 0;
+    margin-top: 12px;
   }
-  .metrics dt {
-    line-height: 20px;
+  .metrics > div {
+    padding: 10px 8px;
+  }
+  .metrics > div:nth-child(odd) {
+    border-left: 0;
+  }
+  .metrics > div:nth-child(n + 3) {
+    border-top: 1px solid hsl(var(--border));
   }
   .metrics dd {
     margin-top: 2px;
@@ -641,6 +793,7 @@
     display: flex;
     grid-column: 1 / -1;
     align-items: baseline;
+    justify-content: center;
     gap: 12px;
   }
   .mobileFindingSeverity {
@@ -672,19 +825,42 @@
     max-height: calc(100dvh - 24px);
   }
   .dialogHeader,
-  .dialogBody {
+  .dialogBody,
+  .configDescription {
     padding-inline: 18px;
   }
   .dialogHeader {
-    text-align: left;
+    padding-right: 52px;
   }
   .dialogFooter {
     padding: 12px 18px;
   }
-  .dialogFooter button {
+  .dialogFooter button,
+  .configTabList button,
+  .dialogBody button:not([role='switch']):not([role='checkbox']),
+  .configDialog > button,
+  .reportDialog > button {
     min-height: 44px;
+    min-width: 44px;
+  }
+  .configTabList {
+    height: 52px;
+    padding-inline: 18px;
+  }
+  .configRow label,
+  .policyChoice label {
+    display: inline-flex;
+    min-height: 44px;
+    align-items: center;
+  }
+  .advisory summary,
+  .dialogBody summary {
+    display: flex;
+    min-height: 44px;
+    align-items: center;
   }
   .field input {
+    min-height: 44px;
     font-size: 16px;
   }
   .numericFields {
